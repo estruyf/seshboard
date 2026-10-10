@@ -306,6 +306,16 @@ What was done differently from the plan above, and why:
 - **2.9 Long paths:** git runs with `core.longpaths` on Windows. Without it Git for Windows leaves out files whose full path is over 260 characters without an error, so they were missing from Changes.
 - **Not reproduced:** the ConPTY concern from phase 1 (output lost at exit). 15 short actions in a row kept their last line; only an interactive shell typing `exit` lost its final output.
 
+From the code review:
+- **The VS Code companion connected where `engine.json` said.** On Windows it took any `\\.\pipe\…` name, and Windows reads `/` and `..` in one (`\\.\pipe\x/../../UNC/server/pipe/y` is a pipe on another computer). The App Data Folder setting could come from a workspace's `.vscode/settings.json`, in Restricted Mode too, and could name a network share, which Windows signs in to just to read it. Now the extension takes only the pipe the engine makes (`switchboard-` and 32 hex digits), the setting is user-level only (`application` scope, and restricted in untrusted workspaces), and a folder that isn't on this computer is ignored.
+- **The extension started and showed Switchboard with macOS's `open`.** On Windows it opens `switchboard://` links through the system's URL handler (`rundll32 url.dll,FileProtocolHandler`), and the new `switchboard://show` brings the window up without changing what it shows, as `open -b` does on macOS.
+- **Closing the window asked first during a Windows shutdown or sign-out**, which held them up. Switchboard now quits without asking then (`session-end`).
+- **Updating an npm install** names its prefix (`npm install -g --prefix …`), as another npm first on PATH would install into its own. When it fails, it says to stop the sessions first: Windows can't replace a `claude.exe` that runs.
+- **A WinGet install for every user** (`C:\Program Files\WinGet\Packages`) is recognised too.
+- **Delayed expansion:** `cmd.exe` runs with `/v:off`, so a user who turned delayed expansion on in the registry doesn't get `!PATH!` in a file name replaced.
+- **Branch names in tooltips** keep a `+`: only the key text goes through `localizeKeys`.
+- **Windows PowerShell 5.1's joined commands** end with the failed command's exit code (an `if` that skipped the rest succeeded).
+
 Found in passing:
 - File links to Windows paths were `file://C:%5C…`; now `file:///C:/…`.
 - The Changes button shows until the engine answers that a folder isn't a git checkout, then disappears. That's also true on macOS, with a 500 ms delay; a smoke step raced it.
