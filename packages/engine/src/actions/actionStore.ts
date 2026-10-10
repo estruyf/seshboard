@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
-import { ProjectAction, type ActionSuggestion, type ListedAction } from '@switchboard/protocol';
+import { ProjectAction, RpcError, type ActionSuggestion, type ListedAction } from '@switchboard/protocol';
+import type { UserShell } from '../system/shell.ts';
 
 export const SHARED_FILE = '.switchboard.json';
 
@@ -32,16 +33,32 @@ export interface ActionVariables {
 
 /**
  * Fills in `${cwd}`, `${branch}`, … . For shell actions every value is quoted for the shell that runs them
- * (`quote`, from `UserShell`), so a branch or title can never inject a command; prompts pass null.
- * Unknown variables are left as they are.
+ * (`shell.quote`, from `UserShell`), so a branch or title can never inject a command; prompts pass null.
+ * Where no quoting is safe for every program (Windows, `shell.unsafe`), a value the action uses that holds a
+ * dangerous character is refused instead (`UNSAFE_VALUE`). Unknown variables are left as they are.
  */
-export function expandCommand(command: string, vars: ActionVariables, quote: ((value: string) => string) | null): string {
+export function expandCommand(command: string, vars: ActionVariables, shell: Pick<UserShell, 'quote' | 'unsafe'> | null): string {
   return command.replace(/\$\{(\w+)\}/g, (match, name: string) => {
     if (!Object.hasOwn(vars, name)) return match;
     const value = vars[name as keyof ActionVariables];
-    return quote ? quote(value) : value;
+    if (!shell) return value;
+    const unsafe = shell.unsafe(value);
+    if (unsafe !== null) throw new RpcError('UNSAFE_VALUE', `\${${name}} contains ${describeCharacter(unsafe)}, which Windows can't pass safely to every program. Leave \${${name}} out of this action, or change the ${VARIABLE_NOUNS[name] ?? 'value'}.`);
+    return shell.quote(value);
   });
 }
+
+/** What each variable is, for the message when its value is refused. */
+const VARIABLE_NOUNS: Record<string, string> = {
+  cwd: 'folder name',
+  projectRoot: 'project folder name',
+  branch: 'branch name',
+  worktreeName: 'worktree name',
+  sessionTitle: 'session title',
+};
+
+const describeCharacter = (char: string) =>
+  char === '\n' || char === '\r' ? 'a line break' : char === '\0' ? 'a NUL character' : char === '"' ? 'a double quote' : `"${char}"`;
 
 interface Row {
   id: string;

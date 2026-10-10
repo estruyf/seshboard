@@ -1,28 +1,34 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { posixQuote, powershellQuote, userShell } from './shell.ts';
+import { posixQuote, powershellQuote, userShell, windowsPowershellQuote, windowsUnsafe } from './shell.ts';
 
-const decode = (args: string[]) => Buffer.from(args[2]!, 'base64').toString('utf16le');
+/** The command `run` encodes (after `-NoLogo -ExecutionPolicy Bypass -EncodedCommand`). */
+const decode = (args: string[]) => Buffer.from(args[4]!, 'base64').toString('utf16le');
 
 describe('userShell', () => {
   it('is $SHELL as a login shell on macOS and Linux', () => {
     const shell = userShell({ SHELL: '/bin/bash' }, 'darwin');
     expect(shell).toMatchObject({ file: '/bin/bash', kind: 'posix', interactive: ['-l'] });
     expect(shell.run('npm test')).toEqual(['-ilc', 'npm test']);
+    expect(shell.unsafe('a & b "c"')).toBeNull();
     expect(userShell({}, 'linux').file).toBe('/bin/zsh');
   });
 
   it('is PowerShell 7 on Windows when it is on PATH, else Windows PowerShell', () => {
     const env = { PATH: 'C:\\Windows\\System32;C:\\Program Files\\PowerShell\\7', SystemRoot: 'C:\\Windows' };
     const pwsh = userShell(env, 'win32', (p) => p === 'C:\\Program Files\\PowerShell\\7\\pwsh.exe');
-    expect(pwsh).toMatchObject({ file: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', kind: 'powershell', interactive: ['-NoLogo'] });
-    expect(userShell(env, 'win32', () => false).file).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    expect(pwsh).toMatchObject({ file: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', kind: 'powershell', interactive: ['-NoLogo', '-ExecutionPolicy', 'Bypass'] });
+    expect(pwsh.quote).toBe(powershellQuote);
+    const windowsPowershell = userShell(env, 'win32', () => false);
+    expect(windowsPowershell.file).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    expect(windowsPowershell.quote).toBe(windowsPowershellQuote);
   });
 
   it('hands PowerShell the command encoded, so nothing in between can change it', () => {
     const args = userShell({ PATH: '' }, 'win32', () => false).run('echo "a b" && git log -1');
-    expect(args.slice(0, 2)).toEqual(['-NoLogo', '-EncodedCommand']);
-    expect(decode(args)).toBe('echo "a b" && git log -1');
+    expect(args.slice(0, 4)).toEqual(['-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand']);
+    expect(decode(args).startsWith('echo "a b" && git log -1\n')).toBe(true);
   });
 });
 
@@ -33,6 +39,16 @@ describe('quoting', () => {
     expect(posixQuote("it's")).toBe(`'it'\\''s'`);
     expect(powershellQuote("it's")).toBe(`'it''s'`);
     expect(powershellQuote('a’b')).toBe(`'a’’b'`);
+    // Windows PowerShell passes `"` to programs unescaped: it is escaped for them, and so is a final `\` in a value
+    // with spaces (PowerShell quotes that one, and the `\` would escape the closing quote).
+    expect(windowsPowershellQuote('a "b"')).toBe(`'a \\"b\\"'`);
+    expect(windowsPowershellQuote('C:\\dir with space\\')).toBe(`'C:\\dir with space\\\\'`);
+    expect(windowsPowershellQuote('C:\\nospace\\')).toBe(`'C:\\nospace\\'`);
+  });
+
+  it('knows what an action may not pass on Windows', () => {
+    for (const value of ['x&y', 'a|b', 'a<b', 'a>b', 'a^b', '%PATH%', '!x!', 'a"b', 'a\nb', 'a\rb', 'a\0b']) expect(windowsUnsafe(value)).not.toBeNull();
+    for (const value of ['feat/x', "it's", 'C:\\Users\\me\\dev', 'Fix login (again)', 'a;b', '$HOME']) expect(windowsUnsafe(value)).toBeNull();
   });
 
   it.skipIf(process.platform === 'win32')('passes every value to /bin/sh as it is', () => {
@@ -48,4 +64,34 @@ describe('quoting', () => {
       expect(out).toBe(value);
     }
   });
+
+  // Commit messages and branch names go to git.exe and gh.exe, through each PowerShell's own way of passing them.
+  const shells = process.platform === 'win32' ? windowsShells() : [];
+  it.skipIf(shells.length === 0)('passes values to a program as one argument each, in both PowerShells', () => {
+    const values = ['a b"c --amend "', 'say "hi"', 'C:\\dir with space\\', 'back\\"slash', 'x&y', "it's", 'plain'];
+    const script = 'console.log(JSON.stringify(process.argv.slice(1)))';
+    for (const shell of shells) {
+      const command = `node -e ${powershellQuote(script)} -- ${values.map(shell.quote).join(' ')}`;
+      const out = execFileSync(shell.file, ['-NoProfile', ...shell.run(command).slice(1)], { encoding: 'utf8' });
+      expect({ shell: shell.file, argv: JSON.parse(out.trim()) }).toEqual({ shell: shell.file, argv: values });
+    }
+  });
+
+  it.skipIf(shells.length === 0)("reports a program's own exit code, as a POSIX shell does", () => {
+    for (const shell of shells) {
+      const exit = (command: string) => spawnSync(shell.file, ['-NoProfile', ...shell.run(command).slice(1)]).status;
+      expect(exit('node -e "process.exit(5)"')).toBe(5);
+      expect(exit('Get-Item C:\\no\\such\\thing -ErrorAction Stop')).toBe(1);
+      expect(exit('node -e "process.exit(5)"; Write-Output fine')).toBe(0);
+      expect(exit('Write-Output fine')).toBe(0);
+    }
+  });
 });
+
+/** Windows PowerShell, and PowerShell 7 when it is installed, each with its own quoting. */
+function windowsShells() {
+  const env = process.env as Record<string, string>;
+  const windowsPowershell = userShell(env, 'win32', () => false);
+  const current = userShell(env, 'win32');
+  return [windowsPowershell, ...(current.file === windowsPowershell.file ? [] : [current])].filter((shell) => existsSync(shell.file));
+}

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProjectAction } from '@switchboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
-import { posixQuote, powershellQuote } from '../system/shell.ts';
+import { posixQuote, powershellQuote, windowsUnsafe } from '../system/shell.ts';
 import { ActionStore, expandCommand, suggestActions } from './actionStore.ts';
 
 const dirs: string[] = [];
@@ -77,9 +77,21 @@ describe('ActionStore', () => {
 describe('expandCommand', () => {
   const vars = { cwd: '/repo/wt', projectRoot: '/repo', branch: "feat/x'; rm -rf ~ #", worktreeName: 'wt', sessionId: 's1', sessionTitle: 'Fix "login"' };
   // That the quoting holds in each shell is tested in system/shell.test.ts.
+  const posix = { quote: posixQuote, unsafe: () => null };
+  const powershell = { quote: powershellQuote, unsafe: windowsUnsafe };
   it('quotes values for the shell that runs them, so they cannot inject commands', () => {
-    expect(expandCommand('git push origin ${branch} && echo ${unknown}', vars, posixQuote)).toBe(`git push origin ${posixQuote(vars.branch)} && echo \${unknown}`);
-    expect(expandCommand('git push origin ${branch}', vars, powershellQuote)).toBe(`git push origin 'feat/x''; rm -rf ~ #'`);
+    expect(expandCommand('git push origin ${branch} && echo ${unknown}', vars, posix)).toBe(`git push origin ${posixQuote(vars.branch)} && echo \${unknown}`);
+    expect(expandCommand('git push origin ${branch}', vars, powershell)).toBe(`git push origin 'feat/x''; rm -rf ~ #'`);
+  });
+  it('refuses a value cmd.exe would read again on Windows, but only where the action uses it', () => {
+    // A .cmd or .bat program re-reads its arguments: `&` would run a command whatever PowerShell's quoting.
+    for (const branch of ['x&whoami', 'x|calc', 'a"b', '%PATH%', '!PATH!', 'a^b', 'a<b', 'a\nb']) {
+      expect(() => expandCommand('gradlew.bat -Pbranch=${branch}', { ...vars, branch }, powershell)).toThrow(expect.objectContaining({ code: 'UNSAFE_VALUE' }));
+    }
+    expect(() => expandCommand('build.cmd ${sessionTitle}', vars, powershell)).toThrow(/\$\{sessionTitle\} contains a double quote.*session title/);
+    // A title with `"` is fine in an action that doesn't use it, and anywhere outside Windows.
+    expect(expandCommand('build.cmd ${worktreeName}', vars, powershell)).toBe("build.cmd 'wt'");
+    expect(expandCommand('echo ${sessionTitle}', vars, posix)).toBe(`echo ${posixQuote(vars.sessionTitle)}`);
   });
   it('leaves prompt text unquoted', () => {
     expect(expandCommand('Review ${sessionTitle} on ${branch}', vars, null)).toBe(`Review Fix "login" on ${vars.branch}`);

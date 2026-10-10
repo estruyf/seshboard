@@ -552,7 +552,14 @@ export function createEngine(options: EngineOptions): Engine {
           continue;
         }
         const vars = { cwd: path, projectRoot: root, branch: `worktree-${worktreeName}`, worktreeName, sessionId, sessionTitle: '' };
-        const id = await runShellAction(sessionId, action.cwd === 'project-root' ? root : path, `Setup: ${action.name}`, expandCommand(action.command, vars, (await terminals.shell()).quote));
+        let command: string;
+        try {
+          command = expandCommand(action.command, vars, await terminals.shell());
+        } catch (error) {
+          log('warn', `Skipped setup action "${action.name}": ${(error as Error).message}`);
+          continue;
+        }
+        const id = await runShellAction(sessionId, action.cwd === 'project-root' ? root : path, `Setup: ${action.name}`, command);
         const code = await terminals.waitForExit(id);
         if (code !== 0) log('warn', `Setup action "${action.name}" exited with ${code}`);
       }
@@ -935,7 +942,7 @@ export function createEngine(options: EngineOptions): Engine {
         return { kind: 'prompt' as const, sessionId: sent.sessionId, messageUuid: sent.messageUuid };
       }
       const runIn = action.cwd === 'project-root' ? projectRoot : cwd;
-      const terminalId = await runShellAction(sessionId, runIn, action.name, expandCommand(action.command, vars, (await terminals.shell()).quote));
+      const terminalId = await runShellAction(sessionId, runIn, action.name, expandCommand(action.command, vars, await terminals.shell()));
       actionRuns.set(terminalId, { sessionId, projectRoot, cwd, id });
       return { kind: 'terminal' as const, terminalId };
     },
@@ -1301,7 +1308,7 @@ export function createEngine(options: EngineOptions): Engine {
         const action = findAction(run.projectRoot, run.id);
         if (action.type !== 'shell') throw new RpcError('NOT_FOUND', `"${action.name}" no longer runs in a terminal`);
         change = {
-          command: expandCommand(action.command, actionVars(run.sessionId, run.projectRoot, run.cwd), (await terminals.shell()).quote),
+          command: expandCommand(action.command, actionVars(run.sessionId, run.projectRoot, run.cwd), await terminals.shell()),
           cwd: action.cwd === 'project-root' ? run.projectRoot : run.cwd,
         };
       }
