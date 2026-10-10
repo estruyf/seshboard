@@ -32,6 +32,15 @@ function shortPath(path: string): string {
 const run = (command: string, args: string[], cwd?: string) =>
   new Promise<boolean>((resolve) => execFile(command, args, { cwd, timeout: 5_000 }, (error) => resolve(!error)));
 
+/**
+ * Opens a `switchboard://` link with whichever Switchboard the system knows: `open` on macOS, the shell's URL handler
+ * on Windows (no shell in between, so nothing in the link is read as a command).
+ */
+const openLink = (link: string) => (process.platform === 'win32' ? run('rundll32.exe', ['url.dll,FileProtocolHandler', link]) : run('open', [link]));
+
+/** Brings Switchboard up without changing what it shows: by its bundle id on macOS, with `switchboard://show` elsewhere. */
+const showApp = () => (process.platform === 'darwin' ? run('open', ['-b', APP_ID]) : openLink('switchboard://show'));
+
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('Switchboard', { log: true });
   const connection = new SwitchboardConnection({
@@ -45,9 +54,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   /** Opens Switchboard (it isn't running), then waits for its engine. */
   const launch = async (folder: string | null): Promise<CompanionClient | null> => {
-    const opened = await run('open', ['-b', APP_ID]);
+    const opened = await showApp();
     // Not installed under that id (a build from source): a switchboard:// link still starts whichever copy macOS knows.
-    if (!opened) await run('open', [folder ? `switchboard://new-session?cwd=${encodeURIComponent(folder)}` : 'switchboard://new-session']);
+    if (!opened) await openLink(folder ? `switchboard://new-session?cwd=${encodeURIComponent(folder)}` : 'switchboard://new-session');
     return vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Starting Switchboard…' }, () => connection.waitForStart());
   };
 
@@ -79,7 +88,7 @@ export function activate(context: vscode.ExtensionContext): void {
       let snapshot = await client.call('sessions.list', { folders });
       // Running without a window (closed with ⌘W): opening it brings one back.
       if (snapshot.windows === 0) {
-        await run('open', ['-b', APP_ID]);
+        await showApp();
         await new Promise((resolve) => setTimeout(resolve, 1_500));
         client = (await connection.connect()) ?? client;
         snapshot = await client.call('sessions.list', { folders });
@@ -171,7 +180,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const snapshot = await client.call('sessions.list', { folders });
     const target = await pickTarget(snapshot, folders, null, 'Show in Switchboard');
     if (target?.kind === 'session') await client.call('session.reveal', { sessionId: target.sessionId });
-    else if (target?.kind === 'new') await run('open', [`switchboard://new-session?cwd=${encodeURIComponent(target.cwd)}`]);
+    else if (target?.kind === 'new') await openLink(`switchboard://new-session?cwd=${encodeURIComponent(target.cwd)}`);
   };
   command('switchboard.showSessions', () => showSessions().catch((error: Error) => vscode.window.showErrorMessage(`Couldn't reach Switchboard: ${error.message}`)));
   command('switchboard.answerPrompts', async () => {

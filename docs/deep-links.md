@@ -45,6 +45,14 @@ switchboard://session/0b9a7c1e-1234-4abc-9def-001122334455
 
 Shows that session, as if you'd picked it in the sidebar. To get a session's ID, right-click it in the sidebar and choose **Copy session ID**.
 
+## Bring the window up
+
+```text
+switchboard://show
+```
+
+Starts Switchboard, or brings its window to the front, without changing what it shows. The VS Code companion uses it on Windows, where it can't open the app by its bundle id as it does on macOS.
+
 ## When the app isn't running
 
 Opening a link starts Switchboard if it isn't running. The link waits until the window has loaded and is connected to its engine, then opens. If the app is already open, its window comes to the front.

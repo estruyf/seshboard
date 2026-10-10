@@ -10,7 +10,7 @@ import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { EngineProcess } from './engineProcess.ts';
 import type { AttentionEvent } from './attention.ts';
-import { DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
+import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { PreferencesStore } from './preferences.ts';
@@ -339,6 +339,11 @@ function sendToWindow(win: BrowserWindow, channel: string, payload: unknown, opt
  * session (never sends) or shows the session. A refused link only shows why.
  */
 function openDeepLink(url: string): void {
+  // Only brings the window up (the VS Code companion starting Switchboard); before 'ready' the window opens anyway.
+  if (isShowLink(url)) {
+    if (app.isReady()) showWindow();
+    return;
+  }
   const parsed = parseDeepLink(url);
   const message: DeepLinkMessage = parsed.ok ? { link: parsed.link } : { error: parsed.error };
   console.log(`[main] link: ${parsed.ok ? parsed.link.action : `refused (${parsed.error})`}`);
@@ -485,6 +490,10 @@ function createWindow(): BrowserWindow {
   // The taskbar button flashes while a session needs you (Notifier); looking at the window is enough.
   if (process.platform !== 'darwin') win.on('focus', () => win.flashFrame(false));
   // On Windows and Linux closing the window quits the app (its sessions stop), so it asks first, as ⌘Q does on macOS.
+  // Windows is shutting down, restarting or signing out: closing then mustn't ask, or it would hold that up.
+  win.on('session-end', () => {
+    quitting = true;
+  });
   win.on('close', (event) => {
     if (process.platform === 'darwin' || quitting || scripted || !preferences.get().confirmQuit) return;
     event.preventDefault();
