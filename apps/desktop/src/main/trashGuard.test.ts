@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
@@ -69,6 +70,23 @@ describe('isTrashableRepoFile', () => {
       expect(isTrashableRepoFile(join(repo, 'missing.ts'), repo)).toBe(false);
       rmSync(join(repo, '.git'), { recursive: true });
       expect(isTrashableRepoFile(join(repo, 'src', 'new.ts'), repo)).toBe(false);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform !== 'win32')("refuses .git by its 8.3 short name or an NTFS stream's name", () => {
+    const repo = realpathSync.native(mkdtempSync(join(tmpdir(), 'trash-repo-')));
+    try {
+      mkdirSync(join(repo, '.git'));
+      writeFileSync(join(repo, '.git', 'config'), '');
+      expect(isTrashableRepoFile(join(repo, '.git::$INDEX_ALLOCATION', 'config'), repo)).toBe(false);
+      expect(isTrashableRepoFile(join(repo, 'a:b.txt'), repo)).toBe(false);
+      // The short name Windows gave the folder (`GIT~1`), when the drive makes them.
+      // Verbatim, as Node would otherwise escape the quotes cmd.exe needs.
+      const short = spawnSync('cmd.exe', ['/d', '/s', '/c', `"for %I in ("${join(repo, '.git')}") do @echo %~sI"`], { encoding: 'utf8', windowsVerbatimArguments: true }).stdout.trim();
+      expect(short.toLowerCase().startsWith(repo.toLowerCase().slice(0, 2))).toBe(true);
+      if (basename(short).toLowerCase() !== '.git') expect(isTrashableRepoFile(join(repo, basename(short), 'config'), repo)).toBe(false);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }

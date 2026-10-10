@@ -4219,16 +4219,17 @@ async function runningSessions(): Promise<{ ids: Set<string>; folders: string[] 
 }
 
 /**
- * Whether `root` shares a folder with a running session: the same folder, inside one, or around one. An idle
- * session there would have the smoke steps run their actions and terminal where Claude Code is working.
+ * Whether `root` is a running session's folder or inside it. An idle session there would have the smoke steps run
+ * their actions and terminal where Claude Code is working. A folder around it (the project's main checkout, while a
+ * session works in one of its worktrees) is another folder: the steps there are read-only, and only run test commands.
  */
-const sharesRunningFolder = (root: string, folders: string[]) => folders.some((folder) => isSameOrInside(root, folder) || isSameOrInside(folder, root));
+const inRunningFolder = (root: string, folders: string[]) => folders.some((folder) => isSameOrInside(root, folder));
 
 /**
  * Opens the newest session with messages and tool activity (a brand-new or chat-only one has less to check);
  * failing that, the newest with messages. Later steps (actions, Changes, git) need its folder to be known.
  * Never a running session (`runningSessions`): later steps type drafts into it and run actions in its folder.
- * Those rows are not even clicked. Nor one in a running session's folder (`sharesRunningFolder`).
+ * Those rows are not even clicked. Nor one in a running session's folder (`inRunningFolder`).
  */
 async function openSmokeSession(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -4237,28 +4238,33 @@ async function openSmokeSession(win: BrowserWindow): Promise<string> {
   const rows = (await js("[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId)")) as string[];
   const listed = [...new Set(rows)];
   const notRunning = listed.filter((id) => !running.ids.has(id));
-  const candidates = notRunning.slice(0, 8);
+  // The 8 newest it can use, looking further down the list past sessions in a running session's folder (the
+  // older sessions of a project someone is working in), but not forever.
+  const candidates = notRunning.slice(0, 30);
   const skipped = listed.length - notRunning.length;
+  let tried = 0;
   let shared = 0;
   const left = () =>
     [skipped ? `, left ${skipped} running session${skipped === 1 ? '' : 's'} alone` : '', shared ? `, and ${shared} in a running session's folder` : ''].join('');
   let fallback: string | null = null;
   for (const id of candidates) {
+    if (tried === 8) break;
     await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
     if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('[data-current-session] [data-transcript-item]')`, 5_000))) continue;
     const root = String(await js("document.querySelector('[data-current-session]')?.dataset.projectRoot ?? ''"));
     if (!isAbsolutePath(root)) continue;
-    if (sharesRunningFolder(root, running.folders)) {
+    if (inRunningFolder(root, running.folders)) {
       shared++;
       continue;
     }
+    tried++;
     fallback ??= id;
     if (await waitInPage(win, "document.querySelector('[data-activity], [data-tool]')", 1_000)) {
       smokeSessionId = id;
       return `ok: with tool activity${left()}`;
     }
   }
-  if (!fallback) return `failed: none of the newest 8 sessions that aren't running opened with messages in a folder of their own${left()}`;
+  if (!fallback) return `failed: none of the newest sessions that aren't running opened with messages outside a running session's folder${left()} (running in: ${[...new Set(running.folders)].join(', ') || 'none'})`;
   smokeSessionId = fallback;
   await js(`document.querySelector('[data-session-id="${fallback}"]').click()`);
   return (await waitInPage(win, "document.querySelector('[data-transcript-item]')", 5_000)) ? `ok: without tool activity${left()}` : 'failed: the fallback session did not render';
