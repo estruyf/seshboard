@@ -5,7 +5,7 @@ import { createConnection } from 'node:net';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
 import { IMAGE_EXTENSIONS, IpcChannel, isThemeId, sanitizePreferences, type AppInfo, type DeepLinkMessage, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
-import { isAbsolutePath } from '@switchboard/protocol/paths';
+import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { EngineProcess } from './engineProcess.ts';
@@ -165,7 +165,7 @@ ipcMain.handle(IpcChannel.themeCommand, async (event, command: ThemeCommand) => 
       return result.canceled ? null : (result.filePaths[0] ?? null);
     }
     case 'check-file':
-      return typeof command.path === 'string' && isAbsolutePath(command.path) ? themes.check(command.path) : { ok: false, error: "Switchboard couldn't read this file.", fileName: '' };
+      return typeof command.path === 'string' && isLocalAbsolutePath(command.path, process.platform) ? themes.check(command.path) : { ok: false, error: "Switchboard couldn't read this file.", fileName: '' };
     case 'add':
       return themes.add(command.raw, command.how === 'replace' || command.how === 'keep-both' ? command.how : 'add');
     case 'duplicate':
@@ -3974,7 +3974,7 @@ async function runHistoryStep(win: BrowserWindow): Promise<string> {
   const candidates = [smokeSessionId, ...rows];
   let found = false;
   for (const id of candidates) {
-    if (!id || running.has(id)) continue;
+    if (!id || running.ids.has(id)) continue;
     await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
     if (await waitInPage(win, ready, 3_000)) {
       found = true;
@@ -4204,21 +4204,31 @@ async function closeOverlays(win: BrowserWindow | undefined): Promise<string | n
 }
 
 /**
- * Sessions running in Claude Code right now, in Switchboard or anywhere else, plus the Claude Code session that
- * started this run (CLAUDE_CODE_SESSION_ID, in case the registry doesn't list it yet). Smoke steps never type into
- * them or run anything in their folders. Null when the engine can't be asked: then no session is safe.
+ * Sessions running in Claude Code right now, in Switchboard or anywhere else, and their folders, plus the Claude
+ * Code session that started this run (CLAUDE_CODE_SESSION_ID, in case the registry doesn't list it yet, with the
+ * folder the run started in). Smoke steps never type into them or run anything in their folders. Null when the
+ * engine can't be asked: then no session is safe.
  */
-async function runningSessions(): Promise<Set<string> | null> {
-  const running = await notifier.liveSessionIds().catch(() => null);
-  if (running && process.env.CLAUDE_CODE_SESSION_ID) running.add(process.env.CLAUDE_CODE_SESSION_ID);
+async function runningSessions(): Promise<{ ids: Set<string>; folders: string[] } | null> {
+  const running = await notifier.runningSessions().catch(() => null);
+  if (running && process.env.CLAUDE_CODE_SESSION_ID) {
+    running.ids.add(process.env.CLAUDE_CODE_SESSION_ID);
+    running.folders.push(process.cwd());
+  }
   return running;
 }
+
+/**
+ * Whether `root` shares a folder with a running session: the same folder, inside one, or around one. An idle
+ * session there would have the smoke steps run their actions and terminal where Claude Code is working.
+ */
+const sharesRunningFolder = (root: string, folders: string[]) => folders.some((folder) => isSameOrInside(root, folder) || isSameOrInside(folder, root));
 
 /**
  * Opens the newest session with messages and tool activity (a brand-new or chat-only one has less to check);
  * failing that, the newest with messages. Later steps (actions, Changes, git) need its folder to be known.
  * Never a running session (`runningSessions`): later steps type drafts into it and run actions in its folder.
- * Those rows are not even clicked.
+ * Those rows are not even clicked. Nor one in a running session's folder (`sharesRunningFolder`).
  */
 async function openSmokeSession(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -4226,24 +4236,32 @@ async function openSmokeSession(win: BrowserWindow): Promise<string> {
   if (!running) return 'failed: could not ask the engine which sessions are running, so none is safe to use';
   const rows = (await js("[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId)")) as string[];
   const listed = [...new Set(rows)];
-  const candidates = listed.filter((id) => !running.has(id)).slice(0, 8);
-  const skipped = listed.length - listed.filter((id) => !running.has(id)).length;
-  const left = skipped ? `, left ${skipped} running session${skipped === 1 ? '' : 's'} alone` : '';
+  const notRunning = listed.filter((id) => !running.ids.has(id));
+  const candidates = notRunning.slice(0, 8);
+  const skipped = listed.length - notRunning.length;
+  let shared = 0;
+  const left = () =>
+    [skipped ? `, left ${skipped} running session${skipped === 1 ? '' : 's'} alone` : '', shared ? `, and ${shared} in a running session's folder` : ''].join('');
   let fallback: string | null = null;
   for (const id of candidates) {
     await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
     if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('[data-current-session] [data-transcript-item]')`, 5_000))) continue;
-    if (!isAbsolutePath(String(await js("document.querySelector('[data-current-session]')?.dataset.projectRoot ?? ''")))) continue;
+    const root = String(await js("document.querySelector('[data-current-session]')?.dataset.projectRoot ?? ''"));
+    if (!isAbsolutePath(root)) continue;
+    if (sharesRunningFolder(root, running.folders)) {
+      shared++;
+      continue;
+    }
     fallback ??= id;
     if (await waitInPage(win, "document.querySelector('[data-activity], [data-tool]')", 1_000)) {
       smokeSessionId = id;
-      return `ok: with tool activity${left}`;
+      return `ok: with tool activity${left()}`;
     }
   }
-  if (!fallback) return `failed: none of the newest 8 sessions that aren't running opened with messages in a known folder${left}`;
+  if (!fallback) return `failed: none of the newest 8 sessions that aren't running opened with messages in a folder of their own${left()}`;
   smokeSessionId = fallback;
   await js(`document.querySelector('[data-session-id="${fallback}"]').click()`);
-  return (await waitInPage(win, "document.querySelector('[data-transcript-item]')", 5_000)) ? `ok: without tool activity${left}` : 'failed: the fallback session did not render';
+  return (await waitInPage(win, "document.querySelector('[data-transcript-item]')", 5_000)) ? `ok: without tool activity${left()}` : 'failed: the fallback session did not render';
 }
 
 /** The opened transcript is scrolled to the very end, with space between the last message and the composer. */

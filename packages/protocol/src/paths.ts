@@ -23,6 +23,15 @@ export function isLocalAbsolutePath(path: string, platform: string): boolean {
   return platform === 'win32' ? DRIVE_PATH.test(path) : path.startsWith('/');
 }
 
+/**
+ * `path` without trailing separators, but never shorter than its root: `/`, `C:\` and `C:/` stay, as `C:` alone
+ * means the current folder on that drive. Only drive paths lose trailing `\`; elsewhere it's part of a name.
+ */
+export function trimTrailingSeparators(path: string): string {
+  if (DRIVE_PATH.test(path)) return path.slice(0, 3) + path.slice(3).replace(/[\\/]+$/, '');
+  return path.replace(/(.)\/+$/, '$1');
+}
+
 /** The separator a path is written with: `\` for a Windows drive path, else `/`. */
 export function separatorOf(path: string): '/' | '\\' {
   return DRIVE_PATH.test(path) && path.includes('\\') ? '\\' : '/';

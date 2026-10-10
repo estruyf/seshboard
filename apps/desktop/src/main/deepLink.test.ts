@@ -100,6 +100,9 @@ describe('parseDeepLink: new-session', () => {
     expect(cwd('switchboard://new-session?cwd=C:/Users/me/dev/')).toBe('C:/Users/me/dev');
     expect(cwd('switchboard://new-session?cwd=e%3A%5Crepos%5C')).toBe('e:\\repos');
     expect(cwd('switchboard://new-session?cwd=C%3A%5C')).toBe('C:\\');
+    // Extra separators after the drive still mean its root, never `C:` (the current folder on that drive).
+    expect(cwd('switchboard://new-session?cwd=C%3A%5C%5C')).toBe('C:\\');
+    expect(cwd('switchboard://new-session?cwd=C://')).toBe('C:/');
     const refused = (folder: string) => error(`switchboard://new-session?cwd=${encodeURIComponent(folder)}`, 'win32');
     expect(refused('/Users/me/dev')).toMatch(/absolute/);
     expect(refused('C:dev')).toMatch(/absolute/);
