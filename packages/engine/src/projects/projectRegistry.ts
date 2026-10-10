@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { isAbsolutePath, ProjectDefaults, RpcError, type ProjectIcon, type ProjectIconChoice, type ProjectInfo } from '@switchboard/protocol';
+import { isLocalAbsolutePath, ProjectDefaults, RpcError, type ProjectIcon, type ProjectIconChoice, type ProjectInfo } from '@switchboard/protocol';
 import { detectIconPath, iconDataUrl, MAX_ICON_BYTES } from './projectIcons.ts';
 
 /** A custom icon as stored: a file is Switchboard's own copy, in the icon folder. */
@@ -109,8 +109,9 @@ export class ProjectRegistry {
   list(activity: Map<string, FolderActivity>): ProjectInfo[] {
     const added = this.addedRows();
     const addedSet = new Set(added.map((r) => r.root));
+    // Only folders this computer can open: transcripts copied from another OS carry its paths, which every project RPC refuses.
     const others = [...activity.entries()]
-      .filter(([root]) => isAbsolutePath(root) && !addedSet.has(root))
+      .filter(([root]) => isLocalAbsolutePath(root, process.platform) && !addedSet.has(root))
       .sort((a, b) => b[1].lastActivity - a[1].lastActivity)
       .map(([root]) => root);
     return [

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AbsolutePath } from './absolutePath.ts';
-import { expandHome, isAbsolutePath, isLocalAbsolutePath, isSameOrInside, joinPath, pathInside, separatorOf } from './paths.ts';
+import { expandHome, isAbsolutePath, isLocalAbsolutePath, isSameOrInside, joinPath, pathInside, separatorOf, trimTrailingSeparators } from './paths.ts';
 
 describe('isAbsolutePath', () => {
   it('takes absolute paths on macOS, Linux and Windows', () => {
@@ -61,5 +61,27 @@ describe('isAbsolutePath', () => {
     expect(AbsolutePath.safeParse(local).success).toBe(true);
     expect(AbsolutePath.safeParse(other).success).toBe(false);
     expect(AbsolutePath.safeParse('Users/me').success).toBe(false);
+  });
+});
+
+describe('trimTrailingSeparators', () => {
+  it('drops trailing separators but keeps a root', () => {
+    expect(trimTrailingSeparators('/Users/me/dev/')).toBe('/Users/me/dev');
+    expect(trimTrailingSeparators('/Users/me//')).toBe('/Users/me');
+    expect(trimTrailingSeparators('/')).toBe('/');
+    expect(trimTrailingSeparators('C:\\Users\\me\\')).toBe('C:\\Users\\me');
+    expect(trimTrailingSeparators('C:/Users/me/')).toBe('C:/Users/me');
+  });
+
+  it('keeps one separator after a drive, as C: alone is relative', () => {
+    expect(trimTrailingSeparators('C:\\')).toBe('C:\\');
+    expect(trimTrailingSeparators('C:\\\\')).toBe('C:\\');
+    expect(trimTrailingSeparators('E:/')).toBe('E:/');
+    expect(trimTrailingSeparators('C://')).toBe('C:/');
+  });
+
+  it('keeps a trailing backslash outside drive paths, where it is part of a name', () => {
+    expect(trimTrailingSeparators('/Users/me/odd\\')).toBe('/Users/me/odd\\');
+    expect(trimTrailingSeparators('src')).toBe('src');
   });
 });

@@ -2,7 +2,7 @@
 
 The plan for running Switchboard on Windows with the same features as on macOS. It is written for whoever does the work (a person or an agent); the README stays about using the app.
 
-Status: **Phases 1 and 2 done on Windows; neither checked on macOS yet.** See "Phase 1 outcome" and "Phase 2 outcome" below. Phase 3 (an installer and releases) is next.
+Status: **Phases 1 and 2 done, checked on Windows and macOS.** See "Phase 1 outcome" and "Phase 2 outcome" below. Phase 3 (an installer and releases) is done on its own branch (`feat/windows-release`) and comes in its own pull request.
 
 ## Where we start
 
@@ -129,12 +129,14 @@ The queue's smoke step fills New session through a `switchboard://` link, so lin
 
 ### Phase 1 outcome
 
-Measured on the same Windows 11 machine:
+Measured on the same Windows 11 machine, with `main` of 10 October merged in (the project page, worktrees and branches):
 
 | Check | Before | After |
 |---|---|---|
-| `npm run check` | 78 tests failed | Passes: 1043 passed, 23 skipped |
-| `npm run smoke` | 26 of 54 steps | 56 of 57 steps |
+| `npm run check` | 78 tests failed | Passes: 1115 passed, 23 skipped |
+| `npm run smoke` | 26 of 54 steps | 58 of 59 steps |
+
+On macOS 26.6 the branch passes `npm run check` (1129 passed) and the same smoke steps as `main`. The one step that fails there on every run, "action terminal" (Stop doesn't end `sleep 60`), fails on `main` too.
 
 The skipped tests on Windows:
 - the companion's socket tests (9), until 2.4;
@@ -146,7 +148,6 @@ The skipped tests on Windows:
 The one smoke failure left is the VS Code companion (2.4).
 
 Still open for phase 1:
-- **Run `npm run check` and `npm run smoke` on a Mac.** Every change keeps the macOS path, and its tests run here with the platform passed in, but nothing has run on macOS yet.
 - A live session through the SDK on Windows (`SWITCHBOARD_SMOKE_LIVE_CWD` on a throwaway repo).
 
 Real bugs found and fixed on the way, beyond those in "Where we start":
@@ -154,15 +155,17 @@ Real bugs found and fixed on the way, beyond those in "Where we start":
 - **Stop.** node-pty throws on a signal on Windows, and the manager swallowed the error, so Stop never stopped anything. It now calls `kill()` without a signal there.
 - **Moving a corrupt database aside.** Windows can't rename an open file, and closing the connection deletes its WAL. On Windows the WAL and shared memory are copied aside first, and the database is moved after closing.
 - **The quick-questions folder and the session folders offered as projects** only recognised `/` paths.
-- **The protocol takes only the local form of an absolute path** (`isLocalAbsolutePath`): a drive path on Windows, `/…` elsewhere. `C:\x` on a Mac, or `/x` on Windows, would be read relative to something. The UI keeps the lenient `isAbsolutePath`, which only tells folders from filter values.
+- **The protocol takes only the local form of an absolute path** (`isLocalAbsolutePath`): a drive path on Windows, `/…` elsewhere. `C:\x` on a Mac, or `/x` on Windows, would be read relative to something. The UI keeps the lenient `isAbsolutePath`, which only tells folders from filter values. What reads the disk uses the local form too: the theme file check in main, and the folders with sessions that the engine offers as projects.
+- **A drive root keeps its separator** when trailing ones are trimmed (`trimTrailingSeparators`): `C:\\` in a link or `E:/` typed in New session stays the root, not `C:` (the current folder on that drive).
 
 Changes to the smoke test:
-- **Running sessions are left alone.** The smoke test used to pick the newest session with messages, even one running in Claude Code at that moment, then type drafts into it and run its test actions in that project's folder. On this machine that was another live Claude Code desktop session. Steps that pick a session now skip `runningSessions()`: Claude Code's live registry and Switchboard's own hosts, plus `CLAUDE_CODE_SESSION_ID`, the session that started the run. AGENTS.md says so.
+- **Running sessions are left alone.** The smoke test used to pick the newest session with messages, even one running in Claude Code at that moment, then type drafts into it and run its test actions in that project's folder. On this machine that was another live Claude Code desktop session. Steps that pick a session now skip `runningSessions()`: Claude Code's live registry and Switchboard's own hosts, plus `CLAUDE_CODE_SESSION_ID`, the session that started the run. The session whose folder later steps use also isn't one that shares a folder with a running session (`sharesRunningFolder`). AGENTS.md says so.
 - **Fixes for races and assumptions** that any machine can hit:
   - the Changes button shows until the engine answers that a folder isn't a git checkout;
   - the Archived dock was measured while it was still sliding;
   - a short list can't scroll the Archived header up.
 - The terminal and action steps type commands that PowerShell understands.
+- **A tooltip waiting to show was dropped by any scroll in the window**, so while the conversation scrolled to its end (as it does while Claude writes, or after the sidebar is resized) a sidebar button's tooltip never showed. Only a scroll around the target hides it now. The controls step failed on about half the Windows runs because of it.
 
 Found on the way, for later phases:
 - **ConPTY drops output** a process prints right before it exits (a known node-pty behaviour on Windows). The terminal test waits for the output before exiting. Check whether actions lose their last lines (2.6).
@@ -280,7 +283,7 @@ Goal: every feature in the README works on Windows, and looks and feels native t
 
 ### Phase 2 outcome
 
-On branch `feat/windows-feature-parity`, one commit per section. On Windows `npm run check` passes (1077 tests, 14 skipped: the symlink test without Developer Mode, the POSIX-only fakes, and the ones skipped everywhere) and so do all 57 smoke steps.
+On branch `feat/windows-feature-parity`, one commit per section, with phase 1 and `main` of 10 October merged in. On Windows `npm run check` passes (1150 tests, 14 skipped: the symlink test without Developer Mode, the POSIX-only fakes, and the ones skipped everywhere) and so do all 59 smoke steps. On macOS 26.6 `npm run check` passes (1152 tests) and 58 of 59 smoke steps: the one failure, "action terminal", fails on `main` too. A review of the diff for macOS found no change in behaviour there.
 
 What was done differently from the plan above, and why:
 - **2.1 Window:** the system's own title bar on Windows, not `titleBarOverlay`. The overlay puts the window buttons over the top-right corner, and three different headers end up there (the conversation, Changes, a terminal docked right), each of which would need room for them. The native frame follows light and dark mode (`nativeTheme.themeSource`). Moving to the overlay is polish for later.
