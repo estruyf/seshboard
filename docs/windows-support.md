@@ -159,13 +159,23 @@ Real bugs found and fixed on the way, beyond those in "Where we start":
 - **A drive root keeps its separator** when trailing ones are trimmed (`trimTrailingSeparators`): `C:\\` in a link or `E:/` typed in New session stays the root, not `C:` (the current folder on that drive).
 
 Changes to the smoke test:
-- **Running sessions are left alone.** The smoke test used to pick the newest session with messages, even one running in Claude Code at that moment, then type drafts into it and run its test actions in that project's folder. On this machine that was another live Claude Code desktop session. Steps that pick a session now skip `runningSessions()`: Claude Code's live registry and Switchboard's own hosts, plus `CLAUDE_CODE_SESSION_ID`, the session that started the run. The session whose folder later steps use also isn't one that shares a folder with a running session (`sharesRunningFolder`). AGENTS.md says so.
+- **Running sessions are left alone.** The smoke test used to pick the newest session with messages, even one running in Claude Code at that moment, then type drafts into it and run its test actions in that project's folder. On this machine that was another live Claude Code desktop session. Steps that pick a session now skip `runningSessions()`: Claude Code's live registry and Switchboard's own hosts, plus `CLAUDE_CODE_SESSION_ID`, the session that started the run. The session whose folder later steps use also isn't one in a running session's folder or inside it (`inRunningFolder`). A folder around it, such as the main checkout while a session works in one of its worktrees, is another folder. AGENTS.md says so.
 - **Fixes for races and assumptions** that any machine can hit:
   - the Changes button shows until the engine answers that a folder isn't a git checkout;
   - the Archived dock was measured while it was still sliding;
   - a short list can't scroll the Archived header up.
 - The terminal and action steps type commands that PowerShell understands.
 - **A tooltip waiting to show was dropped by any scroll in the window**, so while the conversation scrolled to its end (as it does while Claude writes, or after the sidebar is resized) a sidebar button's tooltip never showed. Only a scroll around the target hides it now. The controls step failed on about half the Windows runs because of it.
+- The smoke test's check for running sessions fails closed: before the engine is connected, no session counts as safe.
+- Tests use the temp folder's long name: GitHub's Windows runners name it by its 8.3 short name (`RUNNER~1`), while git and PowerShell print the long one (`vitest.setup.ts`).
+
+From the code review:
+- **Values in actions on Windows.** No quoting is safe for every program there: when an action calls a `.cmd` or `.bat` program (gradlew.bat, mvnw.cmd), `cmd.exe` reads its arguments again, so a branch named `x&whoami` would run `whoami`. An action now refuses to run when a value it uses holds `& | < > ^ % ! "`, a line break or a NUL, and says which one (`UNSAFE_VALUE`, `windowsUnsafe` in `shell.ts`).
+- **Quotes for Windows PowerShell 5.1.** It hands an argument to a program without escaping its double quotes, so a commit message `a "b" --amend` reached git as several arguments. `windowsPowershellQuote` escapes them the way programs read them; PowerShell 7 does that itself. Commit messages and branch names only go to `git.exe` and `gh.exe`, so they need no refusing.
+- **`-ExecutionPolicy Bypass`**, for the PowerShell Switchboard starts only: Windows PowerShell refuses scripts by default, and `npm`, `npx` and `pnpm` are `.ps1` scripts there. A policy set by Group Policy still wins.
+- **Exit codes:** PowerShell reports any failure as 1; the program's own code is passed on now, as a POSIX shell does.
+- **The trash guard** resolves folders to their long names on Windows and refuses a colon after the drive, so `.git` can't be reached as `GIT~1` or as the NTFS stream `.git::$INDEX_ALLOCATION`.
+- **Known limit:** a command runs as `-EncodedCommand` (base64 of UTF-16), which makes it about 2.7 times longer, so one over roughly 12,000 characters exceeds Windows' 32,767-character command line and fails to start.
 
 Found on the way, for later phases:
 - **ConPTY drops output** a process prints right before it exits (a known node-pty behaviour on Windows). The terminal test waits for the output before exiting. Check whether actions lose their last lines (2.6).
@@ -295,6 +305,16 @@ What was done differently from the plan above, and why:
 - **2.7 Claude Code updates:** the npm package's command is now a native `bin\claude.exe`, which is found next to npm's `claude.cmd` shim and runs without a shell. A WinGet install shows its command (`winget upgrade Anthropic.ClaudeCode`) instead of running it.
 - **2.9 Long paths:** git runs with `core.longpaths` on Windows. Without it Git for Windows leaves out files whose full path is over 260 characters without an error, so they were missing from Changes.
 - **Not reproduced:** the ConPTY concern from phase 1 (output lost at exit). 15 short actions in a row kept their last line; only an interactive shell typing `exit` lost its final output.
+
+From the code review:
+- **The VS Code companion connected where `engine.json` said.** On Windows it took any `\\.\pipe\…` name, and Windows reads `/` and `..` in one (`\\.\pipe\x/../../UNC/server/pipe/y` is a pipe on another computer). The App Data Folder setting could come from a workspace's `.vscode/settings.json`, in Restricted Mode too, and could name a network share, which Windows signs in to just to read it. Now the extension takes only the pipe the engine makes (`switchboard-` and 32 hex digits), the setting is user-level only (`application` scope, and restricted in untrusted workspaces), and a folder that isn't on this computer is ignored.
+- **The extension started and showed Switchboard with macOS's `open`.** On Windows it opens `switchboard://` links through the system's URL handler (`rundll32 url.dll,FileProtocolHandler`), and the new `switchboard://show` brings the window up without changing what it shows, as `open -b` does on macOS.
+- **Closing the window asked first during a Windows shutdown or sign-out**, which held them up. Switchboard now quits without asking then (`session-end`).
+- **Updating an npm install** names its prefix (`npm install -g --prefix …`), as another npm first on PATH would install into its own. When it fails, it says to stop the sessions first: Windows can't replace a `claude.exe` that runs.
+- **A WinGet install for every user** (`C:\Program Files\WinGet\Packages`) is recognised too.
+- **Delayed expansion:** `cmd.exe` runs with `/v:off`, so a user who turned delayed expansion on in the registry doesn't get `!PATH!` in a file name replaced.
+- **Branch names in tooltips** keep a `+`: only the key text goes through `localizeKeys`.
+- **Windows PowerShell 5.1's joined commands** end with the failed command's exit code (an `if` that skipped the rest succeeded).
 
 Found in passing:
 - File links to Windows paths were `file://C:%5C…`; now `file:///C:/…`.

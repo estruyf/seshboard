@@ -137,6 +137,20 @@ export function parseDeepLink(raw: string, platform: string = process.platform):
   return fail(action ? `Switchboard links can't do "${action.slice(0, 40)}". Use new-session or session.` : 'The link has no action. Use new-session or session.');
 }
 
+/**
+ * `switchboard://show`: brings the window up without changing what it shows. The VS Code companion opens it to start
+ * Switchboard outside macOS, where it can't open the app by its bundle id. Main handles it; the window never sees it.
+ */
+export function isShowLink(raw: string): boolean {
+  if (raw.length > MAX_URL_LENGTH) return false;
+  try {
+    const url = new URL(raw);
+    return url.protocol === `${DEEP_LINK_SCHEME}:` && !url.search && [url.hostname, ...url.pathname.split('/')].filter(Boolean).join('/').toLowerCase() === 'show';
+  } catch {
+    return false;
+  }
+}
+
 /** The first `switchboard://` link in a command line (a second instance started with a link, outside macOS). */
 export function linkFromArgv(argv: string[]): string | null {
   return argv.find((arg) => arg.toLowerCase().startsWith(`${DEEP_LINK_SCHEME}:`)) ?? null;

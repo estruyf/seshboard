@@ -10,6 +10,8 @@ export interface ClaudeInstallInfo {
   command: string;
   /** What to run. Null when only the command to type is known. */
   run: { file: string; args: string[] } | null;
+  /** Added to the error when the update fails: what usually stops it for this install. */
+  failureHint?: string;
 }
 
 /**
@@ -30,13 +32,22 @@ export function detectInstall(path: string, realPath: string, options: { home: s
   // On Windows the native installer copies claude.exe into ~/.local/bin instead of linking it there.
   if (windows && same(realPath) === same(join(home, '.local', 'bin', 'claude.exe'))) return { method: 'native', cask: null, command: 'claude update', run: { file: path, args: ['update'] } };
   if (windows) {
-    // WinGet installs under its own Packages folder, and only WinGet should update what it installed. It may ask
-    // for permission, so Switchboard shows the command instead of running it.
-    if (/\\Microsoft\\WinGet\\/i.test(realPath)) return { method: 'winget', cask: null, command: 'winget upgrade Anthropic.ClaudeCode', run: null };
-    // npm's package, below any prefix; its npm.cmd lives with Node, not the prefix, so it is found on PATH.
-    if (/\\node_modules\\@anthropic-ai\\claude-code\\/i.test(realPath)) {
+    // WinGet installs under its own Packages folder (in AppData for one user, in Program Files with `--scope machine`),
+    // and only WinGet should update what it installed. It may ask for permission, so Switchboard shows the command.
+    if (/\\WinGet\\Packages\\/i.test(realPath)) return { method: 'winget', cask: null, command: 'winget upgrade Anthropic.ClaudeCode', run: null };
+    // npm's package, below a prefix (`<prefix>\node_modules\…` on Windows). Its npm.cmd lives with Node and is found on
+    // PATH, so the prefix is named: another npm first on PATH would otherwise update its own prefix, not this install.
+    const npmPrefix = /^(.*)\\node_modules\\@anthropic-ai\\claude-code\\/i.exec(realPath)?.[1];
+    if (npmPrefix) {
       const spec = `@anthropic-ai/claude-code@${channel}`;
-      return { method: 'npm', cask: null, command: `npm install -g ${spec}`, run: { file: 'npm', args: ['install', '-g', spec] } };
+      return {
+        method: 'npm',
+        cask: null,
+        command: `npm install -g --prefix "${npmPrefix}" ${spec}`,
+        run: { file: 'npm', args: ['install', '-g', '--prefix', npmPrefix, spec] },
+        // npm replaces claude.exe, which Windows refuses while a Claude Code process runs it.
+        failureHint: 'On Windows, npm can’t replace claude.exe while Claude Code runs: stop your sessions and try again.',
+      };
     }
   }
 

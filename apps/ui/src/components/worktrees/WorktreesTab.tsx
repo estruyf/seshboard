@@ -296,7 +296,7 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
               <Lock size={13} aria-hidden />
             </span>
           ) : (
-            <Checkbox checked={isPicked} onChange={() => pick(row, shift.current)} label={`Pick ${label}`} tooltip={localizeKeys(`Pick ${label} (⇧-click for a range)`)} dataAttrs={{ 'data-worktree-pick': entry.path }} />
+            <Checkbox checked={isPicked} onChange={() => pick(row, shift.current)} label={`Pick ${label}`} tooltip={`Pick ${label} (${localizeKeys('⇧-click')} for a range)`} dataAttrs={{ 'data-worktree-pick': entry.path }} />
           )}
         </span>
         <span role="cell" className="grid min-w-0 gap-px">

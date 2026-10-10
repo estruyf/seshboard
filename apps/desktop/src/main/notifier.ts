@@ -70,13 +70,17 @@ export class Notifier {
       .catch(() => {});
   }
 
-  /** The sessions running in a Claude Code process right now (in Switchboard or anywhere else), and their folders, from the engine. */
+  /**
+   * The sessions running in a Claude Code process right now (in Switchboard or anywhere else), and their folders,
+   * from the engine. Throws before the engine is connected: an empty list would say nothing runs.
+   */
   async runningSessions(): Promise<{ ids: Set<string>; folders: string[] }> {
-    if (!this.client) return { ids: new Set(), folders: [] };
+    if (!this.client) throw new Error('Not connected to the engine yet');
     const [{ live }, { hosts }] = await Promise.all([this.client.call('sessions.list', {}), this.client.call('hosts.list', {})]);
     return {
       ids: new Set([...live.map((l) => l.sessionId), ...hosts.map((h) => h.sessionId)]),
-      folders: [...live.flatMap((l) => [l.cwd, l.projectRoot]), ...hosts.map((h) => h.cwd)].filter((folder): folder is string => !!folder),
+      // Where each works: its folder (a session in a worktree works there, not in the project's main checkout).
+      folders: [...live.map((l) => l.cwd ?? l.projectRoot), ...hosts.map((h) => h.cwd)].filter((folder): folder is string => !!folder),
     };
   }
 

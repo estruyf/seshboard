@@ -19,8 +19,12 @@ export function cmdArgument(arg: string, doubleEscape: boolean): string {
 /** Whether `file` must be run through `cmd.exe`: a batch file. */
 export const needsCmd = (file: string) => /\.(cmd|bat)$/i.test(file);
 
-/** The program and arguments that run `file` with `args` through `cmd.exe`, unchanged; spawn it with `windowsVerbatimArguments`. */
+/**
+ * The program and arguments that run `file` with `args` through `cmd.exe`, unchanged; spawn it with `windowsVerbatimArguments`.
+ * `/d` skips AutoRun commands, and `/v:off` turns off delayed expansion, which a user may have turned on for every
+ * `cmd.exe` in the registry: with it, `!PATH!` in a file name would become the value of PATH.
+ */
 export function viaCmd(file: string, args: readonly string[], env: Record<string, string | undefined>): { command: string; args: string[] } {
   const line = [file.replace(META, '^$1'), ...args.map((arg) => cmdArgument(arg, needsCmd(file)))].join(' ');
-  return { command: env.ComSpec || env.COMSPEC || 'cmd.exe', args: ['/d', '/s', '/c', `"${line}"`] };
+  return { command: env.ComSpec || env.COMSPEC || 'cmd.exe', args: ['/d', '/v:off', '/s', '/c', `"${line}"`] };
 }

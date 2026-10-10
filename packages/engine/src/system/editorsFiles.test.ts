@@ -49,8 +49,8 @@ describe('openCommand', () => {
     const code = win('vscode', 'C:\\repo\\src\\a.ts', false, 'C:\\repo', 12);
     expect(code.command).toBe('C:\\Windows\\system32\\cmd.exe');
     expect(code.verbatim).toBe(true);
-    expect(code.args.slice(0, 3)).toEqual(['/d', '/s', '/c']);
-    expect(code.args[3]).toContain('code.cmd');
+    expect(code.args.slice(0, 4)).toEqual(['/d', '/v:off', '/s', '/c']);
+    expect(code.args[4]).toContain('code.cmd');
     expect(win('finder', 'C:\\repo\\a b.ts', false)).toEqual({ command: 'explorer.exe', args: ['/select,"C:\\repo\\a b.ts"'], verbatim: true });
     expect(win('finder', 'C:\\repo', true)).toEqual({ command: 'explorer.exe', args: ['"C:\\repo"'], verbatim: true });
     const wt = win('windows-terminal', 'C:\\repo;x\\a.ts', false, undefined, undefined, { PATH: 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps' });

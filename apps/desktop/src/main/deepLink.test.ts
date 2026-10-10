@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkFromArgv, MAX_LINK_PROMPT, parseDeepLink } from './deepLink.ts';
+import { isShowLink, linkFromArgv, MAX_LINK_PROMPT, parseDeepLink } from './deepLink.ts';
 
 // macOS unless a test says otherwise, whatever these tests run on.
 const link = (url: string, platform = 'darwin') => {
@@ -156,5 +156,12 @@ describe('linkFromArgv', () => {
   it('finds the link among the arguments', () => {
     expect(linkFromArgv(['/Applications/Switchboard.app/Contents/MacOS/Switchboard', '--flag', 'switchboard://session/abc'])).toBe('switchboard://session/abc');
     expect(linkFromArgv(['electron', '.'])).toBeNull();
+  });
+});
+
+describe('isShowLink', () => {
+  it('knows switchboard://show, and nothing else, as only showing the window', () => {
+    for (const link of ['switchboard://show', 'switchboard://show/', 'switchboard:show', 'SWITCHBOARD://SHOW']) expect(isShowLink(link)).toBe(true);
+    for (const link of ['switchboard://show?cwd=/x', 'switchboard://show/more', 'switchboard://new-session', 'https://show', 'show', 'switchboard://showx']) expect(isShowLink(link)).toBe(false);
   });
 });

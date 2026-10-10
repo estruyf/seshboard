@@ -45,20 +45,20 @@ describe('detectInstall', () => {
     expect(win('C:\\tools\\claude.exe')).toEqual({ method: 'unknown', cask: null, command: 'claude update', run: null });
   });
 
-  it('Windows: npm\'s package updates with the npm on PATH, and WinGet\'s only shows its command', () => {
+  it("Windows: npm's package updates in its own prefix, and WinGet's only shows its command", () => {
     const win = (path: string, channel: 'latest' | 'stable' = 'latest') => detectInstall(path, path, { home: 'C:\\Users\\me', channel, platform: 'win32' });
+    // The prefix is named: the npm first on PATH (nvm-windows', say) would otherwise install into its own.
     expect(win('C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe', 'stable')).toEqual({
       method: 'npm',
       cask: null,
-      command: 'npm install -g @anthropic-ai/claude-code@stable',
-      run: { file: 'npm', args: ['install', '-g', '@anthropic-ai/claude-code@stable'] },
+      command: 'npm install -g --prefix "C:\\Users\\me\\AppData\\Roaming\\npm" @anthropic-ai/claude-code@stable',
+      run: { file: 'npm', args: ['install', '-g', '--prefix', 'C:\\Users\\me\\AppData\\Roaming\\npm', '@anthropic-ai/claude-code@stable'] },
+      failureHint: expect.stringContaining('stop your sessions'),
     });
-    expect(win('C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Anthropic.ClaudeCode_Microsoft.Winget.Source_8wekyb3d8bbwe\\claude.exe')).toEqual({
-      method: 'winget',
-      cask: null,
-      command: 'winget upgrade Anthropic.ClaudeCode',
-      run: null,
-    });
+    const winget = { method: 'winget', cask: null, command: 'winget upgrade Anthropic.ClaudeCode', run: null };
+    expect(win('C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Anthropic.ClaudeCode_Microsoft.Winget.Source_8wekyb3d8bbwe\\claude.exe')).toEqual(winget);
+    // Installed for every user (`winget install --scope machine`).
+    expect(win('C:\\Program Files\\WinGet\\Packages\\Anthropic.ClaudeCode_Microsoft.Winget.Source_8wekyb3d8bbwe\\claude.exe')).toEqual(winget);
   });
 
   it('anything else can only be shown, not run', () => {
