@@ -160,11 +160,31 @@ describe.skipIf(process.platform !== 'win32')('ClaudeUpdater on Windows', () => 
       },
     );
     await instance.check();
-    expect(instance.state).toMatchObject({ status: 'available', method: 'npm', command: 'npm install -g @anthropic-ai/claude-code@latest', installedVersion: '2.1.0' });
+    // In the package's own prefix, whichever npm is first on PATH.
+    const prefix = join(home, 'npm');
+    expect(instance.state).toMatchObject({ status: 'available', method: 'npm', command: `npm install -g --prefix "${prefix}" @anthropic-ai/claude-code@latest`, installedVersion: '2.1.0' });
     await instance.update();
     expect(instance.state).toMatchObject({ status: 'updated', installedVersion: '2.2.0' });
     // The stand-in echoes its arguments as cmd.exe hands them over, quoted.
-    expect(instance.state.output).toMatch(/^npm "install" "-g" "@anthropic-ai\/claude-code@latest"/);
+    expect(instance.state.output.startsWith(`npm "install" "-g" "--prefix" "${prefix}" "@anthropic-ai/claude-code@latest"`)).toBe(true);
+  });
+
+  it('says to stop the sessions when an npm update fails, as Windows keeps a running claude.exe', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'switchboard-claude-update-win-'));
+    dirs.push(home);
+    const exe = join(home, 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+    mkdirSync(join(exe, '..'), { recursive: true });
+    writeFileSync(exe, '');
+    mkdirSync(join(home, '.claude'));
+    const { instance } = updater(
+      { home, bin: exe, configDir: join(home, '.claude') },
+      // npm's EBUSY, as when a session runs claude.exe.
+      { findClaude: async () => ({ path: exe, version: '2.1.0' }), run: async () => ({ exitCode: 4294963214 }) },
+    );
+    await instance.check();
+    await instance.update();
+    expect(instance.state).toMatchObject({ status: 'error', installedVersion: '2.1.0' });
+    expect(instance.state.error).toMatch(/^The update command exited with code 4294963214\. .*stop your sessions/);
   });
 });
 

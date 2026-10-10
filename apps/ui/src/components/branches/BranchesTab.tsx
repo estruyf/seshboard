@@ -214,7 +214,7 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
               <Lock size={13} aria-hidden />
             </span>
           ) : (
-            <Checkbox checked={isPicked} onChange={() => pick(row, shift.current)} label={`Pick ${entry.name}`} tooltip={localizeKeys(`Pick ${entry.name} (⇧-click for a range)`)} dataAttrs={{ 'data-branch-pick': row.key }} />
+            <Checkbox checked={isPicked} onChange={() => pick(row, shift.current)} label={`Pick ${entry.name}`} tooltip={`Pick ${entry.name} (${localizeKeys('⇧-click')} for a range)`} dataAttrs={{ 'data-branch-pick': row.key }} />
           )}
         </span>
         <span role="cell" className="grid min-w-0 gap-px">

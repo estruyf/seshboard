@@ -174,6 +174,10 @@ export class ClaudeUpdater {
       result = { exitCode: null, error: error instanceof Error ? error.message : String(error) };
     }
     this.flush();
+    const hint = this.info?.failureHint;
+    if (hint && (result.error || result.exitCode !== 0)) {
+      result = { ...result, error: `${result.error ?? `The update command exited with ${result.exitCode === null ? 'a signal' : `code ${result.exitCode}`}.`} ${hint}` };
+    }
     const found = await this.options.findClaude().catch(() => null);
     this.set(reduce.updateFinished(this.current, { ...result, version: found?.version ?? null }));
     this.applyInstall(found, await this.options.env());

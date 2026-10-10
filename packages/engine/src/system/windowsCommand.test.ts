@@ -41,6 +41,9 @@ describe('running a .cmd on Windows', () => {
     const { command, args: cmdArgs } = viaCmd(shim, args, process.env);
     const out = spawnSync(command, cmdArgs, { windowsVerbatimArguments: true, encoding: 'utf8' }).stdout;
     expect(JSON.parse(out)).toEqual(args);
+    // With delayed expansion on, as the registry can set it for every cmd.exe (here by `/v:on` first): still unchanged.
+    const delayed = spawnSync(command, ['/v:on', ...cmdArgs], { windowsVerbatimArguments: true, encoding: 'utf8' }).stdout;
+    expect(JSON.parse(delayed)).toEqual(args);
     expect(() => execFileSync('cmd.exe', ['/d', '/c', `if exist "${marker}" exit 1`])).not.toThrow();
   });
 });
