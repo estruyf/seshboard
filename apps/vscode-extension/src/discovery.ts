@@ -16,16 +16,30 @@ function appDataRoot(home: string, platform: string, env: Record<string, string 
   return env.XDG_CONFIG_HOME || `${home}/.config`;
 }
 
-/** The `engine.json` files to look at, in order: the folder from the settings, or the installed app, then a dev build. */
+/**
+ * A folder on this computer: absolute (a drive path on Windows) or under `~`. A network path (`\\server\share`) is
+ * never read: Windows would sign in to that server to read it, and the file would choose where the extension connects.
+ */
+const isLocalFolder = (folder: string, platform: string) =>
+  /^~(?=[\\/]|$)/.test(folder) || (platform === 'win32' ? /^[A-Za-z]:[\\/]/.test(folder) : folder.startsWith('/') && !folder.startsWith('//'));
+
+/**
+ * The `engine.json` files to look at, in order: the folder from the settings, or the installed app, then a dev build.
+ * A folder in the settings that isn't on this computer is ignored.
+ */
 export function infoFiles(home: string, appDataFolder: string, platform: string = process.platform, env: Record<string, string | undefined> = process.env): string[] {
   const { join } = platform === 'win32' ? win32 : posix;
-  const custom = appDataFolder.trim();
+  const custom = isLocalFolder(appDataFolder.trim(), platform) ? appDataFolder.trim() : '';
   const folders = custom ? [/^~(?=[\\/]|$)/.test(custom) ? join(home, custom.slice(1)) : custom] : APP_DATA_FOLDERS.map((name) => join(appDataRoot(home, platform, env), name));
   return folders.map((folder) => join(folder, COMPANION_DIR, COMPANION_INFO_FILE));
 }
 
-/** A socket path a running engine writes: a Unix socket, or a named pipe on Windows (`\\.\pipe\…`). */
-const isSocketPath = (path: string) => path.startsWith('/') || /^\\\\[.?]\\pipe\\[^\\]+$/.test(path);
+/**
+ * A socket path a running engine writes: a Unix socket, or on Windows exactly the pipe name the engine makes
+ * (`\\.\pipe\switchboard-` and 32 hex digits). Anything looser could lead out of the local pipes: Windows reads
+ * `/` and `..` in `\\.\pipe\x/../../UNC/server/pipe/y` as a pipe on another computer.
+ */
+const isSocketPath = (path: string) => path.startsWith('/') || /^\\\\\.\\pipe\\switchboard-[0-9a-f]{32}$/.test(path);
 
 /** `engine.json` as written by a running engine; null when it doesn't read as one. */
 export function parseInfo(text: string): CompanionInfo | null {

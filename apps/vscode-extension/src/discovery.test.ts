@@ -23,12 +23,28 @@ describe('discovery', () => {
     expect(infoFiles('/home/me', '', 'linux', {})[0]).toBe('/home/me/.config/Switchboard/companion/engine.json');
   });
 
-  it('takes a named pipe as the socket, and nothing else that is not a path', () => {
+  it('never reads a folder from the settings that is on another computer, or relative', () => {
+    const usual = infoFiles('C:\\Users\\me', '', 'win32', {});
+    // Windows would sign in to the server to read it (handing it the login's hash), and its engine.json would decide where to connect.
+    for (const folder of ['\\\\attacker\\share', '//attacker/share', 'relative\\folder', 'C:relative', '\\\\?\\UNC\\attacker\\share']) {
+      expect(infoFiles('C:\\Users\\me', folder, 'win32', {})).toEqual(usual);
+    }
+    expect(infoFiles('C:\\Users\\me', 'D:\\sb-data', 'win32', {})).toEqual(['D:\\sb-data\\companion\\engine.json']);
+    expect(infoFiles('/Users/me', '//server/share', 'darwin')).toEqual(infoFiles('/Users/me', '', 'darwin'));
+  });
+
+  it("takes only the engine's own pipe name as the socket on Windows, and nothing else that is not a path", () => {
     const withSocket = (socket: string) => pickInfo([{ file: 'a', text: JSON.stringify({ protocol: COMPANION_PROTOCOL, socket, token: 'abc', pid: 1 }) }], () => true).kind;
-    expect(withSocket('\\\\.\\pipe\\switchboard-0123abcd')).toBe('found');
+    const pipe = `\\\\.\\pipe\\switchboard-${'0123456789abcdef'.repeat(2)}`;
+    expect(withSocket(pipe)).toBe('found');
     expect(withSocket('/tmp/sb/engine.sock')).toBe('found');
     expect(withSocket('engine.sock')).toBe('none');
     expect(withSocket('\\\\server\\share\\engine.sock')).toBe('none');
+    // Windows reads `/` and `..` in a pipe name, so these lead to pipes on another computer.
+    expect(withSocket(`${pipe}/../../UNC/attacker/pipe/y`)).toBe('none');
+    expect(withSocket('\\\\.\\pipe\\x/../../UNC/attacker/pipe/y')).toBe('none');
+    expect(withSocket('\\\\?\\pipe\\switchboard-0123')).toBe('none');
+    expect(withSocket('\\\\.\\pipe\\someone-else')).toBe('none');
   });
 
   it('skips files left behind by an engine that is gone, and unreadable ones', () => {
