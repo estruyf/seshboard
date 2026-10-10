@@ -12,6 +12,9 @@ files:
   - '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'
   # node-pty: only the JS and this platform's prebuilt binaries are needed at runtime (the platform's own
   # `files` below leave out the other one's), without their debug symbols.
+  # A platform's `files` is a list of its own, and one with only `!` patterns means "everything else in
+  # apps/desktop" (src, scripts, .smoke): each repeats out/** and package.json. scripts/dist.mjs checks
+  # that nothing else ends up in app.asar.
   - '!node_modules/node-pty/{deps,third_party,src,scripts,typings,binding.gyp}/**'
   - '!node_modules/node-pty/prebuilds/**/*.pdb'
 # Native modules must live outside the asar archive to be loaded and (spawn-helper) executed.
@@ -24,6 +27,8 @@ npmRebuild: false
 mac:
   icon: build/icon.icns
   files:
+    - out/**
+    - package.json
     - '!node_modules/node-pty/prebuilds/win32-*/**'
   category: public.app-category.developer-tools
   target:
@@ -47,6 +52,8 @@ dmg:
 win:
   icon: build/icon.ico
   files:
+    - out/**
+    - package.json
     - '!node_modules/node-pty/prebuilds/darwin-*/**'
     # node-pty's install leaves a copy of conpty for the build machine's architecture here; the app loads the
     # one in prebuilds/win32-<arch> instead.
@@ -58,7 +65,7 @@ win:
   # Signing: the release workflow passes Azure Trusted Signing's settings (azureSignOptions) or a
   # certificate file (WIN_CSC_LINK); without either the build is unsigned (docs/building-and-signing.md).
 # The installer installs for the current user, without asking for an administrator, in
-# %LOCALAPPDATA%\Programs\Switchboard, and the in-app updater installs updates the same way (latest.yml).
+# %LOCALAPPDATA%\Programs\switchboard (scripts/dist.mjs gives it that name), and the in-app updater installs updates the same way (latest.yml).
 nsis:
   oneClick: true
   perMachine: false

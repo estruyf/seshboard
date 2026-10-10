@@ -74,6 +74,7 @@ The configuration is in [`apps/desktop/electron-builder.yml`](../apps/desktop/el
 
 - The Agent SDK's bundled `claude` binary is left out; the user's own `claude` is used.
 - `node-pty` is unpacked from the asar archive, because its native helper must be executable.
+- `app.asar` holds only `out`, `node_modules` and `package.json`: `npm run dist` fails if anything else got in through a `files` pattern.
 - Electron is pinned to an exact version, which electron-builder needs.
 
 ## Windows
