@@ -87,6 +87,8 @@ describe('project tiles', () => {
     // Windows: a drive path is a typed path too; its root keeps the separator after the drive letter.
     expect(filterFolders(all, 'E:\\repos\\app\\', nameOf, '/u/me')).toEqual(['E:\\repos\\app']);
     expect(filterFolders(all, 'E:\\', nameOf, '/u/me')).toEqual(['E:\\']);
+    expect(filterFolders(all, 'E:/', nameOf, '/u/me')).toEqual(['E:/']);
+    expect(filterFolders(all, 'E:/repos/', nameOf, '/u/me')).toEqual(['E:/repos']);
     expect(filterFolders(all, 'repos\\app', nameOf, '/u/me')).toEqual([]);
   });
 

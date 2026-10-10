@@ -67,11 +67,14 @@ export class Notifier {
       .catch(() => {});
   }
 
-  /** The sessions running in a Claude Code process right now (in Switchboard or anywhere else), from the engine. */
-  async liveSessionIds(): Promise<Set<string>> {
-    if (!this.client) return new Set();
+  /** The sessions running in a Claude Code process right now (in Switchboard or anywhere else), and their folders, from the engine. */
+  async runningSessions(): Promise<{ ids: Set<string>; folders: string[] }> {
+    if (!this.client) return { ids: new Set(), folders: [] };
     const [{ live }, { hosts }] = await Promise.all([this.client.call('sessions.list', {}), this.client.call('hosts.list', {})]);
-    return new Set([...live.map((l) => l.sessionId), ...hosts.map((h) => h.sessionId)]);
+    return {
+      ids: new Set([...live.map((l) => l.sessionId), ...hosts.map((h) => h.sessionId)]),
+      folders: [...live.flatMap((l) => [l.cwd, l.projectRoot]), ...hosts.map((h) => h.cwd)].filter((folder): folder is string => !!folder),
+    };
   }
 
   private handle(events: AttentionEvent[]): void {

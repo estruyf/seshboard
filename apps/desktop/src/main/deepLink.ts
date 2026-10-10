@@ -1,4 +1,5 @@
 import type { DeepLink } from '@switchboard/protocol/bridge';
+import { trimTrailingSeparators } from '@switchboard/protocol/paths';
 
 /** The URL scheme Switchboard registers: `switchboard://…`. */
 export const DEEP_LINK_SCHEME = 'switchboard';
@@ -41,8 +42,8 @@ function checkFolder(cwd: string, platform: string): string | ParsedLink {
   if (windows && cwd.slice(2).includes(':')) return fail('The folder in the link may not contain a colon after the drive.');
   if (cwd.split(windows ? /[\\/]/ : '/').some((part) => part === '..' || part === '.')) return fail('The folder in the link may not contain . or .. segments.');
   if (cwd.length > 4096) return fail('The folder in the link is too long.');
-  if (windows) return cwd.length > 3 ? cwd.replace(/[\\/]+$/, '') : cwd;
-  return cwd.length > 1 ? cwd.replace(/\/+$/, '') : cwd;
+  // `C:\\` is still the drive's root, not `C:` (the current folder on that drive).
+  return trimTrailingSeparators(cwd);
 }
 
 /**
