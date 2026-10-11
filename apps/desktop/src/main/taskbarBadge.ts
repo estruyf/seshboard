@@ -3,7 +3,10 @@
  * badge, which Windows doesn't have. Drawn as a raw BGRA bitmap, so no image file ships for it. Pure, for testing.
  */
 
-/** Demo Time's `warn` (needs you), as on the sidebar's rail. */
+/**
+ * The dot's colour: Demo Time's `warn` (needs you), fixed whatever the app's theme, as the Dock's badge on macOS is
+ * always the system's red. It sits on the taskbar, which follows Windows' theme rather than the app's.
+ */
 const PINK = { r: 0xed, g: 0x21, b: 0x7c };
 
 /** A filled circle with a white ring, `size` pixels square, as BGRA bytes for `nativeImage.createFromBitmap`. */
