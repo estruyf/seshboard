@@ -478,6 +478,9 @@ function createWindow(): BrowserWindow {
     ...placed,
     minWidth: WINDOW_MIN.width,
     minHeight: WINDOW_MIN.height,
+    // Scripted runs keep the default size on a smaller screen (a CI runner's is 1024×768), so the steps see the
+    // same layout everywhere. macOS otherwise shrinks the window to fit; other systems allow it as is.
+    enableLargerThanScreen: scripted,
     show: false,
     // macOS: the traffic lights over the content. Elsewhere the system's own title bar, which follows light and dark
     // mode, and the menu bar shows with Alt (the command palette has every command).
@@ -496,6 +499,11 @@ function createWindow(): BrowserWindow {
     // maximize() shows the window, so it waits for the first paint like show().
     if (placed && saved?.maximized) win.maximize();
     win.show();
+    if (scripted) {
+      // Windows fits a new window to the screen; set the size again now that it is shown.
+      win.setContentSize(1280, 820);
+      smokeWindow = { content: win.getContentSize(), workArea: screen.getPrimaryDisplay().workAreaSize };
+    }
   });
   // Saved when a move or resize ends and on close, so a crash or a forced quit keeps the last position too.
   const remember = () => rememberWindowState(win);
@@ -1391,7 +1399,8 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     if (!(await until(() => read() !== '', 10_000))) return 'failed: the shell did not run the command';
     // The panel opens in the session's own folder, which is below the project's root when it was started in a subfolder.
     const folder = (await js("(() => { const view = document.querySelector('[data-current-session]'); return view?.dataset.cwd || view?.dataset.projectRoot || ''; })()")) as string;
-    if (folder && realpathSync(read()) !== realpathSync(folder)) return `failed: the shell started in ${read()}, not ${folder}`;
+    // .native also turns Windows' short names (RUNNER~1) into the long ones the shell prints.
+    if (folder && realpathSync.native(read()) !== realpathSync.native(folder)) return `failed: the shell started in ${read()}, not ${folder}`;
     await shot(win, 'terminal.png');
     return `ok: ran a command in ${read()}`;
   } finally {
@@ -4629,6 +4638,9 @@ async function runDiagnosticsStep(win: BrowserWindow): Promise<string> {
 
 let smokeFinished = false;
 
+/** The window's size when a scripted run starts, and the screen's, for result.json. */
+let smokeWindow: { content: number[]; workArea: { width: number; height: number } } | null = null;
+
 /** Writes result.json once: the steps' results and what the run measured. */
 function writeSmokeResult(): void {
   if (smokeFinished || !smokeOutDir) return;
@@ -4648,6 +4660,7 @@ function writeSmokeResult(): void {
         rendering,
         reports: readyReports,
         versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
+        window: smokeWindow,
       },
       null,
       2,
