@@ -1,5 +1,5 @@
 # Builds the website (website/, Astro + Starlight) and publishes it to GitHub Pages at
-# https://estruyf.github.io/switchboard/. Pull requests that touch the site, the UI (the shortcuts page is
+# https://switchboard.struyfconsulting.com/. Pull requests that touch the site, the UI (the shortcuts page is
 # built from its registry) or the changelog only build it, so a broken link or a missing screenshot fails there.
 name: Website
 

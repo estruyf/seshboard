@@ -492,7 +492,7 @@ Switchboard reads the session files Claude Code already keeps in `~/.claude` (an
 
 ## Documentation
 
-The full guide to every feature is on the website: **[estruyf.github.io/switchboard](https://estruyf.github.io/switchboard/)**.
+The full guide to every feature is on the website: **[switchboard.struyfconsulting.com](https://switchboard.struyfconsulting.com/)**.
 
 - [Themes](docs/themes.md): the theme file format, every colour and where it shows, and code colours.
 - [Project actions](docs/project-actions.md): add buttons for your own commands and prompts, and share them with your team.

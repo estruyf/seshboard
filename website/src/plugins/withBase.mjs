@@ -2,8 +2,8 @@
 import { defineHastPlugin } from 'satteri';
 
 /**
- * Puts the site's base in front of links to other pages (`/sessions/sidebar/` becomes
- * `/switchboard/sessions/sidebar/`), so the docs never write the base themselves.
+ * Puts the site's base in front of links to other pages (with a base of `/docs`, `/sessions/sidebar/` becomes
+ * `/docs/sessions/sidebar/`), so the docs never write the base themselves.
  * Links that already start with it, links to other sites and `#hash` links are left alone.
  * @param {string} base
  */

@@ -1,6 +1,6 @@
 # Website
 
-The Open Graph image of the website (https://estruyf.github.io/switchboard/). Render it with `social/render.sh website`, then copy it at 1200×630 to `website/public/og.png`:
+The Open Graph image of the website (https://switchboard.struyfconsulting.com/). Render it with `social/render.sh website`, then copy it at 1200×630 to `website/public/og.png`:
 
 ```bash
 social/render.sh website
