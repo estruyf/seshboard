@@ -160,6 +160,7 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     warn: keepHue(demo.warn, CONTRAST.status),
     error,
     caution: keepHue(demo.caution, CONTRAST.status),
+    memory: keepHue(demo.memory, CONTRAST.profile),
     unread: blue,
     accent: toHex(read(accent)),
     'accent-ink': accentInk,

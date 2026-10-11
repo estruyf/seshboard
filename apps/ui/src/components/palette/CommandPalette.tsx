@@ -22,6 +22,7 @@ import { toast } from '../../state/toastStore.ts';
 import { rememberLimit } from '../focus/focusLimit.ts';
 import { activityByProject, latestBranches, orderProjects, tileStatus } from '../newSession/projectTiles.ts';
 import { EFFORT_LABEL, EFFORTS, MODE_DESCRIPTION } from '../newSession/route.ts';
+import { useMemoryList } from '../memory/useMemoryList.ts';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
@@ -87,6 +88,7 @@ const PICK_PLACEHOLDER: Record<PickList, string> = {
   rewind: 'Undo file changes since which message',
   'focus-limit': 'How many sessions at once',
   queue: 'Pick a queued prompt to start',
+  memory: 'Pick a memory to share',
 };
 /** What a command that asks for more shows next, on its row while it's highlighted. */
 const NEXT_HINT: Record<PaletteStep['kind'], string> = { projects: 'picks a project next', prompt: 'write the prompt next', pick: 'pick one next' };
@@ -147,6 +149,9 @@ export function CommandPalette() {
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
   const focusLimit = usePreferences((s) => s.prefs.focusLimit);
   const queue = useQueue();
+  // The current project's memories, read when the Share memory step shows.
+  const memoryRoot = step?.kind === 'pick' && step.list === 'memory' ? (ctx.currentProject?.root ?? null) : null;
+  const { list: memoryList } = useMemoryList(memoryRoot);
   const unsent = useUnsent();
   const digest = usePaletteBus((s) => s.digest);
   const home = useMemo(() => guessHome(projects.keys()), [projects]);
@@ -242,7 +247,7 @@ export function CommandPalette() {
       return rows.length ? [{ id: list, label: PICK_PLACEHOLDER[list].replace(/^Pick (a |an )?/, ''), rows }] : [];
     }
     // The pick lists and project rows read these; the functions above are only called from here.
-  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent]);
+  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList]);
 
   /** The choices of a pick step, the current one marked. */
   function pickOptions(list: PickList): Option[] {
@@ -284,6 +289,8 @@ export function CommandPalette() {
           detail: [nameOf(item.cwd), state === 'queued' ? `queued ${shortAge(item.createdAt)}` : state === 'ready' ? `Ready · ${label}` : label].filter(Boolean).join(' · '),
           dot: state === 'ready' ? 'bg-ok' : state === 'waiting' ? 'bg-faint' : undefined,
         }));
+      case 'memory':
+        return (memoryList?.memories ?? []).map((m) => ({ value: m.path, title: m.name, detail: [m.type, m.description].filter(Boolean).join(' · ') || undefined }));
     }
   }
 
@@ -330,6 +337,11 @@ export function CommandPalette() {
       case 'queue': {
         const entry = queue.entries.find((e) => e.item.id === value);
         if (entry) void startQueued(entry.item);
+        return;
+      }
+      case 'memory': {
+        const memory = memoryList?.memories.find((m) => m.path === value);
+        if (memory && ctx.currentProject) usePaletteBus.getState().showDialog({ kind: 'share-memory', root: ctx.currentProject.root, memoryPath: memory.path, name: memory.name });
         return;
       }
     }

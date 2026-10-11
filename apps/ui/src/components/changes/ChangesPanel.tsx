@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import type { ChangedFile, ChangesBase, GitChanges } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff.ts';
+import { useMemoryView } from '../../state/memoryStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
@@ -190,6 +191,16 @@ export function ChangesPanel({
       else next.add(path);
       return next;
     });
+
+  // Show in Changes (after sharing a memory): open that file's diff once the list has it.
+  const changesFocus = useMemoryView((s) => s.changesFocus);
+  useEffect(() => {
+    if (!changesFocus || !files.some((f) => f.path === changesFocus.path)) return;
+    const { path } = changesFocus;
+    useMemoryView.setState({ changesFocus: null });
+    setOpen((s) => new Set(s).add(path));
+    requestAnimationFrame(() => document.querySelector(`[data-changed-file="${CSS.escape(path)}"]`)?.scrollIntoView({ block: 'nearest' }));
+  }, [changesFocus, files]);
 
   // Closing the panel (or moving it to the other pane) brings the conversation back.
   useEffect(() => () => useChangesLayout.getState().toggleExpanded(false), []);

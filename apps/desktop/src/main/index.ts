@@ -20,7 +20,7 @@ import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
 import { ThemeStore } from './themes.ts';
-import { isConfigDir, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
+import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { updatesDisabledReason } from './updateState.ts';
 import { placeWindow, WindowStateStore } from './windowState.ts';
@@ -255,10 +255,11 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
-  const request = message as { type?: unknown; id?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown } | null;
+  const request = message as { type?: unknown; id?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown } | null;
   if (request?.type !== 'trash' || typeof request.id !== 'number' || !Array.isArray(request.paths)) return undefined;
   // Always answer: the engine waits for a reply to every trash request.
   try {
+    if (typeof request.memoryDir === 'string' || typeof request.instructionsRoot === 'string') return await trashMemoryForEngine(request.id, request.paths, request.memoryDir, request.instructionsRoot);
     return await trashForEngine(request.id, request.paths, request.repoRoot, request.configDir);
   } catch (error) {
     return { type: 'trash-result', id: request.id, error: (error as Error).message };
@@ -276,6 +277,19 @@ async function trashForEngine(id: number, requested: unknown[], requestedRoot: u
   if (refused.length > 0 || paths.length !== requested.length) {
     const where = repoRoot ? `the repository ${repoRoot}` : "Claude Code's projects folder";
     return { type: 'trash-result', id, error: `Refusing to move files outside ${where}: ${refused.join(', ')}` };
+  }
+  for (const path of paths) await shell.trashItem(path);
+  return { type: 'trash-result', id };
+}
+
+/** Moves a memory file shared with the team, or an instruction file a share made (its undo), to the Trash after checking it. */
+async function trashMemoryForEngine(id: number, requested: unknown[], memoryDir: unknown, instructionsRoot: unknown): Promise<unknown> {
+  const paths = requested.filter((p): p is string => typeof p === 'string');
+  const allowed = (p: string) =>
+    typeof memoryDir === 'string' ? isTrashableMemoryFile(p, memoryDir) : typeof instructionsRoot === 'string' && isTrashableInstructionFile(p, instructionsRoot);
+  const refused = paths.filter((p) => !allowed(p));
+  if (refused.length > 0 || paths.length !== requested.length) {
+    return { type: 'trash-result', id, error: `Refusing to move these to the Trash: ${refused.join(', ')}` };
   }
   for (const path of paths) await shell.trashItem(path);
   return { type: 'trash-result', id };
@@ -562,6 +576,23 @@ ipcMain.handle(IpcChannel.chooseImportFile, async (event) => {
   };
   const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
   return result.canceled ? null : (result.filePaths[0] ?? null);
+});
+
+/** The smoke run has no one to answer a file dialog: it previews a made-up export its memory step wrote in the throwaway profile. */
+export const smokeMemoryExport = () => join(app.getPath('userData'), 'smoke-claude-export');
+
+ipcMain.handle(IpcChannel.chooseMemoryExport, async (event) => {
+  if (smokeOutDir) return [smokeMemoryExport()];
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const options: Electron.OpenDialogOptions = {
+    title: 'Import from a Claude export',
+    message: 'Pick memories-000.zip (and projects-000.zip), the unzipped export folder, or the manifest JSON.',
+    defaultPath: app.getPath('downloads'),
+    properties: ['openFile', 'openDirectory', 'multiSelections'],
+    filters: [{ name: 'Claude export', extensions: ['zip', 'json'] }],
+  };
+  const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+  return result.canceled ? [] : result.filePaths;
 });
 
 /** The smoke run has no one to answer the save dialog: images go to a folder in its throwaway profile. */
@@ -1569,6 +1600,8 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   // The page's other tabs, read-only: Overview, Sessions, and the worktrees of a real repository.
   const pageResult = await smokeRun.step('project page and worktrees', () => runProjectPageStep(win, root), { cleanup: false });
   await smokeRun.step('project branches', () => runProjectBranchesStep(win, root), { cleanup: false });
+  await smokeRun.step('project memory and share dialog', () => runProjectMemoryStep(win, root), { cleanup: false });
+  await smokeRun.step('settings › memory', () => runMemorySettingsStep(win, root), { cleanup: false });
 
   // The Projects list shows the saved default (and a worktree pill when the project has worktrees).
   await click('[data-project-breadcrumb]');
@@ -1783,6 +1816,223 @@ async function runProjectBranchesStep(win: BrowserWindow, root: string): Promise
     confirm = 'delete confirmation opened and cancelled';
   }
   return `ok: ${rows} branch rows (groups: ${groups.join(', ') || 'none'}), in-use branch locked, filter narrowed and cleared, row menu opened and closed, ${confirm}`;
+}
+
+/**
+ * The Memory tab, read-only: the project's memory and instructions are listed and a file shows in the viewer. With a
+ * memory, its share dialog opens, the preview follows the three targets, and Cancel closes it. Share (and Copy to
+ * memory) are never pressed: this is the user's real memory and project.
+ */
+async function runProjectMemoryStep(win: BrowserWindow, root: string): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const pageSelector = `[data-project-page=${JSON.stringify(root)}]`;
+  const q = (selector: string) => `document.querySelector(${JSON.stringify(`${pageSelector} ${selector}`)})`;
+  if (!(await waitInPage(win, q('[data-project-tab="memory"]'), 3_000))) return 'the project page has no Memory tab';
+  await js(`${q('[data-project-tab="memory"]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-project-tab="memory"]')}.getAttribute('aria-selected') === 'true' && ${q('[data-project-memory-tab]')}`, 10_000))) return 'the Memory tab did not load';
+  const memories = (await js(`document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-memory-row][data-memory-kind="memory"]`)}).length`)) as number;
+  const instructions = (await js(`document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-memory-row][data-memory-kind="instruction"]`)}).length`)) as number;
+  let listed = `${memories} memories, ${instructions} instruction files`;
+  if (instructions > 0 && memories === 0 && !(await waitInPage(win, `${q('[data-memory-content]')} && ${q('[data-memory-content]')}.innerText !== 'Reading…'`, 5_000))) return 'the viewer did not show the instruction file';
+  // What loads here: open the first time, folds to one line and opens again.
+  const card = q('[data-memory-load-order]');
+  if (!(await waitInPage(win, `${card}?.dataset.open === 'true' && ${card}.querySelectorAll('[data-memory-load-item]').length > 0 || ${card}?.innerText.includes('Nothing loads here')`, 5_000))) return 'What loads here did not open with its files';
+  const loads = (await js(`${card}.querySelectorAll('[data-memory-load-item]').length`)) as number;
+  listed += `, ${loads} in What loads here`;
+  await js(`${q('[data-memory-load-toggle]')}.click()`);
+  if (!(await waitInPage(win, `${card}.dataset.open === 'false' && ${card}.innerText.includes('Loads ')`, 2_000))) return 'What loads here did not fold to its summary';
+  await js(`${q('[data-memory-load-toggle]')}.click()`);
+  if (!(await waitInPage(win, `${card}.dataset.open === 'true'`, 2_000))) return 'What loads here did not open again';
+  // New opens its form, and Escape closes it without writing anything.
+  await js(`${q('[data-memory-new]')}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-memory-new-dialog] [data-memory-new-name]')", 3_000))) return 'New did not open the new memory form';
+  if (!(await js("document.querySelector('[data-memory-new-save]').disabled"))) return 'Save memory was possible without a name';
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  if (!(await waitInPage(win, "!document.querySelector('[data-memory-new-dialog]')", 2_000))) return 'Escape did not close the new memory form';
+  if (memories > 0) return checkShareDialog(win, root, listed);
+
+  // No memory in the real project: a throwaway Claude profile in the app's sandbox gets one (the tab lists every
+  // profile's memory), so the dialog can be opened. The profile is removed again afterwards.
+  const memoryDir = (await js(`${q('[data-project-memory-tab]')}.dataset.memoryDir`)) as string;
+  const encoded = /\/projects\/([^/]+)\/memory$/.exec(memoryDir)?.[1];
+  if (!encoded) {
+    await shot(win, 'project-memory.png');
+    return `ok: ${listed}; memory lives in a folder of its own (autoMemoryDirectory), so no sandbox memory to share`;
+  }
+  const sandbox = join(app.getPath('userData'), 'smoke-claude-memory');
+  const dir = join(sandbox, 'projects', encoded, 'memory');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'smoke-share.md'), '---\nname: smoke-share\ndescription: Made by the smoke test\nmetadata:\n  type: project\n---\n\nRun `npm run check` before reporting work as done. See [[smoke-other]].\n');
+  writeFileSync(join(dir, 'MEMORY.md'), '- [Smoke share](smoke-share.md) — Made by the smoke test\n');
+  writeFileSync(join(sandbox, 'CLAUDE.md'), '# Smoke profile\n\nInstructions for every project, from the smoke test.\n');
+  writeFileSync(join(dir, 'smoke-linker.md'), '---\nname: smoke-linker\ndescription: Links to the other smoke memory\nmetadata:\n  type: reference\n---\n\nSee [[smoke-share]].\n');
+  const profile = await addSmokeProfile(win, 'Smoke memory', sandbox);
+  if (!profile.startsWith('id:')) return profile;
+  try {
+    // Settings returns to the project page; leaving the tab and coming back reads the memory again.
+    await js(`${q('[data-project-tab="overview"]')}.click()`);
+    await js(`${q('[data-project-tab="memory"]')}.click()`);
+    if (!(await waitInPage(win, q('[data-memory-row][data-memory-kind="memory"]'), 5_000))) return "the sandbox profile's memory was not listed";
+    // What loads here with the sandbox profile: its CLAUDE.md and the start of its MEMORY.md, in the legend. The profile
+    // select shows once the card has read the load order.
+    if (!(await waitInPage(win, q('[data-memory-load-profile]'), 5_000))) return 'What loads here has no profile select with two profiles';
+    if (!(await chooseOption(win, `${pageSelector} [data-memory-load-profile]`, profile.slice(3)))) return 'could not pick the sandbox profile in What loads here';
+    const legend = `[...document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-memory-load-item]`)})].map((b) => b.innerText).join(' | ')`;
+    if (!(await waitInPage(win, `${legend}.includes('MEMORY.md') && ${legend}.includes('CLAUDE.md')`, 5_000))) return `What loads here did not list the sandbox profile's files (${String(await js(legend))})`;
+    await shot(win, 'memory-load-order.png');
+    // Search finds the sandbox memory in its own Memory group above the conversations. Nothing is opened.
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: ['meta', 'shift'] });
+    if (!(await waitInPage(win, "document.querySelector('[data-search] input[role=combobox]')", 3_000))) return 'search did not open';
+    await setFieldValue(win, '[data-search] input[role=combobox]', 'smoke share');
+    if (!(await waitInPage(win, "document.querySelector('[data-search-memory-group] [data-search-memory-hit]')", 5_000))) return 'search did not find the sandbox memory';
+    await shot(win, 'memory-search.png');
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    if (!(await waitInPage(win, "!document.querySelector('[data-search]')", 2_000))) return 'Escape did not close search';
+    // Links: smoke-share is linked from smoke-linker, and its own [[smoke-other]] isn't written yet.
+    const sharePath = join(dir, 'smoke-share.md');
+    await js(`${q(`[data-memory-row=${JSON.stringify(sharePath)}]`)}.click()`);
+    if (!(await waitInPage(win, `${q('[data-memory-backlinks] [data-memory-backlink]')} && ${q('[data-memory-links] [data-memory-write-link="smoke-other"]')}`, 5_000))) return 'the editor did not show Linked from and Not written yet';
+    await shot(win, 'memory-links.png');
+    // Health: smoke-linker isn't in MEMORY.md, so there is something to look at. The panel opens; nothing is fixed.
+    if (!(await waitInPage(win, q('[data-memory-health-show]'), 5_000))) return 'What loads here has no Health line';
+    await js(`${q('[data-memory-health-show]')}.click()`);
+    if (!(await waitInPage(win, `${q('[data-memory-health] [data-memory-health-finding="indexMismatch"] [data-memory-health-fix]')}`, 5_000))) return 'the Health panel did not list the memory missing from MEMORY.md';
+    await shot(win, 'memory-health.png');
+    return await checkShareDialog(win, root, `${listed} (+1 in a sandbox profile)`);
+  } finally {
+    await removeSmokeProfile(win, profile.slice(3));
+  }
+}
+
+/**
+ * Settings › Memory, read-only: the personal folder (in the throwaway app data) and the project's row are listed, and the
+ * preview of the CLAUDE.md block opens and is cancelled. The block is never written: that would change the real CLAUDE.md.
+ */
+async function runMemorySettingsStep(win: BrowserWindow, root: string): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  await click('[data-open-settings]');
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"memory\"]')", 3_000))) return 'Settings has no Memory section';
+  await click('[data-settings-section="memory"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-memory-settings] [data-memory-personal-dir]')", 5_000))) return 'Settings › Memory did not show the personal folder';
+  const dir = (await js("document.querySelector('[data-memory-personal-dir]').dataset.tooltip")) as string;
+  if (!dir.startsWith(app.getPath('userData'))) return `the personal folder is not in the app's data: ${dir}`;
+  if (!(await waitInPage(win, `!!document.querySelector(${JSON.stringify(`[data-memory-project=${JSON.stringify(root)}]`)})`, 5_000))) return 'the project is not listed under Projects';
+  const state = (await js("document.querySelector('[data-memory-block-state]').dataset.memoryBlockState")) as string;
+  let preview = 'no preview (already loaded)';
+  if (await js("!!document.querySelector('[data-memory-add-block]')")) {
+    await click('[data-memory-add-block]');
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-memory-block-dialog] [data-memory-block-profile]').length > 0", 5_000))) return 'the CLAUDE.md preview did not open';
+    await shot(win, 'memory-block-preview.png');
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    if (!(await waitInPage(win, "!document.querySelector('[data-memory-block-dialog]')", 2_000))) return 'Escape did not close the CLAUDE.md preview';
+    preview = 'CLAUDE.md preview opened and cancelled';
+  }
+  await shot(win, 'settings-memory.png');
+
+  // Import from Claude export with a made-up unzipped export in the sandbox (main hands its path over in a smoke
+  // run): the preview lists it, and Escape cancels. Import is never pressed.
+  const exportDir = smokeMemoryExport();
+  mkdirSync(join(exportDir, 'memories'), { recursive: true });
+  const memoryFile = (path: string, name: string, description: string) => ({ path, content: `---\nname: ${name}\ndescription: ${description}\n---\n\nMade up for the smoke test.\n`, updated_at: '2026-10-01T10:00:00Z' });
+  writeFileSync(
+    join(exportDir, 'memories', 'smoke-account.json'),
+    JSON.stringify({ memory_files: [memoryFile('/profile.md', 'Profile', 'A made-up profile'), memoryFile('/topics/smoke.md', 'Smoke', 'A made-up topic'), memoryFile('/areas/nowhere.md', 'Nowhere', 'No such project')] }),
+  );
+  await click('[data-memory-import-export]');
+  if (!(await waitInPage(win, "document.querySelectorAll('[data-memory-import] [data-memory-import-row]').length === 3", 5_000))) return 'the import preview did not list the made-up export';
+  const flags = (await js("document.querySelector('[data-memory-import-row=\"/areas/nowhere.md\"]').innerText")) as string;
+  if (!flags.includes('no matching project')) return 'an area without a project was not flagged';
+  await shot(win, 'memory-import.png');
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  if (!(await waitInPage(win, "!document.querySelector('[data-memory-import]')", 2_000))) return 'Escape did not close the import preview';
+  await click('[data-close-settings]');
+  return `ok: personal folder in the app's data, block ${state}, project listed, ${preview}, import preview of 3 made-up memories cancelled`;
+}
+
+/** Adds a Claude profile for a sandbox folder through Settings; returns `id:<id>`, or what went wrong. */
+async function addSmokeProfile(win: BrowserWindow, name: string, folder: string): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  await click('[data-open-settings]');
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"profiles\"]')", 3_000))) return 'Settings did not open';
+  await click('[data-settings-section="profiles"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-add-profile]')", 3_000))) return 'no Add profile in Settings';
+  const before = (await js("document.querySelectorAll('[data-profiles] [data-profile]').length")) as number;
+  await click('[data-add-profile]');
+  if (!(await waitInPage(win, "document.querySelector('[data-new-profile-folder]')", 3_000))) return 'the add profile form did not open';
+  await setFieldValue(win, '[data-new-profile-name]', name);
+  await setFieldValue(win, '[data-new-profile-folder]', folder);
+  await click('[data-add-profile-submit]');
+  if (!(await waitInPage(win, `document.querySelectorAll('[data-profiles] [data-profile]').length === ${before + 1}`, 5_000))) return 'the sandbox profile was not added';
+  const id = (await js(`document.querySelectorAll('[data-profiles] [data-profile]')[${before}].dataset.profile`)) as string;
+  await click('[data-close-settings]');
+  return `id:${id}`;
+}
+
+/** Removes a profile `addSmokeProfile` added (its sandbox folder goes with the throwaway app profile). */
+async function removeSmokeProfile(win: BrowserWindow, id: string): Promise<void> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const card = `[data-profile=${JSON.stringify(id)}]`;
+  await click('[data-open-settings]');
+  await waitInPage(win, "document.querySelector('[data-settings-section=\"profiles\"]')", 3_000);
+  await click('[data-settings-section="profiles"]');
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`${card} [data-remove-profile]`)})`, 3_000))) return;
+  await click(`${card} [data-remove-profile]`);
+  if (await waitInPage(win, "document.querySelector('[data-confirm]')", 3_000)) await click('[data-confirm]');
+  await waitInPage(win, `!document.querySelector(${JSON.stringify(card)})`, 5_000);
+  await click('[data-close-settings]');
+}
+
+/**
+ * Opens the share dialog on the first memory of the project's Memory tab: the preview follows CLAUDE.md, a rule and
+ * CLAUDE.local.md, and Cancel closes it. Share is never pressed.
+ */
+async function checkShareDialog(win: BrowserWindow, root: string, listed: string): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const pageSelector = `[data-project-page=${JSON.stringify(root)}]`;
+  const q = (selector: string) => `document.querySelector(${JSON.stringify(`${pageSelector} ${selector}`)})`;
+  const dialog = (selector = '') => `document.querySelector(${JSON.stringify(`[data-share-dialog]${selector ? ` ${selector}` : ''}`)})`;
+
+  // The first memory shows in the viewer.
+  const path = (await js(`${q('[data-memory-row][data-memory-kind="memory"]')}.dataset.memoryRow`)) as string;
+  await js(`${q('[data-memory-row][data-memory-kind="memory"]')}.click()`);
+  if (!(await waitInPage(win, `${q('[data-memory-viewer]')}.dataset.memoryViewer === ${JSON.stringify(path)} && ${q('[data-memory-content]')}`, 5_000))) return 'the memory did not show in the editor';
+  // The editor shows the frontmatter as fields and starts saved; nothing is typed or saved here.
+  if (!(await js(`${q('[data-memory-editor] [data-memory-description]')} !== null && ${q('[data-memory-save-state]')}.dataset.memorySaveState === 'saved'`))) return 'the editor has no description field, or did not start saved';
+  await shot(win, 'project-memory.png');
+
+  // Its share dialog: the preview is read for CLAUDE.md, then a rule, then CLAUDE.local.md.
+  await js(`${q('[data-memory-share]')}.click()`);
+  const preview = () => js(`${dialog('[data-share-preview]')}?.dataset.sharePreview ?? null`) as Promise<string | null>;
+  const previewIs = (test: string) => waitInPage(win, `(() => { const p = ${dialog('[data-share-preview]')}?.dataset.sharePreview ?? ''; return ${test}; })()`, 5_000);
+  if (!(await waitInPage(win, dialog(), 3_000))) return 'Share with the team… did not open the dialog';
+  if (!(await previewIs(`p.endsWith('CLAUDE.md') && !p.endsWith('local.md')`))) return `no CLAUDE.md preview (got ${await preview()})`;
+  if (!(await js(`${dialog('[data-share-remove]')}.getAttribute('aria-checked') === 'true'`))) return 'Remove from memory was off for CLAUDE.md';
+  const confirmLabel = async () => ((await js(`${dialog('[data-share-confirm]')}.innerText`)) as string).split('\n')[0];
+  const labels = [await confirmLabel()];
+
+  await js(`${dialog('[data-share-target-option="rule"]')}.click()`);
+  if (!(await waitInPage(win, `${dialog('[data-share-target]')}.dataset.shareTarget === 'rule'`, 2_000))) return 'the Rule file target did not switch';
+  // With no rules yet, a new rule needs a name before there is a preview. Typing it writes nothing.
+  if (await js(`!!${dialog('[data-share-rule-name]')}`)) await setFieldValue(win, '[data-share-dialog] [data-share-rule-name]', 'smoke-preview');
+  if (!(await previewIs(`p.startsWith('.claude/rules/')`))) return `no rule preview (got ${await preview()})`;
+  labels.push(await confirmLabel());
+
+  await js(`${dialog('[data-share-target-option="local"]')}.click()`);
+  if (!(await previewIs(`p === 'CLAUDE.local.md'`))) return `no CLAUDE.local.md preview (got ${await preview()})`;
+  if (!(await js(`${dialog('[data-share-remove]')}.getAttribute('aria-checked') === 'false'`))) return 'Remove from memory was on for CLAUDE.local.md';
+  labels.push(await confirmLabel());
+  const lines = (await js(`document.querySelectorAll('[data-share-dialog] [data-share-line="add"]').length`)) as number;
+  if (lines === 0) return 'the preview shows no added lines';
+  await shot(win, 'share-dialog.png');
+
+  // Cancel (Escape) closes it, and the memory is still there.
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  if (!(await waitInPage(win, `!${dialog()}`, 2_000))) return 'Escape did not close the share dialog';
+  if (!(await js(`!!document.querySelector(${JSON.stringify(`${pageSelector} [data-memory-row=${JSON.stringify(path)}]`)})`))) return 'the memory left the list without sharing';
+  return `ok: ${listed}; share dialog previewed ${labels.join(', ')} and was cancelled`;
 }
 
 /**
@@ -2443,6 +2693,40 @@ async function runCopyMessageStep(win: BrowserWindow): Promise<string> {
  * Your prompt cards keep the toolbar floating over their top edge. Read-only: it focuses a button but
  * never clicks one.
  */
+/**
+ * Remember this, read-only: select a few words of one of Claude's replies, use the button that shows over the
+ * selection, and check the dialog has the text, a suggested name and Claude's default type. Cancelled, never saved.
+ */
+async function runRememberStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!(await js("!!document.querySelector('[data-transcript] [data-remember-from=\"claude\"] p')"))) return 'ok: no reply of Claude on screen to remember';
+  const selected = (await js(`(() => {
+    const p = document.querySelector('[data-transcript] [data-remember-from="claude"] p');
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    return selection.toString().trim();
+  })()`)) as string;
+  if (!selected) return 'ok: the first reply has no text to select';
+  if (!(await waitInPage(win, "document.querySelector('[data-remember-selection] button')", 3_000))) return 'no Remember this button over the selection';
+  await js("document.querySelector('[data-remember-selection] button').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-remember-dialog] [data-remember-text]')", 3_000))) return 'Remember this did not open its dialog';
+  const text = (await js("document.querySelector('[data-remember-dialog] [data-remember-text]').value")) as string;
+  const name = (await js("document.querySelector('[data-remember-dialog] [data-remember-name]').value")) as string;
+  const type = (await js("document.querySelector('[data-remember-dialog] [data-remember-type][aria-checked=\"true\"]')?.dataset.rememberType ?? ''")) as string;
+  await shot(win, 'remember-this.png');
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  if (!(await waitInPage(win, "!document.querySelector('[data-remember-dialog]')", 2_000))) return 'Escape did not close Remember this';
+  await js('window.getSelection().removeAllRanges()');
+  if (text.trim() !== selected) return `the dialog's text is not the selection ("${text.slice(0, 40)}")`;
+  if (!name) return 'no suggested name';
+  if (type !== 'project') return `Claude's text started as type "${type}", not project`;
+  return `ok: selected ${selected.length} characters, the dialog suggested "${name}" (project), cancelled`;
+}
+
 async function runReplyActionsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const replies = `[...document.querySelectorAll('[data-item-kind="text"]')].filter((row) => row.querySelector('.markdown') && row.querySelector('[data-message-actions]'))`;
@@ -4363,6 +4647,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('long prompts', () => runLongPromptStep(win));
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
+  await step('remember this', () => runRememberStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
   await step('unsent drafts', () => runDraftStep(win));
   await step('unsent messages', () => runUnsentStep(win));
