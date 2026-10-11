@@ -190,7 +190,7 @@ export function MemoryTab({ root }: { root: string }) {
   const { personal } = usePersonalMemory();
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
-  const isPersonal = (path: string) => !!personal && path.startsWith(`${personal.dir}/`);
+  const isPersonal = (path: string) => !!personal && path !== personal.dir && isSameOrInside(path, personal.dir);
 
   // Claude Code writes memory on its own: read the folder again whenever the window comes back into view.
   useEffect(() => {

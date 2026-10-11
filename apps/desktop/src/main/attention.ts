@@ -9,7 +9,8 @@ export interface AttentionEvent {
   cwd?: string | null;
 }
 
-const basename = (path: string) => path.replace(/\/+$/, '').split('/').pop() ?? path;
+/** A folder's name, from a `/` or a Windows `\` path. */
+const basename = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
 
 /**
  * Decides when Switchboard should get your attention. Pure, so it is tested

@@ -22,6 +22,7 @@ import {
   type WorktreeSize,
   type Transport,
   randomWorktreeName,
+  isLocalAbsolutePath,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -450,7 +451,7 @@ export function createEngine(options: EngineOptions): Engine {
     // One personal folder for every profile: it is about you, not the account. In the app's data until you choose one.
     personalDir: () => {
       const chosen = appState.get(PERSONAL_DIR_KEY);
-      return typeof chosen === 'string' && chosen.startsWith('/') ? chosen : join(options.dataDir, 'memory');
+      return typeof chosen === 'string' && isLocalAbsolutePath(chosen, process.platform) ? chosen : join(options.dataDir, 'memory');
     },
     personalDefault: join(options.dataDir, 'memory'),
     savePersonalDir: (dir) => appState.set(PERSONAL_DIR_KEY, dir),
@@ -1382,7 +1383,7 @@ export function createEngine(options: EngineOptions): Engine {
       const result = memory.applyImport(token, picks, memoryProjects().map((p) => p.root));
       log('info', `Imported memory: ${result.created} new, ${result.updated} updated`);
       broadcast('memory.changed', { root: null });
-      for (const root of new Set(picks.map((p) => p.target).filter((t) => t.startsWith('/')))) broadcast('memory.changed', { root });
+      for (const root of new Set(picks.map((p) => p.target).filter((t) => isLocalAbsolutePath(t, process.platform)))) broadcast('memory.changed', { root });
       return result;
     },
     'memory.exportCandidates': () => ({ memories: memory.exportCandidates(memoryProjects()) }),
