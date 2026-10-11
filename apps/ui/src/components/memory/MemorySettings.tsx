@@ -7,7 +7,7 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { MemoryEditor } from './MemoryEditor.tsx';
 import { MemoryRow, useMemoryActions } from './MemoryTab.tsx';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { guessHome, tildify } from '../../lib/format.ts';
+import { basename, guessHome, tildify } from '../../lib/format.ts';
 import { LEVEL_TEXT } from '../../lib/levels.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -123,9 +123,9 @@ function PersonalMemories() {
   }, [focus, personal]);
   if (!personal) return null;
   const memory = personal.memories.find((m) => m.path === selected);
-  const taken = personal.memories.map((m) => m.path.split('/').pop()!.replace(/\.md$/, ''));
+  const taken = personal.memories.map((m) => basename(m.path).replace(/\.md$/, ''));
   const names = new Set(personal.memories.map((m) => m.name));
-  const nameOf = (path: string) => personal.memories.find((m) => m.path === path)?.name ?? path.split('/').pop()!.replace(/\.md$/, '');
+  const nameOf = (path: string) => personal.memories.find((m) => m.path === path)?.name ?? basename(path).replace(/\.md$/, '');
   const linkersOf = (m: MemoryFile) => (links[m.path]?.backlinks ?? []).map(nameOf);
   const entries = (m: MemoryFile): MenuEntry[] => [
     { label: 'Rename…', onSelect: () => actions.rename(m, taken, linkersOf(m)) },

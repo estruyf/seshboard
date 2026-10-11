@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canShare, copyableSections, filterByProfile, indexMeterText, memoryProfiles, parsePaths, removeByDefault, shareButtonLabel, shareNotices, typeTone, validRuleName } from './memoryUi.ts';
+import { canShare, copyableSections, relativeTo, filterByProfile, indexMeterText, memoryProfiles, parsePaths, removeByDefault, shareButtonLabel, shareNotices, typeTone, validRuleName } from './memoryUi.ts';
 
 describe('share warnings in the dialog', () => {
   it('shows a secret first, as an error that needs a check, and notes after', () => {
@@ -78,5 +78,16 @@ describe('copy to memory', () => {
   it('says how full MEMORY.md gets', () => {
     expect(indexMeterText(65)).toEqual({ text: 'MEMORY.md becomes 65 of 200 lines', over: false });
     expect(indexMeterText(201).over).toBe(true);
+  });
+});
+
+describe('paths inside the project', () => {
+  it('shows them relative to the project, on macOS and Windows', () => {
+    expect(relativeTo('/Users/me/app', '/Users/me/app/.claude/rules/ui.md')).toBe('.claude/rules/ui.md');
+    expect(relativeTo('/Users/me/app', '/Users/me/app-other/CLAUDE.md')).toBe('/Users/me/app-other/CLAUDE.md');
+    expect(relativeTo('C:\\Users\\me\\app', 'C:\\Users\\me\\app\\.claude\\rules\\ui.md')).toBe('.claude\\rules\\ui.md');
+    // Windows compares folders without regard to case.
+    expect(relativeTo('C:\\Users\\me\\app', 'c:\\users\\me\\APP\\CLAUDE.md')).toBe('CLAUDE.md');
+    expect(relativeTo('C:\\Users\\me\\app', 'C:\\Users\\me\\app')).toBe('C:\\Users\\me\\app');
   });
 });

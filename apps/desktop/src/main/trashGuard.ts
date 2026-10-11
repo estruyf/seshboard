@@ -76,7 +76,8 @@ export function isTrashableThemeFile(path: string, themesDir: string): boolean {
 export function isTrashableMemoryFile(path: string, memoryDir: string): boolean {
   if (resolve(path) !== path || resolve(memoryDir) !== memoryDir || memoryDir === sep) return false;
   const name = basename(path);
-  if (dirname(path) !== memoryDir || !name.endsWith('.md') || name === 'MEMORY.md') return false;
+  // MEMORY.md in any case: on a disk that ignores case (Windows, and macOS by default) `memory.md` is the index too.
+  if (dirname(path) !== memoryDir || !name.endsWith('.md') || name.toLowerCase() === 'memory.md') return false;
   try {
     if (basename(memoryDir) !== 'memory' && !statSync(join(memoryDir, 'MEMORY.md'), { throwIfNoEntry: false })?.isFile()) return false;
     return lstatSync(path, { throwIfNoEntry: false })?.isFile() ?? false;

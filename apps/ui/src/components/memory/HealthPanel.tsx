@@ -1,6 +1,7 @@
 import { AlertTriangle, Clock } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { memoryMeta, splitFrontmatter, type HealthFinding } from '@switchboard/protocol/client';
+import { basename, pathTail } from '../../lib/format.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openMemoryFile } from '../../state/memoryStore.ts';
 import { useLinks } from '../../state/linksStore.ts';
@@ -45,7 +46,7 @@ export function useMemoryHealth(root: string | null): HealthFinding[] | null {
   return findings;
 }
 
-const nameOf = (path: string) => path.split('/').pop()!.replace(/\.md$/, '');
+const nameOf = (path: string) => basename(path).replace(/\.md$/, '');
 
 /** Two memories side by side, read-only, with Keep left, Keep right and Merge into left…, each confirmed and undoable. */
 function CompareDialog({ root, left, right, onClose }: { root: string | null; left: string; right: string; onClose(): void }) {
@@ -107,7 +108,7 @@ function CompareDialog({ root, left, right, onClose }: { root: string | null; le
         ].map(({ path, file }) => (
           <div key={path} className="grid min-w-0 content-start gap-1.5">
             <p className="truncate font-mono text-meta text-muted" data-tooltip={path}>
-              {path.split('/').slice(-3).join('/')}
+              {pathTail(path, 3)}
             </p>
             <pre className="max-h-[50vh] overflow-auto rounded-lg border border-edge bg-code p-3 font-mono text-ui break-words whitespace-pre-wrap select-text">{file.content ?? 'Reading…'}</pre>
           </div>

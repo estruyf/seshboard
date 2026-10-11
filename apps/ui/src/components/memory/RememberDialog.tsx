@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
-import { firstSentence, slugify } from '@switchboard/protocol/client';
+import { firstSentence, isSameOrInside, slugify } from '@switchboard/protocol/client';
+import { basename } from '../../lib/format.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openMemoryFile } from '../../state/memoryStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
@@ -44,7 +45,7 @@ export function RememberDialog({ text, from, sessionId, root, onClose }: { text:
   const folder = target === 'personal' ? (personal?.dir ?? null) : (list?.memoryDir ?? null);
   const taken = useMemo(() => {
     const memories = target === 'personal' ? (personal?.memories ?? []) : (list?.memories ?? []);
-    return memories.filter((m) => folder && m.path.startsWith(`${folder}/`)).map((m) => m.path.split('/').pop()!.replace(/\.md$/, ''));
+    return memories.filter((m) => folder && m.path !== folder && isSameOrInside(m.path, folder)).map((m) => basename(m.path).replace(/\.md$/, ''));
   }, [target, personal, list, folder]);
   const indexLines = target === 'personal' ? (personal?.indexLines ?? 0) : (list?.indexLines ?? 0);
   // A suggested name follows the text and the folder until you type your own.
@@ -61,7 +62,7 @@ export function RememberDialog({ text, from, sessionId, root, onClose }: { text:
   const note = addsLineNote(indexLines);
   const blocked = !!problem || !body.trim() || (secrets.length > 0 && !secretsChecked) || busy;
   const targets = [
-    ...(root ? [{ value: root, label: `${projects.get(root)?.name ?? root.split('/').pop()} (this session)` }] : []),
+    ...(root ? [{ value: root, label: `${projects.get(root)?.name ?? basename(root)} (this session)` }] : []),
     { value: 'personal', label: 'Personal (all projects)' },
     ...addedProjects(projects)
       .filter((p) => p.root !== root)

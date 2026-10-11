@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ShareTarget } from '@switchboard/protocol';
 import { git } from '../git/gitChanges.ts';
+import { canSymlink } from '../util/canSymlink.ts';
 import { autoMemoryDirectory, encodeProjectPath, memoryDirFor } from './folders.ts';
 import { MemoryService, type MemoryTrashScope } from './memoryService.ts';
 import { findSecrets } from './secrets.ts';
@@ -94,7 +95,7 @@ describe('memory folders', () => {
       ['loose', null, null],
       ['sidebar-order', 'project', 'About sidebar-order'],
     ]);
-    expect(list.instructions.map((i) => [i.path.slice(root.length + 1), i.kind, i.shared, i.paths])).toEqual([
+    expect(list.instructions.map((i) => [i.path.slice(root.length + 1).split(sep).join('/'), i.kind, i.shared, i.paths])).toEqual([
       ['CLAUDE.md', 'claude-md', true, undefined],
       ['CLAUDE.local.md', 'local', false, undefined],
       ['.claude/rules/ui.md', 'rule', true, ['apps/ui/**']],
@@ -106,8 +107,11 @@ describe('memory folders', () => {
     expect(service.read(root, path)).toContain('name: sidebar-order');
     write(join(base, 'outside.md'), 'secret');
     expect(() => service.read(root, join(base, 'outside.md'))).toThrow(/Only memory/);
-    symlinkSync(join(base, 'outside.md'), join(root, 'link.md'));
-    expect(() => service.read(root, join(root, 'link.md'))).toThrow(/Only memory/);
+    // Making links on Windows needs Developer Mode or an administrator.
+    if (canSymlink()) {
+      symlinkSync(join(base, 'outside.md'), join(root, 'link.md'));
+      expect(() => service.read(root, join(root, 'link.md'))).toThrow(/Only memory/);
+    }
   });
 });
 
@@ -245,6 +249,8 @@ describe('sharing a memory', () => {
     await expect(preview(join(base, 'elsewhere', 'x.md'), { kind: 'claude-md' })).rejects.toThrow(/memories/);
     await expect(preview(join(memoryDir, 'MEMORY.md'), { kind: 'claude-md' })).rejects.toThrow(/memories/);
     const path = memoryFile('sidebar-order', 'Body.');
+    // Making links on Windows needs Developer Mode or an administrator.
+    if (!canSymlink()) return;
     mkdirSync(join(base, 'outside'));
     symlinkSync(join(base, 'outside'), join(root, '.claude'));
     await expect(preview(path, { kind: 'rule', file: 'ui' })).rejects.toThrow(/outside the project/);

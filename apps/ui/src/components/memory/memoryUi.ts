@@ -1,4 +1,4 @@
-import { MEMORY_INDEX_LIMIT, parseSections, validMemoryName, type InstructionFile, type ShareTarget, type ShareWarning } from '@switchboard/protocol/client';
+import { isSameOrInside, MEMORY_INDEX_LIMIT, parseSections, validMemoryName, type InstructionFile, type ShareTarget, type ShareWarning } from '@switchboard/protocol/client';
 import type { PillTone } from '../ui/buttonStyles.ts';
 
 /** The memory types as the editor offers them, in this order. */
@@ -29,8 +29,9 @@ export function typeTone(type: string | null): PillTone {
   }
 }
 
-/** A path inside the project as people know it (`CLAUDE.md`, `.claude/rules/ui.md`). */
-export const relativeTo = (root: string, path: string) => (path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path);
+/** A path inside the project as people know it (`CLAUDE.md`, `.claude/rules/ui.md`; with `\` on Windows). */
+export const relativeTo = (root: string, path: string) =>
+  path !== root && isSameOrInside(path, root) ? path.slice(root.replace(/[\\/]+$/, '').length + 1) : path;
 
 /** How an instruction file is described in the list: where it loads and whether the team gets it. */
 export function instructionDetail(file: InstructionFile): string {

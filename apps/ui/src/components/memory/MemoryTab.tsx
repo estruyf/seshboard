@@ -1,9 +1,9 @@
 import { AlertTriangle, BookCopy, Copy, FileText, FolderInput, FolderSearch, MoreHorizontal, Pencil, Plus, Search, Share2, SquareArrowOutUpRight, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { MEMORY_INDEX_LIMIT, type InstructionFile, type MemoryFile } from '@switchboard/protocol/client';
+import { isSameOrInside, MEMORY_INDEX_LIMIT, type InstructionFile, type MemoryFile } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
-import { guessHome, shortAge, tildify } from '../../lib/format.ts';
+import { basename, dirnameOf, guessHome, shortAge, tildify } from '../../lib/format.ts';
 import { LEVEL_TEXT } from '../../lib/levels.ts';
 import { guardMemoryEdits, useMemoryView } from '../../state/memoryStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
@@ -82,8 +82,8 @@ export function MemoryRow({ memory, selected, onSelect, onMenu, badge, flag }: {
 
 /** A sync tool's second copy of a memory: which one to keep. The one that goes moves to the Trash. */
 function ConflictRow({ memory, onKeep }: { memory: MemoryFile; onKeep(keep: 'this' | 'other'): void }) {
-  const file = memory.path.split('/').pop()!;
-  const other = memory.conflictOf?.split('/').pop() ?? '';
+  const file = basename(memory.path);
+  const other = memory.conflictOf ? basename(memory.conflictOf) : '';
   return (
     <div className="grid gap-1.5 rounded-lg px-2.5 py-1.5" data-memory-row={memory.path} data-memory-kind="conflict">
       <span className="flex min-w-0 items-center gap-2">
@@ -172,7 +172,7 @@ export function useMemoryActions(root: string | null, where: string, onSelect: (
 export function MemoryTab({ root }: { root: string }) {
   const { list, error, reload } = useMemoryList(root);
   const openIn = useOpenIn();
-  const projectName = useProjects((s) => s.projects.get(root)?.name ?? root.split('/').pop() ?? root);
+  const projectName = useProjects((s) => s.projects.get(root)?.name ?? basename(root));
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [menu, setMenu] = useState<{ at: ContextMenuPoint; entries: MenuEntry[] } | null>(null);
@@ -232,7 +232,7 @@ export function MemoryTab({ root }: { root: string }) {
   const [unwrittenOnly, setUnwrittenOnly] = useState<'project' | 'personal' | null>(null);
   const hasUnwritten = (m: MemoryFile) => links[m.path]?.links.some((l) => l.target === null) ?? false;
   const unwrittenCount = (items: readonly MemoryFile[]) => new Set(items.flatMap((m) => (links[m.path]?.links ?? []).filter((l) => l.target === null).map((l) => l.name))).size;
-  const nameOf = (path: string) => [...(list?.memories ?? []), ...(personal?.memories ?? [])].find((m) => m.path === path)?.name ?? path.split('/').pop()!.replace(/\.md$/, '');
+  const nameOf = (path: string) => [...(list?.memories ?? []), ...(personal?.memories ?? [])].find((m) => m.path === path)?.name ?? basename(path).replace(/\.md$/, '');
   const linkersOf = (m: MemoryFile) => (links[m.path]?.backlinks ?? []).map(nameOf);
   const personalMemories = useMemo(
     () => (personal?.memories ?? []).filter((m) => matchesFilter(filter, m.name, m.description, m.type) && (unwrittenOnly !== 'personal' || hasUnwritten(m))),
@@ -265,7 +265,7 @@ export function MemoryTab({ root }: { root: string }) {
 
   /** Names a new or renamed memory can't take: the files in the same folder. */
   const takenIn = (dir: string) =>
-    [...(list?.memories ?? []), ...(personal?.memories ?? [])].filter((m) => m.path.startsWith(`${dir}/`)).map((m) => m.path.split('/').pop()!.replace(/\.md$/, ''));
+    [...(list?.memories ?? []), ...(personal?.memories ?? [])].filter((m) => isSameOrInside(m.path, dir) && m.path !== dir).map((m) => basename(m.path).replace(/\.md$/, ''));
   const homeDir = list?.memoryDir ?? '';
   const select = (path: string) => guardMemoryEdits(() => setSelectedPath(path));
   const names = useMemo(() => new Set([...(list?.memories ?? []), ...(personal?.memories ?? [])].map((m) => m.name)), [list, personal]);
@@ -288,7 +288,7 @@ export function MemoryTab({ root }: { root: string }) {
     const share: MenuEntry[] = mine ? [] : [{ label: 'Share with the team…', icon: <Share2 size={13} aria-hidden />, onSelect: () => shareMemory(root, memory), data: { 'data-memory-menu-share': true } }];
     return [
       ...share,
-      { label: 'Rename…', icon: <Pencil size={13} aria-hidden />, onSelect: () => act.rename(memory, takenIn(memory.path.slice(0, memory.path.lastIndexOf('/'))), linkersOf(memory)), data: { 'data-memory-menu-rename': true } },
+      { label: 'Rename…', icon: <Pencil size={13} aria-hidden />, onSelect: () => act.rename(memory, takenIn(dirnameOf(memory.path)), linkersOf(memory)), data: { 'data-memory-menu-rename': true } },
       mine
         ? { label: `Move to ${projectName}`, icon: <FolderInput size={13} aria-hidden />, onSelect: () => move(memory, 'project'), data: { 'data-memory-menu-move': 'project' } }
         : { label: 'Move to Personal', icon: <FolderInput size={13} aria-hidden />, onSelect: () => move(memory, 'personal'), data: { 'data-memory-menu-move': 'personal' } },
@@ -500,7 +500,7 @@ export function MemoryTab({ root }: { root: string }) {
               names={names}
               menuEntries={memoryEntries(selected.file).filter((e) => typeof e !== 'object' || !('label' in e) || e.label !== 'Rename…')}
               onShare={isPersonal(selected.file.path) ? undefined : () => shareMemory(root, selected.file)}
-              onRename={() => actionsFor(selected.file).rename(selected.file, takenIn(selected.file.path.slice(0, selected.file.path.lastIndexOf('/'))), linkersOf(selected.file))}
+              onRename={() => actionsFor(selected.file).rename(selected.file, takenIn(dirnameOf(selected.file.path)), linkersOf(selected.file))}
               onDelete={() => actionsFor(selected.file).remove(selected.file)}
               onReveal={() => actions.reveal(selected.file.path)}
               footerActions={
@@ -510,9 +510,9 @@ export function MemoryTab({ root }: { root: string }) {
               }
               onOpenLink={(name) => {
                 // The same folder first, then the personal one.
-                const folder = selected.file.path.slice(0, selected.file.path.lastIndexOf('/'));
+                const folder = dirnameOf(selected.file.path);
                 const all = [...list.memories, ...(personal?.memories ?? [])];
-                const target = all.find((m) => m.name === name && m.path.startsWith(`${folder}/`)) ?? personal?.memories.find((m) => m.name === name) ?? all.find((m) => m.name === name);
+                const target = all.find((m) => m.name === name && isSameOrInside(m.path, folder)) ?? personal?.memories.find((m) => m.name === name) ?? all.find((m) => m.name === name);
                 if (target) select(target.path);
                 else guardMemoryEdits(() => actionsFor(selected.file).newMemory(takenIn(folder), { name }));
               }}
