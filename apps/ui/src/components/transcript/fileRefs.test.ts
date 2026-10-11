@@ -32,6 +32,8 @@ describe('fileUrl', () => {
     expect(fileUrl('/Users/me/my notes.md')).toBe('file:///Users/me/my%20notes.md');
     expect(fileUrl('E:\\repos\\a b\\x.ts')).toBe('file:///E:/repos/a%20b/x.ts');
     expect(fileRefFromHref(fileUrl('C:\\repo\\a.ts'))).toEqual({ path: 'C:/repo/a.ts' });
+    expect(fileUrl('C:\\repo\\a#b?.ts')).toBe('file:///C:/repo/a%23b%3F.ts');
+    expect(fileUrl('/repo/c#/x.cs')).toBe('file:///repo/c%23/x.cs');
   });
 });
 

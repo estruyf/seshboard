@@ -33,10 +33,13 @@ export function parseFileRef(text: string): FileRef | null {
   return line > 0 ? { path: value, line } : { path: value };
 }
 
-/** A local path as a `file:` link: `/a b.ts` is `file:///a%20b.ts`, `C:\a.ts` is `file:///C:/a.ts`. */
+/**
+ * A local path as a `file:` link: `/a b.ts` is `file:///a%20b.ts`, `C:\a.ts` is `file:///C:/a.ts`. `?` and `#` are
+ * escaped too (`encodeURI` leaves them), as in a file name they would start a query or a fragment.
+ */
 export function fileUrl(path: string): string {
   const drive = /^[A-Za-z]:[\\/]/.test(path);
-  return `file://${encodeURI(drive ? `/${path.replace(/\\/g, '/')}` : path)}`;
+  return `file://${encodeURI(drive ? `/${path.replace(/\\/g, '/')}` : path).replace(/\?/g, '%3F').replace(/#/g, '%23')}`;
 }
 
 /** The file a Markdown link points at (`[a.ts](src/a.ts#L69)`, `file:///…`), or null for web and mail links. */
