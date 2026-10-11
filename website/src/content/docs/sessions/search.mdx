@@ -1,0 +1,49 @@
+---
+title: Search
+description: Search every conversation, or find words in the one you are reading.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Switchboard has two searches: **Search conversations** looks through your prompts and Claude's replies in every session, and **Find in conversation** highlights words in the session you are reading.
+
+<Screenshot name="search" alt="Search conversations: results grouped by session, each line marked You or Claude, with the matching words highlighted" eager />
+
+## Open it
+
+- **Search conversations:** press <Kbd shortcut="search" />, or choose *Search conversations* in the command palette.
+- **Find in conversation:** press <Kbd shortcut="find" /> in a session.
+
+## Search every conversation
+
+<Steps>
+
+1. Press <Kbd shortcut="search" /> and type what you are looking for.
+2. Results are grouped by session, with the session's title, project and age. Each match is marked **You** (your prompt) or **Claude** (a reply), with the matching words highlighted. A session with more matches says "+N more".
+3. Use ↑ and ↓ to move through the matches, and ↩ (or a click) to open one. Switchboard opens the session and jumps straight to that message.
+
+</Steps>
+
+Esc closes the search. When Switchboard has just started, it may still be reading your sessions: the search says so ("Indexing 120 of 300 sessions") and more results fill in as it goes.
+
+The search covers the sessions the sidebar lists. With **Show sessions from other apps** off, it searches only the sessions you started or continued in Switchboard.
+
+<Aside type="tip">
+The **Search sessions** field at the top of the sidebar is different: it filters the list by title, project or branch. See [The sidebar](/sessions/sidebar/).
+</Aside>
+
+## Find in a conversation
+
+<Screenshot name="find" alt="Find in conversation open over a session, with every match highlighted and the count of matches next to the field" />
+
+Press <Kbd shortcut="find" /> in a session and type. Every match in the conversation is highlighted, and the bar says where you are ("2 of 7", or "No results").
+
+- <Kbd shortcut="find.next" /> goes to the next match.
+- <Kbd shortcut="find.previous" /> goes to the previous match.
+- Esc, or the **×**, closes Find.
+
+## Settings
+
+**Show sessions from other apps** in [Settings, Sidebar](/settings/#sidebar) decides which sessions Search covers. Find has no settings.

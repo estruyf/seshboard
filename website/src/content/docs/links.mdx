@@ -1,0 +1,149 @@
+---
+title: Links
+description: Open Switchboard from a switchboard:// link, to start a session with a prompt or jump to an existing one.
+---
+
+import Kbd from '../../components/Kbd.astro';
+import Screenshot from '../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+A `switchboard://` link opens Switchboard on New session with the project and prompt filled in, or jumps to a session. Put links in runbooks, alerts, READMEs, issue templates, or Raycast and Alfred scripts, or open them from a shell.
+
+<Screenshot name="new-session" alt="New session with a project picked and a prompt in the message box, the way a link leaves it for you to read before you start" eager />
+
+## Open a link
+
+- Click it wherever links work: a browser, a chat message, a Markdown preview.
+- From a shell: `open "switchboard://new-session?project=payments&prompt=…"`.
+
+If Switchboard isn't running, the link starts it and waits until the window is ready. If it is running, its window comes to the front.
+
+<Aside title="You read the prompt first">
+By default a link only fills in New session. You read the prompt, check the folder and start the session yourself. A link starts a session on its own only when it says `autostart=1`. While a prompt from a link is in the message box, a line under it says **Prompt from an external link**, with **Clear** to empty the box.
+</Aside>
+
+## Start a new session
+
+```text
+switchboard://new-session?prompt=Investigate%20the%20failed%20deploy&cwd=/Users/me/dev/payments
+switchboard://new-session?project=payments&prompt=What%20changed%20this%20week%3F
+switchboard://new-session?repo=acme/payments&prompt=Review%20the%20open%20pull%20requests&autostart=1
+switchboard://new-session?question=1&prompt=How%20do%20I%20undo%20a%20git%20rebase%3F
+```
+
+| Parameter | What it does |
+|---|---|
+| `prompt` (or `q`) | Text for the message box, URL-encoded. Use `%0A` for a new line. At most 5,000 characters. |
+| `project` | One of your [projects](/projects/projects-view/), by its name in Switchboard (or its folder's name), ignoring case. A name that isn't one of your projects is refused. |
+| `cwd` | The absolute path of the folder to start in. |
+| `repo` | A GitHub repository as `owner/name`. Switchboard looks for a checkout of it among your projects, then among the other folders you've used Claude Code in. |
+| `autostart` | `1` (or `true`) starts the session right away. Leave it out (or use `0`) to fill in New session and wait for you. |
+| `question` | `1` (or `true`) makes it a [quick question](/new-session/quick-questions/): no project. `cwd`, `project` and `repo` are then ignored. |
+
+Every parameter is optional. When a link has more than one of `cwd`, `project` and `repo`, `cwd` wins, then `project`, then `repo`. A link that names no folder doesn't guess: the folder stays empty and the project list opens so you can pick one.
+
+Model, effort, permission mode and the worktree choice come from the project's defaults (or your last choices), as when you press <Kbd shortcut="session.new" />. A link can't set them.
+
+`repo` makes a link work for everyone on a team, wherever they cloned the repository.
+
+### Starting on its own
+
+With `autostart=1`, the session starts as soon as its folder is found. It only starts when the link has a prompt and a folder; otherwise it waits for you like any other link.
+
+A session started by a link never runs in a mode that skips permission prompts. It uses the project's saved default mode, or the default mode (ask before edits). Auto mode, Don't ask and Bypass permissions never apply, so Claude still asks before it edits files or runs commands, unless the project's default is Accept edits or Plan mode.
+
+<Aside type="caution">
+Only use `autostart` in links you write for yourself or your team. Clicking an `autostart` link someone else made starts Claude with their prompt in your project.
+</Aside>
+
+## Open a session
+
+```text
+switchboard://session/0b9a7c1e-1234-4abc-9def-001122334455
+```
+
+This shows that session, as if you picked it in the sidebar. To get a session's ID, right-click it in the sidebar and choose **Copy session ID**, or run *Copy session id* in the command palette (<Kbd shortcut="palette.commands" />).
+
+## Examples
+
+### From a shell
+
+```bash
+open "switchboard://new-session?cwd=$PWD&prompt=Why%20are%20the%20tests%20failing%3F"
+```
+
+That works while the folder's path has no spaces or other characters that need encoding. To encode any text, let `jq` do it (it comes with macOS 15 and later):
+
+```bash
+prompt='Summarise the last 10 commits
+and list anything that looks risky.'
+open "switchboard://new-session?cwd=$(jq -rn --arg v "$PWD" '$v|@uri')&prompt=$(jq -rn --arg v "$prompt" '$v|@uri')"
+```
+
+In a URL, `+` means a space. Write a plus sign as `%2B`; `jq`'s `@uri` does that for you.
+
+### In a README or runbook
+
+```markdown
+[Ask Claude to triage a failed deploy](switchboard://new-session?repo=acme/payments&prompt=The%20last%20deploy%20failed.%20Read%20the%20CI%20logs%20and%20suggest%20a%20fix.)
+```
+
+Some sites, GitHub among them, don't make custom links clickable. Put the link in a code block there so people can copy it.
+
+### Raycast
+
+Save this as `ask-claude.sh` in your Raycast script commands folder. It asks for a project and a prompt, and starts the session right away (drop `&autostart=1` to check it first):
+
+```bash
+#!/bin/bash
+# @raycast.schemaVersion 1
+# @raycast.title Ask Claude in Switchboard
+# @raycast.mode silent
+# @raycast.argument1 { "type": "text", "placeholder": "Project" }
+# @raycast.argument2 { "type": "text", "placeholder": "What should Claude work on?" }
+uri() { jq -rn --arg v "$1" '$v|@uri'; }
+open "switchboard://new-session?project=$(uri "$1")&prompt=$(uri "$2")&autostart=1"
+```
+
+### Alfred
+
+Add a **Keyword** input with an argument, connect it to a **Run Script** action (language `/bin/bash`, with input as argv) and use this script. Typing `claude payments fix the flaky checkout test` fills in New session in the *payments* project: the first word is the project, the rest is the prompt.
+
+```bash
+read -r project prompt <<< "$1"
+uri() { jq -rn --arg v "$1" '$v|@uri'; }
+open "switchboard://new-session?project=$(uri "$project")&prompt=$(uri "$prompt")"
+```
+
+### From an alert
+
+Most alerting tools can add a link to a notification. Point it at the service's repository and describe the alert in the prompt:
+
+```text
+switchboard://new-session?repo=acme/payments&prompt=Alert%3A%20p95%20latency%20above%202s%20on%20checkout.%20Look%20at%20recent%20changes%20to%20the%20checkout%20path.
+```
+
+## Links Switchboard refuses
+
+Links can come from any web page or chat message, so Switchboard checks each one before it changes anything. A link it refuses shows a short message at the bottom of the window saying why, and nothing else happens. That covers:
+
+- an action other than `new-session` or `session`;
+- a prompt longer than 5,000 characters, or with control characters or invisible characters (such as zero-width spaces) that can hide text;
+- a `cwd` that isn't an absolute path, is a network location, or contains `.` or `..`;
+- a `project` that isn't one of your projects;
+- a `repo` that isn't `owner/name`;
+- an `autostart` value other than `1`, `true`, `yes`, `0`, `false` or `no`;
+- a session ID that isn't one, or a session that isn't on this Mac.
+
+Parameters Switchboard doesn't know are ignored, so a link made for a newer version still opens.
+
+## When a link doesn't work
+
+- **Nothing happens.** macOS sends `switchboard://` links to the copy of Switchboard it knows. Move Switchboard to Applications and open it once.
+- **An `autostart` link didn't start.** It needs a prompt and a folder: `project`, `cwd`, or a `repo` Switchboard can find.
+- **The folder is empty.** The link names no folder, or no project or recent folder has a git remote on that `repo`. Add the checkout as a project, or use `cwd`.
+- **The prompt looks wrong.** Check the encoding: spaces as `%20`, new lines as `%0A`, `&` as `%26`, `#` as `%23`, `+` as `%2B`.
+
+## Settings
+
+Links have no settings. What a started session uses comes from the [project's settings](/projects/settings/).

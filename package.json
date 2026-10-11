@@ -5,7 +5,8 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "website"
   ],
   "engines": {
     "node": ">=24"
@@ -22,6 +23,9 @@
     "test": "vitest run",
     "check": "npm run typecheck && npm run test",
     "docs:shortcuts": "node apps/ui/scripts/docs-shortcuts.ts",
+    "website:dev": "npm run dev -w @switchboard/website",
+    "website:build": "npm run build -w @switchboard/website",
+    "website:screenshots": "npm run build -w @switchboard/desktop && node scripts/website-screenshots.ts",
     "dist": "npm run dist -w @switchboard/desktop",
     "smoke:packaged": "npm run smoke:packaged -w @switchboard/desktop",
     "dist:preview": "npm run dist:preview -w @switchboard/desktop",
@@ -29,6 +33,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.1",
+    "playwright-core": "1.64.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   }

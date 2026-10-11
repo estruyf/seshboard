@@ -1,0 +1,89 @@
+---
+title: Terminal
+description: A built-in terminal for each session, opening a shell in the session's folder.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Every session has its own terminal panel. It opens a shell in the session's folder (its worktree, when it has one), so you can run a command without leaving Switchboard. [Project actions](/projects/actions/), git steps and code blocks from the conversation run there too.
+
+<Screenshot name="terminal" alt="A session with the terminal panel open below the conversation: tabs at the top, a shell with output, and buttons to dock, maximize and hide the panel" eager />
+
+## Open it
+
+- Press <Kbd shortcut="terminal.toggle" /> to show or hide the terminal of the session on screen.
+- Click **Terminal** in the session header, next to **Changes**. A dot on it means terminals are running in this session.
+- Run *Toggle terminal* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />), or *New terminal tab* for another shell.
+
+The first time you open it, the panel starts a shell. It is your login shell, so your `PATH`, `nvm` and aliases work as in your own terminal.
+
+## How to use it
+
+### Tabs
+
+A session can have several terminals, each in its own tab: shells, [project actions](#actions-in-the-terminal), git steps, and Claude Code itself.
+
+- **+** next to the tabs opens a new shell tab.
+- Click a tab to show it, or use <Kbd keys="arrowleft|arrowright" /> with a tab focused.
+- **×** on a tab closes it.
+
+A tab whose program has ended says it exited, with its exit code. Press <Kbd keys="escape" /> in it to close it. A yellow dot on a tab means an action is running there; a red one means what ran there failed. A finished tab shows its exit code next to its title.
+
+Terminals keep running when you switch to another session or close the panel. Hiding the panel doesn't stop anything.
+
+### Clear the terminal
+
+Press <Kbd shortcut="terminal.clear" /> in the terminal to clear it. Since that key clears the terminal there, open the command palette with <Kbd keys="mod+shift+p" /> while the terminal has the focus.
+
+### Maximize
+
+Press <Kbd shortcut="terminal.maximize" />, or click the maximize button, to let the terminal fill the session view. Press it again, or <Kbd shortcut="terminal.restore" /> outside the shell (on the tabs or buttons), to restore it. Inside the shell, <Kbd keys="escape" /> belongs to the program that runs there.
+
+### Dock below or on the right
+
+The panel docks below the conversation by default. Click the dock button to move it to the right, or back below. *Dock terminal right* and *Dock terminal below* in the command palette do the same. Switchboard remembers your choice.
+
+The terminal stays below while the right side isn't free:
+
+- when the [Changes panel](/terminal-changes-git/changes/) is open, since it also lives on the right;
+- when the session view is too narrow for the terminal and a usable conversation side by side. Widen the window to dock it on the right.
+
+The dock button's tooltip says which one applies.
+
+### Resize
+
+Drag the panel's edge to make it taller or wider. With the edge focused, use <Kbd keys="arrowup|arrowdown" /> when it is docked below, or <Kbd keys="arrowleft|arrowright" /> when it is on the right.
+
+### Always dark
+
+The terminal panel is always dark, in light mode too, on a background a little darker than the conversation. Its colours come from the [theme](/themes/built-in/).
+
+## Actions in the terminal
+
+A [project action](/projects/actions/) that runs a command, and the git steps of the [git button](/terminal-changes-git/git/), open in their own tab. A strip above the terminal shows:
+
+- the status: **Running**, **Exited 0**, or **Failed** with its exit code;
+- the command;
+- how long it has run;
+- the folder it runs in;
+- **Restart**, which stops it if needed and runs it again;
+- **Stop**, while it runs.
+
+Press <Kbd shortcut="terminal.stop-action" /> in the terminal to stop a running action. *Stop action* and *Restart action* are in the command palette too.
+
+## Run a code block
+
+When Claude's reply has a shell code block (`bash`, `sh`, `zsh`, `shell`, `console` and similar), hover it and click **Run in terminal** (the play button). The command runs in the session's terminal, in the same shell tab as earlier runs while that shell is open. For a `console` block, or lines that start with `$ `, only the command lines run, without the `$`.
+
+## Open the session in Claude Code
+
+To use Claude Code's own terminal interface on the session, with its status line, mods and every CLI feature, open the session header's **⋯** menu and choose **Open in → Claude Code**. It opens in a tab of the terminal panel.
+
+A session that is running in Switchboard can't be open in two places. Switchboard then offers **Stop it here and open**, or **Open a fork** to open a copy of the conversation instead. A session that is open in another Claude Code window can only be opened as a fork.
+
+## Settings
+
+The terminal has no settings of its own. Its colours follow the theme: see [Built-in themes](/themes/built-in/) and [Settings](/settings/#theme).

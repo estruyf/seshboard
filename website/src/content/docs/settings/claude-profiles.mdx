@@ -1,0 +1,89 @@
+---
+title: Claude profiles
+description: Use more than one Claude account in Switchboard, such as a personal plan and a work one.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+A Claude profile is one Claude Code config folder with its own login, settings, plugins and sessions. Add a profile for each account you use, and Switchboard lists all their sessions together, shows which account each one runs on, and keeps their usage apart.
+
+<Screenshot name="settings-profiles" alt="Settings on Claude profiles: a Personal profile in yellow and a Work profile in blue, each with its config folder, the account it is signed in with and the Default choice, then Add profile and How to set up another profile" eager />
+
+## Open it
+
+- Press <Kbd shortcut="settings" /> and choose **Claude profiles**.
+- Or run *Settings* in the command palette (<Kbd shortcut="palette.commands" />), then *Settings: Claude profiles*.
+
+## How profiles work
+
+Your first profile is Claude Code's own folder, usually `~/.claude`. Every other profile is a folder of its own, such as `~/.claude-work`, the same folder you would use with `CLAUDE_CONFIG_DIR=~/.claude-work claude` in a terminal.
+
+Switchboard never handles your login. You sign in with Claude Code itself, once per folder, and Switchboard runs Claude Code with that folder for the sessions of that profile.
+
+## Add a profile
+
+<Steps>
+
+1. Click **Add profile**.
+2. Give it a name and pick a colour.
+3. Check the **Config folder**. Switchboard suggests one from the name (`~/.claude-work` for "Work"); type another path or click **Choose…**. A folder that doesn't exist yet is created. To see the sessions of a folder you already use with `CLAUDE_CONFIG_DIR`, pick that folder.
+4. Click **Add profile**.
+
+</Steps>
+
+## Sign in
+
+A profile that isn't signed in yet says **Not signed in yet** and shows the command to run, with a copy button:
+
+<Steps>
+
+1. Open Terminal and run the command, for example `CLAUDE_CONFIG_DIR=~/.claude-work claude`.
+2. Type `/login` and sign in with the other account.
+
+</Steps>
+
+Once you're signed in, the profile shows **Signed in as** with the account's email (and its organisation, if it has one).
+
+<Aside title="How to set up another profile">
+Under the list, **How to set up another profile** walks through it step by step: create the folder and sign in, add it in Switchboard, link your projects, and optionally add a terminal alias such as `alias claude-work='CLAUDE_CONFIG_DIR=~/.claude-work claude'` to `~/.zshrc`.
+</Aside>
+
+## Choose the default profile
+
+Choose **Default** on a profile. Projects that don't have a profile of their own use the default.
+
+## Link a project to a profile
+
+With more than one profile, you can link a project to the account its sessions should use:
+
+- On the project's page, open the **Settings** tab and pick a **Claude profile**. See [Project settings](/projects/settings/).
+- Or open the project's menu in the sidebar's project list: **Claude profile** lists **Default** and each profile.
+
+New sessions in that project use the linked profile. Other projects use the default.
+
+## Pick a profile for one session
+
+In [New session](/new-session/form/), the profile chip under the message box shows the profile the folder uses. Click it to pick another account for this one session. A running session keeps its profile; to use another account, start a new session.
+
+## See which account a session uses
+
+With more than one profile:
+
+- The rail on each session row in the sidebar shows the profile's colour, on every row. Hover a row to see the profile's name.
+- The usage band under the message box shows the limits of the session's account.
+- [Home](/sessions/home/) has a **Profiles** section with a card per profile: its name, the account's email, what its sessions are doing ("1 needs you · 2 working · 5 today") and its plan usage, with when each limit resets.
+
+<Screenshot name="home" alt="Home with a Profiles section at the bottom: a card for the personal and the work profile, each with its account and what its sessions are doing" />
+
+## Rename, recolour or remove a profile
+
+- Type a new name in the profile's name field, and pick another colour from its swatches.
+- **×** removes a profile from Switchboard after you confirm. Its sessions leave the sidebar and its projects use the default profile again. The folder, its login and its sessions stay on disk; add the folder again to get them back. Claude Code's own folder can't be removed.
+
+A profile whose folder is gone says **folder not found**.
+
+## Settings
+
+Profiles are managed in [Settings → Claude profiles](/settings/#claude-profiles). The link between a project and a profile is part of the project, in its [Settings tab](/projects/settings/).

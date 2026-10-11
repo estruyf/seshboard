@@ -1,0 +1,62 @@
+---
+title: Built-in themes
+description: Pick light or dark mode and one of the themes that come with Switchboard.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+A theme sets the colours of Switchboard: the app, the code blocks and diffs, and the terminal, for light and dark mode. Switchboard comes with six themes, and you can [import your own](/themes/custom/).
+
+<Screenshot name="settings-theme" alt="Settings open on Theme: the Appearance control, then a grid of theme cards, each with a light and a dark preview, its name and author, and a dashed card to drop a theme file on" eager />
+
+## Open it
+
+- Press <Kbd shortcut="settings" /> (or click the gear at the bottom of the sidebar) and choose **Theme**.
+- In the command palette (<Kbd shortcut="palette.commands" />), run *Theme: &lt;name&gt;* to switch to a theme, or *Appearance: Match System*, *Appearance: Light* or *Appearance: Dark* to change the mode. The palette only lists the choices you aren't using now.
+
+## Choose light or dark
+
+**Appearance** at the top of Settings → Theme has three choices:
+
+- **Match System** (the default): follows macOS, so Switchboard turns dark when your Mac does.
+- **Light**
+- **Dark**
+
+The terminal panel is always dark, in light mode too.
+
+## Pick a theme
+
+Click a theme card to use it. It applies at once, and a message in the corner says "Switched to &lt;name&gt;" with **Undo**, which takes you back to the theme you had.
+
+Each card shows the theme in light and dark mode, its name, and who made it, with *built in* or *imported*. The theme in use has a ring in its own accent colour and a check mark.
+
+| Theme | Light mode | Dark mode |
+|---|---|---|
+| Demo Time (the default) | Demo Time Light | Demo Time Dark |
+| Catppuccin | Latte | Mocha |
+| Claude | Claude Light | Claude Dark |
+| Nord | uses Demo Time | Nord |
+| Solarized | Solarized Light | Solarized Dark |
+| The unnamed | uses Demo Time | The unnamed |
+
+<Aside title="Dark only">
+Nord and The unnamed have only a dark version, as the originals do. Their cards say **Dark only**. In light mode they show Demo Time, and Settings says so under the cards: with Match System, light mode uses Demo Time.
+</Aside>
+
+<Screenshot name="theme-catppuccin" alt="The main window in the Catppuccin theme: the sidebar, a conversation and the Changes panel in Catppuccin's colours" />
+
+## More for a theme
+
+Each card has a **⋯** button (or right-click the card, or press <Kbd shortcut="context-menu" first />):
+
+- **Export…** saves the theme as a `.json` file. Exporting Demo Time gives you every colour, a good start for a theme of your own.
+- **Duplicate** adds an editable copy to your themes.
+- **Show file** and **Remove** are only there for themes you imported. Built-in themes can't be removed.
+
+See [Custom themes](/themes/custom/) for importing, exporting and editing theme files.
+
+## Settings
+
+Everything on this page is in [Settings → Theme](/settings/#theme). Your theme and appearance are part of the preferences you can [back up](/settings/backup/).
