@@ -1,6 +1,11 @@
-# Typecheck and unit tests on macOS and Windows, for every pull request and every push to main, so a change
-# for one platform can't break the other. The smoke test isn't run here: it drives the app against a real
-# ~/.claude with sessions in it, which a runner doesn't have.
+# Every check on macOS and Windows, for every pull request and every push to main, so a change for one platform
+# can't break the other: typecheck and unit tests (npm run check), then the smoke test (npm run smoke).
+#
+# The smoke test builds the app, launches the real Electron window with a throwaway profile and drives the UI
+# step by step (see docs/development.md#tests). On a runner the home folder is empty: there is no ~/.claude, no
+# sessions and no login, so it checks the app starts, talks to the engine and that every view degrades quietly
+# without data. The live steps (SWITCHBOARD_SMOKE_LIVE_CWD) never run here. Its screenshots and result.json from
+# apps/desktop/.smoke are uploaded as an artifact, also when it fails.
 name: Check
 
 on:
@@ -18,17 +23,17 @@ concurrency:
 
 jobs:
   check:
-    name: npm run check (${{ matrix.os }})
+    name: Check (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [macos-15, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -44,3 +49,23 @@ jobs:
 
       - name: Typecheck and unit tests
         run: npm run check
+
+      # Switchboard drives the user's own claude binary; installing it lets the steps that read its version and
+      # command list see a real one. It is never logged in, so nothing is sent.
+      - name: Install Claude Code
+        if: ${{ !cancelled() }}
+        run: npm install --global @anthropic-ai/claude-code
+
+      # Also after failed unit tests, so one run shows both.
+      - name: Smoke test
+        if: ${{ !cancelled() }}
+        run: npm run smoke
+
+      - name: Upload screenshots and results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-${{ matrix.os }}
+          path: apps/desktop/.smoke
+          if-no-files-found: ignore
+          retention-days: 7
