@@ -1,0 +1,116 @@
+---
+title: The sidebar
+description: The list of all your sessions, grouped by what needs attention first.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+The sidebar lists your sessions across every project, grouped by what needs attention first and then by time. It is where you see at a glance which sessions are working, which wait for you, and which finished.
+
+<Screenshot name="sidebar" alt="The sidebar: Needs you and Working groups at the top, the Queue under them, then Pinned, Today, Yesterday and Earlier, with Archived docked at the bottom" width={480} eager />
+
+## Open it
+
+The sidebar is always on the left of the window. Press <Kbd shortcut="sidebar.toggle" /> or click the sidebar button at the left of a view's header to collapse it or open it again. The command palette has *Toggle sidebar*, *Open sidebar*, *Minimize sidebar* and *Close sidebar*.
+
+## What's in it
+
+At the top:
+
+- **Search sessions** filters the list by title, project or branch. To search inside conversations, use [Search](/sessions/search/) (<Kbd shortcut="search" />).
+- The **Home** button opens [Home](/sessions/home/) (<Kbd shortcut="home" />).
+- The yellow **+** button starts a [new session](/new-session/form/) (<Kbd shortcut="session.new" />).
+- **All projects** filters the list to one project. Its menu lists your projects with their session count, plus **Add project…** and **Manage projects…**. The ⋯ next to a project (or → on it) opens its options: icon, rename, open the project's page, Worktrees, Branches and more.
+
+At the bottom, the footer counts your sessions ("12 sessions · 2 open · 1 queued · 1 waiting"), shows the [focus limit](/focus-limit/) counter when it is on and the [unsent messages](/sessions/unsent-drafts/) count, and has the **Projects** and **Settings** buttons.
+
+## Sections
+
+The list is split into sections. Empty sections don't show.
+
+| Section | What's in it |
+|---|---|
+| **Needs you** | Sessions waiting for a permission, an answer or a plan review. The second line says what it asks for, such as "Permission: Bash" or "Question". |
+| **Working** | Sessions Claude is working on, the one you last sent a message to at the top. |
+| **Queue** | Prompts waiting to start, right under Working. See [Queue](/new-session/queue/). |
+| **Pinned** | Sessions you pinned. See [Pinned sessions](/sessions/pinned/). |
+| **Today**, **Yesterday**, **Earlier** | Everything else, newest first, by the day it was last active. |
+| **Archived** | Sessions that were quiet for 48 hours, or that you archived. See [Archived sessions](/sessions/archived/). |
+
+A pinned session that needs you or is working shows in Needs you or Working, and goes back to Pinned when it is done.
+
+[Quick questions](/new-session/quick-questions/) are sessions like any other: they sit in the same sections, with their own icon and *Questions* where a project name would be.
+
+Each row shows the project's icon, the title, its age, and a second line with the branch and project. The [state](/sessions/states/) shows as a coloured rail on the left edge, the colour of the age and a status icon. A pin marks a pinned session and a pen an unsent message.
+
+### Close a section
+
+Every section but Needs you closes from its header: click it, or press <Kbd shortcut="sidebar.section-toggle" /> on it. <Kbd shortcut="sidebar.sections-all" /> on a header closes or opens every section at once. **Earlier** starts closed.
+
+A closed section keeps its count and says what matters inside, such as "2 unread" or, for the Queue, "1 ready". The session you have open stays visible under its closed section, with "+N hidden" under it. Going to a session in a closed section opens it again. While you search or filter by project, every section shows.
+
+**Archived** sits docked at the bottom of the sidebar while it is closed. Click it to open it: it slides up right under your other sessions.
+
+## Work with sessions
+
+- **Open a session:** click it. <Kbd shortcut="sidebar.move" /> moves through the list.
+- **Open it beside the current one:** <Kbd shortcut="sidebar.open-beside" />. See [Split view](/sessions/split-view/).
+- **Move between sessions from anywhere:** <Kbd shortcut="session.next" /> and <Kbd shortcut="session.previous" /> go to the next and previous session in the sidebar's order, and <Kbd shortcut="session.next-needs-you" /> to the next one that needs you.
+- **Rename:** press <Kbd shortcut="sidebar.rename" />, or choose **Rename…** in the session's menu.
+- **Archive a finished session:** middle-click it (<Kbd shortcut="sidebar.archive" />). Sessions that are working, need you or failed stay where they are.
+- **Delete:** press <Kbd shortcut="sidebar.delete" />, or choose **Delete session…**. After you confirm with **Move to Trash**, the conversation and any subagent transcripts go to the Trash, so you can get them back.
+
+### The session menu
+
+Right-click a session, or press <Kbd shortcut="context-menu" /> on it, for:
+
+- **Rename…**
+- **Pin** or **Unpin**
+- **Archive** (until new activity) or **Unarchive**
+- **Open beside**
+- **Open folder in editor**
+- **Copy session ID**
+- **Delete session…**
+
+### Select several sessions
+
+<Kbd shortcut="sidebar.select" /> selects several sessions. Every row then shows a round checkbox, and a bar at the bottom of the sidebar holds the actions for the selection: **Archive** (or **Unarchive**), **Pin** (or **Unpin**) and **Delete…**.
+
+- <Kbd shortcut="sidebar.select-group" /> or **Select all** on a section header selects every session in that section.
+- <Kbd keys="space" /> ticks the focused row.
+- <Kbd shortcut="sidebar.clear-selection" /> or **Clear** ends the selection.
+- Right-click one of the selected sessions for the same actions.
+
+## Resize and collapse
+
+The sidebar has three states: **open**, a **minimal rail** of project icons, and **closed**.
+
+- Drag the sidebar's right edge to make it wider or narrower. Double-click the edge to reset the width.
+- Drag it further in and it snaps to the rail; further still, it hides. Drag the edge out again to open it at the width you had.
+- With the edge focused, ← and → step through the same states.
+- <Kbd shortcut="sidebar.toggle" /> switches between open and collapsed. Settings decides whether collapsed means the rail or hidden.
+
+Switchboard remembers the width and the state.
+
+<Screenshot name="sidebar-rail" alt="The sidebar collapsed to the minimal rail: one project icon per session, in the same groups and order" width={480} />
+
+The **minimal rail** is 80px wide: one project icon per session, in the same groups and order as the open sidebar, with the same coloured rails. Hover an icon to see the session's title, project, branch and state. Click a group's letter to open the sidebar there.
+
+With the sidebar **hidden**, the conversation takes the whole window. A <Pill tone="needs-you">needs you</Pill> pill in the header says when sessions wait for you; click it to open the one waiting longest. After a jump with <Kbd shortcut="session.next" /> or <Kbd shortcut="session.next-needs-you" />, a short label at the top of the window says where you landed.
+
+<Aside type="tip">
+<Kbd shortcut="palette.goto" /> lists your sessions in the same groups as the sidebar, so you can jump anywhere while it is collapsed.
+</Aside>
+
+## Settings
+
+In [Settings, Sidebar](/settings/#sidebar):
+
+- **Sidebar style:** **Large icons** (each project easy to spot), **Standard** (the default) or **Compact** (one line per session). The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact*.
+- **When collapsed:** what <Kbd shortcut="sidebar.toggle" /> and the sidebar button do: **Minimal rail** (the default) or **Hidden**.
+- **Show sessions from other apps:** also list sessions from Terminal, Claude desktop and your editor. Off (the default) shows only sessions you started or continued in Switchboard.
+
+<Screenshot name="settings-sidebar" alt="Settings open on Sidebar: the three sidebar styles, the When collapsed choice, and the Show sessions from other apps switch" />

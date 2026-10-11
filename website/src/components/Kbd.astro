@@ -1,0 +1,83 @@
+---
+/**
+ * A keyboard shortcut as keycaps, like the app's `Kbd`/`KeyCombo` (one cap per key, "or", "then" and "to"
+ * between them, the keys spoken as words for screen readers). Pass a registry id (`shortcut="palette.commands"`,
+ * from apps/ui/src/lib/shortcuts.ts, so it never goes stale) or keys in the stored form (`keys="mod+k"`).
+ */
+import { keyPieces, shortcutById, spokenKeys, type ShortcutId } from '../../../apps/ui/src/lib/shortcuts.ts';
+
+interface Props {
+  shortcut?: ShortcutId;
+  /** Stored form: `mod+shift+p`, `mod+1..9`, `mod+q mod+q`. Several alternatives with `|`. */
+  keys?: string;
+  /** Only the first alternative of a registry shortcut. */
+  first?: boolean;
+}
+
+const { shortcut, keys, first = false } = Astro.props;
+let combos: readonly string[];
+if (shortcut) {
+  const def = shortcutById(shortcut);
+  if (!def) throw new Error(`<Kbd>: no shortcut "${shortcut}" in the registry`);
+  combos = first ? def.keys.slice(0, 1) : def.keys;
+} else if (keys) combos = keys.split('|').map((k) => k.trim());
+else throw new Error('<Kbd> needs `shortcut` or `keys`');
+---
+
+<span class="sb-kbd not-content"><span class="sb-sr">{combos.map(spokenKeys).join(' or ')}</span>{
+  combos.map((combo, index) => (
+    <>
+      {index > 0 && <span class="sb-kbd-word" aria-hidden="true">or</span>}
+      <span class="sb-kbd-combo" aria-hidden="true">
+        {keyPieces(combo).map((piece) => ('cap' in piece ? <kbd>{piece.cap}</kbd> : <span class="sb-kbd-word">{piece.word}</span>))}
+      </span>
+    </>
+  ))
+}</span>
+
+<style>
+  .sb-kbd {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25em;
+    vertical-align: baseline;
+    white-space: nowrap;
+  }
+  .sb-kbd-combo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15em;
+  }
+  /* The app's keycap: 20px tall, a deeper bottom edge, a step above the surface. */
+  kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6em;
+    height: 1.6em;
+    padding: 0 0.35em;
+    border: 1px solid var(--sb-overlay-border);
+    border-bottom-width: 2px;
+    border-radius: var(--sb-radius-key);
+    background: color-mix(in srgb, var(--sb-text) 8%, transparent);
+    color: var(--sb-muted);
+    font-family: var(--sb-font-sans);
+    font-size: var(--sb-text-ui);
+    font-weight: 400;
+    line-height: 1;
+  }
+  .sb-kbd-word {
+    padding: 0 0.1em;
+    font-size: var(--sb-text-meta);
+    color: var(--sb-faint);
+  }
+  .sb-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+</style>

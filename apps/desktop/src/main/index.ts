@@ -29,7 +29,10 @@ const here = import.meta.dirname;
 const smokeOutDir = process.env.SWITCHBOARD_SMOKE_OUT;
 // npm run screenshots: a tour through the app in a made-up home folder, for the README.
 const screenshotOutDir = process.env.SWITCHBOARD_SCREENSHOTS_OUT;
-const scripted = Boolean(smokeOutDir || screenshotOutDir);
+// npm run website:screenshots: Playwright drives the window from outside (scripts/website-screenshots.ts); the app
+// only has to run on a throwaway profile, like the tours above.
+const driven = process.env.SWITCHBOARD_DRIVEN === '1';
+const scripted = Boolean(smokeOutDir || screenshotOutDir || driven);
 
 // `Switchboard --version` prints the version for scripts and support, before any window opens.
 if (process.argv.includes('--version')) {

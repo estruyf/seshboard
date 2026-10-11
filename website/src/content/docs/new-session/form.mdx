@@ -1,0 +1,134 @@
+---
+title: New session
+description: Pick a project, choose where Claude works, write the first prompt and start.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+New session is where every Claude Code session starts. You pick a project, choose whether Claude works on your checkout or in a new worktree, write the first prompt and press **Start**.
+
+<Screenshot name="new-session" alt="The New session view: the heading Where do we start?, four project tiles with one picked, and the message box below with a typed prompt, the route strip above it and the profile, model, effort and mode chips under it" eager />
+
+## Open it
+
+- Press <Kbd shortcut="session.new" />.
+- Click the yellow **+** button at the top of the sidebar.
+- In the command palette, run *New session…* to do it all from the keyboard (see [Start from the palette](#start-from-the-palette)), or *New session in &lt;project&gt;* for the project you have open.
+- On a project's page, <Kbd shortcut="session.new" /> and its **New session** button start in that project.
+
+When you left a prompt unsent in New session, the **+** button carries a small pen and opens New session on that prompt's project. See [Unsent messages](/sessions/unsent-drafts/).
+
+## Pick a project
+
+The view opens with the heading *Where do we start?* and your first four projects as tiles. Each tile shows the project's icon, its name and what is going on there: <Pill tone="needs-you">1 needs you</Pill>, <Pill tone="working">2 working</Pill>, or how long it has been idle.
+
+- Press <Kbd shortcut="new-session.pick" /> to pick a tile by its number. This works wherever focus is, also while you type the prompt.
+- The fifth tile, **+N more projects**, opens the full list with a filter field: type a few letters of a name, or an absolute path to use any folder. Typing a letter while a tile has focus opens the list filtered by it.
+- **Other folder…** (the last tile in the full list, or the fifth tile when you have four projects or fewer) opens the system folder dialog.
+- **Quick question**, under the tiles, starts without a project. See [Quick questions](/new-session/quick-questions/).
+
+The order of the tiles follows *Project order* in [Settings → General](/settings/#general): *Recent* (the ones you used last first) or *Your order*. New session remembers the last project you picked and opens on it next time. A project you filtered the sidebar to is picked first.
+
+When you pick a folder that isn't one of your projects yet, a checkbox under the message box, **Add &lt;folder&gt; to your projects**, adds it when the session starts. Leave it ticked to find the folder in New session next time.
+
+Under the message box, **Pick up in &lt;project&gt;** lists the project's recent sessions with their state, so you can continue one instead of starting another. **Queued in &lt;project&gt;** lists the prompts you queued there.
+
+## Choose where Claude works
+
+The strip on top of the message box says where the session runs. It shows the project, then where the edits land, then the branch. Hover it for a plain sentence, such as "Edits land directly in your working copy on main".
+
+- **Current checkout** (the default): Claude edits your working copy.
+- **New worktree**: Claude gets an isolated copy of the repository on a branch of its own. Flip the **Worktree** switch at the right of the strip, or pick it in the menu. See [Worktrees](/new-session/worktrees/).
+
+### Work on another branch
+
+On the current checkout, the branch button lists your local branches, with a search field. Pick one to check it out before the session starts. The current branch is marked `current`, with `↓3` when its upstream has commits you don't have.
+
+Switching uses git's own checkout: uncommitted changes that don't conflict come along, and git refuses when they would be overwritten. Nothing is stashed or thrown away.
+
+A folder that isn't a git repository shows `no git`, and Claude edits the folder directly.
+
+### Update from remote
+
+Your copy may be behind the remote. The button at the top right of New session offers the next step: **Fetch** to see whether the upstream moved on, or **Pull ↓2** when it did. Its ▾ menu has both. After a pull it says "Pulled 2 commits", after a fetch with nothing new "Up to date". In the command palette, *Update from remote* runs the same step.
+
+Next to it, the **Open in** button opens the project in your editor, terminal or Finder.
+
+## Write the prompt
+
+The message box works the same as in a session:
+
+- <Kbd shortcut="composer.send" /> starts, <Kbd shortcut="composer.newline" /> adds a new line.
+- Type <Kbd shortcut="composer.commands" /> for commands and skills, <Kbd shortcut="composer.mention" /> to mention a file.
+- Paste, drop or attach images, and add files as context with <Kbd shortcut="composer.add-context" />.
+- <Kbd shortcut="composer.history" first /> on the first line brings back the first prompts of your earlier sessions in this project.
+
+The box takes the colour of the picked project, with a faint ring around it.
+
+Under the message box sit the chips for the Claude profile (with more than one profile), the model, the effort and the permission mode. They show only the value, such as "Opus 4.5", "Medium" or "Auto". See [Model, effort and mode](/new-session/models-and-options/). On the right of that line you see your plan usage for the profile the session uses.
+
+Prompts you write here and don't start are kept per project, also after you quit. Pick the project again and the prompt comes back, with a banner that says so and a **Discard** button.
+
+## Start a session
+
+**Start** is a split button. The main part starts the session (<Kbd shortcut="new-session.start" />). The ▾ next to it holds the other ways to start:
+
+| Choice | Shortcut | What it does |
+|---|---|---|
+| **Start session** | <Kbd shortcut="new-session.start" /> | Starts the session with the choices on screen. |
+| **Add to queue** | <Kbd shortcut="new-session.queue" /> | Keeps the prompt, project and choices in the [queue](/new-session/queue/) to start later. |
+| **Start in a new worktree** | | Starts this one session in a new worktree, leaving the route and the project's default as they are. Shown in a git repository while the route is the current checkout. |
+
+When something stops Start, its tooltip says why: "Type a message first", "Choose a folder first", or the focus limit.
+
+The session opens as soon as it starts. Claude Code was already warmed up in the folder while you typed, so the first reply comes quickly.
+
+## Project defaults
+
+New session starts from the project's defaults: model, effort, permission mode, current checkout or worktree, what a worktree branches from, and a branch. Fields the project leaves unset use the choices you made last in New session.
+
+Change something for one session, and it applies to that session only. To keep it, open the **Where** menu (the route button in the strip) and choose **Save as project default**, or run *Save as project default* in the command palette. A line under the message box confirms it ("Saved as acme-store's defaults"). The menu item says **Saved** when the choices on screen already are the defaults.
+
+You can also edit the defaults on the project's [Settings tab](/projects/settings/).
+
+## Pick a profile for one session
+
+With more than one [Claude profile](/settings/claude-profiles/), the first chip under the message box shows the profile the session runs on. It starts on the project's profile, or the default one, marked "(project)" or "(default)" in the menu. Pick another for this session only. The usage on the right follows the profile you pick.
+
+## At the focus limit
+
+With the [focus limit](/focus-limit/) on and reached, a note above the message box lists the sessions that count, each with **Open**, and **Change limit** opens Settings. Its **Add to queue** keeps the idea for later.
+
+- **Nudge**: Start asks first, and the note also has **Start anyway**.
+- **Strict**: Start waits until you finish, read or archive a session. **Add to queue** stays in Start's menu.
+
+## Start from the palette
+
+The command palette can start a session without leaving the keyboard.
+
+<Steps>
+
+1. Press <Kbd shortcut="palette.commands" first /> and choose *New session…*, or type `+` in the palette.
+2. Pick a project: type a few letters, or press <Kbd shortcut="new-session.pick" />. <Kbd keys="alt+enter" /> picks it in a new worktree, and <Kbd keys="mod+o" /> chooses another folder.
+3. Write the prompt in the small New session form. It has the route, the branch and the same chips.
+4. Press <Kbd keys="mod+enter" /> to start, or <Kbd keys="mod+shift+enter" /> to add it to the queue.
+
+</Steps>
+
+<Kbd keys="mod+e" /> moves the prompt and choices to the full New session view. <Kbd keys="escape" /> closes the palette and keeps what you typed as the project's unsent prompt. See [Command palette](/command-palette/).
+
+<Screenshot name="palette-new-session" alt="The command palette's New session step: recent projects with their branch, their status and a shortcut from ⌘1 to ⌘4 each" width={720} />
+
+## Start from a link
+
+A `switchboard://new-session` link opens New session with a project and a prompt filled in. You read the prompt and press Start yourself, unless the link says `autostart=1`. A line under the message box says the prompt came from a link, with **Clear**. See [Links](/links/).
+
+## Settings
+
+- [Settings → General](/settings/#general): *Project order* sets how the tiles are ordered, and Switchboard can open on New session.
+- [Settings → Claude profiles](/settings/#claude-profiles): the profiles you can pick from.
+- [Settings → Focus](/settings/#focus): the focus limit.
+- A project's [Settings tab](/projects/settings/): its defaults and profile.
