@@ -4523,7 +4523,8 @@ const inRunningFolder = (root: string, folders: string[]) => folders.some((folde
  * Opens the newest session with messages and tool activity (a brand-new or chat-only one has less to check);
  * failing that, the newest with messages. Later steps (actions, Changes, git) need its folder to be known.
  * Never a running session (`runningSessions`): later steps type drafts into it and run actions in its folder.
- * Those rows are not even clicked. Nor one in a running session's folder (`inRunningFolder`).
+ * Those rows are not even clicked. Nor one whose own folder or project root is in a running session's folder
+ * (`inRunningFolder`).
  */
 async function openSmokeSession(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -4545,9 +4546,11 @@ async function openSmokeSession(win: BrowserWindow): Promise<string> {
     if (tried === 8) break;
     await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
     if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('[data-current-session] [data-transcript-item]')`, 5_000))) continue;
-    const root = String(await js("document.querySelector('[data-current-session]')?.dataset.projectRoot ?? ''"));
+    const { root, cwd } = (await js("(() => { const view = document.querySelector('[data-current-session]'); return { root: view?.dataset.projectRoot ?? '', cwd: view?.dataset.cwd ?? '' }; })()")) as { root: string; cwd: string };
     if (!isAbsolutePath(root)) continue;
-    if (inRunningFolder(root, running.folders)) {
+    // The terminal and the actions run in the session's own folder (a worktree's, or a subfolder of the project) or in
+    // the project's root: neither may be where Claude Code is working.
+    if (inRunningFolder(root, running.folders) || (isAbsolutePath(cwd) && inRunningFolder(cwd, running.folders))) {
       shared++;
       continue;
     }
