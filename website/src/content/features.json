@@ -1147,6 +1147,11 @@
       "page": "terminal-changes-git/git"
     },
     {
+      "id": "feature:compacted-conversation",
+      "name": "Compacted conversations show in full",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:composer-chips",
       "name": "Profile, model, effort and mode chips",
       "page": "sessions/conversation"
@@ -1520,6 +1525,11 @@
       "id": "feature:memory-health-tidy",
       "name": "Tidy with Claude…",
       "page": "memory/health"
+    },
+    {
+      "id": "feature:memory-import-menu",
+      "name": "Import menu on the Memory tab",
+      "page": "memory/import"
     },
     {
       "id": "feature:memory-index-meter",
@@ -1982,6 +1992,11 @@
       "page": "memory/adding-memory"
     },
     {
+      "id": "feature:remember-this-toolbar",
+      "name": "Remember this from the hover toolbar",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:remove-profile",
       "name": "Remove a profile",
       "page": "settings/claude-profiles"
@@ -2055,6 +2070,11 @@
       "id": "feature:session-hud",
       "name": "Where you landed label",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:session-memories-menu",
+      "name": "Memories from this session",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:session-profile-chip",

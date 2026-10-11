@@ -110,7 +110,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return void vscode.window.showInformationMessage('Open a file first.');
     const { document } = editor;
-    if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled') return void vscode.window.showInformationMessage('Only files on this Mac can be added to Switchboard.');
+    if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled') return void vscode.window.showInformationMessage('Only files on this computer can be added to Switchboard.');
     const selections = editor.selections.filter((s) => !s.isEmpty);
     await send(await rangeItems(document, selections.length ? selections : [editor.selection]));
   });
