@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { posixQuote, powershellQuote, userShell, windowsPowershellQuote, windowsUnsafe } from './shell.ts';
+import { posixQuote, powershellQuote, pwshVersion, userShell, windowsPowershellQuote, windowsUnsafe } from './shell.ts';
 
 /**
  * Time for the tests that start real shells, each several times: Windows PowerShell 5.1 takes a second or more to
@@ -23,12 +23,25 @@ describe('userShell', () => {
 
   it('is PowerShell 7 on Windows when it is on PATH, else Windows PowerShell', () => {
     const env = { PATH: 'C:\\Windows\\System32;C:\\Program Files\\PowerShell\\7', SystemRoot: 'C:\\Windows' };
-    const pwsh = userShell(env, 'win32', (p) => p === 'C:\\Program Files\\PowerShell\\7\\pwsh.exe');
+    const found = (p: string) => p === 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
+    const deps = (version: string) => (p: string) => (p === 'C:\\Program Files\\PowerShell\\7\\pwsh.deps.json' ? `{ "targets": { "x": { "pwsh/${version}": {} } } }` : null);
+    const pwsh = userShell(env, 'win32', found, deps('7.4.6'));
     expect(pwsh).toMatchObject({ file: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', kind: 'powershell', interactive: ['-NoLogo', '-ExecutionPolicy', 'Bypass'] });
     expect(pwsh.quote).toBe(powershellQuote);
+    // 7.0 to 7.2 hand double quotes to programs as Windows PowerShell does; an unknown version is taken as current.
+    expect(userShell(env, 'win32', found, deps('7.2.24')).quote).toBe(windowsPowershellQuote);
+    expect(userShell(env, 'win32', found, deps('7.3.0')).quote).toBe(powershellQuote);
+    expect(userShell(env, 'win32', found, () => null).quote).toBe(powershellQuote);
     const windowsPowershell = userShell(env, 'win32', () => false);
     expect(windowsPowershell.file).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
     expect(windowsPowershell.quote).toBe(windowsPowershellQuote);
+  });
+
+  it("reads PowerShell 7's version from pwsh.deps.json", () => {
+    expect(pwshVersion('{ "targets": { ".NETCoreApp,Version=v9.0/win-x64": { "pwsh/7.6.6.500": {} } } }')).toEqual([7, 6]);
+    expect(pwshVersion('{ "pwsh/7.10.1": {} }')).toEqual([7, 10]);
+    expect(pwshVersion('{}')).toBeNull();
+    expect(pwshVersion(null)).toBeNull();
   });
 
   it('hands PowerShell the command encoded, so nothing in between can change it', () => {

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { win32 } from 'node:path';
 
 /** The shell terminal tabs and shell actions run in, and how to talk to it. */
@@ -31,10 +31,41 @@ export const powershellQuote = (value: string) => `'${value.replace(/['‘’‚
  * Quotes a value for Windows PowerShell 5.1. It hands an argument to a program without escaping its double quotes,
  * so `a "b" --amend` arrived as several arguments. They are escaped here the way programs read them (`\"`, with any
  * backslashes before them doubled), and a trailing backslash is doubled when PowerShell wraps the value in quotes
- * for its spaces. PowerShell 7.3 and later do this themselves: there `powershellQuote` is right.
+ * for its spaces. PowerShell 7.0 to 7.2 do the same. 7.3 and later escape them themselves: there `powershellQuote`
+ * is right.
  */
 export const windowsPowershellQuote = (value: string) =>
   powershellQuote(value.replace(/(\\*)"/g, '$1$1\\"').replace(/\\+$/, (tail) => (/\s/.test(value) ? tail + tail : tail)));
+
+/** PowerShell 7's version as `[major, minor]`, from the `pwsh.deps.json` next to `pwsh.exe` (`"pwsh/7.4.6"`), or null. */
+export function pwshVersion(deps: string | null): [number, number] | null {
+  const match = deps ? /"pwsh\/(\d+)\.(\d+)/.exec(deps) : null;
+  return match ? [Number(match[1]), Number(match[2])] : null;
+}
+
+/** pwsh.deps.json files read so far: they don't change while the app runs, and each is about 100 KB. */
+const depsFiles = new Map<string, string | null>();
+const readDeps = (path: string) => {
+  if (!depsFiles.has(path)) {
+    let text: string | null = null;
+    try {
+      text = readFileSync(path, 'utf8');
+    } catch {
+      // Not there: a Store install's pwsh.exe is an alias in WindowsApps.
+    }
+    depsFiles.set(path, text);
+  }
+  return depsFiles.get(path)!;
+};
+
+/**
+ * Whether this `pwsh.exe` escapes double quotes in what it hands a program, as PowerShell 7.3 and later do. 7.0 to
+ * 7.2 pass them on as Windows PowerShell does. A version that can't be read (a Store install) is taken as current.
+ */
+const escapesQuotes = (file: string, read: (path: string) => string | null) => {
+  const version = pwshVersion(read(win32.join(win32.dirname(file), 'pwsh.deps.json')));
+  return !version || version[0] > 7 || (version[0] === 7 && version[1] >= 3);
+};
 
 /**
  * What an action may not put in a command on Windows. When an action calls a `.cmd` or `.bat` program (gradlew.bat,
@@ -60,8 +91,16 @@ const EXIT_CODE = '\nif (-not $?) { exit $(if ($LASTEXITCODE) { $LASTEXITCODE } 
  * PowerShell runs with `-ExecutionPolicy Bypass`, for that process only: Windows PowerShell refuses scripts by
  * default, and `npm`, `npx` and `pnpm` are `.ps1` scripts there, so `npm run …` actions and the user's profile
  * would fail. A policy set by Group Policy still wins.
+ *
+ * Values are quoted for how this PowerShell hands arguments to programs: `powershellQuote` for 7.3 and later, which
+ * escape double quotes themselves, `windowsPowershellQuote` for Windows PowerShell and 7.0 to 7.2.
  */
-export function userShell(env: Record<string, string>, platform: NodeJS.Platform = process.platform, exists: (path: string) => boolean = existsSync): UserShell {
+export function userShell(
+  env: Record<string, string>,
+  platform: NodeJS.Platform = process.platform,
+  exists: (path: string) => boolean = existsSync,
+  read: (path: string) => string | null = readDeps,
+): UserShell {
   if (platform !== 'win32') {
     return { file: env.SHELL || '/bin/zsh', kind: 'posix', interactive: ['-l'], run: (command) => ['-ilc', command], quote: posixQuote, unsafe: () => null };
   }
@@ -76,7 +115,7 @@ export function userShell(env: Record<string, string>, platform: NodeJS.Platform
     kind: 'powershell',
     interactive: ['-NoLogo', '-ExecutionPolicy', 'Bypass'],
     run: (command) => ['-NoLogo', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(command + EXIT_CODE, 'utf16le').toString('base64')],
-    quote: pwsh ? powershellQuote : windowsPowershellQuote,
+    quote: pwsh && escapesQuotes(pwsh, read) ? powershellQuote : windowsPowershellQuote,
     unsafe: windowsUnsafe,
   };
 }
