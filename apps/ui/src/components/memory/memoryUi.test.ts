@@ -85,7 +85,7 @@ describe('paths inside the project', () => {
   it('shows them relative to the project, on macOS and Windows', () => {
     expect(relativeTo('/Users/me/app', '/Users/me/app/.claude/rules/ui.md')).toBe('.claude/rules/ui.md');
     expect(relativeTo('/Users/me/app', '/Users/me/app-other/CLAUDE.md')).toBe('/Users/me/app-other/CLAUDE.md');
-    expect(relativeTo('C:\\Users\\me\\app', 'C:\\Users\\me\\app\\.claude\\rules\\ui.md')).toBe('.claude\\rules\\ui.md');
+    expect(relativeTo('C:\\Users\\me\\app', 'C:\\Users\\me\\app\\.claude\\rules\\ui.md')).toBe('.claude/rules/ui.md');
     // Windows compares folders without regard to case.
     expect(relativeTo('C:\\Users\\me\\app', 'c:\\users\\me\\APP\\CLAUDE.md')).toBe('CLAUDE.md');
     expect(relativeTo('C:\\Users\\me\\app', 'C:\\Users\\me\\app')).toBe('C:\\Users\\me\\app');
