@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ariaKeysFor,
   ariaShortcut,
@@ -8,9 +8,11 @@ import {
   formatShortcut,
   isStoredShortcut,
   keysFor,
+  localizeKeys,
+  modKey,
   matches,
   normalizeShortcut,
-  RESERVED_SHORTCUTS,
+  reservedShortcuts,
   sameShortcut,
   shortcutById,
   shortcutFromEvent,
@@ -76,10 +78,10 @@ describe('shortcuts', () => {
     expect(isStoredShortcut('⌘,')).toBe(false);
   });
   it('reserves the app and menu shortcuts', () => {
-    for (const key of ['cmd+k', 'cmd+f', 'cmd+g', 'cmd+\\', 'cmd+,', 'cmd+shift+f', 'cmd+shift+h', 'cmd+shift+d', 'cmd+shift+l', 'cmd+enter']) expect(RESERVED_SHORTCUTS.has(key)).toBe(true);
-    expect(RESERVED_SHORTCUTS.has(shortcutFromEvent(press('K', { metaKey: true }))!)).toBe(true);
-    expect(RESERVED_SHORTCUTS.has(shortcutFromEvent(press(',', { metaKey: true }))!)).toBe(true);
-    expect(RESERVED_SHORTCUTS.has('cmd+shift+b')).toBe(false);
+    for (const key of ['cmd+k', 'cmd+f', 'cmd+g', 'cmd+\\', 'cmd+,', 'cmd+shift+f', 'cmd+shift+h', 'cmd+shift+d', 'cmd+shift+l', 'cmd+enter']) expect(reservedShortcuts().has(key)).toBe(true);
+    expect(reservedShortcuts().has(shortcutFromEvent(press('K', { metaKey: true }))!)).toBe(true);
+    expect(reservedShortcuts().has(shortcutFromEvent(press(',', { metaKey: true }))!)).toBe(true);
+    expect(reservedShortcuts().has('cmd+shift+b')).toBe(false);
   });
 });
 
@@ -182,12 +184,12 @@ describe('the shortcut registry', () => {
   it('reserves every registry key with a modifier, and the menu bar', () => {
     for (const def of SHORTCUTS as readonly ShortcutDef[]) {
       if (def.reserve === false) continue;
-      for (const press of def.keys.flatMap(comboPresses).filter((p) => p.includes('+'))) expect(RESERVED_SHORTCUTS.has(press), `${def.id}: ${press}`).toBe(true);
+      for (const press of def.keys.flatMap(comboPresses).filter((p) => p.includes('+'))) expect(reservedShortcuts().has(press), `${def.id}: ${press}`).toBe(true);
     }
-    for (const key of ['cmd+/', 'cmd+shift+j', 'cmd+q', 'cmd+c', 'cmd+w', 'shift+tab']) expect(RESERVED_SHORTCUTS.has(key), key).toBe(true);
+    for (const key of ['cmd+/', 'cmd+shift+j', 'cmd+q', 'cmd+c', 'cmd+w', 'shift+tab']) expect(reservedShortcuts().has(key), key).toBe(true);
     // ⌘1 to ⌘9 only pick projects in New session, where actions don't run.
-    expect(RESERVED_SHORTCUTS.has('cmd+1')).toBe(false);
-    expect([...RESERVED_SHORTCUTS].filter((k) => !k.includes('+'))).toEqual([]);
+    expect(reservedShortcuts().has('cmd+1')).toBe(false);
+    expect([...reservedShortcuts()].filter((k) => !k.includes('+'))).toEqual([]);
   });
 
   it('decides where each shortcut works', () => {
@@ -280,5 +282,59 @@ describe('shortcut collisions', () => {
   it('every intended overlap still happens (so the list stays honest)', () => {
     const found = overlaps();
     for (const press of Object.keys(INTENDED_OVERLAPS)) expect(found.has(press), press).toBe(true);
+  });
+
+  it('on Windows, where mod is Ctrl, only the same overlaps happen', () => {
+    vi.stubGlobal('window', { switchboard: { platform: 'win32' } });
+    try {
+      const intended = new Set(Object.keys(INTENDED_OVERLAPS).map((press) => press.replace(/^cmd\+/, 'ctrl+')));
+      expect([...overlaps()].filter(([press]) => !intended.has(press)).map(([press, pairs]) => `${press}: ${[...pairs].join(', ')}`)).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('shortcuts on Windows', () => {
+  beforeEach(() => vi.stubGlobal('window', { switchboard: { platform: 'win32' } }));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads mod, and ⌘ saved on a Mac, as Ctrl', () => {
+    expect(normalizeShortcut('mod+shift+p')).toBe('ctrl+shift+p');
+    expect(normalizeShortcut('cmd+shift+t')).toBe('ctrl+shift+t');
+    expect(normalizeShortcut('cmd+ctrl+f')).toBe('ctrl+f');
+    expect(keysFor('palette.commands')).toBe('ctrl+k');
+    expect(matches(press('k', { ctrlKey: true }), 'palette.commands')).toBe(true);
+    expect(matches(press('k', { metaKey: true }), 'palette.commands')).toBe(false);
+    expect(modKey({ metaKey: false, ctrlKey: true })).toBe(true);
+  });
+
+  it('writes keys as words joined with +', () => {
+    expect(formatShortcut('mod+shift+p')).toBe('Ctrl+Shift+P');
+    expect(formatKeys('mod+q mod+q')).toBe('Ctrl+Q then Ctrl+Q');
+    expect(formatKeys('mod+1..9')).toBe('Ctrl+1 to Ctrl+9');
+    expect(formatKeys('alt+click')).toBe('Alt+click');
+    expect(formatKeys('mod+enter')).toBe('Ctrl+Enter');
+    expect(spokenKeys('mod+enter')).toBe('Control, Enter');
+    expect(ariaShortcut('mod+k')).toBe('Control+K');
+  });
+
+  it('writes glyphs typed for a button or hint the same way', () => {
+    expect(shortcutGlyphs('⌘↵')).toBe('Ctrl+Enter');
+    expect(localizeKeys('⌘⇧L')).toBe('Ctrl+Shift+L');
+    expect(localizeKeys('⌘⌫')).toBe('Ctrl+Backspace');
+    expect(localizeKeys('⌥')).toBe('Alt');
+    expect(localizeKeys('Click to open · ⌥-click to open beside')).toBe('Click to open · Alt+click to open beside');
+    expect(localizeKeys('⌘, or ⇧')).toBe('Ctrl, or Shift');
+    // Names and paths in a hint keep their own plus signs.
+    expect(localizeKeys('src/c++ · repo+ · a+-click')).toBe('src/c++ · repo+ · a+-click');
+    expect(shortcutGlyphs('Esc')).toBe('Esc');
+  });
+
+  it("reserves Windows' menu keys", () => {
+    expect(reservedShortcuts().has('ctrl+k')).toBe(true);
+    expect(reservedShortcuts().has('ctrl+y')).toBe(true);
+    expect(reservedShortcuts().has('f11')).toBe(true);
+    expect(reservedShortcuts().has('cmd+k')).toBe(false);
   });
 });

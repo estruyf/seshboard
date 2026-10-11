@@ -1,4 +1,4 @@
-import type { CompanionSession, CompanionStatus, LiveSession, PermissionRequest, SessionHostInfo, SessionSummary } from '@switchboard/protocol';
+import { isSameOrInside, type CompanionSession, type CompanionStatus, type LiveSession, type PermissionRequest, type SessionHostInfo, type SessionSummary } from '@switchboard/protocol';
 
 /** What the engine knows about sessions: transcripts, running processes, and the ones this app runs. */
 export interface SessionSources {
@@ -123,11 +123,11 @@ export function companionSessions(sources: SessionSources, { now = Date.now(), k
   return out;
 }
 
-/** `path` is `folder` or inside it. */
-export const isWithin = (path: string, folder: string) => {
-  const root = folder.replace(/\/+$/, '') || '/';
-  return path === root || path.startsWith(root === '/' ? '/' : `${root}/`);
-};
+/**
+ * `path` is `folder` or inside it. On Windows without regard to case or slash: VS Code reports `c:\…` where
+ * Claude Code writes `C:\…`.
+ */
+export const isWithin = (path: string, folder: string) => isSameOrInside(path, folder);
 
 /**
  * Whether a session belongs to one of the workspace folders: it works in one of them (or below it), or one of them

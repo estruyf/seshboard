@@ -1,6 +1,6 @@
 import { Settings2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { ListedAction } from '@switchboard/protocol/client';
+import { isAbsolutePath, type ListedAction } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
@@ -12,7 +12,7 @@ import type { MenuEntry } from '../Menu.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { ActionEditor, DeleteActionDialog } from './ActionEditor.tsx';
 import { applySavedAction, withoutAction } from './actionForm.ts';
-import { sameShortcut } from '../../lib/shortcuts.ts';
+import { appKeyInTerminal, sameShortcut } from '../../lib/shortcuts.ts';
 import { ACTION_ICON, formatShortcut, shortcutFromEvent, useProjectActionList } from './useActions.ts';
 
 export interface ActionsMenu {
@@ -55,7 +55,7 @@ export function useActionsMenu({
   active?: boolean;
 }): ActionsMenu {
   // A session whose folder is unknown has no real project to keep actions for: saving would be refused.
-  const projectRoot = root?.startsWith('/') ? root : null;
+  const projectRoot = root && isAbsolutePath(root) ? root : null;
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const { actions, sharedFile, errors, reload, update } = useProjectActionList(projectRoot);
@@ -109,8 +109,9 @@ export function useActionsMenu({
       // Something else took the key (recording a shortcut in the action editor), a dialog is open, or
       // the session isn't on screen (Settings or another view is over it).
       if (event.defaultPrevented || useSessions.getState().view !== 'session' || document.querySelector('[aria-modal="true"]')) return;
-      // In a terminal, ⌃ and ⌥ keys belong to the shell (⌃C stops a running action); only ⌘ shortcuts run actions there.
-      if (!event.metaKey && (event.target as HTMLElement | null)?.closest?.('.xterm')) return;
+      // In a terminal, the shell's keys stay the shell's (⌃C stops a running action): only ⌘ shortcuts run actions
+      // there on macOS, Ctrl+Shift ones elsewhere.
+      if (!appKeyInTerminal(event) && (event.target as HTMLElement | null)?.closest?.('.xterm')) return;
       const shortcut = shortcutFromEvent(event);
       const action = shortcut && withShortcut.find((a) => sameShortcut(a.shortcut!, shortcut));
       if (action) {

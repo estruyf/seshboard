@@ -1,0 +1,46 @@
+# Typecheck and unit tests on macOS and Windows, for every pull request and every push to main, so a change
+# for one platform can't break the other. The smoke test isn't run here: it drives the app against a real
+# ~/.claude with sessions in it, which a runner doesn't have.
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: npm run check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The engine's tests make real git repositories and commits.
+      - name: Git identity for the tests
+        run: |
+          git config --global user.name "Switchboard CI"
+          git config --global user.email "ci@switchboard.invalid"
+
+      - name: Typecheck and unit tests
+        run: npm run check

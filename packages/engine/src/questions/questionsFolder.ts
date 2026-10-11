@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { RpcError } from '@switchboard/protocol';
+import { isSameOrInside, RpcError } from '@switchboard/protocol';
 
 /**
  * The scratch folder every quick question runs in: one folder in the app's data folder, shared by all
@@ -17,9 +17,7 @@ export class QuestionsFolder {
 
   /** The folder itself, or a folder inside it (Claude may `cd` into one it made). */
   contains(path: string): boolean {
-    const dir = this.path.replace(/\/+$/, '');
-    const other = path.replace(/\/+$/, '');
-    return other === dir || other.startsWith(`${dir}/`);
+    return isSameOrInside(path, this.path);
   }
 
   /** Refuses anything that would make the folder a project (add, rename, icon, profile, defaults). */

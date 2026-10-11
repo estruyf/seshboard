@@ -10,9 +10,13 @@ files:
   - package.json
   # Switchboard runs the user's installed `claude`; the SDK's bundled copy (~220 MB) is not shipped.
   - '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'
-  # node-pty: only the JS and this platform's prebuilt binaries are needed at runtime.
+  # node-pty: only the JS and this platform's prebuilt binaries are needed at runtime (the platform's own
+  # `files` below leave out the other one's), without their debug symbols.
+  # A platform's `files` is a list of its own, and one with only `!` patterns means "everything else in
+  # apps/desktop" (src, scripts, .smoke): each repeats out/** and package.json. scripts/dist.mjs checks
+  # that nothing else ends up in app.asar.
   - '!node_modules/node-pty/{deps,third_party,src,scripts,typings,binding.gyp}/**'
-  - '!node_modules/node-pty/prebuilds/win32-*/**'
+  - '!node_modules/node-pty/prebuilds/**/*.pdb'
 # Native modules must live outside the asar archive to be loaded and (spawn-helper) executed.
 asarUnpack:
   - node_modules/node-pty/**
@@ -22,6 +26,10 @@ electronLanguages: [en]
 npmRebuild: false
 mac:
   icon: build/icon.icns
+  files:
+    - out/**
+    - package.json
+    - '!node_modules/node-pty/prebuilds/win32-*/**'
   category: public.app-category.developer-tools
   target:
     - target: dmg
@@ -41,14 +49,40 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
 dmg:
   title: Switchboard
+win:
+  icon: build/icon.ico
+  files:
+    - out/**
+    - package.json
+    - '!node_modules/node-pty/prebuilds/darwin-*/**'
+    # node-pty's install leaves a copy of conpty for the build machine's architecture here; the app loads the
+    # one in prebuilds/win32-<arch> instead.
+    - '!node_modules/node-pty/build/**'
+  # One installer for both: it installs the build that matches the PC.
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  # Signing: the release workflow passes Azure Trusted Signing's settings (azureSignOptions) or a
+  # certificate file (WIN_CSC_LINK); without either the build is unsigned (docs/building-and-signing.md).
+# The installer installs for the current user, without asking for an administrator, in
+# %LOCALAPPDATA%\Programs\switchboard (scripts/dist.mjs gives it that name), and the in-app updater installs updates the same way (latest.yml).
+nsis:
+  oneClick: true
+  perMachine: false
+  shortcutName: Switchboard
+  # No spaces: GitHub turns them into dots in release assets, and latest.yml has to name the file as uploaded.
+  artifactName: ${productName}-${version}-setup.${ext}
+  include: build/installer.nsh
 # Names the helper apps "Switchboard Helper" instead of "Electron Helper" in macOS prompts (runs before signing).
 afterPack: scripts/afterPack.mjs
-# switchboard:// links (docs/deep-links.md): declared in Info.plist so macOS opens them with the app.
+# switchboard:// links (docs/deep-links.md): declared in Info.plist so macOS opens them with the app. On Windows the
+# app registers them for the user when it starts (setAsDefaultProtocolClient), and the uninstaller removes them.
 protocols:
   - name: Switchboard link
     schemes: [switchboard]
-# The update feed: packaged apps get app-update.yml pointing here, and the build writes latest-mac.yml
-# (nightly-mac.yml when built with -c.publish.channel=nightly, as the release workflow does for a -nightly. version).
+# The update feed: packaged apps get app-update.yml pointing here, and the build writes latest-mac.yml, or latest.yml
+# on Windows (nightly-mac.yml and nightly.yml when built with -c.publish.channel=nightly, as the release workflow
+# does for a -nightly. version).
 # Nothing is uploaded by electron-builder (--publish never);
 # the release workflow attaches the files. Preview builds (npm run dist:preview, electron-builder.preview.yml)
 # set publish to null, so they have no app-update.yml and can never update from, or be offered as, a release.

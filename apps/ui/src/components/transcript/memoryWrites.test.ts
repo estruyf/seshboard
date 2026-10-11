@@ -36,4 +36,17 @@ describe('memory writes in the conversation', () => {
   it('falls back to any .claude folder while the profiles aren’t known', () => {
     expect(memoryWriteOf('Write', { file_path: '/elsewhere/.claude/projects/x/memory/a.md' }, { home: null, configDirs: [], personalDir: null })).not.toBeNull();
   });
+
+  it('reads Windows paths, as Claude Code writes them there', () => {
+    const win: MemoryFolders = { home: 'C:\\Users\\me', configDirs: ['C:\\Users\\me\\.claude'], personalDir: 'C:\\Users\\me\\Notes\\memory' };
+    expect(memoryWriteOf('Write', { file_path: 'C:\\Users\\me\\.claude\\projects\\C--Users-me-app\\memory\\sidebar-order.md', content: memory }, win)).toMatchObject({ name: 'sidebar-order', type: 'project', personal: false });
+    // Windows compares folders without regard to case, and Claude may write `~\`.
+    expect(memoryWriteOf('Edit', { file_path: 'c:\\users\\ME\\.claude\\projects\\C--Users-me-app\\memory\\notes.md' }, win)).toMatchObject({ name: 'notes' });
+    expect(memoryWriteOf('Write', { file_path: '~\\.claude\\projects\\C--Users-me-app\\memory\\a.md', content: 'x' }, win)?.path).toBe('C:\\Users\\me\\.claude\\projects\\C--Users-me-app\\memory\\a.md');
+    expect(memoryWriteOf('Edit', { file_path: 'C:\\Users\\me\\notes\\memory\\profile.md' }, win)).toMatchObject({ name: 'profile', personal: true });
+    // The index in any case is still the index.
+    expect(memoryWriteOf('Write', { file_path: 'C:\\Users\\me\\.claude\\projects\\C--Users-me-app\\memory\\memory.md', content: '- x' }, win)).toBeNull();
+    expect(memoryWriteOf('Write', { file_path: 'C:\\Users\\me\\code\\app\\memory\\notes.md', content: 'x' }, win)).toBeNull();
+    expect(memoryWriteOf('Write', { file_path: 'D:\\elsewhere\\.claude\\projects\\x\\memory\\a.md' }, { home: null, configDirs: [], personalDir: null })).not.toBeNull();
+  });
 });

@@ -1,14 +1,14 @@
 import { execFile } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import * as vscode from 'vscode';
 import type { CompanionSessions, CompanionTarget, ContextItemInput } from '@switchboard/protocol/companion-client';
 import { SwitchboardConnection, type CompanionClient } from './connection.ts';
 import { deniedByRead, excludedBy, readRules, type ClaudeSettingsFile } from './exclusions.ts';
 import { describeItems, itemPaths, problemsItem, resourceItems, selectionItem, terminalItem, type EditorSelection, type Problem } from './payload.ts';
 import { PromptNotifier } from './promptNotifier.ts';
-import { focusedTarget, folderFor, sessionRow, statusBarView } from './targets.ts';
+import { focusedTarget, folderFor, isWithin, sessionRow, statusBarView } from './targets.ts';
 
 /** Switchboard's bundle id, to open it without changing what it shows. */
 const APP_ID = 'dev.switchboard.app';
@@ -32,6 +32,15 @@ function shortPath(path: string): string {
 const run = (command: string, args: string[], cwd?: string) =>
   new Promise<boolean>((resolve) => execFile(command, args, { cwd, timeout: 5_000 }, (error) => resolve(!error)));
 
+/**
+ * Opens a `switchboard://` link with whichever Switchboard the system knows: `open` on macOS, the shell's URL handler
+ * on Windows (no shell in between, so nothing in the link is read as a command).
+ */
+const openLink = (link: string) => (process.platform === 'win32' ? run('rundll32.exe', ['url.dll,FileProtocolHandler', link]) : run('open', [link]));
+
+/** Brings Switchboard up without changing what it shows: by its bundle id on macOS, with `switchboard://show` elsewhere. */
+const showApp = () => (process.platform === 'darwin' ? run('open', ['-b', APP_ID]) : openLink('switchboard://show'));
+
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('Switchboard', { log: true });
   const connection = new SwitchboardConnection({
@@ -45,9 +54,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   /** Opens Switchboard (it isn't running), then waits for its engine. */
   const launch = async (folder: string | null): Promise<CompanionClient | null> => {
-    const opened = await run('open', ['-b', APP_ID]);
+    const opened = await showApp();
     // Not installed under that id (a build from source): a switchboard:// link still starts whichever copy macOS knows.
-    if (!opened) await run('open', [folder ? `switchboard://new-session?cwd=${encodeURIComponent(folder)}` : 'switchboard://new-session']);
+    if (!opened) await openLink(folder ? `switchboard://new-session?cwd=${encodeURIComponent(folder)}` : 'switchboard://new-session');
     return vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Starting Switchboard…' }, () => connection.waitForStart());
   };
 
@@ -79,7 +88,7 @@ export function activate(context: vscode.ExtensionContext): void {
       let snapshot = await client.call('sessions.list', { folders });
       // Running without a window (closed with ⌘W): opening it brings one back.
       if (snapshot.windows === 0) {
-        await run('open', ['-b', APP_ID]);
+        await showApp();
         await new Promise((resolve) => setTimeout(resolve, 1_500));
         client = (await connection.connect()) ?? client;
         snapshot = await client.call('sessions.list', { folders });
@@ -171,7 +180,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const snapshot = await client.call('sessions.list', { folders });
     const target = await pickTarget(snapshot, folders, null, 'Show in Switchboard');
     if (target?.kind === 'session') await client.call('session.reveal', { sessionId: target.sessionId });
-    else if (target?.kind === 'new') await run('open', [`switchboard://new-session?cwd=${encodeURIComponent(target.cwd)}`]);
+    else if (target?.kind === 'new') await openLink(`switchboard://new-session?cwd=${encodeURIComponent(target.cwd)}`);
   };
   command('switchboard.showSessions', () => showSessions().catch((error: Error) => vscode.window.showErrorMessage(`Couldn't reach Switchboard: ${error.message}`)));
   command('switchboard.answerPrompts', async () => {
@@ -355,7 +364,7 @@ async function gitChanges(): Promise<vscode.Uri[]> {
   const api = (git?.isActive ? git.exports : await git?.activate())?.getAPI(1);
   if (!api?.repositories.length) return [];
   const active = vscode.window.activeTextEditor?.document.uri.fsPath;
-  const repo = (active && api.repositories.find((r) => active.startsWith(`${r.rootUri.fsPath}/`))) || api.repositories[0]!;
+  const repo = (active && api.repositories.find((r) => isWithin(active, r.rootUri.fsPath))) || api.repositories[0]!;
   return [...repo.state.mergeChanges, ...repo.state.indexChanges, ...repo.state.workingTreeChanges].map((c) => c.uri);
 }
 
@@ -397,7 +406,8 @@ async function withholdReason(path: string): Promise<string | null> {
   const folder = vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath ?? null;
   const name = basename(path);
   if (folder) {
-    const inside = relative(folder, path);
+    // The exclude globs are /-separated, also on Windows.
+    const inside = relative(folder, path).split(sep).join('/');
     const files = vscode.workspace.getConfiguration('files', uri).get<Record<string, unknown>>('exclude', {});
     const search = vscode.workspace.getConfiguration('search', uri).get<Record<string, unknown>>('exclude', {});
     if (excludedBy(inside, files) || excludedBy(inside, search)) return `${name} is excluded in your settings`;

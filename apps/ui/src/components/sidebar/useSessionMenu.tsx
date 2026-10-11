@@ -1,3 +1,4 @@
+import { restoreFrom, trashName } from '../../lib/platform.ts';
 import { useState, type ReactNode } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
@@ -108,7 +109,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
               : `Delete ${deleting.length} sessions?`
           }
           danger
-          confirmLabel="Move to Trash"
+          confirmLabel={`Move to ${trashName()}`}
           blockedReason={
             deleting.some((target) => target.live && !isActiveHost(hosts.get(target.id)))
               ? deleting.length === 1
@@ -118,8 +119,8 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           }
           body={
             <>
-              {deleting.length === 1 ? 'The conversation and any subagent transcripts move' : 'The conversations and any subagent transcripts move'} to the Trash, so you can
-              restore them from Finder. Files Claude changed in your project are not touched.
+              {deleting.length === 1 ? 'The conversation and any subagent transcripts move' : 'The conversations and any subagent transcripts move'} to the {trashName()}, so you can
+              restore them {restoreFrom()}. Files Claude changed in your project are not touched.
               {deleting.some((target) => isActiveHost(hosts.get(target.id))) &&
                 (deleting.length === 1 ? ' It is running in Switchboard and will be stopped first.' : ' Sessions running in Switchboard will be stopped first.')}
             </>

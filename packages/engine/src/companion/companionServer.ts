@@ -55,7 +55,7 @@ const sameToken = (given: unknown, token: string) => {
 };
 
 /**
- * The engine's end of the VS Code companion: a Unix socket in a folder only you can open, and `engine.json` (readable
+ * The engine's end of the VS Code companion: a Unix socket in a folder only you can open (a named pipe on Windows), and `engine.json` (readable
  * only by you) saying where it is and the token to connect with, the way Claude Code's own editor connection works
  * (`~/.claude/ide/<port>.lock`). A connection that doesn't start with `hello` and the token is closed; every message
  * after that is validated against the companion contract.
@@ -91,9 +91,16 @@ export class CompanionServer {
   async start(): Promise<void> {
     try {
       this.removeStale();
-      this.socketDir = mkdtempSync(join(this.options.socketParent ?? tmpdir(), 'switchboard-'));
-      chmodSync(this.socketDir, 0o700);
-      const socketPath = join(this.socketDir, 'engine.sock');
+      // Windows has no Unix sockets: a named pipe, with a name nobody can guess, and the token as the gate
+      // (engine.json lives in the user's own AppData, which others can't read).
+      let socketPath: string;
+      if (windows) {
+        socketPath = `\\\\.\\pipe\\switchboard-${randomBytes(16).toString('hex')}`;
+      } else {
+        this.socketDir = mkdtempSync(join(this.options.socketParent ?? tmpdir(), 'switchboard-'));
+        chmodSync(this.socketDir, 0o700);
+        socketPath = join(this.socketDir, 'engine.sock');
+      }
       const server = createServer((socket) => this.accept(socket));
       this.server = server;
       await new Promise<void>((resolve, reject) => {
@@ -104,7 +111,7 @@ export class CompanionServer {
         });
       });
       server.on('error', (error) => this.options.log('warn', `Companion socket: ${error.message}`));
-      chmodSync(socketPath, 0o600);
+      if (!windows) chmodSync(socketPath, 0o600);
       this.writeInfo({ protocol: COMPANION_PROTOCOL, socket: socketPath, token: this.token, pid: process.pid, startedAt: Date.now(), appVersion: this.options.appVersion });
       this.failure = null;
     } catch (error) {
@@ -200,6 +207,8 @@ export class CompanionServer {
     socket.on('error', () => socket.destroy());
   }
 }
+
+const windows = process.platform === 'win32';
 
 function alive(pid: number): boolean {
   try {

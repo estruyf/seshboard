@@ -94,6 +94,9 @@ describe('the marked block in CLAUDE.md', () => {
   });
 });
 
+/** A path as index lines and imports write it: with `/`, which Claude Code reads on Windows too. */
+const slashed = (path: string) => path.replace(/\\/g, '/');
+
 describe('moving memory', () => {
   it('moves a memory to personal and back, with both index lines', async () => {
     const dir = projectMemory(builtin());
@@ -102,7 +105,7 @@ describe('moving memory', () => {
     const { path } = await service.move({ root, path: join(dir, 'profile.md'), to: 'personal' });
     expect(path).toBe(join(personal, 'profile.md'));
     expect(read(join(dir, 'MEMORY.md'))).toBe('- [other](other.md): keep\n');
-    expect(read(join(personal, 'MEMORY.md'))).toBe(`- [Profile](${join(personal, 'profile.md')}) — Who I am\n`);
+    expect(read(join(personal, 'MEMORY.md'))).toBe(`- [Profile](${slashed(join(personal, 'profile.md'))}) — Who I am\n`);
     expect(service.personal().memories.map((m) => [m.name, m.profileId])).toEqual([['profile', null]]);
 
     const back = await service.move({ root, path, to: 'project', profileId: 'work' });
@@ -119,7 +122,7 @@ describe('moving memory', () => {
 
   it('writes personal memories with full-path index lines', () => {
     service.create({ root: null, name: 'cycling', type: 'reference', description: 'Rides', body: 'A-group.' });
-    expect(read(join(personal, 'MEMORY.md'))).toBe(`- [cycling](${join(personal, 'cycling.md')}) — Rides\n`);
+    expect(read(join(personal, 'MEMORY.md'))).toBe(`- [cycling](${slashed(join(personal, 'cycling.md'))}) — Rides\n`);
   });
 });
 

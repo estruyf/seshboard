@@ -1,4 +1,4 @@
-import type { LiveSession } from '@switchboard/protocol/client';
+import { isSameOrInside, type LiveSession } from '@switchboard/protocol/client';
 
 /** Above this many branches the menu gets a filter field. */
 export const FILTER_FROM = 8;
@@ -6,19 +6,15 @@ export const FILTER_FROM = 8;
 /** A folder inside one of Claude Code's worktrees (`.claude/worktrees/<name>`). */
 export const inWorktree = (path: string) => /[\\/]\.claude[\\/]worktrees[\\/]/.test(path);
 
-const trimSlash = (path: string) => path.replace(/[\\/]+$/, '');
-
 /**
  * The other live sessions working in the same checkout as this one: in `root` or a folder inside it,
  * and not in a worktree (that is a checkout of its own). Session ids, without `selfId`.
  */
 export function sharingCheckout(root: string, selfId: string, live: Iterable<LiveSession>): string[] {
-  const base = trimSlash(root);
   const ids = new Set<string>();
   for (const session of live) {
     if (session.sessionId === selfId || !session.cwd || inWorktree(session.cwd)) continue;
-    const cwd = trimSlash(session.cwd);
-    if (cwd === base || cwd.startsWith(`${base}/`)) ids.add(session.sessionId);
+    if (isSameOrInside(session.cwd, root)) ids.add(session.sessionId);
   }
   return [...ids];
 }

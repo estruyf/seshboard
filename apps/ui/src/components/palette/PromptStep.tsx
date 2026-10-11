@@ -9,7 +9,7 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { addToQueue } from '../../state/laterStore.ts';
 import { busyInProject } from '../../state/queue.ts';
 import { useListedRows } from '../../state/useQueue.ts';
-import { matches } from '../../lib/shortcuts.ts';
+import { matches, modKey } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -360,8 +360,8 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
           if (e.nativeEvent.isComposing) return;
           // Keys the palette takes for itself don't also reach the window's shortcuts (⌘E, ⌘↵).
           if (matches(e.nativeEvent, 'new-session.queue')) (e.preventDefault(), e.stopPropagation(), void queue());
-          else if (e.metaKey && e.key === 'Enter') (e.preventDefault(), e.stopPropagation(), void start());
-          else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'e') (e.preventDefault(), e.stopPropagation(), moreOptions());
+          else if (modKey(e) && e.key === 'Enter') (e.preventDefault(), e.stopPropagation(), void start());
+          else if (modKey(e) && !e.shiftKey && e.key.toLowerCase() === 'e') (e.preventDefault(), e.stopPropagation(), moreOptions());
           else if (e.key === 'Backspace' && text === '') (e.preventDefault(), onBack());
           else if (e.key === 'Tab' && e.shiftKey && !e.ctrlKey) (e.preventDefault(), update({ permissionMode: nextMode(d.permissionMode) }));
         }}

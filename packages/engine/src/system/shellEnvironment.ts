@@ -1,11 +1,8 @@
 import type { AppStateStore } from '../db/appState.ts';
-import { resolveShellEnv, type ShellEnv } from './shellEnv.ts';
+import { userShell } from './shell.ts';
+import { processEnv, resolveShellEnv, type ShellEnv } from './shellEnv.ts';
 
 const PATH_KEY = 'shell.path';
-
-function processEnv(): Record<string, string> {
-  return Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
-}
 
 /**
  * The user's login-shell environment. Reading it takes ~0.5 s, so the PATH
@@ -43,7 +40,7 @@ export class ShellEnvironment {
   /** What to show in diagnostics right now. */
   async describe(): Promise<{ shell: string; resolved: boolean; cached: boolean; durationMs: number }> {
     if (!this.settled && this.cachedPath) {
-      return { shell: process.env.SHELL || '/bin/zsh', resolved: true, cached: true, durationMs: 0 };
+      return { shell: userShell(processEnv()).file, resolved: true, cached: true, durationMs: 0 };
     }
     const env = this.settled ?? (await this.ready);
     return { shell: env.shell, resolved: env.resolved, cached: false, durationMs: env.durationMs };

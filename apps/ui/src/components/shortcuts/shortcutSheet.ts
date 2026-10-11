@@ -3,6 +3,7 @@ import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import {
   available,
   formatShortcut,
+  localizeKeys,
   matches,
   normalizeShortcut,
   SECTION_TITLES,
@@ -283,7 +284,7 @@ export function sheetLayout({ ctx, mode, query, actions, shortcuts = SHORTCUTS }
   const filtering = query.trim() !== '';
   const bySection = new Map<ShortcutSection, SheetRow[]>(ORDER.map((id) => [id, []]));
   const candidates: Array<Omit<SheetRow, 'marks'> & { section: ShortcutSection }> = [
-    ...shortcuts.map((def) => ({ id: def.id, action: def.action, context: def.context, note: def.note, keys: def.keys, available: available(def, ctx), section: def.section })),
+    ...shortcuts.map((def) => ({ id: def.id, action: def.action, context: def.context && localizeKeys(def.context), note: def.note && localizeKeys(def.note), keys: def.keys, available: available(def, ctx), section: def.section })),
     ...actionRows(actions, ctx).map((row) => ({ ...row, section: 'actions' as const })),
   ];
   for (const { section, ...row } of candidates) {

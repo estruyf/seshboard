@@ -1,5 +1,27 @@
+import { currentPlatform } from "./platform.ts";
+
 /** Keys that can't be written as themselves in the `+`-joined form. */
 const NAMED_KEYS: Record<string, string> = { "+": "plus", " ": "space" };
+
+/**
+ * Shortcuts follow the platform: the registry's `mod` is ⌘ on macOS and Ctrl elsewhere, and keys show as glyphs
+ * (`⌘⇧P`) on macOS and as words (`Ctrl+Shift+P`) elsewhere. Read when called, so tests can switch platforms.
+ */
+const isMac = () => currentPlatform() === "darwin";
+
+/** The platform's main modifier is down: ⌘ on macOS, Ctrl elsewhere. For handlers that check keys by hand. */
+export const modKey = (event: { metaKey: boolean; ctrlKey: boolean }) =>
+  isMac() ? event.metaKey : event.ctrlKey;
+
+/**
+ * In the terminal, which keys are Switchboard's rather than the shell's: ⌘ keys on macOS, where the shell has ⌃ and
+ * ⌥; Ctrl+Shift keys elsewhere, where Ctrl+R, Ctrl+C and the rest are the shell's (as in Windows Terminal and VS Code).
+ */
+export const appKeyInTerminal = (event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) =>
+  isMac() ? event.metaKey : event.ctrlKey && event.shiftKey;
+
+/** The order modifiers are written in, as `shortcutFromEvent` writes them. */
+const MODIFIERS = ["cmd", "ctrl", "alt", "shift"];
 
 /** `cmd+shift+p` from a key event, or null for a bare modifier press. */
 export function shortcutFromEvent(event: {
@@ -37,11 +59,16 @@ export function normalizeShortcut(shortcut: string): string {
     return `${shortcut.slice(0, -1)}plus`;
   if (shortcut === " " || shortcut.endsWith("+ "))
     return `${shortcut.slice(0, -1)}space`;
-  // The registry writes ⌘ as `mod`; Switchboard is macOS only, so it is always ⌘.
-  return shortcut.replace(/(^|\+)mod(?=\+)/g, "$1cmd");
+  // The registry writes the main modifier as `mod`: ⌘ on macOS, Ctrl elsewhere.
+  if (isMac()) return shortcut.replace(/(^|\+)mod(?=\+)/g, "$1cmd");
+  // Elsewhere ⌘ is Ctrl too: a shortcut saved on a Mac (a shared project action) says `cmd`, and the Windows key
+  // belongs to Windows. A modifier written twice that way counts once.
+  const parts = shortcut.split("+").map((part, i, all) => (i < all.length - 1 && (part === "mod" || part === "cmd") ? "ctrl" : part));
+  const key = parts.pop()!;
+  return [...MODIFIERS.filter((m) => parts.includes(m)), key].join("+");
 }
 
-const KEY_GLYPHS: Record<string, string> = {
+const MAC_GLYPHS: Record<string, string> = {
   cmd: "⌘",
   ctrl: "⌃",
   alt: "⌥",
@@ -58,12 +85,52 @@ const KEY_GLYPHS: Record<string, string> = {
   arrowright: "→",
 };
 
-/** `cmd+shift+p` as macOS shows it: `⌘⇧P`. */
+/** Keys as Windows and Linux write them, joined with `+`: `Ctrl+Shift+P`. */
+const WORDS: Record<string, string> = {
+  ...MAC_GLYPHS,
+  cmd: "Win",
+  ctrl: "Ctrl",
+  alt: "Alt",
+  shift: "Shift",
+  enter: "Enter",
+  backspace: "Backspace",
+  tab: "Tab",
+};
+
+const keyNames = () => (isMac() ? MAC_GLYPHS : WORDS);
+
+/** `cmd+shift+p` as the platform shows it: `⌘⇧P` on macOS, `Ctrl+Shift+P` elsewhere. */
 export function formatShortcut(shortcut: string): string {
+  const names = keyNames();
   return normalizeShortcut(shortcut)
     .split("+")
-    .map((part) => KEY_GLYPHS[part] ?? part.toUpperCase())
-    .join("");
+    .map((part) => names[part] ?? part.toUpperCase())
+    .join(isMac() ? "" : "+");
+}
+
+/** macOS key glyphs in text, and the words for them elsewhere. */
+const GLYPH_WORDS: Array<[RegExp, string]> = [
+  [/[⌘⌃]/g, "Ctrl+"],
+  [/⌥/g, "Alt+"],
+  [/⇧/g, "Shift+"],
+  [/[↵↩]/g, "Enter"],
+  [/⌫/g, "Backspace"],
+  [/⇥/g, "Tab"],
+];
+
+/**
+ * Keys written as macOS glyphs (`⌘⇧L`, `⌥-click`, a hint such as `⌘⌫`) as this platform writes them: unchanged
+ * on macOS, `Ctrl+Shift+L`, `Alt+click`, `Ctrl+Backspace` elsewhere.
+ */
+export function localizeKeys(text: string): string {
+  if (isMac()) return text;
+  let out = text;
+  for (const [glyph, word] of GLYPH_WORDS) out = out.replace(glyph, word);
+  // Only the words added above are tidied: hints also carry names and paths (`src/c++`, `repo+`) that stay as written.
+  return out
+    .replace(/(Ctrl\+)+/g, "Ctrl+")
+    .replace(/\b(Ctrl|Alt|Shift)\+-click/g, "$1+click")
+    .replace(/\b(Ctrl|Alt|Shift)\+(?=$|[\s·,.;:)])/g, "$1");
 }
 
 const ARIA_KEYS: Record<string, string> = {
@@ -136,9 +203,9 @@ export function storedShortcut(keys: string): string {
   return parts.join("+");
 }
 
-/** What a `<kbd>` shows for either form: glyphs stay as they are, a stored shortcut is formatted. */
+/** What a `<kbd>` shows for either form: a stored shortcut is formatted, glyphs are written the platform's way. */
 export const shortcutGlyphs = (keys: string) =>
-  isStoredShortcut(keys) ? formatShortcut(keys) : keys;
+  isStoredShortcut(keys) ? formatShortcut(keys) : localizeKeys(keys);
 
 /** Whether two stored shortcuts are the same keys, reading older forms the way they are read today. */
 export const sameShortcut = (a: string, b: string) =>
@@ -213,7 +280,7 @@ export interface ShortcutDef {
   where?: ShortcutPlace;
   /** A menu bar item in main handles it, so it never reaches the page. */
   menu?: true;
-  /** Not in `RESERVED_SHORTCUTS`: it works where project actions don't run, so an action may use the keys. */
+  /** Not in `reservedShortcuts()`: it works where project actions don't run, so an action may use the keys. */
   reserve?: false;
 }
 
@@ -784,9 +851,17 @@ const SPOKEN: Record<string, string> = {
   "`": "Backtick",
 };
 
+/** What screen readers say for keys named differently off macOS. */
+const SPOKEN_ELSEWHERE: Record<string, string> = {
+  cmd: "Windows",
+  alt: "Alt",
+  enter: "Enter",
+  backspace: "Backspace",
+};
+
 const capOf = (part: string): KeyPiece => ({
-  cap: KEY_GLYPHS[part] ?? part.toUpperCase(),
-  spoken: SPOKEN[part] ?? part.toUpperCase(),
+  cap: keyNames()[part] ?? part.toUpperCase(),
+  spoken: (isMac() ? undefined : SPOKEN_ELSEWHERE[part]) ?? SPOKEN[part] ?? part.toUpperCase(),
 });
 
 /** One key press as keycaps: `mod+shift+p` is ⌘, ⇧, P. */
@@ -817,14 +892,20 @@ export function keyPieces(combo: string): KeyPiece[] {
   });
 }
 
-/** A combo as text: `mod+shift+p` is ⌘⇧P, `mod+1..9` ⌘1 to ⌘9, `mod+q mod+q` ⌘Q then ⌘Q, `alt+click` ⌥-click, `middleclick` Middle-click. */
+/**
+ * A combo as text: `mod+shift+p` is ⌘⇧P, `mod+1..9` ⌘1 to ⌘9, `mod+q mod+q` ⌘Q then ⌘Q, `alt+click` ⌥-click,
+ * `middleclick` Middle-click. Elsewhere the keys of one press are joined with `+`: Ctrl+Shift+P, Alt+click.
+ */
 export function formatKeys(combo: string): string {
+  const join = isMac() ? "" : "+";
   let text = "";
+  let afterCap = false;
   for (const piece of keyPieces(combo)) {
-    if ("cap" in piece) text += piece.cap;
-    else if (piece.word === "click") text += `${text ? "-" : ""}click`;
+    if ("cap" in piece) text += (afterCap ? join : "") + piece.cap;
+    else if (piece.word === "click") text += `${text ? (isMac() ? "-" : "+") : ""}click`;
     else if (piece.word === "middle-click") text += "Middle-click";
     else text += ` ${piece.word} `;
+    afterCap = "cap" in piece;
   }
   return text;
 }
@@ -846,7 +927,7 @@ export function spokenKeys(combo: string): string {
 }
 
 /** Menu bar keys main and the standard Edit, View and Window menus own: menu shortcuts never reach the page. */
-const MENU_KEYS = [
+const MAC_MENU_KEYS = [
   "cmd+h",
   "cmd+alt+h",
   "cmd+c",
@@ -869,13 +950,36 @@ const MENU_KEYS = [
   "cmd+ctrl+f",
 ];
 
+/** The same on Windows and Linux, where Electron's menu roles use Ctrl (redo is Ctrl+Y) and full screen is F11. */
+const MENU_KEYS_ELSEWHERE = [
+  "ctrl+c",
+  "ctrl+v",
+  "ctrl+x",
+  "ctrl+a",
+  "ctrl+z",
+  "ctrl+y",
+  "ctrl+shift+z",
+  "ctrl+w",
+  "ctrl+r",
+  "ctrl+shift+r",
+  "ctrl+shift+i",
+  "ctrl+0",
+  "ctrl+=",
+  "ctrl+plus",
+  "ctrl+shift+plus",
+  "ctrl+-",
+  "f11",
+];
+
 /**
  * Keys project actions may not take over: every shortcut in the registry with a modifier (bare keys such as
- * Esc can't be an action's), and the menu bar's. An action on a menu key would never run.
+ * Esc can't be an action's), and the menu bar's. An action on a menu key would never run. Worked out when
+ * asked, as `mod` depends on the platform.
  */
-export const RESERVED_SHORTCUTS = new Set([
-  ...SHORTCUTS.flatMap((s: ShortcutDef) =>
-    s.reserve === false ? [] : s.keys.flatMap(comboPresses),
-  ).filter((press) => press.includes("+")),
-  ...MENU_KEYS,
-]);
+export const reservedShortcuts = () =>
+  new Set([
+    ...SHORTCUTS.flatMap((s: ShortcutDef) =>
+      s.reserve === false ? [] : s.keys.flatMap(comboPresses),
+    ).filter((press) => press.includes("+")),
+    ...(isMac() ? MAC_MENU_KEYS : MENU_KEYS_ELSEWHERE),
+  ]);

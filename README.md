@@ -119,6 +119,8 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - A Mac with Apple Silicon
 - [Claude Code](https://github.com/anthropics/claude-code) installed and signed in (`claude` works in your terminal)
 
+Switchboard also runs on Windows 10 and 11. Until a release has a signed Windows installer, build it from source. See [Windows support](docs/windows-support.md).
+
 ## Install
 
 Download the `.dmg` from the [latest release](https://github.com/estruyf/switchboard/releases/latest), open it and drag Switchboard to Applications.
@@ -166,6 +168,8 @@ To stop the checks, turn off *Check for Claude Code updates automatically* in Se
 ## Keyboard shortcuts
 
 Press **⌘/** (or Help › Keyboard Shortcuts) to see every shortcut in the app, with the ones that work where you are and your project actions' shortcuts. Type in its field to filter by name or by keys ("terminal", "⌘J").
+
+On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them that way. In the terminal panel, Ctrl keys belong to the shell and Ctrl+Shift keys to Switchboard.
 
 <p align="center"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/shortcuts-dark.png">

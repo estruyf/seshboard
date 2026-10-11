@@ -1,4 +1,4 @@
-import type { Effort, PermissionMode, ProjectInfo } from '@switchboard/protocol/client';
+import { isSameOrInside, type Effort, type PermissionMode, type ProjectInfo } from '@switchboard/protocol/client';
 import { linkPermissionMode, type Choices } from '../components/newSession/choices.ts';
 
 /**
@@ -16,9 +16,7 @@ export const QUESTION_LABEL = 'Quick question';
 /** Whether `path` is the scratch folder (or a folder inside it). False until the folder is known. */
 export function isQuestionsFolder(path: string | null | undefined, dir: string | null): boolean {
   if (!path || !dir) return false;
-  const base = dir.replace(/\/+$/, '');
-  const other = path.replace(/\/+$/, '');
-  return other === base || other.startsWith(`${base}/`);
+  return isSameOrInside(path, dir);
 }
 
 /**

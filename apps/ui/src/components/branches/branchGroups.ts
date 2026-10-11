@@ -1,4 +1,5 @@
 import type { BranchEntry } from '@switchboard/protocol/client';
+import { basename } from '../../lib/format.ts';
 
 // The branch overview's decisions, without React or the stores: which group each branch is in, which copies of it
 // (here, on the remote) can be deleted and why not, what starts picked, and the words the table and its summary use.
@@ -34,7 +35,6 @@ export interface BranchRow {
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-const folderName = (path: string) => path.split('/').filter(Boolean).at(-1) ?? path;
 
 export const branchKey = (entry: BranchEntry) => (entry.local ? entry.name : (entry.remote?.ref ?? entry.name));
 
@@ -48,7 +48,7 @@ export const isSafe = (entry: BranchEntry) => !entry.isBase && (isMerged(entry) 
 export function localLock(entry: BranchEntry): string | null {
   if (!entry.local) return null;
   if (entry.isBase) return 'The base branch is never deleted';
-  if (entry.local.checkedOutIn) return `Checked out in ${folderName(entry.local.checkedOutIn)}`;
+  if (entry.local.checkedOutIn) return `Checked out in ${basename(entry.local.checkedOutIn)}`;
   return null;
 }
 

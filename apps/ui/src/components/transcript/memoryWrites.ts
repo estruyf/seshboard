@@ -1,4 +1,5 @@
-import { memoryMeta, splitFrontmatter } from '@switchboard/protocol/client';
+import { expandHome, isSameOrInside, memoryMeta, splitFrontmatter } from '@switchboard/protocol/client';
+import { basename, dirnameOf } from '../../lib/format.ts';
 
 /** Where memory lives, to tell a memory write from any other file edit. */
 export interface MemoryFolders {
@@ -33,14 +34,16 @@ export function memoryWriteOf(name: string, input: unknown, folders: MemoryFolde
   if (!WRITES.has(name) || !input || typeof input !== 'object') return null;
   const raw = (input as { file_path?: unknown }).file_path;
   if (typeof raw !== 'string' || !raw.endsWith('.md')) return null;
-  const path = raw.startsWith('~/') && folders.home ? `${folders.home}${raw.slice(1)}` : raw;
-  const file = path.slice(path.lastIndexOf('/') + 1);
-  if (file === 'MEMORY.md') return null;
-  const dir = path.slice(0, path.lastIndexOf('/'));
-  const personal = !!folders.personalDir && dir === folders.personalDir;
+  // Claude Code on Windows names files `C:\…` (or `~\…`): folders compare as Windows does, and the patterns read `/`.
+  const path = /^~[\\/]/.test(raw) ? expandHome(raw, folders.home) : raw;
+  const file = basename(path);
+  if (file.toLowerCase() === 'memory.md') return null;
+  const dir = dirnameOf(path);
+  const personal = !!folders.personalDir && isSameOrInside(dir, folders.personalDir) && isSameOrInside(folders.personalDir, dir);
+  const slashed = (p: string) => p.replace(/\\/g, '/');
   const project = folders.configDirs.length
-    ? folders.configDirs.some((configDir) => path.startsWith(`${configDir}/`) && PROJECT_MEMORY.test(path.slice(configDir.length + 1)))
-    : ANY_MEMORY.test(path);
+    ? folders.configDirs.some((configDir) => isSameOrInside(path, configDir) && PROJECT_MEMORY.test(slashed(path.slice(configDir.replace(/[\\/]+$/, '').length + 1))))
+    : ANY_MEMORY.test(slashed(path));
   if (!personal && !project) return null;
   // A Write carries the whole file: its frontmatter says the name and type.
   const content = (input as { content?: unknown }).content;

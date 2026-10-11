@@ -1,5 +1,6 @@
 import { Bot, ChevronRight, ClipboardList } from 'lucide-react';
 import { memo, useId, useState, type ReactNode } from 'react';
+import { isAbsolutePath } from '@switchboard/protocol/client';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { DiffView } from './DiffView.tsx';
 import { ActivityGroupView } from './ActivityGroup.tsx';
@@ -60,7 +61,7 @@ function fileTarget(item: ToolItem): { path: string; line?: number } | null {
   if (!FILE_TOOLS.has(item.name)) return null;
   const input = item.input as { file_path?: unknown; notebook_path?: unknown; offset?: unknown };
   const path = typeof input.file_path === 'string' ? input.file_path : typeof input.notebook_path === 'string' ? input.notebook_path : null;
-  if (!path?.startsWith('/')) return null;
+  if (!path || !isAbsolutePath(path)) return null;
   return typeof input.offset === 'number' && input.offset > 0 ? { path, line: input.offset } : { path };
 }
 

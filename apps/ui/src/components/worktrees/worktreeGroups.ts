@@ -1,4 +1,4 @@
-import type { WorktreeEntry, WorktreeSize } from '@switchboard/protocol/client';
+import { isSameOrInside, type WorktreeEntry, type WorktreeSize } from '@switchboard/protocol/client';
 
 // The worktree overview's decisions, without React or the stores: which group each worktree is in and why, which
 // rows can be picked for clean-up, what a selection frees, and the words the table and its summary use.
@@ -157,7 +157,7 @@ export function mainCheckoutBytes(rows: readonly WorktreeRow[], sizes: ReadonlyM
   const main = rows.find((r) => r.group === 'main');
   const total = main && sizes.get(main.entry.path);
   if (!main || !total) return null;
-  const nested = rows.filter((r) => r !== main && !r.entry.missing && r.entry.path.startsWith(`${main.entry.path}/`));
+  const nested = rows.filter((r) => r !== main && !r.entry.missing && isSameOrInside(r.entry.path, main.entry.path));
   const { bytes, unknown } = freedBytes(
     nested.map((r) => r.entry.path),
     sizes,

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AbsolutePath } from './absolutePath.ts';
 
 /** A pull request for a worktree's branch, from `gh` (when it is installed and signed in). */
 export const WorktreePullRequest = z.object({
@@ -61,7 +62,7 @@ export const WorktreeSize = z.object({ path: z.string(), bytes: z.number(), at: 
 export type WorktreeSize = z.infer<typeof WorktreeSize>;
 
 export const WorktreeRemoveItem = z.object({
-  path: z.string().min(1).max(4096).startsWith('/'),
+  path: AbsolutePath,
   deleteBranch: z.boolean().default(false),
   /** Save the branch's tip under `refs/switchboard/removed/<branch>-<date>` first. */
   recoveryRef: z.boolean().default(false),

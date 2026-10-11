@@ -17,7 +17,7 @@ export const COMPANION_DIR = 'companion';
 export const COMPANION_INFO_FILE = 'engine.json';
 
 /**
- * The app's data folders under `~/Library/Application Support`, in the order the extension prefers them:
+ * The app's data folders (under `~/Library/Application Support`, `%APPDATA%` on Windows), in the order the extension prefers them:
  * the installed app, then a development build (`npm run dev`).
  */
 export const APP_DATA_FOLDERS = ['Switchboard', 'Switchboard Dev'] as const;
@@ -25,7 +25,7 @@ export const APP_DATA_FOLDERS = ['Switchboard', 'Switchboard Dev'] as const;
 /** What `engine.json` holds. */
 export interface CompanionInfo {
   protocol: number;
-  /** The Unix socket to connect to. */
+  /** The Unix socket to connect to, or a named pipe (`\\.\pipe\…`) on Windows. */
   socket: string;
   /** Sent with `hello`; a connection without it is closed. */
   token: string;

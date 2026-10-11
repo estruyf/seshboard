@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type TranscriptUpdate } from '@switchboard/protocol';
@@ -8,10 +8,17 @@ import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine } from './engine.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
 import { git } from './git/gitChanges.ts';
+import { userShell } from './system/shell.ts';
 
 const SESSION_ID = '33333333-3333-4333-8333-333333333333';
+/** The shell the engine's terminals run for the environment the tests give it: zsh here, PowerShell on Windows. */
+const shell = userShell({ PATH: '', SHELL: '/bin/zsh' });
+// Session folders in this platform's form, as the engine only takes absolute local paths.
+const PARSER = resolve('/work/parser');
+const OTHER = resolve('/work/other');
+const BLOG = resolve('/work/blog');
 const fakeSource: SessionSource = {
-  list: async () => [{ sessionId: SESSION_ID, summary: 'Refactor parser', lastModified: 42, cwd: '/work/parser' }],
+  list: async () => [{ sessionId: SESSION_ID, summary: 'Refactor parser', lastModified: 42, cwd: PARSER }],
   info: async () => undefined,
   messages: async () => [
     { type: 'user', uuid: 'u1', parent_tool_use_id: null, message: { content: 'Refactor the parser' } },
@@ -106,14 +113,14 @@ describe('engine over a MessagePort', () => {
     const { client } = connect();
     const changes: number[] = [];
     client.on('later.changed', ({ items }) => void changes.push(items.length));
-    const { item } = await client.call('later.add', { draft: { cwd: '/work/parser', prompt: 'Speed up the tokenizer', model: 'opus' } });
-    const { item: other } = await client.call('later.add', { draft: { cwd: '/work/other', prompt: 'Something else' } });
+    const { item } = await client.call('later.add', { draft: { cwd: PARSER, prompt: 'Speed up the tokenizer', model: 'opus' } });
+    const { item: other } = await client.call('later.add', { draft: { cwd: OTHER, prompt: 'Something else' } });
     expect(item).toMatchObject({ position: 0, waitFor: { kind: 'project' } });
     expect(other.position).toBe(1);
-    expect((await client.call('later.list', { cwd: '/work/parser' })).items).toEqual([item]);
+    expect((await client.call('later.list', { cwd: PARSER })).items).toEqual([item]);
     expect((await client.call('later.list', {})).items).toHaveLength(2);
     await client.call('later.remove', { id: item.id });
-    expect((await client.call('later.list', { cwd: '/work/parser' })).items).toEqual([]);
+    expect((await client.call('later.list', { cwd: PARSER })).items).toEqual([]);
     // Undo: back in its place, as it was.
     const { id, createdAt, position, waitFor, ...draft } = item;
     await client.call('later.add', { draft, id, createdAt, index: position, waitFor });
@@ -124,7 +131,7 @@ describe('engine over a MessagePort', () => {
     expect(updated.waitFor).toEqual({ kind: 'none' });
     await expect(client.call('later.update', { id: 'gone', waitFor: { kind: 'none' } })).rejects.toThrow(/no longer in the queue/);
     await expect(client.call('later.reorder', { id: 'gone', toIndex: 0 })).rejects.toThrow(/no longer in the queue/);
-    await expect(client.call('later.add', { draft: { cwd: '/work/parser', prompt: '' } })).rejects.toThrow();
+    await expect(client.call('later.add', { draft: { cwd: PARSER, prompt: '' } })).rejects.toThrow();
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(changes).toEqual([1, 2, 1, 2, 2, 2]);
   });
@@ -170,23 +177,23 @@ describe('engine over a MessagePort', () => {
     await changed;
     const snapshot = await client.call('sessions.list', {});
     expect(snapshot.complete).toBe(true);
-    expect(snapshot.sessions).toMatchObject([{ id: SESSION_ID, title: 'Refactor parser', projectRoot: '/work/parser' }]);
+    expect(snapshot.sessions).toMatchObject([{ id: SESSION_ID, title: 'Refactor parser', projectRoot: PARSER }]);
     expect(snapshot.live).toEqual([]);
   });
 
   it('lists your projects and offers folders that only have sessions', async () => {
     const { client, dataDir } = connect();
     await new Promise((resolve) => client.on('sessions.changed', resolve));
-    expect((await client.call('projects.list', {})).projects).toMatchObject([{ root: '/work/parser', added: false, sessionCount: 1, order: null }]);
+    expect((await client.call('projects.list', {})).projects).toMatchObject([{ root: PARSER, added: false, sessionCount: 1, order: null }]);
     await client.call('projects.add', { path: dataDir });
     await client.call('projects.setDefaults', { root: dataDir, defaults: { model: 'haiku', effort: null, permissionMode: 'plan', workspace: null, baseRef: null, branch: null } });
     expect((await client.call('projects.list', {})).projects).toMatchObject([
       { root: dataDir, added: true, order: 0, defaults: { model: 'haiku', permissionMode: 'plan' } },
-      { root: '/work/parser', added: false },
+      { root: PARSER, added: false },
     ]);
-    await expect(client.call('projects.setDefaults', { root: '/work/parser', defaults: {} })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(client.call('projects.setDefaults', { root: PARSER, defaults: {} })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await client.call('projects.remove', { root: dataDir });
-    expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual(['/work/parser']);
+    expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual([PARSER]);
   });
 
   it('streams a watched transcript to the caller', async () => {
@@ -205,7 +212,7 @@ describe('engine over a MessagePort', () => {
   it('renames a session through Claude Code and sends the new title at once', async () => {
     let customTitle: string | undefined;
     const renamed: string[] = [];
-    const current = () => ({ sessionId: SESSION_ID, summary: 'Refactor parser', lastModified: 42, cwd: '/work/parser', ...(customTitle ? { customTitle } : {}) });
+    const current = () => ({ sessionId: SESSION_ID, summary: 'Refactor parser', lastModified: 42, cwd: PARSER, ...(customTitle ? { customTitle } : {}) });
     const source: SessionSource = {
       ...fakeSource,
       list: async () => [current()],
@@ -285,7 +292,7 @@ describe('engine over a MessagePort', () => {
     await client.call('actions.save', { projectRoot: project, action: { id: 'greet', name: 'Greet', command: 'echo ${sessionId}' } });
     const result = await client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'greet' });
     expect(result.kind).toBe('terminal');
-    expect(spawned[0]).toEqual({ file: '/bin/zsh', args: ['-ilc', `echo '${SESSION_ID}'`], cwd: project });
+    expect(spawned[0]).toEqual({ file: shell.file, args: shell.run(`echo ${shell.quote(SESSION_ID)}`), cwd: project });
     const { terminals } = await client.call('terminal.list', {});
     expect(terminals[0]).toMatchObject({ kind: 'action', title: 'Greet', sessionId: SESSION_ID });
 
@@ -346,7 +353,7 @@ describe('engine over a MessagePort', () => {
 
     const restarted = await client.call('terminal.restart', { id: run.terminalId });
     expect(restarted).toMatchObject({ id: run.terminalId, kind: 'action', title: 'Dev', exitCode: null });
-    expect(spawned.map((s) => s.args)).toEqual([['-ilc', 'npm run dev'], ['-ilc', 'npm run dev']]);
+    expect(spawned.map((s) => s.args)).toEqual([shell.run('npm run dev'), shell.run('npm run dev')]);
     expect((await client.call('terminal.list', {})).terminals).toHaveLength(1);
     // The first process exiting late doesn't touch the restarted one.
     spawned[0]!.exit({ exitCode: 1 });
@@ -359,7 +366,7 @@ describe('engine over a MessagePort', () => {
     expect(spawned).toHaveLength(2);
     await client.call('actions.trust', { projectRoot: project, id: 'dev' });
     await client.call('terminal.restart', { id: run.terminalId });
-    expect(spawned[2]!.args).toEqual(['-ilc', 'npm run dev -- --open']);
+    expect(spawned[2]!.args).toEqual(shell.run('npm run dev -- --open'));
   });
 });
 
@@ -369,7 +376,7 @@ describe('quick questions', () => {
     const source = (dataDir: string): SessionSource => ({
       ...fakeSource,
       list: async () => [
-        { sessionId: SESSION_ID, summary: 'Refactor parser', lastModified: 42, cwd: '/work/parser' },
+        { sessionId: SESSION_ID, summary: 'Refactor parser', lastModified: 42, cwd: PARSER },
         { sessionId: '44444444-4444-4444-8444-444444444444', summary: 'What is a monad?', lastModified: 43, cwd: join(dataDir, 'questions') },
       ],
     });
@@ -400,14 +407,14 @@ describe('quick questions', () => {
     await scanned;
     const { sessions } = await client.call('sessions.list', {});
     // The session is listed like any other, in the questions folder.
-    expect(sessions.map((s) => s.projectRoot).sort()).toEqual(['/work/parser', questions].sort());
-    expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual(['/work/parser']);
+    expect(sessions.map((s) => s.projectRoot).sort()).toEqual([PARSER, questions].sort());
+    expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual([PARSER]);
     await expect(client.call('projects.add', { path: questions })).rejects.toMatchObject({ code: 'INVALID' });
     await expect(client.call('projects.rename', { root: questions, name: 'Questions' })).rejects.toMatchObject({ code: 'INVALID' });
     await expect(client.call('projects.setIcon', { root: questions, icon: { kind: 'emoji', value: '❓' } })).rejects.toMatchObject({ code: 'INVALID' });
     await expect(client.call('projects.setProfile', { root: questions, profileId: null })).rejects.toMatchObject({ code: 'INVALID' });
     await expect(client.call('projects.setDefaults', { root: questions, defaults: {} })).rejects.toMatchObject({ code: 'INVALID' });
-    expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual(['/work/parser']);
+    expect((await client.call('projects.list', {})).projects.map((p) => p.root)).toEqual([PARSER]);
   });
 });
 
@@ -444,7 +451,7 @@ describe('Claude profiles', () => {
     const project = mkdtempSync(join(tmpdir(), 'switchboard-project-'));
     const PERSONAL_ID = '44444444-4444-4444-8444-444444444444';
     const WORK_ID = '55555555-5555-4555-8555-555555555555';
-    transcript(personal, PERSONAL_ID, '/work/blog', 'Write the personal blog post');
+    transcript(personal, PERSONAL_ID, BLOG, 'Write the personal blog post');
     transcript(work, WORK_ID, project, 'Fix the quarterly report');
     writeFileSync(join(work, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'me@work.example', organizationName: 'Work Inc' } }));
     // A stand-in for Claude Code that records the environment each helper process gets.
@@ -502,7 +509,7 @@ describe('Claude profiles', () => {
     await until(async () => (await client.call('search.query', { query: 'quarterly', limit: 10 })).hits.some((h) => h.sessionId === WORK_ID), 10_000);
 
     // New processes in a project get the profile it is linked to, else the default.
-    await client.call('session.commands', { cwd: '/tmp' });
+    await client.call('session.commands', { cwd: resolve('/tmp') });
     expect(envs.at(-1)?.CLAUDE_CONFIG_DIR).toBe(personal);
     await client.call('projects.add', { path: project });
     await client.call('projects.setProfile', { root: project, profileId: workId });
@@ -511,7 +518,7 @@ describe('Claude profiles', () => {
     expect(envs.at(-1)?.CLAUDE_CONFIG_DIR).toBe(work);
     await client.call('profiles.setDefault', { id: workId });
     expect((await client.call('profiles.list', {})).defaultId).toBe(workId);
-    await client.call('session.commands', { cwd: '/var' });
+    await client.call('session.commands', { cwd: resolve('/var') });
     expect(envs.at(-1)?.CLAUDE_CONFIG_DIR).toBe(work);
 
     // Removing the profile forgets its sessions and links; the folder stays.

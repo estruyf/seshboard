@@ -1,12 +1,10 @@
+import { isSameOrInside } from '@switchboard/protocol/paths';
 import type { CompanionSession, CompanionSessions, CompanionStatus } from '@switchboard/protocol/companion-client';
 
 /** Which session context goes to, and what the status bar says. Pure, so it can be tested. */
 
-/** `path` is `folder` or inside it. */
-export const isWithin = (path: string, folder: string) => {
-  const root = folder.replace(/\/+$/, '') || '/';
-  return path === root || path.startsWith(root === '/' ? '/' : `${root}/`);
-};
+/** `path` is `folder` or inside it; on Windows without regard to case or slash (VS Code says `c:\`, Claude Code `C:\`). */
+export const isWithin = (path: string, folder: string) => isSameOrInside(path, folder);
 
 /**
  * The session focused in Switchboard, when its folder holds every path (or, for text that isn't from a file, the

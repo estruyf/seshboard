@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { firstSentence, MEMORY_TYPES, sectionBody, slugify, type SectionCopy } from '@switchboard/protocol/client';
+import { pathTail } from '../../lib/format.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openMemoryFile } from '../../state/memoryStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -138,7 +139,7 @@ export function CopySectionDialog({ root, file, onClose }: { root: string; file:
             <input id={`${id}-description`} value={description} onChange={(e) => setDescription(e.target.value)} className={field} data-copy-description />
           </div>
           <div className="grid gap-1.5">
-            <p className="text-meta text-muted">{preview ? <span className="font-mono">{preview.path.split('/').slice(-2).join('/')}</span> : 'Preview'}</p>
+            <p className="text-meta text-muted">{preview ? <span className="font-mono">{pathTail(preview.path, 2)}</span> : 'Preview'}</p>
             <pre className="max-h-[32vh] overflow-auto rounded-lg border border-edge bg-code p-3 font-mono text-ui break-words whitespace-pre-wrap select-text" data-copy-preview>
               {preview?.content ?? 'Reading…'}
             </pre>

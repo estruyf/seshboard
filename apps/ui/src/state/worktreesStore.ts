@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import type { WorktreeEntry, WorktreeList, WorktreeSize } from '@switchboard/protocol/client';
+import { isAbsolutePath, type WorktreeEntry, type WorktreeList, type WorktreeSize } from '@switchboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { NO_SESSIONS, worktreeRows, type WorktreeRow, type WorktreeSessions } from '../components/worktrees/worktreeGroups.ts';
@@ -89,7 +89,7 @@ export function useWorktreesOf(root: string | null): WorktreesOf {
   const client = connection.status === 'connected' ? connection.client : null;
   const state = useWorktrees((s) => (root ? s.byRoot.get(root) : undefined));
   useEffect(() => {
-    if (!client || !root?.startsWith('/')) return;
+    if (!client || !root || !isAbsolutePath(root)) return;
     const current = useWorktrees.getState().byRoot.get(root);
     if (current?.loading || (current?.loadedAt && Date.now() - current.loadedAt < FRESH_MS)) return;
     void loadWorktrees(client, root);

@@ -1,4 +1,4 @@
-import type { ProjectOrder, SessionSummary } from '@switchboard/protocol/client';
+import { isAbsolutePath, trimTrailingSeparators, type ProjectOrder, type SessionSummary } from '@switchboard/protocol/client';
 import { shortAge, tildify } from '../../lib/format.ts';
 import { fuzzyScore } from '../../lib/fuzzy.ts';
 import { realBranch, type SessionRowData } from '../../state/sessionsStore.ts';
@@ -68,8 +68,9 @@ export function quickTiles(ordered: readonly string[], value: string | null, cou
  */
 export function filterFolders(all: readonly string[], filter: string, nameOf: (root: string) => string, home: string | null): string[] {
   if (!filter.trim()) return [...all];
-  const typed = filter.trim().replace(/(.)\/+$/, '$1');
-  const path = typed.startsWith('/') && !all.includes(typed) ? [typed] : [];
+  // Trailing separators go, but not the one after a drive letter: `C:\` and `E:/` stay paths, `C:` would not be one.
+  const typed = trimTrailingSeparators(filter.trim());
+  const path = isAbsolutePath(typed) && !all.includes(typed) ? [typed] : [];
   const matches = all
     .map((folder) => ({ folder, score: Math.max(fuzzyScore(filter, nameOf(folder)) ?? -Infinity, (fuzzyScore(filter, tildify(folder, home)) ?? -Infinity) - 2) }))
     .filter((o) => o.score > -Infinity)

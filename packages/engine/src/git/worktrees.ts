@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
-import { existsSync, statSync } from 'node:fs';
-import { basename, join, sep } from 'node:path';
-import type { WorktreeEntry, WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult } from '@switchboard/protocol';
+import { existsSync, statSync, type Dirent } from 'node:fs';
+import { lstat, readdir } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
+import { isSameOrInside, type WorktreeEntry, type WorktreeList, type WorktreePullRequest, type WorktreeRemoveItem, type WorktreeRemoveResult } from '@switchboard/protocol';
 import { baseBranch, git, GitError } from './gitChanges.ts';
 
 /** One block of `git worktree list --porcelain`. */
@@ -36,8 +37,18 @@ export function parseWorktreeList(output: string): PorcelainWorktree[] {
   return entries;
 }
 
+/**
+ * The checkouts `git worktree list` names, in this platform's form: git prints `C:/…` on Windows, where every
+ * other path (and every comparison with one) uses `C:\…`.
+ */
+export const checkoutsOf = (output: string) =>
+  parseWorktreeList(output)
+    .filter((w) => !w.bare)
+    .map((w) => ({ ...w, path: resolve(w.path) }));
+
 const shortBranch = (ref: string) => ref.replace(/^refs\/heads\//, '');
-const inside = (path: string, folder: string) => path === folder || path.startsWith(folder.endsWith(sep) ? folder : folder + sep);
+/** `path` is `folder` or inside it; on Windows without regard to case or slash. */
+const inside = (path: string, folder: string) => isSameOrInside(path, folder);
 
 /** Runs a few promises at a time, keeping the order of `items`. */
 export async function mapLimit<T, R>(items: readonly T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
@@ -70,7 +81,7 @@ export interface SessionPlace {
  * `pullRequests` maps branch names to their newest pull request (null: unknown, `gh` isn't there).
  */
 export async function listWorktrees(root: string, options: { sessions?: readonly SessionPlace[]; pullRequests?: ReadonlyMap<string, WorktreePullRequest> | null } = {}): Promise<WorktreeList> {
-  const raw = parseWorktreeList(await git(root, ['worktree', 'list', '--porcelain'])).filter((w) => !w.bare);
+  const raw = checkoutsOf(await git(root, ['worktree', 'list', '--porcelain']));
   if (raw.length === 0) throw new GitError('No worktrees listed');
   const mainPath = raw[0]!.path;
   const base = await baseBranch(mainPath);
@@ -199,8 +210,12 @@ export async function fetchPullRequests(root: string, env: Record<string, string
   }
 }
 
-/** A folder's size on disk in bytes (`du -sk`), or null when it can't be measured. Unreadable parts are left out. */
-export async function measureSize(path: string): Promise<number | null> {
+/**
+ * A folder's size on disk in bytes (`du -sk`), or null when it can't be measured. Unreadable parts are left out.
+ * Windows has no `du`, so there the folder is walked and its files' sizes added up.
+ */
+export async function measureSize(path: string, platform: string = process.platform): Promise<number | null> {
+  if (platform === 'win32') return walkSize(path);
   return new Promise((resolvePromise) => {
     // du exits with 1 when it couldn't read part of the tree, and still prints the total of the rest.
     execFile('du', ['-sk', path], { timeout: 5 * 60_000, maxBuffer: 1024 * 1024 }, (_error, stdout) => {
@@ -208,6 +223,36 @@ export async function measureSize(path: string): Promise<number | null> {
       resolvePromise(Number.isFinite(kb) ? kb * 1024 : null);
     });
   });
+}
+
+/** The sizes of the files under `path` added up, without following links or junctions; null when it isn't a folder. */
+async function walkSize(path: string): Promise<number | null> {
+  try {
+    if (!(await lstat(path)).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  let total = 0;
+  const pending = [path];
+  while (pending.length) {
+    const dir = pending.pop()!;
+    let entries: Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    const sizes = await Promise.all(
+      entries.map(async (entry) => {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) return pending.push(full), 0;
+        if (!entry.isFile()) return 0;
+        return lstat(full).then((stat) => stat.size, () => 0);
+      }),
+    );
+    for (const size of sizes) total += size;
+  }
+  return total;
 }
 
 /**

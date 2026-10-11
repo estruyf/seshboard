@@ -10,7 +10,7 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued } from '../../state/laterStore.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
-import { formatKeys, keysFor, shortcutById } from '../../lib/shortcuts.ts';
+import { formatKeys, keysFor, localizeKeys, modKey, shortcutById } from '../../lib/shortcuts.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
@@ -403,13 +403,13 @@ export function CommandPalette() {
     if (event.key === 'ArrowDown') (take(), setActive((i) => (rows.length ? (i + 1) % rows.length : 0)));
     else if (event.key === 'ArrowUp') (take(), setActive((i) => (rows.length ? (i - 1 + rows.length) % rows.length : 0)));
     else if (event.key === 'Enter') (take(), choose(rows[active], event.altKey));
-    else if (event.key === 'Backspace' && state.query === '' && !event.metaKey) {
+    else if (event.key === 'Backspace' && state.query === '' && !modKey(event)) {
       const previous = back(state);
       if (previous) (take(), setState(previous));
-    } else if (event.metaKey && /^[1-9]$/.test(event.key) && (step?.kind === 'projects' || step?.kind === 'pick')) {
+    } else if (modKey(event) && /^[1-9]$/.test(event.key) && (step?.kind === 'projects' || step?.kind === 'pick')) {
       const row = rows.find((r) => (r.kind === 'project' || r.kind === 'option') && r.number === Number(event.key));
       if (row) (take(), choose(row, event.altKey));
-    } else if (event.metaKey && event.key.toLowerCase() === 'o' && step?.kind === 'projects' && step.purpose === 'new-session') (take(), void chooseFolder(event.altKey || step.worktree));
+    } else if (modKey(event) && event.key.toLowerCase() === 'o' && step?.kind === 'projects' && step.purpose === 'new-session') (take(), void chooseFolder(event.altKey || step.worktree));
   };
 
   const wide = step?.kind === 'prompt';
@@ -516,7 +516,7 @@ function Empty({ state, ctx }: { state: PaletteState; ctx: PaletteContext }) {
   const [line, hint]: [string, string] =
     step?.kind === 'projects'
       ? typed
-        ? [`No projects match “${typed}”.`, 'Add the folder as a project, or choose it with ⌘O.']
+        ? [`No projects match “${typed}”.`, localizeKeys('Add the folder as a project, or choose it with ⌘O.')]
         : ['No projects yet.', 'Add one from Manage projects.']
       : step?.kind === 'pick'
         ? [typed ? `Nothing matches “${typed}”.` : 'Nothing to pick from here.', '⌫ goes back.']

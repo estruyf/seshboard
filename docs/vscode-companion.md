@@ -16,7 +16,9 @@ This page is about how it works. For what it does and how to use it, see the ext
    { "protocol": 1, "socket": "/var/folders/…/T/switchboard-a1B2c3/engine.sock", "token": "<64 hex characters>", "pid": 4242, "startedAt": 1760000000000, "appVersion": "0.0.13" }
    ```
 
-   `<app data>` is `~/Library/Application Support/Switchboard` for the installed app and `Switchboard Dev` for `npm run dev`. The socket is not in the app data folder because macOS limits socket paths to 104 bytes.
+   `<app data>` is `~/Library/Application Support/Switchboard` for the installed app and `Switchboard Dev` for `npm run dev` (`%APPDATA%\Switchboard` on Windows, `~/.config/Switchboard` on Linux). The socket is not in the app data folder because macOS limits socket paths to 104 bytes.
+
+   Windows has no Unix sockets: there the engine listens on a named pipe with a random name (`\\.\pipe\switchboard-<32 hex characters>`), and `socket` in `engine.json` is that name. File modes don't apply there; `%APPDATA%` is only readable by your account, and the token is what lets an editor in.
 2. The extension reads `engine.json` (the installed app's first, then the dev build's, or the folder in `switchboard.appDataFolder`), skips a file whose process is gone, connects, and sends `hello` with the token.
 3. The engine closes any connection whose first message isn't `hello` with the right token (compared in constant time), or that says nothing for 5 seconds. Every message after that is validated against the contract; a line that isn't JSON, or is longer than 8 MB, closes the connection too.
 4. When Switchboard isn't running, the extension opens it (`open -b dev.switchboard.app`, or a `switchboard://new-session?cwd=…` link for a build macOS knows by its scheme only) and waits up to 20 seconds for `engine.json` to appear.

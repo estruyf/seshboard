@@ -1,3 +1,4 @@
+import { fileManagerName } from '../lib/platform.ts';
 import { useState, type ReactNode } from 'react';
 import { FolderOpen } from 'lucide-react';
 import type { LogLevel } from '@switchboard/protocol/client';
@@ -153,7 +154,7 @@ export function EngineDiagnostics() {
         </Row>
         <Row label="Config dir">
           {info ? (
-            <PathValue path={info.paths.claudeConfigDir} label="Open the config folder in Finder" onOpen={showInFinder} disabled={!client} hook="config-dir" />
+            <PathValue path={info.paths.claudeConfigDir} label={`Open the config folder in ${fileManagerName()}`} onOpen={showInFinder} disabled={!client} hook="config-dir" />
           ) : (
             'Unknown'
           )}
@@ -177,7 +178,7 @@ export function EngineDiagnostics() {
         <Row label="SQLite">{info ? <Mono>{info.versions.sqlite}</Mono> : 'Unknown'}</Row>
         <Row label="Cache database">
           {info ? (
-            <PathValue path={info.paths.database} label="Show the cache database in Finder" onOpen={showInFinder} disabled={!client} hook="database" />
+            <PathValue path={info.paths.database} label={`Show the cache database in ${fileManagerName()}`} onOpen={showInFinder} disabled={!client} hook="database" />
           ) : (
             'Unknown'
           )}

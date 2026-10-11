@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createAppStateStore } from '../db/appState.ts';
 import { openCacheDatabase } from '../db/database.ts';
@@ -70,7 +70,7 @@ describe('instructions', () => {
     write(join(root, '.claude', 'agent-memory', 'reviewer', 'notes.md'), 'Agent notes.\n');
     write(join(root, '.gitignore'), 'CLAUDE.local.md\n');
     const { instructions } = await service.list(root);
-    expect(instructions.map((i) => [i.path.slice(root.length + 1), i.kind, i.shared])).toEqual([
+    expect(instructions.map((i) => [i.path.slice(root.length + 1).split(sep).join('/'), i.kind, i.shared])).toEqual([
       ['CLAUDE.md', 'claude-md', true],
       ['apps/ui/CLAUDE.md', 'subfolder', true],
       ['apps/ui/CLAUDE.local.md', 'local', false],

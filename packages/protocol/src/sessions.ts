@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AbsolutePath } from './absolutePath.ts';
 import { Effort, PermissionMode } from './host.ts';
 
 /** Where a session was started, derived from Claude Code's `entrypoint`. */
@@ -59,7 +60,7 @@ export const ProjectIconChoice = z.discriminatedUnion('kind', [
   /** Always use the letter. */
   z.object({ kind: z.literal('none') }),
   z.object({ kind: z.literal('emoji'), value: z.string().min(1).max(16) }),
-  z.object({ kind: z.literal('file'), path: z.string().min(1).max(4096).startsWith('/') }),
+  z.object({ kind: z.literal('file'), path: AbsolutePath }),
 ]);
 export type ProjectIconChoice = z.infer<typeof ProjectIconChoice>;
 

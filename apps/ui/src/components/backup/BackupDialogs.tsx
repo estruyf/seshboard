@@ -1,9 +1,10 @@
+import { currentPlatform } from '../../lib/platform.ts';
 import { ArrowRight, FolderOpen, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { BACKUP_SECTIONS, settingsFileName, type BackupSection, type FolderMapping, type ImportChange, type ImportMode, type ImportPreview } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { DEFAULT_EXPORT_SECTIONS, groupChanges, hasEffect, SECTION_INFO, summarizeChanges } from '../../lib/backup.ts';
-import { guessHome, tildify } from '../../lib/format.ts';
+import { basename, guessHome, tildify } from '../../lib/format.ts';
 import { useBackup } from '../../state/backupStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
@@ -203,8 +204,8 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
       title="Import settings"
       subtitle={
         preview
-          ? `From ${path.split('/').pop()}${exported && !Number.isNaN(exported.getTime()) ? `, exported ${exported.toLocaleDateString()}` : ''}${preview.appVersion !== 'unknown' ? ` by Switchboard ${preview.appVersion}` : ''}.`
-          : `Reading ${path.split('/').pop()}…`
+          ? `From ${basename(path)}${exported && !Number.isNaN(exported.getTime()) ? `, exported ${exported.toLocaleDateString()}` : ''}${preview.appVersion !== 'unknown' ? ` by Switchboard ${preview.appVersion}` : ''}.`
+          : `Reading ${basename(path)}…`
       }
       onClose={onClose}
       data-import-dialog
@@ -264,7 +265,7 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
           {(preview.missingFolders.length > 0 || relocate.length > 0) && (
             <div className="grid gap-2" data-import-folders>
               <h3 className="text-ui font-semibold text-muted">Folders</h3>
-              <p className="text-ui text-muted">These folders aren’t on this Mac. Point them at another folder, or leave them to skip their project and actions.</p>
+              <p className="text-ui text-muted">These folders aren’t on {currentPlatform() === 'darwin' ? 'this Mac' : 'this computer'}. Point them at another folder, or leave them to skip their project and actions.</p>
               {preview.missingFolders.map((folder) => (
                 <div key={folder} className="flex items-center gap-2 text-ui" data-missing-folder={folder}>
                   <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text" data-tooltip={folder}>

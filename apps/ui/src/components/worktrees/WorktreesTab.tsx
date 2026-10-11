@@ -1,11 +1,13 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Copy, Ellipsis, FolderOpen, GitBranch, GitMerge, HardDrive, Lock, MessagesSquare, RefreshCw, Search, SquarePen, Trash2, ArrowUp } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
-import type { WorktreeEntry, WorktreeRemoveResult } from '@switchboard/protocol/client';
+import { isSameOrInside, type WorktreeEntry, type WorktreeRemoveResult } from '@switchboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { agoText, tildify } from '../../lib/format.ts';
+import { fileManagerName } from '../../lib/platform.ts';
+import { localizeKeys } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useProjectPage } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -51,12 +53,12 @@ const DOT: Record<'working' | 'needs-you' | 'idle', string> = { working: 'bg-acc
 
 type Line = { kind: 'header'; group: Exclude<WorktreeGroup, 'main'>; rows: WorktreeRow[] } | { kind: 'row'; row: WorktreeRow };
 
-/** Shows a folder in Finder, through the engine's list of apps that open folders. */
-async function revealInFinder(client: EngineClient, path: string): Promise<void> {
+/** Shows a folder in Finder (File Explorer on Windows), through the engine's list of apps that open folders. */
+async function revealInFileManager(client: EngineClient, path: string): Promise<void> {
   const known = useHosts.getState().editors;
   const editors = known.length ? known : (await client.call('editors.list', {})).editors;
   const finder = editors.find((editor) => editor.kind === 'finder');
-  if (!finder) throw new Error('Finder is not available');
+  if (!finder) throw new Error(`${fileManagerName()} is not available`);
   await client.call('editors.open', { path, editorId: finder.id });
 }
 
@@ -234,7 +236,7 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
         },
       },
       { label: 'Open in editor', icon: <FolderOpen size={13} />, disabled: entry.missing, onSelect: () => void openIn(entry.path).catch(fail('open the editor')) },
-      { label: 'Reveal in Finder', icon: <Search size={13} />, disabled: entry.missing || !client, onSelect: () => client && void revealInFinder(client, entry.path).catch(fail('show the folder in Finder')) },
+      { label: `Reveal in ${fileManagerName()}`, icon: <Search size={13} />, disabled: entry.missing || !client, onSelect: () => client && void revealInFileManager(client, entry.path).catch(fail(`show the folder in ${fileManagerName()}`)) },
       { label: 'Copy path', icon: <Copy size={13} />, onSelect: () => void navigator.clipboard.writeText(entry.path).then(() => toast('Copied the path'), fail('copy the path')) },
     ];
     if (entry.isMain) return general;
@@ -268,7 +270,7 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
     const ahead = aheadLabel(entry);
     const merge = mergeLabel(entry);
     const size = entry.missing ? 0 : entry.isMain ? mainCheckoutBytes(rows, sizes) : (sizes.get(entry.path)?.bytes ?? null);
-    const where = entry.path.startsWith(`${root}/`) ? entry.path.slice(root.length + 1) : tildify(entry.path, home);
+    const where = entry.path !== root && isSameOrInside(entry.path, root) ? entry.path.slice(root.replace(/[\\/]+$/, '').length + 1) : tildify(entry.path, home);
     const label = entry.isMain ? 'Main checkout' : entry.name;
     return (
       <div
@@ -294,7 +296,7 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
               <Lock size={13} aria-hidden />
             </span>
           ) : (
-            <Checkbox checked={isPicked} onChange={() => pick(row, shift.current)} label={`Pick ${label}`} tooltip={`Pick ${label} (⇧-click for a range)`} dataAttrs={{ 'data-worktree-pick': entry.path }} />
+            <Checkbox checked={isPicked} onChange={() => pick(row, shift.current)} label={`Pick ${label}`} tooltip={`Pick ${label} (${localizeKeys('⇧-click')} for a range)`} dataAttrs={{ 'data-worktree-pick': entry.path }} />
           )}
         </span>
         <span role="cell" className="grid min-w-0 gap-px">

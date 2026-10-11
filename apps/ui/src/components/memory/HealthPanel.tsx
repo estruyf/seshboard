@@ -1,6 +1,8 @@
 import { AlertTriangle, Clock } from 'lucide-react';
+import { trashName } from '../../lib/platform.ts';
 import { useEffect, useState } from 'react';
 import { memoryMeta, splitFrontmatter, type HealthFinding } from '@switchboard/protocol/client';
+import { basename, pathTail } from '../../lib/format.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openMemoryFile } from '../../state/memoryStore.ts';
 import { useLinks } from '../../state/linksStore.ts';
@@ -45,7 +47,7 @@ export function useMemoryHealth(root: string | null): HealthFinding[] | null {
   return findings;
 }
 
-const nameOf = (path: string) => path.split('/').pop()!.replace(/\.md$/, '');
+const nameOf = (path: string) => basename(path).replace(/\.md$/, '');
 
 /** Two memories side by side, read-only, with Keep left, Keep right and Merge into left…, each confirmed and undoable. */
 function CompareDialog({ root, left, right, onClose }: { root: string | null; left: string; right: string; onClose(): void }) {
@@ -62,7 +64,7 @@ function CompareDialog({ root, left, right, onClose }: { root: string | null; le
     const gone = side === 'left' ? right : left;
     const { undoToken } = await client.call('memory.remove', { root, path: gone });
     onClose();
-    toast(`Kept ${nameOf(side === 'left' ? left : right)}; ${nameOf(gone)} went to the Trash`, { undo: restore(undoToken) });
+    toast(`Kept ${nameOf(side === 'left' ? left : right)}; ${nameOf(gone)} went to the ${trashName()}`, { undo: restore(undoToken) });
   };
   const merge = async () => {
     if (!client || a.content === null || b.content === null) throw new Error('Not read yet');
@@ -107,7 +109,7 @@ function CompareDialog({ root, left, right, onClose }: { root: string | null; le
         ].map(({ path, file }) => (
           <div key={path} className="grid min-w-0 content-start gap-1.5">
             <p className="truncate font-mono text-meta text-muted" data-tooltip={path}>
-              {path.split('/').slice(-3).join('/')}
+              {pathTail(path, 3)}
             </p>
             <pre className="max-h-[50vh] overflow-auto rounded-lg border border-edge bg-code p-3 font-mono text-ui break-words whitespace-pre-wrap select-text">{file.content ?? 'Reading…'}</pre>
           </div>
@@ -120,8 +122,8 @@ function CompareDialog({ root, left, right, onClose }: { root: string | null; le
           confirmLabel={confirm === 'merge' ? 'Merge' : 'Keep it'}
           body={
             confirm === 'merge'
-              ? `${nameOf(right)}'s text is added under ${nameOf(left)}'s, and ${nameOf(right)} goes to the Trash with its MEMORY.md line. You can undo it right after.`
-              : `${nameOf(confirm === 'left' ? right : left)} goes to the Trash with its MEMORY.md line. You can undo it right after.`
+              ? `${nameOf(right)}'s text is added under ${nameOf(left)}'s, and ${nameOf(right)} goes to the ${trashName()} with its MEMORY.md line. You can undo it right after.`
+              : `${nameOf(confirm === 'left' ? right : left)} goes to the ${trashName()} with its MEMORY.md line. You can undo it right after.`
           }
           onConfirm={() => (confirm === 'merge' ? merge() : keep(confirm))}
           onClose={() => setConfirm(null)}

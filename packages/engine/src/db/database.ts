@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { migrations } from './migrations.ts';
@@ -59,8 +59,19 @@ function openAndMigrate(path: string): DatabaseSync {
     return db;
   } catch (error) {
     // Move a corrupt file aside while SQLite still has it open: closing the connection deletes its WAL.
-    if (isCorruptionError(error)) moveAside(path);
-    db.close();
+    // Windows can't rename an open file, so there the WAL and shared memory are copied aside first, and the
+    // database is moved after closing.
+    if (!isCorruptionError(error)) {
+      db.close();
+    } else if (process.platform === 'win32') {
+      const aside = asideName(path);
+      for (const suffix of SIDE_FILES) if (existsSync(`${path}${suffix}`)) copyFileSync(`${path}${suffix}`, `${aside}${suffix}`);
+      db.close();
+      moveAside(path, aside);
+    } else {
+      moveAside(path);
+      db.close();
+    }
     throw error;
   }
 }
@@ -74,14 +85,16 @@ export function isCorruptionError(error: unknown): boolean {
 }
 
 /** Moves the cache and its WAL and shared-memory files aside together, so the copy keeps its last commits. */
-function moveAside(path: string): void {
+function moveAside(path: string, aside = asideName(path)): void {
   if (!existsSync(path)) return;
-  const aside = `${path}.broken-${Date.now()}`;
   renameSync(path, aside);
-  for (const suffix of ['-wal', '-shm']) {
+  for (const suffix of SIDE_FILES) {
     if (existsSync(`${path}${suffix}`)) renameSync(`${path}${suffix}`, `${aside}${suffix}`);
   }
 }
+
+const SIDE_FILES = ['-wal', '-shm'];
+const asideName = (path: string) => `${path}.broken-${Date.now()}`;
 
 /**
  * Opens (or creates) the cache database. Most of it can be rebuilt from ~/.claude, but some tables hold user

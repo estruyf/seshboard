@@ -1,6 +1,7 @@
+import { currentPlatform } from '../../lib/platform.ts';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Check, ChevronDown, Ellipsis, FolderCog, FolderGit2, FolderOpen, FolderPlus, GitBranch, Image, Layers, Pencil, RotateCcw, SlidersHorizontal, Smile, Type, X } from 'lucide-react';
-import type { ProjectIconChoice } from '@switchboard/protocol/client';
+import { isAbsolutePath, type ProjectIconChoice } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
@@ -92,7 +93,7 @@ function EmojiPicker({ x, y, root, onClose }: { x: number; y: number; root: stri
             value={value}
             maxLength={16}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="Or type any emoji (⌃⌘Space)"
+            placeholder={`Or type any emoji (${currentPlatform() === 'win32' ? 'Win+.' : '⌃⌘Space'})`}
             aria-label="Emoji"
             className="h-7 min-w-0 flex-1 rounded-md border border-edge bg-bg px-2 text-ui outline-none focus:border-accent-ink/60"
           />
@@ -152,7 +153,7 @@ export function useProjectIconEntries() {
     const linked = project?.profileId ?? null;
     // Which account new sessions here use; only worth asking once there is more than one.
     const profileEntries: MenuEntry[] =
-      profiles.length > 1 && root.startsWith('/')
+      profiles.length > 1 && isAbsolutePath(root)
         ? [
             { heading: 'Claude profile' },
             {
@@ -179,7 +180,7 @@ export function useProjectIconEntries() {
         onSelect: () => void actions.setIcon(root, { kind: 'auto' }),
       },
       'separator',
-      ...(root.startsWith('/') ? [{ label: 'Rename project…', icon: <Pencil size={13} />, onSelect: () => setRenaming(root), data: { 'data-rename-project': true } } satisfies MenuEntry] : []),
+      ...(isAbsolutePath(root) ? [{ label: 'Rename project…', icon: <Pencil size={13} />, onSelect: () => setRenaming(root), data: { 'data-rename-project': true } } satisfies MenuEntry] : []),
       { label: 'Open folder in editor', icon: <FolderOpen size={13} />, disabled: !project?.exists, onSelect: () => void openIn(root).catch(() => {}) },
       ...(identity
         ? []
@@ -191,7 +192,7 @@ export function useProjectIconEntries() {
               { label: 'Project settings…', icon: <SlidersHorizontal size={13} />, onSelect: () => manage(root) },
               ...(remove ? [{ label: 'Remove from Switchboard…', icon: <X size={13} />, danger: true, onSelect: () => setRemoving(root), data: { 'data-remove-project': true } }] : []),
             ] satisfies MenuEntry[])
-          : root.startsWith('/')
+          : isAbsolutePath(root)
             ? [{ label: 'Add to projects', icon: <FolderPlus size={13} />, disabled: !project?.exists, onSelect: () => void actions.add(root) } satisfies MenuEntry]
             : []),
     ];
