@@ -22,3 +22,4 @@ It needs Google Chrome (or set `CHROME` to another Chromium binary). The `social
 |---|---|
 | [vscode-companion](vscode-companion/posts.md) | The VS Code companion extension |
 | [worktrees](worktrees/posts.md) | The project page and its Worktrees tab (overview and clean-up) |
+| [release-0.0.14](release-0.0.14/posts.md) | Release 0.0.14: Windows, memory, branches and worktrees, the website |

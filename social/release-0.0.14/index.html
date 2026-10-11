@@ -1,0 +1,180 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  /* Switchboard on Windows, on a project's Memory tab, with the Branches tab in front. */
+  .win {
+    position: absolute; left: 0; top: 0; width: 560px; height: 392px;
+    background: var(--bg); border-radius: 10px; overflow: hidden;
+    box-shadow: 0 0 0 1px var(--edge), 0 24px 60px -12px rgba(0,0,0,0.75);
+  }
+  /* The Windows title bar: icon and name on the left, minimize, maximize and close on the right. */
+  .titlebar { height: 32px; display: flex; align-items: center; padding-left: 12px; background: #11141a; border-bottom: 1px solid var(--border); }
+  .titlebar img { width: 16px; height: 16px; }
+  .titlebar .t { margin-left: 8px; font-size: 11.5px; color: var(--muted); font-family: 'Segoe UI', -apple-system, system-ui, sans-serif; }
+  .titlebar .ctl { margin-left: auto; display: flex; height: 100%; }
+  .titlebar .ctl span { width: 44px; display: grid; place-items: center; color: var(--muted); }
+  .titlebar .ctl svg { width: 10px; height: 10px; }
+
+  .ph { padding: 12px 16px 0; border-bottom: 1px solid var(--border); }
+  .who { display: flex; align-items: center; gap: 10px; }
+  .picon { width: 28px; height: 28px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; }
+  .picon svg { width: 15px; height: 15px; color: var(--on-accent); }
+  .who .name { font-size: 18px; font-weight: 650; color: #f3f4f7; }
+  .who .new { margin-left: auto; height: 26px; padding: 0 10px; border-radius: 7px; background: var(--accent); color: var(--on-accent); font-weight: 650; font-size: 11.5px; display: flex; align-items: center; }
+  .tabs { display: flex; gap: 2px; margin-top: 8px; }
+  .tab { padding: 7px 6px 8px; font-size: 11px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: flex; align-items: center; gap: 5px; }
+  .tab i { font-style: normal; font-size: 10px; min-width: 16px; height: 15px; padding: 0 4px; border-radius: 999px; background: rgba(255,255,255,0.08); display: grid; place-items: center; }
+  .tab.on { color: var(--text); font-weight: 600; border-color: var(--accent); }
+
+  .body { padding: 12px 14px; display: grid; gap: 10px; }
+  .panel { border-radius: 10px; background: var(--card); box-shadow: inset 0 0 0 1px var(--border); }
+  .loads { padding: 10px 12px; }
+  .loads .top { display: flex; align-items: center; font-size: 11.5px; font-weight: 600; color: var(--text); }
+  .loads .top .health { margin-left: auto; font-weight: 400; font-size: 10.5px; color: var(--muted); }
+  .loads .top .health b { color: var(--caution); font-weight: 500; }
+  .bar { display: flex; height: 6px; border-radius: 999px; overflow: hidden; margin-top: 9px; gap: 2px; }
+  .legend { display: flex; gap: 12px; margin-top: 7px; font-size: 10px; color: var(--muted); }
+  .legend span::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 5px; background: var(--c); }
+
+  .list { padding: 8px 0 4px; }
+  .list .hd { display: flex; align-items: center; gap: 10px; padding: 0 12px 6px; }
+  .meter { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 10px; color: var(--muted); }
+  .meter .track { width: 60px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  .meter .track b { display: block; width: 6%; height: 100%; background: var(--ok); }
+  .mem { display: grid; grid-template-columns: 1fr auto; gap: 1px 10px; padding: 6px 12px; border-top: 1px solid var(--border); }
+  .mem.on { background: rgba(255,255,255,0.035); }
+  .mem .n { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text); }
+  .mem .d { font-size: 10.5px; color: var(--muted); }
+  .mem .age { font-size: 10.5px; color: var(--faint); }
+  .warn { width: 12px; height: 12px; color: var(--caution); }
+
+  /* The Branches tab, in front. */
+  .br {
+    position: absolute; left: 196px; top: 262px; width: 404px; padding: 12px 0 4px;
+    background: var(--popover); border-radius: 12px;
+    box-shadow: 0 0 0 1px var(--edge), 0 4px 10px rgba(0,0,0,0.35), 0 28px 60px -10px rgba(0,0,0,0.85);
+  }
+  .br .top { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; }
+  .br .top h2 { font-size: 14px; font-weight: 650; color: var(--text); display: flex; align-items: center; gap: 7px; }
+  .br .top h2 svg { width: 14px; height: 14px; color: var(--muted); }
+  .del { margin-left: auto; height: 26px; padding: 0 10px; border-radius: 7px; font-size: 11px; font-weight: 600; color: var(--error); box-shadow: inset 0 0 0 1px rgba(255,107,107,0.55); display: flex; align-items: center; }
+  .grp { height: 26px; padding: 0 14px; display: flex; align-items: center; background: rgba(21,24,31,0.35); border-top: 1px solid var(--edge); }
+  .grp .note { margin-left: 6px; font-size: 10.5px; color: var(--muted); font-weight: 400; letter-spacing: 0; text-transform: none; }
+  .b { display: grid; grid-template-columns: 16px 1fr auto auto; align-items: center; gap: 10px; padding: 7px 14px; border-top: 1px solid var(--edge); }
+  .b.picked { background: rgba(255,255,255,0.03); }
+  .b .nm { display: grid; gap: 1px; }
+  .b .nm b { font-size: 11.5px; font-weight: 600; color: var(--text); }
+  .b .nm span { font-size: 10.5px; color: var(--muted); }
+  .b .vs { font-size: 10.5px; color: var(--muted); min-width: 44px; text-align: right; }
+  .lock { width: 13px; height: 13px; color: var(--faint); }
+
+  .copy { width: 450px; }
+
+  /* A Windows chip under the copy. */
+  .os { display: inline-flex; align-items: center; gap: 8px; margin-top: 22px; font-size: 13px; color: var(--muted); }
+  .os .pill { height: 26px; padding: 0 11px; font-size: 12.5px; gap: 7px; color: var(--text); box-shadow: inset 0 0 0 1px var(--edge); background: rgba(255,255,255,0.04); }
+  .os svg { width: 12px; height: 12px; }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard 0.0.14</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Out now</div>
+    <h1>Now on <span class="hl">Windows</span>, and a lot more</h1>
+    <p class="sub">Edit and tidy <b>Claude Code's memory</b>, see every <b>branch and worktree</b> of a project, and find it all in the <b>new docs</b>.</p>
+    <div class="os">
+      <span class="pill"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h5v5H2zM9 3h5v5H9zM2 9.5h5v5H2zM9 9.5h5v5H9z" transform="translate(0 -1)"/></svg>Windows 10 and 11</span>
+      <span class="pill"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11.2 8.4c0-1.6 1.3-2.3 1.3-2.4-.7-1.1-1.8-1.2-2.2-1.2-.9-.1-1.8.6-2.3.6s-1.2-.5-2-.5c-1 0-2 .6-2.5 1.5-1.1 1.9-.3 4.6.8 6.1.5.7 1.1 1.6 1.9 1.5.8 0 1-.5 2-.5s1.2.5 2 .5 1.3-.8 1.8-1.5c.6-.8.8-1.6.8-1.7 0 0-1.6-.6-1.6-2.4zM9.7 3.7c.4-.5.7-1.2.6-1.9-.6 0-1.3.4-1.8.9-.4.4-.7 1.1-.6 1.8.7.1 1.4-.3 1.8-.8z"/></svg>macOS</span>
+    </div>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Download for free</span>
+    <span class="where">switchboard.struyfconsulting.com</span>
+  </div>
+
+  <div class="stage">
+    <div class="win">
+      <div class="titlebar">
+        <img src="../../apps/desktop/build/icon.png" alt="">
+        <span class="t">Switchboard</span>
+        <span class="ctl">
+          <span><svg viewBox="0 0 10 10" stroke="currentColor" stroke-width="1"><path d="M0 5.5h10"/></svg></span>
+          <span><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg></span>
+          <span><svg viewBox="0 0 10 10" stroke="currentColor" stroke-width="1"><path d="M0 0l10 10M10 0L0 10"/></svg></span>
+        </span>
+      </div>
+      <div class="ph">
+        <div class="who">
+          <span class="picon"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 5V4a4 4 0 0 1 8 0v1h1.5l.5 10H2l.5-10zm1.5 0h5V4a2.5 2.5 0 0 0-5 0z"/></svg></span>
+          <span class="name">acme-store</span>
+          <span class="new">New session</span>
+        </div>
+        <div class="tabs">
+          <span class="tab">Overview</span><span class="tab">Sessions <i>3</i></span><span class="tab">Worktrees <i>3</i></span><span class="tab">Branches <i>9</i></span><span class="tab on">Memory <i>5</i></span><span class="tab">Actions <i>4</i></span><span class="tab">Settings</span>
+        </div>
+      </div>
+
+      <div class="body">
+        <div class="panel loads">
+          <div class="top">What loads in a session here<span class="health">Health: <b>2 to look at</b></span></div>
+          <div class="bar"><span style="flex:4;background:#8b94a6"></span><span style="flex:6;background:#b197fc"></span><span style="flex:1.2;background:var(--link)"></span></div>
+          <div class="legend mono"><span style="--c:#8b94a6">CLAUDE.md</span><span style="--c:#b197fc">MEMORY.md · 4 of 4 lines</span><span style="--c:var(--link)">rules/testing.md</span></div>
+        </div>
+
+        <div class="panel list">
+          <div class="hd">
+            <span class="section" style="color:var(--muted)">Project memory <span class="count">5</span></span>
+            <span class="meter mono">MEMORY.md 4 / 200 <span class="track"><b></b></span></span>
+          </div>
+          <div class="mem on">
+            <span class="n">theme-tokens <span class="pill">project</span><svg class="warn" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3.5M8 11.8v.2"/></svg></span><span class="age">26m</span>
+            <span class="d">Colours come from the theme tokens, never hex values</span><span></span>
+          </div>
+          <div class="mem">
+            <span class="n">testing-conventions <span class="pill caution">feedback</span></span><span class="age">3d</span>
+            <span class="d">Run one test file at a time while working</span><span></span>
+          </div>
+          <div class="mem">
+            <span class="n">payment-providers <span class="pill link">reference</span></span><span class="age">6d</span>
+            <span class="d">Stripe for cards, Adyen for iDEAL and Bancontact</span><span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="br">
+      <div class="top">
+        <h2><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="3.5" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="5" r="1.8"/><path d="M4 5.3v5.4M12 6.8c0 3-8 2-8 4"/></svg>Branches</h2>
+        <span class="del">Delete 1 selected…</span>
+      </div>
+      <div class="grp"><span class="section" style="color:var(--muted)">In use <span class="count">5</span><span class="note">the base branch, or checked out</span></span></div>
+      <div class="b">
+        <svg class="lock" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>
+        <span class="nm"><b class="mono">feat/dark-mode</b><span>Add dark mode toggle to settings</span></span>
+        <span class="pill">checked out</span><span class="vs mono">3↑ 1↓</span>
+      </div>
+      <div class="grp"><span class="section" style="color:var(--ok)">Safe to delete <span class="count" style="background:rgba(81,207,102,0.15)">1</span><span class="note">merged, or no commits of its own</span></span></div>
+      <div class="b picked">
+        <span class="check on"></span>
+        <span class="nm"><b class="mono">feat/product-reviews</b><span>Add product reviews</span></span>
+        <span class="pill ok">in sync</span><span class="vs" style="color:var(--ok)">merged</span>
+      </div>
+      <div class="grp"><span class="section" style="color:var(--link)">Deleted on the remote <span class="count" style="background:rgba(116,192,252,0.15)">1</span></span></div>
+      <div class="b">
+        <span class="check"></span>
+        <span class="nm"><b class="mono">fix/cart-total</b><span>Fix cart total</span></span>
+        <span class="pill caution">1 not pushed</span><span class="vs mono">1↑</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
