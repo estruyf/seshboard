@@ -381,12 +381,18 @@ What was done differently from the plan above, and why:
 - **3.1 `node-pty`:** its install leaves a copy of ConPTY for the build machine's architecture in `build/Release`, which is left out; each app loads `prebuilds/win32-<arch>`. Both architectures' prebuilds stay in each app (a few MB), as file patterns can't tell them apart.
 - **3.2 Updater:** no change was needed. Installing shows the installer's progress window and restarts the app (`quitAndInstall(false, true)`): silent would leave the app gone for several seconds with nothing on screen. Closing the window asks first on Windows, but not while quitting to install, as `before-quit` comes before the windows close.
 - **3.3 Signing:** code signing certificates can no longer be exported as files, so the workflow supports Azure Trusted Signing (repository variables and an app registration's secret) and, for an older certificate, a `.pfx`.
+- **3.4 Windows releases are switched on with a variable** (`WINDOWS_RELEASES` = `true`). Until then the Windows job is skipped, so releases before Windows signing is set up don't show a failed job; once on, a release that can't be signed fails and attaches nothing.
 - **3.4 CI:** `check.yml` runs `npm run check` on `macos-15` and `windows-latest` for every pull request and push to `main`. The smoke test isn't run there: it needs a `~/.claude` with real sessions, which a runner doesn't have.
 - **Found by the macOS check:** a platform's own `files` list with only `!` patterns packs everything else in `apps/desktop` (the source, the scripts, and locally `.smoke` with screenshots of real sessions). Both lists now repeat `out/**` and `package.json`, and `scripts/dist.mjs` fails the build when `app.asar` holds anything but `out`, `node_modules` and `package.json`.
 - **3.5 WinGet:** not done. Its manifest needs the signed installer's URL and checksum, so it follows the first signed release.
 
+From the code review:
+- **A Windows preview build got the update feed.** `dist.mjs` passed `-c.extraMetadata.name` next to `--config electron-builder.preview.yml`, and electron-builder then loaded electron-builder.yml on top of the preview config, so its GitHub feed beat `publish: null`. It also read `-c.` values that look like numbers or booleans as such (a certificate profile named `12345`). On Windows, `dist.mjs` now writes the build's own settings into a config file that extends the one asked for (`windowsBuildConfig.mjs`), with any `-c.` options as written; macOS passes its arguments as before. Checked with electron-builder's own config loading, and by building: a preview has no `app-update.yml`.
+- **The signature check didn't compare the signer with the publisher.** With Azure signing, the publisher the app checks updates against comes from `AZURE_SIGNING_PUBLISHER`; a typo would have shipped, and installed copies would then refuse every later update. `checkWindowsSignatures.mjs` compares each signer with `publisherName` in both apps' `app-update.yml`, the way electron-updater does (a full DN, every part; a plain name, the CN).
+- **Uninstalling removed any `switchboard://` handler**, also one another app or a copy run from elsewhere registered since. It now removes it only when its command starts this install's `Switchboard.exe`.
+
 Still to do, by the maintainer or with them:
-- set up signing (decision 5 and 9) and publish a release, which runs the Windows job for the first time;
+- set up signing (decision 5 and 9), set `WINDOWS_RELEASES` to `true`, and publish a release, which runs the Windows job for the first time;
 - install that release on a clean Windows PC, and update it to the next one;
 - try the Arm64 build on Arm hardware.
 

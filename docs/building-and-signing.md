@@ -116,7 +116,7 @@ The status should be `Valid`. Once the installed app is signed, the in-app updat
 - The same configuration as macOS ([`electron-builder.yml`](../apps/desktop/electron-builder.yml) → `win` and `nsis`), with `build/icon.ico` made by `npm run icon` (which on Windows makes only the `.ico`).
 - `node-pty`'s Windows binaries (`prebuilds/win32-x64` and `win32-arm64`, with ConPTY) instead of the macOS ones.
 - [`build/installer.nsh`](../apps/desktop/build/installer.nsh) adds to the installer: uninstalling removes the `switchboard://` link handler, except during an update.
-- `scripts/dist.mjs` names the package `switchboard` for the installer (`-c.extraMetadata.name`), so it installs to `Programs\switchboard` rather than a folder named after the npm workspace. The data folder comes from the product name, so it stays `Switchboard`.
+- `scripts/dist.mjs` names the package `switchboard` for the installer (`extraMetadata.name`, in a config file it writes for Windows builds that extends the one asked for: `scripts/windowsBuildConfig.mjs`), so it installs to `Programs\switchboard` rather than a folder named after the npm workspace. The data folder comes from the product name, so it stays `Switchboard`.
 
 ## Releasing (automated in GitHub Actions)
 
@@ -137,11 +137,11 @@ The workflow then builds for macOS and Windows in two jobs. The macOS job:
 7. fills in the release notes from the CHANGELOG section, if you left them empty. The in-app updater shows these notes (cleaned up and shortened) for the new version.
 8. for a Stable release, stamps the Homebrew cask with the version and the `.zip`'s checksum and pushes it to [estruyf/homebrew-tap](https://github.com/estruyf/homebrew-tap) (see [Homebrew](homebrew.md)).
 
-The Windows job, on a Windows runner:
+The Windows job runs once Windows releases are switched on: the repository variable `WINDOWS_RELEASES` is `true` (see [Signing secrets](#signing-secrets)). Until then it's skipped, and releases are macOS-only. On a Windows runner, it:
 
 1. runs the typecheck and unit tests there too;
 2. builds the installer with the version from the tag, signed with Azure Trusted Signing or the `.pfx` (it fails when neither is set up);
-3. checks that the installer and both apps carry a valid signature;
+3. checks that the installer and both apps carry a valid signature by the publisher the app checks updates against (`scripts/checkWindowsSignatures.mjs`, matching the way the in-app updater does). A publisher that didn't match would make every installed copy of the release refuse all later updates, and no later release could fix that;
 4. attaches `Switchboard-X.Y.Z-setup.exe` and its `.blockmap`, then the update feed (`latest.yml`) last;
 5. fails if a `latest*.yml` ended up on a draft or pre-release.
 
@@ -174,7 +174,7 @@ Add these repository secrets (Settings → Secrets and variables → Actions):
 
 `MAC_CERTIFICATE_PASSWORD` may be left out only if the `.p12` was exported without a password.
 
-For Windows, set up one of the two ways. **Azure Trusted Signing** takes these repository *variables* (Settings → Secrets and variables → Actions → Variables), which aren't secret:
+For Windows, set up one of the two ways below, then set the repository variable `WINDOWS_RELEASES` to `true` to switch Windows releases on. **Azure Trusted Signing** takes these repository *variables* (Settings → Secrets and variables → Actions → Variables), which aren't secret:
 
 | Variable | What it is |
 |---|---|
