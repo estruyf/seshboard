@@ -8,6 +8,7 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { cleanUpWorktrees, openProject } from '../../state/projectPageStore.ts';
+import { copyForClaudeApp, importFromClaudeExport, pasteFromClaudeApp } from '../memory/memoryDialogs.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from '../../state/sessionNav.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
@@ -53,6 +54,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
   return {
     goHome: () => useSessions.getState().goHome(),
     showSearch: () => useOverlay.getState().show('search'),
+    showMemorySearch: () => useOverlay.getState().searchMemory(),
     showShortcuts: () => useOverlay.getState().show('shortcuts'),
     showUnsent: () => openUnsentList(),
     openSettings: (section) => useSessions.getState().openSettings(section),
@@ -64,6 +66,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     manageProjects: () => manage(),
     openProject: (root, tab) => openProject(root, tab),
     cleanUpWorktrees: (root) => cleanUpWorktrees(root),
+    memoryTransfer: (kind) => (kind === 'import-export' ? void importFromClaudeExport() : kind === 'paste' ? pasteFromClaudeApp() : copyForClaudeApp()),
     addProject: () => useProjects.getState().showAdd(true),
     checkClaudeUpdate: () => {
       useSessions.getState().openSettings('about');
@@ -91,6 +94,16 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     copyLastReply: () => {
       const reply = usePaletteBus.getState().digest?.lastReply;
       if (reply) void navigator.clipboard.writeText(reply).catch(failed('copy the reply'));
+    },
+    rememberThis: () => {
+      // What you selected in the conversation, else Claude's last reply.
+      const selection = window.getSelection();
+      const node = selection && selection.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null;
+      const source = (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('[data-remember-from]');
+      const selected = source ? selection!.toString().trim() : '';
+      const text = selected || usePaletteBus.getState().digest?.lastReply || '';
+      if (!text) return;
+      usePaletteBus.getState().showDialog({ kind: 'remember', text, from: selected && source?.dataset.rememberFrom === 'user' ? 'user' : 'claude', sessionId, root: session?.projectRoot ?? null });
     },
     copySessionId: () => void navigator.clipboard.writeText(sessionId).catch(failed('copy the session id')),
     checkTranscript: () => usePaletteBus.getState().showDialog({ kind: 'transcript-diagnosis', sessionId, title: session?.title ?? null }),

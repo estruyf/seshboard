@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
@@ -34,6 +34,13 @@ import { SearchIndex } from './sessions/searchIndex.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { ActionStore, expandCommand, shellQuote, suggestActions } from './actions/actionStore.ts';
 import { LaterStore } from './later/laterStore.ts';
+import { MemoryService, type MemoryTrashScope } from './memory/memoryService.ts';
+import { MemoryWatcher } from './memory/watcher.ts';
+import { MemorySearch, type IndexedFolder } from './memory/memorySearch.ts';
+import { candidatesFromPaste, candidatesOf } from './memory/claudeExport.ts';
+import { readExport } from './memory/memoryImport.ts';
+import { findSecrets } from './memory/secrets.ts';
+import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
 import { HostManager, type SdkRuntime } from './host/hostManager.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
@@ -99,7 +106,8 @@ export interface EngineOptions {
   companion?: { appVersion: string; socketParent?: string };
 }
 
-export type TrashScope = { configDir: string } | { repoRoot: string };
+/** Session files go by their config folder, a revert's files by their repository, memory files by their folder. */
+export type TrashScope = { configDir: string } | { repoRoot: string } | MemoryTrashScope;
 
 export interface Engine {
   /** Serves the contract over a transport (one per window). Returns a detach function. */
@@ -128,9 +136,13 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** The VS Code companion's socket, when this engine listens for it. */
   let companion: CompanionHub | null = null;
+  /** Set once memory search exists: every memory change (Switchboard's or a watcher's) re-indexes the files that changed. */
+  let memoryChangedHook: () => void = () => {};
+  let memorySyncTimer: ReturnType<typeof setTimeout> | undefined;
   const broadcast: RpcServer<Contract>['emit'] = (name, payload) => {
     for (const server of servers) server.emit(name, payload);
     if (name === 'sessions.changed' || name === 'sessions.live' || name === 'session.host' || name === 'session.permission' || name === 'session.permissionResolved') companion?.sessionsChanged();
+    if (name === 'memory.changed') memoryChangedHook();
   };
 
   // Slow-ish (login shell), so start it now and await on demand. Before any transcript is read: the
@@ -427,6 +439,53 @@ export function createEngine(options: EngineOptions): Engine {
   const later = new LaterStore(cache.db);
   /** Every window keeps the whole queue: tell them all after a change. */
   const laterChanged = () => broadcast('later.changed', { items: later.list(), started: later.startedLinks() });
+  /** Projects' memory and instructions: every profile's memory folder, the project's own profile first. */
+  const memory = new MemoryService({
+    profiles: (root) => {
+      const own = profiles.runtime(profiles.forProject(root));
+      return [own, ...profiles.runtimes().filter((p) => p.id !== own.id)].map((p) => ({ id: p.id, configDir: p.configDir }));
+    },
+    repoRoot: (root) => resolver.resolve(root).root,
+    trash: (paths, scope) => trash(paths, scope),
+    // One personal folder for every profile: it is about you, not the account. In the app's data until you choose one.
+    personalDir: () => {
+      const chosen = appState.get(PERSONAL_DIR_KEY);
+      return typeof chosen === 'string' && chosen.startsWith('/') ? chosen : join(options.dataDir, 'memory');
+    },
+    personalDefault: join(options.dataDir, 'memory'),
+    savePersonalDir: (dir) => appState.set(PERSONAL_DIR_KEY, dir),
+    allProfiles: () => profiles.runtimes().map((p) => ({ id: p.id, configDir: p.configDir })),
+  });
+  /** Your projects that are on disk, with their names: where memory can be imported to or copied from. */
+  const memoryProjects = () => listProjects().filter((p) => p.added && p.exists).map((p) => ({ root: p.root, name: p.name }));
+  /** Memory in search: every project's folders (each profile) and the personal one, indexed from the files. */
+  const memorySearch = new MemorySearch(cache.db);
+  const memoryFoldersToIndex = (): IndexedFolder[] => [
+    ...memoryProjects().flatMap((p) => memory.folders(p.root).map((f) => ({ dir: f.dir, root: p.root, profileId: f.profileId }))),
+    { dir: memory.personal().dir, root: null, profileId: null },
+  ];
+  let memorySyncedAt = 0;
+  /** Reads changed memory files into the index, unless that was done less than `maxAgeMs` ago. Never throws. */
+  function syncMemorySearch(maxAgeMs = 0): void {
+    if (Date.now() - memorySyncedAt < maxAgeMs) return;
+    memorySyncedAt = Date.now();
+    try {
+      memorySearch.sync(memoryFoldersToIndex());
+    } catch (error) {
+      log('warn', `Memory search indexing failed: ${(error as Error).message}`);
+    }
+  }
+  memoryChangedHook = () => {
+    // A burst of changes (Claude writing a memory and its index line) is indexed once.
+    clearTimeout(memorySyncTimer);
+    memorySyncTimer = setTimeout(() => syncMemorySearch(), 500);
+    memorySyncTimer.unref?.();
+  };
+  const startupMemorySync = setTimeout(() => syncMemorySearch(), 2_000);
+  startupMemorySync.unref?.();
+  /** Claude writes memory during sessions, and sync tools bring in other Macs': follow the folders that are on screen. */
+  const memoryWatcher = new MemoryWatcher((root) => broadcast('memory.changed', { root }));
+  memoryWatcher.watch(null, [memory.personal().dir]);
 
   /** Runs an action's command in a terminal tab of the session and returns the terminal id. */
   const runShellAction = async (sessionId: string, cwd: string, name: string, command: string) =>
@@ -981,10 +1040,18 @@ export function createEngine(options: EngineOptions): Engine {
       laterChanged();
       return { sessionId };
     },
-    'search.query': async ({ query, limit, scope }) => ({
-      hits: search.search(query, limit, scope === 'switchboard' ? sessions.snapshot().sessions.filter((s) => s.inApp).map((s) => s.id) : undefined),
-      indexing: { ...search.progress },
-    }),
+    'search.query': async ({ query, limit, scope, only, memoryTypes, memoryScope }) => {
+      if (only !== 'conversations') syncMemorySearch(1_000);
+      return {
+        hits: only === 'memory' ? [] : search.search(query, limit, scope === 'switchboard' ? sessions.snapshot().sessions.filter((s) => s.inApp).map((s) => s.id) : undefined),
+        memories: only === 'conversations' ? [] : memorySearch.search(query, { types: memoryTypes, scope: memoryScope }),
+        indexing: { ...search.progress },
+      };
+    },
+    'memory.bySession': ({ sessionId }) => {
+      syncMemorySearch(10_000);
+      return { memories: memorySearch.bySession(sessionId) };
+    },
     'git.changes': async ({ cwd, base }) => {
       try {
         return await listChanges(cwd, base);
@@ -1247,6 +1314,132 @@ export function createEngine(options: EngineOptions): Engine {
       terminals.stop(id);
       return {};
     },
+    'memory.list': ({ root }) => {
+      memoryWatcher.watch(root, memory.dirs(root));
+      return memory.list(root);
+    },
+    'memory.personal': () => {
+      const personal = memory.personal();
+      memoryWatcher.watch(null, [personal.dir]);
+      return personal;
+    },
+    'memory.setPersonalDir': ({ path }) => {
+      const personal = memory.setPersonalDir(path);
+      memoryWatcher.watch(null, [personal.dir]);
+      log('info', `Personal memory folder is now ${path}`);
+      broadcast('memory.changed', { root: null });
+      return personal;
+    },
+    'memory.blockPreview': () => ({ line: memory.blockText(), profiles: memory.blockPreview() }),
+    'memory.installBlock': () => {
+      memory.installBlock();
+      log('info', 'Added the personal memory block to CLAUDE.md');
+      broadcast('memory.changed', { root: null });
+      return memory.personal();
+    },
+    'memory.removeBlock': () => {
+      memory.removeBlock();
+      log('info', 'Removed the personal memory block from CLAUDE.md');
+      broadcast('memory.changed', { root: null });
+      return memory.personal();
+    },
+    'memory.move': async (params) => {
+      const result = await memory.move(params);
+      broadcast('memory.changed', { root: params.root });
+      broadcast('memory.changed', { root: null });
+      return result;
+    },
+    'memory.resolveConflict': async (params) => {
+      const result = await memory.resolveConflict(params);
+      broadcast('memory.changed', { root: params.root });
+      return result;
+    },
+    'memory.copyToProfile': (params) => {
+      const result = memory.copyToProfile(params);
+      broadcast('memory.changed', { root: params.root });
+      return result;
+    },
+    'memory.writeInstruction': async (params) => {
+      const result = await memory.writeInstruction(params);
+      broadcast('memory.changed', { root: params.root });
+      return result;
+    },
+    'memory.overview': () => ({ projects: memory.overview(memoryProjects().map((p) => p.root)) }),
+    'memory.importExportPreview': ({ paths }) => {
+      const parsed = readExport(paths);
+      log('info', `Read ${parsed.files.length} memories from a Claude export (conversations are never read)`);
+      return memory.planImport(candidatesOf(parsed), memoryProjects(), parsed.projects);
+    },
+    'memory.importPastePreview': ({ text }) => memory.planImport(candidatesFromPaste(text), memoryProjects()),
+    'memory.import': ({ token, picks }) => {
+      const result = memory.applyImport(token, picks, memoryProjects().map((p) => p.root));
+      log('info', `Imported memory: ${result.created} new, ${result.updated} updated`);
+      broadcast('memory.changed', { root: null });
+      for (const root of new Set(picks.map((p) => p.target).filter((t) => t.startsWith('/')))) broadcast('memory.changed', { root });
+      return result;
+    },
+    'memory.exportCandidates': () => ({ memories: memory.exportCandidates(memoryProjects()) }),
+    'memory.exportText': ({ paths }) => ({ text: memory.exportText(paths, memoryProjects().map((p) => p.root)) }),
+    'memory.read': ({ root, path }) => ({ content: memory.read(root, path), modified: statSync(path, { throwIfNoEntry: false })?.mtimeMs ?? 0 }),
+    'memory.loadOrder': ({ root, profileId }) => memory.loadOrder(root, profileId),
+    'memory.create': (params) => {
+      const result = memory.create(params);
+      broadcast('memory.changed', { root: params.root });
+      return result;
+    },
+    'memory.write': (params) => {
+      const result = memory.write(params);
+      broadcast('memory.changed', { root: params.root });
+      return result;
+    },
+    'memory.rename': (params) => {
+      const result = memory.rename(params);
+      broadcast('memory.changed', { root: params.root });
+      // A link in a personal memory may have been updated too.
+      if (result.updatedLinks.length && params.root !== null) broadcast('memory.changed', { root: null });
+      return result;
+    },
+    'memory.links': ({ root }) => ({ links: memory.links(root) }),
+    'memory.checkSecrets': ({ text }) => ({ found: findSecrets(text) }),
+    'memory.health': async ({ root }) => ({ findings: await memory.health(root) }),
+    'memory.fixIndexPreview': ({ root, indexPath }) => ({ diff: memory.fixIndexPreview(root, indexPath).diff }),
+    'memory.fixIndex': ({ root, indexPath }) => {
+      memory.fixIndex(root, indexPath);
+      broadcast('memory.changed', { root });
+      return {};
+    },
+    'memory.remove': async (params) => {
+      const result = await memory.remove(params);
+      log('info', `Moved memory ${params.path} to the Trash`);
+      broadcast('memory.changed', { root: params.root });
+      return result;
+    },
+    'memory.restore': ({ undoToken }) => {
+      const result = memory.restore(undoToken);
+      broadcast('memory.changed', { root: null });
+      return result;
+    },
+    'memory.sharePreview': (params) => memory.sharePreview(params),
+    'memory.share': async (params) => {
+      const result = await memory.share(params);
+      log('info', `Shared ${params.memoryPath} into ${result.targetPath}${result.removed ? ' (memory moved to the Trash)' : ''}`);
+      broadcast('memory.changed', { root: params.root });
+      return result;
+    },
+    'memory.undoShare': async ({ undoToken }) => {
+      broadcast('memory.changed', { root: await memory.undoShare(undoToken) });
+      return {};
+    },
+    'memory.ignoreLocal': ({ root }) => {
+      const path = memory.ignoreLocal(root);
+      broadcast('memory.changed', { root });
+      return { path };
+    },
+    'memory.createFromSection': async (params) => {
+      const result = await memory.createFromSection(params);
+      if (!params.dryRun) broadcast('memory.changed', { root: params.root });
+      return result;
+    },
     'companion.focus': ({ sessionId, scope }, context) => {
       companion?.focus(context, sessionId, scope);
       return {};
@@ -1328,6 +1521,9 @@ export function createEngine(options: EngineOptions): Engine {
     log,
     close() {
       companion?.stop();
+      memoryWatcher.close();
+      clearTimeout(memorySyncTimer);
+      clearTimeout(startupMemorySync);
       for (const server of servers) server.dispose();
       servers.clear();
       hosts.closeAll();

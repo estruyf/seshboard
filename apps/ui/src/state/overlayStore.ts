@@ -35,6 +35,10 @@ interface OverlayState {
   palette: { mode: PaletteMode; nonce: number };
   /** The shortcuts sheet's All or Here, kept while the window is open. */
   shortcutsMode: SheetMode;
+  /** What search opens on: everything, or only memory (Search memory…). */
+  searchMode: 'all' | 'memory';
+  /** Opens search on memory only. */
+  searchMemory(): void;
   show(which: 'search' | 'palette' | 'tools' | 'shortcuts'): void;
   /** Opens the shortcuts sheet, or closes it when it's open (⌘/, Help › Keyboard Shortcuts). */
   toggleShortcuts(): void;
@@ -56,7 +60,9 @@ export const useOverlay = create<OverlayState>()((set) => ({
   actionRequest: null,
   palette: { mode: 'commands', nonce: 0 },
   shortcutsMode: 'all',
-  show: (open) => set({ open }),
+  searchMode: 'all',
+  searchMemory: () => set({ open: 'search', searchMode: 'memory' }),
+  show: (open) => set(open === 'search' ? { open, searchMode: 'all' } : { open }),
   toggleShortcuts: () => set((s) => ({ open: s.open === 'shortcuts' ? null : 'shortcuts' })),
   setShortcutsMode: (shortcutsMode) => set({ shortcutsMode }),
   togglePalette: (mode) =>

@@ -60,3 +60,39 @@ export function isTrashableThemeFile(path: string, themesDir: string): boolean {
     return false;
   }
 }
+
+/**
+ * A memory file (shared with the team and taken out of memory): a `.md` file, not the `MEMORY.md` index, directly
+ * inside a memory folder (one named `memory`, or holding a `MEMORY.md`), and a regular file, not a link.
+ */
+export function isTrashableMemoryFile(path: string, memoryDir: string): boolean {
+  if (resolve(path) !== path || resolve(memoryDir) !== memoryDir || memoryDir === sep) return false;
+  const name = basename(path);
+  if (dirname(path) !== memoryDir || !name.endsWith('.md') || name === 'MEMORY.md') return false;
+  try {
+    if (basename(memoryDir) !== 'memory' && !statSync(join(memoryDir, 'MEMORY.md'), { throwIfNoEntry: false })?.isFile()) return false;
+    return lstatSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** The project instruction files a share can create, so undoing it may remove them again. */
+const INSTRUCTION_FILE = /^(?:CLAUDE\.md|CLAUDE\.local\.md|\.claude\/CLAUDE\.md|\.claude\/rules\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*[A-Za-z0-9][A-Za-z0-9._-]*\.md)$/;
+
+/**
+ * An instruction file a share made (undoing it): CLAUDE.md, CLAUDE.local.md, .claude/CLAUDE.md or a rule in
+ * .claude/rules/, inside the project once its folders are resolved, and a regular file.
+ */
+export function isTrashableInstructionFile(path: string, projectRoot: string): boolean {
+  if (resolve(path) !== path || resolve(projectRoot) !== projectRoot || projectRoot === sep) return false;
+  if (!path.startsWith(projectRoot + sep) || !INSTRUCTION_FILE.test(path.slice(projectRoot.length + 1).split(sep).join('/'))) return false;
+  try {
+    const realRoot = realpathSync(projectRoot);
+    const realPath = join(realpathSync(dirname(path)), basename(path));
+    if (!realPath.startsWith(realRoot + sep)) return false;
+    return lstatSync(realPath, { throwIfNoEntry: false })?.isFile() ?? false;
+  } catch {
+    return false;
+  }
+}

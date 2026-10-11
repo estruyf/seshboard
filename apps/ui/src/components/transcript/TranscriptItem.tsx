@@ -12,6 +12,10 @@ import { messageImageSlots } from './imageLayout.ts';
 import { TranscriptImage } from './TranscriptImage.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { editHunks, toolSummary } from './toolSummary.ts';
+import { memoryWriteOf } from './memoryWrites.ts';
+import { SavedMemoryLine } from '../memory/SavedMemoryLine.tsx';
+import { useKnownMemoryFolders } from '../memory/useMemoryFolders.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
 
 /**
  * A quiet timeline row (26px) that shows or hides the details under it: a status mark, then the
@@ -203,6 +207,15 @@ function Thinking({ text }: { text: string }) {
 }
 
 /** One rendered transcript item. Memoised by item, since finished items never change. */
+/** A tool call, or, when it saved a memory, the Saved memory line. */
+function ToolOrMemory({ item, cwd, sessionId }: { item: ToolItem; cwd: string | null; sessionId: string }) {
+  const folders = useKnownMemoryFolders();
+  const root = useSessions((s) => s.sessions.get(sessionId)?.projectRoot ?? null);
+  const write = memoryWriteOf(item.name, item.input, folders);
+  if (write && !(item.result?.isError ?? false)) return <SavedMemoryLine write={write} root={root} />;
+  return <ToolCard item={item} cwd={cwd} sessionId={sessionId} />;
+}
+
 export const TranscriptItem = memo(function TranscriptItem({
   item,
   cwd,
@@ -224,7 +237,7 @@ export const TranscriptItem = memo(function TranscriptItem({
       return (
         // Your prompt sits on the right as a card, so the conversation reads like a chat.
         <div className="flex justify-end">
-          <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5">
+          <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-remember-from={item.subagent ? undefined : 'user'} data-message-key={item.key}>
             <Speaker name={item.subagent ? 'Prompt to the subagent' : 'You'} />
             {(item.text || !item.subagent) && <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly={item.subagent} />}
             {/* Images come first, so "Show more" never hides them: one large, a few as thumbnails, many as tiles. */}
@@ -261,7 +274,7 @@ export const TranscriptItem = memo(function TranscriptItem({
       );
     case 'text':
       return (
-        <div className={`group/message relative text-body ${indent}`}>
+        <div className={`group/message relative text-body ${indent}`} data-remember-from={item.subagent ? undefined : 'claude'} data-message-key={item.key}>
           <Speaker name={item.subagent ? 'Subagent' : 'Claude'} />
           <Markdown text={item.text} />
           <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly={item.subagent} />
@@ -274,7 +287,7 @@ export const TranscriptItem = memo(function TranscriptItem({
       if (item.name === 'ExitPlanMode') return <PlanCard item={item} />;
       return (
         <div className={indent}>
-          <ToolCard item={item} cwd={cwd} sessionId={sessionId} />
+          <ToolOrMemory item={item} cwd={cwd} sessionId={sessionId} />
         </div>
       );
     case 'agent-report':

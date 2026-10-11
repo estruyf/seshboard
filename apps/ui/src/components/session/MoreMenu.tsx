@@ -11,6 +11,7 @@ import type { ActionsMenu } from '../actions/useActionsMenu.tsx';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
 import { useOpenInEntries } from '../OpenInButton.tsx';
 import { ProfileDot } from '../profiles/ProfileBadge.tsx';
+import { sessionMemoryEntries, useSessionMemories } from '../memory/sessionMemories.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { Button } from '../ui/Button.tsx';
 import type { DisplayItem } from '../transcript/displayItems.ts';
@@ -58,6 +59,7 @@ export function MoreMenu({
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
 
+  const memories = useSessionMemories(sessionId, !!menu.at);
   const openIn = useOpenInEntries(cwd);
   const hasVSCode = useHosts((s) => s.editors.some((e) => e.id === 'vscode'));
   const busy = useHosts((s) => {
@@ -96,6 +98,7 @@ export function MoreMenu({
   entries.push('separator');
   entries.push(...actions.entries);
   if (actions.entries.length) entries.push('separator');
+  entries.push(...sessionMemoryEntries(memories));
   // Like the profile badges elsewhere: only worth showing with more than one profile.
   if (multipleProfiles && profile) {
     entries.push({

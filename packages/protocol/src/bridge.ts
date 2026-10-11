@@ -22,6 +22,7 @@ export const IpcChannel = {
   pickImage: "switchboard:pick-image",
   chooseExportFile: "switchboard:choose-export-file",
   chooseImportFile: "switchboard:choose-import-file",
+  chooseMemoryExport: "switchboard:choose-memory-export",
   saveImage: "switchboard:save-image",
   showSavedImage: "switchboard:show-saved-image",
   focusSession: "switchboard:focus-session",
@@ -313,6 +314,8 @@ export interface SwitchboardBridge {
   chooseExportFile(defaultName: string): Promise<string | null>;
   /** Native open dialog for a settings file to import. Resolves to null when cancelled. */
   chooseImportFile(): Promise<string | null>;
+  /** Native open dialog for a Claude data export: the memories and projects zips, an unzipped folder or the manifest JSON. Empty when cancelled. */
+  chooseMemoryExport(): Promise<string[]>;
   /** Native save dialog for an image from the conversation, then writes it. Resolves to the path, or null when cancelled. */
   saveImage(request: SaveImageRequest): Promise<string | null>;
   /** Shows an image saved with `saveImage` in Finder (only those, never any other path). */

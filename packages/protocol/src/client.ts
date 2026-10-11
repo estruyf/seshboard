@@ -27,3 +27,5 @@ export { randomWorktreeName } from './worktreeName.ts';
 export type * from './context.ts';
 export type * from './companion.ts';
 export { CONTINUE_EDITORS, MAX_CONTEXT_ITEMS, type ContinueEditor } from './companionConstants.ts';
+export type * from './memory.ts';
+export * from './memoryText.ts';

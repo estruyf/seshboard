@@ -1,7 +1,8 @@
-import { Activity, ArchiveRestore, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
+import { Activity, ArchiveRestore, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
 import type { ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity } from '@switchboard/protocol/bridge';
 import { usePreferences } from '../state/preferencesStore.ts';
+import { MemorySettings } from './memory/MemorySettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
 import { useSidebar } from '../state/sidebarStore.ts';
 import { BackupSettings } from './backup/BackupSettings.tsx';
@@ -123,6 +124,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
+  { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
@@ -223,6 +225,15 @@ function SectionPage({ section }: { section: SettingsSection }) {
           description="Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login. Link a project to a profile from its menu or the Projects view; other projects use the default."
         >
           <ProfilesSettings />
+        </Section>
+      );
+    case 'memory':
+      return (
+        <Section
+          title="Memory"
+          description="What Claude Code remembers about you and your projects. Personal memory sits in a folder you choose (iCloud, Dropbox, git) and loads in every project; nothing is locked into Switchboard."
+        >
+          <MemorySettings />
         </Section>
       );
     case 'general':

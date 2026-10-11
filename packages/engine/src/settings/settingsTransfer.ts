@@ -28,10 +28,14 @@ import { parseDefaults, type ProjectRegistry, type StoredIcon } from '../project
  * App choices a settings file carries, with their names in the import preview. The rest of app_state is
  * cache or belongs to this Mac (window layout, the open session, command lists, the shell's PATH).
  */
+/** Where the personal memory folder is, when one was chosen. Backed up as a path; the memories themselves never are. */
+export const PERSONAL_DIR_KEY = 'memory.personalDir';
+
 export const CHOICE_KEYS: Record<string, string> = {
   'editor.default': 'Default editor',
   'newSession.defaults': 'New session defaults',
   'claudeUpdate.enabled': 'Check for Claude Code updates',
+  [PERSONAL_DIR_KEY]: 'Personal memory folder',
 };
 
 const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
