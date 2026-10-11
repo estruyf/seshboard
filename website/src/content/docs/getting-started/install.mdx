@@ -1,0 +1,81 @@
+---
+title: Install Switchboard
+description: Download Switchboard for your Mac, install it with Homebrew, or build it yourself.
+sidebar:
+  label: Install
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Switchboard is a Mac app for running and keeping track of your Claude Code sessions. It uses the Claude Code you already have, with your own login, settings, commands and skills, so there is nothing extra to sign in to.
+
+<Screenshot name="main-window" alt="Switchboard with a finished session open: the sidebar with Needs you and Working groups on the left, the conversation in the middle and the Changes panel with a diff on the right" eager />
+
+## Requirements
+
+- A Mac with Apple Silicon.
+- [Claude Code](https://github.com/anthropics/claude-code) installed and signed in. If `claude` works in your terminal, you are ready.
+
+## Download the app
+
+<Steps>
+
+1. Download the `.dmg` from the [latest release](https://github.com/estruyf/switchboard/releases/latest).
+2. Open it and drag **Switchboard** to **Applications**.
+3. Open Switchboard from Applications or Spotlight.
+
+</Steps>
+
+Releases are signed and notarised by Apple, so macOS opens them without asking.
+
+## Install with Homebrew
+
+If you use [Homebrew](https://brew.sh), install the cask:
+
+```bash
+brew install --cask estruyf/tap/switchboard
+```
+
+Switchboard updates itself, so `brew upgrade` skips it. To update it through Homebrew instead, run:
+
+```bash
+brew upgrade --cask estruyf/tap/switchboard
+```
+
+## Build it from source
+
+You can also build the app from the [repository](https://github.com/estruyf/switchboard). You need Node 24 or later, and it takes a couple of minutes.
+
+```bash
+npm install
+npm run dist
+```
+
+Then open `apps/desktop/dist/Switchboard-<version>-arm64.dmg` and drag Switchboard to Applications. A build you make yourself updates like a release.
+
+## If macOS blocks the app
+
+A build you make yourself without a Developer ID certificate is unsigned. It opens normally on the Mac that built it. On another Mac, macOS blocks the first launch. Right-click the app and choose **Open**, or remove the quarantine flag in a terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Switchboard.app
+```
+
+<Aside type="note">
+The signed releases from GitHub and Homebrew don't need this. The [repository's notes on building and signing](https://github.com/estruyf/switchboard/blob/main/docs/building-and-signing.md) have the details.
+</Aside>
+
+## Updates
+
+Switchboard checks for a new release shortly after it opens and every few hours, and tells you in the corner of the window when there is one. It also checks whether the Claude Code it runs is up to date. See [Updates](/settings/updates/) for how it works and how to change it.
+
+## Settings
+
+The update checks and the update channel are in [Settings, About](/settings/#about). Open Settings with <Kbd shortcut="settings" />.
+
+## Next steps
+
+- [First launch](/getting-started/first-launch/): what you see when Switchboard opens.
+- [Your first session](/getting-started/first-session/): start Claude on a project.

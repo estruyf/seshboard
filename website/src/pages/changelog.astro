@@ -1,0 +1,24 @@
+---
+/** The Changelog page, built from the repository's CHANGELOG.md at build time. */
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import source from '../../../CHANGELOG.md?raw';
+import { renderChangelog } from '../lib/changelog.ts';
+
+const { html, headings } = renderChangelog(source);
+// Only the releases in the table of contents; their New, Changed and Fixed would make it very long.
+const toc = headings.filter((heading) => heading.depth === 2);
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'Changelog',
+    description: 'What changed in each Switchboard release.',
+    tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 2 },
+  }}
+  headings={toc}
+>
+  <p>
+    Every release, newest first. <em>Unreleased</em> is what is coming in the next one. You can also see each release, with its <code>.dmg</code>, on the <a href="https://github.com/estruyf/switchboard/releases">releases page</a>.
+  </p>
+  <Fragment set:html={html} />
+</StarlightPage>

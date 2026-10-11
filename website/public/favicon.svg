@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!--
+    Switchboard app icon: a patch panel with two cables hanging between its corner jacks.
+    macOS grid: 824×824 body inset 100 px on a 1024 canvas.
+  -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34363f" />
+      <stop offset="1" stop-color="#17181d" />
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16" />
+      <stop offset="0.35" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+    <radialGradient id="ring" cx="0.5" cy="0.38" r="0.62">
+      <stop offset="0" stop-color="#5a5d68" />
+      <stop offset="1" stop-color="#2a2c33" />
+    </radialGradient>
+    <linearGradient id="cableWarm" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3a27f" />
+      <stop offset="1" stop-color="#c95f3d" />
+    </linearGradient>
+    <linearGradient id="cableGold" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd27a" />
+      <stop offset="1" stop-color="#e09a2c" />
+    </linearGradient>
+    <filter id="drop" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000000" flood-opacity="0.45" />
+    </filter>
+    <filter id="iconShadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Body -->
+  <g filter="url(#iconShadow)">
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#body)" />
+  </g>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sheen)" />
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="3" />
+
+  <!-- Jacks: 3×3 patch panel -->
+  <g id="jacks">
+    <g transform="translate(312 312)"><circle r="62" fill="url(#ring)" /><circle r="34" fill="#0c0d10" /></g>
+    <g transform="translate(512 312)"><circle r="62" fill="url(#ring)" /><circle r="34" fill="#0c0d10" /></g>
+    <g transform="translate(712 312)"><circle r="62" fill="url(#ring)" /><circle r="34" fill="#0c0d10" /></g>
+    <g transform="translate(312 512)"><circle r="62" fill="url(#ring)" /><circle r="34" fill="#0c0d10" /></g>
+    <g transform="translate(512 512)"><circle r="62" fill="url(#ring)" /><circle r="34" fill="#0c0d10" /></g>
+    <g transform="translate(712 512)"><circle r="62" fill="url(#ring)" /><circle r="34" fill="#0c0d10" /></g>
+    <g transform="translate(312 712)"><circle r="62" fill="url(#ring)" /><circle r="34" fill="#0c0d10" /></g>
+    <g transform="translate(512 712)"><circle r="62" fill="url(#ring)" /><circle r="34" fill="#0c0d10" /></g>
+    <g transform="translate(712 712)"><circle r="62" fill="url(#ring)" /><circle r="34" fill="#0c0d10" /></g>
+  </g>
+
+  <!-- Two patch cables hanging between jacks: a long warm one and a short gold one, never crossing. -->
+  <g filter="url(#drop)">
+    <path d="M312 712 C 330 838, 494 838, 512 712" fill="none" stroke="url(#cableGold)" stroke-width="44" stroke-linecap="round" />
+    <circle cx="312" cy="712" r="46" fill="#ffd27a" />
+    <circle cx="512" cy="712" r="46" fill="#ec9f33" />
+  </g>
+  <g filter="url(#drop)">
+    <path d="M312 312 C 300 650, 680 700, 712 512" fill="none" stroke="url(#cableWarm)" stroke-width="46" stroke-linecap="round" />
+    <circle cx="312" cy="312" r="46" fill="#f3a27f" />
+    <circle cx="712" cy="512" r="46" fill="#d8704a" />
+  </g>
+
+  <!-- Plug highlights -->
+  <g fill="#ffffff" fill-opacity="0.38">
+    <ellipse cx="299" cy="298" rx="19" ry="11" />
+    <ellipse cx="699" cy="498" rx="19" ry="11" />
+    <ellipse cx="299" cy="698" rx="19" ry="11" />
+    <ellipse cx="499" cy="698" rx="19" ry="11" />
+  </g>
+</svg>

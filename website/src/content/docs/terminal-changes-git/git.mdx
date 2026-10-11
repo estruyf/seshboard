@@ -1,0 +1,124 @@
+---
+title: Git
+description: The branch in a session's header, the git button with the next step for the branch, and finishing a worktree.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+A session in a git repository shows its branch in the header, and a **git button** that offers the next step for the branch: pull, commit, push, open a pull request, or fetch. Its menu has every step, plus switching branch and starting a worktree. Git runs in a [terminal](/terminal-changes-git/terminal/) tab, so you see its output.
+
+<Screenshot name="git-menu" alt="A session header with the git button's menu open: the branch with how far it is behind and ahead and how many files changed, then Pull, Fetch, Commit, Ask Claude to commit, Push, Create PR, Switch branch and New worktree" eager />
+
+## Where to find it
+
+- **The branch** is in the session header, under the title. Click it to switch branches, or, in a worktree, to finish the worktree.
+- **The git button** is in the session header, on the right. Its ▾ opens the git menu.
+- **The command palette** (<Kbd shortcut="palette.commands" first />) has *Commit…*, *Create pull request…*, *Sync with remote*, *Switch branch…* and, in a worktree, *Finish worktree…*.
+- <Kbd shortcut="git.pull" /> pulls while the branch is behind its upstream.
+
+## The branch in the header
+
+The header shows the branch the session's folder has checked out, read live from git. It stays right when you or Claude switch branches in a terminal. A detached HEAD shows as *detached*.
+
+## Switch branch
+
+Click the branch in the header, choose **Switch branch…** in the git menu, or run *Switch branch…* in the command palette. The menu lists the local branches, the current one first. With more than eight, type in **Filter branches** to find one.
+
+Switching uses `git switch`:
+
+- Uncommitted changes that don't conflict come along to the new branch.
+- When they would be overwritten, git refuses and you stay where you are, with git's message in the menu. Nothing is ever stashed or thrown away.
+- It waits while Claude is working in this folder. Stop Claude, or wait for it to finish, to switch.
+- When other sessions work in the same folder, Switchboard asks first, since they see the new branch too.
+
+A session in a worktree has its own checkout, so it can't switch branches. Its branch button opens the [worktree menu](#finish-a-worktree) instead.
+
+## The git button
+
+The button's face runs the step the branch needs next, in the order a branch usually goes through:
+
+| Face | When |
+|---|---|
+| **Pull ↓2** | The branch is behind its upstream. |
+| **Commit 3** | There are changed files. Claude writes the commit. |
+| **Push ↑1** | There are commits to push, or a new branch with commits to publish. |
+| **Create PR** | A branch other than the base branch, or a worktree, has commits ahead of the base branch. |
+| **Fetch** | Nothing else to do. Fetching shows whether the upstream moved on. |
+
+The number is how many commits or files the step takes. When there is something to do, the button is yellow. Fetch is a quiet button. Hover the button to see what it will do, or why it can't.
+
+Fetch, pull and push run `git` in a terminal tab. A branch without an upstream is pushed with `git push -u`, which sets it.
+
+### The git menu
+
+The ▾ next to the button opens the menu. At the top it shows the branch and where it stands: how far it is behind and ahead, and how many files changed. Then:
+
+- **Pull** (<Kbd shortcut="git.pull" />) and **Fetch**;
+- **Commit…**, with your own message;
+- **Ask Claude to commit**;
+- **Push** and **Create PR**;
+- **Switch branch…**, or **Merge or remove worktree…** in a worktree;
+- **New worktree…**
+
+When the branch is behind its upstream, the menu says to pull before you push. A step that can't run is greyed out.
+
+### Commit
+
+There are two ways to commit:
+
+- **Ask Claude to commit** (also the button's face, **Commit N**) sends Claude a message to commit the current changes with a clear, conventional commit message.
+- **Commit…** opens a dialog for your own message. Click **Commit** or press <Kbd keys="mod+enter" />. It commits what is staged, or every change when nothing is staged. Git runs in a terminal tab, so you see the output of your commit hooks.
+
+Stage files in the [Changes panel](/terminal-changes-git/changes/#stage-and-unstage). *Commit…* in the command palette opens the same dialog.
+
+### Create a pull request
+
+**Create PR** pushes the branch, then opens GitHub's pull request page with the [GitHub CLI](https://cli.github.com) (`gh pr create --fill --web`). Install `gh` and sign in for this to work. It isn't offered on the base branch, or while the branch is behind its upstream.
+
+*Create pull request…* in the command palette does the same.
+
+### Sync with remote
+
+*Sync with remote* in the command palette does the one step that brings the branch in line with its remote: it pulls when the upstream is ahead, otherwise pushes what hasn't been pushed (or publishes a branch with commits), otherwise fetches.
+
+### While Claude works
+
+Pull, **Commit…** and **Ask Claude to commit** wait while Claude is working in the folder, so git doesn't change files under it. Stop Claude (<Kbd shortcut="claude.stop" />) or wait for it to finish.
+
+## New worktree
+
+**New worktree…** in the git menu opens [New session](/new-session/worktrees/) on this project with a new worktree chosen, so the next session works on its own branch and folder.
+
+## Finish a worktree
+
+In a session that runs in a worktree, the branch in the header opens the **worktree menu**. **Merge or remove worktree…** in the git menu, and *Finish worktree…* in the command palette, open it too. It shows the worktree's branch, how many commits it has ahead of and behind the base branch, and two choices.
+
+### Merge into the base branch
+
+**Merge into &lt;base&gt;…** merges the worktree's branch into the base branch in the main checkout, in a terminal tab, so you can see the result. The worktree stays; remove it afterwards. It is only offered when:
+
+- the worktree has no uncommitted changes (a merge only takes commits);
+- it has commits to merge;
+- the main checkout is on the base branch;
+- the main checkout has no uncommitted changes.
+
+It also waits while a session is working in the main checkout.
+
+### Remove the worktree
+
+**Remove worktree…** deletes the worktree's folder and stops this session in Switchboard. The conversation stays in your history.
+
+**Also delete the branch** is on by default. When the branch has commits that aren't in the base branch and aren't pushed, the confirmation warns that deleting the branch loses them. Untick it to keep the branch.
+
+A worktree with uncommitted changes can't be removed: commit or revert them first.
+
+<Aside>
+To see and clean up all of a project's worktrees at once, use the [Worktrees tab](/projects/worktrees/) on its page.
+</Aside>
+
+## Settings
+
+Git has no settings in Switchboard. It uses your own git configuration, credentials and the login shell's environment, so ssh keys and credential helpers work as in your terminal. A project's default branch for new sessions is on its [Settings tab](/projects/settings/).

@@ -1,0 +1,49 @@
+---
+title: Quick questions
+description: Ask Claude something without picking a project, in a scratch folder of Switchboard's own.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+A quick question is a session without a project. Ask how a command works, draft a text or think something through, without picking a folder first. Claude works in a scratch folder of Switchboard's own, so there are no git options and nothing is added to your projects.
+
+<Screenshot name="quick-question" alt="New session in Quick question mode: the strip above the message box says Quick question and No project or git. Claude works in a scratch folder, and the message box says Ask Claude anything" eager />
+
+## Open it
+
+- Press <Kbd shortcut="session.question" /> anywhere.
+- In [New session](/new-session/form/), choose **Quick question** under the project tiles ("Ask without picking a project").
+- In the command palette, run *Quick question…*. It goes straight to the prompt, with no project to pick.
+- A `switchboard://new-session` link with `question=1` opens New session as a quick question. See [Links](/links/).
+
+## Ask a question
+
+The strip above the message box says **Quick question** and "No project or git. Claude works in a scratch folder." The message box asks "Ask Claude anything", and the main button says **Ask** instead of Start.
+
+1. Type your question.
+2. Pick a model, effort and mode with the chips, if you want to. See [Model, effort and mode](/new-session/models-and-options/).
+3. Press <Kbd shortcut="new-session.start" />.
+
+Click **Quick question** in the strip to pick a project instead.
+
+What a quick question leaves out:
+
+- no branch, worktree or **Update from remote**;
+- no project actions;
+- no project defaults: it keeps its own model, effort and mode, the ones you last picked for a quick question. A quick question never starts in a mode that skips prompts (Auto mode or bypassing permissions); pick it again when you want it.
+
+You can still add it to the [queue](/new-session/queue/) from Start's menu, attach images and add files as context.
+
+## Find your questions
+
+Quick questions are ordinary Claude Code sessions in one folder, so everything works as for any other session: the conversation, continuing it later, forking, search. Wherever a project's name would show, they show as **Questions**, such as in the [sidebar](/sessions/sidebar/). They are not listed as a project in New session or in the Projects view.
+
+<Aside>
+<Kbd shortcut="session.new" /> never opens New session on the scratch folder: it stays on the last project you picked.
+</Aside>
+
+## Settings
+
+Quick questions have no settings of their own. The choices you make in the chips are remembered for the next quick question, apart from your projects.

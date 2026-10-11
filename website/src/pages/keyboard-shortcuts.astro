@@ -1,0 +1,68 @@
+---
+/**
+ * The Keyboard shortcuts page, built from the app's registry (apps/ui/src/lib/shortcuts.ts) at build time,
+ * so it lists exactly what the shortcuts sheet (⌘/) and the README list.
+ */
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import GithubSlugger from 'github-slugger';
+import { SECTION_TITLES, SHORTCUTS, type ShortcutSection } from '../../../apps/ui/src/lib/shortcuts.ts';
+import Kbd from '../components/Kbd.astro';
+import Screenshot from '../components/Screenshot.astro';
+
+const slugger = new GithubSlugger();
+const sections = (Object.keys(SECTION_TITLES) as ShortcutSection[])
+  .map((section) => ({ section, title: SECTION_TITLES[section], slug: slugger.slug(SECTION_TITLES[section]), rows: SHORTCUTS.filter((s) => s.section === section) }))
+  .filter((section) => section.rows.length > 0);
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<StarlightPage
+  frontmatter={{ title: 'Keyboard shortcuts', description: 'Every keyboard shortcut in Switchboard, grouped by where it works.' }}
+  headings={[{ depth: 2, slug: 'the-shortcuts-sheet', text: 'The shortcuts sheet' }, ...sections.map((s) => ({ depth: 2, slug: s.slug, text: s.title })), { depth: 2, slug: 'project-actions', text: 'Project actions' }]}
+>
+  <p>
+    Switchboard is made to be used from the keyboard. Every main action has a shortcut, and buttons show theirs. This page is built from the same list the app uses, so it is
+    always up to date.
+  </p>
+
+  <h2 id="the-shortcuts-sheet">The shortcuts sheet</h2>
+  <p>
+    Press <Kbd shortcut="shortcuts" /> (or choose <strong>Help › Keyboard Shortcuts</strong>, or <em>Keyboard shortcuts</em> in the <a href={`${base}/command-palette/`}>command palette</a>) to see every shortcut in the app. The ones that work where you are
+    stand out; the rest are faded. Your project actions' shortcuts are listed too. Type in its field to filter by name or by keys, for example "terminal" or "⌘J".
+  </p>
+  <Screenshot name="shortcuts" alt="The keyboard shortcuts sheet over a session: every shortcut grouped by where it works, with its keys on the right and the ones that don't work there faded" />
+
+  {
+    sections.map(({ title, slug, rows }) => (
+      <>
+        <h2 id={slug}>{title}</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Keys</th>
+              <th>What it does</th>
+              <th>When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((def) => (
+              <tr>
+                <td>
+                  <Kbd shortcut={def.id as Parameters<typeof Kbd>[0]['shortcut']} />
+                </td>
+                <td>{def.action}</td>
+                <td>{[def.context, def.note].filter(Boolean).join('. ')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </>
+    ))
+  }
+
+  <h2 id="project-actions">Project actions</h2>
+  <p>
+    A <a href={`${base}/projects/actions/`}>project action</a> can have a shortcut of its own. It can't use keys that Switchboard already uses with a modifier (⌘, ⌃ or ⌥),
+    or the keys of the menu bar. The shortcuts sheet lists the actions of the project you are in.
+  </p>
+</StarlightPage>

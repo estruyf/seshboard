@@ -1,0 +1,71 @@
+---
+title: Back up and move your settings
+description: Export your Switchboard setup to a file and import it on another Mac or after a reset.
+sidebar:
+  label: Backup
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Backup saves your Switchboard setup to one `.json` file: preferences, themes, projects and project actions. Use it to move to a new Mac, restore your setup after a reset, or share a set of actions with someone. Your sessions stay in `~/.claude` and are never in the file.
+
+<Screenshot name="settings-backup" alt="Settings on Backup: Export settings with an Export settings… button, and Import settings with an Import settings… button" eager />
+
+## Open it
+
+- Press <Kbd shortcut="settings" /> and choose **Backup**.
+- Or run *Export settings…* or *Import settings…* in the command palette (<Kbd shortcut="palette.commands" />).
+
+## Export your settings
+
+<Steps>
+
+1. Click **Export settings…**.
+2. Tick what to include:
+   - **Preferences**: appearance and theme choice, sidebar, tool activity, startup and quitting, updates.
+   - **Themes**: themes you imported or duplicated. The built-in ones are always there.
+   - **Projects**: your projects in order, with their names, icons and defaults for new sessions.
+   - **Project actions**: global and per-project actions, with their shortcuts and worktree setup.
+   - **App choices**: default editor, New session defaults, Claude Code update checks.
+   - **Pinned and archived sessions**: off at first. Only useful on this Mac, or when you copy `~/.claude` too.
+3. Click **Export…** and choose where to save the file. It is named like `switchboard-settings-2026-10-11.json`.
+
+</Steps>
+
+## Import settings
+
+<Steps>
+
+1. Click **Import settings…** and choose a settings file.
+2. Under **Include**, untick what you don't want. Everything the file has starts ticked.
+3. Under **When something is already set here**, choose:
+   - **Merge** (the default): add what is missing and keep your own values.
+   - **Replace**: make projects, actions and preferences match the file. Sessions are only ever added.
+4. Check **What changes**. Each line says what happens to it: **Add**, **Change**, **Remove**, **Keep yours** or **Skip**. The footer sums it up, for example "3 to add, 1 to change, 2 unchanged".
+5. Click **Import** (or **Replace**).
+
+</Steps>
+
+Nothing changes until you click that button.
+
+### Folders that aren't on this Mac
+
+A project folder from the file that doesn't exist here (because your user name is different, say) is listed under **Folders** as *not found*. Click **Choose folder…** to point it at the right folder on this Mac; the preview updates. Leave it to skip that project and its actions. The undo button next to a new folder takes the choice back.
+
+### Shell actions need your approval
+
+Imported project actions that run a shell command ask for your approval the first time they run, even if you approved them on the other Mac. A settings file can't run a command you haven't seen.
+
+## Undo an import
+
+Before it imports anything, Switchboard saves your current settings to the `backups` folder of its app data, `~/Library/Application Support/Switchboard/backups`. When the import is done, it shows where that file is. To undo the import, import that file with **Replace**.
+
+<Aside>
+A settings file holds your project folders' paths and your actions' commands and prompts. Look at what you share before you send it to someone.
+</Aside>
+
+## Settings
+
+Export and import are in [Settings → Backup](/settings/#backup).

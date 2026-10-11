@@ -1,0 +1,108 @@
+---
+title: Permissions and questions
+description: Approve or deny what Claude wants to do, answer its questions and review its plans, right in the conversation.
+sidebar:
+  label: Permissions and questions
+---
+
+import Kbd from '../../components/Kbd.astro';
+import Pill from '../../components/Pill.astro';
+import Screenshot from '../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+When Claude wants to run a command or edit a file, has a question for you, or has a plan ready, it waits for you. Switchboard shows a card above the message box with everything you need to decide, and marks the session <Pill tone="needs-you">Needs you</Pill> everywhere until you answer.
+
+<Screenshot name="permissions" alt="A session that needs you: Waiting for you in the sidebar and the header, while Claude waits for permission to install a package. It runs in Terminal, so the message box offers Fork and send." eager />
+
+## Where to find it
+
+A session that needs you shows up in several places at once:
+
+- The sidebar puts it in the **Needs you** group at the top, with a pink rail and a pulsing dot. Home lists it first too.
+- A notification and the Dock badge tell you, also while Switchboard is in the background. The notification says what Claude wants: "Claude wants to use Bash", "Claude has a question" or "Claude has a plan for you". Click it to open the session.
+- Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that needs you, or run *Go to next session that needs you* in the command palette.
+- With the session open, *Go to the permission* or *Go to the question* in the palette scrolls to the card.
+
+The card itself has a pink frame. After a minute it says how long it has been waiting ("Waiting 2m"). A card from a subagent says "From a subagent".
+
+## Permissions
+
+The card says what Claude wants to do, such as "Claude wants to run a command", and shows the command or the file. **Show details** shows everything Claude sent with the request.
+
+| Button | Key | What it does |
+|---|---|---|
+| **Allow** | <Kbd shortcut="permission.allow" /> | Allows this once. Claude asks again next time. |
+| **Always allow …** | | Allows this and adds a rule, so Claude doesn't ask again for the same thing, such as "Always allow Bash(npm test:*) in this project". Shown when Claude Code offers a rule. |
+| **Deny** | <Kbd shortcut="permission.deny" /> | Says no. |
+
+To say no and tell Claude what to do instead, type in the field under the buttons ("Or tell Claude what to do instead…") and press <Kbd keys="enter" />. Claude gets your text with the denial.
+
+## Questions
+
+When Claude has a question ("Claude has a question for you"), the card lists the answers it suggests, each with a number.
+
+- Press a number key (<Kbd shortcut="permission.pick" />) to pick an answer, or click it. With several questions, a single-choice answer moves on to the next question.
+- <Kbd keys="enter" /> moves on to the next question, and on the last one sends your answers.
+- Type your own answer in the field under the choices ("Or type your own answer").
+- Some questions take more than one answer: tick each, and add something else if you want.
+- **Answer** (<Kbd shortcut="permission.allow" />) sends your answers once every question has one.
+- **Skip** (<Kbd shortcut="permission.deny" />) skips the question.
+
+## Plans
+
+In Plan mode, Claude reads and plans without making changes. When it's done, the card shows the plan ("Claude has a plan. Ready to start?"):
+
+| Button | Key | What it does |
+|---|---|---|
+| **Approve and accept edits** | <Kbd shortcut="permission.allow" /> | Starts, and switches the session to Accept edits, so file edits apply without asking. |
+| **Approve, ask before edits** | | Starts, and asks before each file edit. |
+| **Keep planning** | <Kbd shortcut="permission.deny" /> | Claude goes on planning. Type what to change in the field under the buttons first, and press <Kbd keys="enter" /> to send it. |
+
+## Answer from the keyboard
+
+The keys belong to the first card of the session you are looking at. With two sessions side by side, only the active pane's card answers.
+
+- <Kbd shortcut="permission.allow" /> allows, sends your answers, or approves a plan.
+- <Kbd shortcut="permission.deny" /> denies, skips, or keeps planning. While a card is waiting, <Kbd keys="escape" /> in the message box answers the card instead of stopping Claude.
+- <Kbd shortcut="permission.pick" /> picks an answer to a question.
+
+Some keys are left alone where they would do the wrong thing: number keys typed in the message box are text, <Kbd keys="mod+enter" /> in the "tell Claude what to do instead" field doesn't allow what you are explaining a no for, and <Kbd keys="escape" /> in your own answer doesn't skip the question. A card that appears while you type doesn't take your focus, so an <Kbd keys="enter" /> meant for your message never approves something you didn't read.
+
+## Permission modes
+
+The permission mode decides how often Claude asks. Change it with the mode chip under the message box, or press <Kbd shortcut="mode.cycle" /> in the message box to cycle through Ask before edits, Accept edits and Plan mode. In the command palette, *Change permission mode…* lists every mode.
+
+| Mode | When Claude asks |
+|---|---|
+| **Ask before edits** | Before every edit and command |
+| **Accept edits** | File edits apply; commands still ask |
+| **Plan mode** | Claude reads and plans, and shows you the plan |
+| **Auto mode** | Only when it matters |
+
+See [Model, effort and mode](/new-session/models-and-options/#permission-mode) for the chips.
+
+## Sessions from the terminal
+
+With *Show sessions from other apps* on in [Settings → Sidebar](/settings/#sidebar), Claude Code sessions running in your terminal show up in the sidebar too. When one waits for a permission, it moves to **Needs you** and a notification says "Claude is waiting for you in Terminal". Answer it in the terminal where it runs: Switchboard doesn't drive that process.
+
+If you send a message to a session that is open in another app, Switchboard starts a **fork** instead: a new session that continues from the conversation, leaving the original untouched.
+
+## Answer from VS Code
+
+With the [VS Code companion](/vscode-companion/) installed, the prompts of sessions in your VS Code workspace show up as notifications there too, so you don't have to switch apps:
+
+- A permission offers **Allow**, the **Always allow** rule when there is one, **Deny…** (with an optional note for Claude) and **Show in Switchboard**.
+- A question offers **Answer…**, with a pick list per question and your own answer as the last choice, and **Skip**.
+- A plan offers **Read the plan**, which opens it in a preview, then **Approve and accept edits**, **Approve, ask before edits** or **Keep planning…**.
+
+Dismissing a notification leaves the prompt waiting in Switchboard. The command **Switchboard: Answer Prompts** shows the waiting ones again. When you already answered in Switchboard, VS Code says "That was already answered in Switchboard." The status bar says *Switchboard: 1 needs you* when a session in the workspace waits for you.
+
+<Aside>
+The VS Code setting `switchboard.prompts` turns these notifications off.
+</Aside>
+
+## Settings
+
+- [Settings → Sidebar](/settings/#sidebar): *Show sessions from other apps* lists terminal sessions and notifies you when one waits.
+- [Settings → VS Code](/settings/#vs-code): the companion that lets you answer from VS Code.
+- A project's [Settings tab](/projects/settings/): the permission mode new sessions start in.

@@ -4,7 +4,7 @@ Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working o
 
 ## Architecture
 
-Switchboard is an Electron app in four npm workspaces, plus its VS Code companion extension:
+Switchboard is an Electron app in four npm workspaces, plus its VS Code companion extension and its website:
 
 | Path | What it is | Rules |
 |---|---|---|
@@ -12,6 +12,7 @@ Switchboard is an Electron app in four npm workspaces, plus its VS Code companio
 | `packages/engine` | Plain Node; runs in an Electron `utilityProcess` | **No Electron imports.** Owns the SQLite cache, the session index and search, Claude Code processes (through the Agent SDK), git, terminals, project actions and usage. |
 | `apps/desktop` | Electron main process, preload, and the engine entry | Main does what needs Electron: windows, menus, dialogs, notifications, the Trash, preferences. The preload is sandboxed and exposes `window.switchboard`. |
 | `apps/ui` | React 19 renderer, Tailwind 4, zustand | Talks to the engine only through the RPC client, and to main only through `window.switchboard`. |
+| `website` | The website and docs (Astro + Starlight), published to GitHub Pages by `website.yml` | Pages are MDX in `website/src/content/docs/`. Colours come from the app's `--sb-*` tokens (`website/src/styles/switchboard.css`); keys use `<Kbd shortcut="…">` from the shortcuts registry. Every feature is listed in `website/src/content/features.json`, which a test checks against the palette commands, shortcuts, Settings sections and project tabs. |
 | `apps/vscode-extension` | The VS Code companion, bundled with esbuild into `dist/extension.cjs` | Talks to the engine only over its Unix socket (`packages/engine/src/companion/`), through `@switchboard/protocol/companion-client` (no zod). Pure logic (payloads, exclusions, discovery, which session) lives in modules without `vscode` imports, with tests next to them. Released on its own (`release-vscode.yml`, tags `vscode-vX.Y.Z`); see [docs/vscode-companion.md](docs/vscode-companion.md). |
 
 The path of a feature is usually: add the request or event to `packages/protocol/src/contract.ts`, handle it in `packages/engine/src/engine.ts` (logic in a module next to it), and call it from the UI with `client.call(...)` / `client.on(...)`.
@@ -33,6 +34,9 @@ npm run check        # typecheck every package + unit tests (Vitest)
 npm run smoke        # build, launch the real app with a throwaway profile, drive the UI
 npm run screenshots  # retake the README screenshots in a made-up demo home folder
 npm run dev:vscode   # rebuild the VS Code companion on every change (F5 in VS Code runs it in a dev host)
+npm run website:dev  # the website and docs with hot reload
+npm run website:build          # build the website; fails on a broken internal link
+npm run website:screenshots    # retake the website's screenshots in a made-up demo home folder
 npm run dist         # package Switchboard.app and a .dmg
 ```
 
@@ -149,6 +153,7 @@ SWITCHBOARD_SMOKE_LIVE_CWD=/path/to/throwaway-repo npm run smoke
 - `README.md` is for people using the app: what it does, how to install it, shortcuts, settings. No implementation details.
 - Technical material goes in `docs/` (`development.md`, `building-and-signing.md`, `project-actions.md`) and is linked from the README.
 - Update `PLAN.md` when a phase or roadmap item changes status.
+- The website (`website/`) documents every feature for people using the app. A change people can see updates its page there too, and `features.json` (see the [Release checklist in CLAUDE.md](CLAUDE.md#release-checklist)).
 - Keep `CHANGELOG.md` up to date: when a change is visible to people using the app, add a line to the `## [Unreleased]` section at the top (create it if it's missing), written for them, not about the implementation. At release time that section becomes `## [X.Y.Z] - YYYY-MM-DD` (see Releases).
 
 ## Releases
@@ -157,7 +162,8 @@ Releases are built by `.github/workflows/release.yml`, which runs when a release
 
 1. Rename the `## [Unreleased]` section of `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD` (or add that section, written for people using the app), and set `version` in `apps/desktop/package.json` to match.
 2. Retake the README screenshots with `npm run screenshots` and look at every image in `docs/screenshots` against the README's alt text and the CHANGELOG section. If the tour fails, a view it drives has changed: fix `apps/desktop/src/main/screenshotTour.ts` (or the demo world in `scripts/screenshot-demo.ts`) rather than skipping it. If a released feature belongs in a picture that doesn't show it yet, update the demo world or add a view. Commit the new images with the release.
-3. Publish a GitHub release with tag `vX.Y.Z` (only when the user asks). The notes may be left empty; the workflow fills them from the CHANGELOG section.
+3. Go through the [Release checklist in CLAUDE.md](CLAUDE.md#release-checklist): docs pages, `features.json`, website screenshots and `npm run website:build`. A release is not done until the docs are updated.
+4. Publish a GitHub release with tag `vX.Y.Z` (only when the user asks). The notes may be left empty; the workflow fills them from the CHANGELOG section.
 
 The workflow builds with the version from the tag, signs and notarises the app, checks Gatekeeper accepts it, and attaches the `.dmg` to the release. It never attaches an unsigned build. For a Stable release it then pushes the stamped cask (`homebrew/switchboard.rb`) to `estruyf/homebrew-tap`; edit the cask here, never in the tap (see `docs/homebrew.md`). `npm run dist:notarized` is for checking a signed build locally.
 
