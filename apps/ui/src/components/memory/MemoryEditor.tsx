@@ -183,6 +183,13 @@ export function MemoryEditor({
   if (file.error) return <Notice tone="error" className="m-4">{`Couldn't read this memory: ${file.error}`}</Notice>;
   if (!draft) return <p className="p-4 text-ui text-muted">Reading…</p>;
   const set = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
+  // The row over the text, the same height in both modes: Edit sits here rather than over the text, where it covered the first line.
+  const textLabel = (end: ReactNode) => (
+    <div className="flex h-6 items-center gap-2">
+      <span className="text-ui text-muted">Text</span>
+      {end}
+    </div>
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-memory-editor={memory.path}>
@@ -240,7 +247,8 @@ export function MemoryEditor({
           />
         </div>
         {editing ? (
-          <div className="grid gap-1">
+          <div className="grid gap-1.5">
+            {textLabel(<span className="ml-auto text-meta text-faint">[[name]] links to another memory</span>)}
             <textarea
               ref={bodyRef}
               aria-label="Memory text"
@@ -293,7 +301,12 @@ export function MemoryEditor({
             )}
           </div>
         ) : (
-          <div className="group relative">
+          <div className="grid gap-1.5">
+            {textLabel(
+              <Button size="sm" variant="quiet" icon={<Pencil size={12} aria-hidden />} onClick={() => setEditing(true)} className="ml-auto" data-memory-edit>
+                Edit
+              </Button>,
+            )}
             <pre className="min-h-32 overflow-x-auto rounded-lg border border-border bg-code p-4 font-mono text-ui break-words whitespace-pre-wrap select-text" data-memory-content onDoubleClick={() => setEditing(true)}>
               {tokens.map((token, i) =>
                 'link' in token ? (
@@ -313,9 +326,6 @@ export function MemoryEditor({
               )}
               {draft.body === '' && <span className="text-faint">No text yet.</span>}
             </pre>
-            <Button size="sm" icon={<Pencil size={12} aria-hidden />} onClick={() => setEditing(true)} className="absolute top-2 right-2" data-memory-edit>
-              Edit
-            </Button>
           </div>
         )}
         {(backlinks.length > 0 || unwritten.length > 0) && (
