@@ -1,4 +1,5 @@
 import { AlertTriangle, BookCopy, Copy, FileText, FolderInput, FolderSearch, MoreHorizontal, Pencil, Plus, Search, Share2, SquareArrowOutUpRight, Trash2 } from 'lucide-react';
+import { fileManagerName, trashName } from '../../lib/platform.ts';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { isSameOrInside, MEMORY_INDEX_LIMIT, type InstructionFile, type MemoryFile } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -115,7 +116,7 @@ export function useMemoryActions(root: string | null, where: string, onSelect: (
   >(null);
   const leave = useMemoryView((s) => s.leave);
 
-  const reveal = (path: string) => void client?.call('editors.open', { path, editorId: 'finder' }).catch((e: Error) => toast(`Couldn't show it in Finder: ${e.message}`));
+  const reveal = (path: string) => void client?.call('editors.open', { path, editorId: 'finder' }).catch((e: Error) => toast(`Couldn't show it in ${fileManagerName()}: ${e.message}`));
   const overlays = (
     <>
       {dialog?.kind === 'new' && <NewMemoryDialog root={root} where={where} taken={dialog.taken} initial={dialog.initial} onClose={() => setDialog(null)} onCreated={onSelect} />}
@@ -126,13 +127,13 @@ export function useMemoryActions(root: string | null, where: string, onSelect: (
         <ConfirmDialog
           title={`Delete “${dialog.memory.name}”?`}
           danger
-          confirmLabel="Move to Trash"
-          body="The file moves to the Trash and its line leaves MEMORY.md, so Claude stops reading it. You can undo it right after."
+          confirmLabel={`Move to ${trashName()}`}
+          body={`The file moves to the ${trashName()} and its line leaves MEMORY.md, so Claude stops reading it. You can undo it right after.`}
           onConfirm={async () => {
             if (!client) throw new Error('Not connected to the engine');
             const { undoToken } = await client.call('memory.remove', { root, path: dialog.memory.path });
             useMemoryView.setState({ dirty: false });
-            toast(`Moved ${dialog.memory.name} to the Trash`, {
+            toast(`Moved ${dialog.memory.name} to the ${trashName()}`, {
               undo: () => void client.call('memory.restore', { undoToken }).then(({ path }) => onSelect(path), (e: Error) => toast(`Couldn't undo: ${e.message}`)),
               data: { 'data-memory-deleted-toast': true },
             });
@@ -308,7 +309,7 @@ export function MemoryTab({ root }: { root: string }) {
                 data: { 'data-memory-menu-copy-profile': p.id },
               }),
             )),
-      { label: 'Reveal in Finder', icon: <FolderSearch size={13} aria-hidden />, onSelect: () => act.reveal(memory.path) },
+      { label: `Reveal in ${fileManagerName()}`, icon: <FolderSearch size={13} aria-hidden />, onSelect: () => act.reveal(memory.path) },
       'separator',
       { label: 'Delete…', icon: <Trash2 size={13} aria-hidden />, danger: true, onSelect: () => act.remove(memory), data: { 'data-memory-menu-delete': true } },
     ];
@@ -321,7 +322,7 @@ export function MemoryTab({ root }: { root: string }) {
           memory={memory}
           onKeep={(keep) =>
             void client?.call('memory.resolveConflict', { root: scope, path: memory.path, keep }).then(
-              ({ path }) => (setSelectedPath(path), toast(keep === 'this' ? 'Kept this version; the other went to the Trash' : 'Kept the other version; this copy went to the Trash')),
+              ({ path }) => (setSelectedPath(path), toast(keep === 'this' ? `Kept this version; the other went to the ${trashName()}` : `Kept the other version; this copy went to the ${trashName()}`)),
               (e: Error) => toast(`Couldn't resolve it: ${e.message}`),
             )
           }
@@ -341,7 +342,7 @@ export function MemoryTab({ root }: { root: string }) {
   const instructionEntries = (file: InstructionFile): MenuEntry[] => [
     { label: 'Copy a section to my memory…', icon: <BookCopy size={13} aria-hidden />, onSelect: () => copySection(root, file), data: { 'data-memory-menu-copy': true } },
     { label: 'Open in editor', icon: <SquareArrowOutUpRight size={13} aria-hidden />, onSelect: () => void openIn(file.path).catch(() => {}) },
-    { label: 'Reveal in Finder', icon: <FolderSearch size={13} aria-hidden />, onSelect: () => actions.reveal(file.path) },
+    { label: `Reveal in ${fileManagerName()}`, icon: <FolderSearch size={13} aria-hidden />, onSelect: () => actions.reveal(file.path) },
   ];
 
   if (error) return <Notice tone="error">{`Couldn't read this project's memory: ${error}`}</Notice>;

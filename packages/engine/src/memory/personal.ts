@@ -1,5 +1,5 @@
 import { dirname, join } from 'node:path';
-import { detectEol, isSameOrInside } from '@switchboard/protocol';
+import { detectEol, pathInside } from '@switchboard/protocol';
 
 /** The marked block Switchboard owns in a profile's CLAUDE.md; nothing outside it is ever changed. */
 export const BLOCK_START = '<!-- switchboard:memory start -->';
@@ -10,12 +10,6 @@ export const BLOCK_END = '<!-- switchboard:memory end -->';
  * the `\ ` that escapes a space. Only a Windows drive path changes: elsewhere `\` can be part of a name.
  */
 const forwardSlashes = (path: string) => (/^[A-Za-z]:[\\/]/.test(path) ? path.replace(/\\/g, '/') : path);
-
-/** The part of `path` below the folder `root` ('' for the folder itself), or null when it isn't inside, as `isSameOrInside` compares. */
-function pathInside(path: string, root: string): string | null {
-  if (!isSameOrInside(path, root)) return null;
-  return path.slice(root.replace(/[\\/]+$/, '').length).replace(/^[\\/]+/, '');
-}
 
 /** `path` with the home folder as `~` (compared as Windows does there, without regard to case), in `/` form. */
 function underHome(path: string, home: string): string {

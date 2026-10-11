@@ -1,4 +1,5 @@
 import { FolderSearch, MoreHorizontal, Pencil, Share2, Trash2 } from 'lucide-react';
+import { fileManagerName } from '../../lib/platform.ts';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { bodyTokens, memoryMeta, splitFrontmatter, type MemoryFile } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -365,7 +366,7 @@ export function MemoryEditor({
         )}
         <span className="flex-1" />
         <Button size="sm" variant="quiet" icon={<FolderSearch size={12} aria-hidden />} onClick={onReveal}>
-          Reveal in Finder
+          Reveal in {fileManagerName()}
         </Button>
         {footerActions}
         <Button size="sm" variant="danger" icon={<Trash2 size={12} aria-hidden />} onClick={onDelete} data-memory-delete>

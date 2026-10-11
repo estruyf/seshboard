@@ -1,4 +1,5 @@
 import { AlertTriangle, Clock } from 'lucide-react';
+import { trashName } from '../../lib/platform.ts';
 import { useEffect, useState } from 'react';
 import { memoryMeta, splitFrontmatter, type HealthFinding } from '@switchboard/protocol/client';
 import { basename, pathTail } from '../../lib/format.ts';
@@ -63,7 +64,7 @@ function CompareDialog({ root, left, right, onClose }: { root: string | null; le
     const gone = side === 'left' ? right : left;
     const { undoToken } = await client.call('memory.remove', { root, path: gone });
     onClose();
-    toast(`Kept ${nameOf(side === 'left' ? left : right)}; ${nameOf(gone)} went to the Trash`, { undo: restore(undoToken) });
+    toast(`Kept ${nameOf(side === 'left' ? left : right)}; ${nameOf(gone)} went to the ${trashName()}`, { undo: restore(undoToken) });
   };
   const merge = async () => {
     if (!client || a.content === null || b.content === null) throw new Error('Not read yet');
@@ -121,8 +122,8 @@ function CompareDialog({ root, left, right, onClose }: { root: string | null; le
           confirmLabel={confirm === 'merge' ? 'Merge' : 'Keep it'}
           body={
             confirm === 'merge'
-              ? `${nameOf(right)}'s text is added under ${nameOf(left)}'s, and ${nameOf(right)} goes to the Trash with its MEMORY.md line. You can undo it right after.`
-              : `${nameOf(confirm === 'left' ? right : left)} goes to the Trash with its MEMORY.md line. You can undo it right after.`
+              ? `${nameOf(right)}'s text is added under ${nameOf(left)}'s, and ${nameOf(right)} goes to the ${trashName()} with its MEMORY.md line. You can undo it right after.`
+              : `${nameOf(confirm === 'left' ? right : left)} goes to the ${trashName()} with its MEMORY.md line. You can undo it right after.`
           }
           onConfirm={() => (confirm === 'merge' ? merge() : keep(confirm))}
           onClose={() => setConfirm(null)}
