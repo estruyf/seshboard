@@ -126,26 +126,30 @@ The status should be `Valid`. Once the installed app is signed, the in-app updat
 2. Retake the README screenshots with `npm run screenshots` (see [README screenshots](development.md#readme-screenshots)) and look at each one: does it still match the app and the README text, and does it show what this release changed? A failing run means a view in the tour has changed; fix the tour instead of keeping the old pictures. Commit the images with the CHANGELOG and push.
 3. On GitHub, create a release with a new tag `vX.Y.Z` (Releases → Draft a new release) and publish it. You can leave the notes empty.
 
-The workflow then builds for macOS and Windows in two jobs. The macOS job:
+The workflow then builds for macOS and Windows side by side, and publishes both together. The macOS job:
 
 1. runs the typecheck and unit tests;
 2. builds the app on an Apple Silicon runner, with the version taken from the tag;
 3. signs it with your Developer ID, and notarises and staples it;
-4. checks the signature and that Gatekeeper accepts it as notarised;
-5. attaches `Switchboard-X.Y.Z-arm64.dmg`, the `.zip` and its `.blockmap` to the release, then the update feed (`latest-mac.yml`) last, so the feed never points at a file that isn't there yet;
-6. fails if a `latest*.yml` ended up on a draft or pre-release;
-7. fills in the release notes from the CHANGELOG section, if you left them empty. The in-app updater shows these notes (cleaned up and shortened) for the new version.
-8. for a Stable release, stamps the Homebrew cask with the version and the `.zip`'s checksum and pushes it to [estruyf/homebrew-tap](https://github.com/estruyf/homebrew-tap) (see [Homebrew](homebrew.md)).
+4. checks the signature, that Gatekeeper accepts it as notarised, and the update feed (`latest-mac.yml`).
 
-The Windows job runs once Windows releases are switched on: the repository variable `WINDOWS_RELEASES` is `true` (see [Signing secrets](#signing-secrets)). Until then it's skipped, and releases are macOS-only. On a Windows runner, it:
+The Windows job, on a Windows runner:
 
 1. runs the typecheck and unit tests there too;
-2. builds the installer with the version from the tag, signed with Azure Trusted Signing or the `.pfx` (it fails when neither is set up);
-3. checks that the installer and both apps carry a valid signature by the publisher the app checks updates against (`scripts/checkWindowsSignatures.mjs`, matching the way the in-app updater does). A publisher that didn't match would make every installed copy of the release refuse all later updates, and no later release could fix that;
-4. attaches `Switchboard-X.Y.Z-setup.exe` and its `.blockmap`, then the update feed (`latest.yml`) last;
-5. fails if a `latest*.yml` ended up on a draft or pre-release.
+2. logs in to Azure without a stored secret (in the GitHub environment `windows-signing`, see [Signing secrets](#signing-secrets));
+3. builds the installer with the version from the tag, signed with Azure Trusted Signing or the `.pfx` (it fails when neither is set up);
+4. checks that the installer and both apps carry a valid signature by the publisher the app checks updates against (`scripts/checkWindowsSignatures.mjs`, matching the way the in-app updater does). A publisher that didn't match would make every installed copy of the release refuse all later updates, and no later release could fix that. It also checks the update feed (`latest.yml`).
 
-The two jobs don't wait for each other, so when one fails the other's files are still attached. Re-run the failed job once it's fixed.
+Only when both have passed, the publish job:
+
+1. attaches `Switchboard-X.Y.Z-arm64.dmg`, the `.zip` and its `.blockmap`, and `Switchboard-X.Y.Z-setup.exe` and its `.blockmap` to the release, then both update feeds last, so a feed never points at a file that isn't there yet;
+2. fails if a `latest*.yml` ended up on a draft or pre-release;
+3. fills in the release notes from the CHANGELOG section, if you left them empty. The in-app updater shows these notes (cleaned up and shortened) for the new version;
+4. for a Stable release, stamps the Homebrew cask with the version and the `.zip`'s checksum and pushes it to [estruyf/homebrew-tap](https://github.com/estruyf/homebrew-tap) (see [Homebrew](homebrew.md)).
+
+When either build fails, nothing is attached: the release never offers one platform without the other. Fix the cause and re-run the failed jobs (the publish job runs once both pass).
+
+**Dry run.** Actions → Release → *Run workflow* builds, signs (and notarises) and checks both apps with a version like `X.Y.Z-dryrun.N`, and keeps them as workflow artifacts (`release-mac`, `release-windows`) for a week. There is no publish job: nothing is attached, no feed is written and the Homebrew tap is left alone. Use it after changing a certificate, a secret or a variable, before a real release.
 
 Everyone on the Stable channel is offered the release within a few hours, or straight away with **Check for Updates…**.
 
@@ -157,7 +161,7 @@ Everyone on the Stable channel is offered the release within a few hours, or str
 
 On macOS only arm64 is built. If an Intel build is added, both architectures must go into one `latest-mac.yml` (a `files` entry each) rather than two feeds overwriting each other. On Windows one installer holds both architectures, so `latest.yml` names a single file.
 
-Nothing is attached unsigned: without the secrets below the run fails. To retry, re-run the failed workflow run from the Actions tab.
+Nothing is attached unsigned: without the secrets below the run fails. To retry, re-run the failed jobs from the Actions tab.
 
 ### Signing secrets
 
@@ -174,7 +178,7 @@ Add these repository secrets (Settings → Secrets and variables → Actions):
 
 `MAC_CERTIFICATE_PASSWORD` may be left out only if the `.p12` was exported without a password.
 
-For Windows, set up one of the two ways below, then set the repository variable `WINDOWS_RELEASES` to `true` to switch Windows releases on. **Azure Trusted Signing** takes these repository *variables* (Settings → Secrets and variables → Actions → Variables), which aren't secret:
+For Windows, set up one of the two ways below. **Azure Trusted Signing** takes these repository *variables* (Settings → Secrets and variables → Actions → Variables), which aren't secret:
 
 | Variable | What it is |
 |---|---|
@@ -183,13 +187,15 @@ For Windows, set up one of the two ways below, then set the repository variable 
 | `AZURE_SIGNING_PROFILE` | The certificate profile's name |
 | `AZURE_SIGNING_PUBLISHER` | The publisher in the certificate (its common name, such as your name or company), exactly as it appears there. The updater checks updates against it |
 
-and these secrets, for the app registration that may sign:
+and these secrets, for the app registration that may sign (it needs the *Trusted Signing Certificate Profile Signer* role on the account):
 
 | Secret | What it is |
 |---|---|
 | `AZURE_TENANT_ID` | The directory (tenant) ID |
 | `AZURE_CLIENT_ID` | The app registration's application (client) ID |
-| `AZURE_CLIENT_SECRET` | A client secret of that app registration |
+| `AZURE_SUBSCRIPTION_ID` | The subscription that holds the Trusted Signing account |
+
+There is no client secret. The Windows job runs in the GitHub environment `windows-signing` (created on its first run) and logs in with GitHub's OpenID Connect token, which Azure accepts through a federated credential on the app registration. Add it under Certificates & secrets → Federated credentials as *Other issuer*: issuer `https://token.actions.githubusercontent.com`, subject `repo:estruyf@2900833/switchboard@1405532462:environment:windows-signing`, audience `api://AzureADTokenExchange`. GitHub sends the subject with the owner's and repository's IDs, which is why the *GitHub Actions* template's `repo:estruyf/switchboard:…` doesn't match; an `AADSTS700213` error in the Azure login step prints the subject GitHub sent.
 
 **A `.pfx` certificate** takes `WIN_CERTIFICATE_PFX_BASE64`, the `.pfx` base64-encoded (in PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx')) | Set-Clipboard`), and `WIN_CERTIFICATE_PASSWORD`, its password. When both ways are set up, Azure Trusted Signing is used.
 

@@ -1,11 +1,13 @@
-# Builds Switchboard for a GitHub release.
+# Builds Switchboard for a GitHub release, for macOS and Windows, and publishes both at once.
 #
 # Runs when a release is published on GitHub (for a tag like v0.2.0):
-# - mac: builds the app on an Apple Silicon runner, signs and notarises it, and attaches the .dmg to that
-#   release, with the .zip and the update feed the in-app updater reads (latest-mac.yml);
-# - windows: builds the installer (x64 and Arm64 in one), signs it, and attaches it with its update feed
-#   (latest.yml). Only once Windows releases are switched on: the repository variable WINDOWS_RELEASES is
-#   `true` (with signing set up, docs/building-and-signing.md). Until then the job is skipped.
+# - mac: builds the app on an Apple Silicon runner, signs and notarises it, with the .zip and the update feed
+#   the in-app updater reads (latest-mac.yml);
+# - windows: builds the installer (x64 and Arm64 in one), signs it with Azure Trusted Signing (or a .pfx), with
+#   its update feed (latest.yml);
+# - publish: only once both builds passed their checks, attaches all their files to the release (the update
+#   feeds last), fills in empty notes and updates the Homebrew cask. When either build fails, nothing is
+#   attached, so a release never offers one platform without the other. Re-run the failed jobs to retry.
 # The version comes from the tag (.github/scripts/release-version.sh). When the release has no notes, the
 # matching CHANGELOG.md section is used.
 #
@@ -13,10 +15,12 @@
 # vX.Y.Z-nightly.YYYYMMDD.N is the Nightly feed (nightly-mac.yml, nightly.yml). Any other pre-release gets
 # the builds but no feed, so no one is ever updated to it.
 #
-# A Stable release also updates the Homebrew cask in estruyf/homebrew-tap (docs/homebrew.md).
+# Dry run: run this workflow by hand (Actions → Release → Run workflow). Both builds are made, signed (the Mac
+# one notarised) and checked, with a version like 1.2.3-dryrun.42, and kept as workflow artifacts for a week.
+# Nothing is published: there is no publish job, no feed and no Homebrew update.
 #
-# Nothing is ever attached unsigned: without the signing secrets the run fails.
-# See docs/building-and-signing.md for the secrets.
+# Nothing is ever attached unsigned: without the signing settings the run fails.
+# See docs/building-and-signing.md for the secrets and variables.
 #
 # Releases tagged vscode-vX.Y.Z are the VS Code companion's (release-vscode.yml); this workflow skips them.
 name: Release
@@ -24,26 +28,28 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.event.release.tag_name }}
+  group: release-${{ github.event.release.tag_name || github.ref }}
   cancel-in-progress: false
 
 jobs:
   mac:
-    name: Build, sign, notarise and attach the .dmg
+    name: Build, sign and notarise the Mac app
     if: ${{ !startsWith(github.event.release.tag_name, 'vscode-') }}
     runs-on: macos-15
     timeout-minutes: 60
     env:
       TAG: ${{ github.event.release.tag_name }}
+      DRY_RUN: ${{ github.event_name != 'release' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -109,16 +115,167 @@ jobs:
             ls Switchboard-*-mac.zip >/dev/null
           fi
 
-      - name: Attach the .dmg, .zip and update feed to the release
+      - name: Keep the build for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-mac
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.zip.blockmap
+            apps/desktop/dist/*-mac.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Build and sign the Windows installer
+    if: ${{ !startsWith(github.event.release.tag_name, 'vscode-') }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # The Azure login has no stored secret: GitHub's OpenID Connect token is exchanged for one, and the app
+    # registration's federated credential only accepts it from this environment
+    # (repo:estruyf@2900833/switchboard@1405532462:environment:windows-signing).
+    environment: windows-signing
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      DRY_RUN: ${{ github.event_name != 'release' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Version and update channel from the tag
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: bash .github/scripts/release-version.sh
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck and unit tests
+        run: npm run check
+
+      - name: Azure login
+        if: vars.AZURE_SIGNING_ENDPOINT != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and sign
+        env:
+          # Azure Trusted Signing: the account's settings are repository variables (scripts/dist.mjs passes them
+          # to electron-builder). Its TrustedSigning module signs with the Azure CLI login above.
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_SIGNING_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
+          # Or a code signing certificate exported as .pfx, base64-encoded, and its password.
+          WIN_CSC_LINK: ${{ secrets.WIN_CERTIFICATE_PFX_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -n "$AZURE_SIGNING_ENDPOINT" ]; then
+            echo "Signing with Azure Trusted Signing."
+            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+          elif [ -n "$WIN_CSC_LINK" ]; then
+            echo "Signing with the certificate in WIN_CERTIFICATE_PFX_BASE64."
+          else
+            echo "::error::Windows signing isn't set up, and nothing is attached unsigned. See docs/building-and-signing.md."
+            exit 1
+          fi
+          # The app's version (About, the installer's name) is the release's.
+          npm pkg set version="$VERSION" -w @switchboard/desktop
+          if [ "$FEED" == "nightly" ]; then
+            # electron-builder names a GitHub feed latest.yml unless told the channel.
+            npm run dist -w @switchboard/desktop -- -c.publish.channel=nightly
+          else
+            npm run dist
+          fi
+
+      - name: Check the signatures and the publisher
+        # The installer and both apps are validly signed (electron-builder signs the uninstaller with the same
+        # settings), by the publisher the apps check updates against: one that doesn't match would make every
+        # installed copy of this release refuse all later updates.
+        run: node apps/desktop/scripts/checkWindowsSignatures.mjs
+
+      - name: Check the update feed
+        run: |
+          cd apps/desktop/dist
+          ls -la
+          feeds=$(ls latest.yml nightly.yml 2>/dev/null || true)
+          expected="$FEED.yml"
+          if [ "$FEED" != "none" ] && [ "$feeds" != "$expected" ]; then
+            echo "::error::Expected exactly $expected, found: ${feeds:-nothing}."
+            exit 1
+          fi
+          if [ "$FEED" != "none" ]; then
+            grep -q "^version: $VERSION\$" "$expected" || { echo "::error::$expected is not for $VERSION."; cat "$expected"; exit 1; }
+            grep -q "^path: Switchboard-$VERSION-setup.exe\$" "$expected" || { echo "::error::$expected doesn't point at Switchboard-$VERSION-setup.exe."; cat "$expected"; exit 1; }
+          fi
+          ls "Switchboard-$VERSION-setup.exe" >/dev/null
+
+      - name: Keep the build for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            apps/desktop/dist/Switchboard-*-setup.exe
+            apps/desktop/dist/Switchboard-*-setup.exe.blockmap
+            apps/desktop/dist/latest.yml
+            apps/desktop/dist/nightly.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attach both builds to the release
+    needs: [mac, windows]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Version and update channel from the tag
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: bash .github/scripts/release-version.sh
+
+      - name: Download both builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: apps/desktop/dist
+          merge-multiple: true
+
+      - name: Attach the builds and update feeds to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd apps/desktop/dist
-          files=(*.dmg *.zip *.zip.blockmap)
-          # The feed goes up last, so it never points at a .zip that isn't there yet.
+          ls -la
+          # Both platforms' files first, then both feeds, so a feed never points at a file that isn't there yet.
+          files=(*.dmg *.zip *.zip.blockmap "Switchboard-$VERSION-setup.exe" "Switchboard-$VERSION-setup.exe.blockmap")
           gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           if [ "$FEED" != "none" ]; then
-            gh release upload "$TAG" "$FEED-mac.yml" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$TAG" "$FEED-mac.yml" "$FEED.yml" --clobber --repo "$GITHUB_REPOSITORY"
           fi
 
       - name: Guard against a feed on the wrong release
@@ -169,114 +326,3 @@ jobs:
           fi
           ./homebrew/publish-cask.sh --push
 
-  windows:
-    name: Build, sign and attach the Windows installer
-    # Skipped until Windows releases are switched on, so releases before then don't show a failed job. Once on, a
-    # release that can't be signed fails here and attaches nothing.
-    if: ${{ !startsWith(github.event.release.tag_name, 'vscode-') && vars.WINDOWS_RELEASES == 'true' }}
-    runs-on: windows-latest
-    timeout-minutes: 60
-    defaults:
-      run:
-        shell: bash
-    env:
-      TAG: ${{ github.event.release.tag_name }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.release.tag_name }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Version and update channel from the tag
-        env:
-          PRERELEASE: ${{ github.event.release.prerelease }}
-        run: bash .github/scripts/release-version.sh
-
-      - name: Install
-        run: npm ci
-
-      - name: Typecheck and unit tests
-        run: npm run check
-
-      - name: Build and sign
-        env:
-          # Azure Trusted Signing: the account's settings are repository variables, and the app registration
-          # that may sign with it is in secrets (scripts/dist.mjs passes them to electron-builder).
-          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
-          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
-          AZURE_SIGNING_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          # Or a code signing certificate exported as .pfx, base64-encoded, and its password.
-          WIN_CSC_LINK: ${{ secrets.WIN_CERTIFICATE_PFX_BASE64 }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
-        run: |
-          if [ -n "$AZURE_SIGNING_ENDPOINT" ] && [ -n "$AZURE_CLIENT_SECRET" ]; then
-            echo "Signing with Azure Trusted Signing."
-            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
-          elif [ -n "$WIN_CSC_LINK" ]; then
-            echo "Signing with the certificate in WIN_CERTIFICATE_PFX_BASE64."
-            unset AZURE_SIGNING_ENDPOINT AZURE_SIGNING_ACCOUNT AZURE_SIGNING_PROFILE AZURE_SIGNING_PUBLISHER
-          else
-            echo "::error::Windows signing isn't set up, and nothing is attached unsigned. See docs/building-and-signing.md."
-            exit 1
-          fi
-          # The app's version (About, the installer's name) is the release's.
-          npm pkg set version="$VERSION" -w @switchboard/desktop
-          if [ "$FEED" == "nightly" ]; then
-            # electron-builder names a GitHub feed latest.yml unless told the channel.
-            npm run dist -w @switchboard/desktop -- -c.publish.channel=nightly
-          else
-            npm run dist
-          fi
-
-      - name: Check the signatures and the publisher
-        # The installer and both apps are validly signed (electron-builder signs the uninstaller with the same
-        # settings), by the publisher the apps check updates against: one that doesn't match would make every
-        # installed copy of this release refuse all later updates.
-        run: node apps/desktop/scripts/checkWindowsSignatures.mjs
-
-      - name: Check the update feed
-        run: |
-          cd apps/desktop/dist
-          ls -la
-          feeds=$(ls latest.yml nightly.yml 2>/dev/null || true)
-          expected="$FEED.yml"
-          if [ "$FEED" != "none" ] && [ "$feeds" != "$expected" ]; then
-            echo "::error::Expected exactly $expected, found: ${feeds:-nothing}."
-            exit 1
-          fi
-          if [ "$FEED" != "none" ]; then
-            grep -q "^version: $VERSION\$" "$expected" || { echo "::error::$expected is not for $VERSION."; cat "$expected"; exit 1; }
-            grep -q "^path: Switchboard-$VERSION-setup.exe\$" "$expected" || { echo "::error::$expected doesn't point at Switchboard-$VERSION-setup.exe."; cat "$expected"; exit 1; }
-          fi
-          ls "Switchboard-$VERSION-setup.exe" >/dev/null
-
-      - name: Attach the installer and update feed to the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          cd apps/desktop/dist
-          # The feed goes up last, so it never points at an installer that isn't there yet.
-          gh release upload "$TAG" "Switchboard-$VERSION-setup.exe" "Switchboard-$VERSION-setup.exe.blockmap" --clobber --repo "$GITHUB_REPOSITORY"
-          if [ "$FEED" != "none" ]; then
-            gh release upload "$TAG" "$FEED.yml" --clobber --repo "$GITHUB_REPOSITORY"
-          fi
-
-      - name: Guard against a feed on the wrong release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # latest*.yml is the Stable feed: it must only ever be on a published, non-pre-release release.
-          read -r draft prerelease < <(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"')
-          assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
-          if { [ "$draft" == "true" ] || [ "$prerelease" == "true" ]; } && grep -q '^latest.*\.yml$' <<< "$assets"; then
-            echo "::error::$TAG is a draft or pre-release but carries a latest*.yml update feed. Delete that asset."
-            exit 1
-          fi
