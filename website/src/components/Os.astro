@@ -1,0 +1,13 @@
+---
+/**
+ * A word or phrase that differs between macOS and Windows, such as `<Os mac="Finder" windows="File Explorer" />`.
+ * Both are in the page; the site shows the reader's (see lib/os.ts). Markdown isn't parsed inside: plain text only.
+ */
+interface Props {
+  mac: string;
+  windows: string;
+}
+const { mac, windows } = Astro.props;
+---
+
+<span class="sb-os-mac">{mac}</span><span class="sb-os-windows">{windows}</span>

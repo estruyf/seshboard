@@ -4,6 +4,7 @@ description: Edit a memory, write a new one, or save part of a conversation as m
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -40,10 +41,10 @@ Right-click a memory in the list, press <Kbd keys="shift+f10" />, or use **⋯**
 | **Rename…** | Changes its name, its file and its line in `MEMORY.md` together, and can update the [links](/memory/links-and-search/#rename-a-memory) to it. |
 | **Move to Personal** | Moves it to your [personal memory](/memory/personal-memory/), so it loads in every project. A personal memory has **Move to &lt;project&gt;** instead. |
 | **Copy to &lt;profile&gt;** | Copies it to the project's memory under another [Claude profile](/settings/claude-profiles/). Shown with more than one profile. |
-| **Reveal in Finder** | Shows the file in Finder. |
-| **Delete…** | Moves the file to the Trash and takes its line out of `MEMORY.md`, so Claude stops reading it. The toast has **Undo**. |
+| **Reveal in <Os mac="Finder" windows="File Explorer" />** | Shows the file in <Os mac="Finder" windows="File Explorer" />. |
+| **Delete…** | Moves the file to the <Os mac="Trash" windows="Recycle Bin" /> and takes its line out of `MEMORY.md`, so Claude stops reading it. The toast has **Undo**. |
 
-The editor's footer has **Reveal in Finder**, **Move to Personal** and **Delete…** too.
+The editor's footer has **Reveal in <Os mac="Finder" windows="File Explorer" />**, **Move to Personal** and **Delete…** too.
 
 ## Write a new memory
 
@@ -85,7 +86,7 @@ Instruction files (`CLAUDE.md`, rules, `CLAUDE.local.md`, `CLAUDE.md` in subfold
 
 After you save a file that is committed with the project, a notice says **Changed in git**, with **Show in Changes**: the change waits in [Changes](/terminal-changes-git/changes/) for you to review and commit. Nothing is ever committed for you. If the file changed on disk after you opened it, Switchboard asks before saving: **Save mine**.
 
-An instruction file's menu (right-click or **⋯**) has **Copy a section to my memory…**, **Open in editor** and **Reveal in Finder**. See [Copy to my memory](/memory/share-with-the-team/#copy-to-my-memory).
+An instruction file's menu (right-click or **⋯**) has **Copy a section to my memory…**, **Open in editor** and **Reveal in <Os mac="Finder" windows="File Explorer" />**. See [Copy to my memory](/memory/share-with-the-team/#copy-to-my-memory).
 
 <Aside>
 Files that only load, such as your profile's `CLAUDE.md` or an imported file, open read-only from [What loads in a session here](/memory/what-loads/). Use **Open in editor** to change them.

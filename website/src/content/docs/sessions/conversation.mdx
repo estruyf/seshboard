@@ -6,6 +6,8 @@ sidebar:
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
@@ -118,13 +120,19 @@ If the session is still open somewhere else, such as a terminal, Switchboard say
 
 The **⋯** button in the header holds:
 
-- **Open in** your editor, terminal or Finder (<Kbd shortcut="editor.open" /> opens the folder in your editor), and **Claude Code**, which opens the session in Claude Code's own terminal interface, in the terminal panel.
+- **Open in** your editor, terminal or <Os mac="Finder" windows="File Explorer" /> (<Kbd shortcut="editor.open" /> opens the folder in your editor), and **Claude Code**, which opens the session in Claude Code's own terminal interface, in the terminal panel.
 - **Continue in VS Code:** stops the session in Switchboard and opens it in Claude Code's VS Code extension, in the window for its folder. It shows when VS Code is installed, and waits until Claude is done. Also *Continue in VS Code* in the command palette.
 - The project's [actions](/projects/actions/).
 - **Profile** (with more than one Claude profile), **Rename…**, **Agents**, and **Check transcript…**, which explains why a conversation looks empty or short.
 - **Stop session:** ends the Claude Code process for this session. The conversation is kept, and sending a message starts it again.
 
-With a session open, the command palette (<Kbd shortcut="palette.commands" first />) also has *Rename session…*, *Stop Claude*, *Copy session id*, *Reveal folder in Finder* and *Delete session…*.
+<OnlyOn os="windows">
+
+On Windows, **Open in** lists the editors whose command it finds (VS Code, VS Code Insiders, Cursor, Windsurf, Zed, Sublime Text, WebStorm and IntelliJ IDEA), Windows Terminal when it is installed, and File Explorer.
+
+</OnlyOn>
+
+With a session open, the command palette (<Kbd shortcut="palette.commands" first />) also has *Rename session…*, *Stop Claude*, *Copy session id*, *Reveal folder in <Os mac="Finder" windows="File Explorer" />* and *Delete session…*.
 
 ## Close a session
 

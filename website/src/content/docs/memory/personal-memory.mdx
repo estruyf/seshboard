@@ -1,9 +1,11 @@
 ---
 title: Personal memory
-description: One folder of memory about you that loads in every project, with any Claude profile, and can sync to your other Macs.
+description: One folder of memory about you that loads in every project, with any Claude profile, and can sync to your other computers.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -21,18 +23,30 @@ Personal memory is one folder of memory that loads in every project, with any Cl
 
 Personal memory lives in Switchboard's app data until you choose another folder:
 
+<OnlyOn os="mac">
+
 ```
 ~/Library/Application Support/Switchboard/memory
 ```
 
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+```
+%APPDATA%\Switchboard\memory
+```
+
+</OnlyOn>
+
 The **Personal memory** card in Settings › Memory shows the folder, whether Claude Code loads it, and a <Pill tone="memory">MEMORY.md</Pill> meter.
 
 - **Change folder…** picks another folder. The memories already in the old folder stay there.
-- **Show in Finder** opens the folder.
+- **Show in <Os mac="Finder" windows="File Explorer" />** opens the folder.
 
 ### Sync it
 
-Choose a folder in iCloud Drive, Dropbox or a git repository to have the same personal memory on your other Macs. When the folder is synced, the card says so: anything you save there leaves this Mac.
+Choose a folder in iCloud Drive, Dropbox, Google Drive, OneDrive or a git repository to have the same personal memory on your other computers. When the folder is synced, the card says so: anything you save there leaves this computer.
 
 ## Load it in Claude Code
 
@@ -46,11 +60,27 @@ Choose a folder in iCloud Drive, Dropbox or a git repository to have the same pe
 
 Switchboard adds this block to the end of each profile's `CLAUDE.md`, after one blank line:
 
+<OnlyOn os="mac">
+
 ```markdown
 <!-- switchboard:memory start -->
 @~/Library/Application\ Support/Switchboard/memory/MEMORY.md
 <!-- switchboard:memory end -->
 ```
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+```markdown
+<!-- switchboard:memory start -->
+@~/AppData/Roaming/Switchboard/memory/MEMORY.md
+<!-- switchboard:memory end -->
+```
+
+The path is written with `/`, which Claude Code reads on Windows too.
+
+</OnlyOn>
 
 - Only the index loads at the start of a session. Claude reads a memory file when it needs it, by the full path in the index.
 - Nothing else in `CLAUDE.md` changes. When you change the folder, the block is updated where it is.
@@ -74,8 +104,8 @@ Spaces in the path are written as `\ `. If Claude Code doesn't read such a path 
 
 A sync tool can leave two versions of a file: `name 2.md` (iCloud), `name (… conflicted copy …).md` (Dropbox) or `name (1).md` (Google Drive), next to `name.md`. The Memory tab shows such a file with a <Pill tone="caution" dot={false}>conflict</Pill> label and two buttons:
 
-- **Keep this one** keeps this version; the other goes to the Trash.
-- **Keep the other** keeps the other version; this copy goes to the Trash.
+- **Keep this one** keeps this version; the other goes to the <Os mac="Trash" windows="Recycle Bin" />.
+- **Keep the other** keeps the other version; this copy goes to the <Os mac="Trash" windows="Recycle Bin" />.
 
 <Aside>
 The settings [backup](/settings/backup/) holds the folder's path, never the memories.

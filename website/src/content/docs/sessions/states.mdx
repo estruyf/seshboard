@@ -5,6 +5,8 @@ description: What the colours, rails and dots on a session mean.
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
@@ -35,22 +37,32 @@ A session that isn't open anywhere has no status icon at all, only its age.
 Yellow always means working, never unread. Sessions that need you or failed always stay in the main list, even when you archived them.
 
 <Aside type="note">
-The status never rests on colour alone: each icon has a label, so VoiceOver reads "Waiting for you" or "Claude is working", and the sidebar announces a session that starts waiting for you.
+The status never rests on colour alone: each icon has a label, so <Os mac="VoiceOver" windows="your screen reader" /> reads "Waiting for you" or "Claude is working", and the sidebar announces a session that starts waiting for you.
 </Aside>
 
 ## Several Claude profiles
 
 With more than one [Claude profile](/settings/claude-profiles/), the rail on every row shows the profile's colour instead, so you see at a glance which account a session uses. The state then shows through the colour of the age, the bold title, the status icon and the section the session is in. Hover a row to see its profile.
 
-## Notifications and the Dock badge
+## Notifications and the badge
 
 Switchboard tells you when something changes while you are elsewhere:
 
 - **A notification** when a session needs you ("Claude wants to use Bash", "Claude has a question", "Claude has a plan for you"), when Claude finishes ("Claude finished"), and when a run fails ("Claude Code stopped with an error"). Click it to open the session. You don't get one for the session you are looking at in a focused window.
-- **The Dock badge** counts the sessions that wait for you. When one starts waiting while Switchboard is in the background, the Dock icon bounces once.
+- <Os mac="The Dock badge counts the sessions that wait for you. When one starts waiting while Switchboard is in the background, the Dock icon bounces once." windows="A pink dot on Switchboard's taskbar button says sessions wait for you (hover the button for how many; Windows has no badge count). When one starts waiting while Switchboard is in the background, the taskbar button flashes until you switch to the window." />
 - With **Show sessions from other apps** on, a Claude Code session in your terminal that waits for you gets a notification too ("Claude is waiting for you in Terminal").
 
+<OnlyOn os="mac">
+
 The notifications and badge work as long as Switchboard runs, also with the window closed.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+On Windows, closing the window quits Switchboard and stops its sessions, so it asks first (unless you turned off **Ask before quitting** in [Settings, General](/settings/#general)). Minimise the window instead to keep getting notifications. Windows' own notification settings (**Settings › System › Notifications**) decide whether they show as banners, and Do not disturb holds them back.
+
+</OnlyOn>
 
 <Aside type="tip">
 Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that needs you.

@@ -2412,6 +2412,181 @@
       "page": "vscode-companion"
     },
     {
+      "id": "feature:windows-action-shortcuts",
+      "name": "Action shortcuts on Windows: Ctrl or Alt, Ctrl+Shift in the terminal, cmd read as Ctrl",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:windows-action-unsafe-values",
+      "name": "Actions refuse values Windows can't pass safely",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:windows-app-data-folder",
+      "name": "App data in %APPDATA%\\Switchboard (personal memory, themes)",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:windows-arm64",
+      "name": "Windows on Arm64",
+      "page": "getting-started/windows"
+    },
+    {
+      "id": "feature:windows-build-from-source",
+      "name": "Build the Windows installer from source",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:windows-chained-commands",
+      "name": "Chained commands in Windows PowerShell 5.1",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:windows-claude-code-install",
+      "name": "Claude Code via native installer, npm or WinGet on Windows",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:windows-claude-code-updates",
+      "name": "Claude Code updates on Windows (npm prefix, WinGet command)",
+      "page": "settings/updates"
+    },
+    {
+      "id": "feature:windows-close-quits",
+      "name": "Closing the window quits and asks first on Windows",
+      "page": "sessions/states"
+    },
+    {
+      "id": "feature:windows-companion-named-pipe",
+      "name": "VS Code companion over a named pipe",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "feature:windows-data-folders",
+      "name": "Where data lives on Windows",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:windows-deep-links",
+      "name": "switchboard:// links on Windows (drive paths, Start-Process)",
+      "page": "links"
+    },
+    {
+      "id": "feature:windows-file-explorer",
+      "name": "File Explorer instead of Finder",
+      "page": "getting-started/windows"
+    },
+    {
+      "id": "feature:windows-installer",
+      "name": "Windows installer (setup.exe, per user, x64 and Arm64)",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:windows-keys",
+      "name": "Ctrl, Alt and Shift as words on Windows",
+      "page": "getting-started/windows"
+    },
+    {
+      "id": "feature:windows-long-paths",
+      "name": "Long paths (core.longpaths) on Windows",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:windows-match-system",
+      "name": "Match System follows Windows light and dark mode",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:windows-notifications",
+      "name": "Windows notifications",
+      "page": "getting-started/first-session"
+    },
+    {
+      "id": "feature:windows-open-in",
+      "name": "Open in editors, File Explorer and Windows Terminal",
+      "page": "getting-started/windows"
+    },
+    {
+      "id": "feature:windows-personal-memory-sync",
+      "name": "Personal memory sync detection for OneDrive, Google Drive, Dropbox, iCloud on Windows",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:windows-powershell",
+      "name": "PowerShell 7 or Windows PowerShell in the terminal and actions",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:windows-profile-sign-in",
+      "name": "Sign in a Claude profile from PowerShell",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:windows-recycle-bin",
+      "name": "Deleted and reverted files go to the Recycle Bin",
+      "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "feature:windows-settings-transfer",
+      "name": "Move settings between a Mac and a Windows PC",
+      "page": "settings/backup"
+    },
+    {
+      "id": "feature:windows-smartscreen",
+      "name": "Unsigned installer and SmartScreen",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:windows-support",
+      "name": "Switchboard on Windows 10 and 11",
+      "page": "getting-started/windows"
+    },
+    {
+      "id": "feature:windows-taskbar-flash",
+      "name": "Taskbar button flashes and shows a dot when sessions need you",
+      "page": "sessions/states"
+    },
+    {
+      "id": "feature:windows-terminal-copy-paste",
+      "name": "Ctrl+C copies a selection, Ctrl+V pastes in the terminal",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:windows-terminal-font",
+      "name": "Terminal font from Windows Terminal or VS Code",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:windows-terminal-keys",
+      "name": "Ctrl keys for the shell, Ctrl+Shift for Switchboard in the terminal",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:windows-themes-folder",
+      "name": "Themes folder on Windows",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:windows-title-bar-menu",
+      "name": "Windows title bar and menu shown with Alt",
+      "page": "getting-started/windows"
+    },
+    {
+      "id": "feature:windows-uninstall",
+      "name": "Uninstall on Windows",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:windows-unsafe-action-values",
+      "name": "Actions refuse values cmd would read as commands",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:windows-updates",
+      "name": "Self-update through the installer on Windows",
+      "page": "settings/updates"
+    },
+    {
       "id": "feature:worktree-branch-from",
       "name": "Worktree branch from remote default or local HEAD",
       "page": "new-session/worktrees"

@@ -4,6 +4,8 @@ description: Use more than one Claude account in Switchboard, such as a personal
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -18,7 +20,7 @@ A Claude profile is one Claude Code config folder with its own login, settings, 
 
 ## How profiles work
 
-Your first profile is Claude Code's own folder, usually `~/.claude`. Every other profile is a folder of its own, such as `~/.claude-work`, the same folder you would use with `CLAUDE_CONFIG_DIR=~/.claude-work claude` in a terminal.
+Your first profile is Claude Code's own folder, usually <Os mac="~/.claude" windows="%USERPROFILE%\.claude" />. Every other profile is a folder of its own, such as <Os mac="~/.claude-work" windows="%USERPROFILE%\.claude-work" />, the same folder you would point `CLAUDE_CONFIG_DIR` at in a terminal.
 
 Switchboard never handles your login. You sign in with Claude Code itself, once per folder, and Switchboard runs Claude Code with that folder for the sessions of that profile.
 
@@ -28,7 +30,7 @@ Switchboard never handles your login. You sign in with Claude Code itself, once 
 
 1. Click **Add profile**.
 2. Give it a name and pick a colour.
-3. Check the **Config folder**. Switchboard suggests one from the name (`~/.claude-work` for "Work"); type another path or click **Choose…**. A folder that doesn't exist yet is created. To see the sessions of a folder you already use with `CLAUDE_CONFIG_DIR`, pick that folder.
+3. Check the **Config folder**. Switchboard suggests one in your home folder from the name (`.claude-work` for "Work"); type another path or click **Choose…**. A folder that doesn't exist yet is created. To see the sessions of a folder you already use with `CLAUDE_CONFIG_DIR`, pick that folder.
 4. Click **Add profile**.
 
 </Steps>
@@ -39,15 +41,32 @@ A profile that isn't signed in yet says **Not signed in yet** and shows the comm
 
 <Steps>
 
-1. Open Terminal and run the command, for example `CLAUDE_CONFIG_DIR=~/.claude-work claude`.
+1. Open <Os mac="Terminal" windows="PowerShell" /> and run the command. On a Mac that is, for example, `CLAUDE_CONFIG_DIR=~/.claude-work claude`. On Windows, see [Sign in on Windows](#sign-in-on-windows).
 2. Type `/login` and sign in with the other account.
 
 </Steps>
 
 Once you're signed in, the profile shows **Signed in as** with the account's email (and its organisation, if it has one).
 
+### Sign in on Windows
+
+Settings shows the sign-in command in the form a Mac terminal understands (`CLAUDE_CONFIG_DIR=… claude`), on Windows too. PowerShell doesn't run that form. Set the variable first, then start Claude Code, using the folder Settings shows:
+
+```powershell
+$env:CLAUDE_CONFIG_DIR = "$HOME\.claude-work"
+claude
+```
+
+The variable stays set in that PowerShell window only. Close it when you're done, so a later `claude` there doesn't use the other account by mistake.
+
 <Aside title="How to set up another profile">
 Under the list, **How to set up another profile** walks through it step by step: create the folder and sign in, add it in Switchboard, link your projects, and optionally add a terminal alias such as `alias claude-work='CLAUDE_CONFIG_DIR=~/.claude-work claude'` to `~/.zshrc`.
+
+<OnlyOn os="windows">
+
+The guide's steps are written for a Mac terminal. In PowerShell, use the commands from [Sign in on Windows](#sign-in-on-windows). For a shortcut, add a function such as `function claude-work { $env:CLAUDE_CONFIG_DIR = "$HOME\.claude-work"; claude @args; Remove-Item Env:CLAUDE_CONFIG_DIR }` to your PowerShell profile (`notepad $PROFILE`).
+
+</OnlyOn>
 </Aside>
 
 ## Choose the default profile

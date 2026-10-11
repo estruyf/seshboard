@@ -8,6 +8,12 @@ import { Icon } from '@astrojs/starlight/components';
 
 {/* Inlined to avoid a flash of the wrong theme. */}
 <script is:inline>
+  // Keys and platform words: the reader's choice in the header, else their own platform (Mac when unsure).
+  (() => {
+    const stored = typeof localStorage !== 'undefined' && localStorage.getItem('switchboard-os');
+    const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+    document.documentElement.dataset.os = stored === 'mac' || stored === 'windows' ? stored : /win/i.test(platform) ? 'windows' : 'mac';
+  })();
   window.StarlightThemeProvider = (() => {
     let storedTheme = typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
     if (storedTheme === null && typeof localStorage !== 'undefined') {

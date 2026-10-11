@@ -1,0 +1,12 @@
+---
+/**
+ * A block for one platform only: `<OnlyOn os="windows">…</OnlyOn>`. The other platform's readers don't see it;
+ * the switch in the header shows it. Keep it for what really differs (installing, the terminal, paths).
+ */
+interface Props {
+  os: 'mac' | 'windows';
+}
+const { os } = Astro.props;
+---
+
+<div class={`sb-os-${os}`}><slot /></div>

@@ -4,6 +4,7 @@ description: Import, export, duplicate and edit theme files, and write a theme o
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -42,12 +43,12 @@ Every theme card has a **⋯** menu (or right-click the card):
 
 - **Export…** saves the theme as `<name>.json`. The file holds the background, the accent and only the colours that differ from what those two generate, so it stays short. Exporting Demo Time writes every colour. *Export current theme…* in the command palette exports the theme in use.
 - **Duplicate** adds a copy of any theme, built in or imported, as a new imported theme ready to edit.
-- **Show file** shows an imported theme's file in Finder.
-- **Remove** moves an imported theme's file to the Trash, after you confirm with **Move to Trash**. Removing the theme in use goes back to Demo Time. Built-in themes can't be removed.
+- **Show file** shows an imported theme's file in <Os mac="Finder" windows="File Explorer" />.
+- **Remove** moves an imported theme's file to the <Os mac="Trash" windows="Recycle Bin" />, after you confirm with **Move to <Os mac="Trash" windows="Recycle Bin" />**. Removing the theme in use goes back to Demo Time. Built-in themes can't be removed.
 
 ## Edit a theme file
 
-**Open themes folder** shows where your imported themes are kept: `~/Library/Application Support/Switchboard/themes`. Open a file there in your editor and save it: Switchboard applies the change to the theme in use at once.
+**Open themes folder** shows where your imported themes are kept: <code><Os mac="~/Library/Application Support/Switchboard/themes" windows="%APPDATA%\Switchboard\themes" /></code>. Open a file there in your editor and save it: Switchboard applies the change to the theme in use at once.
 
 If a change isn't valid, Switchboard keeps the last version that worked and says what is wrong in Settings → Theme. Fix the file and save again.
 
@@ -130,4 +131,4 @@ The full reference, with Demo Time's value for every token, how missing colours 
 
 ## Settings
 
-Theme files are managed in [Settings → Theme](/settings/#theme). [Settings → Backup](/settings/backup/) can include the themes you imported or duplicated, so they move to another Mac with the rest of your setup.
+Theme files are managed in [Settings → Theme](/settings/#theme). [Settings → Backup](/settings/backup/) can include the themes you imported or duplicated, so they move to another computer with the rest of your setup.

@@ -1,0 +1,64 @@
+---
+/**
+ * Starlight's theme picker, with the platform picker before it: Mac or Windows changes how keys and
+ * platform words read on every page (see lib/os.ts). It starts on the reader's own platform.
+ */
+import Default from '@astrojs/starlight/components/ThemeSelect.astro';
+import Select from '@astrojs/starlight/components/Select.astro';
+---
+
+<div class="sb-pickers">
+  <starlight-os-select>
+    <Select
+      icon="laptop"
+      label="Keys and words for"
+      options={[
+        { label: 'Mac', selected: true, value: 'mac' },
+        { label: 'Windows', selected: false, value: 'windows' },
+      ]}
+      width="7.75em"
+    />
+  </starlight-os-select>
+  <Default />
+</div>
+
+<script is:inline>
+  document.querySelectorAll('starlight-os-select select').forEach((select) => (select.value = document.documentElement.dataset.os || 'mac'));
+</script>
+
+<script>
+  /** The table of contents lists every heading; hide the ones in the other platform's passages. */
+  function syncContents() {
+    document.querySelectorAll<HTMLAnchorElement>('starlight-toc a[href^="#"], mobile-starlight-toc a[href^="#"]').forEach((link) => {
+      const target = document.getElementById(decodeURIComponent(link.hash.slice(1)));
+      const item = link.closest('li');
+      if (item && target) item.hidden = !target.closest('.sb-os-mac, .sb-os-windows') ? false : !target.checkVisibility();
+    });
+  }
+  syncContents();
+
+  class StarlightOsSelect extends HTMLElement {
+    constructor() {
+      super();
+      const select = this.querySelector('select');
+      if (select) select.value = document.documentElement.dataset.os || 'mac';
+      select?.addEventListener('change', () => {
+        const os = select.value === 'windows' ? 'windows' : 'mac';
+        document.documentElement.dataset.os = os;
+        localStorage.setItem('switchboard-os', os);
+        // Keep the other copy of the picker (the mobile menu has one too) in step.
+        document.querySelectorAll<HTMLSelectElement>('starlight-os-select select').forEach((other) => (other.value = os));
+        syncContents();
+      });
+    }
+  }
+  customElements.define('starlight-os-select', StarlightOsSelect);
+</script>
+
+<style>
+  .sb-pickers {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+</style>

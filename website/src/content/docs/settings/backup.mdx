@@ -1,15 +1,16 @@
 ---
 title: Back up and move your settings
-description: Export your Switchboard setup to a file and import it on another Mac or after a reset.
+description: Export your Switchboard setup to a file and import it on another computer or after a reset.
 sidebar:
   label: Backup
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Backup saves your Switchboard setup to one `.json` file: preferences, themes, projects and project actions. Use it to move to a new Mac, restore your setup after a reset, or share a set of actions with someone. Your sessions stay in `~/.claude` and are never in the file.
+Backup saves your Switchboard setup to one `.json` file: preferences, themes, projects and project actions. Use it to move to a new computer, from a Mac to a Windows PC or the other way round, restore your setup after a reset, or share a set of actions with someone. Your sessions stay in Claude Code's folder (`~/.claude`) and are never in the file.
 
 <Screenshot name="settings-backup" alt="Settings on Backup: Export settings with an Export settings… button, and Import settings with an Import settings… button" eager />
 
@@ -29,7 +30,7 @@ Backup saves your Switchboard setup to one `.json` file: preferences, themes, pr
    - **Projects**: your projects in order, with their names, icons and defaults for new sessions.
    - **Project actions**: global and per-project actions, with their shortcuts and worktree setup.
    - **App choices**: default editor, New session defaults, Claude Code update checks.
-   - **Pinned and archived sessions**: off at first. Only useful on this Mac, or when you copy `~/.claude` too.
+   - **Pinned and archived sessions**: off at first. Only useful on this computer, or when you copy `~/.claude` too.
 3. Click **Export…** and choose where to save the file. It is named like `switchboard-settings-2026-10-11.json`.
 
 </Steps>
@@ -50,17 +51,23 @@ Backup saves your Switchboard setup to one `.json` file: preferences, themes, pr
 
 Nothing changes until you click that button.
 
-### Folders that aren't on this Mac
+### Folders that aren't on this computer
 
-A project folder from the file that doesn't exist here (because your user name is different, say) is listed under **Folders** as *not found*. Click **Choose folder…** to point it at the right folder on this Mac; the preview updates. Leave it to skip that project and its actions. The undo button next to a new folder takes the choice back.
+A project folder from the file that doesn't exist here (because your user name is different, say) is listed under **Folders** as *not found*. Click **Choose folder…** to point it at the right folder on this computer; the preview updates. Leave it to skip that project and its actions. The undo button next to a new folder takes the choice back.
+
+### Move between a Mac and a Windows PC
+
+A settings file works on both. Folders from the other platform never match a folder here (a Mac's `/Users/you/code/shop` isn't a folder on a PC), so every project shows as *not found* until you point it at its folder on the new computer, for example `C:\Users\you\code\shop`.
+
+Action shortcuts move too. One set with ⌘ on a Mac uses Ctrl on Windows. One set on Windows keeps Ctrl on a Mac (⌃ there, not ⌘), so you may want to set it again. Commands in shell actions are copied as they are, so check that they work in the new computer's shell (PowerShell on Windows, your login shell on a Mac). See [Switchboard on Windows](/getting-started/windows/).
 
 ### Shell actions need your approval
 
-Imported project actions that run a shell command ask for your approval the first time they run, even if you approved them on the other Mac. A settings file can't run a command you haven't seen.
+Imported project actions that run a shell command ask for your approval the first time they run, even if you approved them on the other computer. A settings file can't run a command you haven't seen.
 
 ## Undo an import
 
-Before it imports anything, Switchboard saves your current settings to the `backups` folder of its app data, `~/Library/Application Support/Switchboard/backups`. When the import is done, it shows where that file is. To undo the import, import that file with **Replace**.
+Before it imports anything, Switchboard saves your current settings to the `backups` folder of its app data, <Os mac="~/Library/Application Support/Switchboard/backups" windows="%APPDATA%\Switchboard\backups" />. When the import is done, it shows where that file is. To undo the import, import that file with **Replace**.
 
 <Aside>
 A settings file holds your project folders' paths and your actions' commands and prompts. Look at what you share before you send it to someone.

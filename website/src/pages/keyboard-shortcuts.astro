@@ -5,8 +5,10 @@
  */
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 import GithubSlugger from 'github-slugger';
-import { SECTION_TITLES, SHORTCUTS, type ShortcutSection } from '../../../apps/ui/src/lib/shortcuts.ts';
+import { localizeKeys, SECTION_TITLES, SHORTCUTS, type ShortcutSection } from '../../../apps/ui/src/lib/shortcuts.ts';
+import { asOs } from '../lib/os.ts';
 import Kbd from '../components/Kbd.astro';
+import Os from '../components/Os.astro';
 import Screenshot from '../components/Screenshot.astro';
 
 const slugger = new GithubSlugger();
@@ -14,6 +16,11 @@ const sections = (Object.keys(SECTION_TITLES) as ShortcutSection[])
   .map((section) => ({ section, title: SECTION_TITLES[section], slug: slugger.slug(SECTION_TITLES[section]), rows: SHORTCUTS.filter((s) => s.section === section) }))
   .filter((section) => section.rows.length > 0);
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+/** A row's "when" text, with its keys written the way each platform writes them (as the app's sheet does). */
+const when = (texts: Array<string | undefined>) => {
+  const text = texts.filter(Boolean).join('. ');
+  return { mac: text, windows: asOs('windows', () => localizeKeys(text)) };
+};
 ---
 
 <StarlightPage
@@ -25,10 +32,16 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
     always up to date.
   </p>
 
+  <p>
+    The keys below are shown for <Os mac="a Mac" windows="Windows" />; switch with <strong>Mac</strong> or <strong>Windows</strong> at the top of the page. On Windows, ⌘ is
+    Ctrl, ⌥ is Alt and ⇧ is Shift, and the app writes keys as words (Ctrl+Shift+P). In the terminal panel on Windows, Ctrl keys belong to the shell (Ctrl+C,
+    Ctrl+R) and Ctrl+Shift keys to Switchboard.
+  </p>
+
   <h2 id="the-shortcuts-sheet">The shortcuts sheet</h2>
   <p>
     Press <Kbd shortcut="shortcuts" /> (or choose <strong>Help › Keyboard Shortcuts</strong>, or <em>Keyboard shortcuts</em> in the <a href={`${base}/command-palette/`}>command palette</a>) to see every shortcut in the app. The ones that work where you are
-    stand out; the rest are faded. Your project actions' shortcuts are listed too. Type in its field to filter by name or by keys, for example "terminal" or "⌘J".
+    stand out; the rest are faded. Your project actions' shortcuts are listed too. Type in its field to filter by name or by keys, for example "terminal" or "<Os mac="⌘J" windows="Ctrl+J" />".
   </p>
   <Screenshot name="shortcuts" alt="The keyboard shortcuts sheet over a session: every shortcut grouped by where it works, with its keys on the right and the ones that don't work there faded" />
 
@@ -51,7 +64,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
                   <Kbd shortcut={def.id as Parameters<typeof Kbd>[0]['shortcut']} />
                 </td>
                 <td>{def.action}</td>
-                <td>{[def.context, def.note].filter(Boolean).join('. ')}</td>
+                <td>
+                  <Os {...when([def.context, def.note])} />
+                </td>
               </tr>
             ))}
           </tbody>

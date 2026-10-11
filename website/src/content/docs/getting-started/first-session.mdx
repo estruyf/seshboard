@@ -5,6 +5,8 @@ description: Start Claude Code on a project, and follow it while it works.
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -49,11 +51,21 @@ While Claude works, the session sits under **Working** in the sidebar with a yel
 
 All the states are on [Session states](/sessions/states/).
 
-### Notifications and the Dock badge
+### Notifications and the badge
 
-Switchboard sends a macOS notification when a session needs you ("Claude wants to use Bash", "Claude has a question"), when Claude finishes, and when a run fails. Click the notification to open the session. You don't get one for the session you are looking at.
+Switchboard sends a <Os mac="macOS" windows="Windows" /> notification when a session needs you ("Claude wants to use Bash", "Claude has a question"), when Claude finishes, and when a run fails. Click the notification to open the session. You don't get one for the session you are looking at.
+
+<OnlyOn os="mac">
 
 The Dock icon shows a badge with the number of sessions waiting for you, and bounces once when a session starts waiting while Switchboard is in the background.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+Windows has no badge count. While sessions wait for you, a pink dot sits on Switchboard's taskbar button (hover it to read how many). When a session starts waiting while Switchboard is in the background, the taskbar button flashes until you switch to the window.
+
+</OnlyOn>
 
 <Aside type="tip">
 Press <Kbd shortcut="session.next-needs-you" /> to jump to the next session that needs you, from anywhere in the app.

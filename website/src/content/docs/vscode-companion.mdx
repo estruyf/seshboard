@@ -4,6 +4,7 @@ description: Send what you're looking at in VS Code to a Switchboard session, an
 ---
 
 import Kbd from '../../components/Kbd.astro';
+import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -20,7 +21,7 @@ The extension's id is `eliostruyf.switchboard-companion`. Install it from:
 - the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=eliostruyf.switchboard-companion), for VS Code;
 - [Open VSX](https://open-vsx.org/extension/eliostruyf/switchboard-companion), for Cursor, Windsurf and VSCodium.
 
-It needs Switchboard on the same Mac, and VS Code 1.95 or later. If Switchboard isn't running when you send something, the extension opens it first.
+It needs Switchboard on the same computer (a Mac or a Windows PC), and VS Code 1.95 or later. If Switchboard isn't running when you send something, the extension opens it first.
 
 ## Open it
 
@@ -82,7 +83,7 @@ The extension never sends the text of a file you keep from Claude:
 
 For those, only the reference goes, and Claude Code applies its own rules when it reads the file. If that means your unsaved changes weren't sent, the extension tells you.
 
-The connection is a socket only your user account can open, with a token Switchboard writes to a file only you can read. Nothing leaves your Mac.
+The connection is a socket only your user account can open, with a token Switchboard writes to a file only you can read. On Windows it is a named pipe with a random name, and the token in your own app data folder is what lets an editor in. The extension only connects to the pipe Switchboard made, and ignores an app data folder that isn't on this computer. Nothing leaves your computer.
 
 ## Continue a session in VS Code
 
@@ -99,7 +100,7 @@ Commands, all under **Switchboard** in VS Code's command palette: *Add Selection
 | `switchboard.prompts` | Show permissions, questions and plans from this workspace's sessions as notifications you can answer (on by default). |
 | `switchboard.quickFix` | Offer **Fix in Switchboard** in the quick fixes of errors and warnings (on by default). |
 | `switchboard.editorTitleButton` | A button in the editor title bar that adds the selection or the file (off by default). |
-| `switchboard.appDataFolder` | Where Switchboard keeps its data, for a build started with `SWITCHBOARD_DATA_DIR`. |
+| `switchboard.appDataFolder` | Where Switchboard keeps its data, for a build started with `SWITCHBOARD_DATA_DIR`. Leave it empty to find the installed app (<Os mac="~/Library/Application Support/Switchboard" windows="%APPDATA%\Switchboard" />). It can only be set in your user settings, not in a workspace. |
 
 ## Settings
 

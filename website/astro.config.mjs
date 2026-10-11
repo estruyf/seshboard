@@ -26,7 +26,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Switchboard',
-      description: 'A fast Mac app for running and keeping track of your Claude Code sessions.',
+      description: 'A fast app for Mac and Windows for running and keeping track of your Claude Code sessions.',
       logo: { src: './src/assets/logo.svg', alt: 'Switchboard' },
       favicon: '/favicon.svg',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/estruyf/switchboard' }],
@@ -40,6 +40,7 @@ export default defineConfig({
       ],
       components: {
         ThemeProvider: './src/components/overrides/ThemeProvider.astro',
+        ThemeSelect: './src/components/overrides/ThemeSelect.astro',
         Hero: './src/components/overrides/Hero.astro',
         Footer: './src/components/overrides/Footer.astro',
       },

@@ -121,4 +121,6 @@ To see and clean up all of a project's worktrees at once, use the [Worktrees tab
 
 ## Settings
 
-Git has no settings in Switchboard. It uses your own git configuration, credentials and the login shell's environment, so ssh keys and credential helpers work as in your terminal. A project's default branch for new sessions is on its [Settings tab](/projects/settings/).
+Git has no settings in Switchboard. It uses your own git configuration, credentials and environment (your login shell's on a Mac, the one Windows gives apps on a PC), so ssh keys and credential helpers work as in your terminal.
+
+On Windows, Switchboard needs [Git for Windows](https://gitforwindows.org). It runs git with `core.longpaths` on, so files whose full path is longer than 260 characters, common in deep worktree folders, still show in [Changes](/terminal-changes-git/changes/). Steps that chain commands, such as **Create PR** (push, then `gh pr create`), work in Windows PowerShell 5.1 as well as PowerShell 7. A project's default branch for new sessions is on its [Settings tab](/projects/settings/).

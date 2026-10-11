@@ -7,7 +7,7 @@
 export const sidebar = [
   {
     label: 'Getting started',
-    items: ['getting-started/install', 'getting-started/first-launch', 'getting-started/first-session'],
+    items: ['getting-started/install', 'getting-started/first-launch', 'getting-started/first-session', 'getting-started/windows'],
   },
   {
     label: 'Sessions',

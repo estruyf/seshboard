@@ -5,6 +5,8 @@ description: A built-in terminal for each session, opening a shell in the sessio
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -18,7 +20,21 @@ Every session has its own terminal panel. It opens a shell in the session's fold
 - Click **Terminal** in the session header, next to **Changes**. A dot on it means terminals are running in this session.
 - Run *Toggle terminal* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />), or *New terminal tab* for another shell.
 
-The first time you open it, the panel starts a shell. It is your login shell, so your `PATH`, `nvm` and aliases work as in your own terminal.
+The first time you open it, the panel starts a shell.
+
+<OnlyOn os="mac">
+
+It is your login shell, so your `PATH`, `nvm` and aliases work as in your own terminal.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+On Windows it is PowerShell: PowerShell 7 (`pwsh`) when it is installed, otherwise the Windows PowerShell every PC has. There is no setting to pick Command Prompt or Git Bash; type `cmd` in the panel to start Command Prompt inside it. Switchboard runs PowerShell with the execution policy set to Bypass for that window only, so `npm`, `npx` and `pnpm` scripts run (a policy your organisation sets still wins). Your PowerShell profile loads as usual.
+
+</OnlyOn>
+
+The terminal uses the font of your own terminal when it finds one, so prompt symbols show: <Os mac="Ghostty's font, or the terminal font of VS Code or Cursor" windows="Windows Terminal's font, or the terminal font of VS Code or Cursor" />.
 
 ## How to use it
 
@@ -33,6 +49,23 @@ A session can have several terminals, each in its own tab: shells, [project acti
 A tab whose program has ended says it exited, with its exit code. Press <Kbd keys="escape" /> in it to close it. A yellow dot on a tab means an action is running there; a red one means what ran there failed. A finished tab shows its exit code next to its title.
 
 Terminals keep running when you switch to another session or close the panel. Hiding the panel doesn't stop anything.
+
+### Keys in the terminal
+
+<OnlyOn os="mac">
+
+In the terminal, ⌃ and ⌥ keys belong to the shell, and ⌘ keys to Switchboard. <Kbd keys="mod+c" />, <Kbd keys="mod+v" /> and <Kbd keys="mod+a" /> copy, paste and select in the terminal.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+On Windows, Ctrl keys belong to the shell, as in Windows Terminal: <Kbd keys="ctrl+r" /> searches PowerShell's history and <Kbd keys="ctrl+c" /> stops a program. Switchboard's own shortcuts take Ctrl+Shift there: open the command palette with <Kbd keys="mod+shift+p" />, for example. A few keys stay Switchboard's in the terminal too: <Kbd shortcut="terminal.toggle" /> to hide it, <Kbd shortcut="session.next" /> to go to the next session, and <Kbd shortcut="terminal.clear" /> to clear it.
+
+- **Copy:** select text, then press <Kbd keys="ctrl+c" />. With nothing selected, <Kbd keys="ctrl+c" /> stops the program as usual. <Kbd keys="ctrl+shift+c" /> always copies.
+- **Paste:** <Kbd keys="ctrl+v" /> or <Kbd keys="ctrl+shift+v" />.
+
+</OnlyOn>
 
 ### Clear the terminal
 
@@ -74,9 +107,15 @@ A [project action](/projects/actions/) that runs a command, and the git steps of
 
 Press <Kbd shortcut="terminal.stop-action" /> in the terminal to stop a running action. *Stop action* and *Restart action* are in the command palette too.
 
+<OnlyOn os="windows">
+
+On Windows, actions and git steps run in the same PowerShell as the shell tabs. A stopped action shows **Failed** with its exit code, usually 1 (130 on a Mac). Windows PowerShell 5.1 has no `&&`: the steps Switchboard runs itself chain their commands the way it understands, but in your own action commands write `a; if ($?) { b }`, or install PowerShell 7. See [Troubleshooting](/troubleshooting/#windows-commands-in-the-terminal-or-in-actions).
+
+</OnlyOn>
+
 ## Run a code block
 
-When Claude's reply has a shell code block (`bash`, `sh`, `zsh`, `shell`, `console` and similar), hover it and click **Run in terminal** (the play button). The command runs in the session's terminal, in the same shell tab as earlier runs while that shell is open. For a `console` block, or lines that start with `$ `, only the command lines run, without the `$`.
+When Claude's reply has a shell code block (`bash`, `sh`, `zsh`, `shell`, `console` and similar), hover it and click **Run in terminal** (the play button). On Windows the command runs in PowerShell, so a `bash` command that PowerShell doesn't understand fails there. `powershell` and `pwsh` blocks have no play button. The command runs in the session's terminal, in the same shell tab as earlier runs while that shell is open. For a `console` block, or lines that start with `$ `, only the command lines run, without the `$`.
 
 ## Open the session in Claude Code
 

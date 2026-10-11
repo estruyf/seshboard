@@ -4,6 +4,7 @@ description: Find memories that point at things that are gone, say the same thin
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
@@ -34,7 +35,7 @@ Health checks file names against the repository (what git tracks and what is on 
 
 ### Compare
 
-**Compare** shows the two memories side by side. Choose **Keep left** or **Keep right** (the other goes to the Trash), or **Merge into left…**, which adds the right one's text under the left one's and moves the right one to the Trash. Both ask first, and the toast has Undo.
+**Compare** shows the two memories side by side. Choose **Keep left** or **Keep right** (the other goes to the <Os mac="Trash" windows="Recycle Bin" />), or **Merge into left…**, which adds the right one's text under the left one's and moves the right one to the <Os mac="Trash" windows="Recycle Bin" />. Both ask first, and the toast has Undo.
 
 ### Fix index
 

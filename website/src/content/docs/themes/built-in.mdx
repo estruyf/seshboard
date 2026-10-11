@@ -4,6 +4,7 @@ description: Pick light or dark mode and one of the themes that come with Switch
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
@@ -20,7 +21,7 @@ A theme sets the colours of Switchboard: the app, the code blocks and diffs, and
 
 **Appearance** at the top of Settings → Theme has three choices:
 
-- **Match System** (the default): follows macOS, so Switchboard turns dark when your Mac does.
+- **Match System** (the default): follows <Os mac="macOS" windows="Windows" />, so Switchboard turns dark when your system does.
 - **Light**
 - **Dark**
 
