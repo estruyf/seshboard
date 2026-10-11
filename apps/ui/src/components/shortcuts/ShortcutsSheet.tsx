@@ -1,3 +1,4 @@
+import { isAbsolutePath } from '@switchboard/protocol/client';
 import { Search } from 'lucide-react';
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useOverlay } from '../../state/overlayStore.ts';
@@ -40,7 +41,7 @@ export function ShortcutsSheet() {
   // A quick question has no project, so no project actions (`canEditActions` is false there).
   const projectRoot = palette.canEditActions ? (palette.session?.projectRoot ?? null) : null;
   const { actions } = useProjectActionList(ctx.session ? projectRoot : null);
-  const projectName = ctx.session && projectRoot?.startsWith('/') ? (palette.currentProject?.name ?? null) : null;
+  const projectName = ctx.session && projectRoot && isAbsolutePath(projectRoot) ? (palette.currentProject?.name ?? null) : null;
 
   const [query, setQuery] = useState('');
   const input = useRef<HTMLInputElement>(null);

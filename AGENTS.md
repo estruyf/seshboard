@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working on Switchboard, a macOS desktop app for managing Claude Code sessions. People should start with [README.md](README.md); the design and roadmap are in [PLAN.md](PLAN.md).
+Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working on Switchboard, a macOS desktop app (that runs on Windows too, see [docs/windows-support.md](docs/windows-support.md)) for managing Claude Code sessions. People should start with [README.md](README.md); the design and roadmap are in [PLAN.md](PLAN.md).
 
 ## Architecture
 
-Switchboard is an Electron app in four npm workspaces, plus its VS Code companion extension:
+Switchboard is an Electron app in four npm workspaces, plus its VS Code companion extension and its website:
 
 | Path | What it is | Rules |
 |---|---|---|
@@ -12,6 +12,7 @@ Switchboard is an Electron app in four npm workspaces, plus its VS Code companio
 | `packages/engine` | Plain Node; runs in an Electron `utilityProcess` | **No Electron imports.** Owns the SQLite cache, the session index and search, Claude Code processes (through the Agent SDK), git, terminals, project actions and usage. |
 | `apps/desktop` | Electron main process, preload, and the engine entry | Main does what needs Electron: windows, menus, dialogs, notifications, the Trash, preferences. The preload is sandboxed and exposes `window.switchboard`. |
 | `apps/ui` | React 19 renderer, Tailwind 4, zustand | Talks to the engine only through the RPC client, and to main only through `window.switchboard`. |
+| `website` | The website and docs (Astro + Starlight), published to GitHub Pages by `website.yml` | Pages are MDX in `website/src/content/docs/`. Colours come from the app's `--sb-*` tokens (`website/src/styles/switchboard.css`); keys use `<Kbd shortcut="…">` from the shortcuts registry. Every feature is listed in `website/src/content/features.json`, which a test checks against the palette commands, shortcuts, Settings sections and project tabs. |
 | `apps/vscode-extension` | The VS Code companion, bundled with esbuild into `dist/extension.cjs` | Talks to the engine only over its Unix socket (`packages/engine/src/companion/`), through `@switchboard/protocol/companion-client` (no zod). Pure logic (payloads, exclusions, discovery, which session) lives in modules without `vscode` imports, with tests next to them. Released on its own (`release-vscode.yml`, tags `vscode-vX.Y.Z`); see [docs/vscode-companion.md](docs/vscode-companion.md). |
 
 The path of a feature is usually: add the request or event to `packages/protocol/src/contract.ts`, handle it in `packages/engine/src/engine.ts` (logic in a module next to it), and call it from the UI with `client.call(...)` / `client.on(...)`.
@@ -33,7 +34,10 @@ npm run check        # typecheck every package + unit tests (Vitest)
 npm run smoke        # build, launch the real app with a throwaway profile, drive the UI
 npm run screenshots  # retake the README screenshots in a made-up demo home folder
 npm run dev:vscode   # rebuild the VS Code companion on every change (F5 in VS Code runs it in a dev host)
-npm run dist         # package Switchboard.app and a .dmg
+npm run website:dev  # the website and docs with hot reload
+npm run website:build          # build the website; fails on a broken internal link
+npm run website:screenshots    # retake the website's screenshots in a made-up demo home folder
+npm run dist         # package the app for this OS: Switchboard.app and a .dmg, or the Windows installer
 ```
 
 Run `npm run check` after every change, and `npm run smoke` after UI or engine changes. Both must pass before you report work as done.
@@ -44,6 +48,14 @@ Run `npm run check` after every change, and `npm run smoke` after UI or engine c
 - **Comments** explain why, in plain sentences, at the density of the surrounding code. JSDoc on exported functions and on non-obvious fields.
 - **Testable logic lives in pure modules.** Unit tests must not import modules that touch `window` or `localStorage` at load time; put pure helpers in their own file (see `toolSummary.ts`, `agentRuns.ts`, `lib/fuzzy.ts`, `lib/unifiedDiff.ts`). Tests sit next to the code (`*.test.ts`).
 - **Engine tests** use real temporary directories, real git repositories and a real SQLite file, not mocks. The SDK is injected (`SdkRuntime`), so host tests fake Claude Code.
+- **macOS and Windows.** Code that differs per platform goes through one helper for each question, never a path or key written for macOS:
+  - paths: `isAbsolutePath`, `isSameOrInside`, `pathInside`, `joinPath` (`packages/protocol/src/paths.ts`) and `basename` (`apps/ui/src/lib/format.ts`), never `split('/')` or `startsWith('/')`; the zod `AbsolutePath` takes only this platform's form;
+  - the shell: `userShell()` (`packages/engine/src/system/shell.ts`), for the file, its arguments, `quote` and `sequence`;
+  - starting a `.cmd`: `viaCmd()` (`system/windowsCommand.ts`);
+  - keys: `mod` in the registry, `modKey(event)` in handlers;
+  - wording: `fileManagerName()` and `trashName()` (`apps/ui/src/lib/platform.ts`).
+
+  Pure helpers take the platform as a parameter, so the macOS tests run on Windows and the other way round.
 - **Schema changes** go through a new migration appended to `packages/engine/src/db/migrations.ts`. The cache is derived from `~/.claude` and may be dropped and rebuilt; `owned_sessions`, `session_flags`, `project_settings` and `project_actions` hold user choices and must survive.
 
 ### UI
@@ -61,7 +73,7 @@ Run `npm run check` after every change, and `npm run smoke` after UI or engine c
 - **Dialogs** use `role="dialog"` / `role="alertdialog"` and close on Escape. Escape in the message box stops Claude, except while a dialog, menu, listbox or popover is open; keep new overlays inside those roles.
 - **Long lists are virtualised** (`@tanstack/react-virtual`): rows outside the viewport aren't in the DOM.
 - **Command palette** (`components/palette/`): every command is one entry in the registry in `commands.ts` (`id`, `title`, `group`, `keywords`, `shortcut`, `when(ctx)`, and `run`, `next` for a step that asks for more, or `mode`). `when()` reads only the `PaletteContext` (built from the stores in `usePaletteContext.ts`); a command whose `when()` is false is left out, never shown disabled. `run` goes through `PaletteApi` (`paletteApi.ts`). A command that opens a dialog or menu another view owns sends a request through `state/paletteBus.ts` (`useSessionRequests` in the session view); dialogs that outlive the palette are in `PaletteDialogs.tsx`. New features that people run add a command there. Starting a new session, anywhere, goes through `startNewSession` (`newSession/startSession.ts`).
-- **Keyboard shortcuts** live in one registry, `SHORTCUTS` in `apps/ui/src/lib/shortcuts.ts`: `id`, `keys` (stored form, `mod` for ⌘; `mod+1..9` a range, `mod+q mod+q` a sequence, `alt+click` a click), `action`, `section`, `context`, `note`, `when(ctx)` and `where` (the focus it needs). Handlers check `matches(event, id)`; buttons take `shortcut="terminal.toggle"` (or `kbd={keysFor(id)}`), palette commands `shortcut: keysFor(id)`, and text uses `formatKeys(keysFor(id))`. Never write a key out by hand: `RESERVED_SHORTCUTS` (the keys project actions can't take), the shortcuts sheet (⌘/, `components/shortcuts/`) and the README table are built from the registry. After changing it, run `npm run docs:shortcuts`; a test fails while the README is out of date, and another when two shortcuts share keys where both work (add an intended overlap to `INTENDED_OVERLAPS` in `shortcuts.test.ts`, with the reason).
+- **Keyboard shortcuts** live in one registry, `SHORTCUTS` in `apps/ui/src/lib/shortcuts.ts`: `id`, `keys` (stored form, `mod` for ⌘ on macOS and Ctrl elsewhere; `mod+1..9` a range, `mod+q mod+q` a sequence, `alt+click` a click), `action`, `section`, `context`, `note`, `when(ctx)` and `where` (the focus it needs). Handlers check `matches(event, id)`; buttons take `shortcut="terminal.toggle"` (or `kbd={keysFor(id)}`), palette commands `shortcut: keysFor(id)`, and text uses `formatKeys(keysFor(id))`. Never write a key out by hand (glyphs typed for a `kbd` or a menu `hint` go through `localizeKeys`, and handlers that check keys themselves use `modKey(event)`, never `metaKey`): `reservedShortcuts()` (the keys project actions can't take), the shortcuts sheet (⌘/, `components/shortcuts/`) and the README table are built from the registry. After changing it, run `npm run docs:shortcuts`; a test fails while the README is out of date, and another when two shortcuts share keys where both work (add an intended overlap to `INTENDED_OVERLAPS` in `shortcuts.test.ts`, with the reason).
 - **Preferences** (theme, sidebar style, tool activity, quit prompt) live in main (`apps/desktop/src/main/preferences.ts`); the preload reads them synchronously so the first paint is right. Add new ones to `Preferences` in `packages/protocol/src/bridge.ts`.
 
 ### Design system
@@ -123,7 +135,7 @@ The design mockups these rules come from are in the Switchboard UI suggestions c
 
 ### Smoke test
 
-`apps/desktop/src/main/index.ts` holds the smoke steps (`run…Step` functions); `runSmokeStep` runs each through `smokeRun.step(label, …)` (`smokeRunner.ts`: timed, 30s limit, cleaned up after), and `apps/desktop/scripts/smoke.ts` prints their results and times. A new step is one `step(...)` line there, returning `ok: …` or what went wrong. Wait for conditions (`waitInPage`, `until`, `settle`), never for a fixed time, except to show that something did *not* happen. Steps find elements by `data-*` attributes, so give new UI a `data-` hook when you add it. Steps must be **read-only on real data**: the app runs against the user's real `~/.claude` and projects, with a throwaway app profile. Never stage, revert, delete or send anything outside the sandbox.
+`apps/desktop/src/main/index.ts` holds the smoke steps (`run…Step` functions); `runSmokeStep` runs each through `smokeRun.step(label, …)` (`smokeRunner.ts`: timed, 30s limit, cleaned up after), and `apps/desktop/scripts/smoke.ts` prints their results and times. A new step is one `step(...)` line there, returning `ok: …` or what went wrong. Wait for conditions (`waitInPage`, `until`, `settle`), never for a fixed time, except to show that something did *not* happen. Steps find elements by `data-*` attributes, so give new UI a `data-` hook when you add it. Steps must be **read-only on real data**: the app runs against the user's real `~/.claude` and projects, with a throwaway app profile. Never stage, revert, delete or send anything outside the sandbox. Never type into, or run anything in the folder of, a session that is running in Claude Code right now (often the agent's own session, which started the run): steps that pick a session skip `runningSessions()`, and the one whose folder later steps use also skips sessions in a running session's folder or inside it (`inRunningFolder`).
 
 ### Live tests (real Claude Code, costs a little)
 
@@ -141,6 +153,7 @@ SWITCHBOARD_SMOKE_LIVE_CWD=/path/to/throwaway-repo npm run smoke
 - `README.md` is for people using the app: what it does, how to install it, shortcuts, settings. No implementation details.
 - Technical material goes in `docs/` (`development.md`, `building-and-signing.md`, `project-actions.md`) and is linked from the README.
 - Update `PLAN.md` when a phase or roadmap item changes status.
+- The website (`website/`) documents every feature for people using the app. A change people can see updates its page there too, and `features.json` (see the [Release checklist in CLAUDE.md](CLAUDE.md#release-checklist)).
 - Keep `CHANGELOG.md` up to date: when a change is visible to people using the app, add a line to the `## [Unreleased]` section at the top (create it if it's missing), written for them, not about the implementation. At release time that section becomes `## [X.Y.Z] - YYYY-MM-DD` (see Releases).
 
 ## Releases
@@ -149,9 +162,10 @@ Releases are built by `.github/workflows/release.yml`, which runs when a release
 
 1. Rename the `## [Unreleased]` section of `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD` (or add that section, written for people using the app), and set `version` in `apps/desktop/package.json` to match.
 2. Retake the README screenshots with `npm run screenshots` and look at every image in `docs/screenshots` against the README's alt text and the CHANGELOG section. If the tour fails, a view it drives has changed: fix `apps/desktop/src/main/screenshotTour.ts` (or the demo world in `scripts/screenshot-demo.ts`) rather than skipping it. If a released feature belongs in a picture that doesn't show it yet, update the demo world or add a view. Commit the new images with the release.
-3. Publish a GitHub release with tag `vX.Y.Z` (only when the user asks). The notes may be left empty; the workflow fills them from the CHANGELOG section.
+3. Go through the [Release checklist in CLAUDE.md](CLAUDE.md#release-checklist): docs pages, `features.json`, website screenshots and `npm run website:build`. A release is not done until the docs are updated.
+4. Publish a GitHub release with tag `vX.Y.Z` (only when the user asks). The notes may be left empty; the workflow fills them from the CHANGELOG section.
 
-The workflow builds with the version from the tag, signs and notarises the app, checks Gatekeeper accepts it, and attaches the `.dmg` to the release. It never attaches an unsigned build. For a Stable release it then pushes the stamped cask (`homebrew/switchboard.rb`) to `estruyf/homebrew-tap`; edit the cask here, never in the tap (see `docs/homebrew.md`). `npm run dist:notarized` is for checking a signed build locally.
+The workflow builds with the version from the tag, signs and notarises the app, checks Gatekeeper accepts it, and attaches the `.dmg` to the release. A second job, once the repository variable `WINDOWS_RELEASES` is `true`, builds the Windows installer, signs it (Azure Trusted Signing or a `.pfx`), checks the signatures and their publisher, and attaches it with `latest.yml`. It never attaches an unsigned build. For a Stable release it then pushes the stamped cask (`homebrew/switchboard.rb`) to `estruyf/homebrew-tap`; edit the cask here, never in the tap (see `docs/homebrew.md`). `npm run dist:notarized` is for checking a signed build locally.
 
 The VS Code companion is released separately by `.github/workflows/release-vscode.yml`, to the Visual Studio Marketplace and Open VSX: a GitHub release tagged `vscode-vX.Y.Z` (which `release.yml` skips), a commit on `main` whose message has both `#release` and `#vscode`, or a manual run. Bump `version` in `apps/vscode-extension/package.json` and add a section to `apps/vscode-extension/CHANGELOG.md` first; only release when the user asks. See [docs/vscode-companion.md](docs/vscode-companion.md#releasing-the-extension).
 

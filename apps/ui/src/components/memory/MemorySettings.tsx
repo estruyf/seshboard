@@ -1,4 +1,5 @@
 import { ChevronRight, ClipboardCopy, Plus, ClipboardPaste, Download, FolderInput, FolderSearch, Plug, Unplug } from 'lucide-react';
+import { fileManagerName } from '../../lib/platform.ts';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MEMORY_INDEX_LIMIT, type MemoryFile } from '@switchboard/protocol/client';
 import type { ContextMenuPoint } from '../../lib/contextMenu.ts';
@@ -7,7 +8,7 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { MemoryEditor } from './MemoryEditor.tsx';
 import { MemoryRow, useMemoryActions } from './MemoryTab.tsx';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { guessHome, tildify } from '../../lib/format.ts';
+import { basename, guessHome, tildify } from '../../lib/format.ts';
 import { LEVEL_TEXT } from '../../lib/levels.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -123,13 +124,13 @@ function PersonalMemories() {
   }, [focus, personal]);
   if (!personal) return null;
   const memory = personal.memories.find((m) => m.path === selected);
-  const taken = personal.memories.map((m) => m.path.split('/').pop()!.replace(/\.md$/, ''));
+  const taken = personal.memories.map((m) => basename(m.path).replace(/\.md$/, ''));
   const names = new Set(personal.memories.map((m) => m.name));
-  const nameOf = (path: string) => personal.memories.find((m) => m.path === path)?.name ?? path.split('/').pop()!.replace(/\.md$/, '');
+  const nameOf = (path: string) => personal.memories.find((m) => m.path === path)?.name ?? basename(path).replace(/\.md$/, '');
   const linkersOf = (m: MemoryFile) => (links[m.path]?.backlinks ?? []).map(nameOf);
   const entries = (m: MemoryFile): MenuEntry[] => [
     { label: 'Rename…', onSelect: () => actions.rename(m, taken, linkersOf(m)) },
-    { label: 'Reveal in Finder', onSelect: () => actions.reveal(m.path) },
+    { label: `Reveal in ${fileManagerName()}`, onSelect: () => actions.reveal(m.path) },
     'separator',
     { label: 'Delete…', danger: true, onSelect: () => actions.remove(m) },
   ];
@@ -263,7 +264,7 @@ export function MemorySettings({ actions }: { actions?: ReactNode }) {
             Change folder…
           </Button>
           <Button size="sm" icon={<FolderSearch size={12} aria-hidden />} disabled={!personal.exists} onClick={() => void client?.call('editors.open', { path: personal.dir, editorId: 'finder' }).catch(() => {})}>
-            Show in Finder
+            Show in {fileManagerName()}
           </Button>
           <span className="flex-1" />
           {installed && (

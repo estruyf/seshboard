@@ -1,3 +1,4 @@
+import { restoreFrom, trashName } from '../../lib/platform.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
@@ -41,11 +42,11 @@ export function PaletteDialogs() {
         <ConfirmDialog
           title={`Delete “${shortTitle(dialog.title)}”?`}
           danger
-          confirmLabel="Move to Trash"
+          confirmLabel={`Move to ${trashName()}`}
           blockedReason={live && !runningHere ? 'This session is open in another Claude Code window. Close it there first.' : null}
           body={
             <>
-              The conversation and any subagent transcripts move to the Trash, so you can restore them from Finder. Files Claude changed in your project are not touched.
+              The conversation and any subagent transcripts move to the {trashName()}, so you can restore them {restoreFrom()}. Files Claude changed in your project are not touched.
               {runningHere && ' It is running in Switchboard and will be stopped first.'}
             </>
           }
@@ -80,7 +81,7 @@ export function PaletteDialogs() {
           title={dialog.paths.length === 1 ? `Revert ${dialog.paths[0]}?` : `Revert ${dialog.paths.length} files?`}
           danger
           confirmLabel="Revert"
-          body={<p>{dialog.paths.length === 1 ? 'Its' : 'Their'} uncommitted changes are lost. New files go to the Trash, so you can get them back from there.</p>}
+          body={<p>{dialog.paths.length === 1 ? 'Its' : 'Their'} uncommitted changes are lost. New files go to the {trashName()}, so you can get them back from there.</p>}
           onConfirm={async () => {
             if (!client) throw new Error('Not connected to the engine');
             await client.call('git.revert', { cwd: dialog.cwd, paths: dialog.paths });

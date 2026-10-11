@@ -1,3 +1,4 @@
+import { localizeKeys } from '../../lib/shortcuts.ts';
 import { Check, ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
@@ -233,7 +234,7 @@ export function ChoiceMenu<T extends string>({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-ui text-text outline-none hover:bg-accent/15 focus-visible:bg-accent/15 disabled:opacity-40 disabled:hover:bg-transparent"
                 >
                   <span className="min-w-0 flex-1 truncate">{action.label}</span>
-                  {action.hint && <span className="shrink-0 text-meta text-faint">{action.hint}</span>}
+                  {action.hint && <span className="shrink-0 text-meta text-faint">{localizeKeys(action.hint)}</span>}
                 </button>
               ))}
             </>

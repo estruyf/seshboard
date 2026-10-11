@@ -235,4 +235,14 @@ describe('ignoredFiles and measureSize', () => {
     expect(await measureSize(repo)).toBeGreaterThanOrEqual(200 * 1024);
     expect(await measureSize(join(dir, 'nope'))).toBeNull();
   });
+
+  it('adds up the files where there is no du (Windows)', async () => {
+    const folder = join(dir, 'walked');
+    mkdirSync(join(folder, 'a', 'b'), { recursive: true });
+    writeFileSync(join(folder, 'one.bin'), Buffer.alloc(1000));
+    writeFileSync(join(folder, 'a', 'b', 'two.bin'), Buffer.alloc(2345));
+    expect(await measureSize(folder, 'win32')).toBe(3345);
+    expect(await measureSize(join(folder, 'one.bin'), 'win32')).toBeNull();
+    expect(await measureSize(join(dir, 'nope'), 'win32')).toBeNull();
+  });
 });

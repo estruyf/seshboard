@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { linkFromArgv, MAX_LINK_PROMPT, parseDeepLink } from './deepLink.ts';
+import { isShowLink, linkFromArgv, MAX_LINK_PROMPT, parseDeepLink } from './deepLink.ts';
 
-const link = (url: string) => {
-  const parsed = parseDeepLink(url);
+// macOS unless a test says otherwise, whatever these tests run on.
+const link = (url: string, platform = 'darwin') => {
+  const parsed = parseDeepLink(url, platform);
   if (!parsed.ok) throw new Error(`refused: ${parsed.error}`);
   return parsed.link;
 };
-const error = (url: string) => {
-  const parsed = parseDeepLink(url);
+const error = (url: string, platform = 'darwin') => {
+  const parsed = parseDeepLink(url, platform);
   if (parsed.ok) throw new Error(`accepted: ${JSON.stringify(parsed.link)}`);
   return parsed.error;
 };
@@ -90,6 +91,32 @@ describe('parseDeepLink: new-session', () => {
     expect(error('switchboard://new-session?cwd=/Users/me%00/dev')).toMatch(/control/);
   });
 
+  it('takes drive paths on Windows, with either slash, and nothing that only looks local', () => {
+    const cwd = (url: string) => {
+      const parsed = link(url, 'win32');
+      return parsed.action === 'new-session' ? parsed.cwd : undefined;
+    };
+    expect(cwd('switchboard://new-session?cwd=C%3A%5CUsers%5Cme%5Cdev%5Cpayments')).toBe('C:\\Users\\me\\dev\\payments');
+    expect(cwd('switchboard://new-session?cwd=C:/Users/me/dev/')).toBe('C:/Users/me/dev');
+    expect(cwd('switchboard://new-session?cwd=e%3A%5Crepos%5C')).toBe('e:\\repos');
+    expect(cwd('switchboard://new-session?cwd=C%3A%5C')).toBe('C:\\');
+    // Extra separators after the drive still mean its root, never `C:` (the current folder on that drive).
+    expect(cwd('switchboard://new-session?cwd=C%3A%5C%5C')).toBe('C:\\');
+    expect(cwd('switchboard://new-session?cwd=C://')).toBe('C:/');
+    const refused = (folder: string) => error(`switchboard://new-session?cwd=${encodeURIComponent(folder)}`, 'win32');
+    expect(refused('/Users/me/dev')).toMatch(/absolute/);
+    expect(refused('C:dev')).toMatch(/absolute/);
+    expect(refused('dev\\payments')).toMatch(/absolute/);
+    expect(refused('\\\\server\\share')).toMatch(/network/);
+    expect(refused('//server/share')).toMatch(/network/);
+    expect(refused('file:///C:/dev')).toMatch(/network/);
+    expect(refused('C:\\Users\\me\\..\\other')).toMatch(/\.\./);
+    expect(refused('C:\\Users/me/./dev')).toMatch(/\.\./);
+    expect(refused('C:\\dev\\file.txt:hidden')).toMatch(/colon/);
+    // And a drive path is no folder on macOS.
+    expect(error('switchboard://new-session?cwd=C%3A%5Cdev')).toMatch(/network|absolute/);
+  });
+
   it('refuses long prompts and prompts with hidden characters', () => {
     expect(link(`switchboard://new-session?prompt=${'a'.repeat(MAX_LINK_PROMPT)}`)).toMatchObject({ prompt: 'a'.repeat(MAX_LINK_PROMPT) });
     expect(error(`switchboard://new-session?prompt=${'a'.repeat(MAX_LINK_PROMPT + 1)}`)).toMatch(/5,000/);
@@ -129,5 +156,12 @@ describe('linkFromArgv', () => {
   it('finds the link among the arguments', () => {
     expect(linkFromArgv(['/Applications/Switchboard.app/Contents/MacOS/Switchboard', '--flag', 'switchboard://session/abc'])).toBe('switchboard://session/abc');
     expect(linkFromArgv(['electron', '.'])).toBeNull();
+  });
+});
+
+describe('isShowLink', () => {
+  it('knows switchboard://show, and nothing else, as only showing the window', () => {
+    for (const link of ['switchboard://show', 'switchboard://show/', 'switchboard:show', 'SWITCHBOARD://SHOW']) expect(isShowLink(link)).toBe(true);
+    for (const link of ['switchboard://show?cwd=/x', 'switchboard://show/more', 'switchboard://new-session', 'https://show', 'show', 'switchboard://showx']) expect(isShowLink(link)).toBe(false);
   });
 });

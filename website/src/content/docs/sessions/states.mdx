@@ -1,0 +1,64 @@
+---
+title: Session states
+description: What the colours, rails and dots on a session mean.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+Every session is in one state, and each state has its own colour everywhere: in the sidebar, the minimal rail, the session's header, Home and notifications. A glance at the sidebar tells you which sessions need you, which are working, and which have something new to read.
+
+<Screenshot name="sidebar" alt="The sidebar with sessions under Needs you and Working, Waiting for you in pink, and each row's rail in the colour of its Claude profile" width={360} eager />
+
+## Where to find it
+
+- **The sidebar:** a 3px rail on the row's left edge, the colour of the age, and a status icon. Needs you and Working also have their own sections at the top. See [The sidebar](/sessions/sidebar/).
+- **The session's header:** a dot and a word under the title, such as "Claude is working" or "Waiting for you".
+- **Home:** cards for what needs you and what is working. See [Home](/sessions/home/).
+- Hover a status icon for what it means.
+
+## The states
+
+| State | What it means | How it shows |
+|---|---|---|
+| <Pill tone="needs-you">Needs you</Pill> | Claude waits for you: a permission, a question or a plan to review. | Pink rail, pulsing pink dot, pink age. The row's second line says what it asks for ("Permission: Bash", "Question", "Plan to review"). The session sits under **Needs you**. |
+| <Pill tone="working">Working</Pill> | Claude is working on it. | Yellow rail, spinning yellow ring, yellow age. The session sits under **Working**. |
+| <Pill tone="background">Running in the background</Pill> | Claude finished its turn, but a background command or agent is still running. | A slow green spinner. The header says how many background tasks run, and a green pill above the message box lists them. |
+| <Pill tone="unread">Finished, unread</Pill> | It finished and you haven't looked since. | Blue rail, blue dot, bold title, and "Finished, unread" on the second line. |
+| <Pill tone="failed">Failed</Pill> | The last run stopped with an error. | A red **!** badge. The message box says what went wrong. |
+| <Pill tone="muted">Idle</Pill> | Open in Switchboard and ready for your next message. | A small green ring, no rail. |
+
+A session that isn't open anywhere has no status icon at all, only its age.
+
+Yellow always means working, never unread. Sessions that need you or failed always stay in the main list, even when you archived them.
+
+<Aside type="note">
+The status never rests on colour alone: each icon has a label, so VoiceOver reads "Waiting for you" or "Claude is working", and the sidebar announces a session that starts waiting for you.
+</Aside>
+
+## Several Claude profiles
+
+With more than one [Claude profile](/settings/claude-profiles/), the rail on every row shows the profile's colour instead, so you see at a glance which account a session uses. The state then shows through the colour of the age, the bold title, the status icon and the section the session is in. Hover a row to see its profile.
+
+## Notifications and the Dock badge
+
+Switchboard tells you when something changes while you are elsewhere:
+
+- **A notification** when a session needs you ("Claude wants to use Bash", "Claude has a question", "Claude has a plan for you"), when Claude finishes ("Claude finished"), and when a run fails ("Claude Code stopped with an error"). Click it to open the session. You don't get one for the session you are looking at in a focused window.
+- **The Dock badge** counts the sessions that wait for you. When one starts waiting while Switchboard is in the background, the Dock icon bounces once.
+- With **Show sessions from other apps** on, a Claude Code session in your terminal that waits for you gets a notification too ("Claude is waiting for you in Terminal").
+
+The notifications and badge work as long as Switchboard runs, also with the window closed.
+
+<Aside type="tip">
+Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that needs you.
+</Aside>
+
+## Settings
+
+The states can't be changed. Two settings change what you see:
+
+- **Show sessions from other apps** in [Settings, Sidebar](/settings/#sidebar) adds sessions from the terminal, Claude desktop and your editor, with their states.
+- [Claude profiles](/settings/#claude-profiles): with more than one, rows show the profile's colour.

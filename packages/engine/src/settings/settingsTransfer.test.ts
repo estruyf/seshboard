@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BACKUP_SECTIONS, DEFAULT_PREFERENCES, ProjectAction } from '@switchboard/protocol';
+import { BACKUP_SECTIONS, DEFAULT_PREFERENCES, parseSettingsFile, ProjectAction } from '@switchboard/protocol';
 import { ActionStore } from '../actions/actionStore.ts';
 import { createAppStateStore } from '../db/appState.ts';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
@@ -214,6 +214,25 @@ describe('settings export and import', () => {
     plan.apply();
     expect(target.stores.projects.list(new Map())[0]).toMatchObject({ root: moved, icon: { kind: 'emoji', value: '📦' } });
     expect(target.stores.actions.list(moved).actions.map((a) => a.id)).toEqual(['dev']);
+  });
+
+  it('reads a file from another platform: its folders count as missing until pointed at folders here', () => {
+    const source = mac();
+    const folder = tempDir();
+    source.stores.projects.add(folder);
+    const file = roundTrip(source.stores);
+    // The same project as another platform writes it: a Mac folder on Windows, a Windows folder elsewhere.
+    const foreign = process.platform === 'win32' ? '/Users/me/dev/app' : 'C:\\Users\\me\\dev\\app';
+    const text = JSON.stringify(file).split(JSON.stringify(folder).slice(1, -1)).join(JSON.stringify(foreign).slice(1, -1));
+    const fromElsewhere = parseSettingsFile(JSON.parse(text));
+    if ('error' in fromElsewhere) throw new Error(fromElsewhere.error);
+
+    const target = mac();
+    expect(planImport(target.stores, fromElsewhere.file, ALL).preview.missingFolders).toEqual([foreign]);
+    const plan = planImport(target.stores, fromElsewhere.file, { ...ALL, relocate: [{ from: foreign, to: folder }] });
+    expect(plan.preview.missingFolders).toEqual([]);
+    plan.apply();
+    expect(target.stores.projects.list(new Map()).map((p) => p.root)).toEqual([folder]);
   });
 
   it('skips unreadable entries instead of refusing the file', () => {

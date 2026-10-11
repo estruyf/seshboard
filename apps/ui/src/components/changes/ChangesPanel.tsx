@@ -1,7 +1,8 @@
+import { trashName } from '../../lib/platform.ts';
 import { ChevronRight, ExternalLink, Maximize2, Minimize2, RefreshCw, Undo2, WrapText, X } from 'lucide-react';
 import { memo, useEffect, useId, useMemo, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { create } from 'zustand';
-import type { ChangedFile, ChangesBase, GitChanges } from '@switchboard/protocol/client';
+import { joinPath, type ChangedFile, type ChangesBase, type GitChanges } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff.ts';
 import { useMemoryView } from '../../state/memoryStore.ts';
@@ -365,7 +366,7 @@ export function ChangesPanel({
                         icon={<ExternalLink size={12} />}
                         data-tooltip="Open in editor"
                         aria-label={`Open ${name} in editor`}
-                        onClick={() => void openIn(`${changes.root}/${file.path}`).catch((e: Error) => setError(`Couldn't open ${name}: ${e.message}`))}
+                        onClick={() => void openIn(joinPath(changes.root, file.path)).catch((e: Error) => setError(`Couldn't open ${name}: ${e.message}`))}
                       />
                     )}
                     {editable && (
@@ -399,7 +400,7 @@ export function ChangesPanel({
           confirmLabel="Revert"
           body={
             <p>
-              {reverting.length === 1 ? 'Its' : 'Their'} uncommitted changes are lost. New files go to the Trash, so you can get them back from there.
+              {reverting.length === 1 ? 'Its' : 'Their'} uncommitted changes are lost. New files go to the {trashName()}, so you can get them back from there.
             </p>
           }
           onConfirm={async () => {

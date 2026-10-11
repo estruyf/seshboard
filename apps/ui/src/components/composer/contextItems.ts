@@ -1,4 +1,5 @@
-import { MAX_CONTEXT_ITEMS, type ContextItem } from '@switchboard/protocol/client';
+import { isAbsolutePath, MAX_CONTEXT_ITEMS, pathInside, separatorOf, type ContextItem } from '@switchboard/protocol/client';
+import { basename } from '../../lib/format.ts';
 
 /** A chip in the context tray: an item to send with the message, and an id to remove it by. */
 export type ContextChip = ContextItem & { id: string };
@@ -25,22 +26,27 @@ export function addChips(current: readonly ContextChip[], items: readonly Contex
   return next;
 }
 
-/** `path` relative to `cwd` when it is inside it, otherwise as it is. */
+/**
+ * `path` relative to `cwd` when it is inside it, otherwise as it is. Written with `/` on Windows too, as the `@`
+ * file picker (from git) writes them.
+ */
 export function relativeTo(path: string, cwd: string | null): string {
-  const root = cwd?.replace(/\/+$/, '');
-  return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
+  const inside = cwd ? pathInside(path, cwd) : null;
+  if (!inside) return path;
+  return separatorOf(cwd!) === '\\' ? inside.replace(/\\/g, '/') : inside;
 }
 
-const baseName = (path: string) => path.replace(/\/+$/, '').split('/').pop() || path;
+/** A folder's path with one separator at the end, the one it is written with. */
+export const asFolder = (path: string) => `${path.replace(/[\\/]+$/, '')}${separatorOf(path) === '\\' && !path.includes('/') ? '\\' : '/'}`;
 const lines = (range: { start: number; end: number }) => (range.start === range.end ? `${range.start}` : `${range.start}-${range.end}`);
 
 /** What a chip shows (`auth.ts:12-40`, `src/`), and its tooltip (the path, relative to the session's folder). */
 export function chipLabel(item: ContextItem, cwd: string | null): { label: string; detail: string } {
   if (item.kind === 'file') {
     const where = relativeTo(item.path, cwd);
-    if (item.directory) return { label: `${baseName(item.path)}/`, detail: `${where.replace(/\/+$/, '')}/` };
+    if (item.directory) return { label: `${basename(item.path)}/`, detail: asFolder(where) };
     const range = item.range ? `:${lines(item.range)}` : '';
-    return { label: `${baseName(item.path)}${range}`, detail: item.range ? `${where}, lines ${lines(item.range)}` : where };
+    return { label: `${basename(item.path)}${range}`, detail: item.range ? `${where}, lines ${lines(item.range)}` : where };
   }
   const where = item.path ? relativeTo(item.path, cwd) + (item.range ? `, lines ${lines(item.range)}` : '') : null;
   const size = item.text.split('\n').length;
@@ -53,7 +59,7 @@ export function chipLabel(item: ContextItem, cwd: string | null): { label: strin
  */
 export function mentionFor(item: Extract<ContextItem, { kind: 'file' }>, cwd: string | null): string {
   let target = relativeTo(item.path, cwd);
-  if (item.directory && !target.endsWith('/')) target += '/';
+  if (item.directory) target = asFolder(target);
   if (!item.directory && item.range) target += `#L${lines(item.range)}`;
   return /\s/.test(target) ? `@"${target}"` : `@${target}`;
 }
@@ -82,7 +88,7 @@ export function promptWithContext(text: string, chips: readonly ContextItem[], c
 
 /** Dropped files and folders, as context. */
 export const droppedItems = (dropped: ReadonlyArray<{ path: string; directory: boolean }>): ContextItem[] =>
-  dropped.filter((f) => f.path.startsWith('/')).map((f) => ({ kind: 'file', path: f.path, directory: f.directory }));
+  dropped.filter((f) => isAbsolutePath(f.path)).map((f) => ({ kind: 'file', path: f.path, directory: f.directory }));
 
 /** A short summary of chips for a list (the Unsent list, a sidebar row): "2 files", "1 file and 1 text". */
 export function chipsSummary(chips: readonly ContextItem[]): string {

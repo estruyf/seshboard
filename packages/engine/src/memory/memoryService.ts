@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, parse, relative, resolve } from 'node:path';
 import {
   countLines,
   memoryFileText,
@@ -25,6 +25,7 @@ import {
   type SharePreview,
   type ShareTarget,
   type ShareWarning,
+  isSameOrInside,
 } from '@switchboard/protocol';
 import { git } from '../git/gitChanges.ts';
 import { ignoredPaths, isInside, listInstructionFiles, listMemoryFiles, memoryDirFor } from './folders.ts';
@@ -356,7 +357,9 @@ export class MemoryService {
 
   /** Points the personal folder somewhere else; a block already in CLAUDE.md follows it (it is Switchboard's own line). */
   setPersonalDir(dir: string): PersonalMemory {
-    if (resolve(dir) !== dir || dir === '/' || dir === this.home) throw new RpcError('INVALID', 'Choose a folder of its own for personal memory');
+    // Not a drive's or the disk's root (`/`, `C:\`), nor the home folder itself (compared as Windows does there, without regard to case).
+    const isHome = isSameOrInside(dir, this.home) && isSameOrInside(this.home, dir);
+    if (resolve(dir) !== dir || dir === parse(dir).root || isHome) throw new RpcError('INVALID', 'Choose a folder of its own for personal memory');
     const installed = this.personal().profiles.some((p) => p.installed);
     this.options.savePersonalDir?.(dir);
     if (installed) this.installBlock();

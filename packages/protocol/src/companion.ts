@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AbsolutePath } from './absolutePath.ts';
 import type { ContractShape } from './rpc.ts';
 import { ContextItems } from './context.ts';
 import { PermissionDecision, PermissionRequest } from './host.ts';
@@ -8,7 +9,6 @@ import { PermissionDecision, PermissionRequest } from './host.ts';
  * engine tells it. The engine validates every message against it; see docs/vscode-companion.md.
  */
 
-const AbsolutePath = z.string().min(1).max(4096).startsWith('/');
 const SessionId = z.string().min(1).max(200);
 /** Workspace folders: sessions in one of them (or whose folder holds one of them) are listed. */
 const Folders = z.array(AbsolutePath).max(50);

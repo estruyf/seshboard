@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** How the `claude` binary was installed, which decides how to update it. */
-export const ClaudeInstallMethod = z.enum(['native', 'homebrew', 'npm', 'local', 'unknown']);
+export const ClaudeInstallMethod = z.enum(['native', 'homebrew', 'npm', 'local', 'winget', 'unknown']);
 export type ClaudeInstallMethod = z.infer<typeof ClaudeInstallMethod>;
 
 /** Claude Code's release channels (the npm dist-tags of the same name). */

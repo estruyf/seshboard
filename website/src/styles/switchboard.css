@@ -1,0 +1,328 @@
+/*
+ * Switchboard's look for the website. The --sb-* values are copied from the app (apps/ui/src/styles.css,
+ * Demo Time dark and light) and mapped onto Starlight's variables below. When the app's tokens change,
+ * change them here too. Dark is the default; light uses the light tokens, with the darker accent ink
+ * for text and links so they stay readable on white.
+ */
+
+/* Demo Time Dark */
+:root {
+  --sb-bg: #15181f;
+  --sb-sidebar: #202736;
+  --sb-card: #202736;
+  --sb-border: #2d3142;
+  --sb-text: #d9dbe1;
+  --sb-muted: #9ba4b7;
+  --sb-faint: #8b94a6;
+  --sb-accent: #ffd43b;
+  --sb-accent-ink: #ffd43b;
+  --sb-on-accent: #15181f;
+  --sb-link: #74c0fc;
+  --sb-ok: #51cf66;
+  --sb-warn: #ed217c;
+  --sb-error: #ff6b6b;
+  --sb-unread: #74c0fc;
+  --sb-caution: #ffa94d;
+  /* Claude Code memory: a hue of its own, never a status. */
+  --sb-memory: #b197fc;
+  --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
+  --sb-popover: #2a3244;
+  --sb-overlay-border: #414861;
+  --sb-overlay-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 10px rgb(0 0 0 / 0.35), 0 16px 40px -6px rgb(0 0 0 / 0.7);
+  --sb-code-bg: #202736;
+  --sb-focus-ring: #ffd43b8c;
+
+  /*
+   * The app's type scale (meta 11, ui 12, body 13.5, title 15, hero 20), scaled so body text is 16px.
+   * Same ratios, same fonts.
+   */
+  --sb-scale: calc(16 / 13.5);
+  --sb-text-meta: calc(11px * var(--sb-scale));
+  --sb-text-ui: calc(12px * var(--sb-scale));
+  --sb-text-body: calc(13.5px * var(--sb-scale));
+  --sb-text-title: calc(15px * var(--sb-scale));
+  --sb-text-hero: calc(20px * var(--sb-scale));
+  --sb-font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --sb-font-mono: 'SF Mono', ui-monospace, Menlo, monospace;
+
+  /* The app's radii: 6px buttons and fields, 12px cards, 4px keycaps. */
+  --sb-radius-control: 6px;
+  --sb-radius-card: 12px;
+  --sb-radius-key: 4px;
+
+  /* Starlight, dark */
+  --sl-color-white: var(--sb-text);
+  --sl-color-gray-1: var(--sb-text);
+  --sl-color-gray-2: var(--sb-text);
+  --sl-color-gray-3: var(--sb-muted);
+  --sl-color-gray-4: var(--sb-faint);
+  --sl-color-gray-5: var(--sb-overlay-border);
+  --sl-color-gray-6: var(--sb-border);
+  --sl-color-gray-7: var(--sb-sidebar);
+  --sl-color-black: var(--sb-bg);
+  --sl-color-accent: var(--sb-accent);
+  --sl-color-accent-high: var(--sb-accent-ink);
+  --sl-color-accent-low: color-mix(in srgb, var(--sb-accent) 15%, var(--sb-bg));
+  --sl-color-text: var(--sb-text);
+  --sl-color-text-accent: var(--sb-accent-ink);
+  --sl-color-text-invert: var(--sb-on-accent);
+  --sl-color-bg: var(--sb-bg);
+  --sl-color-bg-nav: var(--sb-sidebar);
+  --sl-color-bg-sidebar: var(--sb-sidebar);
+  --sl-color-bg-inline-code: var(--sb-code-bg);
+  --sl-color-bg-accent: var(--sb-accent);
+  --sl-color-hairline: var(--sb-border);
+  --sl-color-hairline-light: var(--sb-border);
+  --sl-color-hairline-shade: var(--sb-bg);
+  --sl-color-backdrop-overlay: rgb(0 0 0 / 0.6);
+
+  --sl-font: var(--sb-font-sans);
+  --sl-font-mono: var(--sb-font-mono);
+  --sl-text-body: var(--sb-text-body);
+  --sl-text-body-sm: var(--sb-text-ui);
+  --sl-text-code: var(--sb-text-ui);
+  --sl-text-code-sm: var(--sb-text-meta);
+  --sl-line-height: 1.6;
+  --sl-line-height-headings: 1.3;
+  --sl-text-h1: calc(var(--sb-text-hero) * 1.25);
+  --sl-text-h2: var(--sb-text-hero);
+  --sl-text-h3: var(--sb-text-title);
+  --sl-text-h4: var(--sb-text-body);
+  --sl-text-h5: var(--sb-text-body);
+}
+
+/* Demo Time Light */
+:root[data-theme='light'] {
+  --sb-bg: #ffffff;
+  --sb-sidebar: #f4f6fa;
+  --sb-card: #ffffff;
+  --sb-border: #e1e4e8;
+  --sb-text: #202736;
+  --sb-muted: #505869;
+  --sb-faint: #687082;
+  --sb-accent: #ffd43b;
+  --sb-accent-ink: #916c00;
+  --sb-on-accent: #15181f;
+  --sb-link: #005cc5;
+  --sb-ok: #00806f;
+  --sb-warn: #d1186b;
+  --sb-error: #d73a49;
+  --sb-unread: #005cc5;
+  --sb-caution: #b35900;
+  --sb-memory: #8250df;
+  --sb-selected: color-mix(in srgb, var(--sb-text) 10%, transparent);
+  --sb-popover: #ffffff;
+  --sb-overlay-border: #d1d5da;
+  --sb-overlay-shadow: 0 2px 6px rgb(21 24 31 / 0.08), 0 12px 32px -4px rgb(21 24 31 / 0.2);
+  --sb-code-bg: #f4f6fa;
+  --sb-focus-ring: #916c008c;
+
+  /* Starlight, light */
+  --sl-color-white: var(--sb-text);
+  --sl-color-gray-1: var(--sb-text);
+  --sl-color-gray-2: var(--sb-text);
+  --sl-color-gray-3: var(--sb-muted);
+  --sl-color-gray-4: var(--sb-faint);
+  --sl-color-gray-5: var(--sb-overlay-border);
+  --sl-color-gray-6: var(--sb-border);
+  --sl-color-gray-7: var(--sb-sidebar);
+  --sl-color-black: var(--sb-bg);
+  --sl-color-accent: var(--sb-accent);
+  --sl-color-accent-high: var(--sb-accent-ink);
+  --sl-color-accent-low: color-mix(in srgb, var(--sb-accent) 22%, var(--sb-bg));
+  --sl-color-text: var(--sb-text);
+  --sl-color-text-accent: var(--sb-accent-ink);
+  --sl-color-text-invert: var(--sb-on-accent);
+  --sl-color-bg: var(--sb-bg);
+  --sl-color-bg-nav: var(--sb-sidebar);
+  --sl-color-bg-sidebar: var(--sb-sidebar);
+  --sl-color-bg-inline-code: var(--sb-code-bg);
+  --sl-color-bg-accent: var(--sb-accent);
+  --sl-color-hairline: var(--sb-border);
+  --sl-color-hairline-light: var(--sb-border);
+  --sl-color-hairline-shade: var(--sb-border);
+  --sl-color-backdrop-overlay: rgb(21 24 31 / 0.35);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--sb-accent) 30%, transparent);
+}
+
+/* Keyboard focus: the app's subtle accent outline. */
+:focus-visible {
+  outline: 2px solid var(--sb-focus-ring);
+  outline-offset: 1px;
+}
+
+/* Headings: semibold, like the app's titles, never the brightest white. */
+.sl-markdown-content :is(h1, h2, h3, h4, h5) {
+  font-weight: 600;
+  color: var(--sb-text);
+}
+h1#_top {
+  font-weight: 600;
+}
+
+/* Links in the text: the readable accent ink with a quiet underline. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sb-accent-ink);
+  text-decoration-color: color-mix(in srgb, var(--sb-accent-ink) 45%, transparent);
+  text-underline-offset: 0.18em;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  text-decoration-color: var(--sb-accent-ink);
+}
+
+/* Inline code: the app's code surface and mono stack, with a hairline edge. */
+.sl-markdown-content :not(pre) > code {
+  border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius-key);
+  padding: 0.05em 0.35em;
+  font-size: 0.875em;
+}
+
+/* Tables: a card with the app's border, header in the muted ui size. */
+.sl-markdown-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius-card);
+  overflow: hidden;
+  font-size: var(--sb-text-ui);
+}
+.sl-markdown-content :is(th, td) {
+  border-bottom: 1px solid var(--sb-border);
+  padding: 0.55rem 0.85rem;
+}
+.sl-markdown-content tr:last-child td {
+  border-bottom: none;
+}
+.sl-markdown-content th {
+  background: var(--sb-sidebar);
+  color: var(--sb-muted);
+  font-weight: 600;
+}
+
+/* Sidebar: a selected row is a neutral fill, as in the app (a yellow tint vanishes on the light sidebar). */
+.sidebar-content a {
+  border-radius: var(--sb-radius-control);
+  font-size: var(--sb-text-ui);
+}
+.sidebar-content a:hover {
+  background: color-mix(in srgb, var(--sb-border) 45%, transparent);
+}
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+  background: var(--sb-selected);
+  color: var(--sb-text);
+  font-weight: 600;
+}
+.sidebar-content .group-label .large {
+  font-size: var(--sb-text-meta);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sb-faint);
+}
+
+/* Header: the sidebar's surface with one hairline, like the app's chrome. */
+header.header {
+  border-bottom: 1px solid var(--sb-border);
+}
+.site-title {
+  font-size: var(--sb-text-title);
+  font-weight: 600;
+  color: var(--sb-text);
+}
+.site-title img {
+  height: 1.75rem;
+  width: auto;
+}
+
+/* Buttons: one yellow primary, a bordered secondary that stays visible on any surface. */
+.sl-link-button.primary,
+.sb-button.primary {
+  background: var(--sb-accent);
+  color: var(--sb-on-accent);
+  border: 1px solid var(--sb-accent);
+  font-weight: 600;
+}
+.sl-link-button.secondary,
+.sb-button.secondary {
+  background: color-mix(in srgb, var(--sb-text) 4%, transparent);
+  border: 1px solid var(--sb-overlay-border);
+  color: var(--sb-text);
+}
+.sl-link-button.secondary:hover,
+.sb-button.secondary:hover {
+  background: color-mix(in srgb, var(--sb-text) 10%, transparent);
+}
+
+/* Asides: a card with a status edge; the colours only mean what they mean in the app. */
+.starlight-aside {
+  border: 1px solid var(--sb-border);
+  border-inline-start-width: 3px;
+  border-radius: var(--sb-radius-control);
+  background: var(--sb-card);
+}
+.starlight-aside--note {
+  border-inline-start-color: var(--sb-link);
+}
+.starlight-aside--tip {
+  border-inline-start-color: var(--sb-accent-ink);
+}
+.starlight-aside--caution {
+  border-inline-start-color: var(--sb-caution);
+}
+.starlight-aside--danger {
+  border-inline-start-color: var(--sb-error);
+}
+.starlight-aside .starlight-aside__title {
+  color: var(--sb-text);
+}
+
+/* Code blocks: the app's code surface, no glow. */
+.expressive-code .frame {
+  --ec-brdRad: var(--sb-radius-control);
+}
+
+/* Pagination cards and link cards: plain cards. */
+.pagination-links a,
+.sl-link-card {
+  border-color: var(--sb-border);
+  border-radius: var(--sb-radius-card);
+  box-shadow: none;
+}
+.pagination-links a:hover,
+.sl-link-card:hover {
+  border-color: var(--sb-overlay-border);
+  background: var(--sb-selected);
+}
+
+/* Screenshots: show the one that matches the site's theme. */
+:root[data-theme='light'] .sb-shot-dark,
+:root:not([data-theme='light']) .sb-shot-light {
+  display: none;
+}
+
+/* The site's own buttons (the homepage): the app's 32px main action, in the site's scale. */
+.sb-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 2.5rem;
+  padding-inline: 1.1rem;
+  border-radius: var(--sb-radius-control);
+  font-size: var(--sb-text-ui);
+  font-weight: 600;
+  text-decoration: none;
+}
+.sb-button.primary:hover {
+  background: color-mix(in srgb, var(--sb-accent) 88%, var(--sb-text));
+}

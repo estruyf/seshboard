@@ -1,3 +1,5 @@
+import { pathInside } from '@switchboard/protocol/client';
+
 /** One-line description of a tool call for its collapsed card. */
 export interface ToolSummary {
   label: string;
@@ -7,8 +9,7 @@ export interface ToolSummary {
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
 
 function relative(path: string, cwd: string | null): string {
-  if (cwd && path.startsWith(`${cwd}/`)) return path.slice(cwd.length + 1);
-  return path;
+  return (cwd && pathInside(path, cwd)) || path;
 }
 
 /** `mcp__claude_ai_Notion__notion-search` → `Notion · notion-search`. */

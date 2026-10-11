@@ -1,6 +1,6 @@
 # Building, signing and notarisation
 
-How to package Switchboard as a Mac app, and how to sign and notarise it with an Apple Developer ID so it opens on any Mac without warnings. The Windows installer is built and signed in the release workflow (see [Windows](#windows)).
+How to package Switchboard as a Mac app, and how to sign and notarise it with an Apple Developer ID so it opens on any Mac without warnings. Windows has [its own section](#windows): an installer, signed with Authenticode.
 
 [← Back to the README](../README.md)
 
@@ -74,7 +74,49 @@ The configuration is in [`apps/desktop/electron-builder.yml`](../apps/desktop/el
 
 - The Agent SDK's bundled `claude` binary is left out; the user's own `claude` is used.
 - `node-pty` is unpacked from the asar archive, because its native helper must be executable.
+- `app.asar` holds only `out`, `node_modules` and `package.json`: `npm run dist` fails if anything else got in through a `files` pattern.
 - Electron is pinned to an exact version, which electron-builder needs.
+
+## Windows
+
+### Building the installer
+
+Needs Windows 10 or 11, Node 24+ and npm 11+. `npm run dist` builds for the OS it runs on, so the same commands work:
+
+```bash
+npm install
+npm run dist
+```
+
+This builds `apps/desktop/dist/Switchboard-<version>-setup.exe`, one installer for both x64 and Arm64 that installs the build matching the PC, with its `.blockmap` and the update feed `latest.yml`. The unpacked apps are in `dist/win-unpacked` (x64) and `dist/win-arm64-unpacked`.
+
+The installer needs no administrator: it installs for the current user in `%LOCALAPPDATA%\Programs\switchboard`, with a Start menu and desktop shortcut, and the in-app updater installs updates the same way. Uninstalling (Settings › Apps) keeps your data in `%APPDATA%\Switchboard`, and removes the `switchboard://` link handler the app registers when it starts. `npm run dist:preview` makes an installer without an update feed, as on macOS.
+
+### Opening an unsigned build
+
+Without a code signing certificate the installer and app are unsigned. They run, but on other PCs Windows SmartScreen stops the installer with "Windows protected your PC": choose **More info**, then **Run anyway**.
+
+### Signing
+
+Windows checks an Authenticode signature. Code signing certificates can no longer be exported as a file (since 2023 their keys have to stay in hardware or a cloud service), so the release workflow supports two ways:
+
+- **[Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/)** (recommended): Microsoft signs in the cloud for a monthly fee. You need an Azure subscription, a Trusted Signing account with a *public trust* certificate profile (which verifies your identity), and an app registration with the *Trusted Signing Certificate Profile Signer* role on it.
+- **A certificate as a `.pfx` file**, if you have one that can still be exported. electron-builder signs with it through `WIN_CSC_LINK`.
+
+To sign locally with Azure Trusted Signing, set the variables from [Signing secrets](#signing-secrets) in the environment before `npm run dist`; [`scripts/dist.mjs`](../apps/desktop/scripts/dist.mjs) passes them to electron-builder. Check the result in PowerShell:
+
+```powershell
+Get-AuthenticodeSignature apps/desktop/dist/Switchboard-*-setup.exe, apps/desktop/dist/win-unpacked/Switchboard.exe
+```
+
+The status should be `Valid`. Once the installed app is signed, the in-app updater only installs an update signed by the same publisher.
+
+### What's in the Windows package
+
+- The same configuration as macOS ([`electron-builder.yml`](../apps/desktop/electron-builder.yml) → `win` and `nsis`), with `build/icon.ico` made by `npm run icon` (which on Windows makes only the `.ico`).
+- `node-pty`'s Windows binaries (`prebuilds/win32-x64` and `win32-arm64`, with ConPTY) instead of the macOS ones.
+- [`build/installer.nsh`](../apps/desktop/build/installer.nsh) adds to the installer: uninstalling removes the `switchboard://` link handler, except during an update.
+- `scripts/dist.mjs` names the package `switchboard` for the installer (`extraMetadata.name`, in a config file it writes for Windows builds that extends the one asked for: `scripts/windowsBuildConfig.mjs`), so it installs to `Programs\switchboard` rather than a folder named after the npm workspace. The data folder comes from the product name, so it stays `Switchboard`.
 
 ## Releasing (automated in GitHub Actions)
 
@@ -84,7 +126,7 @@ The configuration is in [`apps/desktop/electron-builder.yml`](../apps/desktop/el
 2. Retake the README screenshots with `npm run screenshots` (see [README screenshots](development.md#readme-screenshots)) and look at each one: does it still match the app and the README text, and does it show what this release changed? A failing run means a view in the tour has changed; fix the tour instead of keeping the old pictures. Commit the images with the CHANGELOG and push.
 3. On GitHub, create a release with a new tag `vX.Y.Z` (Releases → Draft a new release) and publish it. You can leave the notes empty.
 
-The workflow then:
+The workflow then builds for macOS and Windows in two jobs. The macOS job:
 
 1. runs the typecheck and unit tests;
 2. builds the app on an Apple Silicon runner, with the version taken from the tag;
@@ -95,15 +137,25 @@ The workflow then:
 7. fills in the release notes from the CHANGELOG section, if you left them empty. The in-app updater shows these notes (cleaned up and shortened) for the new version.
 8. for a Stable release, stamps the Homebrew cask with the version and the `.zip`'s checksum and pushes it to [estruyf/homebrew-tap](https://github.com/estruyf/homebrew-tap) (see [Homebrew](homebrew.md)).
 
+The Windows job runs once Windows releases are switched on: the repository variable `WINDOWS_RELEASES` is `true` (see [Signing secrets](#signing-secrets)). Until then it's skipped, and releases are macOS-only. On a Windows runner, it:
+
+1. runs the typecheck and unit tests there too;
+2. builds the installer with the version from the tag, signed with Azure Trusted Signing or the `.pfx` (it fails when neither is set up);
+3. checks that the installer and both apps carry a valid signature by the publisher the app checks updates against (`scripts/checkWindowsSignatures.mjs`, matching the way the in-app updater does). A publisher that didn't match would make every installed copy of the release refuse all later updates, and no later release could fix that;
+4. attaches `Switchboard-X.Y.Z-setup.exe` and its `.blockmap`, then the update feed (`latest.yml`) last;
+5. fails if a `latest*.yml` ended up on a draft or pre-release.
+
+The two jobs don't wait for each other, so when one fails the other's files are still attached. Re-run the failed job once it's fixed.
+
 Everyone on the Stable channel is offered the release within a few hours, or straight away with **Check for Updates…**.
 
 ### Channels and pre-releases
 
-- **Stable:** a normal (not pre-release) release with a version like `v1.2.3`. Its feed is `latest-mac.yml`, and the updater finds it as the repository's latest release.
-- **Nightly:** a *pre-release* tagged like `v1.2.3-nightly.20261006.1`. The workflow builds it with `-c.publish.channel=nightly`, so its feed is `nightly-mac.yml`, which only apps on the Nightly channel look for. A nightly version published as a normal release fails the workflow. There is no scheduled nightly workflow yet; publish one by hand when you want to.
-- **Any other pre-release** (`v1.2.3-beta.1`, say) gets the `.dmg` and `.zip` but no feed, so no one is updated to it. A pre-release version published as a normal release fails the workflow, since Stable users would be offered it.
+- **Stable:** a normal (not pre-release) release with a version like `v1.2.3`. Its feeds are `latest-mac.yml` and `latest.yml` (Windows), and the updater finds them on the repository's latest release.
+- **Nightly:** a *pre-release* tagged like `v1.2.3-nightly.20261006.1`. The workflow builds it with `-c.publish.channel=nightly`, so its feeds are `nightly-mac.yml` and `nightly.yml`, which only apps on the Nightly channel look for. A nightly version published as a normal release fails the workflow. There is no scheduled nightly workflow yet; publish one by hand when you want to.
+- **Any other pre-release** (`v1.2.3-beta.1`, say) gets the `.dmg`, `.zip` and installer but no feed, so no one is updated to it. A pre-release version published as a normal release fails the workflow, since Stable users would be offered it.
 
-Only arm64 is built. If an Intel build is added, both architectures must go into one `latest-mac.yml` (a `files` entry each) rather than two feeds overwriting each other.
+On macOS only arm64 is built. If an Intel build is added, both architectures must go into one `latest-mac.yml` (a `files` entry each) rather than two feeds overwriting each other. On Windows one installer holds both architectures, so `latest.yml` names a single file.
 
 Nothing is attached unsigned: without the secrets below the run fails. To retry, re-run the failed workflow run from the Actions tab.
 
@@ -122,31 +174,24 @@ Add these repository secrets (Settings → Secrets and variables → Actions):
 
 `MAC_CERTIFICATE_PASSWORD` may be left out only if the `.p12` was exported without a password.
 
-### Windows
+For Windows, set up one of the two ways below, then set the repository variable `WINDOWS_RELEASES` to `true` to switch Windows releases on. **Azure Trusted Signing** takes these repository *variables* (Settings → Secrets and variables → Actions → Variables), which aren't secret:
 
-The `windows` job in the same workflow builds one NSIS installer, `Switchboard-X.Y.Z-setup.exe`, that holds both the x64 and the arm64 app and installs the one that matches the PC. It runs next to the Mac job, with the same version and channel:
+| Variable | What it is |
+|---|---|
+| `AZURE_SIGNING_ENDPOINT` | The account's endpoint for its region, such as `https://weu.codesigning.azure.net` |
+| `AZURE_SIGNING_ACCOUNT` | The Trusted Signing account's name |
+| `AZURE_SIGNING_PROFILE` | The certificate profile's name |
+| `AZURE_SIGNING_PUBLISHER` | The publisher in the certificate (its common name, such as your name or company), exactly as it appears there. The updater checks updates against it |
 
-1. logs in to Azure with OpenID Connect (no client secret in the repository);
-2. builds with `npm run dist:win`, passing the Trusted Signing settings as `-c.win.azureSignOptions.*`, so electron-builder signs the app, the installer and the uninstaller as it makes them (the checksums in the update feed are of the signed files);
-3. checks every `.exe` has a valid Authenticode signature;
-4. attaches the installer and its `.blockmap`, then the update feed (`latest.yml`, or `nightly.yml` for a nightly) last.
+and these secrets, for the app registration that may sign:
 
-The in-app updater on Windows reads `latest.yml` or `nightly.yml`; the Mac's `-mac.yml` feeds are separate, so the two builds never overwrite each other. Without the settings below the job fails, and nothing is attached unsigned. If one of the two jobs fails, the other still attaches its files: re-run the failed job from the Actions tab.
+| Secret | What it is |
+|---|---|
+| `AZURE_TENANT_ID` | The directory (tenant) ID |
+| `AZURE_CLIENT_ID` | The app registration's application (client) ID |
+| `AZURE_CLIENT_SECRET` | A client secret of that app registration |
 
-`npm run dist:win` on a Windows PC builds the same installer unsigned.
-
-The Azure side, once: a Trusted Signing account with a certificate profile, and an app registration with a federated credential for this repository (GitHub Actions, entity type *Environment*, environment `windows-signing`; the job runs in that GitHub environment, which is created on its first run) that has the *Trusted Signing Certificate Profile Signer* role on the account.
-
-| Setting | Kind | What it is |
-|---|---|---|
-| `AZURE_CLIENT_ID` | Secret | The app registration's client (application) ID |
-| `AZURE_TENANT_ID` | Secret | Your Microsoft Entra tenant ID |
-| `AZURE_SUBSCRIPTION_ID` | Secret | The subscription that holds the Trusted Signing account |
-| `TRUSTED_SIGNING_ENDPOINT` | Variable | The account's endpoint, like `https://weu.codesigning.azure.net/` |
-| `TRUSTED_SIGNING_ACCOUNT_NAME` | Variable | The Trusted Signing account's name |
-| `CERTIFICATE_PROFILE_NAME` | Variable | The certificate profile's name |
-
-Secrets go under Settings → Secrets and variables → Actions → *Secrets*, the three names under *Variables* (or put all six on the `windows-signing` environment).
+**A `.pfx` certificate** takes `WIN_CERTIFICATE_PFX_BASE64`, the `.pfx` base64-encoded (in PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx')) | Set-Clipboard`), and `WIN_CERTIFICATE_PASSWORD`, its password. When both ways are set up, Azure Trusted Signing is used.
 
 ### Testing the packaged app
 
@@ -154,7 +199,7 @@ Secrets go under Settings → Secrets and variables → Actions → *Secrets*, t
 npm run smoke:packaged
 ```
 
-Runs the smoke test (see [Development](development.md)) against `dist/mac-arm64/Switchboard.app` instead of the development build.
+Runs the smoke test (see [Development](development.md)) against `dist/mac-arm64/Switchboard.app` instead of the development build, or on Windows against `dist/win-unpacked/Switchboard.exe` (`win-arm64-unpacked` on an Arm PC).
 
 ## Testing updates with the mock server
 
@@ -167,7 +212,7 @@ npm run mock-updates -w @switchboard/desktop -- --fake 9.9.9
 SWITCHBOARD_MOCK_UPDATES=1 npm run dev
 ```
 
-Settings → About → *Check for Updates* finds v9.9.9 with its release notes, and the update message shows in the window's corner. Downloading fails, since there is no build behind a fake feed. `--fake 9.9.9-nightly.20261006.1` serves `nightly-mac.yml` for the Nightly channel. The smoke test runs one check against the mock feed when `SWITCHBOARD_MOCK_UPDATES=1` is set (it never downloads).
+Settings → About → *Check for Updates* finds v9.9.9 with its release notes, and the update message shows in the window's corner. Downloading fails, since there is no build behind a fake feed. The fake feed answers as both `latest-mac.yml` and `latest.yml`, so it works on Windows too; `--fake 9.9.9-nightly.20261006.1` serves `nightly-mac.yml` and `nightly.yml` for the Nightly channel. The smoke test runs one check against the mock feed when `SWITCHBOARD_MOCK_UPDATES=1` is set (it never downloads).
 
 **The whole flow** (download, restart, *Updated to vX*) needs two signed builds, since Squirrel.Mac only installs an update signed by the same Developer ID:
 
@@ -175,5 +220,7 @@ Settings → About → *Check for Updates* finds v9.9.9 with its release notes, 
 2. Build and install the current version as usual (put `version` back first).
 3. Serve the newer one: `npm run mock-updates -w @switchboard/desktop -- --dir /tmp/switchboard-0.0.9`.
 4. Open the installed app with the mock feed: `SWITCHBOARD_MOCK_UPDATES=1 /Applications/Switchboard.app/Contents/MacOS/Switchboard`.
+
+On Windows the whole flow also works with unsigned builds, as the updater checks the publisher only when the installed app is signed. Build the newer version and move its `dist` folder aside, build and install the current one with its `Switchboard-<version>-setup.exe`, serve the newer folder with `--dir`, and start `%LOCALAPPDATA%\Programs\switchboard\Switchboard.exe` with `SWITCHBOARD_MOCK_UPDATES=1` set. Uninstall it from Settings › Apps afterwards.
 
 `SWITCHBOARD_DISABLE_AUTO_UPDATE=1` turns updates off for a run, with that reason shown in Settings → About. `Switchboard --version` prints the version and exits.

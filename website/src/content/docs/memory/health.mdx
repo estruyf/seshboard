@@ -1,0 +1,53 @@
+---
+title: Memory health
+description: Find memories that point at things that are gone, say the same thing, or don't fit in what loads, and fix them.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+Memory goes stale as a project changes. Health looks through the project's memory and your personal memory for things to look at, and gives each one something to do. Switchboard never changes a memory on its own: every fix is one you start.
+
+<Screenshot name="memory-health" alt="The health findings on the Memory tab: a memory that names a file that is gone with Open, two duplicates with Compare, MEMORY.md out of step with Fix index, and old memories listed without a button" eager />
+
+## Open it
+
+On a project's [Memory tab](/projects/memory/), the header of **What loads in a session here** says "Health: 2 to look at" (or "nothing to look at"). Click **Show** to list the findings, and **Hide** to put them away.
+
+A memory with a finding also shows a small warning sign on its row; hover it to see what.
+
+## What it checks
+
+| Finding | What to do |
+|---|---|
+| A memory names a file, an `npm run` script or a `make` target the project no longer has. | **Open** opens the memory with the reference marked. |
+| Two memories say the same thing: the same name in two folders, or nearly the same description or text. | **Compare** shows them side by side. |
+| `MEMORY.md` misses memories, or has lines for files that are gone. | **Fix index** shows the change first. |
+| `MEMORY.md` is past what loads (200 lines or 25 KB). | **Tidy with Claude…** |
+| Memories nobody changed for 180 days. | Only listed. |
+
+Health checks file names against the repository (what git tracks and what is on disk), `package.json` and the `Makefile`. It leaves names of functions, flags, URLs and patterns alone, to keep false alarms out.
+
+## Fix a finding
+
+### Compare
+
+**Compare** shows the two memories side by side. Choose **Keep left** or **Keep right** (the other goes to the Trash), or **Merge into left…**, which adds the right one's text under the left one's and moves the right one to the Trash. Both ask first, and the toast has Undo.
+
+### Fix index
+
+**Fix index** shows the change to `MEMORY.md`: a line for each memory it doesn't list, and no lines for files that are gone. Nothing else changes. Click **Fix index** (<Kbd keys="mod+enter" />) to write it.
+
+### Tidy with Claude
+
+**Tidy with Claude…** opens [New session](/new-session/form/) in the project with a prompt that asks Claude to shorten `MEMORY.md` to fit in 200 lines without dropping facts. Read it, change it if you like, and start it yourself. Switchboard doesn't run anything.
+
+<Aside>
+Results are kept until a file in the memory folders, or the repository's checked-out commit, changes.
+</Aside>
+
+## Settings
+
+Health has no settings. See [What loads in a session](/memory/what-loads/#the-200-line-limit) for the <Pill tone="memory">MEMORY.md</Pill> limit.

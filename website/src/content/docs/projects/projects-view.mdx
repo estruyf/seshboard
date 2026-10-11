@@ -1,0 +1,130 @@
+---
+title: Projects
+description: Add, order, rename and remove the folders you work in, and open each project's own page.
+sidebar:
+  label: Projects view
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Projects are the folders you work in with Switchboard. They are listed in the sidebar and in New session, in the order you set here. The **Projects** view is where you add, order, rename and remove them, and where you open each project's own page.
+
+<Screenshot name="projects-view" alt="The Projects view: a list of projects, each with its icon, name, new-session defaults, session count and a worktree pill that says how many worktrees there are and how many can go" eager />
+
+## Open it
+
+- Click the folder icon (**Projects**) at the bottom of the sidebar. Click it again to go back to your session.
+- Run *Manage projects* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />).
+- Choose **Manage projects…** at the bottom of the project filter at the top of the sidebar.
+
+To add a project straight away, run *Add project…* in the palette, click the **+** folder button next to the project filter, or choose **Add project…** in that filter.
+
+## Add a project
+
+<Steps>
+
+1. Click **Add project** in the view's header (or **Add a project** when the list is empty).
+2. Pick a folder from the list. It shows the folders you have used Claude Code in, most recent first, with how many sessions each has. Type to filter by name or path, and use the arrow keys and <Kbd keys="enter" /> to add one.
+3. For a folder that isn't listed, click **Choose folder…** and pick any folder.
+4. Add as many as you like, then click **Done**.
+
+</Steps>
+
+When you close the dialog, Switchboard opens the last project you added on its **Settings** tab, so you can set its [defaults](/projects/settings/) right away.
+
+## How to use it
+
+Each row shows the project's icon and name, its new-session defaults ("Opus · high effort · worktree", or *Global defaults*), how many sessions it has and when it was last active. A project whose folder is missing says **Folder not found**. With more than one [Claude profile](/settings/claude-profiles/), the row also shows the profile the project uses.
+
+On the right of each row:
+
+- The **worktree pill** ("6 worktrees · 2 can go") shows how many worktrees the project has besides its main checkout. It turns green when some can go. Click it to open the project's [Worktrees tab](/projects/worktrees/). Projects without extra worktrees, or outside git, don't have one.
+- The pen button starts a **new session** in the project.
+- **⋯** opens the project's menu.
+- The up and down arrows move the project in the list.
+
+### Reorder projects
+
+Use the up and down arrows on a row. The order is used by the sidebar's project filter and, when *Project order* is set to *Your order*, by New session, Home and the command palette.
+
+### Rename a project
+
+Choose **Rename project…** in the project's **⋯** menu, or click its icon. Only Switchboard uses the new name: the folder on disk keeps its own. Leave the field empty, or click **Use folder name**, to go back to the folder's name.
+
+### Change the icon
+
+Switchboard picks up a project's icon from the repository when it can: a logo or favicon in the usual places, the `icon` in `package.json`, or an `iconPath` you set in `.switchboard.json`:
+
+```json
+{ "iconPath": "assets/logo.svg" }
+```
+
+To set your own, click the project's icon (or open its **⋯** menu) and choose under **Project icon**:
+
+- **Choose image…** picks an image file.
+- **Use emoji…** opens an emoji picker. You can also type any emoji in its field.
+- **Use letter** shows the first letter of the name.
+- **Detect automatically** goes back to the icon found in the repository.
+
+### The project menu
+
+The **⋯** menu on a row has the icon choices, **Rename project…** and **Open folder in editor**, plus:
+
+- **Claude profile**, to link the project to a profile (only with more than one profile).
+- **Open project**, **Worktrees…** and **Branches…**, to open the project's page on that tab.
+- **Project settings…**, to open its Settings tab.
+- **Remove from Switchboard…**
+
+The same menu opens from a project in the sidebar's project filter.
+
+### Remove a project
+
+Choose **Remove from Switchboard…** in the project's **⋯** menu and confirm with **Remove**. The project disappears from the sidebar and New session. Nothing on disk changes: the folder, its files and its sessions stay, its sessions are still found by [search](/sessions/search/), and you can add it again later.
+
+## Open a project's page
+
+Every project has its own page with its sessions, worktrees, branches, memory, actions and settings. Open it by:
+
+- clicking the project's name in the Projects view;
+- choosing **Open project** in the project's menu in the sidebar;
+- running *Project: &lt;name&gt;* in the command palette;
+- pressing <Kbd shortcut="palette.goto" /> and picking the project.
+
+<Screenshot name="project-overview" alt="A project page for acme-store: the breadcrumb, the project's icon and name, its folder, branch and upstream, Open in editor and New session buttons, and the tabs Overview, Sessions, Worktrees, Branches, Memory, Actions and Settings" />
+
+### The header
+
+A breadcrumb (**Projects**) takes you back to the list. Below it are the project's icon and name, and a line with its folder, the branch checked out and its upstream. Click the icon to change it or rename the project.
+
+On the right:
+
+- **Open in editor** opens the folder in your editor.
+- **New session** starts a session in this project. While the page is open, <Kbd shortcut="session.new" /> starts in this project too.
+
+### The tabs
+
+| Tab | What it shows |
+|---|---|
+| [Overview](/projects/overview/) | A card per area: sessions, worktrees, branches, memory, the queue and git. |
+| [Sessions](/projects/sessions/) | The project's sessions, grouped as in the sidebar, and its queued prompts. |
+| [Worktrees](/projects/worktrees/) | Every worktree of the repository, and which ones can go. |
+| [Branches](/projects/branches/) | Every branch, here and on the remote, and which ones can go. |
+| [Memory](/projects/memory/) | What Claude Code remembers about the project, its instructions, and your personal memory. |
+| [Actions](/projects/actions/) | The project's actions. |
+| [Settings](/projects/settings/) | The Claude profile, defaults for new sessions, and the name and icon. |
+
+Sessions, Worktrees, Branches, Memory and Actions show a count. With a tab focused, use <Kbd keys="arrowleft|arrowright" /> to move between tabs.
+
+A project opens on the tab you left it on, for as long as the app runs. The first time, it opens on Overview.
+
+## Settings
+
+**Settings → General → Project order** chooses how New session, Home and the command palette list your projects:
+
+- *Recent* (the default): the ones you used last first.
+- *Your order*: the order you set in the Projects view.
+
+See [Settings](/settings/#general).

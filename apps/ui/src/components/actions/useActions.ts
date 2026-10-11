@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ListedAction } from '@switchboard/protocol/client';
+import { isAbsolutePath, type ListedAction } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 
 export { ACTION_ICON } from './actionIcon.ts';
-export { ariaShortcut, formatShortcut, RESERVED_SHORTCUTS, shortcutFromEvent } from '../../lib/shortcuts.ts';
+export { ariaShortcut, formatShortcut, reservedShortcuts, shortcutFromEvent } from '../../lib/shortcuts.ts';
 
 /** A project's actions (yours, shared and global), reloaded on demand. */
 export function useProjectActionList(projectRoot: string | null) {
@@ -14,7 +14,7 @@ export function useProjectActionList(projectRoot: string | null) {
 
   useEffect(() => {
     // Sessions without a recorded folder have no project to hold actions.
-    if (!client || !projectRoot?.startsWith('/')) {
+    if (!client || !(projectRoot && isAbsolutePath(projectRoot))) {
       setState({ actions: [], sharedFile: null, errors: [] });
       return;
     }

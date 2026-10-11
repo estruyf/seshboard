@@ -1,11 +1,12 @@
+import { asFolder, relativeTo } from './contextItems.ts';
+
 /**
  * The `@` mention for a dropped file or folder: relative to the session's folder when it is inside it
  * (like the `@` file picker inserts), absolute otherwise. Folders end in `/`; paths with spaces are quoted.
  */
 export function mentionFor(path: string, cwd: string | null, directory: boolean): string {
-  const root = cwd?.replace(/\/+$/, '');
-  let target = root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
-  if (directory && !target.endsWith('/')) target += '/';
+  let target = relativeTo(path, cwd);
+  if (directory) target = asFolder(target);
   return /\s/.test(target) ? `@"${target}"` : `@${target}`;
 }
 

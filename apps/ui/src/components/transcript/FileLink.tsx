@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useOpenIn } from '../OpenInButton.tsx';
-import { createPathResolver, type FileRef, type PathResolver } from './fileRefs.ts';
+import { createPathResolver, fileUrl, type FileRef, type PathResolver } from './fileRefs.ts';
 
 const FileLinkContext = createContext<PathResolver | null>(null);
 
@@ -55,7 +55,7 @@ export function FileLink({ fileRef, fallback, children }: { fileRef: FileRef | n
   return (
     <>
       <a
-        href={`file://${encodeURI(path)}`}
+        href={fileUrl(path)}
         onClick={(event) => {
           // The main process would refuse a file:// link anyway; the engine opens it in the editor.
           event.preventDefault();

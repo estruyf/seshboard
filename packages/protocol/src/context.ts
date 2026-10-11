@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AbsolutePath } from './absolutePath.ts';
 import { MAX_CONTEXT_ITEMS } from './companionConstants.ts';
 
 /** Lines `start` to `end` of a file, counted from 1, both included. */
@@ -6,8 +7,6 @@ export const LineRange = z
   .object({ start: z.number().int().min(1), end: z.number().int().min(1) })
   .refine((range) => range.end >= range.start, 'A range ends on or after the line it starts on');
 export type LineRange = z.infer<typeof LineRange>;
-
-const ContextPath = z.string().min(1).max(4096).startsWith('/');
 
 /**
  * Something added to a message as context (a chip in the message box), before it is sent.
@@ -20,7 +19,7 @@ const ContextPath = z.string().min(1).max(4096).startsWith('/');
 export const ContextItem = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('file'),
-    path: ContextPath,
+    path: AbsolutePath,
     directory: z.boolean().default(false),
     range: LineRange.optional(),
   }),
@@ -30,7 +29,7 @@ export const ContextItem = z.discriminatedUnion('kind', [
     /** What the chip says, such as "Problems in auth.ts". */
     label: z.string().trim().min(1).max(200),
     text: z.string().max(200_000),
-    path: ContextPath.optional(),
+    path: AbsolutePath.optional(),
     range: LineRange.optional(),
     /** The language of the text, for the code fence (`ts`, `python`). */
     language: z.string().max(40).regex(/^[\w+#.-]*$/).optional(),

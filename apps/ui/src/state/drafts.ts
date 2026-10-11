@@ -1,4 +1,4 @@
-import type { ContextItem } from '@switchboard/protocol/client';
+import { isAbsolutePath, type ContextItem } from '@switchboard/protocol/client';
 import type { Choices } from '../components/newSession/choices.ts';
 import { addChips, chipsSummary, type ContextChip } from '../components/composer/contextItems.ts';
 import { spokenAge } from '../components/sidebar/rowLabel.ts';
@@ -156,14 +156,14 @@ function parseContext(value: unknown): ContextItem[] {
   for (const raw of value) {
     if (!isRecord(raw) || (raw.range !== undefined && !isRange(raw.range))) continue;
     const range = raw.range === undefined ? {} : { range: raw.range as { start: number; end: number } };
-    if (raw.kind === 'file' && typeof raw.path === 'string' && raw.path.startsWith('/')) out.push({ kind: 'file', path: raw.path, directory: raw.directory === true, ...range });
+    if (raw.kind === 'file' && typeof raw.path === 'string' && isAbsolutePath(raw.path)) out.push({ kind: 'file', path: raw.path, directory: raw.directory === true, ...range });
     else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output')) {
       out.push({
         kind: 'text',
         source: raw.source,
         label: raw.label,
         text: raw.text,
-        ...(typeof raw.path === 'string' && raw.path.startsWith('/') ? { path: raw.path } : {}),
+        ...(typeof raw.path === 'string' && isAbsolutePath(raw.path) ? { path: raw.path } : {}),
         ...(typeof raw.language === 'string' ? { language: raw.language } : {}),
         ...range,
       });

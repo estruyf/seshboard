@@ -9,6 +9,8 @@ Running Switchboard from source, testing it, and how the code is organised. See 
 - macOS, Node 24+, npm 11+
 - Claude Code installed and signed in (`claude` on your PATH)
 
+On Windows 10 or 11 the same commands work, with [Git for Windows](https://gitforwindows.org) and PowerShell 7 recommended (Windows PowerShell 5.1 works). `node-pty` ships prebuilt binaries, so no Visual Studio build tools are needed. A few tests make symbolic links and are skipped unless Developer Mode is on (Settings › System › For developers). Run `npm run check` and `npm run smoke` on both platforms before a change goes in: see [Windows support](windows-support.md) for what differs.
+
 ## Commands
 
 ```bash

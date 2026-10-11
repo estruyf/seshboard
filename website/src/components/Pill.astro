@@ -1,0 +1,78 @@
+---
+/**
+ * A small rounded chip, like the app's `Pill`. The tones are the app's status colours and mean the same
+ * thing: `needs-you` (pink), `working` (yellow ink), `background` (green, running in the background),
+ * `unread` (blue), `failed` (red), `caution` (look before it goes), `link` (an open pull request).
+ * `memory` is Claude Code memory's own hue (MEMORY.md), never a status.
+ * `default` and `muted` are plain labels. Never use a status tone for decoration.
+ */
+type Tone = 'default' | 'muted' | 'needs-you' | 'working' | 'background' | 'unread' | 'failed' | 'caution' | 'link' | 'memory';
+interface Props {
+  tone?: Tone;
+  /** A dot before the label, in the tone's colour (the sidebar's status dot). */
+  dot?: boolean;
+}
+const { tone = 'default', dot = tone !== 'default' && tone !== 'muted' && tone !== 'link' && tone !== 'memory' } = Astro.props;
+---
+
+<span class:list={['sb-pill', 'not-content', `tone-${tone}`]}>{dot && <span class="sb-pill-dot" aria-hidden="true" />}<slot /></span>
+
+<style>
+  .sb-pill {
+    --c: var(--sb-text);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    height: 1.75em;
+    padding: 0 0.7em;
+    border: 1px solid var(--sb-border);
+    border-radius: 999px;
+    color: var(--c);
+    font-size: var(--sb-text-meta);
+    line-height: 1;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .sb-pill-dot {
+    width: 0.5em;
+    height: 0.5em;
+    border-radius: 999px;
+    background: var(--c);
+  }
+  .tone-muted {
+    --c: var(--sb-muted);
+    background: var(--sb-card);
+  }
+  .tone-needs-you {
+    --c: var(--sb-warn);
+  }
+  .tone-working {
+    --c: var(--sb-accent-ink);
+  }
+  .tone-background {
+    --c: var(--sb-ok);
+  }
+  .tone-unread {
+    --c: var(--sb-unread);
+  }
+  .tone-failed {
+    --c: var(--sb-error);
+  }
+  .tone-caution {
+    --c: var(--sb-caution);
+  }
+  .tone-link {
+    --c: var(--sb-link);
+  }
+  .tone-memory {
+    --c: var(--sb-memory);
+  }
+  .sb-pill:is(.tone-needs-you, .tone-working, .tone-background, .tone-unread, .tone-failed, .tone-caution, .tone-link, .tone-memory) {
+    border-color: color-mix(in srgb, var(--c) 40%, transparent);
+    background: color-mix(in srgb, var(--c) 10%, transparent);
+  }
+  .tone-working {
+    border-color: color-mix(in srgb, var(--sb-accent-ink) 45%, transparent);
+    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
+  }
+</style>

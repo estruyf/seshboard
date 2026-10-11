@@ -1,8 +1,8 @@
 import { ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { LoadEntry } from '@switchboard/protocol/client';
+import { isSameOrInside, separatorOf, type LoadEntry } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { tildify } from '../../lib/format.ts';
+import { pathTail, tildify } from '../../lib/format.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { Select } from '../ui/Select.tsx';
 import { barSegments, formatSize, KIND_FILL, legendItems, loadSummary, loadedBytes } from './loadOrderView.ts';
@@ -61,9 +61,9 @@ export function LoadOrderCard({ root, home, onSelect, extra }: { root: string; h
   };
   // Inside the project: relative to it. Elsewhere: `~/…`, or the last two parts of a path outside your home folder.
   const label = (path: string) => {
-    if (path.startsWith(`${root}/`)) return path.slice(root.length + 1);
+    if (path !== root && isSameOrInside(path, root)) return path.slice(root.replace(/[\\/]+$/, '').length + 1);
     const short = tildify(path, home);
-    return short.startsWith('~') ? short : `…/${path.split('/').slice(-2).join('/')}`;
+    return short.startsWith('~') ? short : `…${separatorOf(path)}${pathTail(path, 2)}`;
   };
   const segments = useMemo(() => barSegments(entries ?? []), [entries]);
   const legend = useMemo(() => legendItems(entries ?? [], label), [entries, root, home]);

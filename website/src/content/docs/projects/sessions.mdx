@@ -1,0 +1,51 @@
+---
+title: Sessions
+description: A project's Sessions tab lists its sessions the way the sidebar does, with its queued prompts and archived sessions.
+sidebar:
+  label: Sessions tab
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+The **Sessions** tab of a project's page lists every session in that project, grouped the same way as the [sidebar](/sessions/sidebar/). Prompts queued for the project are at the top, and archived sessions are at the end.
+
+<Screenshot name="project-sessions" alt="The Sessions tab of acme-store: queued prompts at the top, then sessions under Needs you, Working and Today, with Archived closed at the bottom" eager />
+
+## Open it
+
+- Click **Sessions** on a project's page. The tab shows how many sessions the project has.
+- Click the **Sessions** or **Queue** card on the [Overview tab](/projects/overview/).
+
+See [Open a project's page](/projects/projects-view/#open-a-projects-page) for the ways to get to the page.
+
+## How to use it
+
+### Queued prompts
+
+When prompts are [queued](/new-session/queue/) for this project, they are listed first, under **Queued in &lt;project&gt;**. Each shows its prompt and the choices it starts with ("Opus · worktree · queued 25m ago"). Click **Edit** to open it in New session, or **×** to remove it from the queue.
+
+### Sessions
+
+The project's sessions are in the same groups as the sidebar: <Pill tone="needs-you">Needs you</Pill> first, then <Pill tone="working">Working</Pill>, **Pinned**, and **Today**, **Yesterday** and **Earlier**. Each row looks and works like a sidebar row:
+
+- Click a session to open it.
+- <Kbd shortcut="sidebar.open-beside" /> opens it beside the current session, in [split view](/sessions/split-view/).
+- Right-click a row, or press <Kbd shortcut="context-menu" />, for the session's menu (rename, pin, archive, delete and more).
+- Middle-click a finished session to archive it.
+
+A row that needs you says what it waits for, such as a permission or a question.
+
+### Archived sessions
+
+Sessions that have been quiet for 48 hours, or that you archived, are under **Archived** at the end. Click its header to open or close it. It starts closed, unless the project has no other sessions. An archived session comes back when there is something new. See [Archived](/sessions/archived/).
+
+### No sessions yet
+
+A project without sessions says so, with a **New session** button. You can also click **New session** in the page's header, or press <Kbd shortcut="session.new" /> while the page is open, to start one in this project.
+
+## Settings
+
+The groups follow the sidebar. **Settings → Sidebar** changes how rows look. See [Settings](/settings/#sidebar).

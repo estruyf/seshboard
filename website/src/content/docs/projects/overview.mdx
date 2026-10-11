@@ -1,0 +1,42 @@
+---
+title: Overview
+description: A project's Overview tab shows one card per area, each opening its own tab.
+sidebar:
+  label: Overview tab
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+The **Overview** tab is the first tab of a project's page. It sums up the project in a few cards: its sessions, worktrees, branches, memory, queue and git. Click a card to open the tab with the details.
+
+<Screenshot name="project-overview" alt="The Overview tab of acme-store: cards for Sessions, Worktrees, Branches, Memory and Git, each with a one-line summary" eager />
+
+## Open it
+
+Open a project's page from the [Projects view](/projects/projects-view/#open-a-projects-page), **Open project** in a project's menu in the sidebar, or *Project: &lt;name&gt;* in the command palette (<Kbd shortcut="palette.commands" first />). The page opens on Overview the first time, and later on the tab you left it on. Click **Overview** in the tab row to come back to it.
+
+## How to use it
+
+Each card has a heading and one line:
+
+| Card | What it says | Opens |
+|---|---|---|
+| **Sessions** | How many sessions are working (in yellow), how many need you (in pink), and the total. | [Sessions](/projects/sessions/) |
+| **Worktrees** | How many worktrees the project has besides its main checkout, their size on disk, and how many are safe to remove (in green). | [Worktrees](/projects/worktrees/) |
+| **Branches** | How many local branches, how many on the remote, and how many are safe to delete. | [Branches](/projects/branches/) |
+| **Memory** | How many memories the project has, and how full its `MEMORY.md` is ("MEMORY.md 186/200"): orange from 180 lines, red past the 200 that load. | [Memory](/projects/memory/) |
+| **Queue** | How many prompts are queued for this project, and how many are ready. Only shown when something is queued. | [Sessions](/projects/sessions/) |
+| **Git** | The branch checked out (or *detached HEAD*), how many commits it is behind its upstream, how many commits are left to push, and how many files have changed. | [Branches](/projects/branches/) |
+
+Outside a git repository, the Worktrees, Branches and Git cards say **Not a git repository**. While Switchboard reads the repository, they say **Reading…**.
+
+<Aside>
+Sizes on disk are measured in the background. The Worktrees card shows the total once the sizes are in.
+</Aside>
+
+## Settings
+
+Nothing changes the Overview itself. A project's defaults for new sessions are on its [Settings tab](/projects/settings/).

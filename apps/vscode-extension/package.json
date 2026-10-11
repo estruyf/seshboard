@@ -36,7 +36,10 @@
   ],
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true
+      "supported": true,
+      "restrictedConfigurations": [
+        "switchboard.appDataFolder"
+      ]
     },
     "virtualWorkspaces": false
   },
@@ -221,6 +224,7 @@
         "switchboard.appDataFolder": {
           "type": "string",
           "default": "",
+          "scope": "application",
           "markdownDescription": "Where Switchboard keeps its data, when it isn't in the usual place (a build started with `SWITCHBOARD_DATA_DIR`). Leave empty to find the installed app, then a development build."
         }
       }

@@ -1,21 +1,28 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
+import { removeDir } from '../util/removeDir.ts';
 import { MARK_END, MARK_START, SearchIndex, searchableText, toFtsQuery } from './searchIndex.ts';
 
 const user = (uuid: string, text: string): RawSessionMessage => ({ type: 'user', uuid, message: { role: 'user', content: text }, parent_tool_use_id: null });
 const claude = (uuid: string, text: string): RawSessionMessage => ({ type: 'assistant', uuid, message: { role: 'assistant', content: [{ type: 'text', text }] }, parent_tool_use_id: null });
 
 const dirs: string[] = [];
-afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
+const caches: Array<{ close(): void }> = [];
+afterEach(async () => {
+  // Closed first: Windows won't delete a folder with an open database in it.
+  caches.splice(0).forEach((cache) => cache.close());
+  await Promise.all(dirs.splice(0).map((d) => removeDir(d)));
+});
 
 function setup(transcripts: Record<string, RawSessionMessage[]>, versions: Record<string, string>) {
   const dir = mkdtempSync(join(tmpdir(), 'switchboard-search-'));
   dirs.push(dir);
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
+  caches.push(cache);
   let reads = 0;
   const source = {
     list: async () => [],

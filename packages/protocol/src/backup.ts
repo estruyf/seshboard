@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AbsolutePath, AnyAbsolutePath } from './absolutePath.ts';
 import { BACKUP_SECTIONS, SETTINGS_FILE_FORMAT } from './backupConstants.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 
@@ -6,7 +7,6 @@ export { BACKUP_SECTIONS, SETTINGS_FILE_FORMAT, settingsFileName, type BackupSec
 
 export const BackupSectionSchema = z.enum(BACKUP_SECTIONS);
 
-const AbsolutePath = z.string().min(1).max(4096).startsWith('/');
 const SessionId = z.string().min(1).max(200);
 
 /** Image types a project icon can have (the same ones Settings accepts). */
@@ -22,7 +22,7 @@ export type ExportedIcon = z.infer<typeof ExportedIcon>;
 
 /** One added project, in the user's order. `name: null` uses the folder's name, `icon: null` the detected icon. */
 export const ExportedProject = z.object({
-  path: AbsolutePath,
+  path: AnyAbsolutePath,
   /** A name that doesn't fit is dropped, not the whole project. */
   name: z.string().min(1).max(PROJECT_NAME_MAX).nullable().default(null).catch(null),
   icon: ExportedIcon.nullable().default(null),
@@ -47,7 +47,7 @@ export const SettingsFile = z.object({
   actions: z
     .object({
       global: z.array(z.unknown()).max(1000).default([]),
-      projects: z.array(z.object({ path: AbsolutePath, actions: z.array(z.unknown()).max(1000) })).max(5000).default([]),
+      projects: z.array(z.object({ path: AnyAbsolutePath, actions: z.array(z.unknown()).max(1000) })).max(5000).default([]),
     })
     .optional(),
   /** App choices by key (default editor, New session defaults, …); only known keys are imported. */
@@ -111,6 +111,6 @@ export type ImportPreview = z.infer<typeof ImportPreview>;
 export const ImportMode = z.enum(['merge', 'replace']);
 export type ImportMode = z.infer<typeof ImportMode>;
 
-/** A project folder from the file pointed at a folder on this Mac. */
-export const FolderMapping = z.object({ from: AbsolutePath, to: AbsolutePath });
+/** A project folder from the file (in any platform's form: it may come from a Mac or a PC) pointed at a folder here. */
+export const FolderMapping = z.object({ from: AnyAbsolutePath, to: AbsolutePath });
 export type FolderMapping = z.infer<typeof FolderMapping>;

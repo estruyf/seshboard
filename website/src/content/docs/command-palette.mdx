@@ -1,0 +1,237 @@
+---
+title: Command palette
+description: Run any command, jump to a session or project, and start a new session from the keyboard.
+---
+
+import Kbd from '../../components/Kbd.astro';
+import Screenshot from '../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The command palette puts everything Switchboard can do one search away. It lists the commands that fit where you are, jumps to any session or project, and starts a new session without leaving the keyboard.
+
+<Screenshot name="palette" alt="The command palette open over the main window, listing commands grouped under This session and Git, each with its icon and shortcut" eager />
+
+## Open it
+
+| Press | What opens |
+|---|---|
+| <Kbd shortcut="palette.commands" /> | The commands |
+| <Kbd shortcut="palette.goto" /> | Go to a session or project |
+
+In the terminal, <Kbd keys="mod+k" /> clears the terminal, so use <Kbd keys="mod+shift+p" /> there. Pressing the other shortcut while the palette is open switches it in place. <Kbd keys="escape" /> closes it.
+
+## Prefixes
+
+What you type first decides what the palette lists, as in VS Code:
+
+| Type | Lists |
+|---|---|
+| (nothing) | Go to a session or project (<Kbd shortcut="palette.goto" />) |
+| `>` | Commands (<Kbd shortcut="palette.commands" first />) |
+| `+` | New session in a project: goes straight to picking a project |
+| `!` | The project actions of the session you have open, to run one |
+| `?` | Help: these prefixes, and the keyboard shortcuts sheet |
+
+<Kbd keys="backspace" /> in an empty field leaves a prefix and goes back to Go to.
+
+## Go to a session or project
+
+With nothing typed, Go to lists your sessions under the sidebar's own headings, in its order: Needs you, Working, Pinned, Today, Yesterday, Earlier. Unsent messages come first. It can stand in for the sidebar while that is closed. Type a few letters to match session titles and project names; projects follow under **Projects**.
+
+- <Kbd keys="enter" /> opens the session. On a project, it starts a new session there.
+- <Kbd keys="alt+enter" /> opens the session beside the current one, in [split view](/sessions/split-view/).
+
+<Screenshot name="palette-goto" alt="The palette in Go to mode: sessions grouped as in the sidebar, with Needs you and Working on top" width={720} />
+
+## Commands
+
+With nothing typed, the commands for where you are come first, in groups:
+
+- **This session**: the session you have open.
+- **Git**: when its folder is a git repository.
+- **Project actions**: the session's project actions, as *Run: &lt;action&gt;*.
+- **Terminal**: while the terminal panel is open.
+- **Split view**: with two sessions side by side.
+- **New session**: while New session is open.
+- **Settings**: while Settings is open, to go to a section.
+
+Then **Recently used** (the last five commands you ran in this window), then the rest under **Commands**. Type to search: the palette matches titles, and a few other words each command answers to (*Archive* also answers to "done", *Change model…* to "opus"). A command only shows when it can run; nothing is ever listed greyed out.
+
+Each row shows the command's shortcut, when it has one, so the palette also teaches you the keys.
+
+## Steps
+
+A command whose title ends in **…** asks for more: picking it shows its next step, and the command becomes a chip in the field. *Change model…* lists the models, *Fork session…* the messages to fork from, *Focus limit: set limit…* the numbers. In a list, <Kbd keys="mod+1..9" /> picks a row by its number.
+
+<Kbd keys="backspace" /> in an empty field goes back one step, with what you had typed there.
+
+### Start a new session
+
+*New session…* (or `+`) ends in a small New session form:
+
+<Steps>
+
+1. Pick a project. Type to filter, or press <Kbd keys="mod+1..9" />. <Kbd keys="alt+enter" /> picks it in a [new worktree](/new-session/worktrees/), and <Kbd keys="mod+o" /> chooses any folder.
+2. Write the prompt. The form has the route (current checkout and branch, or a new worktree) and the profile, model, effort and mode chips, starting from the project's defaults. Click the project to pick another one; the prompt comes along.
+3. Press <Kbd keys="mod+enter" /> to start.
+
+</Steps>
+
+| Key | In the prompt step |
+|---|---|
+| <Kbd keys="mod+enter" /> | Start the session |
+| <Kbd keys="mod+shift+enter" /> | Add the prompt to the [queue](/new-session/queue/) |
+| <Kbd keys="mod+e" /> | More options: move the prompt and choices to the full [New session](/new-session/form/) view |
+| <Kbd keys="backspace" /> | Back to the project list |
+| <Kbd keys="escape" /> | Close; the prompt is kept as the project's unsent prompt |
+
+<Screenshot name="palette-new-session" alt="The palette's New session step: recent projects, each with its branch, its status and a shortcut from ⌘1 to ⌘4" width={720} />
+
+## Every command
+
+Titles in angle brackets show the name of the current project, action or theme. The current project is the project page on screen, the open session's project, or else the project the sidebar is filtered to. "Session open" means the session view shows a session.
+
+### General
+
+| Command | Shows | Shortcut |
+|---|---|---|
+| *New session…* | Always | <Kbd shortcut="session.new" /> |
+| *New session in &lt;project&gt;* | A project's page or a session is open, or the sidebar is filtered to a project | |
+| *Quick question…* | Connected to the engine | <Kbd shortcut="session.question" /> |
+| *New session in a worktree…* | Always | |
+| *Go to session…* | Always | <Kbd shortcut="palette.goto" /> |
+| *Next session* | Always | <Kbd shortcut="session.next" /> |
+| *Previous session* | Always | <Kbd shortcut="session.previous" /> |
+| *Go to next session that needs you* | Always | <Kbd shortcut="session.next-needs-you" /> |
+| *Toggle sidebar* | Always | <Kbd shortcut="sidebar.toggle" /> |
+| *Open sidebar* | The sidebar isn't open | |
+| *Minimize sidebar* | The sidebar isn't the minimal rail | |
+| *Close sidebar* | The sidebar isn't closed | |
+| *Home* | You are not on Home | <Kbd shortcut="home" /> |
+| *Search conversations* | Always | <Kbd shortcut="search" /> |
+| *Search memory…* | Connected to the engine | |
+| *Settings* | Settings isn't open | <Kbd shortcut="settings" /> |
+| *Sidebar: Compact*, *Sidebar: Standard*, *Sidebar: Large icons* | Each one except the style in use | |
+| *Appearance: Match System*, *Appearance: Light*, *Appearance: Dark* | Each one except the appearance in use | |
+| *Theme: &lt;name&gt;* | Each theme except the one in use | |
+| *Import theme…* | Always | |
+| *Export current theme…* | Always | |
+| *Manage projects* | The Projects view isn't open | |
+| *Add project…* | Always | |
+| *Project: &lt;name&gt;* | Each project except the page already open | |
+| *Worktrees in &lt;project&gt;* | The current project is one of your projects | |
+| *Worktrees…* | You have projects | |
+| *Branches in &lt;project&gt;* | The current project is one of your projects | |
+| *Branches…* | You have projects | |
+| *Clean up worktrees in &lt;project&gt;…* | The current project is one of your projects | |
+| *Rename project…* | You have projects | |
+| *Memory…* | Always: the current project's Memory tab, else Settings › Memory | |
+| *Memory settings…* | Always | |
+| *Import memory from Claude export…* | Connected to the engine | |
+| *Paste memory from Claude app…* | Connected to the engine | |
+| *Copy memory for Claude app…* | Connected to the engine | |
+| *Share memory with the team…* | The current project is one of your projects | |
+| *Check for Claude Code updates…* | Always | |
+| *Reload skills* | Connected to the engine | |
+| *Export settings…* | Always | |
+| *Import settings…* | Always | |
+| *VS Code extension* | Always | |
+| *Engine diagnostics* | Always | |
+| *Keyboard shortcuts* | Always | <Kbd shortcut="shortcuts" /> |
+| *Focus limit: turn on* | The focus limit is off | |
+| *Focus limit: turn off* | The focus limit is on | |
+| *Focus limit: set limit…* | Always | |
+| *Unsent messages…* | You have unsent messages | |
+| *Start next in queue* | A queued item is ready | |
+| *Queue: pick one to start…* | Something is queued | |
+| *Add to queue* (in New session with a prompt) or *Add to queue…* (elsewhere, opens New session) | Connected to the engine | <Kbd shortcut="new-session.queue" /> |
+
+Commands that need the engine (Switchboard's background process) hide while it isn't connected.
+
+### This session
+
+| Command | Shows | Shortcut |
+|---|---|---|
+| *Rename session…* | Session open | |
+| *Pin* or *Unpin* | Session open | |
+| *Archive* or *Unarchive* | Session open | |
+| *Fork session…* | The session has a prompt or a reply | |
+| *Rewind to a message…* | The session has a prompt | |
+| *Compact context* | The session runs in Switchboard and its context isn't empty | |
+| *Change model…* | The session runs in Switchboard | |
+| *Change effort…* | The session runs in Switchboard on a model with effort | |
+| *Change permission mode…* | The session runs in Switchboard | <Kbd shortcut="mode.cycle" /> |
+| *Copy last reply* | Claude has replied | |
+| *Remember this…* | Claude has replied | |
+| *Copy session id* | Session open | |
+| *Check transcript…* | Session open | |
+| *Toggle terminal* | Session open | <Kbd shortcut="terminal.toggle" /> |
+| *New terminal tab* | The session has a folder | |
+| *Toggle changes* | The session has a folder | <Kbd shortcut="changes.toggle" /> |
+| *Tools: MCP servers, skills, agents, plugins* | The session has a folder | |
+| *Open folder in editor* | The session has a folder | <Kbd shortcut="editor.open" /> |
+| *Reveal folder in Finder* | The session has a folder | |
+| *Add context…* | A message box is on screen | <Kbd shortcut="composer.add-context" /> |
+| *Continue in VS Code* | VS Code is installed and the session isn't working | |
+| *Close session* | Session open | |
+| *Delete session…* | Session open | |
+| *Stop Claude* | Claude is working in Switchboard | <Kbd shortcut="claude.stop" /> |
+| *Go to the permission* or *Go to the question* | The session needs you | |
+
+### Git
+
+| Command | Shows |
+|---|---|
+| *Commit…* | There are changed files |
+| *Create pull request…* | The branch can have a pull request |
+| *Sync with remote* | The repository has a remote |
+| *Switch branch…* | Not a worktree, and Claude isn't working |
+| *Stage all* | There are unstaged changes |
+| *Revert all changes…* | There are changed files |
+| *Finish worktree…* | The session runs in a worktree |
+
+### Project actions
+
+| Command | Shows | Shortcut |
+|---|---|---|
+| *Run: &lt;action&gt;* | Session open, one per action | The action's own shortcut |
+| *Edit actions…* | The project has actions you can edit | |
+| *New action…* | You can edit the project's actions | |
+
+### Terminal
+
+| Command | Shows | Shortcut |
+|---|---|---|
+| *Hide terminal* | The terminal is open | <Kbd shortcut="terminal.toggle" /> |
+| *Maximize terminal* or *Restore terminal* | The terminal is open | <Kbd shortcut="terminal.maximize" /> |
+| *Dock terminal right* | The terminal is docked below | |
+| *Dock terminal below* | The terminal is docked on the right | |
+| *Stop action* | An action runs in the terminal | <Kbd shortcut="terminal.stop-action" /> |
+| *Restart action* | The terminal shows an action | |
+
+### Split view
+
+| Command | Shows |
+|---|---|
+| *Focus other pane* | Two sessions side by side |
+| *Close this pane* | Two sessions side by side |
+
+### New session
+
+| Command | Shows |
+|---|---|
+| *Toggle worktree* | The picked folder is a git repository |
+| *Save as project default* | The choices on screen differ from the project's defaults |
+| *Update from remote* | The picked project has a remote |
+
+### Settings
+
+*Settings: General*, *Settings: Theme*, *Settings: Sidebar*, *Settings: Conversation*, *Settings: Focus*, *Settings: Claude profiles*, *Settings: Memory*, *Settings: VS Code*, *Settings: Backup*, *Settings: Diagnostics* and *Settings: About* show while Settings is open, each except the section you are on.
+
+<Aside>
+Every key is also on the shortcuts sheet (<Kbd shortcut="shortcuts" />) and in [Keyboard shortcuts](/keyboard-shortcuts/).
+</Aside>
+
+## Settings
+
+*Project order* in [Settings → General](/settings/#general) sets how the palette lists your projects: most recent first, or in your order.

@@ -1,3 +1,4 @@
+import { currentPlatform } from '../../lib/platform.ts';
 import { MoreHorizontal, Plus, Share2, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ACTION_ICONS, type ActionIcon, type ActionSuggestion, type ListedAction } from '@switchboard/protocol/client';
@@ -102,7 +103,7 @@ function ShortcutInput({
             if (e.key === 'Escape') return setRecording(false);
             const shortcut = shortcutFromEvent(e.nativeEvent);
             if (!shortcut) return;
-            if (!shortcut.includes('+')) return setError('Include ⌘, ⌃ or ⌥');
+            if (!shortcut.includes('+')) return setError(currentPlatform() === 'darwin' ? 'Include ⌘, ⌃ or ⌥' : 'Include Ctrl or Alt');
             const problem = check(shortcut);
             if (problem) return setError(problem);
             onChange(shortcut);

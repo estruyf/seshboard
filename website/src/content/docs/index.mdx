@@ -1,0 +1,91 @@
+---
+title: Switchboard
+description: A fast Mac app for running and keeping track of your Claude Code sessions, across all your Claude accounts.
+template: splash
+tableOfContents: false
+editUrl: false
+hero:
+  tagline: A fast Mac app for running and keeping track of your Claude Code sessions.
+---
+
+import Feature from '../../components/Feature.astro';
+import Kbd from '../../components/Kbd.astro';
+import Pill from '../../components/Pill.astro';
+import PromoVideo from '../../components/PromoVideo.astro';
+
+<div class="sb-intro not-content">
+  <p>
+    Switchboard puts all your Claude Code sessions in one window: the ones you start in the app, and the ones running in your terminal. It uses the Claude Code you already have, with your login, settings, commands and skills. Nothing extra to sign in to.
+  </p>
+</div>
+
+<section class="sb-tour not-content">
+  <h2>Watch the one-minute tour</h2>
+  <PromoVideo />
+</section>
+
+<Feature title="Every session, at a glance" shot="sidebar" alt="The sidebar: one session that needs you, one that is working, the queue, a pinned session and today's sessions" href="/sessions/sidebar/" shotWidth={340} flip>
+  <p>One list of all your sessions, across every project and every Claude account. Sessions that <Pill tone="needs-you">Needs you</Pill> sit at the top, then the ones that are <Pill tone="working">Working</Pill>, then the rest by day.</p>
+  <p>You get a notification when a session needs you or finishes, so you can leave it running in the background.</p>
+</Feature>
+
+<Feature title="The command palette" shot="palette-new-session" alt="The command palette on New session: recent projects with their branch and status, and a shortcut for each" href="/command-palette/">
+  <p>Press <Kbd shortcut="palette.commands" first /> for the commands that fit where you are, or <Kbd shortcut="palette.goto" /> to jump to any session or project by typing a few letters.</p>
+  <p>Start a session without leaving the keyboard: pick a project, write the prompt, press <Kbd keys="mod+enter" />.</p>
+</Feature>
+
+<Feature title="A queue, and nothing you typed gets lost" shot="queue" alt="Home with the queue: one prompt ready to start, one waiting for its project to be free, and an unsent message" href="/new-session/queue/" flip>
+  <p>Write the next prompt now and <strong>Add to queue</strong>. Each item says when it is ready, and you start it with one click. Nothing starts by itself.</p>
+  <p>Messages you don't send are kept, also after you quit. A pen in the sidebar shows where they are.</p>
+</Feature>
+
+<Feature title="A focus limit" shot="focus" alt="The focus counter in the sidebar footer showing 2 of 3, with a list of the sessions that count" href="/focus-limit/">
+  <p>Choose how many sessions you want going at the same time. Switchboard shows how many are on your mind, and asks before you start one more.</p>
+</Feature>
+
+<Feature title="Projects, worktrees and branches" shot="project-worktrees" alt="A project's Worktrees tab: worktrees grouped into safe to remove and keep, with their branch, changes, commits and size on disk" href="/projects/projects-view/" flip>
+  <p>Each project has its own page with its sessions, worktrees, branches and actions. Start a session in a new worktree, then clean up the ones that are done after one confirmation.</p>
+  <p>Switchboard never removes a worktree with uncommitted changes or a session working in it.</p>
+</Feature>
+
+<Feature title="What Claude remembers, in plain Markdown" shot="project-memory" alt="A project's Memory tab: what loads in a session at the top, the project's memories with their type, the instructions the team shares, and personal memory" href="/memory/overview/">
+  <p>See and edit what Claude Code remembers about each project, and what loads at the start of every session. Share a memory with the team in <code>CLAUDE.md</code>, or bring your memory over from the Claude app.</p>
+  <p>Everything stays plain Markdown where Claude Code already looks, so it works the same in the terminal.</p>
+</Feature>
+
+<Feature title="Terminal and changes, next to the conversation" shot="main-window" alt="A finished session with the Changes panel open on the right, showing a diff" href="/terminal-changes-git/changes/" flip>
+  <p>See what Claude changed in the <strong>Changes</strong> panel (<Kbd shortcut="changes.toggle" />): stage, unstage or revert files, and open any diff inline. A terminal per session is one key away (<Kbd shortcut="terminal.toggle" first />).</p>
+  <p>The git button offers the next step: pull, commit, push or create a pull request.</p>
+</Feature>
+
+<Feature title="Permissions in the conversation" shot="permissions" alt="A session that is waiting for permission to install a package" href="/permissions/">
+  <p>Allow or deny what Claude asks, answer its questions and review its plans, right where the work happens. Switch the permission mode with <Kbd shortcut="mode.cycle" />.</p>
+</Feature>
+
+<Feature title="Themes" shot="theme-catppuccin" alt="Switchboard in the Catppuccin theme" href="/themes/built-in/" flip>
+  <p>Demo Time, Catppuccin, Claude, Nord, Solarized and The unnamed are built in, in light and dark. Import your own theme as a small JSON file.</p>
+</Feature>
+
+<section class="sb-companion not-content">
+  <h2>The VS Code companion</h2>
+  <p>
+    The <strong>Switchboard Companion</strong> extension sends what you are looking at in the editor to a session: the lines you selected, files, problems and terminal output. It also works in Cursor and Windsurf. Nothing goes to Claude until you press send.
+  </p>
+  <div class="sb-companion-actions">
+    <a class="sb-button primary" href="https://marketplace.visualstudio.com/items?itemName=eliostruyf.switchboard-companion">Get it on the Marketplace</a>
+    <a class="sb-button secondary" href="https://open-vsx.org/extension/eliostruyf/switchboard-companion">Open VSX</a>
+  </div>
+  <p class="sb-companion-id"><code>eliostruyf.switchboard-companion</code></p>
+</section>
+
+<style>{`
+  .sb-tour { padding: 1rem 0 3rem; }
+  .sb-tour h2 { margin: 0 0 1.25rem; text-align: center; font-size: var(--sb-text-hero); font-weight: 600; color: var(--sb-text); }
+  .sb-intro { max-width: 46rem; margin: 1rem auto 2rem; text-align: center; font-size: var(--sb-text-body); color: var(--sb-muted); }
+  .sb-companion { padding: 3rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
+  .sb-companion h2 { margin: 0; font-size: var(--sb-text-hero); font-weight: 600; color: var(--sb-text); }
+  .sb-companion p { max-width: 42rem; margin: 0.75rem auto 0; color: var(--sb-muted); }
+  .sb-companion strong { color: var(--sb-text); }
+  .sb-companion-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 1.5rem; }
+  .sb-companion-id { font-size: var(--sb-text-meta); }
+`}</style>

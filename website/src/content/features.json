@@ -1,0 +1,2465 @@
+{
+  "$comment": "Every user-facing feature of Switchboard and the docs page that covers it. Checked by website/src/features.test.ts (npm run check).",
+  "features": [
+    {
+      "id": "palette:action:*",
+      "name": "Run: <action>",
+      "page": "projects/actions"
+    },
+    {
+      "id": "palette:add-context",
+      "name": "Add context…",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:add-project",
+      "name": "Add project…",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "palette:archive",
+      "name": "archive",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "palette:branches",
+      "name": "Branches…",
+      "page": "projects/branches"
+    },
+    {
+      "id": "palette:branches-here",
+      "name": "branches-here",
+      "page": "projects/branches"
+    },
+    {
+      "id": "palette:catch-up",
+      "name": "Update from remote",
+      "page": "new-session/form"
+    },
+    {
+      "id": "palette:change-effort",
+      "name": "Change effort…",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "palette:change-mode",
+      "name": "Change permission mode…",
+      "page": "permissions"
+    },
+    {
+      "id": "palette:change-model",
+      "name": "Change model…",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "palette:check-transcript",
+      "name": "Check transcript…",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:claude-update",
+      "name": "Check for Claude Code updates…",
+      "page": "settings/updates"
+    },
+    {
+      "id": "palette:clean-up-worktrees",
+      "name": "clean-up-worktrees",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "palette:close-pane",
+      "name": "Close this pane",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:close-session",
+      "name": "Close session",
+      "page": "sessions/home"
+    },
+    {
+      "id": "palette:commit",
+      "name": "Commit…",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "palette:compact",
+      "name": "Compact context",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:continue-in-vscode",
+      "name": "Continue in VS Code",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "palette:copy-last-reply",
+      "name": "Copy last reply",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:copy-session-id",
+      "name": "Copy session id",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:create-pr",
+      "name": "Create pull request…",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "palette:delete-session",
+      "name": "Delete session…",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:diagnostics",
+      "name": "Engine diagnostics",
+      "page": "settings"
+    },
+    {
+      "id": "palette:dock-below",
+      "name": "Dock terminal below",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "palette:dock-right",
+      "name": "Dock terminal right",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "palette:edit-actions",
+      "name": "Edit actions…",
+      "page": "projects/actions"
+    },
+    {
+      "id": "palette:export-settings",
+      "name": "Export settings…",
+      "page": "settings/backup"
+    },
+    {
+      "id": "palette:export-theme",
+      "name": "Export current theme…",
+      "page": "themes/custom"
+    },
+    {
+      "id": "palette:finish-worktree",
+      "name": "Finish worktree…",
+      "page": "new-session/worktrees"
+    },
+    {
+      "id": "palette:focus-off",
+      "name": "Focus limit: turn off",
+      "page": "focus-limit"
+    },
+    {
+      "id": "palette:focus-on",
+      "name": "Focus limit: turn on",
+      "page": "focus-limit"
+    },
+    {
+      "id": "palette:focus-other-pane",
+      "name": "Focus other pane",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:focus-set",
+      "name": "Focus limit: set limit…",
+      "page": "focus-limit"
+    },
+    {
+      "id": "palette:fork",
+      "name": "Fork session…",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:go-to-session",
+      "name": "Go to session…",
+      "page": "command-palette"
+    },
+    {
+      "id": "palette:go-to-waiting",
+      "name": "go-to-waiting",
+      "page": "permissions"
+    },
+    {
+      "id": "palette:hide-terminal",
+      "name": "Hide terminal",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "palette:home",
+      "name": "Home",
+      "page": "sessions/home"
+    },
+    {
+      "id": "palette:import-settings",
+      "name": "Import settings…",
+      "page": "settings/backup"
+    },
+    {
+      "id": "palette:import-theme",
+      "name": "Import theme…",
+      "page": "themes/custom"
+    },
+    {
+      "id": "palette:manage-projects",
+      "name": "Manage projects",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "palette:maximize-terminal",
+      "name": "maximize-terminal",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "palette:memory",
+      "name": "Memory…",
+      "page": "projects/memory"
+    },
+    {
+      "id": "palette:memory-copy-app",
+      "name": "Copy memory for Claude app…",
+      "page": "memory/import"
+    },
+    {
+      "id": "palette:memory-import-export",
+      "name": "Import memory from Claude export…",
+      "page": "memory/import"
+    },
+    {
+      "id": "palette:memory-paste",
+      "name": "Paste memory from Claude app…",
+      "page": "memory/import"
+    },
+    {
+      "id": "palette:memory-settings",
+      "name": "Memory settings…",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "palette:new-action",
+      "name": "New action…",
+      "page": "projects/actions"
+    },
+    {
+      "id": "palette:new-session",
+      "name": "New session…",
+      "page": "new-session/form"
+    },
+    {
+      "id": "palette:new-session-here",
+      "name": "new-session-here",
+      "page": "new-session/form"
+    },
+    {
+      "id": "palette:new-session-worktree",
+      "name": "New session in a worktree…",
+      "page": "new-session/worktrees"
+    },
+    {
+      "id": "palette:new-terminal-tab",
+      "name": "New terminal tab",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "palette:next-needs-you",
+      "name": "Go to next session that needs you",
+      "page": "permissions"
+    },
+    {
+      "id": "palette:next-session",
+      "name": "Next session",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:open-in-editor",
+      "name": "Open folder in editor",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:pin",
+      "name": "pin",
+      "page": "sessions/pinned"
+    },
+    {
+      "id": "palette:previous-session",
+      "name": "Previous session",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:project:*",
+      "name": "Project: <name>",
+      "page": "projects/overview"
+    },
+    {
+      "id": "palette:queue-add",
+      "name": "queue-add",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "palette:queue-pick",
+      "name": "Queue: pick one to start…",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "palette:queue-start-next",
+      "name": "Start next in queue",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "palette:quick-question",
+      "name": "Quick question…",
+      "page": "new-session/quick-questions"
+    },
+    {
+      "id": "palette:reload-skills",
+      "name": "Reload skills",
+      "page": "command-palette"
+    },
+    {
+      "id": "palette:remember-this",
+      "name": "Remember this…",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "palette:rename-project",
+      "name": "Rename project…",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "palette:rename-session",
+      "name": "Rename session…",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:restart-action",
+      "name": "Restart action",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "palette:reveal-in-finder",
+      "name": "Reveal folder in Finder",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:revert-all",
+      "name": "Revert all changes…",
+      "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "palette:rewind",
+      "name": "Rewind to a message…",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:save-defaults",
+      "name": "Save as project default",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "palette:search",
+      "name": "Search conversations",
+      "page": "sessions/search"
+    },
+    {
+      "id": "palette:search-memory",
+      "name": "Search memory…",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "palette:settings",
+      "name": "Settings",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-about",
+      "name": "settings-about",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-backup",
+      "name": "settings-backup",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-conversation",
+      "name": "settings-conversation",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-diagnostics",
+      "name": "settings-diagnostics",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-focus",
+      "name": "settings-focus",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-general",
+      "name": "settings-general",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-memory",
+      "name": "Settings: Memory",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-profiles",
+      "name": "settings-profiles",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-sidebar",
+      "name": "settings-sidebar",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-theme",
+      "name": "settings-theme",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-vscode",
+      "name": "settings-vscode",
+      "page": "settings"
+    },
+    {
+      "id": "palette:share-memory",
+      "name": "Share memory with the team…",
+      "page": "memory/share-with-the-team"
+    },
+    {
+      "id": "palette:shortcuts",
+      "name": "Keyboard shortcuts",
+      "page": "command-palette"
+    },
+    {
+      "id": "palette:sidebar-close",
+      "name": "Close sidebar",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:sidebar-compact",
+      "name": "sidebar-compact",
+      "page": "settings"
+    },
+    {
+      "id": "palette:sidebar-large",
+      "name": "sidebar-large",
+      "page": "settings"
+    },
+    {
+      "id": "palette:sidebar-minimize",
+      "name": "Minimize sidebar",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:sidebar-open",
+      "name": "Open sidebar",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:sidebar-standard",
+      "name": "sidebar-standard",
+      "page": "settings"
+    },
+    {
+      "id": "palette:stage-all",
+      "name": "Stage all",
+      "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "palette:stop",
+      "name": "Stop Claude",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:stop-action",
+      "name": "Stop action",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "palette:switch-branch",
+      "name": "Switch branch…",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "palette:sync",
+      "name": "Sync with remote",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "palette:theme-dark",
+      "name": "theme-dark",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "palette:theme-light",
+      "name": "theme-light",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "palette:theme-system",
+      "name": "theme-system",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "palette:theme:*",
+      "name": "Theme: <name>",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "palette:toggle-changes",
+      "name": "Toggle changes",
+      "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "palette:toggle-sidebar",
+      "name": "Toggle sidebar",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:toggle-terminal",
+      "name": "Toggle terminal",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "palette:toggle-worktree",
+      "name": "Toggle worktree",
+      "page": "new-session/worktrees"
+    },
+    {
+      "id": "palette:tools",
+      "name": "Tools: MCP servers, skills, agents, plugins",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:unsent",
+      "name": "Unsent messages…",
+      "page": "sessions/unsent-drafts"
+    },
+    {
+      "id": "palette:vscode-extension",
+      "name": "VS Code extension",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "palette:worktrees",
+      "name": "Worktrees…",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "palette:worktrees-here",
+      "name": "worktrees-here",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "shortcut:changes.toggle",
+      "name": "changes.toggle",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:claude.stop",
+      "name": "claude.stop",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:composer.add-context",
+      "name": "composer.add-context",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.commands",
+      "name": "composer.commands",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.history",
+      "name": "composer.history",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.mention",
+      "name": "composer.mention",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.newline",
+      "name": "composer.newline",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.send",
+      "name": "composer.send",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.send-now",
+      "name": "composer.send-now",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:context-menu",
+      "name": "context-menu",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "shortcut:editor.open",
+      "name": "editor.open",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:find",
+      "name": "find",
+      "page": "sessions/search"
+    },
+    {
+      "id": "shortcut:find.next",
+      "name": "find.next",
+      "page": "sessions/search"
+    },
+    {
+      "id": "shortcut:find.previous",
+      "name": "find.previous",
+      "page": "sessions/search"
+    },
+    {
+      "id": "shortcut:git.pull",
+      "name": "Pull",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "shortcut:home",
+      "name": "home",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:memory.save",
+      "name": "Save the memory or instructions you are editing",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "shortcut:mode.cycle",
+      "name": "mode.cycle",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "shortcut:new-session.pick",
+      "name": "new-session.pick",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:new-session.queue",
+      "name": "new-session.queue",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "shortcut:new-session.start",
+      "name": "new-session.start",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:palette.commands",
+      "name": "palette.commands",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:palette.goto",
+      "name": "palette.goto",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:pane.close-other",
+      "name": "pane.close-other",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:permission.allow",
+      "name": "permission.allow",
+      "page": "permissions"
+    },
+    {
+      "id": "shortcut:permission.deny",
+      "name": "permission.deny",
+      "page": "permissions"
+    },
+    {
+      "id": "shortcut:permission.pick",
+      "name": "permission.pick",
+      "page": "permissions"
+    },
+    {
+      "id": "shortcut:queue.edit",
+      "name": "queue.edit",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "shortcut:queue.move",
+      "name": "queue.move",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "shortcut:queue.move-top",
+      "name": "queue.move-top",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "shortcut:queue.remove",
+      "name": "queue.remove",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "shortcut:queue.start",
+      "name": "queue.start",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "shortcut:quit",
+      "name": "quit",
+      "page": "settings"
+    },
+    {
+      "id": "shortcut:search",
+      "name": "search",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:session.new",
+      "name": "session.new",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:session.next",
+      "name": "session.next",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:session.next-needs-you",
+      "name": "session.next-needs-you",
+      "page": "permissions"
+    },
+    {
+      "id": "shortcut:session.previous",
+      "name": "session.previous",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:session.question",
+      "name": "session.question",
+      "page": "new-session/quick-questions"
+    },
+    {
+      "id": "shortcut:settings",
+      "name": "settings",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:settings.close",
+      "name": "settings.close",
+      "page": "settings"
+    },
+    {
+      "id": "shortcut:shortcuts",
+      "name": "shortcuts",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:sidebar.archive",
+      "name": "sidebar.archive",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "shortcut:sidebar.clear-selection",
+      "name": "sidebar.clear-selection",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.delete",
+      "name": "sidebar.delete",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.move",
+      "name": "sidebar.move",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.open-beside",
+      "name": "sidebar.open-beside",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:sidebar.rename",
+      "name": "sidebar.rename",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.section-toggle",
+      "name": "sidebar.section-toggle",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.sections-all",
+      "name": "sidebar.sections-all",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.select",
+      "name": "sidebar.select",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.select-group",
+      "name": "sidebar.select-group",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.toggle",
+      "name": "sidebar.toggle",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:terminal.clear",
+      "name": "Clear the terminal",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "shortcut:terminal.maximize",
+      "name": "terminal.maximize",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:terminal.restore",
+      "name": "Restore the terminal",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "shortcut:terminal.stop-action",
+      "name": "terminal.stop-action",
+      "page": "command-palette"
+    },
+    {
+      "id": "shortcut:terminal.toggle",
+      "name": "terminal.toggle",
+      "page": "command-palette"
+    },
+    {
+      "id": "settings:about",
+      "name": "Settings: About",
+      "page": "settings"
+    },
+    {
+      "id": "settings:backup",
+      "name": "Settings: Backup",
+      "page": "settings"
+    },
+    {
+      "id": "settings:conversation",
+      "name": "Settings: Conversation",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "settings:diagnostics",
+      "name": "Settings: Diagnostics",
+      "page": "settings"
+    },
+    {
+      "id": "settings:focus",
+      "name": "Settings: Focus",
+      "page": "focus-limit"
+    },
+    {
+      "id": "settings:general",
+      "name": "Settings: General (On startup)",
+      "page": "getting-started/first-launch"
+    },
+    {
+      "id": "settings:memory",
+      "name": "Settings › Memory",
+      "page": "settings"
+    },
+    {
+      "id": "settings:profiles",
+      "name": "Settings: Claude profiles (project's profile)",
+      "page": "projects/settings"
+    },
+    {
+      "id": "settings:sidebar",
+      "name": "Settings: Sidebar",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "settings:theme",
+      "name": "Settings: Theme",
+      "page": "settings"
+    },
+    {
+      "id": "settings:vscode",
+      "name": "Settings: VS Code",
+      "page": "settings"
+    },
+    {
+      "id": "project-tab:actions",
+      "name": "Actions tab",
+      "page": "projects/actions"
+    },
+    {
+      "id": "project-tab:branches",
+      "name": "Branches tab",
+      "page": "projects/branches"
+    },
+    {
+      "id": "project-tab:memory",
+      "name": "Memory tab",
+      "page": "projects/memory"
+    },
+    {
+      "id": "project-tab:overview",
+      "name": "Overview tab",
+      "page": "projects/overview"
+    },
+    {
+      "id": "project-tab:sessions",
+      "name": "Sessions tab",
+      "page": "projects/sessions"
+    },
+    {
+      "id": "project-tab:settings",
+      "name": "Settings tab",
+      "page": "projects/settings"
+    },
+    {
+      "id": "project-tab:worktrees",
+      "name": "Worktrees tab",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:action-approval",
+      "name": "Approve shared or imported shell actions",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:action-confirm",
+      "name": "Ask before running",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:action-pills",
+      "name": "Action pills above the message box",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:action-run-strip",
+      "name": "Action run strip with Stop and Restart",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:action-shortcuts",
+      "name": "Action shortcuts and reserved keys",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:action-suggestions",
+      "name": "Action suggestions from package.json and git",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:action-variables",
+      "name": "Action variables",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:action-worktree-setup",
+      "name": "Run when a new worktree is created",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:add-folder-as-project",
+      "name": "Add folder to your projects checkbox",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:add-profile",
+      "name": "Add a Claude profile",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:add-project-dialog",
+      "name": "Add project dialog",
+      "page": "getting-started/first-launch"
+    },
+    {
+      "id": "feature:add-to-queue",
+      "name": "Add to queue",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:agents-dialog",
+      "name": "Agents",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:always-allow",
+      "name": "Always allow",
+      "page": "permissions"
+    },
+    {
+      "id": "feature:answer-from-vscode",
+      "name": "Answer prompts from VS Code",
+      "page": "permissions"
+    },
+    {
+      "id": "feature:appearance-mode",
+      "name": "Appearance: Match System, Light, Dark",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:archive-closes-session",
+      "name": "Archiving closes the open session",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:archive-draft-confirm",
+      "name": "Archive and discard the unsent message",
+      "page": "sessions/unsent-drafts"
+    },
+    {
+      "id": "feature:archive-while-working",
+      "name": "Archive while working",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:ask-claude-to-commit",
+      "name": "Ask Claude to commit",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:auto-archive",
+      "name": "Auto-archive after 48 hours",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:auto-update-checks",
+      "name": "Check for updates automatically",
+      "page": "settings/updates"
+    },
+    {
+      "id": "feature:background-task-list",
+      "name": "Background tasks pill",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:background-tasks",
+      "name": "Running in the background",
+      "page": "sessions/states"
+    },
+    {
+      "id": "feature:branch-filter",
+      "name": "Filter branches",
+      "page": "projects/branches"
+    },
+    {
+      "id": "feature:branch-groups",
+      "name": "Branch groups: In use, Safe to delete, Deleted on the remote, Inactive, Active",
+      "page": "projects/branches"
+    },
+    {
+      "id": "feature:branch-refresh",
+      "name": "Refresh branches (fetch and prune)",
+      "page": "projects/branches"
+    },
+    {
+      "id": "feature:branch-row-menu",
+      "name": "Branch row menu",
+      "page": "projects/branches"
+    },
+    {
+      "id": "feature:build-from-source",
+      "name": "Build from source",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:built-in-themes",
+      "name": "Built-in themes",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:changes-panel",
+      "name": "Changes panel",
+      "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "feature:changes-vs-base",
+      "name": "Uncommitted or compared with the base branch",
+      "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "feature:check-for-updates-menu",
+      "name": "Switchboard → Check for Updates…",
+      "page": "settings/updates"
+    },
+    {
+      "id": "feature:check-transcript",
+      "name": "Check transcript",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:checkout-branch-before-start",
+      "name": "Check out another branch before starting",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:chip-compaction",
+      "name": "Chips compact in narrow windows",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "feature:claude-code-update-checks",
+      "name": "Check for Claude Code updates automatically",
+      "page": "settings/updates"
+    },
+    {
+      "id": "feature:claude-code-updates",
+      "name": "Claude Code updates",
+      "page": "settings/updates"
+    },
+    {
+      "id": "feature:claude-profiles",
+      "name": "Claude profiles",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:close-session",
+      "name": "Close session",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:collapse-sections",
+      "name": "Close sidebar sections",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:commit-dialog",
+      "name": "Commit with your own message",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:composer-chips",
+      "name": "Profile, model, effort and mode chips",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:confirm-quit",
+      "name": "Ask before quitting",
+      "page": "settings"
+    },
+    {
+      "id": "feature:context-chips",
+      "name": "Context chips",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:context-window-ring",
+      "name": "Context window ring",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:continue-in-vscode",
+      "name": "Continue in VS Code",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:continue-session",
+      "name": "Continue a past session",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:copy-code-block",
+      "name": "Copy a code block",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:copy-for-claude-app",
+      "name": "Copy for Claude app…",
+      "page": "memory/import"
+    },
+    {
+      "id": "feature:copy-message",
+      "name": "Copy a message",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:copy-to-my-memory",
+      "name": "Copy to my memory… (a section of an instruction file)",
+      "page": "memory/share-with-the-team"
+    },
+    {
+      "id": "feature:create-pr",
+      "name": "Create a pull request with gh",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:dark-only-themes",
+      "name": "Dark-only themes fall back to Demo Time in light mode",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:data-locations",
+      "name": "Where your data lives",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:deep-link-autostart",
+      "name": "autostart links",
+      "page": "links"
+    },
+    {
+      "id": "feature:deep-link-new-session",
+      "name": "switchboard://new-session",
+      "page": "links"
+    },
+    {
+      "id": "feature:deep-link-question",
+      "name": "question links",
+      "page": "links"
+    },
+    {
+      "id": "feature:deep-link-session",
+      "name": "switchboard://session/<id>",
+      "page": "links"
+    },
+    {
+      "id": "feature:deep-links",
+      "name": "switchboard:// links",
+      "page": "links"
+    },
+    {
+      "id": "feature:default-profile",
+      "name": "Default profile",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:delete-branches",
+      "name": "Delete local and remote branches",
+      "page": "projects/branches"
+    },
+    {
+      "id": "feature:delete-to-trash",
+      "name": "Delete a session to the Trash",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:deny-with-feedback",
+      "name": "Deny with a note for Claude",
+      "page": "permissions"
+    },
+    {
+      "id": "feature:diff-colours",
+      "name": "Diff colours",
+      "page": "themes/syntax-colours"
+    },
+    {
+      "id": "feature:dock-badge",
+      "name": "Dock badge",
+      "page": "sessions/states"
+    },
+    {
+      "id": "feature:draft-banner",
+      "name": "Unsent message banner with Discard",
+      "page": "sessions/unsent-drafts"
+    },
+    {
+      "id": "feature:drop-files",
+      "name": "Drop files on a session",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:edit-and-resend",
+      "name": "Edit and resend",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:edit-instruction-files",
+      "name": "Edit CLAUDE.md, rules and other instruction files",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:edit-queued-item",
+      "name": "Edit a queued item in New session",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:effort-chip",
+      "name": "Effort chip",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "feature:engine-diagnostics",
+      "name": "Engine diagnostics",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:engine-reconnect",
+      "name": "Engine restart and reconnect",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:external-link-notice",
+      "name": "Prompt from an external link notice",
+      "page": "links"
+    },
+    {
+      "id": "feature:file-links",
+      "name": "Open files from replies",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:file-mentions",
+      "name": "@ file mentions",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:find-in-conversation",
+      "name": "Find in conversation",
+      "page": "sessions/search"
+    },
+    {
+      "id": "feature:finish-worktree",
+      "name": "Finish worktree: merge or remove",
+      "page": "new-session/worktrees"
+    },
+    {
+      "id": "feature:focus-count-external",
+      "name": "Count terminal and IDE sessions",
+      "page": "focus-limit"
+    },
+    {
+      "id": "feature:focus-counter",
+      "name": "Focus counter and popover",
+      "page": "focus-limit"
+    },
+    {
+      "id": "feature:focus-gate",
+      "name": "Focus gate question",
+      "page": "focus-limit"
+    },
+    {
+      "id": "feature:focus-limit",
+      "name": "Focus limit",
+      "page": "focus-limit"
+    },
+    {
+      "id": "feature:focus-limit-settings",
+      "name": "Focus limit settings",
+      "page": "settings"
+    },
+    {
+      "id": "feature:focus-note-new-session",
+      "name": "Focus note in New session",
+      "page": "focus-limit"
+    },
+    {
+      "id": "feature:focus-nudge-strict",
+      "name": "Nudge and Strict",
+      "page": "focus-limit"
+    },
+    {
+      "id": "feature:fork-session",
+      "name": "Fork from a reply",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:fork-when-open-elsewhere",
+      "name": "Fork and send when open elsewhere",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:git-button",
+      "name": "Git button with the next step",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:header-branch",
+      "name": "Live branch in the session header",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:home-profile-cards",
+      "name": "Home profile cards",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:home-profiles",
+      "name": "Profiles and usage on Home",
+      "page": "sessions/home"
+    },
+    {
+      "id": "feature:home-project-tiles",
+      "name": "Start in a project",
+      "page": "sessions/home"
+    },
+    {
+      "id": "feature:home-view",
+      "name": "Home",
+      "page": "sessions/home"
+    },
+    {
+      "id": "feature:image-lightbox",
+      "name": "Images full size",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:images",
+      "name": "Images in messages",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:import-claude-export",
+      "name": "Import from Claude export…",
+      "page": "memory/import"
+    },
+    {
+      "id": "feature:import-folder-remap",
+      "name": "Point missing folders at another folder",
+      "page": "settings/backup"
+    },
+    {
+      "id": "feature:import-merge-replace",
+      "name": "Import mode: Merge or Replace",
+      "page": "settings/backup"
+    },
+    {
+      "id": "feature:import-preview",
+      "name": "Import preview with flags",
+      "page": "memory/import"
+    },
+    {
+      "id": "feature:imported-shell-action-approval",
+      "name": "Imported shell actions need approval",
+      "page": "settings/backup"
+    },
+    {
+      "id": "feature:inline-diffs",
+      "name": "Inline diffs",
+      "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "feature:install-dmg",
+      "name": "Install from the DMG",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:install-homebrew",
+      "name": "Install with Homebrew",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:instruction-changed-in-git",
+      "name": "Changed in git with Show in Changes",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:live-terminal-sessions",
+      "name": "Terminal sessions show live",
+      "page": "getting-started/first-launch"
+    },
+    {
+      "id": "feature:manual-archive",
+      "name": "Archive a session",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:markdown-preview",
+      "name": "Markdown blocks Preview and Source",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:memories-from-this-session",
+      "name": "Memories from this session in a session's menu",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-copy-to-profile",
+      "name": "Copy a memory to another Claude profile",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-delete-undo",
+      "name": "Delete a memory to the Trash with Undo",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-editor",
+      "name": "Memory editor (description, type, text)",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-filter",
+      "name": "Filter memory field",
+      "page": "projects/memory"
+    },
+    {
+      "id": "feature:memory-health",
+      "name": "Memory health findings",
+      "page": "memory/health"
+    },
+    {
+      "id": "feature:memory-health-compare",
+      "name": "Compare duplicates (Keep left, Keep right, Merge into left…)",
+      "page": "memory/health"
+    },
+    {
+      "id": "feature:memory-health-fix-index",
+      "name": "Fix index",
+      "page": "memory/health"
+    },
+    {
+      "id": "feature:memory-health-tidy",
+      "name": "Tidy with Claude…",
+      "page": "memory/health"
+    },
+    {
+      "id": "feature:memory-index-meter",
+      "name": "MEMORY.md meter",
+      "page": "memory/what-loads"
+    },
+    {
+      "id": "feature:memory-instructions-list",
+      "name": "Instructions list (CLAUDE.md, rules, CLAUDE.local.md, agent memory)",
+      "page": "projects/memory"
+    },
+    {
+      "id": "feature:memory-link-suggestions",
+      "name": "[[ suggestions while editing",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-linked-from",
+      "name": "Linked from and Not written yet with Write it…",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-links",
+      "name": "[[name]] links between memories",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-load-order",
+      "name": "What loads in a session here",
+      "page": "memory/what-loads"
+    },
+    {
+      "id": "feature:memory-load-order-profile",
+      "name": "Pick whose load to show per Claude profile",
+      "page": "memory/what-loads"
+    },
+    {
+      "id": "feature:memory-move-to-personal",
+      "name": "Move to Personal / Move to project",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-new",
+      "name": "New memory",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-overview",
+      "name": "Claude Code memory, where it lives and its file format",
+      "page": "memory/overview"
+    },
+    {
+      "id": "feature:memory-profile-filter",
+      "name": "Claude profile filter on the Memory tab",
+      "page": "projects/memory"
+    },
+    {
+      "id": "feature:memory-rename",
+      "name": "Rename a memory",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-rename-updates-links",
+      "name": "Rename updates links to the memory",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-reveal-in-finder",
+      "name": "Reveal a memory in Finder",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-save-conflict",
+      "name": "Ask before saving over a memory Claude changed",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-search",
+      "name": "Memory group in search with type chips and project menu",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-sync-conflicts",
+      "name": "Sync conflicts: Keep this one / Keep the other",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:memory-unwritten-links-chip",
+      "name": "N links not written yet chip",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-worktrees-share-folder",
+      "name": "Worktrees share one memory folder",
+      "page": "projects/memory"
+    },
+    {
+      "id": "feature:message-box",
+      "name": "Message box",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:middle-click-archive",
+      "name": "Middle-click to archive",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:model-chip",
+      "name": "Model chip",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "feature:multi-select",
+      "name": "Select several sessions",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:needs-you-notifications",
+      "name": "Needs you notifications and Dock badge",
+      "page": "permissions"
+    },
+    {
+      "id": "feature:new-session-drafts",
+      "name": "New session prompts kept per project",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:new-session-link",
+      "name": "switchboard://new-session links",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:new-session-view",
+      "name": "New session view",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:new-worktree-from-git-menu",
+      "name": "New worktree… from the git menu",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:notifications",
+      "name": "Notifications",
+      "page": "sessions/states"
+    },
+    {
+      "id": "feature:open-in",
+      "name": "Open in",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:open-in-claude-code",
+      "name": "Open in Claude Code terminal interface",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:palette-goto",
+      "name": "Go to session or project",
+      "page": "command-palette"
+    },
+    {
+      "id": "feature:palette-groups",
+      "name": "Palette context groups and Recently used",
+      "page": "command-palette"
+    },
+    {
+      "id": "feature:palette-new-session",
+      "name": "New session from the palette",
+      "page": "command-palette"
+    },
+    {
+      "id": "feature:palette-open-beside",
+      "name": "Open beside from Go to",
+      "page": "command-palette"
+    },
+    {
+      "id": "feature:palette-prefixes",
+      "name": "Palette prefixes > + ! ?",
+      "page": "command-palette"
+    },
+    {
+      "id": "feature:palette-prompt-step",
+      "name": "Palette prompt step",
+      "page": "command-palette"
+    },
+    {
+      "id": "feature:palette-steps",
+      "name": "Palette steps and back with Backspace",
+      "page": "command-palette"
+    },
+    {
+      "id": "feature:paste-from-claude-app",
+      "name": "Paste from Claude app…",
+      "page": "memory/import"
+    },
+    {
+      "id": "feature:permission-card",
+      "name": "Permission card",
+      "page": "permissions"
+    },
+    {
+      "id": "feature:permission-mode-chip",
+      "name": "Permission mode chip",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "feature:permission-modes",
+      "name": "Permission modes",
+      "page": "permissions"
+    },
+    {
+      "id": "feature:personal-memory",
+      "name": "Personal memory folder",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:personal-memory-change-folder",
+      "name": "Change folder… for personal memory (sync)",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:personal-memory-claude-md-block",
+      "name": "Add to Claude Code… (the CLAUDE.md block)",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:personal-memory-remove-block",
+      "name": "Remove from Claude Code",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:pick-project-by-typing",
+      "name": "Pick a project by typing or a path",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:pick-up-in-project",
+      "name": "Pick up in <project>",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:pinned-sessions",
+      "name": "Pinned sessions",
+      "page": "sessions/pinned"
+    },
+    {
+      "id": "feature:plan-approval",
+      "name": "Plan approval card",
+      "page": "permissions"
+    },
+    {
+      "id": "feature:plan-usage",
+      "name": "Plan usage under the message box",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:profile-chip",
+      "name": "Profile chip",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "feature:profile-colour-rails",
+      "name": "Profile colour rails",
+      "page": "sessions/states"
+    },
+    {
+      "id": "feature:profile-per-session",
+      "name": "Profile for one session",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:profile-setup-guide",
+      "name": "How to set up another profile",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:profile-sign-in",
+      "name": "Sign in to a profile with CLAUDE_CONFIG_DIR and /login",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:profile-usage",
+      "name": "Usage band per account",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:project-actions",
+      "name": "Project actions",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:project-defaults",
+      "name": "Project defaults for new sessions",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:project-filter",
+      "name": "Project filter",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:project-icons",
+      "name": "Project icons: detected, image, emoji, letter",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-order",
+      "name": "Project order: Recent or Your order",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-overview-cards",
+      "name": "Overview cards",
+      "page": "projects/overview"
+    },
+    {
+      "id": "feature:project-overview-memory-card",
+      "name": "Memory card on the project Overview",
+      "page": "projects/overview"
+    },
+    {
+      "id": "feature:project-page",
+      "name": "Project page header and tabs",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-page-last-tab",
+      "name": "Project page opens on the tab you left",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-profile",
+      "name": "Link a project to a Claude profile",
+      "page": "projects/settings"
+    },
+    {
+      "id": "feature:project-profile-link",
+      "name": "Link a project to a profile",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:project-queued-prompts",
+      "name": "Queued prompts on the Sessions tab",
+      "page": "projects/sessions"
+    },
+    {
+      "id": "feature:project-tiles",
+      "name": "Project tiles with status",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:projects-view",
+      "name": "Projects view",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:prompt-history",
+      "name": "Bring back earlier messages",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:question-card",
+      "name": "Question card",
+      "page": "permissions"
+    },
+    {
+      "id": "feature:questions-scratch-folder",
+      "name": "Questions scratch folder",
+      "page": "new-session/quick-questions"
+    },
+    {
+      "id": "feature:questions-sessions",
+      "name": "Quick question sessions in the sidebar",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:queue",
+      "name": "Queue",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queue-home-card",
+      "name": "Queue card on Home",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queue-item-menu",
+      "name": "Queue item menu",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queue-messages",
+      "name": "Queue messages while Claude works",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:queue-ready-state",
+      "name": "Queue ready state",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queue-ready-toast",
+      "name": "Project is free toast with Start it / Review first",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queue-remove-undo",
+      "name": "Remove from queue with Undo",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queue-reorder",
+      "name": "Reorder queue by drag or keys",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queue-sidebar-section",
+      "name": "Queue section in the sidebar",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queue-wait-for",
+      "name": "Wait for…",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queued-in-project",
+      "name": "Queued in <project>",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:quick-question",
+      "name": "Quick questions",
+      "page": "new-session/quick-questions"
+    },
+    {
+      "id": "feature:quick-question-link",
+      "name": "question=1 link",
+      "page": "new-session/quick-questions"
+    },
+    {
+      "id": "feature:quit-show-unsent",
+      "name": "Show unsent in the quit prompt",
+      "page": "sessions/unsent-drafts"
+    },
+    {
+      "id": "feature:recovery-refs",
+      "name": "Recovery refs under refs/switchboard/removed/",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:reload-skills",
+      "name": "Reload skills",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:remember-this",
+      "name": "Remember this from the conversation",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:remove-profile",
+      "name": "Remove a profile",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:remove-project",
+      "name": "Remove a project from Switchboard",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:rename-project",
+      "name": "Rename a project (Switchboard name only)",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:rename-session",
+      "name": "Rename a session",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:reorder-projects",
+      "name": "Reorder projects",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:revert-files",
+      "name": "Revert files (new files to the Trash)",
+      "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "feature:route-strip",
+      "name": "Route strip (current checkout or new worktree)",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:run-code-block",
+      "name": "Run code blocks in the terminal",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:save-as-project-default",
+      "name": "Save as project default",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "feature:save-image",
+      "name": "Save image",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:saved-memory-line",
+      "name": "Saved memory line in the conversation",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:search-conversations",
+      "name": "Search all conversations",
+      "page": "sessions/search"
+    },
+    {
+      "id": "feature:send-now",
+      "name": "Send now",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:session-context-menu",
+      "name": "Session context menu",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:session-hud",
+      "name": "Where you landed label",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:session-profile-chip",
+      "name": "Pick a profile for one session in New session",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:session-states",
+      "name": "Session states and colours",
+      "page": "sessions/states"
+    },
+    {
+      "id": "feature:settings-backups-folder",
+      "name": "Automatic backup before import",
+      "page": "settings/backup"
+    },
+    {
+      "id": "feature:settings-export",
+      "name": "Export settings",
+      "page": "settings/backup"
+    },
+    {
+      "id": "feature:settings-import",
+      "name": "Import settings with preview",
+      "page": "settings/backup"
+    },
+    {
+      "id": "feature:settings-version-link",
+      "name": "Version at the bottom of Settings",
+      "page": "settings"
+    },
+    {
+      "id": "feature:share-memory-rule-paths",
+      "name": "Share to a rule file only for some paths",
+      "page": "memory/share-with-the-team"
+    },
+    {
+      "id": "feature:share-memory-undo",
+      "name": "Show in Changes and Undo after sharing",
+      "page": "memory/share-with-the-team"
+    },
+    {
+      "id": "feature:share-memory-warnings",
+      "name": "Share warnings (secrets, same heading, uncommitted, CLAUDE.local.md not ignored)",
+      "page": "memory/share-with-the-team"
+    },
+    {
+      "id": "feature:share-memory-with-team",
+      "name": "Share with the team…",
+      "page": "memory/share-with-the-team"
+    },
+    {
+      "id": "feature:show-sessions-from-other-apps",
+      "name": "Show sessions from other apps",
+      "page": "getting-started/first-launch"
+    },
+    {
+      "id": "feature:sidebar-footer",
+      "name": "Sidebar footer counts",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-hidden",
+      "name": "Hidden sidebar and needs-you pill",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-minimal-rail",
+      "name": "Minimal rail",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-resize",
+      "name": "Resize the sidebar",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-search-filter",
+      "name": "Search sessions filter",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-sections",
+      "name": "Sidebar sections",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-style",
+      "name": "Sidebar style",
+      "page": "settings"
+    },
+    {
+      "id": "feature:sidebar-styles",
+      "name": "Sidebar styles",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-when-collapsed",
+      "name": "When collapsed: Minimal rail or Hidden",
+      "page": "settings"
+    },
+    {
+      "id": "feature:slash-commands",
+      "name": "/ commands and skills",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:split-view",
+      "name": "Split view",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:stage-unstage",
+      "name": "Stage and unstage files",
+      "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "feature:start-in-worktree",
+      "name": "Start in a new worktree",
+      "page": "new-session/worktrees"
+    },
+    {
+      "id": "feature:start-split-button",
+      "name": "Start split button",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:startup-view",
+      "name": "On startup view",
+      "page": "getting-started/first-launch"
+    },
+    {
+      "id": "feature:stop-claude",
+      "name": "Stop Claude",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:stop-session",
+      "name": "Stop session",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:streaming",
+      "name": "Streaming replies",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:switch-branch",
+      "name": "Switch branch with git switch",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:switchboard-json",
+      "name": "Shared actions in .switchboard.json",
+      "page": "projects/actions"
+    },
+    {
+      "id": "feature:switchboard-updates",
+      "name": "Switchboard updates (Download, Restart to update)",
+      "page": "settings/updates"
+    },
+    {
+      "id": "feature:sync-with-remote",
+      "name": "Sync with remote",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:syntax-colours",
+      "name": "Code colours (syntax) in themes",
+      "page": "themes/syntax-colours"
+    },
+    {
+      "id": "feature:terminal-colours",
+      "name": "Terminal colours in themes",
+      "page": "themes/syntax-colours"
+    },
+    {
+      "id": "feature:terminal-dock",
+      "name": "Dock the terminal below or on the right",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:terminal-panel",
+      "name": "Built-in terminal per session",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:terminal-resize",
+      "name": "Resize the terminal",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:terminal-session-waiting",
+      "name": "Terminal sessions waiting for you",
+      "page": "permissions"
+    },
+    {
+      "id": "feature:terminal-tabs",
+      "name": "Terminal tabs",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:theme-drop-import",
+      "name": "Drop a theme .json on the window",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-duplicate",
+      "name": "Duplicate a theme",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-export",
+      "name": "Export a theme",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-file-format",
+      "name": "Theme file format and tokens",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-import",
+      "name": "Import a theme with preview",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-json-schema",
+      "name": "Theme JSON schema",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-live-reload",
+      "name": "Live reload of edited theme files, last valid kept",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-name-clash",
+      "name": "Replace or keep both on a theme name clash",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-remove",
+      "name": "Remove an imported theme to the Trash",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-show-file",
+      "name": "Show a theme file",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:theme-switch-undo",
+      "name": "Switched to theme toast with Undo",
+      "page": "themes/built-in"
+    },
+    {
+      "id": "feature:themes-folder",
+      "name": "Open themes folder",
+      "page": "themes/custom"
+    },
+    {
+      "id": "feature:todo-strip",
+      "name": "Tasks pill",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:tool-activity",
+      "name": "Tool activity: Summarised or Every step",
+      "page": "settings"
+    },
+    {
+      "id": "feature:tool-runs-summarised",
+      "name": "Summarised tool runs",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:tools-dialog",
+      "name": "Tools dialog",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:unarchive",
+      "name": "Unarchive",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:undo-file-changes",
+      "name": "Undo file changes",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:uninstall",
+      "name": "Uninstall",
+      "page": "troubleshooting"
+    },
+    {
+      "id": "feature:unsent-list",
+      "name": "Unsent list",
+      "page": "sessions/unsent-drafts"
+    },
+    {
+      "id": "feature:unsent-messages",
+      "name": "Unsent messages",
+      "page": "sessions/unsent-drafts"
+    },
+    {
+      "id": "feature:unsigned-build-quarantine",
+      "name": "Open a blocked unsigned build",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:update-channel",
+      "name": "Update channel: Stable or Nightly",
+      "page": "settings/updates"
+    },
+    {
+      "id": "feature:update-from-remote",
+      "name": "Update from remote (Fetch / Pull)",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:updates",
+      "name": "Updates",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:vscode-answer-prompts",
+      "name": "Answer prompts from VS Code",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "feature:vscode-companion",
+      "name": "VS Code companion extension",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "feature:vscode-connection-status",
+      "name": "Settings → VS Code connection status",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "feature:vscode-fix-in-switchboard",
+      "name": "Fix in Switchboard quick fix",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "feature:vscode-send-context",
+      "name": "Send context from VS Code",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "feature:vscode-status-bar",
+      "name": "VS Code status bar item",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "feature:worktree-branch-from",
+      "name": "Worktree branch from remote default or local HEAD",
+      "page": "new-session/worktrees"
+    },
+    {
+      "id": "feature:worktree-cleanup",
+      "name": "Remove selected worktrees with one confirmation",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:worktree-groups",
+      "name": "Worktree groups: Safe to remove, Probably done, Keep, Stale",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:worktree-name",
+      "name": "Made-up three-word worktree names and custom name",
+      "page": "new-session/worktrees"
+    },
+    {
+      "id": "feature:worktree-pill",
+      "name": "Worktree pill in the Projects view",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:worktree-prune",
+      "name": "Prune stale worktree entries",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:worktree-refresh",
+      "name": "Refresh worktrees (fetch and measure)",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:worktree-row-menu",
+      "name": "Worktree row menu: open session, merge, push, remove",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:worktree-safety",
+      "name": "Worktree removal safety rules",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:worktree-setup-actions",
+      "name": "Run when a new worktree is created",
+      "page": "new-session/worktrees"
+    }
+  ]
+}

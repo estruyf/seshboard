@@ -1,3 +1,4 @@
+import { fileManagerName } from '../lib/platform.ts';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ChevronDown, Code, Copy, ExternalLink, Folder, Globe, SquareTerminal } from 'lucide-react';
 import type { EditorInfo } from '@switchboard/protocol/client';
@@ -29,7 +30,7 @@ export function useOpenIn() {
 const GROUPS: Array<{ kind: EditorInfo['kind']; label: string }> = [
   { kind: 'editor', label: 'Editors' },
   { kind: 'terminal', label: 'Terminals' },
-  { kind: 'finder', label: 'Finder' },
+  { kind: 'finder', label: fileManagerName() },
 ];
 
 /** The folder's page on GitHub, or null when it has no GitHub remote (or the engine isn't connected). */

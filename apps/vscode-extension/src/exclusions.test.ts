@@ -35,6 +35,18 @@ describe('Read deny rules', () => {
     expect(denied('/repo/config/db.yml', ['Read(/config/*.yml)'])).toBe(true);
   });
 
+  it('matches Windows paths in the POSIX form Claude Code uses for them, without regard to case', () => {
+    const winDenied = (path: string, deny: unknown[]) => deniedByRead(path, readRules([{ root: 'C:\\repo', json: { permissions: { deny } } }], 'C:\\repo', 'C:\\Users\\me'));
+    expect(winDenied('C:\\repo\\.env', ['Read(./.env)'])).toBe(true);
+    expect(winDenied('c:\\Repo\\sub\\.env', ['Read(.env)'])).toBe(true);
+    expect(winDenied('C:\\Users\\me\\.aws\\credentials', ['Read(~/.aws/**)'])).toBe(true);
+    expect(winDenied('C:\\repo\\config\\db.yml', ['Read(/config/*.yml)'])).toBe(true);
+    expect(winDenied('D:\\data\\.env', ['Read(//c/**/.env)'])).toBe(false);
+    expect(winDenied('C:\\data\\.env', ['Read(//c/**/.env)'])).toBe(true);
+    expect(winDenied('D:\\data\\.env', ['Read(//**/.env)'])).toBe(true);
+    expect(winDenied('C:\\repo\\a.ts', ['Read(./.env)'])).toBe(false);
+  });
+
   it('denies everything for a bare Read, and ignores other tools and odd entries', () => {
     expect(denied('/repo/a.ts', ['Read'])).toBe(true);
     expect(denied('/repo/a.ts', ['Edit(./a.ts)', 'Bash(rm:*)', 42])).toBe(false);

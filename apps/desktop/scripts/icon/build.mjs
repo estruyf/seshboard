@@ -1,8 +1,10 @@
 // Builds the app icon from build/icon.svg:
 //   build/icon.png   1024×1024 (Dock icon in development, Linux)
 //   build/icon.icns  every macOS size, for packaging
+//   build/icon.ico   every Windows size, for packaging
 //   ../ui/src/assets/app-icon.png  64×64 for the sidebar header
-// Uses Electron to render the SVG and macOS's own sips + iconutil.
+// Uses Electron to render the SVG and macOS's own sips + iconutil. Elsewhere only build/icon.ico is
+// made, from the build/icon.png in the repository: the rest needs a Mac.
 // Usage: npm run icon -w @switchboard/desktop
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -15,7 +17,14 @@ const png = join(build, 'icon.png');
 const iconset = join(build, 'icon.iconset');
 
 const electron = createRequire(import.meta.url)('electron');
+const ico = () => execFileSync(electron, [join(import.meta.dirname, 'ico.cjs'), png, join(build, 'icon.ico')], { stdio: 'ignore' });
+if (process.platform !== 'darwin') {
+  ico();
+  console.log('Wrote build/icon.ico (the other icons are made on a Mac)');
+  process.exit(0);
+}
 execFileSync(electron, [join(import.meta.dirname, 'render.cjs'), join(build, 'icon.svg'), png], { stdio: 'ignore' });
+ico();
 
 rmSync(iconset, { recursive: true, force: true });
 mkdirSync(iconset);
@@ -36,4 +45,4 @@ const tight = join(build, 'icon-tight.png');
 execFileSync('sips', ['-c', '836', '836', png, '--out', tight], { stdio: 'ignore' });
 execFileSync('sips', ['-z', '64', '64', tight, '--out', join(uiAssets, 'app-icon.png')], { stdio: 'ignore' });
 rmSync(tight);
-console.log('Wrote build/icon.png, build/icon.icns and ui/src/assets/app-icon.png');
+console.log('Wrote build/icon.png, build/icon.icns, build/icon.ico and ui/src/assets/app-icon.png');

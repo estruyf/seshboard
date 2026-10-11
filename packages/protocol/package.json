@@ -11,7 +11,8 @@
     "./theme": "./src/theme.ts",
     "./theme-format": "./src/themeFormat.ts",
     "./color": "./src/color.ts",
-    "./companion-client": "./src/companionClient.ts"
+    "./companion-client": "./src/companionClient.ts",
+    "./paths": "./src/paths.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

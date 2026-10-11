@@ -1,9 +1,9 @@
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { appStateFake } from './testing.ts';
-import { openCommand } from './editors.ts';
+import { detectEditors, openCommand } from './editors.ts';
 import { FileIndex, fuzzyScore, walk } from './files.ts';
 import { ShellEnvironment } from './shellEnvironment.ts';
 
@@ -16,31 +16,57 @@ const tempDir = () => {
 };
 
 describe('openCommand', () => {
+  // What exists, instead of real files: the same cases run on any OS.
+  const installed = (...paths: string[]) => (path: string) => paths.includes(path);
+  const mac = (editorId: string, path: string, line: number | undefined, env: Record<string, string>, isDirectory: boolean, folder?: string, exists = installed()) =>
+    openCommand(editorId, path, line, env, isDirectory, folder, 'darwin', exists);
+
   it('jumps to a line through the editor CLI when it is on PATH', () => {
-    const bin = tempDir();
-    writeFileSync(join(bin, 'code'), '#!/bin/sh\n');
-    chmodSync(join(bin, 'code'), 0o755);
-    expect(openCommand('vscode', '/repo/a.ts', 12, { PATH: bin }, false)).toEqual({ command: join(bin, 'code'), args: ['-g', '/repo/a.ts:12'] });
+    expect(mac('vscode', '/repo/a.ts', 12, { PATH: '/usr/local/bin' }, false, undefined, installed('/usr/local/bin/code'))).toEqual({ command: '/usr/local/bin/code', args: ['-g', '/repo/a.ts:12'] });
   });
 
   it('opens a file in its project window where the editor can', () => {
-    const bin = tempDir();
-    for (const cli of ['code', 'zed', 'idea']) {
-      writeFileSync(join(bin, cli), '#!/bin/sh\n');
-      chmodSync(join(bin, cli), 0o755);
-    }
-    expect(openCommand('vscode', '/repo/src/a.ts', 12, { PATH: bin }, false, '/repo').args).toEqual(['/repo', '-g', '/repo/src/a.ts:12']);
-    expect(openCommand('zed', '/repo/src/a.ts', undefined, { PATH: bin }, false, '/repo').args).toEqual(['/repo', '/repo/src/a.ts']);
+    const exists = installed('/bin/code', '/bin/zed', '/bin/idea');
+    expect(mac('vscode', '/repo/src/a.ts', 12, { PATH: '/bin' }, false, '/repo', exists).args).toEqual(['/repo', '-g', '/repo/src/a.ts:12']);
+    expect(mac('zed', '/repo/src/a.ts', undefined, { PATH: '/bin' }, false, '/repo', exists).args).toEqual(['/repo', '/repo/src/a.ts']);
     // A folder opens on its own; JetBrains IDEs find the open project themselves.
-    expect(openCommand('vscode', '/repo', undefined, { PATH: bin }, true, '/repo').args).toEqual(['-g', '/repo']);
-    expect(openCommand('idea', '/repo/src/a.ts', 3, { PATH: bin }, false, '/repo').args).toEqual(['--line', '3', '/repo/src/a.ts']);
+    expect(mac('vscode', '/repo', undefined, { PATH: '/bin' }, true, '/repo', exists).args).toEqual(['-g', '/repo']);
+    expect(mac('idea', '/repo/src/a.ts', 3, { PATH: '/bin' }, false, '/repo', exists).args).toEqual(['--line', '3', '/repo/src/a.ts']);
   });
 
   it('falls back to `open -a` without the CLI, and handles Finder and terminals', () => {
-    expect(openCommand('cursor', '/repo', undefined, { PATH: '' }, true)).toEqual({ command: 'open', args: ['-a', 'Cursor', '/repo'] });
-    expect(openCommand('finder', '/repo/a.ts', undefined, {}, false)).toEqual({ command: 'open', args: ['-R', '/repo/a.ts'] });
-    expect(openCommand('terminal', '/repo/src/a.ts', undefined, {}, false)).toEqual({ command: 'open', args: ['-a', 'Terminal', '/repo/src'] });
-    expect(() => openCommand('nope', '/x', undefined, {}, true)).toThrow(/Unknown editor/);
+    expect(mac('cursor', '/repo', undefined, { PATH: '' }, true)).toEqual({ command: 'open', args: ['-a', 'Cursor', '/repo'] });
+    expect(mac('finder', '/repo/a.ts', undefined, {}, false)).toEqual({ command: 'open', args: ['-R', '/repo/a.ts'] });
+    expect(mac('terminal', '/repo/src/a.ts', undefined, {}, false)).toEqual({ command: 'open', args: ['-a', 'Terminal', '/repo/src'] });
+    expect(() => mac('nope', '/x', undefined, {}, true)).toThrow(/Unknown editor/);
+  });
+
+  it('on Windows, runs an editor\'s .cmd through cmd.exe, and uses File Explorer and Windows Terminal', () => {
+    const env = { PATH: 'C:\\Windows;C:\\Users\\me\\AppData\\Local\\Programs\\Microsoft VS Code\\bin', PATHEXT: '.COM;.EXE;.BAT;.CMD', ComSpec: 'C:\\Windows\\system32\\cmd.exe' };
+    const exists = installed('C:\\Users\\me\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd', 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe');
+    const win = (editorId: string, path: string, isDirectory: boolean, folder?: string, line?: number, extraEnv = {}) =>
+      openCommand(editorId, path, line, { ...env, ...extraEnv }, isDirectory, folder, 'win32', exists);
+    const code = win('vscode', 'C:\\repo\\src\\a.ts', false, 'C:\\repo', 12);
+    expect(code.command).toBe('C:\\Windows\\system32\\cmd.exe');
+    expect(code.verbatim).toBe(true);
+    expect(code.args.slice(0, 4)).toEqual(['/d', '/v:off', '/s', '/c']);
+    expect(code.args[4]).toContain('code.cmd');
+    expect(win('finder', 'C:\\repo\\a b.ts', false)).toEqual({ command: 'explorer.exe', args: ['/select,"C:\\repo\\a b.ts"'], verbatim: true });
+    expect(win('finder', 'C:\\repo', true)).toEqual({ command: 'explorer.exe', args: ['"C:\\repo"'], verbatim: true });
+    const wt = win('windows-terminal', 'C:\\repo;x\\a.ts', false, undefined, undefined, { PATH: 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps' });
+    expect(wt).toEqual({ command: 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe', args: ['-d', 'C:\\repo\\;x'] });
+  });
+});
+
+describe('detectEditors', () => {
+  it('on Windows, offers File Explorer and what has a CLI, also where installers put one off PATH', () => {
+    const env = { PATH: 'C:\\Windows', PATHEXT: '.EXE;.CMD', LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local', ProgramFiles: 'C:\\Program Files' };
+    const exists = (path: string) => ['C:\\Users\\me\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd', 'C:\\Program Files\\Sublime Text\\subl.exe'].includes(path);
+    expect(detectEditors(env, 'C:\\Users\\me', 'win32', exists)).toEqual([
+      { id: 'cursor', name: 'Cursor', kind: 'editor' },
+      { id: 'sublime', name: 'Sublime Text', kind: 'editor' },
+      { id: 'finder', name: 'File Explorer', kind: 'finder' },
+    ]);
   });
 });
 
@@ -92,6 +118,8 @@ describe('file search', () => {
     ]);
     // Without a folder only absolute and ~ paths resolve.
     expect(await index.resolve(null, ['src/index.ts', '~/repo/docs'], home)).toEqual([null, join(dir, 'docs')]);
+    // On Windows Claude may write them with backslashes.
+    if (sep === '\\') expect(await index.resolve(dir, ['search\\suggestions.ts', '~\\repo\\docs'], home)).toEqual([join(dir, 'src', 'search', 'suggestions.ts'), join(dir, 'docs')]);
   });
 
   it('walks shallow folders first, skips the home folder\'s Library and stops at its time budget', async () => {

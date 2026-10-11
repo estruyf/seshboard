@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { importsOf, loadOrder, memoryIndexCut } from './loadOrder.ts';
 
@@ -12,7 +12,8 @@ const write = (path: string, text: string) => {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, text);
 };
-const order = () => loadOrder({ configDir, root, memoryDir, home: base }).map((e) => [e.path.slice(base.length + 1), e.kind, e.when]);
+// Relative to the test's folder, with `/` on every platform.
+const order = () => loadOrder({ configDir, root, memoryDir, home: base }).map((e) => [e.path.slice(base.length + 1).split(sep).join('/'), e.kind, e.when]);
 
 beforeEach(() => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-load-')));
@@ -73,6 +74,6 @@ describe('load order', () => {
   });
 
   it('reads imports relative to the file, from ~ and absolute, but not addresses or bare names', () => {
-    expect(importsOf('@a.md @./b/c.md @~/d.md @/abs/e.md @team me@x.com\n```\n@code.md\n```', '/p/CLAUDE.md', '/home')).toEqual(['/p/a.md', '/p/b/c.md', '/home/d.md', '/abs/e.md']);
+    expect(importsOf('@a.md @./b/c.md @~/d.md @/abs/e.md @team me@x.com\n```\n@code.md\n```', '/p/CLAUDE.md', '/home')).toEqual([resolve('/p', 'a.md'), resolve('/p', 'b', 'c.md'), join('/home', 'd.md'), '/abs/e.md']);
   });
 });

@@ -1,0 +1,9 @@
+# Text files are checked out with LF everywhere, also on Windows, so generated files (the README's
+# shortcuts table, the theme schema) and the tests that compare them match the repository byte for byte.
+* text=auto eol=lf
+
+*.png binary
+*.icns binary
+*.ico binary
+*.woff binary
+*.woff2 binary

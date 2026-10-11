@@ -88,6 +88,12 @@ export function TooltipLayer() {
       onOver(event);
     };
     const onFocusOut = (event: FocusEvent) => event.target === current && hide();
+    // Only a scroll around the target moves it. A conversation that keeps to its end while Claude writes
+    // must not drop the tooltip of a button in the sidebar.
+    const onScroll = (event: Event) => {
+      const scroller = event.target;
+      if (current && (scroller === document || (scroller instanceof Node && scroller.contains(current)))) hide();
+    };
     const onLeaveWindow = (event: MouseEvent) => event.relatedTarget === null && hide();
 
     document.addEventListener('pointerover', onOver);
@@ -95,7 +101,7 @@ export function TooltipLayer() {
     document.addEventListener('focusout', onFocusOut);
     document.addEventListener('pointerdown', hide, true);
     document.addEventListener('keydown', hide, true);
-    document.addEventListener('scroll', hide, true);
+    document.addEventListener('scroll', onScroll, true);
     document.addEventListener('mouseout', onLeaveWindow);
     window.addEventListener('blur', hide);
     return () => {
@@ -105,7 +111,7 @@ export function TooltipLayer() {
       document.removeEventListener('focusout', onFocusOut);
       document.removeEventListener('pointerdown', hide, true);
       document.removeEventListener('keydown', hide, true);
-      document.removeEventListener('scroll', hide, true);
+      document.removeEventListener('scroll', onScroll, true);
       document.removeEventListener('mouseout', onLeaveWindow);
       window.removeEventListener('blur', hide);
     };

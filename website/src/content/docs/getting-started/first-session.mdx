@@ -1,0 +1,69 @@
+---
+title: Your first session
+description: Start Claude Code on a project, and follow it while it works.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+A session is one conversation with Claude Code in a folder. You start one from **New session**: pick a project, write what Claude should work on, and press Start. Switchboard runs your own `claude` with your login and settings.
+
+<Screenshot name="new-session" alt="New session with a project picked, the choice between the current checkout and a new worktree, and a prompt typed in the message box with the profile, model, effort and mode chips under it" eager />
+
+## Open it
+
+- Press <Kbd shortcut="session.new" />.
+- Click the yellow **+** button at the top of the sidebar, or **New session** on Home.
+- Choose *New session…* in the command palette (<Kbd shortcut="palette.commands" first />) to pick a project and write the prompt without leaving the keyboard.
+
+## Start a session
+
+<Steps>
+
+1. **Pick a project.** New session asks *Where do we start?* and shows your projects as tiles. Click one, press <Kbd shortcut="new-session.pick" /> for a recent one, or type in **Filter projects, or type a path** to find another folder.
+2. **Choose where it runs.** **Current checkout** works in your folder as it is. **New worktree** gives the session its own isolated copy on a new branch. See [Worktrees](/new-session/worktrees/).
+3. **Write the prompt** in the box that says *What should Claude work on?* You can paste or drop images, type `/` for commands and skills, and `@` to mention a file.
+4. **Check the chips** under the message box: the Claude profile (with more than one), the model, the effort and the permission mode. Click one to change it for this session. See [Models and options](/new-session/models-and-options/).
+5. **Start.** Press <Kbd shortcut="new-session.start" /> or click **Start**. The ▾ next to it has **Add to queue** (<Kbd shortcut="new-session.queue" />) and **Start in a new worktree**.
+
+</Steps>
+
+The session opens straight away and Claude starts working. To ask something without picking a project, use a [quick question](/new-session/quick-questions/) (<Kbd shortcut="session.question" />).
+
+## What happens next
+
+While Claude works, the session sits under **Working** in the sidebar with a yellow rail and a spinner, and you see each step in the conversation as it happens. You don't have to watch: open another session, or switch to another app.
+
+- When Claude needs a decision, a permission, an answer to a question or a plan to review, the session moves to **Needs you** with a pink rail and a pulsing dot. Answer it in the card in the conversation. See [Permissions and questions](/permissions/).
+- When Claude finishes, the session moves out of Working. If you weren't looking at it, it shows as finished and unread, in blue, until you open it.
+- If something goes wrong, the session shows a red **!**.
+
+| State | What it means |
+|---|---|
+| <Pill tone="needs-you">Needs you</Pill> | Claude waits for a permission, a question or a plan |
+| <Pill tone="working">Working</Pill> | Claude is working on it |
+| <Pill tone="unread">Finished, unread</Pill> | It finished and you haven't read it yet |
+| <Pill tone="failed">Failed</Pill> | The last run stopped with an error |
+
+All the states are on [Session states](/sessions/states/).
+
+### Notifications and the Dock badge
+
+Switchboard sends a macOS notification when a session needs you ("Claude wants to use Bash", "Claude has a question"), when Claude finishes, and when a run fails. Click the notification to open the session. You don't get one for the session you are looking at.
+
+The Dock icon shows a badge with the number of sessions waiting for you, and bounces once when a session starts waiting while Switchboard is in the background.
+
+<Aside type="tip">
+Press <Kbd shortcut="session.next-needs-you" /> to jump to the next session that needs you, from anywhere in the app.
+</Aside>
+
+## Keep going
+
+- Type in the message box under the conversation to send Claude the next message. See [Working in a session](/sessions/conversation/).
+- Open **Changes** (<Kbd shortcut="changes.toggle" />) to review what Claude changed. See [Changes](/terminal-changes-git/changes/).
+
+## Settings
+
+Projects can have their own defaults for new sessions (model, effort, permission mode, worktree and branch) on the [project's Settings tab](/projects/settings/). Turn on a [focus limit](/focus-limit/) in [Settings, Focus](/settings/#focus) if you want Switchboard to say when you have enough sessions going.

@@ -1,3 +1,4 @@
+import { localizeKeys } from '../lib/shortcuts.ts';
 import { useEffect, useId, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../lib/contextMenu.ts';
 import { Popover } from './ui/Popover.tsx';
@@ -148,7 +149,7 @@ export function Menu({
               </span>
             )}
             <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-            {entry.hint && <span className="shrink-0 text-meta text-faint">{entry.hint}</span>}
+            {entry.hint && <span className="shrink-0 text-meta text-faint">{localizeKeys(entry.hint)}</span>}
           </button>
         ),
       )}

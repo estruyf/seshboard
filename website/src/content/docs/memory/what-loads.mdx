@@ -1,0 +1,66 @@
+---
+title: What loads in a session
+description: See every file Claude Code reads at the start of a session in a project, in order and by size.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+**What loads in a session here** shows every file Claude Code reads when a session starts in a project, in the order it reads them and how big each one is. It also shows the part of <Pill tone="memory">MEMORY.md</Pill> that doesn't load.
+
+<Screenshot name="memory-load-order" alt="The What loads in a session here card: a bar split by file, and a legend with the profile's CLAUDE.md, the project's CLAUDE.md, rules, MEMORY.md with its loaded lines, and the lines not loaded in red stripes" eager />
+
+## Open it
+
+The card sits at the top of a project's [Memory tab](/projects/memory/). Click its title to fold it to one line, such as "Loads 5 files · 6.4 KB · MEMORY.md 186/200". It opens the first time, then stays as you left it.
+
+## The load order
+
+Claude Code reads these, in this order, at the start of every session in the project:
+
+1. Your profile's `CLAUDE.md` (`~/.claude/CLAUDE.md` for the built-in profile), then the files it imports with `@path`.
+2. Your profile's rules (`rules/*.md`).
+3. The project's `CLAUDE.md` (at the root, else `.claude/CLAUDE.md`) and its imports.
+4. `CLAUDE.local.md` and its imports.
+5. The project's rules in `.claude/rules/` that don't have `paths:`.
+6. The start of the project's `MEMORY.md`.
+
+The bar shows each file's share of the total, and the legend lists them with their size. Click an entry to open that file. Rules side by side are grouped ("2 rules · 0.9 KB").
+
+## The 200-line limit
+
+Only the start of `MEMORY.md` loads: whole lines, up to 200 of them and 25 KB, whichever comes first. Claude doesn't see the rest. Past the limit, the legend adds an item such as "14 lines not loaded" in red stripes, and the bar shows them the same way.
+
+The other memory files don't load at the start. Claude reads one when it needs it, through its line in `MEMORY.md`.
+
+## On demand
+
+Some files load later, only when Claude needs them:
+
+- Rules with `paths:` load when Claude works on matching files. They are listed last, as *on demand*, with their paths.
+- `CLAUDE.md` files in subfolders load when Claude reads files there.
+- Memory files load when Claude opens them.
+
+## The MEMORY.md meter
+
+A meter shows how full `MEMORY.md` is, as "MEMORY.md 186 / 200":
+
+- in the header of **Project memory** on the Memory tab;
+- on the **Memory** card of the project's [Overview tab](/projects/overview/);
+- next to each project, and for your personal memory, in [Settings › Memory](/settings/#memory).
+
+It is green up to 179 lines, orange from 180, and red past 200. When it turns red, [health](/memory/health/) suggests **Tidy with Claude…**.
+
+## Pick a profile
+
+With more than one [Claude profile](/settings/claude-profiles/), a **Claude profile** menu in the card's header picks whose load to show. Each profile has its own `CLAUDE.md`, rules and memory folder.
+
+<Aside>
+Your [personal memory](/memory/personal-memory/) loads through an import line in your profile's `CLAUDE.md`, so it shows up in step 1.
+</Aside>
+
+## Settings
+
+The card has no settings. To load your personal memory in every project, use **Add to Claude Code…** in [Settings › Memory](/settings/#memory).

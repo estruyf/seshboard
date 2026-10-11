@@ -1,6 +1,6 @@
 import { ImagePlus, Paperclip } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import type { ContextItem, ImageAttachment, SlashCommand } from '@switchboard/protocol/client';
+import { joinPath, type ContextItem, type ImageAttachment, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { attachmentsAfterSend, textAfterSend } from './afterSend.ts';
@@ -14,7 +14,7 @@ import { onFirstLine, onLastLine, textareaRows } from './caretLine.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { tokenAtCaret } from './tokens.ts';
 import { useAttachments } from './useAttachments.ts';
-import { ariaKeysFor, formatKeys, keysFor, matches, type ShortcutId } from '../../lib/shortcuts.ts';
+import { ariaKeysFor, formatKeys, keysFor, localizeKeys, matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { submitKey } from '../newSession/startMenu.ts';
 
 type PaletteItem = { value: string; label: string; detail: string };
@@ -287,7 +287,7 @@ export function Composer(props: ComposerProps) {
       const next = `${text.slice(0, palette.start)}${text.slice(caret).replace(/^ /, '')}`;
       setText(next);
       closePalette();
-      addContext([{ kind: 'file', path: `${cwd.replace(/\/+$/, '')}/${item.value.slice(1)}`, directory: false }]);
+      addContext([{ kind: 'file', path: joinPath(cwd, item.value.slice(1)), directory: false }]);
       requestAnimationFrame(() => el.setSelectionRange(palette.start, palette.start));
       return;
     }
@@ -568,7 +568,7 @@ export function Composer(props: ComposerProps) {
               ) : props.running ? (
                 `Esc to stop Claude · messages wait for Claude to finish${props.secondary ? ` · ${formatKeys(keysFor(props.secondary.shortcut))} sends now` : ''}`
               ) : (
-                `/ for commands · @ for files${props.onCycleMode ? ' · ⇧Tab to change mode' : ''}`
+                `/ for commands · @ for files${props.onCycleMode ? ` · ${localizeKeys('⇧Tab')} to change mode` : ''}`
               )}
             </span>
           )}

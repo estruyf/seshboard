@@ -3,6 +3,7 @@ import { accessSync, chmodSync, constants, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import type { LogLevel, TerminalInfo, TerminalKind } from '@switchboard/protocol';
+import { userShell, type UserShell } from '../system/shell.ts';
 
 /** The slice of node-pty's IPty the manager uses (injectable for tests). */
 export interface Pty {
@@ -45,7 +46,7 @@ interface Terminal {
   info: TerminalInfo;
   pty: Pty;
   /** What was spawned, so Restart can run it again in the same tab. */
-  spawn: { file: string; args: string[]; cwd: string; env: Record<string, string> };
+  spawn: { file: string; args: string[]; cwd: string; env: Record<string, string>; command?: string };
   stopTimers: Array<ReturnType<typeof setTimeout>>;
   replay: string[];
   replayLength: number;
@@ -95,6 +96,11 @@ export class TerminalManager {
 
   constructor(private readonly options: TerminalManagerOptions) {}
 
+  /** The shell terminal tabs and shell actions run in, e.g. to quote values for it. */
+  async shell(): Promise<UserShell> {
+    return userShell(await this.options.env());
+  }
+
   list(): TerminalInfo[] {
     return [...this.terminals.values()].map((t) => t.info);
   }
@@ -129,13 +135,15 @@ export class TerminalManager {
     } else if (params.kind === 'action') {
       if (!params.command) throw new Error('No command to run');
       // An interactive login shell, so aliases and nvm from your shell config work in actions too.
-      file = env.SHELL || '/bin/zsh';
-      args = ['-ilc', params.command];
+      const shell = userShell(env);
+      file = shell.file;
+      args = shell.run(params.command);
       title = params.title ?? 'Action';
     } else {
-      file = env.SHELL || '/bin/zsh';
-      args = ['-l'];
-      title = basename(file);
+      const shell = userShell(env);
+      file = shell.file;
+      args = shell.interactive;
+      title = basename(file).replace(/\.exe$/i, '');
     }
 
     const terminal = {
@@ -151,7 +159,7 @@ export class TerminalManager {
         exitCode: null,
         startedAt: Date.now(),
       },
-      spawn: { file, args, cwd: params.cwd, env },
+      spawn: { file, args, cwd: params.cwd, env, ...(params.kind === 'action' ? { command: params.command } : {}) },
       stopTimers: [],
       replay: [],
       replayLength: 0,
@@ -172,7 +180,7 @@ export class TerminalManager {
   async restart(id: string, change: { command?: string; cwd?: string } = {}): Promise<TerminalInfo> {
     const terminal = this.require(id);
     if (terminal.info.exitCode === null) throw new Error('This terminal is still running');
-    if (change.command !== undefined && terminal.info.kind === 'action') terminal.spawn = { ...terminal.spawn, args: ['-ilc', change.command] };
+    if (change.command !== undefined && terminal.info.kind === 'action') terminal.spawn = { ...terminal.spawn, args: userShell(terminal.spawn.env).run(change.command), command: change.command };
     if (change.cwd !== undefined) terminal.spawn = { ...terminal.spawn, cwd: change.cwd };
     if (!existsSync(terminal.spawn.cwd)) throw new Error(`Folder not found: ${terminal.spawn.cwd}`);
     this.buffer(terminal, '\r\n\x1b[2m── Restarted ──\x1b[0m\r\n\r\n');
@@ -193,6 +201,16 @@ export class TerminalManager {
     const pty = terminal.pty;
     const signal = (name: NodeJS.Signals) => {
       if (terminal.pty !== pty || terminal.info.exitCode !== null) return;
+      // Windows has no signals or process groups: node-pty refuses a signal there, and kill() ends the
+      // console's processes, the shell and what it started.
+      if (process.platform === 'win32') {
+        try {
+          pty.kill();
+        } catch {
+          // Already gone.
+        }
+        return;
+      }
       // The pty's process leads its own process group; signal the group so children go too.
       try {
         process.kill(-pty.pid, name);
@@ -218,7 +236,7 @@ export class TerminalManager {
     const { file, args, cwd, env } = terminal.spawn;
     const action = terminal.info.kind === 'action';
     // Show what runs: a quiet command like `git fetch` with nothing new prints nothing, and the tab would look like it never ran.
-    if (action) this.buffer(terminal, `\x1b[2m$ ${args[1]!.replace(/\r?\n/g, '\r\n')}\x1b[0m\r\n`);
+    if (action) this.buffer(terminal, `\x1b[2m$ ${terminal.spawn.command!.replace(/\r?\n/g, '\r\n')}\x1b[0m\r\n`);
     const pty = (await this.spawnPty)(file, args, { name: 'xterm-256color', cols: terminal.info.cols, rows: terminal.info.rows, cwd, env });
     let resolveExit!: (code: number) => void;
     terminal.exited = new Promise<number>((resolve) => (resolveExit = resolve));

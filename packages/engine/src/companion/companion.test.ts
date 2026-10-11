@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createConnection, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -24,8 +24,14 @@ import { CompanionHub } from './companionHub.ts';
 import { companionSessions, inFolders, isWithin, promptsFor, RECENT_MS, sessionsFor } from './companionSessions.ts';
 
 const SESSION_ID = '44444444-4444-4444-8444-444444444444';
+// Folders in this platform's form (E:\work\web on Windows), as the companion only takes absolute local paths.
+const WORK = resolve('/work');
+const WEB = join(WORK, 'web');
+const SRC = join(WEB, 'src');
+const LOGIN = join(SRC, 'login.ts');
+const ELSEWHERE = resolve('/elsewhere');
 const source: SessionSource = {
-  list: async () => [{ sessionId: SESSION_ID, summary: 'Fix the login form', lastModified: Date.now(), cwd: '/work/web' }],
+  list: async () => [{ sessionId: SESSION_ID, summary: 'Fix the login form', lastModified: Date.now(), cwd: WEB }],
   info: async () => undefined,
   messages: async () => [],
 };
@@ -99,9 +105,14 @@ const hello = (client: RpcClient<CompanionContract>, token: string) => client.ca
 describe('companion socket', () => {
   it('writes where it listens to a file only you can read', async () => {
     const { info, infoFile } = await start();
-    expect(statSync(infoFile).mode & 0o777).toBe(0o600);
-    expect(statSync(join(infoFile, '..')).mode & 0o777).toBe(0o700);
-    expect(statSync(join(info.socket, '..')).mode & 0o777).toBe(0o700);
+    if (process.platform === 'win32') {
+      // A named pipe with a name nobody can guess; Windows has no file modes (AppData is the user's own).
+      expect(info.socket).toMatch(/^\\\\\.\\pipe\\switchboard-[0-9a-f]{32}$/);
+    } else {
+      expect(statSync(infoFile).mode & 0o777).toBe(0o600);
+      expect(statSync(join(infoFile, '..')).mode & 0o777).toBe(0o700);
+      expect(statSync(join(info.socket, '..')).mode & 0o777).toBe(0o700);
+    }
     expect(info).toMatchObject({ protocol: COMPANION_PROTOCOL, appVersion: '9.9.9', pid: process.pid });
     expect(info.token).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -132,15 +143,15 @@ describe('companion socket', () => {
     const { client } = editor(info);
     await expect(hello(client, info.token)).resolves.toMatchObject({ protocol: COMPANION_PROTOCOL, app: { version: '9.9.9' } });
     // Started in a terminal: only listed while the sidebar shows every session.
-    expect((await client.call('sessions.list', { folders: ['/work'] })).sessions).toEqual([]);
+    expect((await client.call('sessions.list', { folders: [WORK] })).sessions).toEqual([]);
     await window.call('companion.focus', { sessionId: null, scope: 'all' });
-    expect((await client.call('sessions.list', { folders: ['/work'] })).sessions.map((s) => s.id)).toEqual([SESSION_ID]);
-    expect((await client.call('sessions.list', { folders: ['/work/web/src'] })).sessions.map((s) => s.id)).toEqual([SESSION_ID]);
-    expect((await client.call('sessions.list', { folders: ['/elsewhere'] })).sessions).toEqual([]);
+    expect((await client.call('sessions.list', { folders: [WORK] })).sessions.map((s) => s.id)).toEqual([SESSION_ID]);
+    expect((await client.call('sessions.list', { folders: [SRC] })).sessions.map((s) => s.id)).toEqual([SESSION_ID]);
+    expect((await client.call('sessions.list', { folders: [ELSEWHERE] })).sessions).toEqual([]);
     expect((await client.call('sessions.list', { folders: [] })).focused).toBeNull();
     await window.call('companion.focus', { sessionId: SESSION_ID, scope: 'all' });
-    const listed = await client.call('sessions.list', { folders: ['/elsewhere'] });
-    expect(listed.focused).toMatchObject({ id: SESSION_ID, cwd: '/work/web' });
+    const listed = await client.call('sessions.list', { folders: [ELSEWHERE] });
+    expect(listed.focused).toMatchObject({ id: SESSION_ID, cwd: WEB });
     expect(listed.windows).toBe(1);
   });
 
@@ -148,7 +159,7 @@ describe('companion socket', () => {
     const { info, window } = await start();
     const { client } = editor(info);
     await hello(client, info.token);
-    const items = [{ kind: 'file' as const, path: '/work/web/src/login.ts', range: { start: 12, end: 40 } }];
+    const items = [{ kind: 'file' as const, path: LOGIN, range: { start: 12, end: 40 } }];
     // No window has said what it shows yet: nowhere to put it.
     await expect(client.call('context.add', { target: { kind: 'session', sessionId: SESSION_ID }, items })).rejects.toMatchObject({ code: 'NO_WINDOW' });
 
@@ -182,7 +193,7 @@ describe('companion socket', () => {
     await hello(client, info.token);
     const changes: Array<string | null> = [];
     client.on('sessions.changed', ({ focused }) => void changes.push(focused?.id ?? null));
-    await client.call('sessions.watch', { folders: ['/work'] });
+    await client.call('sessions.watch', { folders: [WORK] });
     await window.call('companion.focus', { sessionId: SESSION_ID });
     await until(() => changes, (c) => c.length > 0);
     expect(changes).toEqual([SESSION_ID]);
@@ -213,7 +224,7 @@ describe('prompts', () => {
   it('hands an editor the prompts of its folders, and its answers to the engine', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-companion-'));
     const answers: Array<[string, PermissionDecision, boolean]> = [];
-    const summary = { id: SESSION_ID, title: 'Fix the login form', firstPrompt: null, customTitle: null, cwd: '/work/web', projectRoot: '/work/web', gitBranch: 'main', worktree: null, origin: 'app', createdAt: null, updatedAt: Date.now(), fileSize: null, tag: null, pinned: false, archivedAt: null, viewedAt: null, unread: false, inApp: true, profileId: 'default' } satisfies SessionSummary;
+    const summary = { id: SESSION_ID, title: 'Fix the login form', firstPrompt: null, customTitle: null, cwd: WEB, projectRoot: WEB, gitBranch: 'main', worktree: null, origin: 'app', createdAt: null, updatedAt: Date.now(), fileSize: null, tag: null, pinned: false, archivedAt: null, viewedAt: null, unread: false, inApp: true, profileId: 'default' } satisfies SessionSummary;
     const hub = new CompanionHub({
       infoDir: join(dataDir, COMPANION_DIR),
       appVersion: '9.9.9',
@@ -233,8 +244,8 @@ describe('prompts', () => {
     const info = JSON.parse(readFileSync(hub.infoFile, 'utf8')) as CompanionInfo;
     const { client } = editor(info);
     await hello(client, info.token);
-    expect((await client.call('sessions.list', { folders: ['/work'] })).prompts?.map((p) => p.requestId)).toEqual(['ask']);
-    expect((await client.call('sessions.list', { folders: ['/elsewhere'] })).prompts).toEqual([]);
+    expect((await client.call('sessions.list', { folders: [WORK] })).prompts?.map((p) => p.requestId)).toEqual(['ask']);
+    expect((await client.call('sessions.list', { folders: [ELSEWHERE] })).prompts).toEqual([]);
 
     await client.call('prompt.respond', { requestId: 'ask', decision: { behavior: 'allow' }, acceptEdits: true });
     await client.call('prompt.respond', { requestId: 'ask', decision: { behavior: 'deny', message: 'Use pnpm' } });
@@ -253,6 +264,9 @@ describe('session matching', () => {
     expect(isWithin('/repo/src', '/repo')).toBe(true);
     expect(isWithin('/repo', '/repo/')).toBe(true);
     expect(isWithin('/repository', '/repo')).toBe(false);
+    // Windows: VS Code says c:\, Claude Code says C:\.
+    expect(isWithin('C:\\repo\\src', 'c:\\repo')).toBe(true);
+    expect(isWithin('C:\\repository', 'C:\\repo')).toBe(false);
   });
 
   it('lists a session when it works in a workspace folder, or a workspace folder is inside its own', () => {

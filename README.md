@@ -119,6 +119,8 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - A Mac with Apple Silicon
 - [Claude Code](https://github.com/anthropics/claude-code) installed and signed in (`claude` works in your terminal)
 
+Switchboard also runs on Windows 10 and 11. Until a release has a signed Windows installer, build it from source. See [Windows support](docs/windows-support.md).
+
 ## Install
 
 Download the `.dmg` from the [latest release](https://github.com/estruyf/switchboard/releases/latest), open it and drag Switchboard to Applications.
@@ -166,6 +168,8 @@ To stop the checks, turn off *Check for Claude Code updates automatically* in Se
 ## Keyboard shortcuts
 
 Press **⌘/** (or Help › Keyboard Shortcuts) to see every shortcut in the app, with the ones that work where you are and your project actions' shortcuts. Type in its field to filter by name or by keys ("terminal", "⌘J").
+
+On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them that way. In the terminal panel, Ctrl keys belong to the shell and Ctrl+Shift keys to Switchboard.
 
 <p align="center"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/shortcuts-dark.png">
@@ -487,6 +491,8 @@ To move to a new Mac, restore your setup after a reset, or share a set of action
 Switchboard reads the session files Claude Code already keeps in `~/.claude` (and in the folders of any other Claude profiles you add) and runs your own `claude` to do the work, so your sessions stay in one place whether you use the terminal or the app. Apart from asking GitHub whether there's a new Switchboard release (which you can turn off in Settings → About), it doesn't send anything anywhere else, and it never handles your Claude login: you sign in with Claude Code itself. Deleting a session moves its files to the Trash.
 
 ## Documentation
+
+The full guide to every feature is on the website: **[estruyf.github.io/switchboard](https://estruyf.github.io/switchboard/)**.
 
 - [Themes](docs/themes.md): the theme file format, every colour and where it shows, and code colours.
 - [Project actions](docs/project-actions.md): add buttons for your own commands and prompts, and share them with your team.

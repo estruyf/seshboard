@@ -1,3 +1,5 @@
+import { sameShortcut, shortcutFromEvent } from '../../lib/shortcuts.ts';
+import { fileManagerName } from '../../lib/platform.ts';
 import { ChevronLeft, ChevronRight, Download, ImageOff, Maximize2, X } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
@@ -7,6 +9,7 @@ import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../..
 import { toast } from '../../state/toastStore.ts';
 import { Menu } from '../Menu.tsx';
 import { Button } from '../ui/Button.tsx';
+import { basename } from '../../lib/format.ts';
 import { isTopModal, useModalFocus } from '../ui/useModalFocus.ts';
 import { imageFileName, parseDataUrl } from './imageFile.ts';
 import { formatBytes, frameSize, imageFacts, stepIndex, type ImageVariant, type Size } from './imageLayout.ts';
@@ -53,8 +56,8 @@ async function saveImage(url: string, imageId: string) {
     const path = await bridge.saveImage({ ...image, fileName: imageFileName(imageId, image.mediaType) });
     if (!path) return;
     toast('Image saved', {
-      body: path.split('/').pop(),
-      actions: [{ label: 'Show in Finder', onSelect: () => bridge.showSavedImage(path) }],
+      body: basename(path),
+      actions: [{ label: `Show in ${fileManagerName()}`, onSelect: () => bridge.showSavedImage(path) }],
       data: { 'data-image-saved': path },
     });
   } catch {
@@ -114,7 +117,7 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
       else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.metaKey && !e.altKey && !e.ctrlKey) {
         e.preventDefault();
         keys.current.step(e.key === 'ArrowLeft' ? -1 : 1);
-      } else if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 's') {
+      } else if (sameShortcut(shortcutFromEvent(e) ?? '', 'mod+s')) {
         e.preventDefault();
         keys.current.save();
       }

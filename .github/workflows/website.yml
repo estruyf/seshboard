@@ -1,0 +1,72 @@
+# Builds the website (website/, Astro + Starlight) and publishes it to GitHub Pages at
+# https://estruyf.github.io/switchboard/. Pull requests that touch the site, the UI (the shortcuts page is
+# built from its registry) or the changelog only build it, so a broken link or a missing screenshot fails there.
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'apps/ui/src/lib/shortcuts.ts'
+      - 'CHANGELOG.md'
+      - 'docs/videos/**'
+      - '.github/workflows/website.yml'
+  pull_request:
+    paths:
+      - 'website/**'
+      - 'apps/ui/**'
+      - 'CHANGELOG.md'
+      - '.github/workflows/website.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push replaces a deploy that hasn't started.
+concurrency:
+  group: website-${{ github.event_name == 'pull_request' && github.ref || 'pages' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Only the website's dependencies: the site needs none of Electron's.
+      - name: Install
+        run: npm ci --workspace @switchboard/website --include-workspace-root
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      # Fails on a broken internal link (starlight-links-validator) or a missing screenshot.
+      - name: Build
+        run: npm run website:build
+
+      - name: Upload
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

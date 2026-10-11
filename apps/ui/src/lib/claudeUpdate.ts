@@ -13,6 +13,7 @@ export const INSTALL_METHOD_LABEL: Record<ClaudeInstallMethod, string> = {
   homebrew: 'Homebrew',
   npm: 'npm',
   local: 'Local install (~/.claude/local)',
+  winget: 'WinGet',
   unknown: 'Unknown',
 };
 
