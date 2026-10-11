@@ -165,11 +165,12 @@ const isActivity = (item: DisplayItem) =>
  * and plans break a run and stay as they are. The group's key is its first item's,
  * so it stays stable while the run grows.
  */
-export function groupActivity(items: readonly DisplayItem[]): RenderItem[] {
+export function groupActivity(items: readonly DisplayItem[], standalone: (item: DisplayItem) => boolean = () => false): RenderItem[] {
   const out: RenderItem[] = [];
   let group: ActivityGroup | null = null;
   for (const item of items) {
-    if (!isActivity(item)) {
+    // A memory Claude saved stays a line of its own, between runs.
+    if (!isActivity(item) || standalone(item)) {
       group = null;
       out.push(item);
       continue;

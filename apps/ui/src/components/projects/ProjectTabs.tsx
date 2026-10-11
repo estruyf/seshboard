@@ -32,6 +32,10 @@ import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { formatBytes, worktreeSummary } from '../worktrees/worktreeGroups.ts';
 import { ProjectDefaultsEditor } from './ProjectDefaultsEditor.tsx';
+import { indexLevel } from '../memory/loadOrderView.ts';
+import { useMemoryList } from '../memory/useMemoryList.ts';
+import { LEVEL_TEXT } from '../../lib/levels.ts';
+import { MEMORY_INDEX_LIMIT } from '@switchboard/protocol/client';
 import { RenameProjectDialog } from './RenameProjectDialog.tsx';
 
 /** Re-renders relative ages once a minute. */
@@ -71,6 +75,7 @@ const sep = <span className="text-faint"> · </span>;
 /** Overview: one card per area (sessions, worktrees, branches, the queue, git), each opening its tab. */
 export function ProjectOverview({ root, status }: { root: string; status: WorktreeStatus | null }) {
   const sessions = useProjectSessionRows(root);
+  const memory = useMemoryList(root);
   const queue = useProjectQueue(root);
   const { state, rows } = useWorktreeRows(root);
   const sizes = useWorktreeSizes(state.list);
@@ -133,6 +138,23 @@ export function ProjectOverview({ root, status }: { root: string; status: Worktr
             )}
             {sep}
             <span className={branchCounts.safe ? 'text-ok' : 'text-muted'}>{branchCounts.safe} safe to delete</span>
+          </>
+        )}
+      </OverviewCard>
+      <OverviewCard title="Memory" tab="memory" root={root}>
+        {!memory.list ? (
+          <span className="text-muted">Reading…</span>
+        ) : (
+          <>
+            {memory.list.memories.length} {memory.list.memories.length === 1 ? 'memory' : 'memories'}
+            {memory.list.indexLines > 0 && (
+              <>
+                {sep}
+                <span className={LEVEL_TEXT[indexLevel(memory.list.indexLines)] || 'text-muted'}>
+                  MEMORY.md {memory.list.indexLines}/{MEMORY_INDEX_LIMIT}
+                </span>
+              </>
+            )}
           </>
         )}
       </OverviewCard>
