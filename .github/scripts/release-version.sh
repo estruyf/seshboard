@@ -5,7 +5,18 @@
 # FEED is which update feed the release carries: latest (Stable), nightly, or none. A pre-release tagged
 # vX.Y.Z-nightly.YYYYMMDD.N is the Nightly feed; any other pre-release gets the builds but no feed, so no
 # one is ever updated to it.
+#
+# A dry run (DRY_RUN=true, the workflow run by hand) has no tag: it builds the app's version with a suffix no
+# release carries, such as 1.2.3-dryrun.42, and no feed.
 set -euo pipefail
+
+if [ "${DRY_RUN:-false}" == "true" ]; then
+  version="$(node -p "require('./apps/desktop/package.json').version")-dryrun.${GITHUB_RUN_NUMBER:-0}"
+  echo "::notice::Dry run: building $version. Nothing is published."
+  echo "VERSION=$version" >> "$GITHUB_ENV"
+  echo "FEED=none" >> "$GITHUB_ENV"
+  exit 0
+fi
 
 version="${TAG#v}"
 if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then

@@ -3,8 +3,9 @@
 
 /**
  * Signing on Windows with Azure Trusted Signing, when the release workflow sets these (docs/building-and-signing.md).
- * The account's credentials come from AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET, which electron-builder
- * reads itself. A certificate file (WIN_CSC_LINK) needs nothing here either.
+ * The credentials aren't here: the TrustedSigning module electron-builder runs finds them itself (the release
+ * workflow's Azure CLI login, or AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET locally). A certificate
+ * file (WIN_CSC_LINK) needs nothing here either.
  */
 const AZURE_SIGNING = {
   endpoint: 'AZURE_SIGNING_ENDPOINT',

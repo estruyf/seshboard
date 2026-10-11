@@ -380,8 +380,8 @@ What was done differently from the plan above, and why:
 - **3.1 Icon:** `npm run icon` makes `build/icon.ico` with Electron, so on any OS, from the tile without macOS's margin and shadow.
 - **3.1 `node-pty`:** its install leaves a copy of ConPTY for the build machine's architecture in `build/Release`, which is left out; each app loads `prebuilds/win32-<arch>`. Both architectures' prebuilds stay in each app (a few MB), as file patterns can't tell them apart.
 - **3.2 Updater:** no change was needed. Installing shows the installer's progress window and restarts the app (`quitAndInstall(false, true)`): silent would leave the app gone for several seconds with nothing on screen. Closing the window asks first on Windows, but not while quitting to install, as `before-quit` comes before the windows close.
-- **3.3 Signing:** code signing certificates can no longer be exported as files, so the workflow supports Azure Trusted Signing (repository variables and an app registration's secret) and, for an older certificate, a `.pfx`.
-- **3.4 Windows releases are switched on with a variable** (`WINDOWS_RELEASES` = `true`). Until then the Windows job is skipped, so releases before Windows signing is set up don't show a failed job; once on, a release that can't be signed fails and attaches nothing.
+- **3.3 Signing:** code signing certificates can no longer be exported as files, so the workflow supports Azure Trusted Signing (repository variables, and an app registration that the job logs in to with OpenID Connect, without a stored secret) and, for an older certificate, a `.pfx`.
+- **3.4 Both platforms are published together.** The Mac and Windows jobs only build and check; a publish job attaches all the files once both have passed, so a release never has one platform without the other. Running the workflow by hand is a dry run that signs both and publishes nothing. (An earlier `WINDOWS_RELEASES` switch is gone.)
 - **3.4 CI:** `check.yml` runs `npm run check` on `macos-15` and `windows-latest` for every pull request and push to `main`, and then the smoke test in the made-up home folder of the README screenshots (`npm run smoke:demo`), since a runner has no `~/.claude`.
 - **Found by the macOS check:** a platform's own `files` list with only `!` patterns packs everything else in `apps/desktop` (the source, the scripts, and locally `.smoke` with screenshots of real sessions). Both lists now repeat `out/**` and `package.json`, and `scripts/dist.mjs` fails the build when `app.asar` holds anything but `out`, `node_modules` and `package.json`.
 - **3.5 WinGet:** not done. Its manifest needs the signed installer's URL and checksum, so it follows the first signed release.
@@ -392,7 +392,7 @@ From the code review:
 - **Uninstalling removed any `switchboard://` handler**, also one another app or a copy run from elsewhere registered since. It now removes it only when its command starts this install's `Switchboard.exe`.
 
 Still to do, by the maintainer or with them:
-- set up signing (decision 5 and 9), set `WINDOWS_RELEASES` to `true`, and publish a release, which runs the Windows job for the first time;
+- check signing with a dry run (Actions → Release → Run workflow), then publish a release;
 - install that release on a clean Windows PC, and update it to the next one;
 - try the Arm64 build on Arm hardware.
 
