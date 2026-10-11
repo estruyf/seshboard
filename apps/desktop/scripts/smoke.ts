@@ -2,11 +2,16 @@
  * Launches the built app in smoke mode, which drives the real UI step by step (see `runSmokeStep` in
  * src/main/index.ts), then prints each step's result and how long it took.
  * Usage: npm run smoke (builds first). Writes .smoke/*.png and .smoke/result.json.
+ *
+ * --demo runs it in the made-up home folder the README screenshots use (scripts/screenshot-demo.ts) instead of
+ * the user's own: projects, sessions and a running one, the same on every machine. CI runs it this way
+ * (npm run smoke:demo), since a runner's home folder has no ~/.claude.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { createDemoWorld, linkClaude, type DemoWorld } from './screenshot-demo.ts';
 
 interface StepResult {
   label: string;
@@ -28,14 +33,29 @@ const packagedApp = () =>
     : join(appDir, 'dist', 'mac-arm64', 'Switchboard.app', 'Contents', 'MacOS', 'Switchboard');
 const command = packaged ? packagedApp() : (createRequire(import.meta.url)('electron') as unknown as string);
 const started = performance.now();
-const childEnv = { ...process.env };
+const childEnv: NodeJS.ProcessEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
+
+let world: DemoWorld | null = null;
+if (process.argv.includes('--demo')) {
+  world = createDemoWorld();
+  linkClaude(world.home);
+  // The home folder is HOME on macOS and USERPROFILE on Windows; with CLAUDE_CONFIG_DIR, neither the app nor
+  // Claude Code sees the real one.
+  Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), SWITCHBOARD_SMOKE_DEMO: '1' });
+  console.log(`demo home: ${world.home}`);
+}
+
 const child = spawn(command, packaged ? [] : [appDir], {
   env: { ...childEnv, SWITCHBOARD_SMOKE_OUT: outDir, ELECTRON_ENABLE_LOGGING: '0' },
   stdio: 'inherit',
 });
 
 const code: number = await new Promise((resolve) => child.on('exit', (c) => resolve(c ?? 1)));
+if (world) {
+  world.stop();
+  rmSync(world.home, { recursive: true, force: true, maxRetries: 5 });
+}
 const resultFile = join(outDir, 'result.json');
 if (!existsSync(resultFile)) {
   console.error(`✗ smoke test failed: app exited with code ${code} before writing any results`);
@@ -62,4 +82,5 @@ if (result.notifications.length) console.log(`  notifications: ${result.notifica
 console.log(`  slowest: ${(result.slowest as StepResult[]).map((step) => `${step.label.split(':')[0]} ${seconds(step.ms)}`).join(', ')}`);
 if (result.reports[0]) console.log(`  claude ${result.reports[0].claudeVersion ?? 'not found'} · engine ping ${result.reports[0].pingMs}ms · electron ${result.versions.electron}`);
 if (packaged) console.log('  (packaged app)');
+if (world) console.log('  (demo home)');
 console.log(`${failed.length ? `✗ ${failed.length} of ${steps.length} steps failed` : `✓ all ${steps.length} steps passed`} in ${seconds(performance.now() - started)}, screenshots in ${outDir}`);

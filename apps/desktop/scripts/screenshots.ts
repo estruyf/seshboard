@@ -5,10 +5,10 @@
  * Usage: npm run screenshots (builds first). The raw captures stay in .screenshots/ for a look.
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, readdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { createDemoWorld } from './screenshot-demo.ts';
+import { createDemoWorld, linkClaude } from './screenshot-demo.ts';
 
 const appDir = join(import.meta.dirname, '..');
 const rawDir = join(appDir, '.screenshots');
@@ -24,25 +24,8 @@ function run(args: string[], env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolve) => child.on('exit', (code) => resolve(code ?? 1)));
 }
 
-/** The user's `claude`, so the demo home can offer it (its helpers find no login there and send nothing). */
-function realClaude(): string | null {
-  for (const dir of (process.env.PATH ?? '').split(':')) {
-    const path = join(dir, 'claude');
-    try {
-      return realpathSync(path);
-    } catch {
-      // not here
-    }
-  }
-  return null;
-}
-
 const world = createDemoWorld();
-const claude = realClaude();
-if (claude) {
-  mkdirSync(join(world.home, '.local', 'bin'), { recursive: true });
-  symlinkSync(claude, join(world.home, '.local', 'bin', 'claude'));
-}
+linkClaude(world.home);
 console.log(`demo home: ${world.home}`);
 
 let code: number;

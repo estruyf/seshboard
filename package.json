@@ -18,6 +18,7 @@
     "package:vscode": "npm run package -w switchboard-companion",
     "build": "npm run build -w @switchboard/desktop",
     "smoke": "npm run smoke -w @switchboard/desktop",
+    "smoke:demo": "npm run smoke:demo -w @switchboard/desktop",
     "screenshots": "npm run screenshots -w @switchboard/desktop",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",

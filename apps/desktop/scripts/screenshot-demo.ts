@@ -6,9 +6,9 @@
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, realpathSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 
 const VERSION = '2.1.287';
 const MODEL = 'claude-opus-5-5';
@@ -414,10 +414,11 @@ export function createDemoWorld(home = realpathSync(mkdtempSync(join(tmpdir(), '
     t.write(cwd === payments ? workConfigDir : configDir, title);
   }
 
-  // Claude Code's live registry: one entry per running process. A sleeping process stands in for each.
+  // Claude Code's live registry: one entry per running process. A sleeping process stands in for each
+  // (Node rather than `sleep`, which Windows doesn't have).
   const sleepers: ChildProcess[] = [];
   const live = (sessionId: string, cwd: string, status: string, startedAt: number, registry = configDir) => {
-    const child = spawn('sleep', ['600'], { stdio: 'ignore' });
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600_000)'], { stdio: 'ignore' });
     sleepers.push(child);
     const entry = { pid: child.pid, sessionId, cwd, startedAt, version: VERSION, kind: 'interactive', entrypoint: 'cli', status, statusUpdatedAt: now, updatedAt: now };
     writeFileSync(join(registry, 'sessions', `${child.pid}.json`), JSON.stringify(entry));
@@ -430,4 +431,24 @@ export function createDemoWorld(home = realpathSync(mkdtempSync(join(tmpdir(), '
     sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id },
     stop: () => sleepers.forEach((child) => child.kill()),
   };
+}
+
+/**
+ * Links the user's `claude` into the demo home, where the app looks for it (~/.local/bin), so the demo can offer
+ * it: its helpers find no login there and send nothing. On a Mac the app's PATH comes from a login shell, which
+ * in the demo home has none of the user's own setup. Windows keeps the inherited PATH, so it needs no link.
+ */
+export function linkClaude(home: string): void {
+  if (process.platform === 'win32') return;
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    let claude: string;
+    try {
+      claude = realpathSync(join(dir, 'claude'));
+    } catch {
+      continue; // not here
+    }
+    mkdirSync(join(home, '.local', 'bin'), { recursive: true });
+    symlinkSync(claude, join(home, '.local', 'bin', 'claude'));
+    return;
+  }
 }

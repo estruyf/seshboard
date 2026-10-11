@@ -23,6 +23,7 @@ npm run icon -w @switchboard/desktop   # regenerate the app icon from its SVG
 npm run dist       # package Switchboard.app and a .dmg (signed when a Developer ID is available)
 npm run dist:notarized   # sign, notarise and staple
 npm run smoke:packaged   # run the smoke test against the packaged app
+npm run smoke:demo       # run the smoke test in the made-up home folder of the README screenshots
 npm run dev:vscode       # rebuild the VS Code companion on every change
 npm run build:vscode     # build it once (apps/vscode-extension/dist)
 npm run package:vscode   # a .vsix in apps/vscode-extension
@@ -59,7 +60,7 @@ Each check is a step run by `SmokeRun` (`apps/desktop/src/main/smokeRunner.ts`):
 
 Screenshots and `result.json` go to `apps/desktop/.smoke`. Set `SWITCHBOARD_COLOR_SCHEME=light` or `dark` to force a colour scheme for a run without saving it.
 
-Every pull request and push to `main` runs `npm run check` and then the smoke test on macOS and Windows (`.github/workflows/check.yml`), in a runner whose home folder has no `~/.claude`. The screenshots and `result.json` of each run are attached to it as an artifact.
+`npm run smoke:demo` runs it in the made-up home folder the README screenshots are taken in (`scripts/screenshot-demo.ts`: a few git projects, their sessions, one of them running) instead of yours, so it finds the same things on every machine. It has no login: the usage band step is skipped there. Every pull request and push to `main` runs `npm run check` and then `npm run smoke:demo` on macOS and Windows (`.github/workflows/check.yml`), since a runner's home folder has no `~/.claude`. The screenshots and `result.json` of each run are attached to it as an artifact.
 
 ### README screenshots
 
