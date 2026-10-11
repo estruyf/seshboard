@@ -51,11 +51,11 @@ jobs:
       run:
         working-directory: apps/vscode-extension
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -95,7 +95,7 @@ jobs:
           npx --yes @vscode/vsce@4 package --no-dependencies $PRE_RELEASE --out "$vsix"
           echo "vsix=$vsix" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: apps/vscode-extension/${{ steps.package.outputs.vsix }}
@@ -109,7 +109,7 @@ jobs:
       name: Microsoft Marketplace
       url: ${{ env.MS_URL }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: vsix
       - name: Publish
@@ -131,7 +131,7 @@ jobs:
       name: Open VSX
       url: ${{ env.VSX_URL }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: vsix
       - name: Publish
@@ -151,7 +151,7 @@ jobs:
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name }}
       - name: Fill in empty notes from the extension's changelog

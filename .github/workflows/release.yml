@@ -47,11 +47,11 @@ jobs:
       TAG: ${{ github.event.release.tag_name }}
       DRY_RUN: ${{ github.event_name != 'release' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name || github.ref }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -116,7 +116,7 @@ jobs:
           fi
 
       - name: Keep the build for the publish job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-mac
           path: |
@@ -146,11 +146,11 @@ jobs:
       TAG: ${{ github.event.release.tag_name }}
       DRY_RUN: ${{ github.event_name != 'release' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name || github.ref }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -227,7 +227,7 @@ jobs:
           ls "Switchboard-$VERSION-setup.exe" >/dev/null
 
       - name: Keep the build for the publish job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: |
@@ -249,7 +249,7 @@ jobs:
     env:
       TAG: ${{ github.event.release.tag_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name }}
 
@@ -259,7 +259,7 @@ jobs:
         run: bash .github/scripts/release-version.sh
 
       - name: Download both builds
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: release-*
           path: apps/desktop/dist
@@ -325,4 +325,3 @@ jobs:
             exit 0
           fi
           ./homebrew/publish-cask.sh --push
-
