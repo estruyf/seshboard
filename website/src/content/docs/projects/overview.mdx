@@ -10,9 +10,9 @@ import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-The **Overview** tab is the first tab of a project's page. It sums up the project in a few cards: its sessions, worktrees, branches, queue and git. Click a card to open the tab with the details.
+The **Overview** tab is the first tab of a project's page. It sums up the project in a few cards: its sessions, worktrees, branches, memory, queue and git. Click a card to open the tab with the details.
 
-<Screenshot name="project-overview" alt="The Overview tab of acme-store: cards for Sessions, Worktrees, Branches and Git, each with a one-line summary" eager />
+<Screenshot name="project-overview" alt="The Overview tab of acme-store: cards for Sessions, Worktrees, Branches, Memory and Git, each with a one-line summary" eager />
 
 ## Open it
 
@@ -27,6 +27,7 @@ Each card has a heading and one line:
 | **Sessions** | How many sessions are working (in yellow), how many need you (in pink), and the total. | [Sessions](/projects/sessions/) |
 | **Worktrees** | How many worktrees the project has besides its main checkout, their size on disk, and how many are safe to remove (in green). | [Worktrees](/projects/worktrees/) |
 | **Branches** | How many local branches, how many on the remote, and how many are safe to delete. | [Branches](/projects/branches/) |
+| **Memory** | How many memories the project has, and how full its `MEMORY.md` is ("MEMORY.md 186/200"): orange from 180 lines, red past the 200 that load. | [Memory](/projects/memory/) |
 | **Queue** | How many prompts are queued for this project, and how many are ready. Only shown when something is queued. | [Sessions](/projects/sessions/) |
 | **Git** | The branch checked out (or *detached HEAD*), how many commits it is behind its upstream, how many commits are left to push, and how many files have changed. | [Branches](/projects/branches/) |
 

@@ -212,6 +212,31 @@
       "page": "terminal-changes-git/terminal"
     },
     {
+      "id": "palette:memory",
+      "name": "Memory…",
+      "page": "projects/memory"
+    },
+    {
+      "id": "palette:memory-copy-app",
+      "name": "Copy memory for Claude app…",
+      "page": "memory/import"
+    },
+    {
+      "id": "palette:memory-import-export",
+      "name": "Import memory from Claude export…",
+      "page": "memory/import"
+    },
+    {
+      "id": "palette:memory-paste",
+      "name": "Paste memory from Claude app…",
+      "page": "memory/import"
+    },
+    {
+      "id": "palette:memory-settings",
+      "name": "Memory settings…",
+      "page": "memory/personal-memory"
+    },
+    {
       "id": "palette:new-action",
       "name": "New action…",
       "page": "projects/actions"
@@ -292,6 +317,11 @@
       "page": "command-palette"
     },
     {
+      "id": "palette:remember-this",
+      "name": "Remember this…",
+      "page": "memory/adding-memory"
+    },
+    {
       "id": "palette:rename-project",
       "name": "Rename project…",
       "page": "projects/projects-view"
@@ -332,6 +362,11 @@
       "page": "sessions/search"
     },
     {
+      "id": "palette:search-memory",
+      "name": "Search memory…",
+      "page": "memory/links-and-search"
+    },
+    {
       "id": "palette:settings",
       "name": "Settings",
       "page": "settings"
@@ -367,6 +402,11 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-memory",
+      "name": "Settings: Memory",
+      "page": "settings"
+    },
+    {
       "id": "palette:settings-profiles",
       "name": "settings-profiles",
       "page": "settings"
@@ -385,6 +425,11 @@
       "id": "palette:settings-vscode",
       "name": "settings-vscode",
       "page": "settings"
+    },
+    {
+      "id": "palette:share-memory",
+      "name": "Share memory with the team…",
+      "page": "memory/share-with-the-team"
     },
     {
       "id": "palette:shortcuts",
@@ -590,6 +635,11 @@
       "id": "shortcut:home",
       "name": "home",
       "page": "command-palette"
+    },
+    {
+      "id": "shortcut:memory.save",
+      "name": "Save the memory or instructions you are editing",
+      "page": "memory/adding-memory"
     },
     {
       "id": "shortcut:mode.cycle",
@@ -827,6 +877,11 @@
       "page": "getting-started/first-launch"
     },
     {
+      "id": "settings:memory",
+      "name": "Settings › Memory",
+      "page": "settings"
+    },
+    {
       "id": "settings:profiles",
       "name": "Settings: Claude profiles (project's profile)",
       "page": "projects/settings"
@@ -855,6 +910,11 @@
       "id": "project-tab:branches",
       "name": "Branches tab",
       "page": "projects/branches"
+    },
+    {
+      "id": "project-tab:memory",
+      "name": "Memory tab",
+      "page": "projects/memory"
     },
     {
       "id": "project-tab:overview",
@@ -1122,9 +1182,19 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:copy-for-claude-app",
+      "name": "Copy for Claude app…",
+      "page": "memory/import"
+    },
+    {
       "id": "feature:copy-message",
       "name": "Copy a message",
       "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:copy-to-my-memory",
+      "name": "Copy to my memory… (a section of an instruction file)",
+      "page": "memory/share-with-the-team"
     },
     {
       "id": "feature:create-pr",
@@ -1210,6 +1280,11 @@
       "id": "feature:edit-and-resend",
       "name": "Edit and resend",
       "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:edit-instruction-files",
+      "name": "Edit CLAUDE.md, rules and other instruction files",
+      "page": "memory/adding-memory"
     },
     {
       "id": "feature:edit-queued-item",
@@ -1342,6 +1417,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:import-claude-export",
+      "name": "Import from Claude export…",
+      "page": "memory/import"
+    },
+    {
       "id": "feature:import-folder-remap",
       "name": "Point missing folders at another folder",
       "page": "settings/backup"
@@ -1350,6 +1430,11 @@
       "id": "feature:import-merge-replace",
       "name": "Import mode: Merge or Replace",
       "page": "settings/backup"
+    },
+    {
+      "id": "feature:import-preview",
+      "name": "Import preview with flags",
+      "page": "memory/import"
     },
     {
       "id": "feature:imported-shell-action-approval",
@@ -1372,6 +1457,11 @@
       "page": "getting-started/install"
     },
     {
+      "id": "feature:instruction-changed-in-git",
+      "name": "Changed in git with Show in Changes",
+      "page": "memory/adding-memory"
+    },
+    {
       "id": "feature:live-terminal-sessions",
       "name": "Terminal sessions show live",
       "page": "getting-started/first-launch"
@@ -1385,6 +1475,146 @@
       "id": "feature:markdown-preview",
       "name": "Markdown blocks Preview and Source",
       "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:memories-from-this-session",
+      "name": "Memories from this session in a session's menu",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-copy-to-profile",
+      "name": "Copy a memory to another Claude profile",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-delete-undo",
+      "name": "Delete a memory to the Trash with Undo",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-editor",
+      "name": "Memory editor (description, type, text)",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-filter",
+      "name": "Filter memory field",
+      "page": "projects/memory"
+    },
+    {
+      "id": "feature:memory-health",
+      "name": "Memory health findings",
+      "page": "memory/health"
+    },
+    {
+      "id": "feature:memory-health-compare",
+      "name": "Compare duplicates (Keep left, Keep right, Merge into left…)",
+      "page": "memory/health"
+    },
+    {
+      "id": "feature:memory-health-fix-index",
+      "name": "Fix index",
+      "page": "memory/health"
+    },
+    {
+      "id": "feature:memory-health-tidy",
+      "name": "Tidy with Claude…",
+      "page": "memory/health"
+    },
+    {
+      "id": "feature:memory-index-meter",
+      "name": "MEMORY.md meter",
+      "page": "memory/what-loads"
+    },
+    {
+      "id": "feature:memory-instructions-list",
+      "name": "Instructions list (CLAUDE.md, rules, CLAUDE.local.md, agent memory)",
+      "page": "projects/memory"
+    },
+    {
+      "id": "feature:memory-link-suggestions",
+      "name": "[[ suggestions while editing",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-linked-from",
+      "name": "Linked from and Not written yet with Write it…",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-links",
+      "name": "[[name]] links between memories",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-load-order",
+      "name": "What loads in a session here",
+      "page": "memory/what-loads"
+    },
+    {
+      "id": "feature:memory-load-order-profile",
+      "name": "Pick whose load to show per Claude profile",
+      "page": "memory/what-loads"
+    },
+    {
+      "id": "feature:memory-move-to-personal",
+      "name": "Move to Personal / Move to project",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-new",
+      "name": "New memory",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-overview",
+      "name": "Claude Code memory, where it lives and its file format",
+      "page": "memory/overview"
+    },
+    {
+      "id": "feature:memory-profile-filter",
+      "name": "Claude profile filter on the Memory tab",
+      "page": "projects/memory"
+    },
+    {
+      "id": "feature:memory-rename",
+      "name": "Rename a memory",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-rename-updates-links",
+      "name": "Rename updates links to the memory",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-reveal-in-finder",
+      "name": "Reveal a memory in Finder",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-save-conflict",
+      "name": "Ask before saving over a memory Claude changed",
+      "page": "memory/adding-memory"
+    },
+    {
+      "id": "feature:memory-search",
+      "name": "Memory group in search with type chips and project menu",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-sync-conflicts",
+      "name": "Sync conflicts: Keep this one / Keep the other",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:memory-unwritten-links-chip",
+      "name": "N links not written yet chip",
+      "page": "memory/links-and-search"
+    },
+    {
+      "id": "feature:memory-worktrees-share-folder",
+      "name": "Worktrees share one memory folder",
+      "page": "projects/memory"
     },
     {
       "id": "feature:message-box",
@@ -1482,6 +1712,11 @@
       "page": "command-palette"
     },
     {
+      "id": "feature:paste-from-claude-app",
+      "name": "Paste from Claude app…",
+      "page": "memory/import"
+    },
+    {
       "id": "feature:permission-card",
       "name": "Permission card",
       "page": "permissions"
@@ -1495,6 +1730,26 @@
       "id": "feature:permission-modes",
       "name": "Permission modes",
       "page": "permissions"
+    },
+    {
+      "id": "feature:personal-memory",
+      "name": "Personal memory folder",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:personal-memory-change-folder",
+      "name": "Change folder… for personal memory (sync)",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:personal-memory-claude-md-block",
+      "name": "Add to Claude Code… (the CLAUDE.md block)",
+      "page": "memory/personal-memory"
+    },
+    {
+      "id": "feature:personal-memory-remove-block",
+      "name": "Remove from Claude Code",
+      "page": "memory/personal-memory"
     },
     {
       "id": "feature:pick-project-by-typing",
@@ -1579,6 +1834,11 @@
     {
       "id": "feature:project-overview-cards",
       "name": "Overview cards",
+      "page": "projects/overview"
+    },
+    {
+      "id": "feature:project-overview-memory-card",
+      "name": "Memory card on the project Overview",
       "page": "projects/overview"
     },
     {
@@ -1717,6 +1977,11 @@
       "page": "troubleshooting"
     },
     {
+      "id": "feature:remember-this",
+      "name": "Remember this from the conversation",
+      "page": "memory/adding-memory"
+    },
+    {
       "id": "feature:remove-profile",
       "name": "Remove a profile",
       "page": "settings/claude-profiles"
@@ -1767,6 +2032,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:saved-memory-line",
+      "name": "Saved memory line in the conversation",
+      "page": "memory/adding-memory"
+    },
+    {
       "id": "feature:search-conversations",
       "name": "Search all conversations",
       "page": "sessions/search"
@@ -1815,6 +2085,26 @@
       "id": "feature:settings-version-link",
       "name": "Version at the bottom of Settings",
       "page": "settings"
+    },
+    {
+      "id": "feature:share-memory-rule-paths",
+      "name": "Share to a rule file only for some paths",
+      "page": "memory/share-with-the-team"
+    },
+    {
+      "id": "feature:share-memory-undo",
+      "name": "Show in Changes and Undo after sharing",
+      "page": "memory/share-with-the-team"
+    },
+    {
+      "id": "feature:share-memory-warnings",
+      "name": "Share warnings (secrets, same heading, uncommitted, CLAUDE.local.md not ignored)",
+      "page": "memory/share-with-the-team"
+    },
+    {
+      "id": "feature:share-memory-with-team",
+      "name": "Share with the team…",
+      "page": "memory/share-with-the-team"
     },
     {
       "id": "feature:show-sessions-from-other-apps",

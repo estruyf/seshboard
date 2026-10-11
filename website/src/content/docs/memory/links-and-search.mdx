@@ -1,0 +1,65 @@
+---
+title: Links and search
+description: Link memories to each other with [[name]], and search memory next to your conversations.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+Memories can point at each other with `[[name]]` links, so related facts stay connected. Search finds memories by name, description and text, in the same window as your conversations.
+
+<Screenshot name="search-memory" alt="Search with the Memory group of results above the conversations: each memory with its type and project, and chips for all, user, feedback, project and reference" eager />
+
+## Open it
+
+- Links work in the memory editor, on a project's [Memory tab](/projects/memory/) and in [Settings › Memory](/settings/#memory).
+- Press <Kbd shortcut="search" /> (or *Search conversations* in the command palette) to search memory and conversations.
+- Run *Search memory…* in the command palette (<Kbd shortcut="palette.commands" first />) to search memory only.
+
+## Link memories
+
+Write `[[name]]` in a memory's text to link to another memory by its name. Use `[[name|label]]` to show other words. Links inside code are left alone.
+
+In the editor:
+
+- A link in the link colour opens that memory.
+- A link in orange points at a memory that isn't written yet. Click it to write it: **New memory** opens with the name filled in.
+
+A name is looked up in the memory's own folder first, then in your [personal memory](/memory/personal-memory/).
+
+### Linked from and Not written yet
+
+Under the text, two lists show how the memory connects:
+
+- **Linked from**: the memories that link here. Click one to open it.
+- **Not written yet**: the names this memory links to that nothing answers to, each with **Write it…**.
+
+In a list, a <Pill tone="caution" dot={false}>N links not written yet</Pill> chip shows only the memories with such links. Click it again to show them all.
+
+### Suggestions
+
+While you edit, type `[[` and Switchboard suggests the names of your memories. Use <Kbd keys="arrowup|arrowdown" /> to move, <Kbd keys="enter|tab" /> to pick one, and <Kbd keys="escape" /> to close the list.
+
+### Rename a memory
+
+**Rename…** in a memory's menu changes its name, its file and its line in `MEMORY.md` together. When other memories link to it, tick **Also update N links to it**: only the `[[name]]` links to this memory change, nothing else in those files.
+
+## Search memory
+
+<Kbd shortcut="search" /> searches memory and every conversation. Matching memories come first, in a **Memory** group above the conversations, each with its type and its project (or Personal).
+
+- Chips under the field (**all**, **user**, **feedback**, **project**, **reference**) narrow the memories to one type.
+- The **Memory from** menu narrows them to one project, or Personal.
+- <Kbd keys="arrowup|arrowdown" /> moves through the results, and <Kbd keys="enter" /> opens a memory in its editor.
+
+*Search memory…* opens the same window for memory only. See [Search](/sessions/search/) for searching conversations.
+
+<Aside>
+Search keeps its own index of your memory files, read again when a file changes. It is only a copy: the files stay the source of truth.
+</Aside>
+
+## Settings
+
+Links and search have no settings.

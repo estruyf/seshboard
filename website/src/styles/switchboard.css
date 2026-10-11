@@ -23,6 +23,8 @@
   --sb-error: #ff6b6b;
   --sb-unread: #74c0fc;
   --sb-caution: #ffa94d;
+  /* Claude Code memory: a hue of its own, never a status. */
+  --sb-memory: #b197fc;
   --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
   --sb-popover: #2a3244;
   --sb-overlay-border: #414861;
@@ -107,6 +109,7 @@
   --sb-error: #d73a49;
   --sb-unread: #005cc5;
   --sb-caution: #b35900;
+  --sb-memory: #8250df;
   --sb-selected: color-mix(in srgb, var(--sb-text) 10%, transparent);
   --sb-popover: #ffffff;
   --sb-overlay-border: #d1d5da;

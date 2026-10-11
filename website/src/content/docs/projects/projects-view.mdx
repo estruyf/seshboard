@@ -86,14 +86,14 @@ Choose **Remove from Switchboard…** in the project's **⋯** menu and confirm 
 
 ## Open a project's page
 
-Every project has its own page with its sessions, worktrees, branches, actions and settings. Open it by:
+Every project has its own page with its sessions, worktrees, branches, memory, actions and settings. Open it by:
 
 - clicking the project's name in the Projects view;
 - choosing **Open project** in the project's menu in the sidebar;
 - running *Project: &lt;name&gt;* in the command palette;
 - pressing <Kbd shortcut="palette.goto" /> and picking the project.
 
-<Screenshot name="project-overview" alt="A project page for acme-store: the breadcrumb, the project's icon and name, its folder, branch and upstream, Open in editor and New session buttons, and the tabs Overview, Sessions, Worktrees, Branches, Actions and Settings" />
+<Screenshot name="project-overview" alt="A project page for acme-store: the breadcrumb, the project's icon and name, its folder, branch and upstream, Open in editor and New session buttons, and the tabs Overview, Sessions, Worktrees, Branches, Memory, Actions and Settings" />
 
 ### The header
 
@@ -108,14 +108,15 @@ On the right:
 
 | Tab | What it shows |
 |---|---|
-| [Overview](/projects/overview/) | A card per area: sessions, worktrees, branches, the queue and git. |
+| [Overview](/projects/overview/) | A card per area: sessions, worktrees, branches, memory, the queue and git. |
 | [Sessions](/projects/sessions/) | The project's sessions, grouped as in the sidebar, and its queued prompts. |
 | [Worktrees](/projects/worktrees/) | Every worktree of the repository, and which ones can go. |
 | [Branches](/projects/branches/) | Every branch, here and on the remote, and which ones can go. |
+| [Memory](/projects/memory/) | What Claude Code remembers about the project, its instructions, and your personal memory. |
 | [Actions](/projects/actions/) | The project's actions. |
 | [Settings](/projects/settings/) | The Claude profile, defaults for new sessions, and the name and icon. |
 
-Sessions, Worktrees, Branches and Actions show a count. With a tab focused, use <Kbd keys="arrowleft|arrowright" /> to move between tabs.
+Sessions, Worktrees, Branches, Memory and Actions show a count. With a tab focused, use <Kbd keys="arrowleft|arrowright" /> to move between tabs.
 
 A project opens on the tab you left it on, for as long as the app runs. The first time, it opens on Overview.
 

@@ -1,0 +1,86 @@
+---
+title: Personal memory
+description: One folder of memory about you that loads in every project, with any Claude profile, and can sync to your other Macs.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Personal memory is one folder of memory that loads in every project, with any Claude profile: who you are, how you like to work. Claude Code has no such folder of its own, so Switchboard adds one line to your profiles' `CLAUDE.md` that loads it.
+
+<Screenshot name="settings-memory" alt="Settings on Memory: Import from Claude export, Paste from Claude app and Copy for Claude app, the Personal memory card with its folder, MEMORY.md meter and Remove from Claude Code, the Personal memories list and every project with its memory count" eager />
+
+## Open it
+
+- Open Settings (<Kbd shortcut="settings" />) and choose **Memory**, or run *Memory settings…* in the command palette. See [Settings › Memory](/settings/#memory).
+- On a project's [Memory tab](/projects/memory/), the **Personal (all projects)** list shows the same memories.
+
+## The folder
+
+Personal memory lives in Switchboard's app data until you choose another folder:
+
+```
+~/Library/Application Support/Switchboard/memory
+```
+
+The **Personal memory** card in Settings › Memory shows the folder, whether Claude Code loads it, and a <Pill tone="memory">MEMORY.md</Pill> meter.
+
+- **Change folder…** picks another folder. The memories already in the old folder stay there.
+- **Show in Finder** opens the folder.
+
+### Sync it
+
+Choose a folder in iCloud Drive, Dropbox or a git repository to have the same personal memory on your other Macs. When the folder is synced, the card says so: anything you save there leaves this Mac.
+
+## Load it in Claude Code
+
+<Steps>
+
+1. In Settings › Memory, click **Add to Claude Code…**.
+2. Check the preview: each profile's `CLAUDE.md` before and after.
+3. Click **Add to Claude Code** (<Kbd keys="mod+enter" />).
+
+</Steps>
+
+Switchboard adds this block to the end of each profile's `CLAUDE.md`, after one blank line:
+
+```markdown
+<!-- switchboard:memory start -->
+@~/Library/Application\ Support/Switchboard/memory/MEMORY.md
+<!-- switchboard:memory end -->
+```
+
+- Only the index loads at the start of a session. Claude reads a memory file when it needs it, by the full path in the index.
+- Nothing else in `CLAUDE.md` changes. When you change the folder, the block is updated where it is.
+- **Show the line** shows the block as it is now.
+- When some profiles don't have the line (or it points at another folder), the card says so and **Add to Claude Code…** fixes it.
+
+Spaces in the path are written as `\ `. If Claude Code doesn't read such a path on your setup, choose a folder without spaces.
+
+### Remove it
+
+**Remove from Claude Code** takes the block (and the blank line before it) out of each profile's `CLAUDE.md` after you confirm with **Remove the line**. Claude stops loading your personal memory. The memory files stay where they are.
+
+## Add personal memories
+
+- **New** in **Personal memories** (Settings) or **Personal (all projects)** (Memory tab) writes one. See [Write a new memory](/memory/adding-memory/#write-a-new-memory).
+- **Move to Personal** in a project memory's menu moves it here.
+- [Remember this](/memory/adding-memory/#remember-this) can save to **Personal (all projects)**.
+- [Import from the Claude app](/memory/import/) puts who you are, your preferences, people and topics here.
+
+## Sync conflicts
+
+A sync tool can leave two versions of a file: `name 2.md` (iCloud), `name (… conflicted copy …).md` (Dropbox) or `name (1).md` (Google Drive), next to `name.md`. The Memory tab shows such a file with a <Pill tone="caution" dot={false}>conflict</Pill> label and two buttons:
+
+- **Keep this one** keeps this version; the other goes to the Trash.
+- **Keep the other** keeps the other version; this copy goes to the Trash.
+
+<Aside>
+The settings [backup](/settings/backup/) holds the folder's path, never the memories.
+</Aside>
+
+## Settings
+
+Everything on this page is in [Settings › Memory](/settings/#memory).

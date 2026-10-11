@@ -1,0 +1,43 @@
+---
+/**
+ * The one-minute promo video, straight from docs/videos (rendered by promo/, `npm run web`), so a new cut
+ * shows up here without copying it. Nothing loads until someone presses play, apart from the poster.
+ */
+import { getImage } from 'astro:assets';
+import poster from '../../../docs/videos/promo-poster.png';
+import video from '../../../docs/videos/promo-720p.mp4?url';
+
+const posterImage = await getImage({ src: poster, width: 1280, format: 'webp' });
+---
+
+<figure class="sb-promo not-content">
+  <video controls preload="none" playsinline width="1280" height="720" poster={posterImage.src} aria-label="A one-minute tour of Switchboard">
+    <source src={video} type="video/mp4" />
+    <a href={video}>Watch the one-minute tour</a>
+  </video>
+  <figcaption>
+    A one-minute tour: Home, Claude profiles, a project's page and worktrees, the VS Code companion, split view, Changes, the command palette and search.
+  </figcaption>
+</figure>
+
+<style>
+  .sb-promo {
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  video {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--sb-overlay-border);
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-bg);
+  }
+  figcaption {
+    margin-top: 0.75rem;
+    text-align: center;
+    font-size: var(--sb-text-ui);
+    color: var(--sb-muted);
+  }
+</style>

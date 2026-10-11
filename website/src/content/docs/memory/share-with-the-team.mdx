@@ -1,0 +1,74 @@
+---
+title: Share with the team
+description: Turn a private memory into project instructions, or copy a section of the instructions to your memory.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Some of what Claude remembers is really team knowledge, such as "tests need a running Postgres". **Share with the team…** moves a memory into the project's instructions, where everyone working on the project gets it. **Copy to my memory…** does the reverse.
+
+<Screenshot name="share-memory" alt="The Share with the team dialog: Add to with CLAUDE.md, Rule file and CLAUDE.local.md (only me), the Heading field, and a preview of the lines it adds to CLAUDE.md" eager />
+
+## Open it
+
+- Select a memory on a project's [Memory tab](/projects/memory/) and click **Share with the team…** in the editor's header.
+- Right-click a memory and choose **Share with the team…**.
+- Run *Share memory with the team…* in the command palette (<Kbd shortcut="palette.commands" first />), then pick one of the current project's memories. It shows while a project's page or one of its sessions is open.
+
+Personal memories can't be shared; move one to the project first.
+
+## Share a memory
+
+<Steps>
+
+1. In **Add to**, pick where it goes:
+   - **CLAUDE.md**: the project's instructions, for everyone. Switchboard creates one at the root when there is none.
+   - **Rule file**: an existing rule in `.claude/rules/`, or **New rule…**. A new rule needs a name and can apply **Only for paths**, such as `apps/ui/**` (separate patterns with commas). Claude Code then loads it only while it works on matching files.
+   - **CLAUDE.local.md (only me)**: your own instructions for this project, next to the shared ones, not committed.
+2. Edit the **Heading**. The memory is added at the end of the file as a section under that heading.
+3. Check the preview: it says whether it **Creates** the file or shows the **Changes to** it.
+4. Leave **Remove it from memory after sharing** ticked (it is, except for `CLAUDE.local.md`) so Claude doesn't load the same thing twice. The memory then moves to the Trash.
+5. Click the button, such as **Add to CLAUDE.md** (<Kbd keys="mod+enter" />).
+
+</Steps>
+
+### Warnings
+
+The dialog warns you before anything is written:
+
+- The text looks like it holds a password, token or key. Tick *I checked, it's safe to share* first.
+- The file already has a section with that heading. Choose **Replace that section** or **Add as a new section**.
+- The text is in the file already, so there is nothing to add.
+- The file has uncommitted changes, and your addition goes on top of them.
+- Git doesn't ignore `CLAUDE.local.md`, so it could be committed. **Add CLAUDE.local.md to .gitignore** fixes that.
+
+### After sharing
+
+Switchboard **never commits, stages or pushes** anything. The change shows up in [Changes](/terminal-changes-git/changes/) like any other edit, for you to review and commit.
+
+The toast afterwards has **Show in Changes** and **Undo**. Undo puts the file and the memory back as they were, until your next share or until you quit.
+
+## Copy to my memory
+
+The other way round: turn a section of an instruction file into a memory of your own.
+
+<Steps>
+
+1. On the Memory tab, select an instruction file under **Instructions** and click **Copy to my memory…** (or right-click it and choose **Copy a section to my memory…**).
+2. Pick one of its sections (its `##` or `###` headings).
+3. Check the name, type and description. The preview shows the memory file and the line it adds to `MEMORY.md`, and how full `MEMORY.md` gets.
+4. Click **Save to memory** (<Kbd keys="mod+enter" />).
+
+</Steps>
+
+The instruction file itself isn't changed.
+
+<Aside>
+Claude Code reads only the first 200 lines of `MEMORY.md`. See [What loads in a session](/memory/what-loads/#the-200-line-limit).
+</Aside>
+
+## Settings
+
+Sharing has no settings.

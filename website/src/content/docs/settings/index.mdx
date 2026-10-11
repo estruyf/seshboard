@@ -7,7 +7,7 @@ import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, your Claude profiles, backups and updates. Changes apply at once; there is nothing to save.
+Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, your Claude profiles, memory, backups and updates. Changes apply at once; there is nothing to save.
 
 ## Open it
 
@@ -112,6 +112,20 @@ Below the list:
 - **How to set up another profile**: the steps, from signing in to linking projects.
 
 See [Claude profiles](/settings/claude-profiles/).
+
+## Memory
+
+<Screenshot name="settings-memory" alt="Settings on Memory: the Import from Claude export, Paste from Claude app and Copy for Claude app buttons, the Personal memory card with its folder, MEMORY.md meter and Remove from Claude Code, the Personal memories list, and every project with its memory count" />
+
+What Claude Code remembers about you and your projects. Everything stays plain Markdown in the folders Claude Code already reads. Also *Memory settings…* in the command palette.
+
+- **Import from Claude export…**, **Paste from Claude app…** and **Copy for Claude app…**: bring the Claude app's memory in, or copy yours out. See [Import from the Claude app](/memory/import/).
+- **Personal memory**: the folder of memory that loads in every project, with a MEMORY.md meter. A notice says when the folder is synced. **Change folder…** picks another one, and **Show in Finder** opens it.
+- **Add to Claude Code…** adds the one line to each profile's `CLAUDE.md` that loads your personal memory, after showing you the change. Once it's there, **Show the line** shows it and **Remove from Claude Code** takes it out again. See [Personal memory](/memory/personal-memory/).
+- **Personal memories**: your personal memories, with **New**. Click one to edit it; <Kbd shortcut="memory.save" /> saves. See [Add and edit memory](/memory/adding-memory/).
+- **Projects**: every project with how many memories it has and its MEMORY.md meter. Click one to open its [Memory tab](/projects/memory/).
+
+See [Claude Code memory](/memory/overview/).
 
 ## VS Code
 

@@ -11,12 +11,18 @@ hero:
 import Feature from '../../components/Feature.astro';
 import Kbd from '../../components/Kbd.astro';
 import Pill from '../../components/Pill.astro';
+import PromoVideo from '../../components/PromoVideo.astro';
 
 <div class="sb-intro not-content">
   <p>
     Switchboard puts all your Claude Code sessions in one window: the ones you start in the app, and the ones running in your terminal. It uses the Claude Code you already have, with your login, settings, commands and skills. Nothing extra to sign in to.
   </p>
 </div>
+
+<section class="sb-tour not-content">
+  <h2>Watch the one-minute tour</h2>
+  <PromoVideo />
+</section>
 
 <Feature title="Every session, at a glance" shot="sidebar" alt="The sidebar: one session that needs you, one that is working, the queue, a pinned session and today's sessions" href="/sessions/sidebar/" shotWidth={340} flip>
   <p>One list of all your sessions, across every project and every Claude account. Sessions that <Pill tone="needs-you">Needs you</Pill> sit at the top, then the ones that are <Pill tone="working">Working</Pill>, then the rest by day.</p>
@@ -42,16 +48,21 @@ import Pill from '../../components/Pill.astro';
   <p>Switchboard never removes a worktree with uncommitted changes or a session working in it.</p>
 </Feature>
 
-<Feature title="Terminal and changes, next to the conversation" shot="main-window" alt="A finished session with the Changes panel open on the right, showing a diff" href="/terminal-changes-git/changes/">
+<Feature title="What Claude remembers, in plain Markdown" shot="project-memory" alt="A project's Memory tab: what loads in a session at the top, the project's memories with their type, the instructions the team shares, and personal memory" href="/memory/overview/">
+  <p>See and edit what Claude Code remembers about each project, and what loads at the start of every session. Share a memory with the team in <code>CLAUDE.md</code>, or bring your memory over from the Claude app.</p>
+  <p>Everything stays plain Markdown where Claude Code already looks, so it works the same in the terminal.</p>
+</Feature>
+
+<Feature title="Terminal and changes, next to the conversation" shot="main-window" alt="A finished session with the Changes panel open on the right, showing a diff" href="/terminal-changes-git/changes/" flip>
   <p>See what Claude changed in the <strong>Changes</strong> panel (<Kbd shortcut="changes.toggle" />): stage, unstage or revert files, and open any diff inline. A terminal per session is one key away (<Kbd shortcut="terminal.toggle" first />).</p>
   <p>The git button offers the next step: pull, commit, push or create a pull request.</p>
 </Feature>
 
-<Feature title="Permissions in the conversation" shot="permissions" alt="A session that is waiting for permission to install a package" href="/permissions/" flip>
+<Feature title="Permissions in the conversation" shot="permissions" alt="A session that is waiting for permission to install a package" href="/permissions/">
   <p>Allow or deny what Claude asks, answer its questions and review its plans, right where the work happens. Switch the permission mode with <Kbd shortcut="mode.cycle" />.</p>
 </Feature>
 
-<Feature title="Themes" shot="theme-catppuccin" alt="Switchboard in the Catppuccin theme" href="/themes/built-in/">
+<Feature title="Themes" shot="theme-catppuccin" alt="Switchboard in the Catppuccin theme" href="/themes/built-in/" flip>
   <p>Demo Time, Catppuccin, Claude, Nord, Solarized and The unnamed are built in, in light and dark. Import your own theme as a small JSON file.</p>
 </Feature>
 
@@ -68,6 +79,8 @@ import Pill from '../../components/Pill.astro';
 </section>
 
 <style>{`
+  .sb-tour { padding: 1rem 0 3rem; }
+  .sb-tour h2 { margin: 0 0 1.25rem; text-align: center; font-size: var(--sb-text-hero); font-weight: 600; color: var(--sb-text); }
   .sb-intro { max-width: 46rem; margin: 1rem auto 2rem; text-align: center; font-size: var(--sb-text-body); color: var(--sb-muted); }
   .sb-companion { padding: 3rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
   .sb-companion h2 { margin: 0; font-size: var(--sb-text-hero); font-weight: 600; color: var(--sb-text); }

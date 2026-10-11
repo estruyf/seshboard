@@ -106,7 +106,13 @@ function extendWorld(world: DemoWorld): void {
   const old = new Date(Date.now() - 30 * DAY);
   for (const dir of [join(worktrees, 'brave-humming-otter')]) utimesSync(dir, old, old);
   // Keep Claude Code's worktree folder out of the demo project's own changes.
-  writeFileSync(join(acme, '.git', 'info', 'exclude'), '.claude/\n.switchboard.json\n');
+  writeFileSync(join(acme, '.git', 'info', 'exclude'), '.claude/worktrees/\n.switchboard.json\n');
+
+  // Instructions the team shares, committed with the project: CLAUDE.md and a rule for test files.
+  commitFile(acme, 'src/lib/payments.ts', 'export const providers = { cards: "stripe", local: "adyen" } as const;\n', 'Add payment providers');
+  commitFile(acme, 'CLAUDE.md', '# Acme Store\n\nA React web shop built with Vite.\n\n## Commands\n\n- `npm run dev` starts the dev server.\n- `npm test` runs Vitest.\n\n## Conventions\n\n- Components live in `src/components`, one per file.\n- Prices are integers in cents, never floats.\n', 'Add CLAUDE.md');
+  commitFile(acme, '.claude/rules/testing.md', '---\npaths:\n  - "src/**/*.test.ts"\n---\n\n# Tests\n\n- Use Vitest and Testing Library.\n- Never mock the database; use the test container.\n', 'Add a rule for tests');
+  writeMemories(join(world.home, '.claude', 'projects', acme.replace(/[^a-zA-Z0-9]/g, '-'), 'memory'), world.sessions.hero);
 
   // Actions the team shares, as a repository would commit them.
   writeFileSync(
@@ -127,15 +133,15 @@ function extendWorld(world: DemoWorld): void {
 }
 
 /**
- * Every transcript in the demo's Claude config folders, with its length. The tour must never send anything to
- * Claude; a transcript that grew means it did, and the run fails.
+ * Every transcript and memory file in the demo's Claude config folders, with its length. The tour must never send
+ * anything to Claude or save a memory; a file that changed means it did, and the run fails.
  */
 function transcripts(home: string): Map<string, number> {
   const sizes = new Map<string, number>();
   for (const config of ['.claude', '.claude-work']) {
     const projects = join(home, config, 'projects');
     for (const entry of readdirSync(projects, { recursive: true, encoding: 'utf8' })) {
-      if (entry.endsWith('.jsonl')) sizes.set(join(projects, entry), readFileSync(join(projects, entry), 'utf8').length);
+      if (entry.endsWith('.jsonl') || entry.endsWith('.md')) sizes.set(join(projects, entry), readFileSync(join(projects, entry), 'utf8').length);
     }
   }
   return sizes;
@@ -149,6 +155,59 @@ function neutralShell(home: string): void {
   writeFileSync(join(home, '.zshrc'), "PROMPT='%1~ %# '\nunsetopt PROMPT_SP\n");
   writeFileSync(join(home, '.bashrc'), "PS1='\\W $ '\n");
   writeFileSync(join(home, '.bash_profile'), 'source ~/.bashrc\n');
+}
+
+/** A memory file as Claude Code writes it: frontmatter with the type under `metadata`, then the text. */
+function memory(name: string, description: string, type: string, body: string, modified: Date, origin?: string): string {
+  const meta = [`  type: ${type}`, ...(origin ? [`  originSessionId: ${origin}`] : []), `  modified: ${modified.toISOString()}`];
+  return `---\nname: ${name}\ndescription: ${description}\nmetadata:\n${meta.join('\n')}\n---\n\n${body}\n`;
+}
+
+/**
+ * What Claude Code remembers about acme-store: a few linked memories, one that names a file the project no
+ * longer has and one missing from MEMORY.md (so the health check has something to say), and one old one.
+ */
+function writeMemories(dir: string, heroSession: string): void {
+  mkdirSync(dir, { recursive: true });
+  const now = Date.now();
+  const files: Array<[string, string]> = [
+    ['checkout-flow.md', memory('checkout-flow', 'Checkout is three steps: cart, shipping, payment', 'project', 'Checkout runs in three steps: cart, shipping, then payment. Payment hands off to the provider in [[payment-providers]] and comes back to `/checkout/done`.\n\nThe shipping step waits for the rates request before **Pay** is enabled; the flaky test was about that.', new Date(now - 2 * DAY))],
+    ['payment-providers.md', memory('payment-providers', 'Stripe for cards, Adyen for iDEAL and Bancontact', 'reference', 'Cards go through Stripe. iDEAL and Bancontact go through Adyen. Both are wrapped in `src/lib/payments.ts`.', new Date(now - 6 * DAY))],
+    ['testing-conventions.md', memory('testing-conventions', 'Run one test file at a time while working', 'feedback', 'Run `npm test -- <file>` for the file you change, not the whole suite. The full suite runs in CI, see [[ci-pipeline]].\n\n**Why:** the full run takes four minutes.\n**How to apply:** only run everything before you push.', new Date(now - 3 * DAY))],
+    ['theme-tokens.md', memory('theme-tokens', 'Colours come from the theme tokens, never hex values', 'project', 'Every colour comes from a token in `src/styles/legacy-theme.css`. Dark mode swaps the token values, so components never check the theme themselves.', new Date(now - 26 * 60 * 1000), heroSession)],
+    ['release-process.md', memory('release-process', 'Releases go out on Tuesdays after the smoke test', 'project', 'Releases are tagged on Tuesday mornings, after the smoke test passes on staging.', new Date(now - 210 * DAY))],
+  ];
+  for (const [file, content] of files) {
+    writeFileSync(join(dir, file), content);
+    // Switchboard dates a memory by its file, as Claude Code does: match the frontmatter.
+    const modified = new Date(/modified: (\S+)/.exec(content)![1]!);
+    utimesSync(join(dir, file), modified, modified);
+  }
+  // The index, as Claude Code keeps it; release-process.md has no line yet.
+  writeFileSync(
+    join(dir, 'MEMORY.md'),
+    [
+      '- [Checkout flow](checkout-flow.md) — three steps, payment hands off to the provider',
+      '- [Payment providers](payment-providers.md) — Stripe for cards, Adyen for local methods',
+      '- [Testing conventions](testing-conventions.md) — one test file at a time while working',
+      '- [Theme tokens](theme-tokens.md) — colours only through tokens',
+      '',
+    ].join('\n'),
+  );
+}
+
+/** Personal memory, in the throwaway profile's own folder (where Switchboard keeps it until you choose another). */
+function writePersonalMemory(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  const now = Date.now();
+  const write = (file: string, content: string) => {
+    writeFileSync(join(dir, file), content);
+    const modified = new Date(/modified: (\S+)/.exec(content)![1]!);
+    utimesSync(join(dir, file), modified, modified);
+  };
+  write('about-me.md', memory('about-me', 'Front-end developer, works in TypeScript and React', 'user', 'I work mostly on front ends in TypeScript and React, and on a Mac.', new Date(now - 20 * DAY)));
+  write('writing-style.md', memory('writing-style', 'Short commit messages in the imperative', 'feedback', 'Commit messages: one short line in the imperative, no emoji.\n\n**Why:** they read well in `git log --oneline`.', new Date(now - 9 * DAY)));
+  writeFileSync(join(dir, 'MEMORY.md'), `- [About me](${join(dir, 'about-me.md')}) — front-end developer\n- [Writing style](${join(dir, 'writing-style.md')}) — short imperative commits\n`);
 }
 
 /** The user's `claude`, so the demo home can offer it (its helpers find no login there and send nothing). */
@@ -633,7 +692,7 @@ const screens: Screen[] = [
       await t.home();
     },
   },
-  ...(['overview', 'sessions', 'worktrees', 'branches', 'actions', 'settings'] as const).map(
+  ...(['overview', 'sessions', 'worktrees', 'branches', 'memory', 'actions', 'settings'] as const).map(
     (tab): Screen => ({
       name: `project-${tab}`,
       async take(t) {
@@ -644,6 +703,7 @@ const screens: Screen[] = [
           sessions: '[data-project-sessions] [data-session-id]',
           worktrees: '[data-worktrees-table] [data-worktree-row]',
           branches: '[data-branches-table] [data-branch-row]',
+          memory: '[data-project-memory-tab] [data-memory-row]',
           actions: '[data-project-actions-tab] [data-project-action]',
           settings: '[data-project-defaults-tab]',
         };
@@ -654,6 +714,92 @@ const screens: Screen[] = [
       },
     }),
   ),
+  {
+    name: 'memory-load-order',
+    async take(t) {
+      await openMemoryTab(t);
+      if ((await t.q('[data-memory-load-order]').getAttribute('data-open')) === 'false') await t.click('[data-memory-load-toggle]');
+      await t.need('[data-memory-load-order] [data-memory-load-item]', 'What loads listed nothing');
+      await t.shot('memory-load-order', { clip: '[data-memory-load-order]' });
+      await t.home();
+    },
+  },
+  {
+    name: 'memory-health',
+    async take(t) {
+      await openMemoryTab(t);
+      await t.need('[data-memory-health-line]', 'the Memory tab found nothing to look at', 30_000);
+      if (!(await t.page.locator('[data-memory-health-finding]').count())) await t.click('[data-memory-health-show]');
+      await t.need('[data-memory-health-finding]', 'the health findings did not open');
+      await t.shot('memory-health', { clip: '[data-memory-health]' });
+      await t.home();
+    },
+  },
+  {
+    name: 'memory-editor',
+    async take(t) {
+      await openMemoryTab(t);
+      await t.click('[data-memory-row$="/checkout-flow.md"]');
+      await t.need('[data-memory-editor$="/checkout-flow.md"]', 'the memory did not open');
+      await t.shot('memory-editor');
+      await t.home();
+    },
+  },
+  {
+    name: 'share-memory',
+    async take(t) {
+      await openMemoryTab(t);
+      await t.q('[data-memory-row$="/testing-conventions.md"]').click({ button: 'right' });
+      await t.click('[data-memory-menu-share]', 'the memory menu has no Share with the team…');
+      await t.need('[data-share-dialog]', 'Share with the team did not open');
+      await t.shot('share-memory', { keepFocus: true });
+      // Never confirm: sharing writes to CLAUDE.md.
+      await t.escape();
+      await t.gone('[data-share-dialog]', 'the share dialog did not close');
+      await t.home();
+    },
+  },
+  {
+    name: 'remember-this',
+    async take(t) {
+      await t.openSession(HERO);
+      await t.command('remember-this', 'Remember this');
+      await t.need('[data-remember-dialog]', 'Remember this did not open');
+      await t.shot('remember-this', { keepFocus: true });
+      // Never save: that writes a memory file.
+      await t.escape();
+      await t.gone('[data-remember-dialog]', 'Remember this did not close');
+    },
+  },
+  {
+    name: 'memory-paste',
+    async take(t) {
+      await t.home();
+      await t.command('memory-paste', 'Paste memory from Claude app');
+      await (await t.need('[data-memory-paste-text]', 'Paste from Claude app did not open')).fill(
+        ['## Work', '', "I'm a front-end developer at Acme. We ship a React web shop.", '', '## Preferences', '', 'Prefers short answers with code first.', '', '## Coffee', '', 'Flat white, no sugar.'].join('\n'),
+      );
+      // Preview shows where each memory would go; only Import writes, and the tour never presses it.
+      await t.press('Meta+Enter');
+      await t.need('[data-memory-import-row]', 'the paste showed no preview');
+      await t.shot('memory-paste', { keepFocus: true });
+      // Never import: that writes memory files.
+      await t.escape(2);
+      await t.home();
+    },
+  },
+  {
+    name: 'search-memory',
+    async take(t) {
+      await t.home();
+      await t.press('Meta+Shift+F');
+      await (await t.need('[data-search] input', '⌘⇧F did not open search')).fill('checkout');
+      await t.need('[data-search] [data-memory-row], [data-search] [data-search-memory], [data-search-hit]', 'search found nothing', 30_000);
+      await t.shot('search-memory', { keepFocus: true });
+      await t.escape();
+      await t.gone('[data-search]', 'search did not close');
+    },
+  },
   {
     name: 'theme-catppuccin',
     async take(t) {
@@ -666,7 +812,7 @@ const screens: Screen[] = [
       await t.home();
     },
   },
-  ...(['general', 'theme', 'sidebar', 'conversation', 'focus', 'profiles', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
+  ...(['general', 'theme', 'sidebar', 'conversation', 'focus', 'profiles', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
     (section): Screen => ({
       name: `settings-${section}`,
       async take(t) {
@@ -710,6 +856,12 @@ async function openNewSession(t: Tour, project: string): Promise<void> {
   }
   void index;
   throw new Error(`New session could not pick ${project}`);
+}
+
+async function openMemoryTab(t: Tour): Promise<void> {
+  await openProjectPage(t, 'acme-store');
+  await t.click('[data-project-tab="memory"]');
+  await t.need('[data-project-memory-tab] [data-memory-row]', 'the Memory tab listed nothing', 30_000);
 }
 
 async function openProjectPage(t: Tour, project: string): Promise<void> {
@@ -791,7 +943,8 @@ async function dismissToasts(t: Tour): Promise<void> {
     if (document.getElementById('website-shots-no-toasts')) return;
     const style = document.createElement('style');
     style.id = 'website-shots-no-toasts';
-    style.textContent = '[data-toasts], [data-toast], [data-update-toast], [data-claude-update-toast] { display: none !important; }';
+    // Toasts, and the usage lines that could only say "unavailable" (the demo logins have no credentials).
+    style.textContent = '[data-toasts], [data-toast], [data-update-toast], [data-claude-update-toast], [data-usage-status] { display: none !important; }';
     document.head.append(style);
   });
 }
@@ -840,6 +993,7 @@ try {
     win.center();
   }, SIZE);
   page.setDefaultTimeout(15_000);
+  writePersonalMemory(join(await app.evaluate(({ app }) => app.getPath('userData')), 'memory'));
   const tour = new Tour(app, page, world);
   await setUp(tour);
   for (const scheme of ['dark', 'light'] as const) {
@@ -858,7 +1012,7 @@ try {
   const grew = [...transcripts(world.home)].filter(([path, size]) => size !== transcriptsBefore.get(path));
   if (grew.length) {
     failed = true;
-    console.error(`✗ the tour sent something to Claude: ${grew.length} transcript(s) changed. Check the clicks and key presses in this script.`);
+    console.error(`✗ the tour sent something to Claude or saved a memory: ${grew.length} file(s) changed. Check the clicks and key presses in this script.`);
   }
   world.stop();
   rmSync(world.home, { recursive: true, force: true });

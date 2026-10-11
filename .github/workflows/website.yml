@@ -10,6 +10,7 @@ on:
       - 'website/**'
       - 'apps/ui/src/lib/shortcuts.ts'
       - 'CHANGELOG.md'
+      - 'docs/videos/**'
       - '.github/workflows/website.yml'
   pull_request:
     paths:

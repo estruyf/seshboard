@@ -31,7 +31,11 @@ export const sidebar = [
   { label: 'Keyboard shortcuts', link: '/keyboard-shortcuts/' },
   {
     label: 'Projects',
-    items: ['projects/projects-view', 'projects/overview', 'projects/sessions', 'projects/worktrees', 'projects/branches', 'projects/actions', 'projects/settings'],
+    items: ['projects/projects-view', 'projects/overview', 'projects/sessions', 'projects/worktrees', 'projects/branches', 'projects/memory', 'projects/actions', 'projects/settings'],
+  },
+  {
+    label: 'Memory and knowledge',
+    items: ['memory/overview', 'memory/what-loads', 'memory/adding-memory', 'memory/links-and-search', 'memory/share-with-the-team', 'memory/personal-memory', 'memory/import', 'memory/health'],
   },
   {
     label: 'Terminal, changes and git',
