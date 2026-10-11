@@ -1,0 +1,88 @@
+---
+title: Model, effort and mode
+description: The chips under the message box that set the profile, model, effort and permission mode of a session.
+sidebar:
+  label: Model, effort and mode
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+Under the message box sits a row of quiet chips: the Claude profile, the model, the effort and the permission mode. They show only the value ("Personal", "Opus 4.5", "Medium", "Auto"); hover one for its full meaning, such as "Effort: Medium". The same row is in New session, in the command palette's New session step and in every session.
+
+<Screenshot name="new-session-options" alt="New session with the model chip's menu open above the message box, listing Default model and the models Claude Code offers, each with a short description" eager />
+
+## Where to find it
+
+- In [New session](/new-session/form/), under the message box. The chips start from the project's defaults.
+- In a session, under its message box. Changes apply while the session runs.
+- In the command palette, with a session open: *Change model…*, *Change effort…* and *Change permission mode…*.
+
+Click a chip to open its menu above it. The image and attach buttons come first in the row, then a thin line, then the chips.
+
+## Profile
+
+With more than one [Claude profile](/settings/claude-profiles/), the first chip is the profile, as its colour dot and name. In New session you can pick another profile for one session; the menu marks the project's own as "(project)" and the default as "(default)".
+
+A running session keeps its profile. Its chip shows the profile and links to **Manage profiles…**; start a new session to use another one. With a single profile the chip is hidden.
+
+## Model
+
+The model chip lists **Default model** (what Claude Code would pick) and the models your Claude Code offers, each with a short description. The chip shows the name without "Claude", such as "Opus 4.5".
+
+## Effort
+
+How much Claude thinks before it answers. The chip shows three bars that fill with the level:
+
+| Choice | Bars |
+|---|---|
+| **Default** | What Claude Code would pick |
+| **Low** | one |
+| **Medium** | two |
+| **High** | three |
+| **Extra high** | three, in the accent colour |
+| **Max** | three, in the accent colour |
+
+In a session the effort chip shows only when the model has an effort setting.
+
+## Permission mode
+
+The mode decides when Claude stops to ask before it acts. The menu, under the heading **Permissions**, offers four modes:
+
+| Mode | Chip | What it means |
+|---|---|---|
+| **Ask before edits** | Ask first | Approve every edit and command. The default. |
+| **Accept edits** | Accept edits | File edits apply, commands still ask. |
+| **Plan mode** | Plan | Claude reads and plans, and makes no changes. It shows you the plan to approve. |
+| **Auto mode** | Auto | Claude only asks when it matters. |
+
+Each mode has a dot in the chip: green for Ask first, blue for Accept edits, grey for Plan and yellow for Auto. A session started in another mode elsewhere (such as bypassing permissions) shows that mode in the menu too, but Switchboard never offers it.
+
+Press <Kbd shortcut="mode.cycle" /> in the message box to switch mode. Like the Claude Code CLI, it cycles through Ask before edits, Accept edits and Plan mode. Pick Auto mode from the menu.
+
+What the cards look like when Claude asks: [Permissions and questions](/permissions/).
+
+<Aside>
+Some starts never use a mode that skips prompts (Auto mode or bypassing permissions). A session started by a `switchboard://` link with `autostart=1` uses the project's own default mode, or Ask before edits. A quick question starts in the mode you last picked for one, or Ask before edits when that was such a mode. Pick it again each time you want it.
+</Aside>
+
+## In a narrow window
+
+When the row runs out of room, it never cuts a chip off. It steps through fixed levels instead:
+
+1. Effort and mode show only their icon (the bars and the dot).
+2. The model drops its version ("Opus" instead of "Opus 4.5").
+3. The profile shows only its dot.
+
+The label and tooltip keep the full value at every level. This happens in narrow windows and when two sessions are [side by side](/sessions/split-view/).
+
+## Project defaults
+
+New session starts from the project's defaults for model, effort and mode, and from the choices you made last in New session for whatever the project leaves unset. A change in New session applies to that one session.
+
+To keep your choices for the project, choose **Save as project default** in the **Where** menu of the route strip, or run *Save as project default* in the command palette. You can also set them on the project's [Settings tab](/projects/settings/). Quick questions keep their own choices, apart from your projects.
+
+## Settings
+
+The defaults live on each project's [Settings tab](/projects/settings/). Profiles are in [Settings → Claude profiles](/settings/#claude-profiles).

@@ -1,0 +1,119 @@
+---
+title: Troubleshooting and FAQ
+description: What to check when something doesn't work, where your data lives, and answers to common questions.
+sidebar:
+  label: Troubleshooting
+---
+
+import Kbd from '../../components/Kbd.astro';
+import Screenshot from '../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+When something doesn't work, Switchboard can tell you a lot about what it sees: the engine behind it, the Claude Code it found, and its recent log. This page covers the usual problems, where your data lives, and common questions.
+
+<Screenshot name="settings-diagnostics" alt="Settings on Diagnostics: the Engine card with its status and round trip, the Claude Code card with the binary, config folder and shell environment, the Runtime card, a Rendering sample and the Engine log" eager />
+
+## Where to find it
+
+- **Settings → Diagnostics** (<Kbd shortcut="settings" />, then **Diagnostics**), or *Engine diagnostics* in the command palette (<Kbd shortcut="palette.commands" />).
+- *Check transcript…* in the command palette, or under **⋯** in a session's header, for one session.
+- **Settings → About** for the version you run, and the commit it was built from. Add both to a bug report.
+
+## Check what Switchboard sees
+
+[Settings → Diagnostics](/settings/#diagnostics) shows:
+
+- **Engine**: whether it is connected, how often it reconnected, and how fast it answers (**Ping again** measures again).
+- **Claude Code**: the `claude` it found, with its version and path; the config folder it reads; and whether your shell environment was loaded.
+- **Runtime**: the Electron, Node and SQLite versions, and the cache database (a button shows it in Finder).
+- **Engine log**: the engine's recent messages. Warnings and errors stand out in colour.
+
+## A conversation looks wrong or empty
+
+<Steps>
+
+1. Open the session and run *Check transcript…* (in the command palette or the session's **⋯** menu).
+2. Read the conclusions at the top. Switchboard looks at the session's transcript files in every profile's folder and reads them the way Claude Code does.
+3. Click **Copy details** (<Kbd keys="mod+enter" />) to copy the whole report for a bug report. **Check again** runs it again.
+
+</Steps>
+
+## macOS blocks the app
+
+Releases are signed and notarised by Apple, so macOS opens them. A build you made yourself without a Developer ID certificate is unsigned: on another Mac, macOS blocks the first launch. Right-click the app and choose **Open**, or run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Switchboard.app
+```
+
+See [Building, signing and notarisation](https://github.com/estruyf/switchboard/blob/main/docs/building-and-signing.md) on GitHub.
+
+## Claude Code isn't found
+
+If **Binary** in Settings → Diagnostics says *Not found on your PATH*:
+
+<Steps>
+
+1. Install [Claude Code](https://github.com/anthropics/claude-code) and sign in.
+2. Check that `claude` runs in Terminal.
+3. Quit and reopen Switchboard.
+
+</Steps>
+
+Switchboard finds `claude` through your login shell's environment. **Shell environment** in Diagnostics says whether it loaded it, or fell back to the app's own environment. If it fell back, check that your shell starts without errors.
+
+## Sessions from other apps don't show
+
+By default the sidebar only lists the sessions you started or continued in Switchboard. Turn on **Show sessions from other apps** in [Settings → Sidebar](/settings/#sidebar) to also see sessions from Terminal, Claude desktop and your editor.
+
+Sessions that run with another Claude Code config folder (`CLAUDE_CONFIG_DIR=…`) only show once you add that folder as a [Claude profile](/settings/claude-profiles/).
+
+## New skills or commands don't show
+
+Run *Reload skills* in the command palette. Switchboard reads your skill and command folders again, and running sessions pick up the change the next time they list them.
+
+## The engine restarted
+
+The engine runs separately from the window. If it stops, Switchboard starts it again and the window reconnects on its own; buttons that need it say *Connecting to the engine…* in the meantime. Your sessions are kept. Settings → Diagnostics counts how often it reconnected.
+
+## Your data
+
+- **Sessions** stay where Claude Code keeps them: `~/.claude`, and the folder of each other [Claude profile](/settings/claude-profiles/) you add. Switchboard reads them and runs your own `claude` to do the work, so a session is the same in the terminal and in the app.
+- **Switchboard's own data** is in `~/Library/Application Support/Switchboard`: preferences, [imported themes](/themes/custom/), the `backups` folder of [settings backups](/settings/backup/), and a database (`cache.sqlite`) with your projects, project actions, pinned and archived sessions, and an index it builds from `~/.claude` for the sidebar and search.
+- **Deleting a session** moves its files to the Trash, so you can get it back from there. Reverting a new file in [Changes](/terminal-changes-git/changes/) and removing a theme go to the Trash too.
+
+## FAQ
+
+### Does Switchboard send my data anywhere?
+
+No. It asks GitHub whether there is a new Switchboard release (turn that off in [Settings → About](/settings/#about)), and the npm registry which Claude Code version is the newest (turn that off there too). Your prompts and sessions only go where Claude Code sends them. The [VS Code companion](/vscode-companion/) talks to Switchboard over a socket on your Mac only.
+
+### Does it need its own login?
+
+No. Switchboard uses the Claude Code you already have, with your login, settings, commands and skills. It never handles your Claude login: you sign in with Claude Code itself. For more than one account, see [Claude profiles](/settings/claude-profiles/).
+
+### Does it run on an Intel Mac?
+
+No. Switchboard is built for Macs with Apple Silicon, and needs macOS 13 (Ventura) or later.
+
+### Is there a Windows or Linux version?
+
+No. Switchboard is a Mac app only.
+
+### How do I uninstall it?
+
+<Steps>
+
+1. Quit Switchboard.
+2. Move Switchboard from Applications to the Trash. With Homebrew, run `brew uninstall --cask estruyf/tap/switchboard` instead.
+3. To remove its data too, move `~/Library/Application Support/Switchboard` to the Trash, or run `brew uninstall --zap --cask estruyf/tap/switchboard`.
+
+</Steps>
+
+<Aside>
+Uninstalling never touches `~/.claude`. Your sessions belong to Claude Code and stay there.
+</Aside>
+
+## Settings
+
+[Settings → Diagnostics](/settings/#diagnostics) and [Settings → About](/settings/#about) are the places to look first. For a bug report, include the version from About and what *Check transcript…* or the Engine log says.

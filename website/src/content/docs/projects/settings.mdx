@@ -1,0 +1,58 @@
+---
+title: Project settings
+description: The Claude profile and the choices new sessions in a project start with, and its name and icon in Switchboard.
+sidebar:
+  label: Settings tab
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+The **Settings** tab of a project's page holds what new sessions in the project start with: the Claude profile, model, effort, permission mode, workspace and branch. It also holds the project's name and icon in Switchboard.
+
+<Screenshot name="project-settings" alt="The Settings tab of acme-store: Claude profile, Model and Effort, Permissions, Workspace with the worktree base, then the project's name with Rename and its icon with Choose image" eager />
+
+## Open it
+
+- Click **Settings** on a project's page.
+- Choose **Project settings…** in a project's menu in the sidebar or the [Projects view](/projects/projects-view/).
+- After adding a project, Switchboard opens it on this tab.
+
+## How to use it
+
+Every change saves at once. The [New session](/new-session/form/) view starts from these choices; you can still change them there for one session, or click *Save as project default* there to save them here.
+
+### Claude profile
+
+With more than one [Claude profile](/settings/claude-profiles/), **Claude profile** picks the account new sessions in this project use. *Default* follows the default profile. You can also link a profile from the project's menu in the sidebar, under **Claude profile**.
+
+### Defaults for new sessions
+
+| Row | Choices |
+|---|---|
+| **Model** | A model, or *Global default*. Next to it, an effort level, or *Global effort*. |
+| **Permissions** | A permission mode, or *Global default*. |
+| **Workspace** | *Current folder*, *New worktree*, or *Global default*. Outside git, a new worktree can't be chosen. |
+| **Worktree base** | What a new worktree branches from: *Worktree from origin* or *Worktree from HEAD*, or the global default. Shown unless the workspace is the current folder. |
+| **Branch** | For the current folder: *Keep what is checked out*, or *Check out &lt;branch&gt;* first. Only in a git repository, and not for a new worktree. |
+
+A field set to its global default uses the choices you last made in the New session view. See [Models and options](/new-session/models-and-options/) and [Worktrees](/new-session/worktrees/).
+
+The [Projects view](/projects/projects-view/) shows a summary of these defaults on each project ("Opus · high effort · worktree"), or *Global defaults* when none are set.
+
+### Name and icon
+
+- **Name**: **Rename…** gives the project a name of its own in Switchboard. The folder on disk keeps its name.
+- **Icon**: **Choose image…** picks an image file. **Detect automatically** goes back to the icon found in the repository; it shows after you picked your own.
+
+For an emoji or a letter, click the project's icon in the page header. See [Change the icon](/projects/projects-view/#change-the-icon).
+
+<Aside>
+None of this changes anything on disk or in the repository. Removing a project from Switchboard keeps its folder and sessions.
+</Aside>
+
+## Settings
+
+App-wide settings that affect projects are in **Settings → General** (*Project order*) and **Settings → Claude profiles**. See [Settings](/settings/#general) and [Claude profiles](/settings/#claude-profiles).

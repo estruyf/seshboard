@@ -1,0 +1,83 @@
+---
+title: Changes
+description: The Changes panel shows a session's git diff, and lets you stage, unstage and revert files.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Pill from '../../../components/Pill.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The **Changes** panel shows what changed in the session's folder: what isn't committed yet, or everything on the branch compared with its base branch. Open any file's diff inline, stage or unstage files, or revert them.
+
+<Screenshot name="main-window" alt="A finished session with the Changes panel open on the right: a list of changed files with their status letters and line counts, and one file's diff opened inline" eager />
+
+## Open it
+
+- Press <Kbd shortcut="changes.toggle" /> to show or hide it.
+- Click **Changes** in the session header, next to **Terminal**. Its badge shows how many files have changed.
+- Run *Toggle changes* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />).
+
+The panel is there for sessions whose folder is in a git repository.
+
+## How to use it
+
+### What it compares
+
+At the top of the panel, choose what to show:
+
+- **Uncommitted**: changes that aren't committed yet.
+- **vs &lt;base&gt;** (for example **vs main**): everything since this branch left its base branch, committed or not.
+
+Next to it, the panel counts the files and the lines added and removed.
+
+### The file list
+
+Each file shows its status, its path and how many lines were added and removed:
+
+| Letter | Meaning |
+|---|---|
+| **A** | Added |
+| **U** | New, not tracked yet |
+| **M** | Modified |
+| **R** | Renamed |
+| **D** | Deleted |
+| **!** | Conflict |
+
+Click a file to open its diff inline, and again to close it. Hover a file, or focus it with the keyboard, for **Open in editor** and, in Uncommitted, **Revert this file…**.
+
+### Stage and unstage
+
+In **Uncommitted**, each file has a checkbox. Tick it to stage the file, untick it to unstage it. **Stage all** at the bottom stages every file; when everything is staged it says **Unstage all**. *Stage all* is in the command palette too.
+
+What you stage is what **Commit…** in the [git menu](/terminal-changes-git/git/#commit) commits.
+
+### Revert
+
+<Steps>
+
+1. Click **Revert this file…** on a file, or **Revert all…** at the bottom of the panel. *Revert all changes…* in the command palette does the same.
+2. Confirm with **Revert**.
+
+</Steps>
+
+The uncommitted changes of those files are lost. New files go to the Trash, so you can get them back from there.
+
+<Aside type="caution">
+Reverting can't be undone in Switchboard. Only new files can be recovered, from the Trash.
+</Aside>
+
+Staging and reverting are only offered in **Uncommitted**. In **vs &lt;base&gt;** the panel is for reading.
+
+### Layout
+
+- Drag the panel's left edge to make it wider or narrower. With the edge focused, <Kbd keys="arrowleft|arrowright" /> resizes it. Switchboard remembers the width.
+- The expand button lets the panel fill the session view; click it again to go back to a side panel.
+- The wrap button wraps long lines, or lets them scroll sideways.
+- The refresh button checks git for changes again. The panel also follows along while Claude works.
+
+The Changes panel lives on the right. While it is open, the [terminal](/terminal-changes-git/terminal/#dock-below-or-on-the-right) docks below.
+
+## Settings
+
+The Changes panel has no settings. Diff colours come from the theme: see [Themes](/themes/built-in/).

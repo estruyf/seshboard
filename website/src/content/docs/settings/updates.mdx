@@ -1,0 +1,92 @@
+---
+title: Updates
+description: How Switchboard keeps itself and the Claude Code it runs up to date.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Switchboard checks for new versions of itself and of the Claude Code it runs. It tells you when one is out, and nothing downloads or installs until you click.
+
+<Screenshot name="settings-about" alt="Settings on About: the Switchboard version, the Updates section with Check for Updates, the automatic checks switch and the Stable and Nightly channels, and the Claude Code section below it" eager />
+
+## Open it
+
+- Press <Kbd shortcut="settings" /> and choose **About**.
+- Choose **Switchboard → Check for Updates…** in the menu bar. It checks and opens Settings → About, where the result shows.
+- Run *Check for Claude Code updates…* in the command palette (<Kbd shortcut="palette.commands" />).
+
+## Update Switchboard
+
+Switchboard checks for a new release shortly after it opens and every few hours. When there is one, a message in the bottom right corner of the window says so:
+
+<Steps>
+
+1. Click **Download**. **What's new** shows the release notes.
+2. When the download is done, click **Restart to update**. If sessions are running, Switchboard asks first.
+
+</Steps>
+
+Close the message to decide later. It comes back for the next step, or the next time you open Switchboard. Settings → About has the same buttons, and **Check for Updates** checks right away.
+
+After the update, a message says which version you now run, with its release notes.
+
+### Channel
+
+In Settings → About, **Channel** picks which builds you get:
+
+- **Stable** (the default): published releases.
+- **Nightly**: pre-release builds as they are published, when there are any. Newer, with rougher edges.
+
+Switching the channel checks the new channel at once.
+
+### Turn automatic checks off
+
+Turn off **Check for updates automatically** in Settings → About. **Check for Updates** still works when you click it.
+
+<Aside title="Installed with Homebrew">
+Switchboard updates itself, so `brew upgrade` skips it. To update it through Homebrew instead, run `brew upgrade --cask estruyf/tap/switchboard`.
+</Aside>
+
+Builds you make yourself with `npm run dist` update like a release; development builds don't update.
+
+## Update Claude Code
+
+Switchboard also checks whether the Claude Code it runs is up to date: shortly after it opens, every few hours, and when you click **Check for Updates** under **Claude Code** in Settings → About.
+
+### Which version it compares with
+
+Switchboard compares your version with the newest one on the channel you follow:
+
+- For the native installer and npm, the `autoUpdatesChannel` in your Claude Code settings: *latest* or *stable*.
+- For Homebrew, the cask you installed: `claude-code` is stable, `claude-code@latest` is latest.
+
+Settings → About shows the Claude Code you have: **Installed**, **Latest** (with its channel), **Installed with** and **Path**.
+
+### Run the update
+
+When a newer version is out, a message in the bottom right corner of the window says so. Click **Update**, or close it to skip that version until the next one. In Settings → About, click **Update to v…**.
+
+Switchboard runs the update the way you installed Claude Code:
+
+| Installed with | Switchboard runs |
+|---|---|
+| Native installer | `claude update` |
+| Homebrew | `brew upgrade --cask claude-code` (or the cask you have) |
+| npm | `npm install -g …` |
+| Local install (`~/.claude/local`) | `claude update` |
+
+The output shows in Settings → About while it runs (**Show output** in the message takes you there). New sessions use the new version straight away; sessions already running keep theirs until they restart.
+
+If Switchboard can't tell how Claude Code was installed, it shows the command to run in a terminal instead (**Show how** in the message), with a copy button.
+
+### Turn the checks off
+
+Turn off **Check for Claude Code updates automatically** in Settings → About.
+
+If you turned off Claude Code's own updater (`DISABLE_AUTOUPDATER` in your environment or in the `env` of Claude Code's settings, or `"autoUpdates": false`), Switchboard doesn't show the message for it. Settings → About still says when a newer version is out.
+
+## Settings
+
+Both updaters are in [Settings → About](/settings/#about): the automatic checks, the channel and the Claude Code details.
