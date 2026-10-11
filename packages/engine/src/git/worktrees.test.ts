@@ -230,7 +230,8 @@ describe('ignoredFiles and measureSize', () => {
     expect(removalRefusal((await listWorktrees(repo)).worktrees.find((w) => w.path === path)!)).toBeNull();
   });
 
-  it('measures a folder on disk', async () => {
+  // Windows has no `du` of its own (Git Bash's is only on the PATH inside Git Bash), so sizes aren't measured there.
+  it.skipIf(process.platform === 'win32')('measures a folder on disk', async () => {
     writeFileSync(join(repo, 'big.bin'), Buffer.alloc(200 * 1024));
     expect(await measureSize(repo)).toBeGreaterThanOrEqual(200 * 1024);
     expect(await measureSize(join(dir, 'nope'))).toBeNull();

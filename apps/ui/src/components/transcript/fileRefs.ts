@@ -28,6 +28,12 @@ export function parseFileRef(text: string): FileRef | null {
   return line > 0 ? { path: value, line } : { path: value };
 }
 
+/** A local path as a `file:` link: `/a b.ts` is `file:///a%20b.ts`, `C:\a.ts` is `file:///C:/a.ts`. */
+export function fileUrl(path: string): string {
+  const drive = /^[A-Za-z]:[\\/]/.test(path);
+  return `file://${encodeURI(drive ? `/${path.replace(/\\/g, '/')}` : path)}`;
+}
+
 /** The file a Markdown link points at (`[a.ts](src/a.ts#L69)`, `file:///…`), or null for web and mail links. */
 export function fileRefFromHref(href: string | undefined): FileRef | null {
   if (!href || /^(https?|mailto):/i.test(href)) return null;
