@@ -122,7 +122,7 @@ export function transcriptFindings(profiles: readonly TranscriptProfileCheck[], 
   if (files.some((f) => !f.complete)) findings.push({ tone: 'info', text: "The transcript's last line is incomplete: Claude Code may still be writing it." });
   const compactions = Math.max(0, ...files.map((f) => f.compactions));
   if (compactions > 0 && read !== null && read > 0) {
-    findings.push({ tone: 'info', text: `The conversation was compacted ${compactions === 1 ? 'once' : `${compactions} times`}. Switchboard shows it from the last compaction on; what came before is in the summary Claude got.` });
+    findings.push({ tone: 'info', text: `The conversation was compacted ${compactions === 1 ? 'once' : `${compactions} times`}. Switchboard shows all of it, with a line where each compaction was; Claude only has the summary of what came before the last one.` });
   }
   if (!findings.some((f) => f.tone === 'error' || f.tone === 'warn') && read !== null) {
     findings.push({ tone: 'ok', text: read > 0 ? `The transcript reads fine: ${plural(read, 'message')}.` : 'The transcript reads fine, but has no messages yet.' });

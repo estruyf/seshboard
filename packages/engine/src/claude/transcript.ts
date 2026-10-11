@@ -11,6 +11,8 @@ export interface RawSessionMessage {
   message: unknown;
   parent_tool_use_id: string | null;
   timestamp?: string;
+  /** The summary Claude Code starts a conversation with after a compaction. */
+  isCompactSummary?: boolean;
 }
 
 export const LIMITS = {

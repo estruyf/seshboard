@@ -29,6 +29,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- A compacted conversation shows in full. After `/compact` the conversation showed only what came after the last compaction, so you couldn't scroll back through it; now it shows everything, with a *Conversation compacted* line where each compaction happened.
 - The pointer turns into a text cursor over text you can select in the conversation (messages, code blocks, diffs), instead of staying an arrow.
 - Collapsible sections in the sidebar (your session groups, the Queue, Archived) always show their chevron, pointing right when closed and down when open, so you can tell their state without hovering.
 - Archived stays at the bottom of the sidebar while it is closed, so a short list no longer shows a scrollbar. Opening it slides it up right under your other sessions, with no gap, and closing it slides it back down.
