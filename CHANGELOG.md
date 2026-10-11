@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` to download.
+All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
 ## [Unreleased]
 
@@ -20,7 +20,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - Save an image from the conversation: use the save button on the image, right-click it and choose Save image…, or press ⌘S while it is open full size.
 - **A page for each project.** Click a project in Projects, choose **Open project** in its menu in the sidebar, or run *Project: &lt;name&gt;* in the command palette. Its tabs hold an Overview (sessions, worktrees, queue and git at a glance), its Sessions (archived ones in their own section at the end), its Worktrees, its Actions and its Settings. A project opens on the tab you left it on, and ⌘N there starts a session in it. Click its icon at the top to choose an image, an emoji or a letter, or to rename it; the Settings tab has Choose image… too.
 - **Worktree overview and clean-up.** A project's Worktrees tab lists every worktree with its sessions, uncommitted changes, commits ahead of the base branch, whether it's pushed and merged (or its pull request, with the GitHub CLI), its size on disk and when it was last active. It groups them into *Safe to remove*, *Probably done*, *Keep* (with the reason) and *Stale*, and removes the ones you tick after one confirmation that shows the space freed and any ignored files that would be lost. Branches can go too, with a recovery ref if you like. Worktrees with uncommitted changes, a session working in them, or a lock are never removed, and removing always goes through `git worktree remove`. Open it from the project page, the new worktree pill in Projects, **Worktrees…** in a project's menu, or the command palette (*Worktrees…*, *Clean up worktrees in &lt;project&gt;…*).
-- **Switchboard runs on Windows**, built from source for now. Shortcuts use Ctrl, the terminal panel runs PowerShell, Open in knows VS Code, Cursor, File Explorer and Windows Terminal, the VS Code companion connects, and a session that needs you flashes the taskbar button. See [Windows support](docs/windows-support.md).
+- **Switchboard runs on Windows** 10 and 11. Download the installer (`Switchboard-<version>-setup.exe`, one for x64 and Arm64 PCs) from the release: it installs for you only, without admin rights, and Switchboard updates itself like on a Mac. Shortcuts use Ctrl, the terminal panel runs PowerShell, Open in knows VS Code, Cursor, File Explorer and Windows Terminal, the VS Code companion connects, and a session that needs you flashes the taskbar button. See [Windows support](docs/windows-support.md).
 - Settings files move between a Mac and a Windows PC: their project folders show as missing until you point them at folders on the new computer.
 
 ### Changed
