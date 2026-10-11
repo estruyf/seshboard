@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isSameOrInside } from '@switchboard/protocol/client';
 import { openProject } from './projectPageStore.ts';
 import { useOverlay } from './overlayStore.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -52,6 +53,8 @@ export function showInChanges(root: string, path: string): boolean {
   if (!sessionId) return false;
   useSessions.getState().select(sessionId);
   useOverlay.getState().toggleChanges(true);
-  useMemoryView.setState({ changesFocus: { path: path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path, nonce: ++nonce } });
+  // Changes lists files relative to the checkout, with `/` as git writes them (also on Windows).
+  const relative = path !== root && isSameOrInside(path, root) ? path.slice(root.replace(/[\\/]+$/, '').length + 1).replace(/\\/g, '/') : path;
+  useMemoryView.setState({ changesFocus: { path: relative, nonce: ++nonce } });
   return true;
 }

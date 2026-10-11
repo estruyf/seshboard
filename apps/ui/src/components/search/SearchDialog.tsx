@@ -227,7 +227,7 @@ export function SearchDialog() {
                   <span className="min-w-0 flex-1">
                     <Snippet text={hit.snippet || (hit.description ?? '')} />
                   </span>
-                  <span className="shrink-0 text-meta text-muted">{hit.root ? (projects.get(hit.root)?.name ?? hit.root.split('/').pop()) : 'Personal'}</span>
+                  <span className="shrink-0 text-meta text-muted">{hit.root ? (projects.get(hit.root)?.name ?? basename(hit.root)) : 'Personal'}</span>
                 </div>
               );
             })}
