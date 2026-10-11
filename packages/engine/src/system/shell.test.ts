@@ -3,6 +3,12 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { posixQuote, powershellQuote, userShell, windowsPowershellQuote, windowsUnsafe } from './shell.ts';
 
+/**
+ * Time for the tests that start real shells, each several times: Windows PowerShell 5.1 takes a second or more to
+ * start on CI runners, beyond Vitest's 5 seconds for a test.
+ */
+const REAL_SHELLS_MS = 60_000;
+
 /** The command `run` encodes (after `-NoLogo -ExecutionPolicy Bypass -EncodedCommand`). */
 const decode = (args: string[]) => Buffer.from(args[4]!, 'base64').toString('utf16le');
 
@@ -53,7 +59,7 @@ describe('quoting', () => {
 
   it.skipIf(process.platform === 'win32')('passes every value to /bin/sh as it is', () => {
     for (const value of nasty) expect(execFileSync('/bin/sh', ['-c', `printf %s ${posixQuote(value)}`]).toString()).toBe(value);
-  });
+  }, REAL_SHELLS_MS);
 
   it.skipIf(process.platform !== 'win32')('passes every value to PowerShell as it is', () => {
     const shell = userShell(process.env as Record<string, string>);
@@ -63,7 +69,7 @@ describe('quoting', () => {
       const out = execFileSync(shell.file, ['-NoProfile', ...shell.run(command).slice(1)], { encoding: 'utf8' });
       expect(out).toBe(value);
     }
-  });
+  }, REAL_SHELLS_MS);
 
   // Commit messages and branch names go to git.exe and gh.exe, through each PowerShell's own way of passing them.
   const shells = process.platform === 'win32' ? windowsShells() : [];
@@ -75,7 +81,7 @@ describe('quoting', () => {
       const out = execFileSync(shell.file, ['-NoProfile', ...shell.run(command).slice(1)], { encoding: 'utf8' });
       expect({ shell: shell.file, argv: JSON.parse(out.trim()) }).toEqual({ shell: shell.file, argv: values });
     }
-  });
+  }, REAL_SHELLS_MS);
 
   it.skipIf(shells.length === 0)("reports a program's own exit code, as a POSIX shell does", () => {
     for (const shell of shells) {
@@ -85,7 +91,7 @@ describe('quoting', () => {
       expect(exit('node -e "process.exit(5)"; Write-Output fine')).toBe(0);
       expect(exit('Write-Output fine')).toBe(0);
     }
-  });
+  }, REAL_SHELLS_MS);
 });
 
 /** Windows PowerShell, and PowerShell 7 when it is installed, each with its own quoting. */
