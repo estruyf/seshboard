@@ -4,6 +4,7 @@ description: What you see when you open Switchboard for the first time, and how 
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -19,6 +20,12 @@ Switchboard opens on Home. You can always go back there with <Kbd shortcut="home
 
 - **The sidebar** lists your sessions, grouped by what needs attention first: **Needs you**, **Working**, then **Today**, **Yesterday** and **Earlier**. At the top are a field to filter sessions, the **Home** button and the yellow **+** button for a new session. The footer counts your sessions and has buttons for **Projects** and **Settings**. See [The sidebar](/sessions/sidebar/).
 - **Home** shows what needs you, what is working, your queue, a few projects to start in, and the plan usage of each Claude profile. See [Home](/sessions/home/).
+
+<OnlyOn os="windows">
+
+On Windows, the window has the usual Windows title bar. The menu bar (File, Edit, View, Window and Help) is hidden until you press Alt; most of what it has is also in the [command palette](/command-palette/). See [Switchboard on Windows](/getting-started/windows/) for everything else that differs.
+
+</OnlyOn>
 
 ## Add your projects
 

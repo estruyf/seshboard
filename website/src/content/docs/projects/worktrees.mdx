@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -97,7 +98,7 @@ Right-click a row, or click its **⋯**, for:
 
 - **Open its session**: the newest session in that worktree.
 - **New session in this worktree**: opens New session in that folder.
-- **Open in editor**, **Reveal in Finder** and **Copy path**.
+- **Open in editor**, **Reveal in <Os mac="Finder" windows="File Explorer" />** and **Copy path**.
 - **Merge into &lt;base&gt;…**: merges the branch into the base branch in the main checkout, in a terminal tab of its session, so you can see the result. The worktree stays; remove it afterwards. It needs a session in the worktree, no uncommitted changes and commits to merge.
 - **Push branch**: pushes the worktree's branch.
 - **Remove worktree…**: opens the confirmation for that one worktree.

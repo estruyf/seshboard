@@ -1,22 +1,27 @@
 ---
 title: Install Switchboard
-description: Download Switchboard for your Mac, install it with Homebrew, or build it yourself.
+description: Install Switchboard on a Mac or a Windows PC, with Homebrew on a Mac, or build it yourself.
 sidebar:
   label: Install
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Switchboard is a Mac app for running and keeping track of your Claude Code sessions. It uses the Claude Code you already have, with your own login, settings, commands and skills, so there is nothing extra to sign in to.
+Switchboard is a desktop app for macOS and Windows for running and keeping track of your Claude Code sessions. It uses the Claude Code you already have, with your own login, settings, commands and skills, so there is nothing extra to sign in to.
 
-<Screenshot name="main-window" alt="Switchboard with a finished session open: the sidebar with Needs you and Working groups on the left, the conversation in the middle and the Changes panel with a diff on the right" eager />
+<Screenshot name="main-window" alt="Switchboard on a Mac with a finished session open: the sidebar with Needs you and Working groups on the left, the conversation in the middle and the Changes panel with a diff on the right" eager />
 
 ## Requirements
 
-- A Mac with Apple Silicon.
+- A Mac with Apple Silicon, or a PC with Windows 10 or 11 (x64 or Arm64).
 - [Claude Code](https://github.com/anthropics/claude-code) installed and signed in. If `claude` works in your terminal, you are ready.
+- On Windows: [Git for Windows](https://gitforwindows.org), for Claude Code and for the [Changes](/terminal-changes-git/changes/) panel and [git](/terminal-changes-git/git/) features. PowerShell 7 is recommended; the Windows PowerShell every PC has works too.
+
+<OnlyOn os="mac">
 
 ## Download the app
 
@@ -29,6 +34,28 @@ Switchboard is a Mac app for running and keeping track of your Claude Code sessi
 </Steps>
 
 Releases are signed and notarised by Apple, so macOS opens them without asking.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+## Install on Windows
+
+Download `Switchboard-<version>-setup.exe` from the [latest release](https://github.com/estruyf/switchboard/releases/latest) when it has one; until then, [build it from source](#build-it-on-windows).
+
+<Steps>
+
+1. Download `Switchboard-<version>-setup.exe`. It is one installer for x64 and Arm64 PCs: it installs the build that matches yours.
+2. Run it. It installs for you only, in `%LOCALAPPDATA%\Programs\switchboard`, without asking for admin rights, and adds Switchboard to the Start menu and the desktop.
+3. Switchboard opens when the installer is done. Later, open it from the Start menu.
+
+</Steps>
+
+If Windows SmartScreen says "Windows protected your PC", the installer isn't signed: see [If Windows blocks the installer](#if-windows-blocks-the-installer).
+
+</OnlyOn>
+
+<OnlyOn os="mac">
 
 ## Install with Homebrew
 
@@ -44,16 +71,32 @@ Switchboard updates itself, so `brew upgrade` skips it. To update it through Hom
 brew upgrade --cask estruyf/tap/switchboard
 ```
 
+</OnlyOn>
+
 ## Build it from source
 
-You can also build the app from the [repository](https://github.com/estruyf/switchboard). You need Node 24 or later, and it takes a couple of minutes.
+You can also build the app from the [repository](https://github.com/estruyf/switchboard). You need Node 24 or later, and it takes a couple of minutes. `npm run dist` builds for the system it runs on: a `.dmg` on a Mac, an installer on Windows.
 
 ```bash
 npm install
 npm run dist
 ```
 
+<OnlyOn os="mac">
+
 Then open `apps/desktop/dist/Switchboard-<version>-arm64.dmg` and drag Switchboard to Applications. A build you make yourself updates like a release.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+### Build it on Windows
+
+On Windows 10 or 11, run the same commands in PowerShell, with Node 24 and npm 11 or later, and Git for Windows. No Visual Studio build tools are needed. The build makes `apps\desktop\dist\Switchboard-<version>-setup.exe`; run it to install. A build you make yourself updates like a release.
+
+</OnlyOn>
+
+<OnlyOn os="mac">
 
 ## If macOS blocks the app
 
@@ -67,6 +110,32 @@ xattr -dr com.apple.quarantine /Applications/Switchboard.app
 The signed releases from GitHub and Homebrew don't need this. The [repository's notes on building and signing](https://github.com/estruyf/switchboard/blob/main/docs/building-and-signing.md) have the details.
 </Aside>
 
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+## If Windows blocks the installer
+
+An installer you build yourself is unsigned. On another PC, Windows SmartScreen stops it with "Windows protected your PC". Choose **More info**, then **Run anyway**. The [repository's notes on building and signing](https://github.com/estruyf/switchboard/blob/main/docs/building-and-signing.md#windows) have the details.
+
+</OnlyOn>
+
+## Uninstall
+
+<OnlyOn os="mac">
+
+Quit Switchboard and drag it from Applications to the Trash. With Homebrew, run `brew uninstall --cask estruyf/tap/switchboard`.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+Open Windows **Settings › Apps**, find Switchboard and choose **Uninstall**. This also removes the `switchboard://` link handler Switchboard registered.
+
+</OnlyOn>
+
+Your sessions stay in Claude Code's folder, and Switchboard's own data (projects, actions, preferences) stays in <Os mac="~/Library/Application Support/Switchboard" windows="%APPDATA%\Switchboard" />. Delete that folder too if you don't want to keep it.
+
 ## Updates
 
 Switchboard checks for a new release shortly after it opens and every few hours, and tells you in the corner of the window when there is one. It also checks whether the Claude Code it runs is up to date. See [Updates](/settings/updates/) for how it works and how to change it.
@@ -79,3 +148,4 @@ The update checks and the update channel are in [Settings, About](/settings/#abo
 
 - [First launch](/getting-started/first-launch/): what you see when Switchboard opens.
 - [Your first session](/getting-started/first-session/): start Claude on a project.
+- [Switchboard on Windows](/getting-started/windows/): what is different on a Windows PC.

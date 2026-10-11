@@ -3,12 +3,14 @@
  * A keyboard shortcut as keycaps, like the app's `Kbd`/`KeyCombo` (one cap per key, "or", "then" and "to"
  * between them, the keys spoken as words for screen readers). Pass a registry id (`shortcut="palette.commands"`,
  * from apps/ui/src/lib/shortcuts.ts, so it never goes stale) or keys in the stored form (`keys="mod+k"`).
+ * It renders the keys as macOS shows them (⌘ ⇧ P) and as Windows does (Ctrl Shift P); the site shows the reader's.
  */
 import { keyPieces, shortcutById, spokenKeys, type ShortcutId } from '../../../apps/ui/src/lib/shortcuts.ts';
+import { asOs, OSES, type Os } from '../lib/os.ts';
 
 interface Props {
   shortcut?: ShortcutId;
-  /** Stored form: `mod+shift+p`, `mod+1..9`, `mod+q mod+q`. Several alternatives with `|`. */
+  /** Stored form: `mod+shift+p` (`mod` is ⌘ on a Mac, Ctrl on Windows), `mod+1..9`, `mod+q mod+q`. Alternatives with `|`. */
   keys?: string;
   /** Only the first alternative of a registry shortcut. */
   first?: boolean;
@@ -22,18 +24,33 @@ if (shortcut) {
   combos = first ? def.keys.slice(0, 1) : def.keys;
 } else if (keys) combos = keys.split('|').map((k) => k.trim());
 else throw new Error('<Kbd> needs `shortcut` or `keys`');
+
+const render = (os: Os) => asOs(os, () => ({ spoken: combos.map(spokenKeys).join(' or '), combos: combos.map((combo) => keyPieces(combo)) }));
+const variants = OSES.map((os) => ({ os, ...render(os) }));
+// Keys such as Esc, / or F2 read the same everywhere: one copy is enough.
+const same = JSON.stringify(variants[0]!.combos) === JSON.stringify(variants[1]!.combos);
+const shown = same ? [{ ...variants[0]!, os: null }] : variants;
 ---
 
-<span class="sb-kbd not-content"><span class="sb-sr">{combos.map(spokenKeys).join(' or ')}</span>{
-  combos.map((combo, index) => (
-    <>
-      {index > 0 && <span class="sb-kbd-word" aria-hidden="true">or</span>}
-      <span class="sb-kbd-combo" aria-hidden="true">
-        {keyPieces(combo).map((piece) => ('cap' in piece ? <kbd>{piece.cap}</kbd> : <span class="sb-kbd-word">{piece.word}</span>))}
-      </span>
-    </>
+{
+  shown.map(({ os, spoken, combos }) => (
+    <span class:list={['sb-kbd', 'not-content', os && `sb-os-${os}`]}>
+      <span class="sb-sr">{spoken}</span>
+      {combos.map((pieces, index) => (
+        <>
+          {index > 0 && (
+            <span class="sb-kbd-word" aria-hidden="true">
+              or
+            </span>
+          )}
+          <span class="sb-kbd-combo" aria-hidden="true">
+            {pieces.map((piece) => ('cap' in piece ? <kbd>{piece.cap}</kbd> : <span class="sb-kbd-word">{piece.word}</span>))}
+          </span>
+        </>
+      ))}
+    </span>
   ))
-}</span>
+}
 
 <style>
   .sb-kbd {

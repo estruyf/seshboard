@@ -6,6 +6,8 @@ sidebar:
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -40,7 +42,7 @@ The editor, **Project actions**, lists your actions on the left under **Yours**,
 | Field | What it means |
 |---|---|
 | **Name** and **icon** | How it looks on its pill and in the menu. Up to 40 characters. |
-| **Run a command** / **Ask Claude** | A command opens in a terminal tab of the session. It runs in your login shell, so your `PATH`, `nvm` and aliases work as in your own terminal. A prompt is sent to Claude in the session, and can be a `/` command. |
+| **Run a command** / **Ask Claude** | A command opens in a terminal tab of the session. It runs in <Os mac="your login shell, so your PATH, nvm and aliases work as in your own terminal" windows="PowerShell (PowerShell 7 when it is installed, else Windows PowerShell)" />. A prompt is sent to Claude in the session, and can be a `/` command. |
 | **Command** / **Prompt** | What it runs or sends. Insert a [variable](#variables) with the buttons under the field. |
 | **Saved for** | *This project*, or *All projects* for actions you want everywhere. |
 | **Runs in** | For a command: *Session folder* (its worktree, when it has one) or *Project root*. |
@@ -83,9 +85,27 @@ Commands and prompts can use these. They are filled in when the action runs:
 
 In commands, every value is quoted for the shell, so a branch name or a title can never run anything by accident.
 
+<OnlyOn os="windows">
+
+On Windows, no quoting is safe for every program. An action doesn't run when a value it uses holds `&`, `|`, `<`, `>`, `^`, `%`, `!`, `"` or a line break, and the message says which variable and character. Leave that variable out of the action, or rename the branch or session.
+
+</OnlyOn>
+
 ## Shortcuts
 
-An action's shortcut works while a session in the project is on screen. It must include <Kbd keys="cmd" />, <Kbd keys="ctrl" /> or <Kbd keys="alt" />. Keys that Switchboard uses itself can't be taken: the editor says the keys are used by Switchboard, or which other action already uses them. In the terminal, only shortcuts with <Kbd keys="cmd" /> run actions, since <Kbd keys="ctrl" /> and <Kbd keys="alt" /> keys belong to the shell.
+An action's shortcut works while a session in the project is on screen.
+
+<OnlyOn os="mac">
+
+It must include <Kbd keys="cmd" />, <Kbd keys="ctrl" /> or <Kbd keys="alt" />. Keys that Switchboard uses itself can't be taken: the editor says the keys are used by Switchboard, or which other action already uses them. In the terminal, only shortcuts with <Kbd keys="cmd" /> run actions, since <Kbd keys="ctrl" /> and <Kbd keys="alt" /> keys belong to the shell.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+It must include <Kbd keys="ctrl" /> or <Kbd keys="alt" />. Keys that Switchboard uses itself can't be taken: the editor says the keys are used by Switchboard, or which other action already uses them. In the terminal, only shortcuts with <Kbd keys="ctrl+shift" /> run actions, since other <Kbd keys="ctrl" /> and <Kbd keys="alt" /> keys belong to the shell.
+
+</OnlyOn>
 
 Action shortcuts are listed in the [keyboard shortcuts sheet](/keyboard-shortcuts/) (<Kbd shortcut="shortcuts" />) while a session in the project is open.
 
@@ -119,7 +139,7 @@ Put a `.switchboard.json` file in the root of the repository and commit it. Ever
 | `icon` | `"play"` | `play`, `rocket`, `git-commit`, `git-pull-request`, `upload`, `flask`, `package`, `terminal`, `sparkles`, `wrench`, `globe`, `bug`, `check` |
 | `cwd` | `"session"` | `"session"` or `"project-root"` |
 | `confirm` | `false` | Ask before running |
-| `shortcut` | none | For example `"cmd+shift+t"` |
+| `shortcut` | none | For example `"cmd+shift+t"`. On Windows `cmd` means Ctrl, so a file shared between a Mac and Windows works on both. |
 | `runOnWorktreeCreate` | `false` | Run in every new worktree before Claude starts |
 | `id` | from the name | Lowercase letters, digits and dashes |
 

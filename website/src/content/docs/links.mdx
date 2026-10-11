@@ -4,6 +4,8 @@ description: Open Switchboard from a switchboard:// link, to start a session wit
 ---
 
 import Kbd from '../../components/Kbd.astro';
+import OnlyOn from '../../components/OnlyOn.astro';
+import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
@@ -14,7 +16,7 @@ A `switchboard://` link opens Switchboard on New session with the project and pr
 ## Open a link
 
 - Click it wherever links work: a browser, a chat message, a Markdown preview.
-- From a shell: `open "switchboard://new-session?project=payments&prompt=…"`.
+- From a shell, with <Os mac="open" windows="Start-Process" />: see [From a shell](#from-a-shell).
 
 If Switchboard isn't running, the link starts it and waits until the window is ready. If it is running, its window comes to the front.
 
@@ -35,7 +37,7 @@ switchboard://new-session?question=1&prompt=How%20do%20I%20undo%20a%20git%20reba
 |---|---|
 | `prompt` (or `q`) | Text for the message box, URL-encoded. Use `%0A` for a new line. At most 5,000 characters. |
 | `project` | One of your [projects](/projects/projects-view/), by its name in Switchboard (or its folder's name), ignoring case. A name that isn't one of your projects is refused. |
-| `cwd` | The absolute path of the folder to start in. |
+| `cwd` | The absolute path of the folder to start in: <Os mac="/Users/me/dev/payments" windows="C:\Users\me\dev\payments (or C:/Users/me/dev/payments)" />, URL-encoded. |
 | `repo` | A GitHub repository as `owner/name`. Switchboard looks for a checkout of it among your projects, then among the other folders you've used Claude Code in. |
 | `autostart` | `1` (or `true`) starts the session right away. Leave it out (or use `0`) to fill in New session and wait for you. |
 | `question` | `1` (or `true`) makes it a [quick question](/new-session/quick-questions/): no project. `cwd`, `project` and `repo` are then ignored. |
@@ -68,6 +70,8 @@ This shows that session, as if you picked it in the sidebar. To get a session's 
 
 ### From a shell
 
+<OnlyOn os="mac">
+
 ```bash
 open "switchboard://new-session?cwd=$PWD&prompt=Why%20are%20the%20tests%20failing%3F"
 ```
@@ -82,6 +86,20 @@ open "switchboard://new-session?cwd=$(jq -rn --arg v "$PWD" '$v|@uri')&prompt=$(
 
 In a URL, `+` means a space. Write a plus sign as `%2B`; `jq`'s `@uri` does that for you.
 
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+In PowerShell, `Start-Process` opens a link, and `[uri]::EscapeDataString` encodes the folder and the prompt (spaces, `+`, `&` and new lines included):
+
+```powershell
+$prompt = "Summarise the last 10 commits`nand list anything that looks risky."
+$cwd = [uri]::EscapeDataString($PWD.Path)
+Start-Process "switchboard://new-session?cwd=$cwd&prompt=$([uri]::EscapeDataString($prompt))"
+```
+
+</OnlyOn>
+
 ### In a README or runbook
 
 ```markdown
@@ -90,7 +108,7 @@ In a URL, `+` means a space. Write a plus sign as `%2B`; `jq`'s `@uri` does that
 
 Some sites, GitHub among them, don't make custom links clickable. Put the link in a code block there so people can copy it.
 
-### Raycast
+### Raycast (Mac)
 
 Save this as `ask-claude.sh` in your Raycast script commands folder. It asks for a project and a prompt, and starts the session right away (drop `&autostart=1` to check it first):
 
@@ -105,7 +123,7 @@ uri() { jq -rn --arg v "$1" '$v|@uri'; }
 open "switchboard://new-session?project=$(uri "$1")&prompt=$(uri "$2")&autostart=1"
 ```
 
-### Alfred
+### Alfred (Mac)
 
 Add a **Keyword** input with an argument, connect it to a **Run Script** action (language `/bin/bash`, with input as argv) and use this script. Typing `claude payments fix the flaky checkout test` fills in New session in the *payments* project: the first word is the project, the rest is the prompt.
 
@@ -129,17 +147,17 @@ Links can come from any web page or chat message, so Switchboard checks each one
 
 - an action other than `new-session` or `session`;
 - a prompt longer than 5,000 characters, or with control characters or invisible characters (such as zero-width spaces) that can hide text;
-- a `cwd` that isn't an absolute path, is a network location, or contains `.` or `..`;
+- a `cwd` that isn't an absolute path, is a network location, or contains `.` or `..`; on Windows also a folder without a drive letter (`\dev\payments`) or with a colon after the drive;
 - a `project` that isn't one of your projects;
 - a `repo` that isn't `owner/name`;
 - an `autostart` value other than `1`, `true`, `yes`, `0`, `false` or `no`;
-- a session ID that isn't one, or a session that isn't on this Mac.
+- a session ID that isn't one, or a session that isn't on this computer.
 
 Parameters Switchboard doesn't know are ignored, so a link made for a newer version still opens.
 
 ## When a link doesn't work
 
-- **Nothing happens.** macOS sends `switchboard://` links to the copy of Switchboard it knows. Move Switchboard to Applications and open it once.
+- **Nothing happens.** <Os mac="macOS sends switchboard:// links to the copy of Switchboard it knows. Move Switchboard to Applications and open it once." windows="Switchboard registers switchboard:// links for you when it starts. Open it once from the Start menu after installing it. A build you run with npm run dev doesn't register them." />
 - **An `autostart` link didn't start.** It needs a prompt and a folder: `project`, `cwd`, or a `repo` Switchboard can find.
 - **The folder is empty.** The link names no folder, or no project or recent folder has a git remote on that `repo`. Add the checkout as a project, or use `cwd`.
 - **The prompt looks wrong.** Check the encoding: spaces as `%20`, new lines as `%0A`, `&` as `%26`, `#` as `%23`, `+` as `%2B`.

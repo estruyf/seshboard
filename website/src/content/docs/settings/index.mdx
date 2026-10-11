@@ -4,6 +4,7 @@ description: Every section of Settings and what each control does.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
@@ -13,7 +14,7 @@ Settings is where you choose how Switchboard looks and behaves: what it opens on
 
 - Press <Kbd shortcut="settings" />.
 - Click the gear at the bottom of the sidebar (also there when the sidebar is a narrow rail).
-- Choose **Switchboard → Settings…** in the menu bar.
+- Choose **<Os mac="Switchboard → Settings…" windows="File → Settings…" />** in the menu bar. On Windows the menu bar shows when you press Alt.
 - Run *Settings* in the command palette (<Kbd shortcut="palette.commands" />). While Settings is open, the palette offers *Settings: &lt;section&gt;* for each other section, such as *Settings: Theme*.
 
 Settings fills the main area, with its sections in a list on the left. The app's sidebar stays next to it, so you still see what needs you. The version you run is at the bottom of the section list; click it for its release notes.
@@ -41,13 +42,13 @@ What Switchboard shows when it opens:
 
 ### Quitting
 
-**Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press.
+**Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press. On Windows, closing the window quits Switchboard, so it asks then too (but not while Windows shuts down or signs you out).
 
 ## Theme
 
 <Screenshot name="settings-theme" alt="Settings on Theme: the Appearance control, the theme cards with light and dark previews, and the Import… and Open themes folder buttons" />
 
-- **Appearance**: **Match System** (the default, follows macOS), **Light** or **Dark**.
+- **Appearance**: **Match System** (the default, follows <Os mac="macOS" windows="Windows" />), **Light** or **Dark**.
 - **Theme**: a card for each theme. Click one to use it. Each card's **⋯** menu has **Export…** and **Duplicate**, plus **Show file** and **Remove** for themes you imported.
 - **Open themes folder** shows where imported themes are kept, and **Import…** (or the **Drop a theme .json here** card) adds a theme file.
 
@@ -64,7 +65,7 @@ See [Built-in themes](/themes/built-in/), [Custom themes](/themes/custom/) and [
 
   The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact* too.
 - **When collapsed**: what <Kbd shortcut="sidebar.toggle" /> and the sidebar button do. **Minimal rail** (the default) shrinks the sidebar to a narrow rail of project icons; **Hidden** hides it.
-- **Show sessions from other apps** (off by default): also list sessions from Terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Switchboard.
+- **Show sessions from other apps** (off by default): also list sessions from your terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Switchboard.
 
 See [Sidebar](/sessions/sidebar/).
 
@@ -103,7 +104,7 @@ For each profile:
 
 - **Name** and **Colour** (Yellow, Blue, Green, Purple, Red, Orange or Grey).
 - **Default**: the profile that projects without a profile of their own use.
-- Its config folder, and the account it is signed in with. A profile that isn't signed in yet shows the command to run in Terminal, with a copy button.
+- Its config folder, and the account it is signed in with. A profile that isn't signed in yet shows the command to run in a terminal, with a copy button. On Windows, see [Sign in on Windows](/settings/claude-profiles/#sign-in-on-windows) for the PowerShell form.
 - **×** removes a profile from Switchboard. The folder, its login and its sessions stay on disk. The first profile, Claude Code's own folder, can't be removed.
 
 Below the list:
@@ -120,7 +121,7 @@ See [Claude profiles](/settings/claude-profiles/).
 What Claude Code remembers about you and your projects. Everything stays plain Markdown in the folders Claude Code already reads. Also *Memory settings…* in the command palette.
 
 - **Import from Claude export…**, **Paste from Claude app…** and **Copy for Claude app…**: bring the Claude app's memory in, or copy yours out. See [Import from the Claude app](/memory/import/).
-- **Personal memory**: the folder of memory that loads in every project, with a MEMORY.md meter. A notice says when the folder is synced. **Change folder…** picks another one, and **Show in Finder** opens it.
+- **Personal memory**: the folder of memory that loads in every project, with a MEMORY.md meter. A notice says when the folder is synced. **Change folder…** picks another one, and **Show in <Os mac="Finder" windows="File Explorer" />** opens it.
 - **Add to Claude Code…** adds the one line to each profile's `CLAUDE.md` that loads your personal memory, after showing you the change. Once it's there, **Show the line** shows it and **Remove from Claude Code** takes it out again. See [Personal memory](/memory/personal-memory/).
 - **Personal memories**: your personal memories, with **New**. Click one to edit it; <Kbd shortcut="memory.save" /> saves. See [Add and edit memory](/memory/adding-memory/).
 - **Projects**: every project with how many memories it has and its MEMORY.md meter. Click one to open its [Memory tab](/projects/memory/).
@@ -145,7 +146,7 @@ A status line says whether an editor is connected right now ("Connected to 1 edi
 
 <Screenshot name="settings-backup" alt="Settings on Backup: Export settings and Import settings, each with a button" />
 
-Move your setup to another Mac, restore it after a reset, or share your actions. Your sessions stay in `~/.claude`.
+Move your setup to another computer (a Mac or a Windows PC, either way), restore it after a reset, or share your actions. Your sessions stay in Claude Code's own folder (`~/.claude`).
 
 - **Export settings…**: choose what to include and save it to a file.
 - **Import settings…**: see what a file would change before anything happens. Your current settings are backed up first.
@@ -159,8 +160,8 @@ The command palette has *Export settings…* and *Import settings…*. See [Back
 The engine behind Switchboard, the Claude Code it runs, and its recent log. Look here first when something doesn't work.
 
 - **Engine**: **Status** (Connected, and how often it reconnected), **Round trip** (with **Ping again**) and **Engine version**.
-- **Claude Code**: **Binary** (the version and path of the `claude` it found, or that it wasn't found on your PATH), **Config dir** (with a button to open it in Finder) and **Shell environment**.
-- **Runtime**: the **Electron**, **Node** and **SQLite** versions, and the **Cache database** (with a button to show it in Finder).
+- **Claude Code**: **Binary** (the version and path of the `claude` it found, or that it wasn't found on your PATH), **Config dir** (with a button to open it in <Os mac="Finder" windows="File Explorer" />) and **Shell environment**.
+- **Runtime**: the **Electron**, **Node** and **SQLite** versions, and the **Cache database** (with a button to show it in <Os mac="Finder" windows="File Explorer" />).
 - **Rendering**: a code block and some Markdown in the theme in use.
 - **Engine log**: the engine's messages since this window connected.
 
@@ -180,5 +181,5 @@ The engine behind Switchboard, the Claude Code it runs, and its recent log. Look
 See [Updates](/settings/updates/).
 
 <Aside>
-Your preferences, theme choice and the other choices here are kept in Switchboard's app data, `~/Library/Application Support/Switchboard`. [Settings → Backup](/settings/backup/) saves them to a file.
+Your preferences, theme choice and the other choices here are kept in Switchboard's app data: <Os mac="~/Library/Application Support/Switchboard" windows="%APPDATA%\Switchboard" />. [Settings → Backup](/settings/backup/) saves them to a file.
 </Aside>

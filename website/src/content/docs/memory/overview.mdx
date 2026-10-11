@@ -6,11 +6,12 @@ sidebar:
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Claude Code keeps what it learns about a project as *memory*: small Markdown files in a folder of its own, private to you and to this Mac. A <Pill tone="memory">MEMORY.md</Pill> index lists them and loads at the start of every session. Switchboard is an editor for those files.
+Claude Code keeps what it learns about a project as *memory*: small Markdown files in a folder of its own, private to you and to this computer. A <Pill tone="memory">MEMORY.md</Pill> index lists them and loads at the start of every session. Switchboard is an editor for those files.
 
 <Screenshot name="project-memory" alt="The Memory tab of acme-store: What loads in a session here at the top, the Project memory list with its MEMORY.md meter, Instructions and Personal" eager />
 
@@ -32,7 +33,7 @@ Switchboard never changes a memory on its own: every change is one you start. It
 | What | Where | Loaded |
 |---|---|---|
 | A project's memory | `<config folder>/projects/<project>/memory/`, for each [Claude profile](/settings/claude-profiles/). A repository and all its worktrees share one folder. | The start of its `MEMORY.md` in every session; the other files when Claude reads them. |
-| Personal memory | One folder you choose (by default `~/Library/Application Support/Switchboard/memory`) | Through one line in each profile's `CLAUDE.md`. See [Personal memory](/memory/personal-memory/). |
+| Personal memory | One folder you choose (by default <code><Os mac="~/Library/Application Support/Switchboard/memory" windows="%APPDATA%\Switchboard\memory" /></code>) | Through one line in each profile's `CLAUDE.md`. See [Personal memory](/memory/personal-memory/). |
 | Project instructions | `CLAUDE.md` (at the root, else `.claude/CLAUDE.md`), `CLAUDE.local.md`, `.claude/rules/*.md`, `CLAUDE.md` in subfolders, `.claude/agent-memory/` | See [What loads in a session](/memory/what-loads/). |
 | Your own instructions | `<config folder>/CLAUDE.md` and `<config folder>/rules/` (`~/.claude/` for the built-in profile) | In every project. |
 
@@ -72,7 +73,7 @@ The sidebar groups sessions in this order: …
 - [Check memory's health](/memory/health/).
 
 <Aside>
-Deleting a memory moves it to the Trash, with Undo. Switchboard never deletes `MEMORY.md`.
+Deleting a memory moves it to the <Os mac="Trash" windows="Recycle Bin" />, with Undo. Switchboard never deletes `MEMORY.md`.
 </Aside>
 
 ## Settings

@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import Kbd from '../../components/Kbd.astro';
+import Os from '../../components/Os.astro';
 import Pill from '../../components/Pill.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
@@ -19,7 +20,7 @@ When Claude wants to run a command or edit a file, has a question for you, or ha
 A session that needs you shows up in several places at once:
 
 - The sidebar puts it in the **Needs you** group at the top, with a pink rail and a pulsing dot. Home lists it first too.
-- A notification and the Dock badge tell you, also while Switchboard is in the background. The notification says what Claude wants: "Claude wants to use Bash", "Claude has a question" or "Claude has a plan for you". Click it to open the session.
+- A notification and <Os mac="the Dock badge" windows="a dot on the taskbar button" /> tell you, also while Switchboard is in the background. In the background, <Os mac="the Dock icon bounces" windows="the taskbar button also flashes until you switch to Switchboard" />. The notification says what Claude wants: "Claude wants to use Bash", "Claude has a question" or "Claude has a plan for you". Click it to open the session.
 - Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that needs you, or run *Go to next session that needs you* in the command palette.
 - With the session open, *Go to the permission* or *Go to the question* in the palette scrolls to the card.
 

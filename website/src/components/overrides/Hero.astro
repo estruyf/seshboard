@@ -5,6 +5,7 @@
  */
 import { Image } from 'astro:assets';
 import logo from '../../assets/logo.svg';
+import Os from '../Os.astro';
 import Screenshot from '../Screenshot.astro';
 
 const { data } = Astro.locals.starlightRoute.entry;
@@ -18,10 +19,10 @@ const tagline = data.hero?.tagline;
   <h1 id="_top" data-page-title>{title}</h1>
   {tagline && <p class="sb-hero-tagline">{tagline}</p>}
   <div class="sb-hero-actions">
-    <a class="sb-button primary" href="https://github.com/estruyf/switchboard/releases/latest">Download for Mac</a>
+    <a class="sb-button primary" href="https://github.com/estruyf/switchboard/releases/latest"><Os mac="Download for Mac" windows="Download for Windows" /></a>
     <a class="sb-button secondary" href={`${base}/getting-started/install/`}>Read the docs</a>
   </div>
-  <p class="sb-hero-note">For Macs with Apple Silicon. Needs Claude Code, signed in.</p>
+  <p class="sb-hero-note">For Macs with Apple Silicon and for Windows 10 and 11. Needs Claude Code, signed in.</p>
   <div class="sb-hero-shot">
     <Screenshot
       name="main-window"

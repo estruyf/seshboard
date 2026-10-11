@@ -4,6 +4,7 @@ description: Turn a private memory into project instructions, or copy a section 
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -29,7 +30,7 @@ Personal memories can't be shared; move one to the project first.
    - **CLAUDE.local.md (only me)**: your own instructions for this project, next to the shared ones, not committed.
 2. Edit the **Heading**. The memory is added at the end of the file as a section under that heading.
 3. Check the preview: it says whether it **Creates** the file or shows the **Changes to** it.
-4. Leave **Remove it from memory after sharing** ticked (it is, except for `CLAUDE.local.md`) so Claude doesn't load the same thing twice. The memory then moves to the Trash.
+4. Leave **Remove it from memory after sharing** ticked (it is, except for `CLAUDE.local.md`) so Claude doesn't load the same thing twice. The memory then moves to the <Os mac="Trash" windows="Recycle Bin" />.
 5. Click the button, such as **Add to CLAUDE.md** (<Kbd keys="mod+enter" />).
 
 </Steps>

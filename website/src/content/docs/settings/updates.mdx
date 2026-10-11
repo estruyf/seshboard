@@ -4,6 +4,8 @@ description: How Switchboard keeps itself and the Claude Code it runs up to date
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -14,7 +16,7 @@ Switchboard checks for new versions of itself and of the Claude Code it runs. It
 ## Open it
 
 - Press <Kbd shortcut="settings" /> and choose **About**.
-- Choose **Switchboard → Check for Updates…** in the menu bar. It checks and opens Settings → About, where the result shows.
+- Choose **<Os mac="Switchboard → Check for Updates…" windows="Help → Check for Updates…" />** in the menu bar (on Windows, press Alt to show it). It checks and opens Settings → About, where the result shows.
 - Run *Check for Claude Code updates…* in the command palette (<Kbd shortcut="palette.commands" />).
 
 ## Update Switchboard
@@ -27,6 +29,12 @@ Switchboard checks for a new release shortly after it opens and every few hours.
 2. When the download is done, click **Restart to update**. If sessions are running, Switchboard asks first.
 
 </Steps>
+
+<OnlyOn os="windows">
+
+On Windows, **Restart to update** closes Switchboard and runs the installer: its progress window shows for a few seconds, then Switchboard opens again on the new version. The update installs for you only, like the first install, so it doesn't ask for admin rights.
+
+</OnlyOn>
 
 Close the message to decide later. It comes back for the next step, or the next time you open Switchboard. Settings → About has the same buttons, and **Check for Updates** checks right away.
 
@@ -45,9 +53,13 @@ Switching the channel checks the new channel at once.
 
 Turn off **Check for updates automatically** in Settings → About. **Check for Updates** still works when you click it.
 
+<OnlyOn os="mac">
+
 <Aside title="Installed with Homebrew">
 Switchboard updates itself, so `brew upgrade` skips it. To update it through Homebrew instead, run `brew upgrade --cask estruyf/tap/switchboard`.
 </Aside>
+
+</OnlyOn>
 
 Builds you make yourself with `npm run dist` update like a release; development builds don't update.
 
@@ -60,7 +72,7 @@ Switchboard also checks whether the Claude Code it runs is up to date: shortly a
 Switchboard compares your version with the newest one on the channel you follow:
 
 - For the native installer and npm, the `autoUpdatesChannel` in your Claude Code settings: *latest* or *stable*.
-- For Homebrew, the cask you installed: `claude-code` is stable, `claude-code@latest` is latest.
+- For Homebrew (on a Mac), the cask you installed: `claude-code` is stable, `claude-code@latest` is latest.
 
 Settings → About shows the Claude Code you have: **Installed**, **Latest** (with its channel), **Installed with** and **Path**.
 
@@ -73,9 +85,16 @@ Switchboard runs the update the way you installed Claude Code:
 | Installed with | Switchboard runs |
 |---|---|
 | Native installer | `claude update` |
-| Homebrew | `brew upgrade --cask claude-code` (or the cask you have) |
-| npm | `npm install -g …` |
+| Homebrew (Mac) | `brew upgrade --cask claude-code` (or the cask you have) |
+| npm | `npm install -g …` (on Windows with `--prefix` and the folder npm installed it in, so the same npm updates it) |
+| WinGet (Windows) | Nothing: it shows `winget upgrade Anthropic.ClaudeCode` for you to run, as WinGet may ask for permission |
 | Local install (`~/.claude/local`) | `claude update` |
+
+<OnlyOn os="windows">
+
+On Windows, an update through npm can't replace `claude.exe` while a session uses it. If the update fails, Switchboard says so: stop your running sessions and try again.
+
+</OnlyOn>
 
 The output shows in Settings → About while it runs (**Show output** in the message takes you there). New sessions use the new version straight away; sessions already running keep theirs until they restart.
 

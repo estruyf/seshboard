@@ -4,6 +4,7 @@ description: The list of all your sessions, grouped by what needs attention firs
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
@@ -61,7 +62,7 @@ A closed section keeps its count and says what matters inside, such as "2 unread
 - **Move between sessions from anywhere:** <Kbd shortcut="session.next" /> and <Kbd shortcut="session.previous" /> go to the next and previous session in the sidebar's order, and <Kbd shortcut="session.next-needs-you" /> to the next one that needs you.
 - **Rename:** press <Kbd shortcut="sidebar.rename" />, or choose **Rename…** in the session's menu.
 - **Archive a finished session:** middle-click it (<Kbd shortcut="sidebar.archive" />). Sessions that are working, need you or failed stay where they are.
-- **Delete:** press <Kbd shortcut="sidebar.delete" />, or choose **Delete session…**. After you confirm with **Move to Trash**, the conversation and any subagent transcripts go to the Trash, so you can get them back.
+- **Delete:** press <Kbd shortcut="sidebar.delete" />, or choose **Delete session…**. After you confirm with **Move to <Os mac="Trash" windows="Recycle Bin" />**, the conversation and any subagent transcripts go to the <Os mac="Trash" windows="Recycle Bin" />, so you can get them back.
 
 ### The session menu
 
@@ -111,6 +112,6 @@ In [Settings, Sidebar](/settings/#sidebar):
 
 - **Sidebar style:** **Large icons** (each project easy to spot), **Standard** (the default) or **Compact** (one line per session). The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact*.
 - **When collapsed:** what <Kbd shortcut="sidebar.toggle" /> and the sidebar button do: **Minimal rail** (the default) or **Hidden**.
-- **Show sessions from other apps:** also list sessions from Terminal, Claude desktop and your editor. Off (the default) shows only sessions you started or continued in Switchboard.
+- **Show sessions from other apps:** also list sessions from your terminal, Claude desktop and your editor. Off (the default) shows only sessions you started or continued in Switchboard.
 
 <Screenshot name="settings-sidebar" alt="Settings open on Sidebar: the three sidebar styles, the When collapsed choice, and the Show sessions from other apps switch" />

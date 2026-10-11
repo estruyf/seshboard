@@ -5,6 +5,7 @@ description: The Changes panel shows a session's git diff, and lets you stage, u
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -18,7 +19,7 @@ The **Changes** panel shows what changed in the session's folder: what isn't com
 - Click **Changes** in the session header, next to **Terminal**. Its badge shows how many files have changed.
 - Run *Toggle changes* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />).
 
-The panel is there for sessions whose folder is in a git repository.
+The panel is there for sessions whose folder is in a git repository. On Windows it needs [Git for Windows](https://gitforwindows.org), and it lists files with paths over 260 characters too.
 
 ## How to use it
 
@@ -61,10 +62,10 @@ What you stage is what **Commit…** in the [git menu](/terminal-changes-git/git
 
 </Steps>
 
-The uncommitted changes of those files are lost. New files go to the Trash, so you can get them back from there.
+The uncommitted changes of those files are lost. New files go to the <Os mac="Trash" windows="Recycle Bin" />, so you can get them back from there.
 
 <Aside type="caution">
-Reverting can't be undone in Switchboard. Only new files can be recovered, from the Trash.
+Reverting can't be undone in Switchboard. Only new files can be recovered, from the <Os mac="Trash" windows="Recycle Bin" />.
 </Aside>
 
 Staging and reverting are only offered in **Uncommitted**. In **vs &lt;base&gt;** the panel is for reading.

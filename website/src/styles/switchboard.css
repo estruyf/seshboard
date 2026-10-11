@@ -304,6 +304,12 @@ header.header {
   background: var(--sb-selected);
 }
 
+/* Keys and words for one platform (lib/os.ts): show the reader's. */
+:root[data-os='windows'] .sb-os-mac,
+:root:not([data-os='windows']) .sb-os-windows {
+  display: none !important;
+}
+
 /* Screenshots: show the one that matches the site's theme. */
 :root[data-theme='light'] .sb-shot-dark,
 :root:not([data-theme='light']) .sb-shot-light {

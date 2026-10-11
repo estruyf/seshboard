@@ -4,6 +4,7 @@ description: Pick a project, choose where Claude works, write the first prompt a
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -55,7 +56,7 @@ A folder that isn't a git repository shows `no git`, and Claude edits the folder
 
 Your copy may be behind the remote. The button at the top right of New session offers the next step: **Fetch** to see whether the upstream moved on, or **Pull ↓2** when it did. Its ▾ menu has both. After a pull it says "Pulled 2 commits", after a fetch with nothing new "Up to date". In the command palette, *Update from remote* runs the same step.
 
-Next to it, the **Open in** button opens the project in your editor, terminal or Finder.
+Next to it, the **Open in** button opens the project in your editor, terminal or <Os mac="Finder" windows="File Explorer" />.
 
 ## Write the prompt
 
