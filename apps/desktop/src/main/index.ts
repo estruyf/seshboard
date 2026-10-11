@@ -1234,9 +1234,12 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${PANEL_BOX}.maximized && ${hidden} && !document.querySelector('[data-current-session] [data-composer-submit]')?.offsetParent`, 3_000))) {
     return `failed: Maximize did not give the terminal the whole view (the click landed on ${maximize.at})`;
   }
-  const full = (await box())!;
-  const view = (await js("Math.round(document.querySelector('[data-current-session]').getBoundingClientRect().width)")) as number;
-  if (Math.abs(full.width - view) > 2) return `failed: maximized, the terminal is ${full.width}px of ${view}px`;
+  // The panel grows into the view after the conversation hides; a slow machine can measure it in between.
+  const viewWidth = "Math.round(document.querySelector('[data-current-session]').getBoundingClientRect().width)";
+  if (!(await waitInPage(win, `Math.abs(${PANEL_BOX}.width - ${viewWidth}) <= 2`, 3_000))) {
+    await shot(win, 'terminal-maximized-failed.png');
+    return `failed: maximized, the terminal is ${(await box())?.width}px of ${await js(viewWidth)}px`;
+  }
   await shot(win, 'terminal-maximized.png');
   await js("document.querySelector('[data-terminal-maximize]').focus()");
   key('Escape');
