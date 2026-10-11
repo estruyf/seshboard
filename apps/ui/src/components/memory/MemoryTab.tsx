@@ -1,4 +1,4 @@
-import { AlertTriangle, BookCopy, Copy, FileText, FolderInput, FolderSearch, MoreHorizontal, Pencil, Plus, Search, Share2, SquareArrowOutUpRight, Trash2 } from 'lucide-react';
+import { AlertTriangle, BookCopy, ClipboardCopy, ClipboardPaste, Copy, Download, FileText, FolderInput, FolderSearch, MoreHorizontal, Pencil, Plus, Search, Share2, SquareArrowOutUpRight, Trash2 } from 'lucide-react';
 import { fileManagerName, trashName } from '../../lib/platform.ts';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { isSameOrInside, MEMORY_INDEX_LIMIT, type InstructionFile, type MemoryFile } from '@switchboard/protocol/client';
@@ -27,6 +27,7 @@ import { InstructionEditor } from './InstructionEditor.tsx';
 import { LoadOrderCard } from './LoadOrderCard.tsx';
 import { indexLevel } from './loadOrderView.ts';
 import { MemoryEditor } from './MemoryEditor.tsx';
+import { copyForClaudeApp, importFromClaudeExport, pasteFromClaudeApp } from './memoryDialogs.ts';
 import { filterByProfile, instructionDetail, memoryProfiles, relativeTo, typeTone } from './memoryUi.ts';
 import { NewMemoryDialog } from './NewMemoryDialog.tsx';
 import { RenameMemoryDialog } from './RenameMemoryDialog.tsx';
@@ -345,6 +346,13 @@ export function MemoryTab({ root }: { root: string }) {
     { label: `Reveal in ${fileManagerName()}`, icon: <FolderSearch size={13} aria-hidden />, onSelect: () => actions.reveal(file.path) },
   ];
 
+  const importEntries: MenuEntry[] = [
+    { label: 'Import from Claude export…', icon: <Download size={13} aria-hidden />, onSelect: () => void importFromClaudeExport(), data: { 'data-memory-menu-import-export': true } },
+    { label: 'Paste from Claude app…', icon: <ClipboardPaste size={13} aria-hidden />, onSelect: pasteFromClaudeApp, data: { 'data-memory-menu-paste-app': true } },
+    'separator',
+    { label: 'Copy for Claude app…', icon: <ClipboardCopy size={13} aria-hidden />, onSelect: copyForClaudeApp, data: { 'data-memory-menu-copy-for-app': true } },
+  ];
+
   if (error) return <Notice tone="error">{`Couldn't read this project's memory: ${error}`}</Notice>;
   if (!list) return <p className="text-ui text-muted">Reading memory…</p>;
 
@@ -404,18 +412,30 @@ export function MemoryTab({ root }: { root: string }) {
       {healthOpen && findings && <HealthPanel root={root} findings={findings} onClose={() => setHealthOpen(false)} />}
       <div className="grid min-h-[520px] grid-cols-[minmax(240px,320px)_minmax(0,1fr)] overflow-hidden rounded-xl border border-border bg-card @max-[860px]:grid-cols-1" data-project-memory-tab data-memory-dir={list.memoryDir ?? ''}>
         <div className="flex min-w-0 flex-col gap-3 border-r border-border p-2.5 @max-[860px]:border-r-0 @max-[860px]:border-b">
-          <label className="relative block">
-            <span className="sr-only">Filter memory</span>
-            <Search size={13} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" aria-hidden />
-            <input
-              type="search"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter memory"
-              className="h-7 w-full rounded-md border border-edge bg-bg pr-2.5 pl-7 text-ui text-text outline-none focus:border-accent-ink"
-              data-memory-filter
-            />
-          </label>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <label className="relative block min-w-0 flex-1">
+              <span className="sr-only">Filter memory</span>
+              <Search size={13} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" aria-hidden />
+              <input
+                type="search"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter memory"
+                className="h-7 w-full rounded-md border border-edge bg-bg pr-2.5 pl-7 text-ui text-text outline-none focus:border-accent-ink"
+                data-memory-filter
+              />
+            </label>
+            <Button
+              variant="quiet"
+              icon={<Download size={13} aria-hidden />}
+              aria-haspopup="menu"
+              data-tooltip="Bring memories in from the Claude app, or copy them there"
+              onClick={(e) => setMenu({ at: contextMenuPoint(null, e.currentTarget.getBoundingClientRect(), window.innerHeight), entries: importEntries })}
+              data-memory-import-menu
+            >
+              Import
+            </Button>
+          </div>
           <section aria-labelledby="memory-project-heading" className="grid gap-0.5">
             <SectionHeader
               as="h3"
@@ -423,22 +443,21 @@ export function MemoryTab({ root }: { root: string }) {
               count={list.memories.length}
               className="px-2.5 pb-1"
               action={
-                <span className="flex items-center gap-2">
-                  {list.indexLines > 0 && (
-                    <Meter percent={(list.indexLines / MEMORY_INDEX_LIMIT) * 100} level={indexLevel(list.indexLines)} label={`MEMORY.md: ${list.indexLines} of ${MEMORY_INDEX_LIMIT} lines load`} className="text-meta normal-case tracking-normal" data-memory-index-meter>
-                      <span className={`font-mono ${LEVEL_TEXT[indexLevel(list.indexLines)] || 'text-muted'}`}>
-                        MEMORY.md {list.indexLines} / {MEMORY_INDEX_LIMIT}
-                      </span>
-                    </Meter>
-                  )}
-                  <Button size="sm" variant="quiet" icon={<Plus size={12} aria-hidden />} onClick={() => guardMemoryEdits(() => actions.newMemory(takenIn(homeDir)))} data-memory-new>
-                    New
-                  </Button>
-                </span>
+                <Button size="sm" variant="quiet" icon={<Plus size={12} aria-hidden />} onClick={() => guardMemoryEdits(() => actions.newMemory(takenIn(homeDir)))} className="ml-auto" data-memory-new>
+                  New
+                </Button>
               }
             >
               Project memory
             </SectionHeader>
+            {/* On its own line: next to the heading it doesn't fit the narrow list column. */}
+            {list.indexLines > 0 && (
+              <Meter percent={(list.indexLines / MEMORY_INDEX_LIMIT) * 100} level={indexLevel(list.indexLines)} label={`MEMORY.md: ${list.indexLines} of ${MEMORY_INDEX_LIMIT} lines load`} className="mx-2.5 mb-1 justify-self-start" data-memory-index-meter>
+                <span className={`font-mono text-meta tabular-nums ${LEVEL_TEXT[indexLevel(list.indexLines)] || 'text-muted'}`}>
+                  MEMORY.md {list.indexLines} / {MEMORY_INDEX_LIMIT}
+                </span>
+              </Meter>
+            )}
             {memories.length === 0 && (
               <p className="px-2.5 text-meta text-muted">{list.memories.length ? 'Nothing matches.' : 'No memory for this project yet. Claude Code writes it as you work.'}</p>
             )}
@@ -472,7 +491,7 @@ export function MemoryTab({ root }: { root: string }) {
                 count={personal.memories.length}
                 className="px-2.5 pb-1"
                 action={
-                  <Button size="sm" variant="quiet" icon={<Plus size={12} aria-hidden />} onClick={() => guardMemoryEdits(() => personalActions.newMemory(takenIn(personal.dir)))} data-memory-new-personal>
+                  <Button size="sm" variant="quiet" icon={<Plus size={12} aria-hidden />} onClick={() => guardMemoryEdits(() => personalActions.newMemory(takenIn(personal.dir)))} className="ml-auto" data-memory-new-personal>
                     New
                   </Button>
                 }

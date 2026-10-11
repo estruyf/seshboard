@@ -1891,6 +1891,11 @@ async function runProjectMemoryStep(win: BrowserWindow, root: string): Promise<s
   if (!(await js("document.querySelector('[data-memory-new-save]').disabled"))) return 'Save memory was possible without a name';
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
   if (!(await waitInPage(win, "!document.querySelector('[data-memory-new-dialog]')", 2_000))) return 'Escape did not close the new memory form';
+  // Import opens its menu (from the export, paste, copy for the app), and Escape closes it without picking one.
+  await js(`${q('[data-memory-import-menu]')}.click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[data-memory-menu-import-export]') && !!document.querySelector('[data-memory-menu-paste-app]') && !!document.querySelector('[data-memory-menu-copy-for-app]')", 2_000))) return 'Import did not open its menu';
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  if (!(await waitInPage(win, "!document.querySelector('[data-memory-menu-import-export]')", 2_000))) return 'Escape did not close the Import menu';
   if (memories > 0) return checkShareDialog(win, root, listed);
 
   // No memory in the real project: a throwaway Claude profile in the app's sandbox gets one (the tab lists every

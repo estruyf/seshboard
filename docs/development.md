@@ -59,6 +59,8 @@ Each check is a step run by `SmokeRun` (`apps/desktop/src/main/smokeRunner.ts`):
 
 Screenshots and `result.json` go to `apps/desktop/.smoke`. Set `SWITCHBOARD_COLOR_SCHEME=light` or `dark` to force a colour scheme for a run without saving it.
 
+Every pull request runs the smoke test on macOS and Windows (`.github/workflows/smoke.yml`), in a runner whose home folder has no `~/.claude`. The screenshots and `result.json` of each run are attached to it as an artifact.
+
 ### README screenshots
 
 ```bash
