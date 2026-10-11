@@ -76,6 +76,11 @@ describe('queue states', () => {
     // An error or a background task alone isn't busy.
     expect(states([item('a')], [session('e', null, { error: true }), session('b', 'idle', { live: { ...live('idle'), background: ['npm test'] } })]).entries[0]!.state).toBe('ready');
     expect(projectOf('/work/switchboard/.claude/worktrees/fix-parser/src')).toBe('/work/switchboard');
+    expect(projectOf('C:\\work\\app\\.claude\\worktrees\\fix\\src')).toBe('C:\\work\\app');
+    expect(projectOf('C:\\work\\app\\')).toBe('C:\\work\\app');
+    // A drive's root stays one: `C:` alone is the current folder on that drive.
+    expect(projectOf('C:\\')).toBe('C:\\');
+    expect(projectOf('/')).toBe('/');
   });
 
   it('waits for one session until it is no longer busy, or is closed', () => {

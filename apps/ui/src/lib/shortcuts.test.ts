@@ -325,6 +325,9 @@ describe('shortcuts on Windows', () => {
     expect(localizeKeys('⌘⌫')).toBe('Ctrl+Backspace');
     expect(localizeKeys('⌥')).toBe('Alt');
     expect(localizeKeys('Click to open · ⌥-click to open beside')).toBe('Click to open · Alt+click to open beside');
+    expect(localizeKeys('⌘, or ⇧')).toBe('Ctrl, or Shift');
+    // Names and paths in a hint keep their own plus signs.
+    expect(localizeKeys('src/c++ · repo+ · a+-click')).toBe('src/c++ · repo+ · a+-click');
     expect(shortcutGlyphs('Esc')).toBe('Esc');
   });
 

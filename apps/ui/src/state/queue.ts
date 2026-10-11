@@ -1,4 +1,4 @@
-import type { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from '@switchboard/protocol/client';
+import { trimTrailingSeparators, type LaterDraft, type LaterItem, type QueueStarted, type QueueWaitFor } from '@switchboard/protocol/client';
 import type { SessionRowData } from './sessionsStore.ts';
 import { rowStatus } from './sidebarRows.ts';
 
@@ -42,7 +42,7 @@ export interface QueueSummary {
 }
 
 /** A worktree inside a project (`<root>/.claude/worktrees/<name>/…`) counts as the project. */
-export const projectOf = (path: string) => path.replace(/[\\/]\.claude[\\/]worktrees[\\/][^\\/]+.*$/, '').replace(/(.)[\\/]+$/, '$1');
+export const projectOf = (path: string) => trimTrailingSeparators(path.replace(/[\\/]\.claude[\\/]worktrees[\\/][^\\/]+.*$/, ''));
 
 /** Starting, running or waiting for you: what the sidebar shows under Needs you and Working. */
 export const isBusy = (row: SessionRowData) => {

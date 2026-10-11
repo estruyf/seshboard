@@ -126,10 +126,11 @@ export function localizeKeys(text: string): string {
   if (isMac()) return text;
   let out = text;
   for (const [glyph, word] of GLYPH_WORDS) out = out.replace(glyph, word);
+  // Only the words added above are tidied: hints also carry names and paths (`src/c++`, `repo+`) that stay as written.
   return out
     .replace(/(Ctrl\+)+/g, "Ctrl+")
-    .replace(/\+-click/g, "+click")
-    .replace(/\+(?=$|[\s·,.;:)])/g, "");
+    .replace(/\b(Ctrl|Alt|Shift)\+-click/g, "$1+click")
+    .replace(/\b(Ctrl|Alt|Shift)\+(?=$|[\s·,.;:)])/g, "$1");
 }
 
 const ARIA_KEYS: Record<string, string> = {
