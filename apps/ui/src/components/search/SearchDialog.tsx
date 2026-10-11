@@ -1,15 +1,25 @@
-import { Search } from 'lucide-react';
+import { Brain, Search } from 'lucide-react';
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { SearchHit } from '@switchboard/protocol/client';
+import type { MemoryHit, SearchHit } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename, shortAge } from '../../lib/format.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { openMemoryFile } from '../../state/memoryStore.ts';
+import { addedProjects } from '../../state/projectList.ts';
+import { typeTone } from '../memory/memoryUi.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Pill } from '../ui/Pill.tsx';
+import { Select } from '../ui/Select.tsx';
+
+/** The type chips: every type, or one. */
+const MEMORY_TYPE_CHIPS = ['all', 'user', 'feedback', 'project', 'reference'] as const;
+/** A row of the results: a memory or a message, in the order the arrow keys move through them. */
+type Row = { kind: 'memory'; hit: MemoryHit } | { kind: 'message'; hit: SearchHit };
 
 const MARK = /\u0002([\s\S]*?)\u0003/g;
 const HITS_PER_SESSION = 4;
@@ -39,7 +49,10 @@ function Snippet({ text }: { text: string }) {
   );
 }
 
-/** ⌘⇧F: search every conversation; Enter opens the session at the matching message. */
+/**
+ * ⌘⇧F: search memory and every conversation. Memories come first in their own group (type chips and a project narrow
+ * them); Enter opens a memory in its editor, or the session at the matching message. Search memory… shows memory only.
+ */
 export function SearchDialog() {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -49,6 +62,10 @@ export function SearchDialog() {
   const projects = useProjects((s) => s.projects);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
+  const [memories, setMemories] = useState<MemoryHit[]>([]);
+  const mode = useOverlay((s) => s.searchMode);
+  const [memoryType, setMemoryType] = useState<(typeof MEMORY_TYPE_CHIPS)[number]>('all');
+  const [memoryScope, setMemoryScope] = useState('all');
   const [indexing, setIndexing] = useState<{ indexed: number; total: number } | null>(null);
   const [active, setActive] = useState(0);
   /** The query the shown hits answer, so "no matches" waits for the engine instead of flashing while you type. */
@@ -63,9 +80,10 @@ export function SearchDialog() {
     let timer: ReturnType<typeof setTimeout>;
     // While the index is still being built (or hasn't started), ask again so results fill in.
     const ask = (first: boolean) => {
-      client.call('search.query', { query, scope }).then((result) => {
+      client.call('search.query', { query, scope, only: mode === 'memory' ? 'memory' : 'all', memoryTypes: memoryType === 'all' ? [] : [memoryType], memoryScope }).then((result) => {
         if (cancelled) return;
         setHits(result.hits);
+        setMemories(result.memories);
         setIndexing(result.indexing);
         setAnswered(query);
         if (first) setActive(0);
@@ -78,7 +96,7 @@ export function SearchDialog() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, query, scope]);
+  }, [client, query, scope, mode, memoryType, memoryScope]);
 
   // Best match first, grouped by session in the order their best match appears.
   const groups = useMemo(() => {
@@ -91,8 +109,18 @@ export function SearchDialog() {
     }
     return [...bySession.entries()].map(([sessionId, list]) => ({ sessionId, hits: list.slice(0, HITS_PER_SESSION), more: Math.max(0, list.length - HITS_PER_SESSION) }));
   }, [hits]);
-  const flat = useMemo(() => groups.flatMap((g) => g.hits), [groups]);
+  const flat = useMemo<Row[]>(() => [...memories.map((hit) => ({ kind: 'memory' as const, hit })), ...groups.flatMap((g) => g.hits.map((hit) => ({ kind: 'message' as const, hit })))], [memories, groups]);
+  const indexOf = (hit: MemoryHit | SearchHit) => flat.findIndex((row) => row.hit === hit);
+  const projectOptions = useMemo(
+    () => [{ value: 'all', label: 'All projects' }, { value: 'personal', label: 'Personal' }, ...addedProjects(projects).map((p) => ({ value: p.root, label: p.name }))],
+    [projects],
+  );
 
+  const openRow = (row: Row) => {
+    if (row.kind === 'message') return open(row.hit);
+    close();
+    openMemoryFile(row.hit.root, row.hit.path);
+  };
   const open = (hit: SearchHit) => {
     useOverlay.getState().focus({ sessionId: hit.sessionId, messageUuid: hit.messageUuid });
     useSessions.getState().select(hit.sessionId);
@@ -106,6 +134,8 @@ export function SearchDialog() {
   const typed = query.trim();
   const stillIndexing = indexing !== null && (indexing.total === 0 || indexing.indexed < indexing.total);
   const sessionCount = groups.length;
+  const memoryOnly = mode === 'memory';
+  const messageCount = flat.length - memories.length;
   // Read out once the results settle; empty while nothing is typed, so opening the dialog stays quiet.
   const pending = answered !== query;
   const announcement = !typed || pending
@@ -114,10 +144,10 @@ export function SearchDialog() {
       ? stillIndexing
         ? 'No matches yet, still indexing'
         : 'No matches'
-      : `${flat.length} ${flat.length === 1 ? 'match' : 'matches'} in ${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'}`;
+      : `${memories.length ? `${memories.length} ${memories.length === 1 ? 'memory' : 'memories'}, ` : ''}${messageCount} ${messageCount === 1 ? 'match' : 'matches'} in ${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'}`;
 
   return (
-    <Dialog bare flush placement="top" title="Search conversations" onClose={close} data-search>
+    <Dialog bare flush placement="top" title={memoryOnly ? 'Search memory' : 'Search memory and conversations'} onClose={close} data-search data-search-mode={mode}>
       <label className="flex h-12 shrink-0 items-center gap-2.5 border-b border-edge px-4">
         <Search size={16} className="shrink-0 text-faint" aria-hidden />
         {/* A combobox: focus stays in the field while ↑ ↓ move the highlighted match. */}
@@ -128,31 +158,86 @@ export function SearchDialog() {
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={flat[active] ? optionId(active) : undefined}
-          aria-label="Search all conversations"
+          aria-label={memoryOnly ? 'Search memory' : 'Search memory and all conversations'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') (e.preventDefault(), setActive((i) => Math.max(0, Math.min(flat.length - 1, i + 1))));
             else if (e.key === 'ArrowUp') (e.preventDefault(), setActive((i) => Math.max(0, i - 1)));
-            else if (e.key === 'Enter' && flat[active]) open(flat[active]!);
+            else if (e.key === 'Enter' && flat[active]) openRow(flat[active]!);
           }}
-          placeholder="Search all conversations"
+          placeholder={memoryOnly ? 'Search memory' : 'Search memory and conversations'}
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent text-[14px] text-text outline-none placeholder:text-faint"
         />
         <Kbd keys="Esc" aria-hidden />
       </label>
+      {/* Narrow the memories: by type, and to one project or the personal folder. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-edge px-4 py-1.5" data-search-memory-filters>
+        {MEMORY_TYPE_CHIPS.map((type) => (
+          <Pill key={type} onClick={() => setMemoryType(type)} selected={memoryType === type} aria-pressed={memoryType === type} data-search-memory-type={type}>
+            {type}
+          </Pill>
+        ))}
+        <span className="flex-1" />
+        <Select
+          label="Memory from"
+          value={memoryScope}
+          onChange={setMemoryScope}
+          options={projectOptions}
+          menuWidth={220}
+          className="flex h-6 items-center gap-1 rounded-md border border-edge bg-bg px-2 text-meta text-text"
+          dataAttrs={{ 'data-search-memory-scope': true }}
+        />
+      </div>
 
       {typed === '' ? (
-        <p className="px-4 py-6 text-center text-ui text-muted">Search your prompts and Claude's replies in every session. Pick a match to jump to that message.</p>
-      ) : groups.length === 0 && !pending ? (
+        <p className="px-4 py-6 text-center text-ui text-muted">
+          {memoryOnly ? 'Search what Claude Code remembers: names, descriptions and text.' : "Search memory, your prompts and Claude's replies in every session. Pick a match to open it."}
+        </p>
+      ) : flat.length === 0 && !pending ? (
         <div className="grid gap-1 px-4 py-6 text-center text-ui">
-          <p className="text-text">{stillIndexing ? `Nothing for “${typed}” yet.` : `No conversations mention “${typed}”.`}</p>
-          <p className="text-muted">{stillIndexing ? 'Still indexing; matches appear as sessions are read.' : 'Try another word, or fewer words.'}</p>
+          <p className="text-text">{stillIndexing && !memoryOnly ? `Nothing for “${typed}” yet.` : memoryOnly ? `No memory mentions “${typed}”.` : `Nothing mentions “${typed}”.`}</p>
+          <p className="text-muted">{stillIndexing && !memoryOnly ? 'Still indexing; matches appear as sessions are read.' : 'Try another word, or fewer words.'}</p>
         </div>
       ) : null}
-      <div ref={listRef} id={listId} role="listbox" aria-label="Matches" className={`min-h-0 flex-1 overflow-y-auto ${groups.length && typed ? 'py-1' : ''}`}>
+      <div ref={listRef} id={listId} role="listbox" aria-label="Matches" className={`min-h-0 flex-1 overflow-y-auto ${flat.length && typed ? 'py-1' : ''}`}>
+        {typed !== '' && memories.length > 0 && (
+          <div role="group" aria-labelledby={`${listId}-memory`} className="py-1" data-search-memory-group>
+            <div id={`${listId}-memory`} className="flex items-center gap-2 px-4 pt-1.5 pb-1 text-meta font-semibold tracking-wider text-faint uppercase">
+              <Brain size={13} aria-hidden />
+              Memory
+            </div>
+            {memories.map((hit) => {
+              const index = indexOf(hit);
+              return (
+                <div
+                  key={hit.path}
+                  id={optionId(index)}
+                  role="option"
+                  aria-selected={index === active}
+                  data-active={index === active}
+                  data-search-memory-hit={hit.path}
+                  onMouseMove={() => setActive(index)}
+                  onClick={() => openRow({ kind: 'memory', hit })}
+                  className={`flex w-full min-w-0 cursor-default items-center gap-2.5 px-4 py-1.5 text-left ${index === active ? 'bg-accent/15' : ''}`}
+                >
+                  <span className="shrink-0 text-ui font-semibold">{hit.name}</span>
+                  {hit.type && <Pill tone={typeTone(hit.type)}>{hit.type}</Pill>}
+                  <span className="min-w-0 flex-1">
+                    <Snippet text={hit.snippet || (hit.description ?? '')} />
+                  </span>
+                  <span className="shrink-0 text-meta text-muted">{hit.root ? (projects.get(hit.root)?.name ?? hit.root.split('/').pop()) : 'Personal'}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {typed !== '' && !memoryOnly && groups.length > 0 && memories.length > 0 && (
+          <div className="px-4 pt-2 pb-0.5 text-meta font-semibold tracking-wider text-faint uppercase">Conversations</div>
+        )}
         {typed !== '' &&
+          !memoryOnly &&
           groups.map((group) => {
             const summary = sessions.get(group.sessionId);
             const root = summary?.projectRoot ?? '';
@@ -168,7 +253,7 @@ export function SearchDialog() {
                   {group.more > 0 && <span className="ml-auto shrink-0">+{group.more} more</span>}
                 </div>
                 {group.hits.map((hit) => {
-                  const index = flat.indexOf(hit);
+                  const index = indexOf(hit);
                   return (
                     <div
                       key={hit.messageUuid}
@@ -194,7 +279,7 @@ export function SearchDialog() {
           })}
       </div>
 
-      {stillIndexing && typed !== '' && (
+      {stillIndexing && typed !== '' && !memoryOnly && (
         <p className="shrink-0 border-t border-edge px-4 py-1.5 text-meta text-muted">
           {indexing.total === 0 ? 'Preparing the search index…' : `Indexing ${indexing.indexed} of ${indexing.total} sessions; results will fill in.`}
         </p>

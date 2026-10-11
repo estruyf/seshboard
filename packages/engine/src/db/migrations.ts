@@ -257,4 +257,26 @@ export const migrations: readonly string[] = [
     started_at INTEGER NOT NULL
   );
   `,
+
+  // v17: full-text search over Claude Code memory (projects' and the personal folder). Derived from the memory
+  // folders, which stay the source of truth: dropped and rebuilt as needed.
+  `
+  CREATE VIRTUAL TABLE memory_fts USING fts5 (
+    path UNINDEXED,
+    root UNINDEXED,
+    profile_id UNINDEXED,
+    type UNINDEXED,
+    modified UNINDEXED,
+    origin UNINDEXED,
+    name,
+    description,
+    body,
+    tokenize = 'porter unicode61 remove_diacritics 2'
+  );
+  -- What was indexed per file (its mtime and size), so only changed files are read again.
+  CREATE TABLE memory_indexed (
+    path    TEXT PRIMARY KEY,
+    version TEXT NOT NULL
+  );
+  `,
 ];

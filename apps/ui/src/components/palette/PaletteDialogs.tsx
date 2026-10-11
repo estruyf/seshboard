@@ -6,6 +6,11 @@ import { useDrafts } from '../../state/draftsStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
+import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
+import { CopySectionDialog } from '../memory/CopySectionDialog.tsx';
+import { ImportDialog } from '../memory/ImportDialog.tsx';
+import { RememberDialog } from '../memory/RememberDialog.tsx';
+import { ShareDialog } from '../memory/ShareDialog.tsx';
 import { RenameProjectDialog } from '../projects/RenameProjectDialog.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { TranscriptDiagnosisDialog } from '../transcript/TranscriptDiagnosisDialog.tsx';
@@ -13,7 +18,8 @@ import { TranscriptDiagnosisDialog } from '../transcript/TranscriptDiagnosisDial
 const shortTitle = (title: string) => (title.length > 60 ? `${title.slice(0, 59)}…` : title);
 
 /**
- * The dialogs palette commands open (rename, delete, revert all, check transcript). The palette closes before they show,
+ * The dialogs palette commands open (rename, delete, revert all, check transcript, share a memory, copy a section to
+ * memory; the Memory tab opens the last two here too). The palette closes before they show,
  * so they live here, always mounted, and open from `usePaletteBus().dialog`.
  */
 export function PaletteDialogs() {
@@ -59,6 +65,16 @@ export function PaletteDialogs() {
     }
     case 'transcript-diagnosis':
       return <TranscriptDiagnosisDialog sessionId={dialog.sessionId} title={dialog.title} onClose={close} />;
+    case 'share-memory':
+      return <ShareDialog key={dialog.memoryPath} root={dialog.root} memoryPath={dialog.memoryPath} name={dialog.name} onClose={close} />;
+    case 'copy-section':
+      return <CopySectionDialog key={dialog.file} root={dialog.root} file={dialog.file} onClose={close} />;
+    case 'memory-import':
+      return <ImportDialog source={dialog.source} onClose={close} />;
+    case 'memory-copy-app':
+      return <CopyForAppDialog onClose={close} />;
+    case 'remember':
+      return <RememberDialog text={dialog.text} from={dialog.from} sessionId={dialog.sessionId} root={dialog.root} onClose={close} />;
     case 'revert-all':
       return (
         <ConfirmDialog

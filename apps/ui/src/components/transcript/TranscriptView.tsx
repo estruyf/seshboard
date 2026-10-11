@@ -52,6 +52,9 @@ import { BackgroundTaskList } from './BackgroundTaskList.tsx';
 import { backgroundSummary } from './backgroundTasks.ts';
 import { PromptExpansionContext, type PromptExpansion } from './ClampedPrompt.tsx';
 import { buildDisplayItems, groupActivity, type RenderItem } from './displayItems.ts';
+import { memoryWriteOf } from './memoryWrites.ts';
+import { useKnownMemoryFolders, useMemoryFoldersSync } from '../memory/useMemoryFolders.ts';
+import { useRememberLayer } from '../memory/RememberLayer.tsx';
 import { FindBar } from './FindBar.tsx';
 import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
@@ -223,7 +226,13 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   /** Your earlier messages here, for ↑ in the message box. */
   const promptHistory = useMemo(() => sessionHistory(items), [items]);
   const toolActivity = usePreferences((s) => s.prefs.toolActivity);
-  const renderItems = useMemo<RenderItem[]>(() => (toolActivity === 'summary' ? groupActivity(items) : items), [items, toolActivity]);
+  // A memory Claude saved shows as its own line, also between summarised runs of tool calls.
+  useMemoryFoldersSync();
+  const memoryFolders = useKnownMemoryFolders();
+  const renderItems = useMemo<RenderItem[]>(
+    () => (toolActivity === 'summary' ? groupActivity(items, (item) => item.kind === 'tool' && memoryWriteOf(item.name, item.input, memoryFolders) !== null) : items),
+    [items, toolActivity, memoryFolders],
+  );
   const [commands, setCommands] = useState<SlashCommand[]>([]);
 
   const projectRoot = summary?.projectRoot ?? registryLive?.projectRoot ?? null;
@@ -582,8 +591,18 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
       },
       canEdit: (uuid) => previous.has(uuid),
       runCommand: cwd ? (command) => void runInTerminal(client, sessionId, cwd, command).catch(fail) : null,
+      remember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
     };
-  }, [client, items, sessionId, select, cwd]);
+  }, [client, items, sessionId, select, cwd, projectRoot]);
+
+  // Remember this… from a selection or a whole message (right-click, or the button over a selection).
+  const remember = useRememberLayer({
+    textOf: (key) => {
+      const item = items.find((i) => i.key === key);
+      return item && (item.kind === 'user' || item.kind === 'text') ? item.text : null;
+    },
+    onRemember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
+  });
 
   // The command palette's Fork…, Rewind…, Copy last reply: your prompts and Claude's last reply, from the active pane.
   useEffect(() => {
@@ -823,7 +842,9 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           <FileLinksProvider cwd={cwd}>
             <div
               ref={scrollRef}
-              onScroll={onScroll}
+              onScroll={() => (onScroll(), remember.handlers.onScroll())}
+              onContextMenu={remember.handlers.onContextMenu}
+              onMouseUp={remember.handlers.onMouseUp}
               onWheel={markUserScroll}
               onTouchMove={markUserScroll}
               onPointerDown={markUserScroll}
@@ -894,6 +915,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           </FileLinksProvider>
           </PromptExpansionContext.Provider>
           </MessageActionsContext.Provider>
+          {remember.overlay}
           <Announcer sessionId={sessionId} working={working} failed={host?.state === 'error'} permissions={permissions} cwd={cwd} />
 
           {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} onClose={() => useOverlay.getState().close()} />}

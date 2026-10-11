@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
-import { isConfigDir, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
+import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
 
 // In this platform's form (C:Usersme.claude on Windows): the guard only takes normalised absolute paths.
 const config = resolve('/Users/me/.claude');
@@ -35,6 +35,56 @@ describe('isTrashableSessionPath', () => {
     expect(isTrashableSessionPath(path('projects', '..', '..', `${id}.jsonl`), config)).toBe(false);
     expect(isTrashableSessionPath(path('projects', 'x', 'notes.jsonl'), config)).toBe(false);
     expect(isTrashableSessionPath(`relative/${id}.jsonl`, config)).toBe(false);
+  });
+});
+
+describe('isTrashableMemoryFile', () => {
+  it('allows a memory file right inside a memory folder, never the index, a link or anything deeper', () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'trash-memory-')));
+    try {
+      const memory = join(base, 'memory');
+      mkdirSync(join(memory, 'sub'), { recursive: true });
+      writeFileSync(join(memory, 'a.md'), 'a');
+      writeFileSync(join(memory, 'MEMORY.md'), '- a');
+      writeFileSync(join(memory, 'sub', 'b.md'), 'b');
+      writeFileSync(join(base, 'outside.md'), 'x');
+      expect(isTrashableMemoryFile(join(memory, 'a.md'), memory)).toBe(true);
+      expect(isTrashableMemoryFile(join(memory, 'MEMORY.md'), memory)).toBe(false);
+      // The same file on a disk that ignores case (Windows, and macOS by default).
+      expect(isTrashableMemoryFile(join(memory, 'memory.md'), memory)).toBe(false);
+      expect(isTrashableMemoryFile(join(memory, 'sub', 'b.md'), memory)).toBe(false);
+      // Making links on Windows needs Developer Mode or an administrator.
+      if (canSymlink()) {
+        symlinkSync(join(base, 'outside.md'), join(memory, 'link.md'));
+        expect(isTrashableMemoryFile(join(memory, 'link.md'), memory)).toBe(false);
+      }
+      expect(isTrashableMemoryFile(join(base, 'outside.md'), base)).toBe(false);
+      expect(isTrashableMemoryFile(`${memory}/../outside.md`, memory)).toBe(false);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('isTrashableInstructionFile', () => {
+  it('allows only the instruction files a share can make, inside the project', () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'trash-instructions-')));
+    try {
+      const root = join(base, 'project');
+      mkdirSync(join(root, '.claude', 'rules'), { recursive: true });
+      mkdirSync(join(base, 'outside'));
+      for (const file of ['CLAUDE.md', 'CLAUDE.local.md', '.claude/CLAUDE.md', '.claude/rules/ui.md', 'README.md']) writeFileSync(join(root, file), 'x');
+      for (const file of ['CLAUDE.md', 'CLAUDE.local.md', '.claude/CLAUDE.md', '.claude/rules/ui.md']) expect(isTrashableInstructionFile(join(root, file), root)).toBe(true);
+      expect(isTrashableInstructionFile(join(root, 'README.md'), root)).toBe(false);
+      expect(isTrashableInstructionFile(join(root, '.claude', 'rules', 'missing.md'), root)).toBe(false);
+      if (canSymlink()) {
+        symlinkSync(join(base, 'outside'), join(root, '.claude', 'rules', 'linked'));
+        writeFileSync(join(base, 'outside', 'x.md'), 'x');
+        expect(isTrashableInstructionFile(join(root, '.claude', 'rules', 'linked', 'x.md'), root)).toBe(false);
+      }
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });
 

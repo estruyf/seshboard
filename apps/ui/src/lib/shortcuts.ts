@@ -601,6 +601,14 @@ export const SHORTCUTS = [
     when: inSession,
   },
   {
+    id: "memory.save",
+    keys: ["mod+s"],
+    action: "Save the memory or instructions you are editing",
+    section: "general",
+    context: "On a project's Memory tab, or Settings › Memory",
+    when: (ctx) => ctx.view === "project" || ctx.view === "settings",
+  },
+  {
     id: "claude.stop",
     keys: ["escape"],
     action: "Stop Claude",

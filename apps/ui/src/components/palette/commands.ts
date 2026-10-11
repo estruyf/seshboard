@@ -7,10 +7,13 @@ import {
   ArrowLeftRight,
   BellRing,
   Blocks,
+  Brain,
   CloudDownload,
   Code,
   ChevronsDown,
   ChevronsUp,
+  ClipboardCopy,
+  ClipboardPaste,
   Columns2,
   Copy,
   Cpu,
@@ -59,6 +62,7 @@ import {
   Save,
   Settings,
   Settings2,
+  Share2,
   ShieldCheck,
   Shrink,
   SlidersHorizontal,
@@ -97,6 +101,8 @@ export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-qu
 export interface PaletteApi {
   goHome(): void;
   showSearch(): void;
+  /** Search, on memory only. */
+  showMemorySearch(): void;
   /** The keyboard shortcuts sheet (⌘/). */
   showShortcuts(): void;
   /** The Unsent messages list. */
@@ -111,9 +117,11 @@ export interface PaletteApi {
   goToNextNeedsYou(): void;
   manageProjects(): void;
   /** A project's page, on a tab or the one it was last left on. */
-  openProject(root: string, tab?: 'worktrees' | 'branches'): void;
+  openProject(root: string, tab?: 'worktrees' | 'branches' | 'memory'): void;
   /** A project's Worktrees tab with the clean-up confirmation for what it suggests. */
   cleanUpWorktrees(root: string): void;
+  /** Memory in and out of the Claude app: Import from Claude export…, Paste from Claude app…, Copy for Claude app…. */
+  memoryTransfer(kind: 'import-export' | 'paste' | 'copy'): void;
   addProject(): void;
   checkClaudeUpdate(): void;
   reloadSkills(): void;
@@ -126,6 +134,8 @@ export interface PaletteApi {
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
   compact(): void;
   copyLastReply(): void;
+  /** Remember this…: the selected text in the conversation, else Claude's last reply, as a memory. */
+  rememberThis(): void;
   copySessionId(): void;
   checkTranscript(): void;
   toggleTerminal(): void;
@@ -237,6 +247,7 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: Lucid
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
+  { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
@@ -286,6 +297,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'sidebar-minimize', title: 'Minimize sidebar', group: 'general', icon: PanelLeftDashed, keywords: 'rail icons collapse narrow', when: (ctx) => ctx.sidebar !== 'minimal', run: (api) => api.setSidebar('minimal') },
   { id: 'sidebar-close', title: 'Close sidebar', group: 'general', icon: PanelLeftClose, keywords: 'hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
   { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: House, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
+  { id: 'search-memory', title: 'Search memory…', group: 'general', icon: Brain, keywords: 'find memories knowledge notes', when: (ctx) => ctx.connected, run: (api) => api.showMemorySearch() },
   { id: 'search', title: 'Search conversations', group: 'general', shortcut: keysFor('search'), icon: TextSearch, keywords: 'find text', when: always, run: (api) => api.showSearch() },
   { id: 'settings', title: 'Settings', group: 'general', shortcut: keysFor('settings'), icon: Settings, keywords: 'preferences', when: (ctx) => ctx.view !== 'settings', run: (api) => api.openSettings() },
   ...SIDEBAR_STYLES.map(
@@ -351,6 +363,38 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'git branches local remote origin delete prune merged clean up overview project',
     when: (ctx) => ctx.projects.length > 0 && ctx.connected,
     next: () => ({ kind: 'projects', purpose: 'branches', worktree: false, chip: 'Branches' }),
+  },
+  {
+    id: 'memory',
+    title: 'Memory…',
+    group: 'general',
+    hint: (ctx) => (ctx.currentProject && ctx.projects.some((p) => p.root === ctx.currentProject!.root) ? ctx.currentProject.name : 'Settings'),
+    icon: Brain,
+    keywords: 'claude.md rules instructions knowledge remember memory.md personal',
+    when: always,
+    // The current project's Memory tab; with no project in view, every project's in Settings.
+    run: (api, ctx) => (ctx.currentProject && ctx.projects.some((p) => p.root === ctx.currentProject!.root) ? api.openProject(ctx.currentProject.root, 'memory') : api.openSettings('memory')),
+  },
+  { id: 'memory-settings', title: 'Memory settings…', group: 'general', icon: Brain, keywords: 'personal memory folder claude.md block sync icloud dropbox', when: always, run: (api) => api.openSettings('memory') },
+  {
+    id: 'memory-import-export',
+    title: 'Import memory from Claude export…',
+    group: 'general',
+    icon: Download,
+    keywords: 'claude app data export zip memories',
+    when: (ctx) => ctx.connected,
+    run: (api) => api.memoryTransfer('import-export'),
+  },
+  { id: 'memory-paste', title: 'Paste memory from Claude app…', group: 'general', icon: ClipboardPaste, keywords: 'claude app memory import', when: (ctx) => ctx.connected, run: (api) => api.memoryTransfer('paste') },
+  { id: 'memory-copy-app', title: 'Copy memory for Claude app…', group: 'general', icon: ClipboardCopy, keywords: 'claude app memory export', when: (ctx) => ctx.connected, run: (api) => api.memoryTransfer('copy') },
+  {
+    id: 'share-memory',
+    title: 'Share memory with the team…',
+    group: 'general',
+    icon: Share2,
+    keywords: 'memory claude.md rules instructions promote move project knowledge',
+    when: (ctx) => ctx.connected && ctx.currentProject !== null && ctx.projects.some((p) => p.root === ctx.currentProject!.root),
+    next: () => ({ kind: 'pick', list: 'memory', chip: 'Share memory' }),
   },
   {
     id: 'clean-up-worktrees',
@@ -466,6 +510,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'change-model', title: 'Change model…', group: 'session', icon: Cpu, keywords: 'opus sonnet haiku', when: hosted, next: () => ({ kind: 'pick', list: 'model', chip: 'Model' }) },
   { id: 'change-effort', title: 'Change effort…', group: 'session', icon: Gauge, keywords: 'thinking', when: (ctx) => hosted(ctx) && session(ctx)!.host!.supportsEffort, next: () => ({ kind: 'pick', list: 'effort', chip: 'Effort' }) },
   { id: 'change-mode', title: 'Change permission mode…', group: 'session', shortcut: keysFor('mode.cycle'), icon: ShieldCheck, keywords: 'plan accept edits auto', when: hosted, next: () => ({ kind: 'pick', list: 'mode', chip: 'Permission mode' }) },
+  { id: 'remember-this', title: 'Remember this…', group: 'session', icon: Brain, keywords: 'memory save note selection reply', when: (ctx) => !!session(ctx)?.hasReply && ctx.connected, run: (api) => api.rememberThis() },
   { id: 'copy-last-reply', title: 'Copy last reply', group: 'session', icon: Copy, keywords: 'clipboard markdown answer', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.copyLastReply() },
   { id: 'copy-session-id', title: 'Copy session id', group: 'session', icon: Hash, keywords: 'clipboard uuid resume', when: (ctx) => session(ctx) !== null, run: (api) => api.copySessionId() },
   { id: 'check-transcript', title: 'Check transcript…', group: 'session', icon: Stethoscope, keywords: 'diagnose empty missing messages error debug compacted', when: (ctx) => session(ctx) !== null && ctx.connected, run: (api) => api.checkTranscript() },

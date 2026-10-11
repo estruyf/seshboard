@@ -22,6 +22,8 @@
   --sb-unread: #005cc5;
   /* A level that is getting high (usage bars, the context ring): between ok and error. */
   --sb-caution: #b35900;
+  /* Claude Code memory (MEMORY.md in What loads here): a hue of its own, never a status. */
+  --sb-memory: #8250df;
   /*
    * The selected row in a list: a neutral fill (a yellow tint disappears on the light sidebar). A tint
    * of the text colour rather than a fixed grey, so it shows on every surface: sidebar, card, dialog.
@@ -75,6 +77,7 @@
     --sb-error: #ff6b6b;
     --sb-unread: #74c0fc;
     --sb-caution: #ffa94d;
+    --sb-memory: #b197fc;
     --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
     --sb-profile-yellow: #ffd43b;
     --sb-profile-blue: #74c0fc;
@@ -121,6 +124,7 @@
   --sb-error: #ff6b6b;
   --sb-unread: #74c0fc;
   --sb-caution: #ffa94d;
+  --sb-memory: #b197fc;
   --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
   --sb-profile-yellow: #ffd43b;
   --sb-profile-blue: #74c0fc;
@@ -161,6 +165,7 @@
   --color-error: var(--sb-error);
   --color-unread: var(--sb-unread);
   --color-caution: var(--sb-caution);
+  --color-memory: var(--sb-memory);
   --color-selected: var(--sb-selected);
   --color-profile-yellow: var(--sb-profile-yellow);
   --color-profile-blue: var(--sb-profile-blue);
