@@ -7,7 +7,7 @@ import { openCacheDatabase } from '../db/database.ts';
 import { migrations } from '../db/migrations.ts';
 import { canSymlink } from '../util/canSymlink.ts';
 import { detectIconPath, MAX_ICON_BYTES } from './projectIcons.ts';
-import { ProjectRegistry } from './projectRegistry.ts';
+import { folderKey, ProjectRegistry } from './projectRegistry.ts';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -102,6 +102,34 @@ describe('ProjectRegistry', () => {
 });
 
 describe('project list', () => {
+  it('knows a folder by any spelling on Windows', () => {
+    expect(folderKey('C:\\Repo\\')).toBe(folderKey('c:/repo'));
+    expect(folderKey('C:\\Repo')).not.toBe(folderKey('C:\\Repo2'));
+    // Elsewhere case matters, as on Linux, and macOS paths keep comparing exactly as before.
+    expect(folderKey('/Users/me/Repo')).not.toBe(folderKey('/Users/me/repo'));
+  });
+
+  it.skipIf(process.platform !== 'win32')('lists a Windows folder once, however its sessions spelled it', () => {
+    const data = tempDir();
+    const cache = openCacheDatabase(join(data, 'cache.sqlite'));
+    const registry = new ProjectRegistry(cache.db, join(data, 'icons'));
+    const [added, other] = [tempDir(), tempDir()];
+    registry.add(added);
+    // A terminal often reports the drive in lower case; Claude Code may write `/`.
+    const activity = new Map([
+      [added.toLowerCase(), { count: 2, lastActivity: 10 }],
+      [other, { count: 1, lastActivity: 20 }],
+      [other.replace(/\\/g, '/'), { count: 3, lastActivity: 30 }],
+    ]);
+    // The added project keeps its own spelling and gets its sessions; the other folder's two spellings add up, under
+    // the most recent one.
+    expect(registry.list(activity).map((p) => [p.root, p.added, p.sessionCount])).toEqual([
+      [added, true, 2],
+      [other.replace(/\\/g, '/'), false, 4],
+    ]);
+    cache.close();
+  });
+
   it('keeps your order, appends new projects and lists other session folders by activity', () => {
     const data = tempDir();
     const cache = openCacheDatabase(join(data, 'cache.sqlite'));

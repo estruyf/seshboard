@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Copy, Ellipsis, FolderOpen, GitBranch, GitMerge, HardDrive, Lock, MessagesSquare, RefreshCw, Search, SquarePen, Trash2, ArrowUp } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
-import type { WorktreeEntry, WorktreeRemoveResult } from '@switchboard/protocol/client';
+import { isSameOrInside, type WorktreeEntry, type WorktreeRemoveResult } from '@switchboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
@@ -270,7 +270,7 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
     const ahead = aheadLabel(entry);
     const merge = mergeLabel(entry);
     const size = entry.missing ? 0 : entry.isMain ? mainCheckoutBytes(rows, sizes) : (sizes.get(entry.path)?.bytes ?? null);
-    const where = entry.path.startsWith(`${root}/`) ? entry.path.slice(root.length + 1) : tildify(entry.path, home);
+    const where = entry.path !== root && isSameOrInside(entry.path, root) ? entry.path.slice(root.replace(/[\\/]+$/, '').length + 1) : tildify(entry.path, home);
     const label = entry.isMain ? 'Main checkout' : entry.name;
     return (
       <div

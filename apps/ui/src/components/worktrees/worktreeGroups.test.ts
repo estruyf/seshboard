@@ -164,6 +164,11 @@ describe('sizes', () => {
     expect(mainCheckoutBytes(rows, new Map([size(ROOT, 2_000)]))).toBeNull();
     const sizes = new Map([size(ROOT, 2_000), size(a, 1_500)]);
     expect(mainCheckoutBytes(rows, sizes)).toBe(500);
+    // On Windows too, where git's worktree paths come back with `\` (and the drive in either case).
+    const winRoot = 'C:\\work\\app';
+    const winA = 'c:\\work\\app\\.claude\\worktrees\\a';
+    const winRows = worktreeRows([{ ...main, path: winRoot }, entry('a', { merged: true, ahead: 0, path: winA })], () => NO_SESSIONS, NOW);
+    expect(mainCheckoutBytes(winRows, new Map([size(winRoot, 2_000), size(winA, 1_500)]))).toBe(500);
     expect(worktreeSummary(rows, sizes)).toEqual({ count: 2, bytes: 1_500, unknown: 0, safe: 1, stale: 1 });
   });
 });

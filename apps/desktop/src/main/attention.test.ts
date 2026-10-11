@@ -61,6 +61,13 @@ describe('Attention', () => {
     expect(a.onHost(host('idle'))).toEqual([]);
   });
 
+  it('names a Windows folder by its last part, not its whole path', () => {
+    const a = new Attention();
+    a.setTitle('s1', 'Fix login');
+    a.onHost(host('running', { cwd: 'C:\\work\\app\\' }));
+    expect(a.onHost(host('idle', { cwd: 'C:\\work\\app\\' }))).toMatchObject([{ kind: 'finished', body: 'Fix login · app' }]);
+  });
+
   it('reports failures', () => {
     const a = new Attention();
     expect(a.onHost(host('error', { error: 'exited with code 1' }))).toMatchObject([{ kind: 'failed', body: 'exited with code 1' }]);
