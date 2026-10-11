@@ -4,7 +4,8 @@
 # - mac: builds the app on an Apple Silicon runner, signs and notarises it, and attaches the .dmg to that
 #   release, with the .zip and the update feed the in-app updater reads (latest-mac.yml);
 # - windows: builds the installer (x64 and Arm64 in one), signs it, and attaches it with its update feed
-#   (latest.yml).
+#   (latest.yml). Only once Windows releases are switched on: the repository variable WINDOWS_RELEASES is
+#   `true` (with signing set up, docs/building-and-signing.md). Until then the job is skipped.
 # The version comes from the tag (.github/scripts/release-version.sh). When the release has no notes, the
 # matching CHANGELOG.md section is used.
 #
@@ -170,7 +171,9 @@ jobs:
 
   windows:
     name: Build, sign and attach the Windows installer
-    if: ${{ !startsWith(github.event.release.tag_name, 'vscode-') }}
+    # Skipped until Windows releases are switched on, so releases before then don't show a failed job. Once on, a
+    # release that can't be signed fails here and attaches nothing.
+    if: ${{ !startsWith(github.event.release.tag_name, 'vscode-') && vars.WINDOWS_RELEASES == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
@@ -233,19 +236,11 @@ jobs:
             npm run dist
           fi
 
-      - name: Check the signatures
-        shell: pwsh
-        run: |
-          # The installer and the app for each architecture (electron-builder signs the uninstaller with the same settings).
-          $files = @(Get-ChildItem apps/desktop/dist/Switchboard-*-setup.exe) + @(Get-ChildItem apps/desktop/dist/win-*unpacked/Switchboard.exe)
-          if ($files.Count -ne 3) { Write-Output "::error::Expected the installer and two apps, found: $($files.Name -join ', ')"; exit 1 }
-          $unsigned = @()
-          foreach ($file in $files) {
-            $signature = Get-AuthenticodeSignature $file.FullName
-            Write-Output ("{0}: {1} by {2}" -f $file.FullName, $signature.Status, $signature.SignerCertificate.Subject)
-            if ($signature.Status -ne 'Valid') { $unsigned += $file.FullName }
-          }
-          if ($unsigned) { Write-Output "::error::Not validly signed: $($unsigned -join ', ')"; exit 1 }
+      - name: Check the signatures and the publisher
+        # The installer and both apps are validly signed (electron-builder signs the uninstaller with the same
+        # settings), by the publisher the apps check updates against: one that doesn't match would make every
+        # installed copy of this release refuse all later updates.
+        run: node apps/desktop/scripts/checkWindowsSignatures.mjs
 
       - name: Check the update feed
         run: |
