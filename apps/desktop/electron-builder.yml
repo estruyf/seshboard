@@ -10,9 +10,8 @@ files:
   - package.json
   # Switchboard runs the user's installed `claude`; the SDK's bundled copy (~220 MB) is not shipped.
   - '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'
-  # node-pty: only the JS and this platform's prebuilt binaries are needed at runtime.
+  # node-pty: only the JS and this platform's prebuilt binaries (see mac.files and win.files) are needed at runtime.
   - '!node_modules/node-pty/{deps,third_party,src,scripts,typings,binding.gyp}/**'
-  - '!node_modules/node-pty/prebuilds/win32-*/**'
 # Native modules must live outside the asar archive to be loaded and (spawn-helper) executed.
 asarUnpack:
   - node_modules/node-pty/**
@@ -22,6 +21,8 @@ electronLanguages: [en]
 npmRebuild: false
 mac:
   icon: build/icon.icns
+  files:
+    - '!node_modules/node-pty/prebuilds/win32-*/**'
   category: public.app-category.developer-tools
   target:
     - target: dmg
@@ -41,14 +42,29 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
 dmg:
   title: Switchboard
+win:
+  # electron-builder makes the .ico from the 1024px PNG.
+  icon: build/icon.png
+  files:
+    - '!node_modules/node-pty/prebuilds/darwin-*/**'
+  # One installer for both architectures; it installs the one that matches the PC. The in-app updater
+  # (NsisUpdater) reads latest.yml, which lists this single file.
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  # Signing: the release workflow passes azureSignOptions (Azure Trusted Signing) with -c.win.azureSignOptions.*;
+  # without them the build is unsigned (npm run dist:win on your own PC).
+nsis:
+  # No spaces in the name, so the release upload and the update feed agree on it.
+  artifactName: ${productName}-${version}-setup.${ext}
 # Names the helper apps "Switchboard Helper" instead of "Electron Helper" in macOS prompts (runs before signing).
 afterPack: scripts/afterPack.mjs
 # switchboard:// links (docs/deep-links.md): declared in Info.plist so macOS opens them with the app.
 protocols:
   - name: Switchboard link
     schemes: [switchboard]
-# The update feed: packaged apps get app-update.yml pointing here, and the build writes latest-mac.yml
-# (nightly-mac.yml when built with -c.publish.channel=nightly, as the release workflow does for a -nightly. version).
+# The update feed: packaged apps get app-update.yml pointing here, and the build writes latest-mac.yml or latest.yml
+# (nightly-mac.yml or nightly.yml when built with -c.publish.channel=nightly, as the release workflow does for a -nightly. version).
 # Nothing is uploaded by electron-builder (--publish never);
 # the release workflow attaches the files. Preview builds (npm run dist:preview, electron-builder.preview.yml)
 # set publish to null, so they have no app-update.yml and can never update from, or be offered as, a release.

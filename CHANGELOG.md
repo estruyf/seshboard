@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### New
 
+- **Windows installer.** Each release now has a signed installer for Windows (x64 and Arm), which keeps itself up to date like the Mac app.
 - **Search memory.** ⇧⌘F finds memories too, in their own group above conversations, by type and project; *Search memory…* in the command palette searches memory only. A memory Claude saves during a session shows in the conversation as one **Saved memory** line, and a session's menu lists the memories it wrote.
 - **Links between memories.** `[[name]]` links open the memory they name; the editor lists what links to a memory and the links not written yet (with **Write it…**), suggests names as you type `[[`, and Rename… can update the links to it.
 - **Remember this.** Select text in the conversation (or right-click a message) to save it as a memory in this project, another one or Personal, straight to the file, without using Claude.

@@ -1,13 +1,15 @@
 # Builds Switchboard for a GitHub release.
 #
-# Runs when a release is published on GitHub (for a tag like v0.2.0): builds the app on an Apple
-# Silicon runner, signs and notarises it, and attaches the .dmg to that release, with the .zip and
-# the update feed the in-app updater reads (latest-mac.yml). The version comes from the tag. When the
-# release has no notes, the matching CHANGELOG.md section is used.
+# Runs when a release is published on GitHub (for a tag like v0.2.0), with two builds side by side:
+# - mac: builds the app on an Apple Silicon runner, signs and notarises it, and attaches the .dmg to
+#   that release, with the .zip and the update feed the in-app updater reads (latest-mac.yml);
+# - windows: builds one installer for x64 and arm64, signs it with Azure Trusted Signing, and attaches
+#   it with its update feed (latest.yml).
+# The version comes from the tag. When the release has no notes, the matching CHANGELOG.md section is used.
 #
-# Channels: a release is the Stable feed (latest-mac.yml). A pre-release tagged vX.Y.Z-nightly.YYYYMMDD.N
-# is the Nightly feed (nightly-mac.yml). Any other pre-release gets the .dmg and .zip but no feed, so
-# no one is ever updated to it.
+# Channels: a release is the Stable feed (latest-mac.yml, latest.yml). A pre-release tagged
+# vX.Y.Z-nightly.YYYYMMDD.N is the Nightly feed (nightly-mac.yml, nightly.yml). Any other pre-release
+# gets the installers but no feed, so no one is ever updated to it.
 #
 # A Stable release also updates the Homebrew cask in estruyf/homebrew-tap (docs/homebrew.md).
 #
@@ -29,13 +31,58 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Version and update channel
+    if: ${{ !startsWith(github.event.release.tag_name, 'vscode-') }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      feed: ${{ steps.channel.outputs.feed }}
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Version from the tag
+        id: version
+        run: |
+          version="${TAG#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::The release tag '$TAG' is not a version like v1.2.3."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Update channel
+        id: channel
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          # feed: which update feed this release carries (latest, nightly, or none).
+          if [[ "$VERSION" == *-nightly.* ]]; then
+            if [ "$PRERELEASE" != "true" ]; then
+              echo "::error::$TAG is a nightly version; publish it as a pre-release."
+              exit 1
+            fi
+            echo "feed=nightly" >> "$GITHUB_OUTPUT"
+          elif [ "$PRERELEASE" == "true" ]; then
+            echo "::notice::$TAG is a pre-release but not a nightly: it gets no update feed."
+            echo "feed=none" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" == *-* ]]; then
+            echo "::error::$TAG has a pre-release version but is published as a release; Stable users would be offered it."
+            exit 1
+          else
+            echo "feed=latest" >> "$GITHUB_OUTPUT"
+          fi
+
   mac:
     name: Build, sign, notarise and attach the .dmg
-    if: ${{ !startsWith(github.event.release.tag_name, 'vscode-') }}
+    needs: prepare
     runs-on: macos-15
     timeout-minutes: 60
     env:
       TAG: ${{ github.event.release.tag_name }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      FEED: ${{ needs.prepare.outputs.feed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,36 +92,6 @@ jobs:
         with:
           node-version: 24
           cache: npm
-
-      - name: Version from the tag
-        run: |
-          version="${TAG#v}"
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::The release tag '$TAG' is not a version like v1.2.3."
-            exit 1
-          fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-
-      - name: Update channel
-        env:
-          PRERELEASE: ${{ github.event.release.prerelease }}
-        run: |
-          # FEED: which update feed this release carries (latest, nightly, or none).
-          if [[ "$VERSION" == *-nightly.* ]]; then
-            if [ "$PRERELEASE" != "true" ]; then
-              echo "::error::$TAG is a nightly version; publish it as a pre-release."
-              exit 1
-            fi
-            echo "FEED=nightly" >> "$GITHUB_ENV"
-          elif [ "$PRERELEASE" == "true" ]; then
-            echo "::notice::$TAG is a pre-release but not a nightly: it gets no update feed."
-            echo "FEED=none" >> "$GITHUB_ENV"
-          elif [[ "$VERSION" == *-* ]]; then
-            echo "::error::$TAG has a pre-release version but is published as a release; Stable users would be offered it."
-            exit 1
-          else
-            echo "FEED=latest" >> "$GITHUB_ENV"
-          fi
 
       - name: Install
         run: npm ci
@@ -189,3 +206,127 @@ jobs:
             exit 0
           fi
           ./homebrew/publish-cask.sh --push
+
+  windows:
+    name: Build, sign and attach the Windows installer
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # A fixed subject for the Azure federated credential (repo:estruyf/switchboard:environment:windows-signing),
+    # which can't match every release tag.
+    environment: windows-signing
+    permissions:
+      contents: write
+      # Azure login with OpenID Connect: no client secret is stored in the repository.
+      id-token: write
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      FEED: ${{ needs.prepare.outputs.feed }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Check the signing settings
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TRUSTED_SIGNING_ENDPOINT: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT_NAME: ${{ vars.TRUSTED_SIGNING_ACCOUNT_NAME }}
+          CERTIFICATE_PROFILE_NAME: ${{ vars.CERTIFICATE_PROFILE_NAME }}
+        run: |
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID TRUSTED_SIGNING_ENDPOINT TRUSTED_SIGNING_ACCOUNT_NAME CERTIFICATE_PROFILE_NAME; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not set, and nothing is attached unsigned. See docs/building-and-signing.md."
+              exit 1
+            fi
+          done
+
+      - name: Install
+        run: npm ci
+
+      # Trusted Signing's PowerShell module (which electron-builder calls for every .exe) picks up this
+      # Azure CLI login.
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and sign
+        env:
+          TRUSTED_SIGNING_ENDPOINT: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT_NAME: ${{ vars.TRUSTED_SIGNING_ACCOUNT_NAME }}
+          CERTIFICATE_PROFILE_NAME: ${{ vars.CERTIFICATE_PROFILE_NAME }}
+        run: |
+          npm pkg set version="$VERSION" -w @switchboard/desktop
+          # electron-builder signs the app, its helpers, the installer and the uninstaller as it builds
+          # them, so the update feed's checksums are of the signed files.
+          args=(
+            -c.win.azureSignOptions.endpoint="$TRUSTED_SIGNING_ENDPOINT"
+            -c.win.azureSignOptions.codeSigningAccountName="$TRUSTED_SIGNING_ACCOUNT_NAME"
+            -c.win.azureSignOptions.certificateProfileName="$CERTIFICATE_PROFILE_NAME"
+          )
+          if [ "$FEED" == "nightly" ]; then
+            args+=(-c.publish.channel=nightly)
+          fi
+          npm run dist:win -w @switchboard/desktop -- "${args[@]}"
+
+      - name: Check the signatures
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem apps/desktop/dist/*.exe) + @(Get-ChildItem apps/desktop/dist/win-*unpacked/Switchboard.exe)
+          if ($files.Count -lt 3) { Write-Error "Expected the installer and an app per architecture, found: $($files.Name -join ', ')"; exit 1 }
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            Write-Host "$($file.FullName): $($signature.Status) ($($signature.SignerCertificate.Subject))"
+            if ($signature.Status -ne 'Valid') { Write-Error "$($file.Name) is not signed: $($signature.StatusMessage)"; exit 1 }
+          }
+
+      - name: Check the update feed
+        run: |
+          cd apps/desktop/dist
+          ls -la
+          feeds=$(ls latest.yml nightly.yml 2>/dev/null || true)
+          expected="$FEED.yml"
+          if [ "$FEED" != "none" ] && [ "$feeds" != "$expected" ]; then
+            echo "::error::Expected exactly $expected, found: ${feeds:-nothing}."
+            exit 1
+          fi
+          if [ "$FEED" != "none" ]; then
+            grep -q "^version: $VERSION\$" "$expected" || { echo "::error::$expected is not for $VERSION."; cat "$expected"; exit 1; }
+          fi
+
+      - name: Attach the installer and update feed to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd apps/desktop/dist
+          files=(Switchboard-*-setup.exe Switchboard-*-setup.exe.blockmap)
+          # The feed goes up last, so it never points at an installer that isn't there yet.
+          gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          if [ "$FEED" != "none" ]; then
+            gh release upload "$TAG" "$FEED.yml" --clobber --repo "$GITHUB_REPOSITORY"
+          fi
+
+      - name: Guard against a feed on the wrong release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r draft prerelease < <(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"')
+          assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          if { [ "$draft" == "true" ] || [ "$prerelease" == "true" ]; } && grep -q '^latest.*\.yml$' <<< "$assets"; then
+            echo "::error::$TAG is a draft or pre-release but carries a latest*.yml update feed. Delete that asset."
+            exit 1
+          fi

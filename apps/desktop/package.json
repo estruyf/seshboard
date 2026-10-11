@@ -18,7 +18,8 @@
     "dist:preview": "electron-vite build && electron-builder --config electron-builder.preview.yml --mac --arm64 --publish never",
     "mock-updates": "node scripts/mock-update-server.ts",
     "smoke:packaged": "node scripts/smoke.ts --packaged",
-    "dist:notarized": "APPLE_KEYCHAIN_PROFILE=switchboard-notary npm run dist"
+    "dist:notarized": "APPLE_KEYCHAIN_PROFILE=switchboard-notary npm run dist",
+    "dist:win": "electron-vite build && electron-builder --win --publish never"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.288",

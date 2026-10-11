@@ -1,6 +1,6 @@
 # Building, signing and notarisation
 
-How to package Switchboard as a Mac app, and how to sign and notarise it with an Apple Developer ID so it opens on any Mac without warnings.
+How to package Switchboard as a Mac app, and how to sign and notarise it with an Apple Developer ID so it opens on any Mac without warnings. The Windows installer is built and signed in the release workflow (see [Windows](#windows)).
 
 [← Back to the README](../README.md)
 
@@ -121,6 +121,32 @@ Add these repository secrets (Settings → Secrets and variables → Actions):
 | `HOMEBREW_TAP_TOKEN` | A fine-grained token with *Contents: read and write* on `estruyf/homebrew-tap` only. Without it the release still succeeds and the tap keeps the previous version (see [Homebrew](homebrew.md)) |
 
 `MAC_CERTIFICATE_PASSWORD` may be left out only if the `.p12` was exported without a password.
+
+### Windows
+
+The `windows` job in the same workflow builds one NSIS installer, `Switchboard-X.Y.Z-setup.exe`, that holds both the x64 and the arm64 app and installs the one that matches the PC. It runs next to the Mac job, with the same version and channel:
+
+1. logs in to Azure with OpenID Connect (no client secret in the repository);
+2. builds with `npm run dist:win`, passing the Trusted Signing settings as `-c.win.azureSignOptions.*`, so electron-builder signs the app, the installer and the uninstaller as it makes them (the checksums in the update feed are of the signed files);
+3. checks every `.exe` has a valid Authenticode signature;
+4. attaches the installer and its `.blockmap`, then the update feed (`latest.yml`, or `nightly.yml` for a nightly) last.
+
+The in-app updater on Windows reads `latest.yml` or `nightly.yml`; the Mac's `-mac.yml` feeds are separate, so the two builds never overwrite each other. Without the settings below the job fails, and nothing is attached unsigned. If one of the two jobs fails, the other still attaches its files: re-run the failed job from the Actions tab.
+
+`npm run dist:win` on a Windows PC builds the same installer unsigned.
+
+The Azure side, once: a Trusted Signing account with a certificate profile, and an app registration with a federated credential for this repository (GitHub Actions, entity type *Environment*, environment `windows-signing`; the job runs in that GitHub environment, which is created on its first run) that has the *Trusted Signing Certificate Profile Signer* role on the account.
+
+| Setting | Kind | What it is |
+|---|---|---|
+| `AZURE_CLIENT_ID` | Secret | The app registration's client (application) ID |
+| `AZURE_TENANT_ID` | Secret | Your Microsoft Entra tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | Secret | The subscription that holds the Trusted Signing account |
+| `TRUSTED_SIGNING_ENDPOINT` | Variable | The account's endpoint, like `https://weu.codesigning.azure.net/` |
+| `TRUSTED_SIGNING_ACCOUNT_NAME` | Variable | The Trusted Signing account's name |
+| `CERTIFICATE_PROFILE_NAME` | Variable | The certificate profile's name |
+
+Secrets go under Settings → Secrets and variables → Actions → *Secrets*, the three names under *Variables* (or put all six on the `windows-signing` environment).
 
 ### Testing the packaged app
 
