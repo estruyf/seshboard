@@ -1,3 +1,4 @@
+import { isAbsolutePath } from '@switchboard/protocol/paths';
 import type { ContextItemInput } from '@switchboard/protocol/companion-client';
 
 /**
@@ -28,7 +29,7 @@ export type SelectionResult =
   /** Its text can't be sent (the file is excluded, ignored or denied to Claude) and Claude can't read the unsaved version. */
   | { kind: 'withheld'; item: ContextItemInput; reason: string };
 
-const base = (path: string) => path.split('/').pop() || path;
+const base = (path: string) => path.split(/[\\/]/).pop() || path;
 
 /** VS Code language ids that aren't the usual fence name. */
 const FENCE: Record<string, string> = { typescriptreact: 'tsx', javascriptreact: 'jsx', shellscript: 'sh', plaintext: '' };
@@ -71,7 +72,7 @@ export function resourceItems(resources: ReadonlyArray<{ path: string; directory
   const seen = new Set<string>();
   const out: ContextItemInput[] = [];
   for (const resource of resources) {
-    if (!resource.path.startsWith('/') || seen.has(resource.path)) continue;
+    if (!isAbsolutePath(resource.path) || seen.has(resource.path)) continue;
     seen.add(resource.path);
     out.push({ kind: 'file', path: resource.path, directory: resource.directory });
   }

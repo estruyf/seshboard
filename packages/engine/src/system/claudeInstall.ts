@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { posix, win32 } from 'node:path';
 import type { ClaudeChannel, ClaudeInstallMethod } from '@switchboard/protocol';
 
 /** How to update one install: the command to show, and the program and arguments to run it with. */
@@ -10,19 +10,46 @@ export interface ClaudeInstallInfo {
   command: string;
   /** What to run. Null when only the command to type is known. */
   run: { file: string; args: string[] } | null;
+  /** Added to the error when the update fails: what usually stops it for this install. */
+  failureHint?: string;
 }
 
 /**
  * Works out how `claude` was installed from where it lives. `path` is the binary that is run, `realPath` the
  * same with symlinks followed (the native installer links `~/.local/bin/claude` to a versioned file).
  */
-export function detectInstall(path: string, realPath: string, options: { home: string; channel: ClaudeChannel }): ClaudeInstallInfo {
-  const { home, channel } = options;
-  const under = (dir: string) => realPath.startsWith(dir.endsWith('/') ? dir : `${dir}/`);
+export function detectInstall(path: string, realPath: string, options: { home: string; channel: ClaudeChannel; platform?: NodeJS.Platform }): ClaudeInstallInfo {
+  const { home, channel, platform = process.platform } = options;
+  const windows = platform === 'win32';
+  const { join, sep } = windows ? win32 : posix;
+  // Windows paths compare without regard to case, as Windows does.
+  const same = (a: string) => (windows ? a.toLowerCase() : a);
+  const under = (dir: string) => same(realPath).startsWith(same(dir.endsWith(sep) ? dir : `${dir}${sep}`));
 
   // ~/.claude/local is the old "migrate to local" install: an npm package with a wrapper script, updated by `claude update`.
   if (under(join(home, '.claude', 'local'))) return { method: 'local', cask: null, command: 'claude update', run: { file: path, args: ['update'] } };
   if (under(join(home, '.local', 'share', 'claude'))) return { method: 'native', cask: null, command: 'claude update', run: { file: path, args: ['update'] } };
+  // On Windows the native installer copies claude.exe into ~/.local/bin instead of linking it there.
+  if (windows && same(realPath) === same(join(home, '.local', 'bin', 'claude.exe'))) return { method: 'native', cask: null, command: 'claude update', run: { file: path, args: ['update'] } };
+  if (windows) {
+    // WinGet installs under its own Packages folder (in AppData for one user, in Program Files with `--scope machine`),
+    // and only WinGet should update what it installed. It may ask for permission, so Switchboard shows the command.
+    if (/\\WinGet\\Packages\\/i.test(realPath)) return { method: 'winget', cask: null, command: 'winget upgrade Anthropic.ClaudeCode', run: null };
+    // npm's package, below a prefix (`<prefix>\node_modules\…` on Windows). Its npm.cmd lives with Node and is found on
+    // PATH, so the prefix is named: another npm first on PATH would otherwise update its own prefix, not this install.
+    const npmPrefix = /^(.*)\\node_modules\\@anthropic-ai\\claude-code\\/i.exec(realPath)?.[1];
+    if (npmPrefix) {
+      const spec = `@anthropic-ai/claude-code@${channel}`;
+      return {
+        method: 'npm',
+        cask: null,
+        command: `npm install -g --prefix "${npmPrefix}" ${spec}`,
+        run: { file: 'npm', args: ['install', '-g', '--prefix', npmPrefix, spec] },
+        // npm replaces claude.exe, which Windows refuses while a Claude Code process runs it.
+        failureHint: 'On Windows, npm can’t replace claude.exe while Claude Code runs: stop your sessions and try again.',
+      };
+    }
+  }
 
   const cask = /^(.*)\/Caskroom\/(claude-code(?:@[\w.-]+)?)\//.exec(realPath);
   if (cask) {

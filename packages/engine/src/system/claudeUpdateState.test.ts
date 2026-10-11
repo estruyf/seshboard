@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { detectInstall } from './claudeInstall.ts';
 import * as reduce from './claudeUpdateState.ts';
 
-const native = detectInstall('/Users/me/.local/bin/claude', '/Users/me/.local/share/claude/versions/2.1.0', { home: '/Users/me', channel: 'latest' });
+const native = detectInstall('/Users/me/.local/bin/claude', '/Users/me/.local/share/claude/versions/2.1.0', { home: '/Users/me', channel: 'latest', platform: 'darwin' });
 const found = (version: string, extra: Partial<reduce.FoundInstall> = {}): reduce.FoundInstall => ({
   path: '/Users/me/.local/bin/claude',
   version,
@@ -83,7 +83,7 @@ describe('Claude Code update state', () => {
     const custom = reduce.installFound(start(), found('2.1.0', { override: true }));
     expect(custom).toMatchObject({ canUpdate: false, command: 'claude update' });
     expect(custom.manualReason).toContain('custom path');
-    const unknown = reduce.installFound(start(), found('2.1.0', { info: detectInstall('/opt/claude', '/opt/claude', { home: '/Users/me', channel: 'latest' }) }));
+    const unknown = reduce.installFound(start(), found('2.1.0', { info: detectInstall('/opt/claude', '/opt/claude', { home: '/Users/me', channel: 'latest', platform: 'darwin' }) }));
     expect(unknown).toMatchObject({ canUpdate: false, method: 'unknown' });
     expect(reduce.updating(reduce.checked(unknown, '2.2.0', 1)).status).toBe('available');
     expect(reduce.retryCommand(reduce.failed(reduce.checked(unknown, '2.2.0', 1), 'x'))).toBe('check');

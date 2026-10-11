@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import type { BranchList } from '@switchboard/protocol/client';
+import { isAbsolutePath, type BranchList } from '@switchboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { branchRows, type BranchRow } from '../components/branches/branchGroups.ts';
@@ -55,7 +55,7 @@ export function useBranchesOf(root: string | null): BranchesOf {
   const client = connection.status === 'connected' ? connection.client : null;
   const state = useBranches((s) => (root ? s.byRoot.get(root) : undefined));
   useEffect(() => {
-    if (!client || !root?.startsWith('/')) return;
+    if (!client || !root || !isAbsolutePath(root)) return;
     const current = useBranches.getState().byRoot.get(root);
     if (current?.loading || (current?.loadedAt && Date.now() - current.loadedAt < FRESH_MS)) return;
     void loadBranches(client, root);

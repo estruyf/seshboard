@@ -1,5 +1,6 @@
 import type { ActionScope, ActionSuggestion, ListedAction, ProjectAction } from '@switchboard/protocol/client';
-import { formatShortcut, RESERVED_SHORTCUTS, normalizeShortcut, sameShortcut } from '../../lib/shortcuts.ts';
+import { basename } from '../../lib/format.ts';
+import { formatShortcut, normalizeShortcut, reservedShortcuts, sameShortcut } from '../../lib/shortcuts.ts';
 
 /** The form's state: an action plus where it is saved. `shared` only appears read-only. */
 export type ActionDraft = ProjectAction & { scope: ActionScope };
@@ -99,7 +100,7 @@ export function validateDraft(draft: ActionDraft, actions: ListedAction[], editi
   if (draft.shortcut) {
     // The action being edited keeps its own shortcut (also when it moves to the other scope).
     const other = actions.find((a) => a.shortcut && sameShortcut(a.shortcut, draft.shortcut!) && !(editing && a.scope === editing.scope && a.id === editing.id));
-    if (RESERVED_SHORTCUTS.has(normalizeShortcut(draft.shortcut))) errors.shortcut = `${formatShortcut(draft.shortcut)} is used by Switchboard.`;
+    if (reservedShortcuts().has(normalizeShortcut(draft.shortcut))) errors.shortcut = `${formatShortcut(draft.shortcut)} is used by Switchboard.`;
     else if (other) errors.shortcut = `“${other.name}” already uses ${formatShortcut(draft.shortcut)}.`;
   }
   return errors;
@@ -124,4 +125,4 @@ export function insertVariable(text: string, start: number, end: number, name: s
 }
 
 /** The last folder of a path, as the dialog's subtitle. */
-export const projectName = (root: string) => root.replace(/\/+$/, '').split('/').pop() || root;
+export const projectName = (root: string) => basename(root);

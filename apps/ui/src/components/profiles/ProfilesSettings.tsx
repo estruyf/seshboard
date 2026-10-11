@@ -1,6 +1,6 @@
 import { Check, ChevronRight, Copy, FolderOpen, Plus, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { PROFILE_COLORS, type ClaudeProfile, type ProfileColor } from '@switchboard/protocol/client';
+import { expandHome, isAbsolutePath, PROFILE_COLORS, separatorOf, type ClaudeProfile, type ProfileColor } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { guessHome, tildify } from '../../lib/format.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -169,10 +169,10 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
   const [folder, setFolder] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const suggested = home ? `${home}/.claude-${slug(name)}` : '';
-  const path = (folder ?? suggested).trim().replace(/^~(?=\/)/, home ?? '~');
+  const suggested = home ? `${home}${separatorOf(home)}.claude-${slug(name)}` : '';
+  const path = expandHome((folder ?? suggested).trim(), home);
   // Say why Add profile is unavailable instead of leaving a dimmed button to puzzle over.
-  const problem = !name.trim() ? 'Give the profile a name.' : !path ? 'Choose a config folder.' : !path.startsWith('/') ? 'Use a full path to the folder, starting with / or ~/.' : null;
+  const problem = !name.trim() ? 'Give the profile a name.' : !path ? 'Choose a config folder.' : !isAbsolutePath(path) ? 'Use a full path to the folder, or one that starts with ~.' : null;
 
   const submit = async () => {
     if (!client) return;
@@ -304,7 +304,7 @@ export function ProfilesSettings() {
   const [removing, setRemoving] = useState<ClaudeProfile | null>(null);
   // The built-in folder is usually ~/.claude, which tells us where home is.
   const builtin = profiles.find((p) => p.builtin)?.configDir;
-  const home = guessHome(profiles.map((p) => p.configDir)) ?? (builtin?.endsWith('/.claude') ? builtin.slice(0, -'/.claude'.length) : null);
+  const home = guessHome(profiles.map((p) => p.configDir)) ?? (builtin && /[\\/]\.claude$/.test(builtin) ? builtin.slice(0, -'/.claude'.length) : null);
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2" data-profiles>

@@ -2,7 +2,7 @@ import { Brain, Search } from 'lucide-react';
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { MemoryHit, SearchHit } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { shortAge } from '../../lib/format.ts';
+import { basename, shortAge } from '../../lib/format.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -227,7 +227,7 @@ export function SearchDialog() {
                   <span className="min-w-0 flex-1">
                     <Snippet text={hit.snippet || (hit.description ?? '')} />
                   </span>
-                  <span className="shrink-0 text-meta text-muted">{hit.root ? (projects.get(hit.root)?.name ?? hit.root.split('/').pop()) : 'Personal'}</span>
+                  <span className="shrink-0 text-meta text-muted">{hit.root ? (projects.get(hit.root)?.name ?? basename(hit.root)) : 'Personal'}</span>
                 </div>
               );
             })}
@@ -248,7 +248,7 @@ export function SearchDialog() {
                 <div id={headingId} className="flex items-center gap-2 px-4 pt-1.5 pb-1 text-[11.5px] text-muted">
                   {root && <ProjectIcon project={project} root={root} size={14} />}
                   <span className="min-w-0 truncate font-medium text-text/85">{summary?.title ?? 'Session'}</span>
-                  <span className="shrink-0">· {project?.name ?? root.split('/').pop()}</span>
+                  <span className="shrink-0">· {project?.name ?? basename(root)}</span>
                   {summary && <span className="shrink-0">· {shortAge(summary.updatedAt)}</span>}
                   {group.more > 0 && <span className="ml-auto shrink-0">+{group.more} more</span>}
                 </div>

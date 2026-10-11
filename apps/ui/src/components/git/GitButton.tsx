@@ -8,7 +8,7 @@ import { useTerminals } from '../../state/terminalsStore.ts';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
 import { CommitDialog } from './CommitDialog.tsx';
 import { gitSummary, planGit, STEP_LABEL, stepCount, type GitStep } from './gitPlan.ts';
-import { ariaKeysFor, matches } from '../../lib/shortcuts.ts';
+import { ariaKeysFor, formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 
 const ICON: Record<GitStep, typeof GitCommitHorizontal> = { fetch: RefreshCw, commit: GitCommitHorizontal, pull: CloudDownload, push: CloudUpload, pr: GitPullRequest };
 /** The count on the button's face (↓ behind, ↑ ahead, files to commit). It sits on the yellow fill, so it keeps the fill's text colour. */
@@ -18,7 +18,7 @@ const COUNT: Partial<Record<GitStep, { prefix: string }>> = {
   commit: { prefix: '' },
 };
 const MENU_WIDTH = 280;
-const PULL_SHORTCUT = '⌘⇧L';
+const pullShortcut = () => formatKeys(keysFor('git.pull'));
 
 /**
  * Split button in the session header. Its face runs the step the checkout needs next (pull when
@@ -147,7 +147,7 @@ export function GitButton({
     if (blocked) return blocked;
     if (step === 'commit') return `Ask Claude to commit ${status.uncommitted === 1 ? 'the changed file' : `the ${status.uncommitted} changed files`}`;
     if (step === 'fetch') return 'Fetch from the remote in a terminal tab, to see whether the upstream moved on';
-    if (step === 'pull') return `Pull from ${status.upstream} in a terminal tab (${PULL_SHORTCUT})`;
+    if (step === 'pull') return `Pull from ${status.upstream} in a terminal tab (${pullShortcut()})`;
     if (step === 'push') return status.upstream ? `Push to ${status.upstream} in a terminal tab` : `Publish ${status.branch} to ${status.pushRemote} in a terminal tab`;
     return `Push ${status.branch}, then open GitHub's pull request page with gh`;
   };
@@ -170,7 +170,7 @@ export function GitButton({
   const entries: MenuEntry[] = [
     { title: status.branch ?? 'Detached HEAD', detail: gitSummary(status) },
     'separator',
-    step('pull', 'Pull', { icon: <CloudDownload size={13} />, hint: PULL_SHORTCUT }),
+    step('pull', 'Pull', { icon: <CloudDownload size={13} />, hint: pullShortcut() }),
     step('fetch', 'Fetch', { icon: <RefreshCw size={13} /> }),
     'separator',
     {

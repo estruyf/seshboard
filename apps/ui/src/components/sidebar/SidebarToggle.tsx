@@ -1,3 +1,4 @@
+import { currentPlatform } from '../../lib/platform.ts';
 import { PanelLeft } from 'lucide-react';
 import { useMemo } from 'react';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -22,7 +23,8 @@ export function SidebarToggle() {
   return (
     // While closed, the traffic lights sit where the sidebar was: the header starts after them. They end
     // 68px in (16px inset plus their width), so this keeps the same 16px clear of them behind a px-4 header.
-    <div className={`flex shrink-0 items-center gap-2 ${state === 'closed' ? 'ml-17' : ''}`} data-sidebar-toggle-area>
+    // Elsewhere the window's buttons are in its own title bar.
+    <div className={`flex shrink-0 items-center gap-2 ${state === 'closed' && currentPlatform() === 'darwin' ? 'ml-17' : ''}`} data-sidebar-toggle-area>
       <Button
         variant="quiet"
         iconOnly

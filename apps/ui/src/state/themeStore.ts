@@ -4,6 +4,7 @@ import { DEFAULT_THEME_ID, themeSlug, type ThemeEntry, type ThemeFileCheck, type
 import { setSyntaxThemes } from '../lib/highlight.ts';
 import { applyTheme } from '../lib/themeApply.ts';
 import { DEMO_TIME, exportThemeFile, resolveTheme, type ResolvedTheme } from '../lib/themeResolve.ts';
+import { basename } from '../lib/format.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { toast } from './toastStore.ts';
 
@@ -71,7 +72,7 @@ export const useThemes = create<ThemesState>()((set, get) => ({
     try {
       set({ importing: await bridge.checkThemeFile(path) });
     } catch (error) {
-      set({ importing: { ok: false, error: bridgeError(error), fileName: path.split('/').pop() ?? '' } });
+      set({ importing: { ok: false, error: bridgeError(error), fileName: basename(path) } });
     }
   },
   closeImport: () => set({ importing: null }),

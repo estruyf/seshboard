@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AbsolutePath } from './absolutePath.ts';
 import { Effort, ImageAttachment, PermissionMode } from './host.ts';
 
 // The queue. People see "Queue" everywhere; inside, it keeps the name it started with (the Later list), so the
@@ -7,7 +8,7 @@ import { Effort, ImageAttachment, PermissionMode } from './host.ts';
 /** What a queued prompt starts with: the folder and the choices from New session. */
 export const LaterDraft = z.object({
   /** The folder the session would start in (a project's root). */
-  cwd: z.string().min(1).max(4096).startsWith('/'),
+  cwd: AbsolutePath,
   prompt: z.string().trim().min(1).max(200_000),
   /** Images pasted or dropped into the message box, sent with the prompt when it starts. */
   attachments: z.array(ImageAttachment).max(20).default([]),

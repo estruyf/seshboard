@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { ProjectDefaults, RpcError, type ProjectIcon, type ProjectIconChoice, type ProjectInfo } from '@switchboard/protocol';
+import { isLocalAbsolutePath, ProjectDefaults, RpcError, type ProjectIcon, type ProjectIconChoice, type ProjectInfo } from '@switchboard/protocol';
 import { detectIconPath, iconDataUrl, MAX_ICON_BYTES } from './projectIcons.ts';
 
 /** A custom icon as stored: a file is Switchboard's own copy, in the icon folder. */
@@ -23,6 +23,12 @@ export interface FolderActivity {
   count: number;
   lastActivity: number;
 }
+
+/**
+ * What identifies a folder: a Windows drive path without regard to case or the kind of slash, as Windows compares
+ * them, and without a trailing separator; any other path exactly.
+ */
+export const folderKey = (root: string) => (/^[A-Za-z]:[\\/]/.test(root) ? root.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase() : root);
 
 /** What a project is called until you rename it. */
 const folderName = (root: string) => basename(root) || root;
@@ -108,14 +114,28 @@ export class ProjectRegistry {
   /** Added projects in order, then every other folder with sessions, most recently active first. */
   list(activity: Map<string, FolderActivity>): ProjectInfo[] {
     const added = this.addedRows();
-    const addedSet = new Set(added.map((r) => r.root));
-    const others = [...activity.entries()]
-      .filter(([root]) => root.startsWith('/') && !addedSet.has(root))
-      .sort((a, b) => b[1].lastActivity - a[1].lastActivity)
-      .map(([root]) => root);
+    // One folder per project, however its sessions spelled it: on Windows `C:\Repo`, `c:\repo` and `C:/Repo` are the
+    // same folder. Their activity adds up, under the most recent spelling.
+    const folders = new Map<string, { root: string; activity: FolderActivity }>();
+    for (const [root, a] of activity) {
+      // Only folders this computer can open: transcripts copied from another OS carry its paths, which every project RPC refuses.
+      if (!isLocalAbsolutePath(root, process.platform)) continue;
+      const seen = folders.get(folderKey(root));
+      folders.set(
+        folderKey(root),
+        seen
+          ? { root: seen.activity.lastActivity >= a.lastActivity ? seen.root : root, activity: { count: seen.activity.count + a.count, lastActivity: Math.max(seen.activity.lastActivity, a.lastActivity) } }
+          : { root, activity: a },
+      );
+    }
+    const addedKeys = new Set(added.map((r) => folderKey(r.root)));
+    const others = [...folders.entries()]
+      .filter(([key]) => !addedKeys.has(key))
+      .map(([, folder]) => folder)
+      .sort((a, b) => b.activity.lastActivity - a.activity.lastActivity);
     return [
-      ...added.map((row, index) => this.describe(row.root, row, index, activity.get(row.root))),
-      ...others.map((root) => this.describe(root, this.row(root), null, activity.get(root))),
+      ...added.map((row, index) => this.describe(row.root, row, index, folders.get(folderKey(row.root))?.activity)),
+      ...others.map(({ root, activity: a }) => this.describe(root, this.row(root), null, a)),
     ];
   }
 

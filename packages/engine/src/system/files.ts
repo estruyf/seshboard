@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { isAbsolute, join, normalize, relative, resolve } from 'node:path';
+import { isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
+import { GIT_SETTINGS } from '../git/gitChanges.ts';
 
 const MAX_FILES = 50_000;
 const CACHE_MS = 30_000;
@@ -14,7 +15,7 @@ function gitFiles(cwd: string): Promise<string[] | null> {
   return new Promise((resolve) => {
     execFile(
       'git',
-      ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+      [...GIT_SETTINGS, 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
       { cwd, maxBuffer: 64 * 1024 * 1024, timeout: 5000 },
       (error, stdout) => resolve(error ? null : stdout.split('\0').filter(Boolean).slice(0, MAX_FILES)),
     );
@@ -48,7 +49,8 @@ export async function walk(root: string, options: { budgetMs?: number; home?: st
         if (entry.isDirectory()) {
           if (!SKIP_DIRS.has(entry.name) && !(dir === home && HOME_SKIP_DIRS.has(entry.name))) next.push(full);
         } else if (entry.isFile() && out.length < MAX_FILES) {
-          out.push(relative(root, full));
+          // With `/` on Windows too, as git lists them and the UI expects.
+          out.push(sep === '/' ? relative(root, full) : relative(root, full).split(sep).join('/'));
         }
       }
     }
@@ -114,10 +116,13 @@ export class FileIndex {
   async resolve(cwd: string | null, paths: string[], home = homedir()): Promise<Array<string | null>> {
     return Promise.all(
       paths.map(async (path) => {
-        const direct = path === '~' ? home : path.startsWith('~/') ? join(home, path.slice(2)) : isAbsolute(path) ? normalize(path) : cwd ? resolve(cwd, path) : null;
+        const homeRelative = path.startsWith('~/') || (sep === '\\' && path.startsWith('~\\'));
+        const direct = path === '~' ? home : homeRelative ? join(home, path.slice(2)) : isAbsolute(path) ? normalize(path) : cwd ? resolve(cwd, path) : null;
         if (direct && (await exists(direct))) return direct;
         if (!cwd || path.startsWith('.') || path.startsWith('~') || isAbsolute(path)) return null;
-        const matches = (await this.list(cwd)).filter((file) => file === path || file.endsWith(`/${path}`));
+        // The file list uses `/`; Claude may name a file with `\` on Windows.
+        const wanted = sep === '/' ? path : path.split(sep).join('/');
+        const matches = (await this.list(cwd)).filter((file) => file === wanted || file.endsWith(`/${wanted}`));
         return matches.length === 1 ? join(cwd, matches[0]!) : null;
       }),
     );

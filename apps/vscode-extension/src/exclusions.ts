@@ -7,8 +7,17 @@
  *   `.claude/settings.local.json`), which follow gitignore's patterns.
  */
 
+/**
+ * A path in the form Claude Code matches permission rules against. On Windows it normalises paths to POSIX form
+ * first: `C:\Users\alice` is `/c/Users/alice`, so a rule for that whole drive starts with `//c/`. Others stay as they are.
+ */
+export function posixForm(path: string): string {
+  const drive = /^([A-Za-z]):[\\/]/.exec(path);
+  return drive ? `/${drive[1]!.toLowerCase()}/${path.slice(3).replace(/\\/g, '/')}` : path;
+}
+
 /** A glob (`**`, `*`, `?`, `{a,b}`, `[abc]`) as a regular expression over a whole `/`-separated path. */
-export function globToRegExp(glob: string): RegExp {
+export function globToRegExp(glob: string, flags = ''): RegExp {
   let out = '';
   let braces = 0;
   for (let i = 0; i < glob.length; i++) {
@@ -37,7 +46,7 @@ export function globToRegExp(glob: string): RegExp {
       }
     } else out += /[.+^$()|\\]/.test(c) ? `\\${c}` : c;
   }
-  return new RegExp(`^${out}$`);
+  return new RegExp(`^${out}$`, flags);
 }
 
 /** Whether a path (relative to the workspace folder) matches one of VS Code's exclude globs that are on. */
@@ -70,11 +79,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 /**
  * The `Read(…)` rules in `permissions.deny`, turned into matchers for absolute paths. Like gitignore: `//path` is from
  * the filesystem's root, `~/path` from home, `/path` from the settings' folder, and `path` or `./path` from the
- * workspace folder; a pattern without a `/` matches at any depth.
+ * workspace folder; a pattern without a `/` matches at any depth. On Windows the folders are in `posixForm`, and
+ * matching ignores case, as the file system does (denying more is the safe way to be wrong).
  */
-export function readRules(files: readonly ClaudeSettingsFile[], workspace: string, home: string): ReadRule[] {
+export function readRules(files: readonly ClaudeSettingsFile[], workspaceFolder: string, homeFolder: string): ReadRule[] {
+  const windows = posixForm(workspaceFolder) !== workspaceFolder || posixForm(homeFolder) !== homeFolder;
+  const workspace = posixForm(workspaceFolder);
+  const home = posixForm(homeFolder);
   const rules: ReadRule[] = [];
   for (const file of files) {
+    const root = posixForm(file.root);
     const deny = isRecord(file.json) && isRecord(file.json.permissions) ? file.json.permissions.deny : undefined;
     if (!Array.isArray(deny)) continue;
     for (const entry of deny) {
@@ -91,15 +105,15 @@ export function readRules(files: readonly ClaudeSettingsFile[], workspace: strin
       let anchored: string;
       if (body.startsWith('//')) anchored = body.slice(1);
       else if (body.startsWith('~/')) anchored = `${home}/${body.slice(2)}`;
-      else if (body.startsWith('/')) anchored = `${file.root}${body}`;
+      else if (body.startsWith('/')) anchored = `${root}${body}`;
       else if (body.startsWith('./')) anchored = `${workspace}/${body.slice(2)}`;
       else anchored = body.includes('/') ? `${workspace}/${body}` : `${workspace}/**/${body}`;
       // What is inside a denied folder is denied too.
-      rules.push({ all: false, match: globToRegExp(`${anchored.replace(/\/+$/, '')}{,/**}`) });
+      rules.push({ all: false, match: globToRegExp(`${anchored.replace(/\/+$/, '')}{,/**}`, windows ? 'i' : '') });
     }
   }
   return rules;
 }
 
 /** Whether a `Read` deny rule keeps this file from Claude. */
-export const deniedByRead = (path: string, rules: readonly ReadRule[]) => rules.some((rule) => rule.all || (rule.match?.test(path) ?? false));
+export const deniedByRead = (path: string, rules: readonly ReadRule[]) => rules.some((rule) => rule.all || (rule.match?.test(posixForm(path)) ?? false));

@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -63,7 +63,9 @@ function updater(install: ReturnType<typeof fakeNativeInstall>, extra: Partial<C
   return { instance, states, store };
 }
 
-describe('ClaudeUpdater', () => {
+// The fake install is a shell script behind a symlink, which Windows can't run. Updating on Windows has its own
+// tests with the work in docs/windows-support.md (2.7).
+describe.skipIf(process.platform === 'win32')('ClaudeUpdater', () => {
   it('finds a newer version, updates with the native installer, and reads the new version', async () => {
     const install = fakeNativeInstall('2.1.0', { to: '2.2.0' });
     const { instance, states } = updater(install);
@@ -132,6 +134,57 @@ describe('ClaudeUpdater', () => {
     const { instance } = updater(install, { findClaude: async () => null });
     await instance.check();
     expect(instance.state.status).toBe('missing');
+  });
+});
+
+describe.skipIf(process.platform !== 'win32')('ClaudeUpdater on Windows', () => {
+  it('updates an npm install through the npm.cmd on PATH, run by cmd.exe, and reads the new version', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'switchboard-claude-update-win-'));
+    dirs.push(home);
+    // npm's package (its claude.exe needn't run here: findClaude reads the version from a file instead).
+    const exe = join(home, 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+    mkdirSync(join(exe, '..'), { recursive: true });
+    writeFileSync(exe, '');
+    const versionFile = join(home, 'version.txt');
+    writeFileSync(versionFile, '2.1.0');
+    // A stand-in npm.cmd in a folder with a space, as Node's is under Program Files.
+    const nodeDir = join(home, 'node js');
+    mkdirSync(nodeDir);
+    writeFileSync(join(nodeDir, 'npm.cmd'), `@echo npm %*\r\n@echo 2.2.0> "${versionFile}"\r\n`);
+    mkdirSync(join(home, '.claude'));
+    const { instance } = updater(
+      { home, bin: exe, configDir: join(home, '.claude') },
+      {
+        findClaude: async () => ({ path: exe, version: readFileSync(versionFile, 'utf8').trim() }),
+        env: async () => ({ PATH: nodeDir, PATHEXT: '.EXE;.CMD', ComSpec: process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe', SystemRoot: process.env.SystemRoot ?? 'C:\\Windows' }),
+      },
+    );
+    await instance.check();
+    // In the package's own prefix, whichever npm is first on PATH.
+    const prefix = join(home, 'npm');
+    expect(instance.state).toMatchObject({ status: 'available', method: 'npm', command: `npm install -g --prefix "${prefix}" @anthropic-ai/claude-code@latest`, installedVersion: '2.1.0' });
+    await instance.update();
+    expect(instance.state).toMatchObject({ status: 'updated', installedVersion: '2.2.0' });
+    // The stand-in echoes its arguments as cmd.exe hands them over, quoted.
+    expect(instance.state.output.startsWith(`npm "install" "-g" "--prefix" "${prefix}" "@anthropic-ai/claude-code@latest"`)).toBe(true);
+  });
+
+  it('says to stop the sessions when an npm update fails, as Windows keeps a running claude.exe', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'switchboard-claude-update-win-'));
+    dirs.push(home);
+    const exe = join(home, 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+    mkdirSync(join(exe, '..'), { recursive: true });
+    writeFileSync(exe, '');
+    mkdirSync(join(home, '.claude'));
+    const { instance } = updater(
+      { home, bin: exe, configDir: join(home, '.claude') },
+      // npm's EBUSY, as when a session runs claude.exe.
+      { findClaude: async () => ({ path: exe, version: '2.1.0' }), run: async () => ({ exitCode: 4294963214 }) },
+    );
+    await instance.check();
+    await instance.update();
+    expect(instance.state).toMatchObject({ status: 'error', installedVersion: '2.1.0' });
+    expect(instance.state.error).toMatch(/^The update command exited with code 4294963214\. .*stop your sessions/);
   });
 });
 

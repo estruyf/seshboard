@@ -13,6 +13,13 @@ describe('mentionFor', () => {
     expect(mentionFor('/repo/src', '/repo', true)).toBe('@src/');
     expect(mentionFor('/repo/My Docs/a b.md', '/repo', false)).toBe('@"My Docs/a b.md"');
   });
+
+  it('writes Windows paths inside the folder with /, as the @ picker does, and keeps others as they are', () => {
+    expect(mentionFor('C:\\repo\\src\\app.ts', 'C:\\repo', false)).toBe('@src/app.ts');
+    expect(mentionFor('c:\\Repo\\src', 'C:\\repo\\', true)).toBe('@src/');
+    expect(mentionFor('D:\\data\\x.ts', 'C:\\repo', false)).toBe('@D:\\data\\x.ts');
+    expect(mentionFor('D:\\data', 'C:\\repo', true)).toBe('@D:\\data\\');
+  });
 });
 
 describe('insertMentions', () => {

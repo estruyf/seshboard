@@ -14,8 +14,8 @@
     "screenshots": "electron-vite build && node scripts/screenshots.ts",
     "typecheck": "tsc -p tsconfig.json",
     "icon": "node scripts/icon/build.mjs",
-    "dist": "electron-vite build && electron-builder --mac --arm64 --publish never",
-    "dist:preview": "electron-vite build && electron-builder --config electron-builder.preview.yml --mac --arm64 --publish never",
+    "dist": "electron-vite build && node scripts/dist.mjs --publish never",
+    "dist:preview": "electron-vite build && node scripts/dist.mjs --config electron-builder.preview.yml --publish never",
     "mock-updates": "node scripts/mock-update-server.ts",
     "smoke:packaged": "node scripts/smoke.ts --packaged",
     "dist:notarized": "APPLE_KEYCHAIN_PROFILE=switchboard-notary npm run dist"

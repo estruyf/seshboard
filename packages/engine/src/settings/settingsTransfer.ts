@@ -8,6 +8,7 @@ import {
   ProjectAction,
   RpcError,
   SETTINGS_FILE_FORMAT,
+  isLocalAbsolutePath,
   parseSettingsFile,
   sanitizePreferences,
   type BackupSection,
@@ -204,7 +205,14 @@ export interface ThemeToAdd {
   how: 'add' | 'replace';
 }
 
-const isFolder = (path: string) => existsSync(path) && statSync(path).isDirectory();
+/**
+ * A folder here. A path in another platform's form (a Mac folder in a file imported on Windows) is never one,
+ * though Windows would read `/Users/…` as a folder on the current drive.
+ */
+const isFolder = (path: string) => isLocalAbsolutePath(path, process.platform) && existsSync(path) && statSync(path).isDirectory();
+
+/** How the import preview names the machine. */
+const THIS_COMPUTER = process.platform === 'darwin' ? 'this Mac' : 'this computer';
 
 /**
  * Works out what importing a file would change and how. Merge adds what is missing and keeps your
@@ -295,7 +303,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       const entry = parsed.data;
       const root = locate(entry.path);
       if (!root) {
-        note('projects', entry.path, 'skip', 'folder not found on this Mac');
+        note('projects', entry.path, 'skip', `folder not found on ${THIS_COMPUTER}`);
         continue;
       }
       if (order.includes(root)) continue;
@@ -379,7 +387,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
           continue;
         }
         if (scope.path !== null && !root) {
-          note('actions', label, 'skip', 'folder not found on this Mac');
+          note('actions', label, 'skip', `folder not found on ${THIS_COMPUTER}`);
           continue;
         }
         const action = parsed.data;

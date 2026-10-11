@@ -1,3 +1,4 @@
+import { isAbsolutePath } from '@switchboard/protocol/client';
 import { useEffect, useMemo, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
@@ -124,7 +125,7 @@ export function usePaletteContext(): PaletteContext {
   const { actions } = useProjectActionList(projectRoot);
 
   const added = useMemo(() => addedProjects(projects), [projects]);
-  const currentRoot = view === 'project' && pageRoot ? pageRoot : projectRoot?.startsWith('/') ? projectRoot : projectFilter;
+  const currentRoot = view === 'project' && pageRoot ? pageRoot : projectRoot && isAbsolutePath(projectRoot) ? projectRoot : projectFilter;
   const activeTerminal = id ? (terminals.get(activeTerminals.get(id) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === id).at(-1)) : undefined;
 
   return {
@@ -146,7 +147,7 @@ export function usePaletteContext(): PaletteContext {
     projects: added.map((p) => ({ root: p.root, name: p.name })),
     currentProject: currentRoot ? { root: currentRoot, name: projects.get(currentRoot)?.name ?? basename(currentRoot) } : null,
     actions: actions.map((a) => ({ id: a.id, name: a.name, shortcut: a.shortcut ?? null, icon: a.icon })),
-    canEditActions: !!projectRoot?.startsWith('/'),
+    canEditActions: !!projectRoot && isAbsolutePath(projectRoot),
     colorScheme: prefs.colorScheme,
     themes: themes.map((t) => ({ id: t.id, name: t.file.name })),
     themeId: activeTheme,

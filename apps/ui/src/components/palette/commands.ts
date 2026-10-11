@@ -1,3 +1,4 @@
+import { fileManagerName } from '../../lib/platform.ts';
 import {
   Activity,
   Archive,
@@ -518,7 +519,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'toggle-changes', title: 'Toggle changes', group: 'session', shortcut: keysFor('changes.toggle'), icon: FileDiff, keywords: 'diff git panel', when: withCwd, run: (api) => api.toggleChanges() },
   { id: 'tools', title: 'Tools: MCP servers, skills, agents, plugins', group: 'session', icon: Blocks, keywords: 'mcp extensions capabilities', when: withCwd, run: (api) => api.showTools() },
   { id: 'open-in-editor', title: 'Open folder in editor', group: 'session', shortcut: keysFor('editor.open'), icon: Code, keywords: 'vscode cursor', when: withCwd, run: (api) => api.openInEditor() },
-  { id: 'reveal-in-finder', title: 'Reveal folder in Finder', group: 'session', icon: Folder, keywords: 'show files', when: withCwd, run: (api) => api.revealInFinder() },
+  { id: 'reveal-in-finder', title: `Reveal folder in ${fileManagerName()}`, group: 'session', icon: Folder, keywords: 'show files', when: withCwd, run: (api) => api.revealInFinder() },
   {
     id: 'add-context',
     title: 'Add context…',

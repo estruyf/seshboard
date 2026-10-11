@@ -1,9 +1,10 @@
 import { FolderSearch, MoreHorizontal, Pencil, Share2, Trash2 } from 'lucide-react';
+import { fileManagerName } from '../../lib/platform.ts';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { bodyTokens, memoryMeta, splitFrontmatter, type MemoryFile } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { contextMenuPoint, type ContextMenuPoint } from '../../lib/contextMenu.ts';
-import { agoText } from '../../lib/format.ts';
+import { agoText, basename } from '../../lib/format.ts';
 import { matches } from '../../lib/shortcuts.ts';
 import { useMemoryView } from '../../state/memoryStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
@@ -325,7 +326,7 @@ export function MemoryEditor({
                 <SectionHeader>Linked from</SectionHeader>
                 {backlinks.map((path) => (
                   <button key={path} type="button" onClick={() => onOpenPath?.(path)} className="justify-self-start text-ui text-link hover:underline" data-memory-backlink={path}>
-                    {labelOf?.(path) ?? path.split('/').pop()!.replace(/\.md$/, '')}
+                    {labelOf?.(path) ?? basename(path).replace(/\.md$/, '')}
                   </button>
                 ))}
               </section>
@@ -365,7 +366,7 @@ export function MemoryEditor({
         )}
         <span className="flex-1" />
         <Button size="sm" variant="quiet" icon={<FolderSearch size={12} aria-hidden />} onClick={onReveal}>
-          Reveal in Finder
+          Reveal in {fileManagerName()}
         </Button>
         {footerActions}
         <Button size="sm" variant="danger" icon={<Trash2 size={12} aria-hidden />} onClick={onDelete} data-memory-delete>

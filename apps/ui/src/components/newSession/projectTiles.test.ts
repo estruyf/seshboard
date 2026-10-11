@@ -84,6 +84,12 @@ describe('project tiles', () => {
     expect(filterFolders(all, '', nameOf, '/u/me')).toEqual(all);
     expect(filterFolders(all, 'demo', nameOf, '/u/me')).toEqual(['/u/me/demo-time']);
     expect(filterFolders(all, '/tmp/x/', nameOf, '/u/me')).toEqual(['/tmp/x']);
+    // Windows: a drive path is a typed path too; its root keeps the separator after the drive letter.
+    expect(filterFolders(all, 'E:\\repos\\app\\', nameOf, '/u/me')).toEqual(['E:\\repos\\app']);
+    expect(filterFolders(all, 'E:\\', nameOf, '/u/me')).toEqual(['E:\\']);
+    expect(filterFolders(all, 'E:/', nameOf, '/u/me')).toEqual(['E:/']);
+    expect(filterFolders(all, 'E:/repos/', nameOf, '/u/me')).toEqual(['E:/repos']);
+    expect(filterFolders(all, 'repos\\app', nameOf, '/u/me')).toEqual([]);
   });
 
   it('list the sessions to pick up: waiting and working first, archived ones left out', () => {

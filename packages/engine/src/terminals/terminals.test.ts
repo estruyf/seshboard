@@ -1,15 +1,18 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TerminalInfo } from '@switchboard/protocol';
+import { userShell } from '../system/shell.ts';
+import { withUpperCasePath } from '../system/shellEnv.ts';
+import { removeDir } from '../util/removeDir.ts';
 import { REPLAY_LIMIT, TerminalManager, type Pty, type SpawnPty } from './terminalManager.ts';
 
 const dirs: string[] = [];
 const managers: TerminalManager[] = [];
-afterEach(() => {
+afterEach(async () => {
   managers.splice(0).forEach((m) => m.closeAll());
-  dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
+  await Promise.all(dirs.splice(0).map((d) => removeDir(d)));
 });
 const tempDir = () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-term-')));
@@ -39,13 +42,24 @@ function setup(spawn?: SpawnPty, env: Record<string, string> = { PATH: process.e
   return { manager, output, changes };
 }
 
+// The same steps in the shell each platform runs: /bin/sh, or PowerShell on Windows (which reads Enter as \r).
+const windows = process.platform === 'win32';
+const real = windows
+  ? { env: withUpperCasePath(process.env as Record<string, string>), input: 'pwd; echo "TERM=$env:TERM"\r', exit: 'exit 7\r', long: 'echo started; Start-Sleep 30', silent: '$null = 1' }
+  : { env: { PATH: process.env.PATH ?? '', SHELL: '/bin/sh' }, input: 'pwd; echo "TERM=$TERM"\n', exit: 'exit 7\n', long: 'echo started; sleep 30', silent: 'true' };
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 describe('TerminalManager with a real pty', () => {
   it('runs a login shell in the folder, streams output, takes input and reports the exit', async () => {
     const cwd = tempDir();
-    const { manager, output, changes } = setup();
-    const info = await manager.open({ sessionId: 's1', cwd, kind: 'shell', cols: 80, rows: 24, fork: false });
+    const { manager, output, changes } = setup(undefined, real.env);
+    // Wide, so ConPTY doesn't wrap the folder's path.
+    const info = await manager.open({ sessionId: 's1', cwd, kind: 'shell', cols: 200, rows: 24, fork: false });
     expect(info).toMatchObject({ sessionId: 's1', kind: 'shell', cwd, exitCode: null });
-    manager.write(info.id, 'pwd; echo "TERM=$TERM"; exit 7\n');
+    manager.write(info.id, real.input);
+    // Exit only once the output is in: ConPTY drops what a process prints right before it exits.
+    await until(() => (output.get(info.id) ?? '').includes('TERM=xterm-256color'));
+    manager.write(info.id, real.exit);
     await until(() => manager.list()[0]?.exitCode !== null);
     const text = output.get(info.id) ?? '';
     expect(text).toContain(cwd);
@@ -59,27 +73,30 @@ describe('TerminalManager with a real pty', () => {
 
   it('stops an action with Ctrl+C and restarts it in the same tab', async () => {
     const cwd = tempDir();
-    const { manager, output } = setup();
-    const info = await manager.open({ sessionId: 's1', cwd, kind: 'action', command: 'echo started; sleep 30', title: 'Dev', cols: 80, rows: 24, fork: false });
+    const { manager, output } = setup(undefined, real.env);
+    const info = await manager.open({ sessionId: 's1', cwd, kind: 'action', command: real.long, title: 'Dev', cols: 80, rows: 24, fork: false });
     // The command is shown first, so wait for its output, not the echo of it.
     await until(() => (output.get(info.id) ?? '').includes('started\r\n'));
     manager.stop(info.id);
-    await until(() => manager.list()[0]?.exitCode !== null);
-    expect(manager.list()[0]!.exitCode).toBe(130);
+    await until(() => manager.list()[0]?.exitCode !== null, 10_000);
+    // Shells report Ctrl+C as 130; on Windows the console's own exit code says it was stopped.
+    const stopped = manager.list()[0]!.exitCode!;
+    if (windows) expect(stopped).not.toBe(0);
+    else expect(stopped).toBe(130);
 
     const restarted = await manager.restart(info.id, { command: 'echo again' });
     expect(restarted).toMatchObject({ id: info.id, exitCode: null });
     await until(() => manager.list()[0]?.exitCode === 0);
-    expect(manager.replay(info.id).replay).toMatch(/\$ echo started; sleep 30[\s\S]*Exited with code 130[\s\S]*Restarted[\s\S]*\$ echo again[\s\S]*again\r\n[\s\S]*Done/);
-  });
+    expect(manager.replay(info.id).replay).toMatch(new RegExp(`\\$ ${escape(real.long)}[\\s\\S]*Exited with code ${stopped}[\\s\\S]*Restarted[\\s\\S]*\\$ echo again[\\s\\S]*again\\r\\n[\\s\\S]*Done`));
+  }, 20_000);
 
   it('shows the command and that it finished when an action prints nothing', async () => {
     const cwd = tempDir();
-    const { manager } = setup();
-    const info = await manager.open({ sessionId: 's1', cwd, kind: 'action', command: 'true', title: 'Fetch', cols: 80, rows: 24, fork: false });
+    const { manager } = setup(undefined, real.env);
+    const info = await manager.open({ sessionId: 's1', cwd, kind: 'action', command: real.silent, title: 'Fetch', cols: 80, rows: 24, fork: false });
     expect(await manager.waitForExit(info.id)).toBe(0);
     // The login shell's rc files may print in between.
-    expect(manager.replay(info.id).replay).toMatch(/^\x1b\[2m\$ true\x1b\[0m\r\n[\s\S]*\x1b\[2m── Done ──\x1b\[0m\r\n$/);
+    expect(manager.replay(info.id).replay).toMatch(new RegExp(`^\\x1b\\[2m\\$ ${escape(real.silent)}\\x1b\\[0m\\r\\n[\\s\\S]*\\x1b\\[2m── Done ──\\x1b\\[0m\\r\\n$`));
   });
 });
 
@@ -121,9 +138,10 @@ describe('TerminalManager', () => {
 
   it('keeps an enclosing Claude Code out of the environment', async () => {
     const fake = fakeSpawn();
-    const { manager } = setup(fake.spawn, { PATH: '/bin', CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_USE_BEDROCK: '1', SHELL: '/bin/zsh' });
+    const env = { PATH: '/bin', CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_USE_BEDROCK: '1', SHELL: '/bin/zsh' };
+    const { manager } = setup(fake.spawn, env);
     await manager.open({ sessionId: null, cwd: tempDir(), kind: 'shell', cols: 80, rows: 24, fork: false });
-    expect(fake.calls[0]!.file).toBe('/bin/zsh');
+    expect(fake.calls[0]!.file).toBe(windows ? userShell(env).file : '/bin/zsh');
     expect(fake.calls[0]!.env).toMatchObject({ PATH: '/bin', CLAUDE_CODE_USE_BEDROCK: '1', TERM_PROGRAM: 'Switchboard' });
     expect(fake.calls[0]!.env).not.toHaveProperty('CLAUDECODE');
     expect(fake.calls[0]!.env).not.toHaveProperty('CLAUDE_CODE_ENTRYPOINT');
@@ -151,12 +169,18 @@ describe('TerminalManager', () => {
 });
 
 describe('terminal font detection', async () => {
-  const { ghosttyFont, vscodeTerminalFont } = await import('../system/terminalFont.ts');
+  const { ghosttyFont, vscodeTerminalFont, windowsTerminalFont } = await import('../system/terminalFont.ts');
   it('reads Ghostty and VS Code settings', () => {
     expect(ghosttyFont('theme = dark\nfont-family = "SauceCodePro Nerd Font Mono"\nfont-size = 13\n')).toBe('SauceCodePro Nerd Font Mono');
     expect(ghosttyFont('font-family = JetBrains Mono\n')).toBe('JetBrains Mono');
     expect(ghosttyFont('font-size = 13\n')).toBeNull();
     expect(vscodeTerminalFont('{\n  // comment\n  "terminal.integrated.fontFamily": "MesloLGS NF",\n}')).toBe('MesloLGS NF');
     expect(vscodeTerminalFont('{ "editor.fontFamily": "X" }')).toBeNull();
+  });
+
+  it('reads Windows Terminal settings, the defaults first and the older key too', () => {
+    expect(windowsTerminalFont('{ "profiles": { "defaults": { "font": { "size": 11, "face": "CaskaydiaCove NF" } }, "list": [{ "font": { "face": "Other" } }] } }')).toBe('CaskaydiaCove NF');
+    expect(windowsTerminalFont('{ "profiles": { "defaults": { "fontFace": "Cascadia Mono" } } }')).toBe('Cascadia Mono');
+    expect(windowsTerminalFont('{ "profiles": { "defaults": {} } }')).toBeNull();
   });
 });

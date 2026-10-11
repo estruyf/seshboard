@@ -1,8 +1,9 @@
+import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { Archive, ArchiveRestore, Check, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2 } from 'lucide-react';
 import type { SidebarStyle } from '@switchboard/protocol/bridge';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { shortAge } from '../../lib/format.ts';
+import { basename, shortAge } from '../../lib/format.ts';
 import { newSessionDraftTooltip, PenBadge } from '../drafts/PenBadge.tsx';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
 import { openDraft, useNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
@@ -34,7 +35,7 @@ import { ProjectFilter } from './ProjectMenu.tsx';
 import { sessionRowLabel } from './rowLabel.ts';
 import { StatusIcon } from './StatusIcon.tsx';
 import { ARCHIVE, useSessionMenu, type FlagChange } from './useSessionMenu.tsx';
-import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
+import { formatKeys, keysFor, matches, modKey } from '../../lib/shortcuts.ts';
 import { useQueueMenu } from '../queue/queueMenu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { QueueRow } from './QueueRow.tsx';
@@ -230,7 +231,7 @@ export const SessionRow = memo(function SessionRow({
   const branch = liveBranch ?? data.branch;
   const emphasised = status === 'needs-you' || status === 'running' || status === 'unread';
   const ageTone = (status && AGE_TONE[status]) ?? 'text-faint';
-  const projectName = project?.name ?? data.projectRoot.split('/').pop();
+  const projectName = project?.name ?? basename(data.projectRoot);
   const titleTone = emphasised || selected ? 'font-semibold text-text' : archived ? 'text-muted' : 'text-text/85';
   const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone}`}>{shortAge(data.updatedAt, now)}</span>;
   // The line at the row's left edge. With more than one Claude profile it is the profile's colour, on
@@ -643,7 +644,7 @@ export function Sidebar() {
 
   // ⌘-click adds a row to the selection, ⇧-click selects a range, ⌥-click opens it in the other pane.
   const rowClick = (event: MouseEvent, data: SessionRowData) => {
-    if (event.metaKey) togglePicked(data.id);
+    if (modKey(event)) togglePicked(data.id);
     else if (event.shiftKey) setPicks((p) => rangePick(p, data.id, selectedId, order));
     else {
       setPicks(NO_PICKS);
@@ -798,8 +799,8 @@ export function Sidebar() {
   return (
     // Drawn at the open width even while the frame around it eases narrower or wider, so it slides rather than reflows.
     <aside aria-label="Sidebar" className="relative flex h-full shrink-0 flex-col border-r border-border bg-sidebar" style={{ width }} data-sidebar-open>
-      {/* Traffic lights on the left; the bar doubles as a window drag handle. */}
-      <div className="drag flex h-13 shrink-0 items-center gap-2 pl-24">
+      {/* Traffic lights on the left (macOS); the bar doubles as a window drag handle. */}
+      <div className={`drag flex h-13 shrink-0 items-center gap-2 ${currentPlatform() === 'darwin' ? 'pl-24' : 'pl-4.5'}`}>
         <span className="text-body font-semibold text-text/90">Switchboard</span>
       </div>
 

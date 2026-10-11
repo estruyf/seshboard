@@ -5,6 +5,7 @@ import type { BranchDeleteResult } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { agoText } from '../../lib/format.ts';
+import { localizeKeys } from '../../lib/shortcuts.ts';
 import { loadBranches, useBranchRows } from '../../state/branchesStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -197,6 +198,7 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
         data-branch-row={row.key}
         data-group={row.group}
         data-locked={row.locked ? true : undefined}
+        data-base={row.entry.isBase ? true : undefined}
         data-picked={isPicked || undefined}
         onFocus={(e) => e.target === e.currentTarget && setFocused(row.key)}
         onKeyDown={(e) => onRowKey(e, row)}
@@ -212,7 +214,7 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
               <Lock size={13} aria-hidden />
             </span>
           ) : (
-            <Checkbox checked={isPicked} onChange={() => pick(row, shift.current)} label={`Pick ${entry.name}`} tooltip={`Pick ${entry.name} (⇧-click for a range)`} dataAttrs={{ 'data-branch-pick': row.key }} />
+            <Checkbox checked={isPicked} onChange={() => pick(row, shift.current)} label={`Pick ${entry.name}`} tooltip={`Pick ${entry.name} (${localizeKeys('⇧-click')} for a range)`} dataAttrs={{ 'data-branch-pick': row.key }} />
           )}
         </span>
         <span role="cell" className="grid min-w-0 gap-px">

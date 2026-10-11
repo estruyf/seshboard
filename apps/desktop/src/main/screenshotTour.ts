@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { setFieldValue, waitInPage } from './pageDriver.ts';
+import { platformModifiers } from './smokeKeys.ts';
 
 /**
  * The README screenshots (npm run screenshots): a walk through the app in the made-up home folder
@@ -22,8 +23,8 @@ export async function runScreenshotTour(win: BrowserWindow, outDir: string, hook
   const js = <T = unknown>(code: string) => win.webContents.executeJavaScript(code) as Promise<T>;
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
   const key = (keyCode: string, modifiers: Array<'meta' | 'shift' | 'alt'> = []) => {
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
-    win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers: platformModifiers(modifiers) });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers: platformModifiers(modifiers) });
   };
   const settle = (ms = 400) => new Promise((resolve) => setTimeout(resolve, ms));
   const need = async (expression: string, what: string, timeoutMs = 8_000) => {

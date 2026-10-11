@@ -6,7 +6,8 @@ import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useThemes } from '../../state/themeStore.ts';
-import { matches } from '../../lib/shortcuts.ts';
+import { appKeyInTerminal, matches } from '../../lib/shortcuts.ts';
+import { currentPlatform } from '../../lib/platform.ts';
 
 /** Fallbacks after the user's own terminal font: system monospace, then common Nerd Fonts for prompt glyphs. */
 const FALLBACK_FONTS = '"SF Mono", ui-monospace, Menlo, "Symbols Nerd Font Mono", "MesloLGS NF", "Hack Nerd Font Mono", "JetBrainsMono Nerd Font Mono", monospace';
@@ -104,7 +105,19 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
       }
       // ⌃⇥ and ⌃⇧⇥ move between sessions, as everywhere else in the window; ⌃` hides the terminal, as in VS Code.
       if (matches(event, 'session.next') || matches(event, 'session.previous') || matches(event, 'terminal.toggle')) return false;
-      return !(event.metaKey && !['c', 'v', 'a'].includes(event.key.toLowerCase()));
+      if (currentPlatform() !== 'darwin') {
+        // As in Windows Terminal: Ctrl+C copies what is selected (and stops the program when nothing is), Ctrl+V
+        // and Ctrl+Shift+V paste through the browser (the shell would get ^V), Ctrl+Shift+C copies.
+        const key = event.key.toLowerCase();
+        const plainCtrl = event.ctrlKey && !event.altKey && !event.metaKey;
+        if (plainCtrl && key === 'c' && (event.shiftKey || term.hasSelection())) {
+          if (event.type === 'keydown') void navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+          return false;
+        }
+        if (plainCtrl && key === 'v') return false;
+      }
+      // The rest of the app's keys (⌘ on macOS, Ctrl+Shift elsewhere) go to the window; ⌘C, ⌘V and ⌘A stay here.
+      return !(appKeyInTerminal(event) && !(currentPlatform() === 'darwin' && ['c', 'v', 'a'].includes(event.key.toLowerCase())));
     });
 
     let disposed = false;

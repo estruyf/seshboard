@@ -1,6 +1,6 @@
 import type { BranchDeleteItem, BranchDeleteResult, BranchEntry, BranchList, LocalBranch, RemoteBranch, WorktreePullRequest } from '@switchboard/protocol';
 import { baseBranch, git, GitError } from './gitChanges.ts';
-import { mapLimit, parseWorktreeList, saveRecoveryRef } from './worktrees.ts';
+import { checkoutsOf, mapLimit, saveRecoveryRef } from './worktrees.ts';
 
 /** One line of `for-each-ref` over `refs/heads` and `refs/remotes`. */
 export interface RefLine {
@@ -64,7 +64,7 @@ export function splitRemoteRef(ref: string, remotes: readonly string[]): { remot
  * branch names to their newest pull request (null: unknown, `gh` isn't there).
  */
 export async function listBranchOverview(root: string, options: { pullRequests?: ReadonlyMap<string, WorktreePullRequest> | null } = {}): Promise<BranchList> {
-  const checkouts = parseWorktreeList(await git(root, ['worktree', 'list', '--porcelain'])).filter((w) => !w.bare);
+  const checkouts = checkoutsOf(await git(root, ['worktree', 'list', '--porcelain']));
   const mainPath = checkouts[0]?.path ?? root;
   const checkedOut = new Map(checkouts.filter((w) => w.branch && !w.prunable).map((w) => [w.branch!, w.path]));
   const base = await baseBranch(mainPath);

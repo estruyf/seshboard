@@ -1,3 +1,4 @@
+import { fileManagerName } from '../../lib/platform.ts';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useBackup } from '../../state/backupStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
@@ -22,6 +23,7 @@ import { syncStep } from '../git/gitPlan.ts';
 import { manage } from '../sidebar/ProjectMenu.tsx';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
+import { basename } from '../../lib/format.ts';
 import type { PaletteApi } from './commands.ts';
 import type { PaletteContext } from './paletteContext.ts';
 
@@ -78,7 +80,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     importTheme: () => void useThemes.getState().chooseImport(),
     exportTheme: () => {
       const { active, exportTheme } = useThemes.getState();
-      void exportTheme(active.entry.id).then((path) => path && toast(`Exported ${active.entry.file.name} to ${path.split('/').pop()}`), failed('export the theme'));
+      void exportTheme(active.entry.id).then((path) => path && toast(`Exported ${active.entry.file.name} to ${basename(path)}`), failed('export the theme'));
     },
     setFocusLimit: (on) => usePreferences.getState().update({ focusLimit: on ? lastLimit() : null }),
 
@@ -120,11 +122,11 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     continueInVSCode: () => call('continue in VS Code', (c) => c.call('session.continueInEditor', { sessionId, editorId: 'vscode' })),
     revealInFinder: () =>
       cwd &&
-      call('show the folder in Finder', async (c) => {
+      call(`show the folder in ${fileManagerName()}`, async (c) => {
         const known = useHosts.getState().editors;
         const editors = known.length ? known : (await c.call('editors.list', {})).editors;
         const finder = editors.find((editor) => editor.kind === 'finder');
-        if (!finder) throw new Error('Finder is not available');
+        if (!finder) throw new Error(`${fileManagerName()} is not available`);
         await c.call('editors.open', { path: cwd, editorId: finder.id });
       }),
     closeSession: () => {

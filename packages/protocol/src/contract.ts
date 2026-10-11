@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AbsolutePath } from './absolutePath.ts';
 import type { ContractShape } from './rpc.ts';
 import {
   EditorInfo,
@@ -90,7 +91,6 @@ export type LogEntry = z.infer<typeof LogEntry>;
 
 const AppStateKey = z.string().min(1).max(200);
 const SessionId = z.string().min(1).max(200);
-const AbsolutePath = z.string().min(1).max(4096).startsWith('/');
 const Prompt = z.string().max(200_000);
 const ProfileId = z.string().min(1).max(100);
 const ProfileName = z.string().trim().min(1).max(60);

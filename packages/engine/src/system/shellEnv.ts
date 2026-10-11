@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { userShell } from './shell.ts';
 
 export interface ShellEnv {
   shell: string;
@@ -25,8 +26,22 @@ export function parseEnvOutput(output: string): Record<string, string> | null {
   return Object.keys(env).length > 0 ? env : null;
 }
 
-function processEnv(): Record<string, string> {
-  return Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
+/** This process's environment as a plain object, with PATH under that name on Windows too. */
+export function processEnv(): Record<string, string> {
+  const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
+  return process.platform === 'win32' ? withUpperCasePath(env) : env;
+}
+
+/**
+ * Windows names variables without regard to case, and an app started from the Start menu gets `Path`. Once
+ * copied into a plain object that is a different key from the `PATH` every lookup here reads, so it is
+ * renamed (keeping one entry, as a child process may otherwise get two). Pure, for testing.
+ */
+export function withUpperCasePath(env: Record<string, string>): Record<string, string> {
+  const key = Object.keys(env).find((k) => k !== 'PATH' && k.toUpperCase() === 'PATH');
+  if (!key) return env;
+  const { [key]: value, ...rest } = env;
+  return { ...rest, PATH: rest.PATH ?? value! };
 }
 
 /**
@@ -36,10 +51,10 @@ function processEnv(): Record<string, string> {
  * `claude`, nvm-managed node and project-action commands would not be found.
  */
 export function resolveShellEnv(timeoutMs = 5000): Promise<ShellEnv> {
-  const shell = process.env.SHELL || '/bin/zsh';
   const started = performance.now();
   // Read now: the engine points process.env.CLAUDE_CONFIG_DIR at a profile's folder while it reads transcripts.
   const base = processEnv();
+  const shell = process.platform === 'win32' ? userShell(base).file : process.env.SHELL || '/bin/zsh';
   const fallback = (): ShellEnv => ({
     shell,
     env: base,
@@ -47,7 +62,8 @@ export function resolveShellEnv(timeoutMs = 5000): Promise<ShellEnv> {
     durationMs: Math.round(performance.now() - started),
   });
 
-  if (process.platform === 'win32') return Promise.resolve(fallback());
+  // Windows has no login shell to read: an app started from the Start menu already gets the user's whole environment.
+  if (process.platform === 'win32') return Promise.resolve({ ...fallback(), resolved: true });
 
   return new Promise((resolve) => {
     execFile(

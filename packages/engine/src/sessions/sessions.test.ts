@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,16 +8,20 @@ import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { coalesce } from '../util/coalesce.ts';
+import { removeDir } from '../util/removeDir.ts';
 import { SessionIndex } from './sessionIndex.ts';
 import { MultiProfileSource } from '../profiles/profileSources.ts';
 import { diagnoseTranscript, transcriptFindings } from './transcriptDiagnosis.ts';
 import { diffTranscript, TranscriptHub } from './transcriptHub.ts';
 
-const cleanups: Array<() => void> = [];
-afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
+// Last made, first undone: indexes and databases close before their folders go (Windows won't delete open files).
+const cleanups: Array<() => void | Promise<void>> = [];
+afterEach(async () => {
+  for (const fn of cleanups.splice(0).reverse()) await fn();
+});
 const tempDir = () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-sessions-')));
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  cleanups.push(() => removeDir(dir));
   return dir;
 };
 const until = async (check: () => boolean, timeoutMs = 3000) => {
@@ -70,6 +74,9 @@ function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), '
     log: () => {},
     onChange: (c) => changes.push(c),
     onTranscriptChanged: (id) => transcriptChanges.push(id),
+  });
+  cleanups.push(() => {
+    if (db.db.isOpen) db.close();
   });
   cleanups.push(() => index.stop());
   return { index, changes, transcriptChanges, projectsDir, db, ...fake };
@@ -186,9 +193,11 @@ describe('SessionIndex', () => {
     mkdirSync(configDir);
     const later = join(tempDir(), 'later');
     const fake = fakeSource([]);
+    const cache = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
+    cleanups.push(() => cache.close());
     const index = new SessionIndex({
       baseline: 1500,
-      db: openCacheDatabase(join(tempDir(), 'cache.sqlite')).db,
+      db: cache.db,
       source: fake.source,
       projectsDirs: () => [
         { profileId: 'work', dir: join(configDir, 'projects') },

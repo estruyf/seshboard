@@ -23,7 +23,7 @@ import { newSessionDraftTooltip, PenBadge } from '../drafts/PenBadge.tsx';
 import { openDraft, useNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
 import { STATUS_LABEL } from './rowLabel.ts';
 import { useSessionMenu } from './useSessionMenu.tsx';
-import { matches } from '../../lib/shortcuts.ts';
+import { localizeKeys, matches, modKey } from '../../lib/shortcuts.ts';
 
 /**
  * One row of the rail: a session, the thin line between two groups, a closed section as one chip (its count, and a
@@ -150,7 +150,7 @@ const RailRow = memo(function RailRow({
   const dot = status && CORNER_DOT[status];
   const line = statusLine(status, status === 'needs-you' ? waitingDetail(request) : null);
   const meta = [projectName, data.branch, shortAge(data.updatedAt, now)].filter(Boolean).join(' · ');
-  const hint = 'Click to open · ⌥-click to open beside';
+  const hint = localizeKeys('Click to open · ⌥-click to open beside');
   const menuAt = (el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
     return { x: rect.right - 4, y: rect.top + 8 };
@@ -307,7 +307,7 @@ export function SidebarRail() {
 
   const rowClick = useCallback((event: MouseEvent, data: SessionRowData) => {
     // Picking several sessions happens in the open sidebar.
-    if (event.metaKey || event.shiftKey) return useSidebar.getState().setState('open');
+    if (modKey(event) || event.shiftKey) return useSidebar.getState().setState('open');
     if (event.altKey) useSessions.getState().openBeside(data.id);
     else useSessions.getState().select(data.id);
   }, []);

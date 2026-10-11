@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,6 +13,8 @@ beforeEach(async () => {
   await run('init', '-q', '-b', 'main');
   await run('config', 'user.email', 'test@example.com');
   await run('config', 'user.name', 'Test');
+  // Files come back as written, whatever the user's global config says (Git for Windows turns this on).
+  await run('config', 'core.autocrlf', 'false');
   write('a.txt', 'one\ntwo\n');
   write('b.txt', 'keep\n');
   await run('add', '.');
@@ -22,6 +24,15 @@ beforeEach(async () => {
 afterEach(() => rmSync(repo, { recursive: true, force: true }));
 
 describe('listChanges', () => {
+  // Git for Windows leaves these out without a word unless core.longpaths is on.
+  it('lists a new file whose path is longer than Windows\' 260 characters', async () => {
+    const deep = Array.from({ length: 12 }, (_, i) => `folder-with-a-long-name-${i}`).join('/');
+    mkdirSync(join(repo, deep), { recursive: true });
+    write(`${deep}/file.txt`, 'x\n');
+    expect(join(repo, deep, 'file.txt').length).toBeGreaterThan(260);
+    expect((await listChanges(repo, 'uncommitted')).files.map((f) => f.path)).toEqual([`${deep}/file.txt`]);
+  });
+
   it('lists uncommitted changes with line counts, staging and new files', async () => {
     write('a.txt', 'one\nTWO\nthree\n');
     write('new.txt', 'hello\nworld\n');
@@ -85,13 +96,15 @@ describe('fileDiff, stage and revert', () => {
     write('ab.txt', 'tracked\n');
     await run('add', 'ab.txt');
     await run('commit', '-qm', 'ab');
-    write('a*.txt', 'new\n');
-    const { untracked } = await revert(repo, ['a*.txt']);
-    expect(untracked).toEqual([join(repo, 'a*.txt')]);
+    // Windows doesn't allow * in a file name; [b] is a glob that matches ab.txt too.
+    const name = process.platform === 'win32' ? 'a[b].txt' : 'a*.txt';
+    write(name, 'new\n');
+    const { untracked } = await revert(repo, [name]);
+    expect(untracked).toEqual([join(repo, name)]);
     // ab.txt is untouched and nothing is staged.
     expect((await run('status', '--porcelain=v1', '--untracked-files=no')).trim()).toBe('');
-    await stage(repo, ['a*.txt'], true);
-    expect((await run('diff', '--cached', '--name-only')).trim()).toBe('a*.txt');
+    await stage(repo, [name], true);
+    expect((await run('diff', '--cached', '--name-only')).trim()).toBe(name);
   });
 
   it('brings back a file whose deletion is staged, and shows its diff', async () => {
