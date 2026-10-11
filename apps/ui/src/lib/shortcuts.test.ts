@@ -224,6 +224,7 @@ describe('the shortcut registry', () => {
       'new-session.start': [at({ view: 'new-session' }), SESSION],
       'new-session.queue': [at({ view: 'new-session' }), SESSION],
       'settings.close': [at({ view: 'settings' }), SESSION],
+      'memory.save': [at({ view: 'project' }), SESSION],
     };
     const conditional = (SHORTCUTS as readonly ShortcutDef[]).filter((s) => s.when).map((s) => s.id);
     expect(Object.keys(cases).sort()).toEqual(conditional.sort());

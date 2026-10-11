@@ -11,6 +11,7 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
+import { sessionMemoryEntries } from '../memory/sessionMemories.tsx';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -86,6 +87,15 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
         { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary, onSelect: () => setDeleting([data]) },
       ],
     });
+    // The memories it wrote, once read: added above Delete while the menu is still this session's.
+    void client?.call('memory.bySession', { sessionId: data.id }).then(
+      ({ memories }) => {
+        const extra = sessionMemoryEntries(memories);
+        if (!extra.length) return;
+        setMenu((m) => (m && m.label === `Session “${data.title}”` ? { ...m, entries: [...m.entries.slice(0, -1), ...extra, ...m.entries.slice(-1)] } : m));
+      },
+      () => {},
+    );
   };
 
   const overlays = (

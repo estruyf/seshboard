@@ -29,6 +29,7 @@ export const THEME_TOKENS = [
   'error',
   'caution',
   'unread',
+  'memory',
   'accent',
   'accent-ink',
   'on-accent',

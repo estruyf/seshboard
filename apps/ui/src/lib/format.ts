@@ -25,6 +25,17 @@ export function basename(path: string): string {
   return trimmed.slice(Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\')) + 1) || trimmed;
 }
 
+/** The folder a path is in: everything before its last `/` or `\` (Windows paths have either). */
+export function dirnameOf(path: string): string {
+  return path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')));
+}
+
+/** The last `count` parts of a path, joined with its own separator: `memory/profile.md`, or `memory\profile.md` on Windows. */
+export function pathTail(path: string, count: number): string {
+  const sep = /^[A-Za-z]:\\/.test(path) ? '\\' : '/';
+  return path.split(/[\\/]/).slice(-count).join(sep);
+}
+
 /** Shows paths under the home folder as `~/…` (`~\…` on Windows, where the drive letter's case may differ). */
 export function tildify(path: string, home: string | null): string {
   if (!home) return path;

@@ -22,6 +22,7 @@ const bridge: SwitchboardBridge = {
   pickImage: (defaultPath?: string) => ipcRenderer.invoke(IpcChannel.pickImage, defaultPath) as Promise<string | null>,
   chooseExportFile: (defaultName: string) => ipcRenderer.invoke(IpcChannel.chooseExportFile, defaultName) as Promise<string | null>,
   chooseImportFile: () => ipcRenderer.invoke(IpcChannel.chooseImportFile) as Promise<string | null>,
+  chooseMemoryExport: () => ipcRenderer.invoke(IpcChannel.chooseMemoryExport) as Promise<string[]>,
   saveImage: (request: SaveImageRequest) => ipcRenderer.invoke(IpcChannel.saveImage, request) as Promise<string | null>,
   showSavedImage: (path: string) => ipcRenderer.send(IpcChannel.showSavedImage, path),
   // File.path is gone from Electron; webUtils is how a sandboxed page learns where a dropped file lives.

@@ -191,6 +191,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
 | ⌘Q then ⌘Q | Quit (Switchboard asks first; Press once if you turned that off) |
+| ⌘S | Save the memory or instructions you are editing (on a project's Memory tab, or Settings › Memory) |
 
 **Sessions and sidebar**
 
@@ -353,6 +354,7 @@ Click a project in the **Projects** view, choose **Open project** in a project's
 - **Sessions:** the project's sessions as the sidebar groups them, and its queued prompts.
 - **Worktrees:** every worktree of the repository, not only the ones Switchboard made. See below.
 - **Branches:** every branch, here and on the remote. See [Branches](#branches).
+- **Memory:** what Claude Code remembers about the project, and the instructions the team shares. See [Memory](#memory).
 - **Actions:** the project's [actions](docs/project-actions.md); click one to edit it, or add a new one.
 - **Settings:** the Claude profile and the choices new sessions start with, and the project's name and icon in Switchboard.
 
@@ -393,6 +395,56 @@ They're grouped:
 Safe local branches start ticked. Tick others (⇧-click for a range, Space on a row), then **Delete N selected…**. The confirmation asks which copies go: the local branches (on), their copies on the remote (off; deleting there removes them for everyone), and whether to keep a recovery ref for each local branch under `refs/switchboard/removed/`. A branch that would lose commits gets a warning, with **Keep this branch**. Right-click a row (or its ⋯) to copy its name, open its pull request, or delete it here, on the remote, or both. **Refresh** fetches from every remote first and drops branches deleted there.
 
 Switchboard never deletes the base branch (here or on any remote), the remote's default branch, a branch that is checked out, or a branch on the remote with an open pull request (deleting it would close the pull request).
+
+### Memory
+
+Claude Code keeps what it learns about a project as *memory*: small Markdown files in a folder of its own, private to you and to this Mac, with a `MEMORY.md` index that loads in every session. Switchboard is an editor for those files: everything stays plain Markdown where Claude Code already looks, so it works the same in the terminal and in VS Code, and keeps working without Switchboard. More in [Memory](docs/memory.md).
+
+The **Memory** tab (and *Memory…* in the command palette) lists:
+
+- **Project memory:** the project's memories, with their type and age, and a `MEMORY.md` meter (orange from 180 lines, red past the 200 that load). With memory under more than one Claude profile, a filter picks the profile and each row shows its profile's dot. All of a project's worktrees share this one folder.
+- **Instructions:** `CLAUDE.md` (at the root, in `.claude/` and in subfolders), the rules in `.claude/rules/`, your own `CLAUDE.local.md` files and subagent memory in `.claude/agent-memory/`, each marked *shared* (committed with the project) or *local only*.
+- **Personal (all projects):** memory about you, from your personal memory folder (see below).
+
+**Editing.** Click a memory to open it: its description and type are fields, the text is below (click **Edit**), and links like `[[other-memory]]` open that memory (orange when it isn't written yet: click it to write it). It shows the session it was written in and how long ago. ⌘S saves; other fields Claude Code keeps in the file stay as they are. If Claude changed the file while you had it open, Switchboard asks before saving over it. **+ New** writes a memory and its line in `MEMORY.md`. Right-click a memory (or use **⋯**) to **Rename…**, **Move to Personal**, **Copy to** another profile, **Reveal in Finder** or **Delete…** (to the Trash, with Undo). Instruction files can be edited the same way; a change to a shared file says **Changed in git**, with **Show in Changes**. Nothing is ever committed.
+
+**What loads in a session here.** At the top of the tab, every file Claude Code reads at the start of a session in this project, in order and by size: your own `~/.claude/CLAUDE.md` and what it imports, your personal rules, the project's `CLAUDE.md` and imports, `CLAUDE.local.md`, rules without `paths:`, and the first 200 lines (or 25 KB) of `MEMORY.md`. Lines past that limit show in red stripes: Claude doesn't see them. Rules limited to some paths are listed as *on demand*. Click an entry to open that file; with more than one profile, pick whose load to show.
+
+**Searching memory.** ⇧⌘F searches memory too: matches show in a **Memory** group above the conversations, with their type and project. Chips narrow them to a type and a menu to one project (or Personal); ↩ opens the memory in its editor. *Search memory…* in the command palette searches memory only. When Claude saves a memory during a session, the conversation shows it as one line, **Saved memory &lt;name&gt;**, with **Open**; a session's menu lists the memories it wrote under *Memories from this session*.
+
+**Links.** Memories link to each other with `[[name]]` (`[[name|label]]` for other words). In the editor, a link opens that memory; one in orange isn't written yet. Under the text, **Linked from** lists the memories that link here and **Not written yet** the names nothing answers to, each with **Write it…**. Typing `[[` while editing suggests names. A list's "N links not written yet" chip shows only the memories with such links. **Rename…** offers to update the links to the memory (only those `[[name]]`s change).
+
+**Remember this.** Select text in a message (yours or Claude's) and click **Remember this**, or right-click a message, or use its toolbar's brain button. Pick a name, type, where it goes (this project, Personal or another project) and a one-line description; it's written straight to the memory folder, with the session it came from. No Claude call, no tokens. Text that looks like a token or password asks you to check it first.
+
+**Health.** The **What loads here** card says how many things there are to look at; **Show** lists them, each with something to do:
+
+- a memory names a file, script or `make` target the project no longer has (**Open** marks it);
+- two memories say the same thing (**Compare** shows them side by side, to keep one or merge them, with Undo);
+- `MEMORY.md` misses memories or points at files that are gone (**Fix index**, with a preview);
+- `MEMORY.md` is past what loads (**Tidy with Claude…** fills in New session with a prompt to shorten it; you read it and start it yourself);
+- memories nobody touched for 180 days, only listed.
+
+Switchboard never changes a memory on its own: every change is one you start.
+
+**Personal memory.** One folder of memory that loads in every project, with any Claude profile: who you are, how you like to work. It lives in Switchboard's app data until you choose another folder in **Settings › Memory** (an iCloud Drive, Dropbox or git folder syncs it to your other Macs; Switchboard says so when a folder is synced, since anything saved there leaves this Mac). Claude Code loads it through one `@…/MEMORY.md` line that Switchboard adds to each profile's `~/.claude/CLAUDE.md`, inside a marked block, after showing you the change. **Remove from Claude Code** takes out only that block; the files stay. When a sync tool leaves two versions of a memory (`name 2.md`, a "conflicted copy"), the list shows it with **Keep this one** and **Keep the other**.
+
+**From and to the Claude app.** In **Settings › Memory** (and the command palette):
+
+- **Import from Claude export…** reads the memory from the Claude app's data export (Settings › Privacy › Export data in the app): `memories-000.zip` (with `projects-000.zip` for project names), the unzipped folder, or the manifest. Only memories and projects are read, never your conversations. Who you are, your preferences, people and topics go to Personal; an *area* goes to the project with its name; a Claude project's files go to a project you pick. A preview lists every memory with where it goes and flags duplicates, things that look like a token (left unticked) and areas without a project, and says how full your personal `MEMORY.md` will be. Nothing is written until **Import**. Importing a newer export later updates what you imported before instead of adding copies.
+- **Paste from Claude app…** gives you a prompt to send in the Claude app, then splits its answer into memories with the same preview. What you paste is saved as files, never sent to Claude.
+- **Copy for Claude app…** copies the memories you tick (about you and your feedback, by default) as one block, to paste in the app's memory import.
+
+**Share with the team.** Some of what Claude remembers is really team knowledge ("tests need a running Postgres"). Select a memory and choose **Share with the team…** (also in its right-click menu, and *Share memory with the team…* in the command palette). Pick where it goes:
+
+- **CLAUDE.md:** the project's instructions (a new one at the root when there is none);
+- **Rule file:** an existing rule in `.claude/rules/`, or a new one, optionally only for some paths (`apps/ui/**`);
+- **CLAUDE.local.md (only me):** your own instructions for the project, next to the shared ones.
+
+It's added at the end of that file as a section with a heading you can edit, and the dialog shows the change before anything is written. When the file already has a section with that heading, choose **Replace that section** or **Add as a new section**. Switchboard warns you when the text looks like it holds a password, token or key (tick *I checked, it's safe to share* first), when the text is in the file already, when the file has uncommitted changes, and when git would commit `CLAUDE.local.md` (with a button to add it to `.gitignore`). By default the memory then moves to the Trash, so Claude doesn't load the same thing twice.
+
+Switchboard **never commits, stages or pushes** anything: the change shows up in **Changes** like any other edit, for you to review and commit. The toast afterwards has **Show in Changes** and **Undo**, which puts the file and the memory back as they were (until your next share, or until you quit).
+
+**Copy to my memory.** The other way round: select an instruction file and choose **Copy to my memory…**. Pick one of its sections, check the name, type and description, and see the memory file and the line it adds to `MEMORY.md` (Claude Code reads the first 200 lines of it; the dialog says how full it gets). The instruction file isn't changed.
 
 ## Unsent messages
 
@@ -442,6 +494,7 @@ Switchboard reads the session files Claude Code already keeps in `~/.claude` (an
 
 - [Themes](docs/themes.md): the theme file format, every colour and where it shows, and code colours.
 - [Project actions](docs/project-actions.md): add buttons for your own commands and prompts, and share them with your team.
+- [Memory](docs/memory.md): where Claude Code's memory lives, the file format, what loads in a session, the personal folder and the Claude export import.
 - [Links](docs/deep-links.md): open Switchboard from a `switchboard://` URL, with examples for the shell, READMEs, Raycast, Alfred and alerts.
 - [VS Code companion](docs/vscode-companion.md): how the extension talks to Switchboard, what it keeps private, and how it is released.
 - [Building, signing and notarisation](docs/building-and-signing.md): packaging the app, and signing it with an Apple Developer ID.

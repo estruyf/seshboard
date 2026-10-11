@@ -22,3 +22,5 @@ export * from './companion.ts';
 export * from './companionConstants.ts';
 export * from './lineTransport.ts';
 export * from './paths.ts';
+export * from './memory.ts';
+export * from './memoryText.ts';

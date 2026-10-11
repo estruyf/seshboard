@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { useSessions } from './sessionsStore.ts';
 
 /** The tabs of a project's page, in order. */
-export type ProjectTab = 'overview' | 'sessions' | 'worktrees' | 'branches' | 'actions' | 'settings';
-export const PROJECT_TABS: readonly ProjectTab[] = ['overview', 'sessions', 'worktrees', 'branches', 'actions', 'settings'];
+export type ProjectTab = 'overview' | 'sessions' | 'worktrees' | 'branches' | 'memory' | 'actions' | 'settings';
+export const PROJECT_TABS: readonly ProjectTab[] = ['overview', 'sessions', 'worktrees', 'branches', 'memory', 'actions', 'settings'];
 
 interface ProjectPageState {
   /** The project the page shows (the view is `project` while it's on screen). */

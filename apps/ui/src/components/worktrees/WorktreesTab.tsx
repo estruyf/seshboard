@@ -474,6 +474,9 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
         </Notice>
       )}
 
+      <p className="text-meta text-muted" data-worktrees-memory-note>
+        Worktrees of this project share one memory folder.
+      </p>
       <div role="table" aria-label={`Worktrees of ${name}`} aria-rowcount={order.length + 1} className="@container rounded-xl border border-border bg-card" data-worktrees-table>
         <div role="row" className={`${COLUMNS} sticky top-0 z-10 rounded-t-xl border-b border-border bg-card px-4 py-2.5 text-meta font-semibold tracking-wider text-faint uppercase`}>
           {/* The cell keeps its place in the grid; only its text is for screen readers. */}
