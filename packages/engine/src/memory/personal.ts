@@ -1,4 +1,4 @@
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { detectEol, isSameOrInside } from '@switchboard/protocol';
 
 /** The marked block Switchboard owns in a profile's CLAUDE.md; nothing outside it is ever changed. */
