@@ -282,8 +282,8 @@ export function invoiceTotal(items: LineItem[], taxRate: number): number {
 
 // ---------------------------------------------------------------------------------------------------------
 
-/** `home` is an empty folder to build in; a new temporary one by default. */
-export function createDemoWorld(home = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-demo-')))): DemoWorld {
+/** `home` is an empty folder to build in; a new temporary one by default (by its long name on Windows, as Claude Code records it). */
+export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpdir(), 'switchboard-demo-')))): DemoWorld {
   // Personal projects run on the personal login, payments-api on the work one.
   const configDir = join(home, '.claude');
   const workConfigDir = join(home, '.claude-work');

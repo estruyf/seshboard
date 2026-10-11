@@ -80,6 +80,7 @@ if (result.stoppedBy) console.log(`✗ the run stopped after "${result.stoppedBy
 console.log(`  rendering on screen: ${JSON.stringify(result.rendering)}`);
 if (result.notifications.length) console.log(`  notifications: ${result.notifications.map((n: { kind: string; title: string; suppressed: boolean }) => `${n.kind} "${n.title}"${n.suppressed ? ' (suppressed: you were looking)' : ''}`).join('; ')}`);
 console.log(`  slowest: ${(result.slowest as StepResult[]).map((step) => `${step.label.split(':')[0]} ${seconds(step.ms)}`).join(', ')}`);
+if (result.window) console.log(`  window ${result.window.content.join('×')} on a ${result.window.workArea.width}×${result.window.workArea.height} screen`);
 if (result.reports[0]) console.log(`  claude ${result.reports[0].claudeVersion ?? 'not found'} · engine ping ${result.reports[0].pingMs}ms · electron ${result.versions.electron}`);
 if (packaged) console.log('  (packaged app)');
 if (world) console.log('  (demo home)');
