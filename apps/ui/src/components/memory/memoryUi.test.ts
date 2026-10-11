@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canShare, copyableSections, indexMeterText, parsePaths, removeByDefault, shareButtonLabel, shareNotices, typeTone, validRuleName } from './memoryUi.ts';
+import { canShare, copyableSections, filterByProfile, indexMeterText, memoryProfiles, parsePaths, removeByDefault, shareButtonLabel, shareNotices, typeTone, validRuleName } from './memoryUi.ts';
 
 describe('share warnings in the dialog', () => {
   it('shows a secret first, as an error that needs a check, and notes after', () => {
@@ -57,6 +57,16 @@ describe('share dialog labels', () => {
 
   it('gives each memory type its own pill', () => {
     expect([typeTone('project'), typeTone('feedback'), typeTone('reference'), typeTone('user'), typeTone(null)]).toEqual(['default', 'caution', 'link', 'ok', 'muted']);
+  });
+});
+
+describe('profiles', () => {
+  it('offers a profile filter only for the profiles a project has memory in', () => {
+    const memories = [{ profileId: 'work' }, { profileId: 'default' }, { profileId: 'work' }, { profileId: null }];
+    expect(memoryProfiles(memories, ['default', 'work', 'other'])).toEqual(['default', 'work']);
+    expect(memoryProfiles([{ profileId: 'default' }], ['default', 'work'])).toEqual(['default']);
+    expect(filterByProfile(memories, 'work')).toHaveLength(2);
+    expect(filterByProfile(memories, 'all')).toHaveLength(4);
   });
 });
 

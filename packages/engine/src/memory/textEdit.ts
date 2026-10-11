@@ -96,7 +96,11 @@ export function unifiedDiff(before: string, after: string, path: string, isNew: 
 }
 
 /** Whether a MEMORY.md line links to `file` (`[Title](file.md)`, also `./file.md`). */
-const linksTo = (line: string, file: string) => line.includes(`](${file})`) || line.includes(`](./${file})`);
+const linksTo = (line: string, file: string) => {
+  const link = /\]\(([^)]*)\)/.exec(line)?.[1];
+  // The personal folder's index links by full path (`~/…/file.md`): the file name at the end is what counts.
+  return !!link && (link === file || link === `./${file}` || link.endsWith(`/${file}`));
+};
 
 /** MEMORY.md without the line that links to `file`, the rest byte for byte; null when no line does. */
 export function removeIndexLine(index: string, file: string): { text: string; line: string; at: number } | null {
@@ -117,6 +121,51 @@ export function restoreIndexLine(index: string, line: string, at: number): strin
   const piece = position < lines.length && !line.endsWith('\n') ? line + eol : line;
   if (position === lines.length && position > 0 && !lines[position - 1]!.endsWith('\n')) lines[position - 1] += eol;
   lines.splice(position, 0, piece);
+  return lines.join('');
+}
+
+/** `- [Title](file.md) — hook` in its parts; the separator is whatever the line uses (` — `, ` - `, `: `). */
+const INDEX_LINE = /^(\s*[-*+]\s*)\[([^\]]*)\]\(([^)]*)\)(?:(\s*(?:—|–|-|:)\s*)(.*?))?(\r?\n)?$/;
+
+/** A MEMORY.md line's title and hook, or null when it isn't a link line. */
+export function parseIndexLine(line: string): { title: string; link: string; hook: string } | null {
+  const match = INDEX_LINE.exec(line);
+  return match ? { title: match[2]!, link: match[3]!, hook: match[5] ?? '' } : null;
+}
+
+/** The separator MEMORY.md's lines use between the link and the hook (the last one wins), ` — ` by default. */
+export function indexSeparator(index: string): string {
+  let found = ' — ';
+  for (const line of index.split(/\r?\n/)) {
+    const match = INDEX_LINE.exec(line);
+    if (match?.[4]) found = match[4];
+  }
+  return found;
+}
+
+/** A new MEMORY.md line in the style of the ones already there: `- [name](name.md) — description`. */
+export const styledIndexLine = (index: string, title: string, file: string, hook: string) => {
+  const text = hook.replace(/\s+/g, ' ').trim();
+  return `- [${title.trim()}](${file})${text ? `${indexSeparator(index)}${text}` : ''}`;
+};
+
+/**
+ * MEMORY.md with the line for `file` changed: a new file name (rename), title or hook. Only that line changes; null
+ * when no line links to `file`. A title that was the old name follows a rename.
+ */
+export function updateIndexLine(index: string, file: string, change: { file?: string; title?: string; hook?: string }): string | null {
+  const lines = pieces(index);
+  const at = lines.findIndex((line) => linksTo(line, file));
+  if (at === -1) return null;
+  const match = INDEX_LINE.exec(lines[at]!);
+  if (!match) return null;
+  const [, lead, title, link, sep, hook, end] = match;
+  const oldName = file.replace(/\.md$/, '');
+  const nextTitle = change.title ?? (change.file && title === oldName ? change.file.replace(/\.md$/, '') : title!);
+  const nextLink = change.file && link!.endsWith(file) ? link!.slice(0, link!.length - file.length) + change.file : link!;
+  const nextHook = change.hook !== undefined ? change.hook.replace(/\s+/g, ' ').trim() : (hook ?? '');
+  const separator = sep ?? indexSeparator(index);
+  lines[at] = `${lead}[${nextTitle}](${nextLink})${nextHook ? `${separator}${nextHook}` : ''}${end ?? ''}`;
   return lines.join('');
 }
 

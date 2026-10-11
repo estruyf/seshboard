@@ -43,7 +43,7 @@ import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { ContextItems } from './context.ts';
 import { CompanionTarget } from './companion.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
-import { MemoryList, SectionCopy, SharePreview, ShareTarget } from './memory.ts';
+import { ExportCandidate, HealthFinding, LoadEntry, MemoryHit, MemoryImportPreview, MemoryList, PersonalMemory, SectionCopy, SharePreview, ShareTarget } from './memory.ts';
 
 export const ClaudeInstall = z.object({
   path: z.string(),
@@ -99,6 +99,10 @@ const SettingsFilePath = AbsolutePath.regex(/\.json$/i, 'Settings files end in .
 const PreferencesRecord = z.record(z.string(), z.unknown());
 /** A Markdown heading's text: one line. */
 const SectionHeading = z.string().trim().min(1).max(200).regex(/^[^\r\n]+$/, 'A heading is one line');
+/** A memory's file name without `.md` (validated again in the engine). */
+const MemoryName = z.string().trim().min(1).max(80);
+const MemoryTypeName = z.string().trim().min(1).max(40).regex(/^[a-z][a-z0-9_-]*$/);
+const MemoryBody = z.string().max(500_000);
 /** `add` a new section, or `replace` the section with the same heading. */
 const SharePlacement = z.enum(['add', 'replace']).default('add');
 /** Theme files as main keeps them (validated where they are read). */
@@ -364,9 +368,30 @@ export const contract = {
      */
     'search.query': {
       // `switchboard` searches only the sessions started or continued in Switchboard, as the sidebar lists them.
-      params: z.object({ query: z.string().max(500), limit: z.number().int().min(1).max(500).default(200), scope: z.enum(['switchboard', 'all']).default('all') }),
-      result: z.object({ hits: z.array(SearchHit), indexing: z.object({ indexed: z.number(), total: z.number() }) }),
+      // Memories (`memories`) match their name, description and text; `memoryTypes` and `memoryScope` (a project root,
+      // `personal` or `all`) narrow them, and `only` leaves out conversations or memory.
+      params: z.object({
+        query: z.string().max(500),
+        limit: z.number().int().min(1).max(500).default(200),
+        scope: z.enum(['switchboard', 'all']).default('all'),
+        only: z.enum(['all', 'conversations', 'memory']).default('all'),
+        memoryTypes: z.array(z.string().max(40)).max(10).default([]),
+        memoryScope: z.string().max(4096).default('all'),
+      }),
+      result: z.object({ hits: z.array(SearchHit), memories: z.array(MemoryHit), indexing: z.object({ indexed: z.number(), total: z.number() }) }),
     },
+    /**
+     * What to look at in a project's memory and the personal folder (`root` null: personal only): stale references,
+     * duplicates, MEMORY.md against its folder, an index past what loads, old memories. Read-only; cached until files change.
+     */
+    'memory.health': { params: z.object({ root: AbsolutePath.nullable() }), result: z.object({ findings: z.array(HealthFinding) }) },
+    /** What Fix index would change in a MEMORY.md: only lines for missing files out, lines for unlisted memories in. */
+    'memory.fixIndexPreview': { params: z.object({ root: AbsolutePath.nullable(), indexPath: AbsolutePath }), result: z.object({ diff: z.string() }) },
+    'memory.fixIndex': { params: z.object({ root: AbsolutePath.nullable(), indexPath: AbsolutePath }), result: z.object({}) },
+    /** What in a text looks like a token, key or password (the same check as sharing and importing). Nothing is kept. */
+    'memory.checkSecrets': { params: z.object({ text: z.string().max(500_000) }), result: z.object({ found: z.array(z.string()) }) },
+    /** The memories a session wrote (their `metadata.originSessionId`), newest first. */
+    'memory.bySession': { params: z.object({ sessionId: SessionId }), result: z.object({ memories: z.array(MemoryHit) }) },
 
     // --- Git -----------------------------------------------------------------------------------
     /** What changed in the checkout a session works in (see ChangesBase). */
@@ -606,8 +631,118 @@ export const contract = {
      * and its instruction files (CLAUDE.md, .claude/CLAUDE.md, CLAUDE.local.md, .claude/rules/). Read-only.
      */
     'memory.list': { params: z.object({ root: AbsolutePath }), result: MemoryList },
-    /** One memory or instruction file. Only inside the project's memory folders or the project itself (FORBIDDEN otherwise). */
-    'memory.read': { params: z.object({ root: AbsolutePath, path: AbsolutePath }), result: z.object({ content: z.string() }) },
+    /**
+     * One memory or instruction file, with when it last changed. Only inside the project's memory folders, the project
+     * itself or the personal memory folder (`root` null: only that), FORBIDDEN otherwise.
+     */
+    'memory.read': { params: z.object({ root: AbsolutePath.nullable(), path: AbsolutePath }), result: z.object({ content: z.string(), modified: z.number() }) },
+    /**
+     * A new memory in Claude Code's format, with its MEMORY.md line in the style of the others: in the project's folder
+     * of a profile (its own by default) or, with `root` null, the personal folder. NAME_TAKEN when the name is.
+     */
+    'memory.create': {
+      params: z.object({
+        root: AbsolutePath.nullable(),
+        profileId: ProfileId.nullable().default(null),
+        name: MemoryName,
+        type: MemoryTypeName,
+        description: z.string().max(300),
+        body: MemoryBody,
+        /** Extra `metadata:` fields, such as `originSessionId` and `source`. */
+        metadata: z.record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/), z.string().max(500)).optional(),
+      }),
+      result: z.object({ path: z.string() }),
+    },
+    /**
+     * Saves a memory's description, type and body; every other frontmatter field stays. CHANGED when the file changed on
+     * disk after `expectedModified` (unless `force`). A new description becomes its MEMORY.md line's hook.
+     */
+    'memory.write': {
+      params: z.object({
+        root: AbsolutePath.nullable(),
+        path: AbsolutePath,
+        description: z.string().max(300),
+        type: MemoryTypeName,
+        body: MemoryBody,
+        expectedModified: z.number().nullable(),
+        force: z.boolean().default(false),
+      }),
+      result: z.object({ modified: z.number() }),
+    },
+    /** Renames a memory: the file, its `name:` and its MEMORY.md line. NAME_TAKEN when the new name is. */
+    /** With `updateLinks`, the `[[old]]` links to it in other memories follow (`updatedLinks`: the files changed). */
+    'memory.rename': {
+      params: z.object({ root: AbsolutePath.nullable(), path: AbsolutePath, name: MemoryName, updateLinks: z.boolean().default(false) }),
+      result: z.object({ path: z.string(), updatedLinks: z.array(z.string()) }),
+    },
+    /**
+     * Every memory's `[[name]]` links in the project's folders and the personal one (`root` null: personal only), each
+     * resolved in its own folder first, then the personal folder (`target` null: not written yet), and what links to it.
+     */
+    'memory.links': {
+      params: z.object({ root: AbsolutePath.nullable() }),
+      result: z.object({ links: z.record(z.string(), z.object({ links: z.array(z.object({ name: z.string(), target: z.string().nullable() })), backlinks: z.array(z.string()) })) }),
+    },
+    /** Moves a memory to the Trash and takes out its MEMORY.md line; `memory.restore` with the token puts both back. */
+    'memory.remove': { params: z.object({ root: AbsolutePath.nullable(), path: AbsolutePath }), result: z.object({ undoToken: z.string() }) },
+    'memory.restore': { params: z.object({ undoToken: z.string().min(1).max(100) }), result: z.object({ path: z.string() }) },
+    /**
+     * What Claude Code loads at the start of a session in this project with a profile (the project's own by default), in
+     * order, with sizes; MEMORY.md says how much of it loads. Rules limited to `paths:` come last, as on demand.
+     */
+    /** The personal memory folder (loaded in every project), its memories and whether each profile's CLAUDE.md loads it. */
+    'memory.personal': { params: z.object({}), result: PersonalMemory },
+    /** Chooses the personal folder (an iCloud, Dropbox or git folder syncs it). A block already in CLAUDE.md follows it. */
+    'memory.setPersonalDir': { params: z.object({ path: AbsolutePath }), result: PersonalMemory },
+    /** What adding the marked block would change in each profile's CLAUDE.md, before anything is written. */
+    'memory.blockPreview': {
+      params: z.object({}),
+      result: z.object({ line: z.string(), profiles: z.array(z.object({ profileId: z.string(), path: z.string(), exists: z.boolean(), diff: z.string() })) }),
+    },
+    /** Adds (or updates) the marked block that loads the personal folder in every profile's CLAUDE.md. */
+    'memory.installBlock': { params: z.object({}), result: PersonalMemory },
+    /** Remove from Claude Code: takes only the marked block out of every profile's CLAUDE.md; the memory files stay. */
+    'memory.removeBlock': { params: z.object({}), result: PersonalMemory },
+    /** Moves a memory between the project's folder and the personal one, with both MEMORY.md lines. NAME_TAKEN when the name is. */
+    'memory.move': {
+      params: z.object({ root: AbsolutePath, path: AbsolutePath, to: z.enum(['personal', 'project']), profileId: ProfileId.nullable().default(null) }),
+      result: z.object({ path: z.string() }),
+    },
+    /** A sync conflict copy: keep it (it replaces the memory it stands for) or the other; the one that goes moves to the Trash. */
+    'memory.resolveConflict': { params: z.object({ root: AbsolutePath.nullable(), path: AbsolutePath, keep: z.enum(['this', 'other']) }), result: z.object({ path: z.string() }) },
+    /** Copies a project memory to the same project's folder of another Claude profile (a taken name gets `-2`). */
+    'memory.copyToProfile': { params: z.object({ root: AbsolutePath, path: AbsolutePath, profileId: ProfileId }), result: z.object({ path: z.string() }) },
+    /**
+     * Saves one of the project's instruction files. CHANGED when it changed on disk after `expectedModified` (unless
+     * `force`). `changedInGit`: it is committed with the project and now has changes to look at in Changes.
+     */
+    'memory.writeInstruction': {
+      params: z.object({ root: AbsolutePath, path: AbsolutePath, content: MemoryBody, expectedModified: z.number().nullable(), force: z.boolean().default(false) }),
+      result: z.object({ modified: z.number(), changedInGit: z.boolean() }),
+    },
+    /** For each of your projects: how many memories it has and how many lines its MEMORY.md has. */
+    'memory.overview': { params: z.object({}), result: z.object({ projects: z.array(z.object({ root: z.string(), memories: z.number(), indexLines: z.number() })) }) },
+    /**
+     * Reads a Claude data export (the memories and projects zips, an unzipped folder, `memories/<uuid>.json` or the
+     * manifest) and says what importing it would write, where, and what to look at. Only `memories` and `projects` are
+     * read, never `conversations`. Nothing is written.
+     */
+    'memory.importExportPreview': { params: z.object({ paths: z.array(AbsolutePath).min(1).max(10) }), result: MemoryImportPreview },
+    /** The same preview for text pasted from the Claude app, split into one memory per heading or bullet. It is data, never a prompt. */
+    'memory.importPastePreview': { params: z.object({ text: z.string().min(1).max(500_000) }), result: MemoryImportPreview },
+    /** Writes the entries picked from the last preview (each with where it goes and its type), with their MEMORY.md lines. */
+    'memory.import': {
+      params: z.object({
+        token: z.string().min(1).max(100),
+        picks: z.array(z.object({ id: z.string(), target: z.string().min(1), type: MemoryTypeName })).max(2000),
+      }),
+      result: z.object({ created: z.number(), updated: z.number() }),
+    },
+    /** Memories Copy for Claude app can pick from: the personal folder's and every project's. */
+    'memory.exportCandidates': { params: z.object({}), result: z.object({ memories: z.array(ExportCandidate) }) },
+    /** One plain-text block of the memories picked, for the Claude app's memory import. */
+    'memory.exportText': { params: z.object({ paths: z.array(AbsolutePath).min(1).max(500) }), result: z.object({ text: z.string() }) },
+    'memory.loadOrder': { params: z.object({ root: AbsolutePath, profileId: ProfileId.nullable().default(null) }), result: z.object({ profileId: z.string(), entries: z.array(LoadEntry) }) },
     /**
      * What sharing a memory with the team would change: the target file before and after, a unified diff and warnings.
      * `placement` matters only when the target has a section with the same heading (`sameHeading`).
@@ -703,8 +838,8 @@ export const contract = {
     'companion.context': z.object({ deliveryId: z.string(), target: CompanionTarget, items: ContextItems, reveal: z.boolean() }),
     /** The companion asked to show a session (its status bar item): select it and bring the window forward. */
     'companion.reveal': z.object({ sessionId: z.string() }),
-    /** A project's memory or instruction files changed through Switchboard (shared, undone, copied): list them again. */
-    'memory.changed': z.object({ root: z.string() }),
+    /** A project's memory or instruction files changed (`root` null: the personal folder): list them again. */
+    'memory.changed': z.object({ root: z.string().nullable() }),
   },
 } as const satisfies ContractShape;
 

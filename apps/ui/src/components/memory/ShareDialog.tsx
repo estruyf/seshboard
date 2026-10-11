@@ -2,13 +2,13 @@ import { FileText, Lock, ScrollText } from 'lucide-react';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { defaultHeading, type SharePreview, type ShareTarget } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { parseUnifiedDiff } from '../../lib/unifiedDiff.ts';
 import { openMemoryFile, showInChanges } from '../../state/memoryStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { DiffRows } from './DiffRows.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { Select } from '../ui/Select.tsx';
@@ -91,7 +91,6 @@ export function ShareDialog({ root, memoryPath, name, onClose }: { root: string;
   const notices = preview ? shareNotices(preview.warnings, fileName) : [];
   const allowed = !!preview && !!target && !busy && canShare(notices, secretsChecked);
   const label = target ? shareButtonLabel(root, target, preview?.targetPath ?? null) : 'Add to rules';
-  const rows = useMemo(() => (preview ? parseUnifiedDiff(preview.diff) : []), [preview]);
 
   const ignoreLocal = async () => {
     if (!client) return;
@@ -288,22 +287,7 @@ export function ShareDialog({ root, memoryPath, name, onClose }: { root: string;
             ) : !preview ? (
               <p className="p-3 text-muted">Reading…</p>
             ) : (
-              rows.map((row, i) =>
-                row.kind === 'hunk' ? (
-                  <div key={i} className="bg-border/30 px-3 text-faint">
-                    @@ {row.text}
-                  </div>
-                ) : row.kind === 'note' ? (
-                  <div key={i} className="px-3 text-faint italic">
-                    {row.text}
-                  </div>
-                ) : (
-                  <div key={i} className={`flex ${row.kind === 'add' ? 'bg-diff-added' : row.kind === 'del' ? 'bg-diff-removed text-text/80' : 'text-muted'}`} data-share-line={row.kind}>
-                    <span className={`w-6 shrink-0 text-center select-none ${row.kind === 'add' ? 'text-ok' : row.kind === 'del' ? 'text-error' : 'text-faint'}`}>{row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' '}</span>
-                    <span className="min-w-0 pr-3 break-words whitespace-pre-wrap">{row.text || ' '}</span>
-                  </div>
-                ),
-              )
+              <DiffRows diff={preview.diff} />
             )}
           </div>
         </div>

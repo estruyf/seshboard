@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { countLines, defaultHeading, firstSentence, flattenLinks, memoryFileText, memoryIndexLine, memoryMeta, parseSections, rulePaths, sectionBody, slugify, splitFrontmatter } from './memoryText.ts';
+import { bodyTokens, countLines, defaultHeading, firstSentence, flattenLinks, memoryFileText, memoryIndexLine, memoryMeta, parseSections, rulePaths, sectionBody, slugify, splitFrontmatter } from './memoryText.ts';
 
 describe('frontmatter', () => {
   it('reads the type at the top level or under metadata, and keeps unknown fields', () => {
     const { data, body } = splitFrontmatter('---\nname: sidebar-order\ndescription: "Needs you: first"\nmetadata:\n  type: project\n  originSessionId: abc\nextra: kept\n---\n\nBody.\n');
-    expect(memoryMeta(data)).toEqual({ name: 'sidebar-order', description: 'Needs you: first', type: 'project' });
+    expect(memoryMeta(data)).toEqual({ name: 'sidebar-order', description: 'Needs you: first', type: 'project', originSessionId: 'abc', source: null });
     expect(data.extra).toBe('kept');
     expect(data.metadata).toEqual({ type: 'project', originSessionId: 'abc' });
     expect(body).toBe('Body.\n');
@@ -47,6 +47,23 @@ describe('headings and names', () => {
     expect(firstSentence('- Tokens live in **styles.css**. Use [components](x).\n')).toBe('Tokens live in styles.css.');
     expect(firstSentence('No full stop here')).toBe('No full stop here');
     expect(firstSentence('```\ncode.\n```\nThen text. More.')).toBe('Then text.');
+  });
+});
+
+describe('body tokens', () => {
+  it('finds [[name]] and [[name|label]] links outside code and escapes', () => {
+    const body = 'See [[a]] and [[b | the b]].\nNot `[[code]]` nor \\[[escaped]].\n```\n[[fenced]]\n```\n[[c]]';
+    const tokens = bodyTokens(body);
+    expect(tokens.filter((t) => 'link' in t).map((t) => ('link' in t ? [t.link, t.label] : null))).toEqual([
+      ['a', 'a'],
+      ['b', 'the b'],
+      ['c', 'c'],
+    ]);
+    expect(tokens.map((t) => ('link' in t ? t.raw : t.text)).join('')).toBe(body);
+  });
+
+  it('leaves broken brackets as text', () => {
+    expect(bodyTokens('[[open and [[a]b]] [[]]')).toEqual([{ text: '[[open and [[a]b]] [[]]' }]);
   });
 });
 

@@ -5,7 +5,10 @@ import { useDrafts } from '../../state/draftsStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
+import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
 import { CopySectionDialog } from '../memory/CopySectionDialog.tsx';
+import { ImportDialog } from '../memory/ImportDialog.tsx';
+import { RememberDialog } from '../memory/RememberDialog.tsx';
 import { ShareDialog } from '../memory/ShareDialog.tsx';
 import { RenameProjectDialog } from '../projects/RenameProjectDialog.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
@@ -65,6 +68,12 @@ export function PaletteDialogs() {
       return <ShareDialog key={dialog.memoryPath} root={dialog.root} memoryPath={dialog.memoryPath} name={dialog.name} onClose={close} />;
     case 'copy-section':
       return <CopySectionDialog key={dialog.file} root={dialog.root} file={dialog.file} onClose={close} />;
+    case 'memory-import':
+      return <ImportDialog source={dialog.source} onClose={close} />;
+    case 'memory-copy-app':
+      return <CopyForAppDialog onClose={close} />;
+    case 'remember':
+      return <RememberDialog text={dialog.text} from={dialog.from} sessionId={dialog.sessionId} root={dialog.root} onClose={close} />;
     case 'revert-all':
       return (
         <ConfirmDialog

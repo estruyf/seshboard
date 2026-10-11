@@ -20,6 +20,7 @@ import { CountBadge } from '../ui/Pill.tsx';
 import { WorktreesTab } from '../worktrees/WorktreesTab.tsx';
 import { MemoryTab } from '../memory/MemoryTab.tsx';
 import { useMemoryList } from '../memory/useMemoryList.ts';
+import { guardMemoryEdits } from '../../state/memoryStore.ts';
 import { menuPoint } from './ProjectManagerView.tsx';
 import { ProjectActionsTab, ProjectSettingsTab, ProjectOverview, ProjectSessions, useProjectSessionRows } from './ProjectTabs.tsx';
 
@@ -125,8 +126,10 @@ export function ProjectPage() {
       event.key === 'ArrowRight' ? PROJECT_TABS[(index + 1) % PROJECT_TABS.length] : event.key === 'ArrowLeft' ? PROJECT_TABS[(index - 1 + PROJECT_TABS.length) % PROJECT_TABS.length] : event.key === 'Home' ? PROJECT_TABS[0] : event.key === 'End' ? PROJECT_TABS.at(-1) : null;
     if (!next) return;
     event.preventDefault();
-    setTab(next);
-    tabRefs.current.get(next)?.focus();
+    guardMemoryEdits(() => {
+      setTab(next);
+      tabRefs.current.get(next)?.focus();
+    });
   };
 
   const upstream = status?.upstream;
@@ -207,7 +210,7 @@ export function ProjectPage() {
                 aria-selected={active}
                 aria-controls="project-tab-panel"
                 tabIndex={active ? 0 : -1}
-                onClick={() => setTab(id)}
+                onClick={() => guardMemoryEdits(() => setTab(id))}
                 className={`flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 text-ui ${active ? 'border-accent-ink font-semibold text-text' : 'border-transparent text-muted hover:text-text'}`}
                 data-project-tab={id}
               >

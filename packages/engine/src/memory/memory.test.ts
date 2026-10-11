@@ -47,7 +47,7 @@ beforeEach(async () => {
   await run('commit', '-qm', 'initial');
   trashed = [];
   service = new MemoryService({
-    configDirs: () => [configDir],
+    profiles: () => [{ id: 'default', configDir }],
     trash: async (paths, scope) => {
       trashed.push({ paths, scope });
       for (const p of paths) rmSync(p);
@@ -77,7 +77,7 @@ describe('memory folders', () => {
 
   it('shares one memory folder between a repository and its worktrees', () => {
     const worktree = join(root, '.claude', 'worktrees', 'wt');
-    const shared = new MemoryService({ configDirs: () => [configDir], repoRoot: () => root, trash: async () => {} });
+    const shared = new MemoryService({ profiles: () => [{ id: 'default', configDir }], repoRoot: () => root, trash: async () => {} });
     expect(shared.dirs(worktree)).toEqual([memoryDir]);
   });
 

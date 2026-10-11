@@ -1,5 +1,17 @@
-import { MEMORY_INDEX_LIMIT, parseSections, type InstructionFile, type ShareTarget, type ShareWarning } from '@switchboard/protocol/client';
+import { MEMORY_INDEX_LIMIT, parseSections, validMemoryName, type InstructionFile, type ShareTarget, type ShareWarning } from '@switchboard/protocol/client';
 import type { PillTone } from '../ui/buttonStyles.ts';
+
+/** The memory types as the editor offers them, in this order. */
+export const TYPE_CHOICES = ['user', 'feedback', 'project', 'reference'] as const;
+
+/** Why a name for a new or renamed memory can't be used, or null when it can. */
+export function memoryNameProblem(name: string, taken: Iterable<string>): string | null {
+  if (!name) return 'Give it a name.';
+  if (!validMemoryName(name)) return 'Use lowercase letters, digits and “-” (it becomes the file name).';
+  const lower = name.toLowerCase();
+  for (const other of taken) if (other.toLowerCase() === lower) return `There is a memory called ${name} already.`;
+  return null;
+}
 
 /** The pill a memory's type shows in: each type its own tone, an unknown one quiet. */
 export function typeTone(type: string | null): PillTone {
@@ -22,10 +34,28 @@ export const relativeTo = (root: string, path: string) => (path.startsWith(`${ro
 
 /** How an instruction file is described in the list: where it loads and whether the team gets it. */
 export function instructionDetail(file: InstructionFile): string {
-  const where = file.kind === 'rule' ? (file.paths?.length ? `paths: ${file.paths.join(', ')}` : 'every file') : 'root';
+  const where =
+    file.kind === 'rule'
+      ? file.paths?.length
+        ? `paths: ${file.paths.join(', ')}`
+        : 'every file'
+      : file.kind === 'subfolder'
+        ? 'when Claude works in that folder'
+        : file.kind === 'agent-memory'
+          ? 'a subagent’s memory'
+          : 'root';
   const kb = file.bytes < 1024 ? `${file.bytes} B` : `${(file.bytes / 1024).toFixed(1)} KB`;
   return `${where} · ${kb}`;
 }
+
+/** The profiles a project's memories are in, in the order given (each once): the filter shows only with two or more. */
+export function memoryProfiles(memories: ReadonlyArray<{ profileId: string | null }>, order: readonly string[]): string[] {
+  const present = new Set(memories.map((m) => m.profileId).filter((id): id is string => id !== null));
+  return order.filter((id) => present.has(id));
+}
+
+/** The memories a profile filter shows: all of them, or one profile's. */
+export const filterByProfile = <T extends { profileId: string | null }>(memories: readonly T[], profileId: string) => (profileId === 'all' ? [...memories] : memories.filter((m) => m.profileId === profileId));
 
 /** The three places a memory can go, as the dialog's segments show them. */
 export type TargetKind = ShareTarget['kind'];

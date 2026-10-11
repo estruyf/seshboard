@@ -1,5 +1,5 @@
 import type { HTMLAttributes, ReactNode } from 'react';
-import { levelOf, LEVEL_COLOR, LEVEL_FILL } from '../../lib/levels.ts';
+import { levelOf, LEVEL_COLOR, LEVEL_FILL, type Level } from '../../lib/levels.ts';
 import { barWidth, clampPercent, formatPercent, ringDegrees, valueTone } from './meter.ts';
 
 interface MeterProps extends Omit<HTMLAttributes<HTMLElement>, 'children'> {
@@ -18,6 +18,8 @@ interface MeterProps extends Omit<HTMLAttributes<HTMLElement>, 'children'> {
    * 480px of the nearest container (a small one of its own, such as New session's footer).
    */
   hideTrackNarrow?: boolean | 'tight';
+  /** The level to colour it in, when its thresholds aren't the usual 60% and 85% (MEMORY.md: caution from 180 of 200 lines). */
+  level?: Level;
   /** A caption before the graphic (`md`: the line above the bar). */
   children?: ReactNode;
   'data-tooltip'?: string;
@@ -27,8 +29,8 @@ interface MeterProps extends Omit<HTMLAttributes<HTMLElement>, 'children'> {
  * How full something is (plan usage, the context window), in the level's colour: green, orange from
  * 60%, red from 85% (`lib/levels.ts`). The track is `bg-selected`, which shows on every surface.
  */
-export function Meter({ percent, kind = 'bar', size = 'sm', label, showValue = false, hideTrackNarrow = false, className = '', children, ...rest }: MeterProps) {
-  const level = levelOf(percent);
+export function Meter({ percent, kind = 'bar', size = 'sm', label, showValue = false, hideTrackNarrow = false, level: forced, className = '', children, ...rest }: MeterProps) {
+  const level = forced ?? levelOf(percent);
   const a11y = label
     ? { role: 'meter', 'aria-label': label, 'aria-valuenow': Math.round(clampPercent(percent)), 'aria-valuemin': 0, 'aria-valuemax': 100 }
     : { 'aria-hidden': true };
