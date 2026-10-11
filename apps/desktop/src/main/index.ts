@@ -1316,7 +1316,8 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
     const read = () => (existsSync(marker) ? readFileSync(marker, 'utf8').trim() : '');
     if (!(await until(() => read() !== '', 10_000))) return 'failed: the shell did not run the command';
-    const folder = (await js("document.querySelector('[data-current-session]')?.dataset.projectRoot ?? ''")) as string;
+    // The panel opens in the session's own folder, which is below the project's root when it was started in a subfolder.
+    const folder = (await js("(() => { const view = document.querySelector('[data-current-session]'); return view?.dataset.cwd || view?.dataset.projectRoot || ''; })()")) as string;
     if (folder && realpathSync(read()) !== realpathSync(folder)) return `failed: the shell started in ${read()}, not ${folder}`;
     await shot(win, 'terminal.png');
     return `ok: ran a command in ${read()}`;

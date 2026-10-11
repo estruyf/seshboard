@@ -658,7 +658,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
 
   return (
     // `@container`: the header compacts itself when the pane is narrow (two sessions side by side).
-    <div className="@container flex h-full min-h-0 flex-col" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-drop-zone>
+    <div className="@container flex h-full min-h-0 flex-col" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-cwd={cwd ?? undefined} data-drop-zone>
       {/* With two panes, the active one has an accent line along the top. */}
       <header
         className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 @max-[860px]:gap-2 @max-[860px]:px-4 ${pane && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
