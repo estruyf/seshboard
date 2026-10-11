@@ -29,9 +29,12 @@ export function typeTone(type: string | null): PillTone {
   }
 }
 
-/** A path inside the project as people know it (`CLAUDE.md`, `.claude/rules/ui.md`; with `\` on Windows). */
+/**
+ * A path inside the project as people know it (`CLAUDE.md`, `.claude/rules/ui.md`): with `/` on Windows too, as
+ * Claude Code's docs and the share dialog's rule names write them.
+ */
 export const relativeTo = (root: string, path: string) =>
-  path !== root && isSameOrInside(path, root) ? path.slice(root.replace(/[\\/]+$/, '').length + 1) : path;
+  path !== root && isSameOrInside(path, root) ? path.slice(root.replace(/[\\/]+$/, '').length + 1).replace(/\\/g, '/') : path;
 
 /** How an instruction file is described in the list: where it loads and whether the team gets it. */
 export function instructionDetail(file: InstructionFile): string {
