@@ -1,0 +1,78 @@
+---
+title: Sessions
+description: When finished sessions are archived, moving old archived sessions to the Trash, Claude Code's own cleanup, and an overview of every session.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+**Settings › Sessions** keeps the sidebar short. Choose when finished sessions move to [Archived](/sessions/archived/), turn on moving old archived sessions to the <Os mac="Trash" windows="Recycle Bin" />, and see every session you have in one table.
+
+## Open it
+
+- In Settings, choose **Sessions** in the list on the left.
+- Click the **⋯** on the **Archived** header in the sidebar and choose **Manage sessions…** (it shows only archived sessions) or **Archive settings…**.
+- Click the session count at the bottom of the sidebar.
+- Run *Manage sessions* or *Delete archived sessions…* in the command palette (<Kbd shortcut="palette.commands" />). *Delete archived sessions…* puts the keyboard on the **Delete archived sessions** switch.
+
+## Keep the list short
+
+Archived sessions leave the sidebar but stay on disk. Deleting one moves its transcript to the <Os mac="Trash" windows="Recycle Bin" />, so `claude --resume` no longer lists it.
+
+### Archive finished sessions after
+
+A finished session moves to Archived after this many days without activity: 3 by default, anything from 1 to 365. Working, needs you, unread and pinned sessions stay in the list, and so does a session open in Switchboard. New activity brings a session back, and so does unarchiving it yourself.
+
+The [VS Code companion](/vscode-companion/) lists the same sessions as the sidebar, so it follows this setting too.
+
+### Delete archived sessions
+
+Off by default. When it is on, a session that has been in Archived for longer than the days you set (30 by default, up to 3650) goes to the <Os mac="Trash" windows="Recycle Bin" />. A session counts as archived from the day you archived it, or, when it was archived on its own, from its last activity plus the archive days above.
+
+These are always kept:
+
+- pinned sessions;
+- sessions that are working or need you;
+- sessions open in another window, such as a terminal or your editor;
+- sessions with a [queued prompt](/new-session/queue/) waiting for them, or an [unsent message](/sessions/unsent-drafts/).
+
+Turning the switch on asks first: **Turn on deleting after 30 days?** says how many sessions go today and how much space that frees. **Review the N** closes the question and shows exactly those sessions in the table below, so you can unarchive or pin the ones you want to keep. **Turn on** starts it. Making the days shorter while it is on asks the same way when more sessions would go at once.
+
+Switchboard checks when it starts and once a day while it is open. Each run is written to the log in [Settings › Diagnostics](/settings/#diagnostics): how many sessions moved, how much space that freed, and how many were kept.
+
+<Aside type="note">
+Sessions only ever go to the <Os mac="Trash" windows="Recycle Bin" />, so you can put them back from there. When Switchboard can't move files to the <Os mac="Trash" windows="Recycle Bin" />, it deletes nothing.
+</Aside>
+
+### Claude Code's own cleanup
+
+Claude Code deletes old transcripts by itself, even when Switchboard's deleting is off. It removes sessions that have been quiet for `cleanupPeriodDays` days (30 when the setting is missing), for every app that uses that Claude profile. The note under the switches says what each [Claude profile](/settings/claude-profiles/) uses, for example *Personal after 30 days, Work after 90 days*.
+
+**Change…** opens one row per profile, with its colour, its name, its `settings.json` and a days menu (**(default)** when the setting is missing). A warning shows under a profile when Claude Code would delete its sessions before Switchboard does. **Save** changes only `cleanupPeriodDays` in the files you changed, and keeps everything else in them. Nothing is written until you press **Save**.
+
+## All sessions
+
+Under the settings, **All sessions** lists every session Claude Code has, also those from other apps when the sidebar shows only Switchboard's. The line under the heading says how many there are, how much space they take, how many are archived, and how many of those have been archived for more than 30 days. **Reveal in <Os mac="Finder" windows="File Explorer" />** opens the folder where Claude Code keeps them (with several profiles, pick which).
+
+### Find sessions
+
+- **Filter by title, branch or project**: type to narrow the list.
+- **Any time**, **7 days**, **30 days**, **Older than 30 days**: by last activity.
+- **All projects**: one project only.
+- **From any app**: where the session started: **Switchboard**, **Terminal**, **Editor**, **Claude desktop** or **Other**.
+- **All**, **In the list**, **Archived**, **Pinned**: where the session is now.
+
+The table groups sessions by month, newest first. Each row shows the project and title (with the branch and project under it), the status, when it was last active, its size on disk and the app it came from. Click a row, or press <Kbd keys="enter" /> on it, to open the session; Settings closes.
+
+### Select and act
+
+Tick a row's checkbox, or press <Kbd keys="space" /> on it. A month's checkbox selects every session of that month that the filters show; it shows a dash when only some are selected. Pinned and working sessions are dimmed and can't be selected: hover their checkbox to see why.
+
+The bar at the bottom says how many sessions you selected, their size, and how many would be skipped because they are kept. It has:
+
+- **Unarchive**: puts the archived ones back in the sidebar.
+- **Move to <Os mac="Trash" windows="Recycle Bin" />…**: asks first, with how much space it frees, a line per project, and which selected sessions are kept and why. After you confirm, a message says how many moved.
+- **Clear** (<Kbd keys="escape" />): selects nothing.
+
+Each row's **⋯** menu (or a right-click) has **Open session**, **Unarchive** or **Archive**, **Pin** or **Unpin**, **Reveal transcript in <Os mac="Finder" windows="File Explorer" />**, **Copy session ID** and **Move to <Os mac="Trash" windows="Recycle Bin" />…**.

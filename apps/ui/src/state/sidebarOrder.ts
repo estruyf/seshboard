@@ -16,9 +16,9 @@ export interface WaitingRequest {
  */
 export function sidebarGroups(
   rows: readonly SessionRowData[],
-  options: { now: number; search?: string; project?: string | null },
+  options: { now: number; archiveAfterDays: number; search?: string; project?: string | null },
 ): { group: SessionGroup; rows: SessionRowData[] }[] {
-  const { active } = buildSessionList(rows, { search: options.search ?? '', project: options.project ?? null, now: options.now });
+  const { active } = buildSessionList(rows, { search: options.search ?? '', project: options.project ?? null, now: options.now, archiveAfterDays: options.archiveAfterDays });
   return groupSessions(active, options.now);
 }
 

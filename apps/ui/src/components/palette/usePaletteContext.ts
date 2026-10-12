@@ -104,7 +104,7 @@ export function usePaletteContext(): PaletteContext {
       title: row?.title ?? 'New session',
       indexed: summary !== null,
       pinned: summary?.pinned ?? false,
-      archived: row ? !isActive(row, Date.now()) : false,
+      archived: row ? !isActive(row, Date.now(), prefs.archiveAfterDays) : false,
       cwd,
       projectRoot: summary?.projectRoot ?? live.get(id)?.projectRoot ?? null,
       isWorktree: Boolean(summary?.worktree || (cwd && inWorktree(cwd))),

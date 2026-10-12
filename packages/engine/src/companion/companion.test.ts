@@ -21,7 +21,7 @@ import type { SessionSource } from '../claude/sessionSource.ts';
 import { createEngine } from '../engine.ts';
 import type { PermissionDecision, PermissionRequest, SessionSummary } from '@switchboard/protocol';
 import { CompanionHub } from './companionHub.ts';
-import { companionSessions, inFolders, isWithin, promptsFor, RECENT_MS, sessionsFor } from './companionSessions.ts';
+import { companionSessions, inFolders, isWithin, promptsFor, sessionsFor } from './companionSessions.ts';
 
 const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 // Folders in this platform's form (E:\work\web on Windows), as the companion only takes absolute local paths.
@@ -229,6 +229,7 @@ describe('prompts', () => {
       infoDir: join(dataDir, COMPANION_DIR),
       appVersion: '9.9.9',
       sources: () => ({ summaries: [summary], live: [], hosts: [], permissions: [prompt('ask', SESSION_ID), prompt('other', 'not-listed')] }),
+      archiveAfterDays: () => 3,
       windows: () => 1,
       respond: (requestId, decision, acceptEdits) => {
         if (requestId !== 'ask') throw new Error('gone');
@@ -293,6 +294,8 @@ describe('session matching', () => {
 });
 
 describe('which sessions are listed', () => {
+  const DAYS = 3;
+  const RECENT_MS = DAYS * 24 * 60 * 60 * 1000;
   const now = 10 * RECENT_MS;
   const summary = (id: string, over: Partial<SessionSummary> = {}): SessionSummary => ({
     id,
@@ -317,10 +320,10 @@ describe('which sessions are listed', () => {
     profileId: 'default',
     ...over,
   });
-  const ids = (summaries: SessionSummary[], options: Parameters<typeof companionSessions>[1] = {}) =>
-    companionSessions({ summaries, live: [], hosts: [] }, { now, scope: 'all', ...options }).map((s) => s.id);
+  const ids = (summaries: SessionSummary[], options: Partial<Parameters<typeof companionSessions>[1]> = {}) =>
+    companionSessions({ summaries, live: [], hosts: [] }, { now, scope: 'all', archiveAfterDays: DAYS, ...options }).map((s) => s.id);
 
-  it('leaves out what the sidebar archived, by hand or after 48 hours', () => {
+  it('leaves out what the sidebar archived, by hand or after the archive days', () => {
     const list = [
       summary('recent'),
       summary('archived-unread', { archivedAt: now - 30_000, updatedAt: now - 60_000, unread: true }),
@@ -332,6 +335,14 @@ describe('which sessions are listed', () => {
       summary('quiet-since-unarchived', { updatedAt: now - RECENT_MS - 1, restoredAt: now - 2 * RECENT_MS }),
     ];
     expect(ids(list)).toEqual(['recent', 'news-since-archived', 'old-unread', 'old-pinned', 'old-unarchived']);
+  });
+
+  it('archives after the days set in Settings › Sessions, like the sidebar', () => {
+    const day = 24 * 60 * 60 * 1000;
+    const list = [summary('two-days', { updatedAt: now - 2 * day }), summary('five-days', { updatedAt: now - 5 * day })];
+    expect(ids(list, { archiveAfterDays: 1 })).toEqual([]);
+    expect(ids(list, { archiveAfterDays: 3 })).toEqual(['two-days']);
+    expect(ids(list, { archiveAfterDays: 7 })).toEqual(['two-days', 'five-days']);
   });
 
   it('lists only sessions from Switchboard under its default scope', () => {

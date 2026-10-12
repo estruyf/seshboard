@@ -54,6 +54,8 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   focusMode: 'At the focus limit',
   focusCountExternal: 'Count terminal and IDE sessions',
   themeId: 'Theme',
+  archiveAfterDays: 'Archive finished sessions after',
+  deleteArchived: 'Delete archived sessions',
 };
 
 /** What the settings file is read from and written to. */
@@ -80,8 +82,11 @@ const listOf = (parts: Array<string | false>) => {
   const set = parts.filter((p): p is string => Boolean(p));
   return set.length < 2 ? (set[0] ?? '') : `${set.slice(0, -1).join(', ')} and ${set.at(-1)}`;
 };
+/** Deleting archived sessions: "off", or "after 30 days". */
+const isDeleting = (value: unknown): value is { enabled: boolean; afterDays: number } => typeof value === 'object' && value !== null && 'enabled' in value && 'afterDays' in value;
 // A focus limit of null is the limit turned off.
-const showValue = (value: unknown) => (typeof value === 'boolean' ? (value ? 'on' : 'off') : value === null ? 'off' : String(value));
+const showValue = (value: unknown) =>
+  typeof value === 'boolean' ? (value ? 'on' : 'off') : value === null ? 'off' : isDeleting(value) ? (value.enabled ? `after ${value.afterDays} days` : 'off') : String(value);
 
 /** A stored icon as it travels in a file; an image that is gone or unreadable falls back to the detected icon. */
 function exportIcon(icon: StoredIcon | null): ExportedIcon | null {

@@ -34,7 +34,7 @@ function currentOrder() {
   const scope = usePreferences.getState().prefs.sessionScope;
   const rows = toRows(sessions, live, useHosts.getState().hosts).filter((row) => inScope(row, scope));
   const open = useSidebar.getState().state === 'open';
-  return sidebarOrder(sidebarGroups(rows, { now: Date.now(), search: open ? filter : '', project: open ? useProjects.getState().filter : null }));
+  return sidebarOrder(sidebarGroups(rows, { now: Date.now(), archiveAfterDays: usePreferences.getState().prefs.archiveAfterDays, search: open ? filter : '', project: open ? useProjects.getState().filter : null }));
 }
 
 function land(id: string, order: readonly { id: string }[]) {

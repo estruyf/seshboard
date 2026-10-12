@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, 'style'> {
   x: number;
@@ -16,7 +17,8 @@ export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, 'styl
 
 /**
  * A floating panel at a screen position, kept on screen. Closes on an outside click, when the window
- * loses focus and (optionally) on Escape. The shared base for `Menu` and `Select`.
+ * loses focus and (optionally) on Escape. The shared base for `Menu` and `Select`. Rendered in `body`, so a parent
+ * that stacks its own layer (Settings, a dialog) can't keep it under the toasts.
  */
 export function Popover({ x, y, width, above = false, onClose, closeOnEscape = true, anchor, className = '', children, ...rest }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -58,16 +60,18 @@ export function Popover({ x, y, width, above = false, onClose, closeOnEscape = t
     };
   }, [anchor]);
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       {...rest}
       style={{ left: position.left, top: position.top, width }}
-      className={`no-drag fixed z-50 max-h-[70vh] overflow-y-auto rounded-lg border overlay py-1 ${className}`}
+      // Above the toasts (z-70), so a toast never covers an open menu, and under the tooltips (z-100).
+      className={`no-drag fixed z-80 max-h-[70vh] overflow-y-auto rounded-lg border overlay py-1 ${className}`}
       // Lets a dialog see that a menu or dropdown is open, so Escape closes that first.
       data-popover
     >
       {children}
-    </div>
+    </div>,
+    document.body,
   );
 }

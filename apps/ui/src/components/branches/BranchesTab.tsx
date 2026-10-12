@@ -331,7 +331,7 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
 
   if (state.notRepo) {
     return (
-      <Notice tone="info" icon={<GitBranch size={13} aria-hidden />} data-branches-not-repo>
+      <Notice icon={<GitBranch size={13} aria-hidden />} data-branches-not-repo>
         {name} isn't a git repository, so it has no branches.
       </Notice>
     );

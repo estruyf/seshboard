@@ -172,7 +172,8 @@ export function ChoiceMenu<T extends string>({
             left: Math.max(8, Math.min(align === 'right' ? anchor.right - width : anchor.left, window.innerWidth - width - 8)),
             ...(anchor.upward ? { bottom: window.innerHeight - anchor.top + 6 } : { top: anchor.bottom + 6 }),
           }}
-          className="fixed z-40 max-h-80 overflow-y-auto rounded-lg border overlay py-1"
+          // Above the toasts (z-70), like `Popover`.
+          className="fixed z-80 max-h-80 overflow-y-auto rounded-lg border overlay py-1"
         >
           {heading && (
             <p role="presentation" className="px-3 pt-1.5 pb-1 text-meta tracking-wide text-faint uppercase">

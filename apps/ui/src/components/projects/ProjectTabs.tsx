@@ -9,6 +9,7 @@ import { openProject, type ProjectTab } from '../../state/projectPageStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { projectOf } from '../../state/queue.ts';
+import { usePreferences } from '../../state/preferencesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { sidebarGroups, sidebarOrder } from '../../state/sidebarOrder.ts';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
@@ -204,8 +205,9 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
   const rows = useProjectSessionRows(root);
   const now = useNow();
   const permissions = useHosts((s) => s.permissions);
-  const groups = useMemo(() => sidebarGroups(rows, { now, project: root }), [rows, now, root]);
-  const archived = useMemo(() => buildSessionList(rows, { search: '', project: root, now }).archived, [rows, now, root]);
+  const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
+  const groups = useMemo(() => sidebarGroups(rows, { now, archiveAfterDays, project: root }), [rows, now, archiveAfterDays, root]);
+  const archived = useMemo(() => buildSessionList(rows, { search: '', project: root, now, archiveAfterDays }).archived, [rows, now, archiveAfterDays, root]);
   const [archivedOpen, setArchivedOpen] = useState<boolean | null>(null);
   const showArchived = archivedOpen ?? groups.length === 0;
   const order = useMemo(() => [...sidebarOrder(groups), ...(showArchived ? archived : [])].map((row) => row.id), [groups, archived, showArchived]);
@@ -259,7 +261,7 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
               expanded: showArchived,
               onToggle: () => setArchivedOpen(!showArchived),
               leading: true,
-              tooltip: 'Quiet for 48 hours, or archived by you. They come back when there is something new.',
+              tooltip: `Quiet for ${archiveAfterDays === 1 ? 'a day' : `${archiveAfterDays} days`}, or archived by you. They come back when there is something new.`,
               data: { 'data-archived-toggle': true, 'data-open': showArchived },
             }}
             className="h-[22px] px-3"

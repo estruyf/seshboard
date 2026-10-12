@@ -3,6 +3,15 @@ import {
   type ThemeFileCheck,
   type ThemeState,
 } from "./themeFormat.ts";
+import {
+  ARCHIVE_AFTER_DAYS,
+  clampDays,
+  DEFAULT_DELETE_ARCHIVED,
+  DELETE_AFTER_DAYS,
+  type DeleteArchived,
+} from "./retention.ts";
+
+export * from "./retention.ts";
 
 /**
  * The small API the preload script exposes on `window.switchboard`.
@@ -92,6 +101,10 @@ export interface Preferences {
   focusCountExternal: boolean;
   /** The colour theme: a built-in's id (`demo-time`, `github`…) or an imported theme's file name. */
   themeId: string;
+  /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
+  archiveAfterDays: number;
+  /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
+  deleteArchived: DeleteArchived;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -109,6 +122,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   focusMode: "nudge",
   focusCountExternal: false,
   themeId: DEFAULT_THEME_ID,
+  archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
+  deleteArchived: DEFAULT_DELETE_ARCHIVED,
 };
 
 /** A theme id: lower-case letters, digits and dashes (built-in ids and the file names of imported themes). */
@@ -157,6 +172,13 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.focusCountExternal === "boolean")
     out.focusCountExternal = raw.focusCountExternal;
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
+  const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
+  if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
+  // Both fields or neither: half a setting would turn deleting on or off by accident.
+  const deleting = raw.deleteArchived as Record<string, unknown> | null | undefined;
+  const afterDays = clampDays(deleting?.afterDays, DELETE_AFTER_DAYS);
+  if (typeof deleting?.enabled === "boolean" && afterDays !== null)
+    out.deleteArchived = { enabled: deleting.enabled, afterDays };
   return out;
 }
 

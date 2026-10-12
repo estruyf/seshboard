@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { Archive, ArchiveRestore, Check, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, Ellipsis, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2 } from 'lucide-react';
 import type { SidebarStyle } from '@switchboard/protocol/bridge';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
@@ -20,6 +20,7 @@ import { toRows, useSessions, type SessionRowData } from '../../state/sessionsSt
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
+import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { archivedPlacement, archivedRevealTop, buildListRows, buildSessionList, GROUP_LABEL, headerSummary, inScope, isActive, rowStatus, sessionsByHeader, waitingLabel, type HeaderKey, type RowStatus, type SidebarListRow } from '../../state/sidebarRows.ts';
 import { NO_PICKS, pickGroup, rangePick, stepPick, togglePick, visiblePicks, type Picks } from '../../state/sessionPicks.ts';
 import { FocusCounter } from '../focus/FocusCounter.tsx';
@@ -121,7 +122,8 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
 }
 
 /** The Archived header, docked under the list while closed and in the list while open: the same toggle in both places. */
-function ArchivedHeader({ count, open, onToggle, action }: { count: number; open: boolean; onToggle(): void; action?: ReactNode }) {
+function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: number; open: boolean; onToggle(): void; onMenu(at: { x: number; y: number }): void; action?: ReactNode }) {
+  const days = usePreferences((s) => s.prefs.archiveAfterDays);
   return (
     <SectionHeader
       count={count}
@@ -129,16 +131,44 @@ function ArchivedHeader({ count, open, onToggle, action }: { count: number; open
         expanded: open,
         onToggle,
         leading: true,
-        tooltip: 'Quiet for 48 hours, or archived by you. They come back when there is something new.',
+        tooltip: `Quiet for ${days === 1 ? 'a day' : `${days} days`}, or archived by you. They come back when there is something new.`,
         data: { 'data-archived-toggle': true, 'data-open': open },
       }}
-      action={action}
+      action={
+        <>
+          {action}
+          <Button
+            variant="quiet"
+            size="sm"
+            iconOnly
+            icon={<Ellipsis size={13} aria-hidden />}
+            aria-label="Archived options"
+            aria-haspopup="menu"
+            className="ml-auto tracking-normal normal-case"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              onMenu({ x: rect.left, y: rect.bottom + 2 });
+            }}
+            data-archived-menu
+          />
+        </>
+      }
       className="h-[22px] flex-1"
     >
       Archived
     </SectionHeader>
   );
 }
+
+/** The Archived header's menu: every session in Settings › Sessions (showing Archived), or the archive settings. */
+const archivedMenu = (at: { x: number; y: number }): { x: number; y: number; entries: MenuEntry[]; label: string } => ({
+  ...at,
+  label: 'Archived',
+  entries: [
+    { label: 'Manage sessions…', icon: <Archive size={13} aria-hidden />, onSelect: () => openSessionManager({ status: 'archived' }), data: { 'data-archived-manage': true } },
+    { label: 'Archive settings…', icon: <Settings size={13} aria-hidden />, onSelect: () => openSessionManager({ focus: 'archive' }), data: { 'data-archived-settings': true } },
+  ],
+});
 
 /** "Select all" on a header while picking: picks every session under it, or takes them all away again. */
 function SelectAllButton({ group, all, onClick }: { group: HeaderKey; all: boolean; onClick(): void }) {
@@ -172,7 +202,7 @@ function PickBox({ on, size, onToggle }: { on: boolean; size: number; onToggle()
   );
 }
 
-/** Re-renders relative ages (and the 48 h cut-off) once a minute. */
+/** Re-renders relative ages (and the archive cut-off) once a minute. */
 function useNow(intervalMs = 60_000): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -427,6 +457,7 @@ export function Sidebar() {
   const now = useNow();
   const sidebarStyle = usePreferences((s) => s.prefs.sidebarStyle);
   const scope = usePreferences((s) => s.prefs.sessionScope);
+  const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const updatePrefs = usePreferences((s) => s.update);
   const width = useSidebar((s) => s.width);
   // Unsent messages: a pen (and the draft's start) on their rows, the count in the footer, a pen on + for New session's.
@@ -435,17 +466,17 @@ export function Sidebar() {
   const newDraft = useNewSessionDraft();
 
   const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
-  const { active, archived } = useMemo(() => buildSessionList(all, { search, project: projectFilter, now }), [all, search, projectFilter, now]);
+  const { active, archived } = useMemo(() => buildSessionList(all, { search, project: projectFilter, now, archiveAfterDays }), [all, search, projectFilter, now, archiveAfterDays]);
   const counts = useMemo(() => {
     const map = new Map<string, { total: number; active: number }>();
     for (const row of all) {
       const entry = map.get(row.projectRoot) ?? { total: 0, active: 0 };
       entry.total++;
-      if (isActive(row, now)) entry.active++;
+      if (isActive(row, now, archiveAfterDays)) entry.active++;
       map.set(row.projectRoot, entry);
     }
     return map;
-  }, [all, now]);
+  }, [all, now, archiveAfterDays]);
 
   // Sections (Needs you, Working, the Queue, Pinned, Today, Yesterday, Earlier), then Archived while it's open. Closed
   // sections keep their header (and the open session's row). Closed, Archived is docked under the list; while
@@ -765,8 +796,8 @@ export function Sidebar() {
 
   // What the picked sessions can do: only indexed ones have flags and a transcript to delete.
   const pickTargets = pickedRows.filter((row) => row.summary);
-  const pickActive = pickTargets.filter((row) => isActive(row, now));
-  const pickArchived = pickTargets.filter((row) => !isActive(row, now));
+  const pickActive = pickTargets.filter((row) => isActive(row, now, archiveAfterDays));
+  const pickArchived = pickTargets.filter((row) => !isActive(row, now, archiveAfterDays));
   const allPinned = pickTargets.length > 0 && pickTargets.every((row) => row.pinned);
   const actOnPicks = (targets: SessionRowData[], change: FlagChange) => () => {
     flagAll(targets, change);
@@ -793,7 +824,7 @@ export function Sidebar() {
 
   // Only open sessions the main list shows: a process idling elsewhere sits under Archived and
   // would make the count disagree with what's visible.
-  const liveCount = all.filter((row) => row.live !== null && isActive(row, now)).length;
+  const liveCount = all.filter((row) => row.live !== null && isActive(row, now, archiveAfterDays)).length;
   const waitingNotice = useWaitingAnnouncement(all, loaded);
 
   return (
@@ -950,7 +981,7 @@ export function Sidebar() {
                   ) : (
                     // Like a section header: the label sits at the foot of the row, just above its sessions.
                     <div className="flex h-full items-end px-2.5 pb-1.5" data-archived-header>
-                      <ArchivedHeader count={row.count} open={row.open} onToggle={toggleArchivedSection} action={selectAll('archived')} />
+                      <ArchivedHeader count={row.count} open={row.open} onToggle={toggleArchivedSection} onMenu={(at) => setMenu(archivedMenu(at))} action={selectAll('archived')} />
                     </div>
                   )}
                 </div>
@@ -1008,19 +1039,20 @@ export function Sidebar() {
       {/* Closed, Archived is docked under the list, so a short list never scrolls and a long one keeps it in sight. */}
       {archivedAt === 'dock' && (
         <div ref={dockRef} onKeyDown={onDockKeyDown} className="relative z-10 flex h-9 shrink-0 items-center border-t border-border bg-sidebar px-4.5" data-archived-dock>
-          <ArchivedHeader count={archived.length} open={false} onToggle={toggleArchivedSection} />
+          <ArchivedHeader count={archived.length} open={false} onToggle={toggleArchivedSection} onMenu={(at) => setMenu(archivedMenu(at))} />
         </div>
       )}
 
       <footer className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3 text-meta text-muted">
         {/* The focus limit, while it's on: how many sessions are going, out of how many. */}
         <FocusCounter />
-        <span className="min-w-0 flex-1 truncate">
+        {/* The count opens every session, in Settings › Sessions. */}
+        <button type="button" onClick={() => openSessionManager()} className="min-w-0 flex-1 truncate rounded text-left hover:text-text" data-tooltip="Manage sessions" data-footer-sessions>
           {all.length} {all.length === 1 ? 'session' : 'sessions'}{liveCount > 0 && ` · ${liveCount} open`}
           {queue.entries.length > 0 && <span data-footer-queued>{` · ${queue.entries.length} queued`}</span>}
           {waiting > 0 && <span className="text-warn">{` · ${waiting} waiting`}</span>}
           {!complete && loaded && ' · scanning…'}
-        </span>
+        </button>
         {unsent.length > 0 && (
           <Pill
             icon={<PencilLine size={11} className="shrink-0" aria-hidden />}

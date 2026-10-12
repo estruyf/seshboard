@@ -23,6 +23,11 @@ import {
   type Transport,
   randomWorktreeName,
   isLocalAbsolutePath,
+  DAY_MS,
+  dueForDeletion,
+  KEEP_REASON_TEXT,
+  keepReason,
+  type KeepReason,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -42,6 +47,8 @@ import { candidatesFromPaste, candidatesOf } from './memory/claudeExport.ts';
 import { readExport } from './memory/memoryImport.ts';
 import { findSecrets } from './memory/secrets.ts';
 import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
+import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessionsWithDrafts, sessionsWithQueuedPrompts, type RetentionPolicy } from './sessions/retention.ts';
+import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profiles/cleanupPeriod.ts';
 import { HostManager, type SdkRuntime } from './host/hostManager.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
@@ -107,6 +114,14 @@ export interface EngineOptions {
   companion?: { appVersion: string; socketParent?: string };
 }
 
+/** What one run of the clean-up of archived sessions did. */
+export interface ArchivedCleanup {
+  deleted: number;
+  bytes: number;
+  kept: number;
+  failed: number;
+}
+
 /** Session files go by their config folder, a revert's files by their repository, memory files by their folder. */
 export type TrashScope = { configDir: string } | { repoRoot: string } | MemoryTrashScope;
 
@@ -114,6 +129,10 @@ export interface Engine {
   /** Serves the contract over a transport (one per window). Returns a detach function. */
   attach(transport: Transport): () => void;
   log(level: LogLevel, message: string): void;
+  /** Settings › Sessions, from main: the archive days and deleting archived sessions. */
+  setRetention(policy: RetentionPolicy): void;
+  /** Runs the clean-up of archived sessions now (it also runs on launch and daily). Null when deleting is off. */
+  deleteArchivedNow(): Promise<ArchivedCleanup | null>;
   close(): void;
 }
 
@@ -137,6 +156,8 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** The VS Code companion's socket, when this engine listens for it. */
   let companion: CompanionHub | null = null;
+  /** Set once the clean-up of archived sessions exists: it first runs after the first full scan. */
+  let scanCompleteHook: () => void = () => {};
   /** Set once memory search exists: every memory change (Switchboard's or a watcher's) re-indexes the files that changed. */
   let memoryChangedHook: () => void = () => {};
   let memorySyncTimer: ReturnType<typeof setTimeout> | undefined;
@@ -178,6 +199,7 @@ export function createEngine(options: EngineOptions): Engine {
   );
   const markContinued = cache.db.prepare('INSERT OR IGNORE INTO continued_sessions (id, created_at) VALUES (?, ?)');
   const unmarkContinued = cache.db.prepare('DELETE FROM continued_sessions WHERE id = ?');
+  // Sessions never use this fallback (see sessionTrash): they are only ever moved to the Trash.
   const trash = options.trash ?? (async (paths: string[], _scope: TrashScope) => paths.forEach((p) => rmSync(p, { recursive: true, force: true })));
   const storedBaseline = appState.get('sessions.baseline');
   const baseline = typeof storedBaseline === 'number' ? storedBaseline : Date.now();
@@ -198,6 +220,7 @@ export function createEngine(options: EngineOptions): Engine {
     onChange: (change) => {
       broadcast('sessions.changed', change);
       scheduleSearchSync();
+      if (change.complete) scanCompleteHook();
     },
     onTranscriptChanged: (id) => transcripts.changed(id),
   });
@@ -678,6 +701,7 @@ export function createEngine(options: EngineOptions): Engine {
       appVersion: options.companion.appVersion,
       ...(options.companion.socketParent ? { socketParent: options.companion.socketParent } : {}),
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
+      archiveAfterDays: () => retention.archiveAfterDays,
       windows: () => servers.size,
       respond: async (requestId, decision, acceptEdits) => {
         const sessionId = hosts.list().permissions.find((p) => p.requestId === requestId)?.sessionId;
@@ -689,6 +713,113 @@ export function createEngine(options: EngineOptions): Engine {
     });
     void companion.start();
   }
+
+  // --- Archived sessions: Settings › Sessions -------------------------------------------------------------------
+  /** Main sends the settings when the engine starts and after each change; until then, the defaults (deleting off). */
+  let retention: RetentionPolicy = DEFAULT_RETENTION;
+  /** Session files only ever go to the Trash: without a way to put them there, nothing is deleted. */
+  const sessionTrash = () => {
+    if (!options.trash) throw new RpcError('NO_TRASH', "Switchboard can't move sessions to the Trash here, so it won't delete them.");
+    return options.trash;
+  };
+  /** Every indexed session with what the archive and keep rules need, now. */
+  const retentionCandidatesNow = () =>
+    retentionCandidates({
+      summaries: sessions.snapshot().sessions,
+      live: liveList(),
+      ...hosts.list(),
+      drafts: sessionsWithDrafts(appState.get(DRAFTS_KEY)),
+      queued: sessionsWithQueuedPrompts(later.list()),
+    });
+  /** Moves one session's transcript and subagent transcripts to the Trash and forgets it. */
+  const deleteSession = async (sessionId: string) => {
+    const toTrash = sessionTrash();
+    if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
+      throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');
+    }
+    await hosts.release(sessionId);
+    const transcript = sessions.pathFor(sessionId);
+    if (!transcript) throw new RpcError('NOT_FOUND', 'No transcript found for this session');
+    // The same files Claude Code's own deleteSession removes: the transcript and its subagent folder.
+    const paths = [transcript, transcript.replace(/\.jsonl$/, '')].filter((p) => existsSync(p));
+    await toTrash(paths, { configDir: profiles.runtime(sessionProfile(sessionId)).configDir });
+    sessions.forget(sessionId);
+    hosts.forget(sessionId);
+    owned.delete(sessionId);
+    unmarkOwned.run(sessionId);
+    continued.delete(sessionId);
+    unmarkContinued.run(sessionId);
+  };
+  /**
+   * The daily clean-up: archived sessions that have been in Archived for longer than the days set go to the Trash, with
+   * the same sessions kept as when you delete by hand. Logged to Diagnostics. Null when deleting is off.
+   */
+  const deleteArchived = async (): Promise<ArchivedCleanup | null> => {
+    const { deleteArchived: setting, archiveAfterDays } = retention;
+    if (!setting.enabled) return null;
+    if (!options.trash) {
+      log('warn', 'Not deleting archived sessions: nothing here can move them to the Trash');
+      return null;
+    }
+    const { due, kept } = dueForDeletion(retentionCandidatesNow(), { now: Date.now(), archiveAfterDays, afterDays: setting.afterDays });
+    const report: ArchivedCleanup = { deleted: 0, bytes: 0, kept: kept.length, failed: 0 };
+    for (const session of due) {
+      try {
+        await deleteSession(session.id);
+        report.deleted++;
+        report.bytes += session.summary.fileSize ?? 0;
+      } catch (error) {
+        report.failed++;
+        log('warn', `Couldn't move archived session ${session.id} to the Trash: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const reasons = [...new Set(kept.map((k) => KEEP_REASON_TEXT[k.reason]))];
+    log(
+      'info',
+      `Deleting archived sessions (in Archived for over ${setting.afterDays} days): moved ${report.deleted} to the Trash (${megabytes(report.bytes)}); kept ${report.kept}${reasons.length ? ` (${reasons.join(', ')})` : ''}${report.failed ? `; ${report.failed} failed` : ''}`,
+    );
+    return report;
+  };
+  let cleanupRunning: Promise<unknown> = Promise.resolve();
+  /** One clean-up at a time: a second request waits for the first. */
+  const runCleanup = (): Promise<ArchivedCleanup | null> => {
+    const run = cleanupRunning.then(deleteArchived);
+    cleanupRunning = run.catch(() => {});
+    return run;
+  };
+  /** A run nobody waits for (launch, daily, a changed setting): a failure goes to the log. */
+  const cleanupInBackground = () =>
+    void runCleanup().catch((error: unknown) => log('error', `Deleting archived sessions failed: ${error instanceof Error ? error.message : String(error)}`));
+  let scanned = false;
+  let policyReceived = false;
+  let launchRun = false;
+  /** On launch, once the settings arrived and the first scan is done; then once a day while the app is open. */
+  const maybeRunOnLaunch = () => {
+    if (launchRun || !scanned || !policyReceived) return;
+    launchRun = true;
+    cleanupInBackground();
+  };
+  scanCompleteHook = () => {
+    scanned = true;
+    maybeRunOnLaunch();
+  };
+  const dailyCleanup = setInterval(cleanupInBackground, DAY_MS);
+  dailyCleanup.unref?.();
+  /** A change to the settings runs the clean-up shortly after (the dialog said they go today), once the stepper settles. */
+  let settingTimer: ReturnType<typeof setTimeout> | undefined;
+  const setRetention = (policy: RetentionPolicy) => {
+    const before = retention;
+    retention = policy;
+    if (before.archiveAfterDays !== policy.archiveAfterDays) companion?.sessionsChanged();
+    if (!policyReceived) {
+      policyReceived = true;
+      return maybeRunOnLaunch();
+    }
+    if (!launchRun || !policy.deleteArchived.enabled || JSON.stringify(before) === JSON.stringify(policy)) return;
+    clearTimeout(settingTimer);
+    settingTimer = setTimeout(cleanupInBackground, 5_000);
+    settingTimer.unref?.();
+  };
 
   const handlers: Handlers<Contract> = {
     'system.info': async (): Promise<SystemInfo> => {
@@ -721,22 +852,62 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'session.delete': async ({ sessionId }) => {
-      if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
-        throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');
-      }
-      await hosts.release(sessionId);
-      const transcript = sessions.pathFor(sessionId);
-      if (!transcript) throw new RpcError('NOT_FOUND', 'No transcript found for this session');
-      // The same files Claude Code's own deleteSession removes: the transcript and its subagent folder.
-      const paths = [transcript, transcript.replace(/\.jsonl$/, '')].filter((p) => existsSync(p));
-      await trash(paths, { configDir: profiles.runtime(sessionProfile(sessionId)).configDir });
-      sessions.forget(sessionId);
-      hosts.forget(sessionId);
-      owned.delete(sessionId);
-      unmarkOwned.run(sessionId);
-      continued.delete(sessionId);
-      unmarkContinued.run(sessionId);
+      await deleteSession(sessionId);
       log('info', `Moved session ${sessionId} to the Trash`);
+      return {};
+    },
+    'sessions.deleteMany': async ({ sessionIds }) => {
+      sessionTrash();
+      const candidates = new Map(retentionCandidatesNow().map((c) => [c.id, c]));
+      const deleted: Array<{ id: string; fileSize: number | null }> = [];
+      const skipped: Array<{ id: string; reason: KeepReason | 'not-found' | 'failed'; error: string | null }> = [];
+      for (const id of new Set(sessionIds)) {
+        const candidate = candidates.get(id);
+        if (!candidate || !sessions.pathFor(id)) {
+          skipped.push({ id, reason: 'not-found', error: null });
+          continue;
+        }
+        const reason = keepReason(candidate.deletion);
+        if (reason) {
+          skipped.push({ id, reason, error: null });
+          continue;
+        }
+        try {
+          await deleteSession(id);
+          deleted.push({ id, fileSize: candidate.summary.fileSize });
+        } catch (error) {
+          skipped.push({ id, reason: 'failed', error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      const size = deleted.reduce((sum, d) => sum + (d.fileSize ?? 0), 0);
+      log('info', `Moved ${deleted.length} ${deleted.length === 1 ? 'session' : 'sessions'} (${megabytes(size)}) to the Trash${skipped.length ? `; kept ${skipped.length}` : ''}`);
+      return { deleted, skipped };
+    },
+    'session.reveal': async ({ sessionId }) => {
+      const transcript = sessions.pathFor(sessionId);
+      if (!transcript || !existsSync(transcript)) throw new RpcError('NOT_FOUND', 'No transcript found for this session');
+      openInEditor('finder', transcript, undefined, await editorEnv());
+      return {};
+    },
+    'profiles.revealProjects': async ({ profileId }) => {
+      if (!profiles.has(profileId)) throw new RpcError('NOT_FOUND', 'No such profile');
+      const folder = join(profiles.runtime(profileId).configDir, 'projects');
+      if (!existsSync(folder)) throw new RpcError('NOT_FOUND', `Not found: ${folder}`);
+      openInEditor('finder', folder, undefined, await editorEnv());
+      return {};
+    },
+    'profiles.cleanupPeriods': () => ({
+      profiles: profiles.runtimes().map((profile) => ({ profileId: profile.id, ...readProfileCleanup(profile.configDir) })),
+    }),
+    'profiles.setCleanupPeriod': ({ profileId, days }) => {
+      if (!profiles.has(profileId)) throw new RpcError('NOT_FOUND', 'No such profile');
+      const { configDir } = profiles.runtime(profileId);
+      try {
+        writeProfileCleanup(configDir, days);
+      } catch (error) {
+        throw new RpcError('WRITE_FAILED', `Couldn't change ${settingsPathOf(configDir)}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      log('info', `Set cleanupPeriodDays in ${settingsPathOf(configDir)} to ${days ?? 'the default'}`);
       return {};
     },
     'session.rename': async ({ sessionId, title }) => {
@@ -1528,7 +1699,11 @@ export function createEngine(options: EngineOptions): Engine {
       };
     },
     log,
+    setRetention,
+    deleteArchivedNow: runCleanup,
     close() {
+      clearInterval(dailyCleanup);
+      clearTimeout(settingTimer);
       companion?.stop();
       memoryWatcher.close();
       clearTimeout(memorySyncTimer);

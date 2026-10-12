@@ -423,7 +423,7 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
 
   if (state.notRepo) {
     return (
-      <Notice tone="info" icon={<GitBranch size={13} aria-hidden />} data-worktrees-not-repo>
+      <Notice icon={<GitBranch size={13} aria-hidden />} data-worktrees-not-repo>
         {name} isn't a git repository, so it has no worktrees.
       </Notice>
     );

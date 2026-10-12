@@ -71,6 +71,7 @@ export function NewSessionView() {
   const hosts = useHosts((s) => s.hosts);
   const live = useSessions((s) => s.live);
   const scope = usePreferences((s) => s.prefs.sessionScope);
+  const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
   const view = useSessions((s) => s.view);
   const [cwd, setCwd] = useState<string | null>(null);
@@ -528,7 +529,7 @@ export function NewSessionView() {
     else if (paletteRequest.kind === 'catch-up' && canCatchUp) setCatchUpRequest((n) => n + 1);
   }, [paletteRequest]);
 
-  const pickUp = useMemo(() => (cwd ? pickUpRows(rows, cwd, Date.now()) : []), [rows, cwd]);
+  const pickUp = useMemo(() => (cwd ? pickUpRows(rows, cwd, Date.now(), archiveAfterDays) : []), [rows, cwd, archiveAfterDays]);
   /** The first prompts of your sessions in this project, for ↑ in the message box. */
   const promptHistory = useMemo(() => (cwd ? projectHistory(sessions.values(), cwd) : []), [sessions, cwd]);
 

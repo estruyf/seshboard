@@ -12,6 +12,7 @@ import { cleanUpWorktrees, openProject } from '../../state/projectPageStore.ts';
 import { copyForClaudeApp, importFromClaudeExport, pasteFromClaudeApp } from '../memory/memoryDialogs.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from '../../state/sessionNav.ts';
+import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
@@ -60,6 +61,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     showShortcuts: () => useOverlay.getState().show('shortcuts'),
     showUnsent: () => openUnsentList(),
     openSettings: (section) => useSessions.getState().openSettings(section),
+    manageSessions: (options) => openSessionManager(options),
     setPreferences: (patch) => usePreferences.getState().update(patch),
     setSidebar: (state) => useSidebar.getState().setState(state),
     toggleSidebar: () => useSidebar.getState().toggle(),

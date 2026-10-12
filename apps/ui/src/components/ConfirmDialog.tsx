@@ -11,6 +11,12 @@ export interface ConfirmDialogProps {
   blockedReason?: string | null;
   /** Next to Cancel: another way out that also does something (the quit prompt's Show unsent). Escape still only closes. */
   secondary?: { label: string; onSelect(): void; data?: Record<`data-${string}`, string | boolean> };
+  /** More under the text: a breakdown of what the action touches. */
+  details?: ReactNode;
+  /** On the left of the footer: a way to look first ("Review the 89"). */
+  start?: ReactNode;
+  /** `data-*` hooks on the dialog. */
+  data?: Record<`data-${string}`, string | boolean>;
   onConfirm(): Promise<void>;
   onClose(): void;
 }
@@ -41,6 +47,8 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       subtitle={<div className="leading-relaxed">{props.body}</div>}
       onClose={props.onClose}
       initialFocus={confirmRef}
+      footerStart={props.start}
+      {...props.data}
       footer={
         <>
           <Button onClick={props.onClose}>Cancel</Button>
@@ -57,10 +65,16 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
         </>
       }
     >
-      {(error || props.blockedReason) && (
-        <p role="alert" className="text-ui text-error">
-          {error ? `That didn't work: ${error}` : props.blockedReason}
-        </p>
+      {/* Nothing to show leaves the body out, so a plain question stays compact. */}
+      {(props.details || error || props.blockedReason) && (
+        <div className="grid gap-3">
+          {props.details}
+          {(error || props.blockedReason) && (
+            <p role="alert" className="text-ui text-error">
+              {error ? `That didn't work: ${error}` : props.blockedReason}
+            </p>
+          )}
+        </div>
       )}
     </Dialog>
   );
