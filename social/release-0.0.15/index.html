@@ -1,0 +1,165 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  .copy { width: 450px; }
+
+  /* The Usage view on its Limits tab, at the back. */
+  .usage {
+    position: absolute; right: 0; top: 0; width: 520px; height: 318px;
+    background: var(--bg); border-radius: 12px; overflow: hidden;
+    box-shadow: 0 0 0 1px var(--edge), 0 24px 60px -12px rgba(0,0,0,0.75);
+  }
+  .uh { padding: 14px 16px 0; border-bottom: 1px solid var(--border); }
+  .uh .row1 { display: flex; align-items: center; gap: 10px; }
+  .uh h2 { font-size: 20px; font-weight: 650; color: #f3f4f7; }
+  .prof { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 7px; font-size: 11.5px; color: var(--text); box-shadow: inset 0 0 0 1px var(--edge); }
+  .prof i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .uh .row2 { display: flex; align-items: flex-end; margin-top: 8px; }
+  .tab { padding: 6px 9px 8px; font-size: 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.on { color: var(--text); font-weight: 600; border-color: var(--accent); }
+  .seg { margin-left: auto; margin-bottom: 7px; display: flex; padding: 2px; border-radius: 8px; background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px var(--border); }
+  .seg span { padding: 3px 8px; border-radius: 6px; font-size: 10.5px; color: var(--muted); }
+  .seg span.on { background: var(--card); color: var(--text); box-shadow: 0 0 0 1px var(--edge); }
+  .ub { padding: 12px 14px; display: grid; gap: 10px; }
+  .limits { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .lim { padding: 11px 13px; border-radius: 11px; background: var(--card); box-shadow: inset 0 0 0 1px var(--border); display: grid; gap: 6px; }
+  .lim .t { font-size: 12px; font-weight: 600; color: var(--text); }
+  .lim .t span { font-size: 10.5px; font-weight: 400; color: var(--muted); margin-left: 6px; }
+  .lim .big { display: flex; align-items: baseline; gap: 5px; }
+  .lim .big b { font-size: 28px; font-weight: 650; letter-spacing: -0.5px; color: var(--text); }
+  .lim .big b.low { color: var(--caution); }
+  .lim .big span { font-size: 12.5px; color: var(--muted); }
+  .meterbar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; gap: 2px; }
+  .meterbar .used { background: repeating-linear-gradient(135deg, rgba(155,164,183,0.45) 0 3px, rgba(155,164,183,0.15) 3px 6px); }
+  .meterbar .left { flex: 1; background: rgba(155,164,183,0.6); }
+  .meterbar .left.low { background: var(--caution); }
+  .lim .foot { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+  .lim .foot b { color: var(--text); font-weight: 600; }
+  .chart { padding: 10px 13px 8px; border-radius: 11px; background: var(--card); box-shadow: inset 0 0 0 1px var(--border); }
+  .chart .t { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text); }
+  .chart .t span { font-size: 10.5px; font-weight: 400; color: var(--muted); }
+  .chart .t .lg { margin-left: auto; display: flex; gap: 10px; }
+  .chart .t .lg i { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 5px; }
+  .chart svg { display: block; width: 100%; height: 70px; margin-top: 6px; }
+
+  /* Auto's popover: why it picked the model, in front. */
+  .auto {
+    position: absolute; left: 0; top: 270px; width: 360px;
+    background: var(--popover); border-radius: 12px;
+    box-shadow: 0 0 0 1px var(--edge), 0 4px 10px rgba(0,0,0,0.35), 0 28px 60px -10px rgba(0,0,0,0.85);
+  }
+  .auto .top { padding: 13px 15px 12px; display: grid; gap: 8px; }
+  .auto .hd { display: flex; align-items: center; gap: 8px; }
+  .auto .hd svg { width: 15px; height: 15px; color: var(--accent); }
+  .auto .hd h2 { font-size: 15px; font-weight: 650; color: var(--text); }
+  .auto .hd span { margin-left: auto; font-size: 10.5px; color: var(--faint); }
+  .auto .why { font-size: 13px; line-height: 1.45; color: var(--text); }
+  .auto dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 11.5px; }
+  .auto dt { color: var(--muted); } .auto dd { color: var(--text); }
+  .auto .alt { border-top: 1px solid var(--border); padding: 10px 15px; display: flex; align-items: center; gap: 10px; }
+  .auto .b2 { height: 28px; padding: 0 10px; border-radius: 7px; font-size: 11.5px; font-weight: 600; color: var(--text); box-shadow: inset 0 0 0 1px var(--edge); display: flex; align-items: center; white-space: nowrap; }
+  .auto .alt span { font-size: 10.5px; color: var(--muted); }
+
+  /* The message box, with the model chip that opened the popover. */
+  .sb { left: 0; right: auto; bottom: 0; width: 420px; padding: 12px 14px 10px; }
+  .sb .msg { padding-bottom: 10px; }
+  .chiprow { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); }
+  .chiprow .c { height: 24px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; gap: 5px; }
+  .chiprow .c svg { width: 12px; height: 12px; }
+  .chiprow .c.on { background: rgba(255,212,59,0.14); color: var(--text); box-shadow: inset 0 0 0 1px rgba(255,212,59,0.45); }
+  .chiprow .c.on svg { color: var(--accent); }
+  .chiprow .ring { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 10.5px; }
+  .chiprow .ring svg { width: 14px; height: 14px; }
+  .chiprow .send { margin-left: 8px; height: 28px; padding: 0 11px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-weight: 650; font-size: 12px; display: flex; align-items: center; gap: 7px; }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard 0.0.15</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Out now</div>
+    <h1>The right model, and <span class="hl">where your plan went</span></h1>
+    <p class="sub"><b>Auto</b> picks Haiku, Sonnet or Opus from your prompt. The new <b>Usage</b> view shows what's left of your limits, and which sessions used it.</p>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Download for free</span>
+    <span class="where">switchboard.struyfconsulting.com</span>
+  </div>
+
+  <div class="stage">
+    <div class="usage">
+      <div class="uh">
+        <div class="row1">
+          <h2>Usage</h2>
+          <span class="prof"><i></i>Personal</span>
+        </div>
+        <div class="row2">
+          <span class="tab on">Limits</span><span class="tab">Tokens</span>
+          <span class="seg"><span class="on">Current window (5h)</span><span>24 hours</span><span>7 days</span><span>30 days</span></span>
+        </div>
+      </div>
+      <div class="ub">
+        <div class="limits">
+          <div class="lim">
+            <div class="t">Session<span>5 hours</span></div>
+            <div class="big"><b>64%</b><span>left</span></div>
+            <div class="meterbar"><span class="used" style="width:36%"></span><span class="left"></span></div>
+            <div class="foot"><span>36% used</span><span>Resets in <b>2h 14m</b></span></div>
+          </div>
+          <div class="lim">
+            <div class="t">Weekly<span>all models</span></div>
+            <div class="big"><b class="low">18%</b><span>left</span></div>
+            <div class="meterbar"><span class="used" style="width:82%"></span><span class="left low"></span></div>
+            <div class="foot"><span>82% used</span><span>Resets in <b>2d 6h</b></span></div>
+          </div>
+        </div>
+        <div class="chart">
+          <div class="t">% used over time<span>last 7 days</span>
+            <span class="lg"><span><i style="background:var(--link)"></i>Weekly</span><span><i style="background:repeating-linear-gradient(90deg,var(--accent) 0 3px,transparent 3px 5px)"></i>Session</span></span>
+          </div>
+          <svg viewBox="0 0 470 70" preserveAspectRatio="none">
+            <path d="M0 69.5H470" stroke="#2d3142" stroke-width="1"/>
+            <path d="M0 35H470" stroke="#2d3142" stroke-width="1" stroke-dasharray="2 4"/>
+            <path d="M0 66 L60 60 L120 52 L180 47 L240 38 L300 30 L360 22 L420 16 L470 12 L470 70 L0 70Z" fill="rgba(116,192,252,0.12)"/>
+            <path d="M0 66 L60 60 L120 52 L180 47 L240 38 L300 30 L360 22 L420 16 L470 12" fill="none" stroke="#74c0fc" stroke-width="2"/>
+            <path d="M0 68 L30 40 L60 30 L75 68 L130 64 L160 34 L190 22 L205 68 L260 52 L290 28 L305 68 L360 60 L400 36 L430 44 L470 45" fill="none" stroke="#ffd43b" stroke-width="1.6" stroke-dasharray="4 3"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="auto">
+      <div class="top">
+        <div class="hd">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 13.5l7-7M8.5 5.5l2 2"/><path d="M12 1.5v2M11 2.5h2M14 5.5v1.5M13.25 6.25h1.5M5.5 1.5v1.5M4.75 2.25h1.5"/></svg>
+          <h2>Auto picked Sonnet</h2>
+          <span>from your prompt only</span>
+        </div>
+        <p class="why">“A small UI change across a few files, with tests. Sonnet handles that well.”</p>
+        <dl>
+          <dt>Routing</dt><dd>Haiku read 1.4k tokens · counted in your usage</dd>
+        </dl>
+      </div>
+      <div class="alt"><span class="b2">Run again with Opus</span><span>new session, same prompt</span></div>
+    </div>
+
+    <div class="sb">
+      <div class="msg">Add a dark mode toggle to the settings page</div>
+      <div class="chiprow">
+        <span class="c on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 13.5l7-7M8.5 5.5l2 2"/><path d="M12 1.5v2M11 2.5h2M14 5.5v1.5M13.25 6.25h1.5"/></svg>Auto · Sonnet</span>
+        <span class="c">High</span>
+        <span class="ring mono"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2.4"/><circle cx="8" cy="8" r="6" fill="none" stroke="#51cf66" stroke-width="2.4" stroke-dasharray="13 38" transform="rotate(-90 8 8)"/></svg>36%</span>
+        <span class="send">Send <span class="kbd">⌘↵</span></span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
