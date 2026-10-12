@@ -136,6 +136,49 @@ describe('engine over a MessagePort', () => {
     expect(changes).toEqual([1, 2, 1, 2, 2, 2]);
   });
 
+  it('routes a queued prompt on Auto when it starts, keeps the pick, and counts the routing call in Usage', async () => {
+    const created: Array<{ cwd?: string; model?: string; permissionMode?: string }> = [];
+    const routed: unknown[] = [];
+    const sessions = fakeSdk(created);
+    // The routing call answers; the session itself never does.
+    const sdk: SdkRuntime = {
+      ...sessions,
+      query: (args) => {
+        if (args.options.model !== 'haiku' || !Array.isArray(args.options.tools)) return sessions.query(args);
+        return {
+          async *[Symbol.asyncIterator]() {
+            for await (const message of args.prompt) routed.push(message.message.content);
+            yield {
+              type: 'result',
+              subtype: 'success',
+              is_error: false,
+              result: '{"model":"sonnet","reason":"A small, local change."}',
+              modelUsage: { 'claude-haiku-4-5': { inputTokens: 1_000, outputTokens: 40, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } },
+            };
+          },
+          close: () => {},
+        } as never;
+      },
+    };
+    const { client, dataDir } = connect({ sdk });
+    const { item } = await client.call('later.add', { draft: { cwd: dataDir, prompt: 'Make the update check a setting', model: 'auto' } });
+    const { sessionId } = await client.call('later.start', { id: item.id });
+    // The session opens before Auto has picked, then switches to what it picked.
+    expect(created).toEqual([expect.objectContaining({ cwd: dataDir })]);
+    expect(created[0]!.model).toBeUndefined();
+    for (let tries = 0; !(await client.call('hosts.list', {})).hosts.some((h) => h.sessionId === sessionId && h.model === 'sonnet'); tries++) {
+      if (tries > 100) throw new Error('Auto never switched the session to its pick');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    // Only the text went to Haiku.
+    expect(routed).toEqual(['<request>\nMake the update check a setting\n</request>']);
+    const { autoPick } = await client.call('session.autoPick', { sessionId });
+    expect(autoPick).toMatchObject({ model: 'sonnet', reason: 'A small, local change.', tokens: 1_040, allowed: ['haiku', 'sonnet', 'opus'] });
+    const usage = await client.call('usage.breakdown', { period: 'day', groupBy: 'model' });
+    expect(usage.rows).toContainEqual(expect.objectContaining({ key: 'auto-routing', label: 'Auto routing', model: 'claude-haiku-4-5', autoRouting: { picks: 1 } }));
+    expect(usage.totals.tokens.input).toBe(1_000);
+  });
+
   it('starts a queued item the way New session does, and takes it off the queue', async () => {
     const created: Array<{ cwd?: string; model?: string; permissionMode?: string }> = [];
     const { client, dataDir } = connect({ sdk: fakeSdk(created) });

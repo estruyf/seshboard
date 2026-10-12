@@ -1,4 +1,4 @@
-import type { ImageAttachment, PermissionMode } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type ImageAttachment, type PermissionMode } from '@switchboard/protocol/client';
 import { randomWorktreeName } from '../../lib/modes.ts';
 import type { GateOutcome } from '../../state/focusGate.ts';
 import { linkPermissionMode, type Choices } from './choices.ts';
@@ -24,6 +24,8 @@ export interface NewSessionStart {
   addProject?: boolean;
   /** Parks the prompt on the Later list, when the focus limit's gate offers that instead. */
   saveForLater?: () => Promise<unknown>;
+  /** Auto model is on in Settings. Off, a model of Auto starts on the default model, without routing. */
+  autoEnabled?: boolean;
 }
 
 /** What starting needs from the app; the view and the palette pass the real ones, tests fake them. */
@@ -62,7 +64,8 @@ export function sessionCreateParams(start: NewSessionStart): SessionCreateParams
     cwd: start.cwd,
     prompt: start.prompt,
     attachments: start.attachments ?? [],
-    model: choices.model || null,
+    // The engine routes Auto once the session is open; with Auto off it is the default model.
+    model: choices.model === AUTO_MODEL && start.autoEnabled === false ? null : choices.model || null,
     // A link never starts a session in a mode that skips permission prompts.
     permissionMode: start.fromLink ? linkPermissionMode(choices.permissionMode) : choices.permissionMode,
     effort: choices.effort || null,
@@ -77,8 +80,9 @@ export const shouldPrewarm = (choices: Pick<Choices, 'workspace' | 'branch'>) =>
 
 /**
  * Starts a new session the one way every New session does: the focus limit's gate first (which may
- * ask, or park the prompt for later instead), then `session.create`, then the folder joins your
- * projects when asked, and the new session opens. Nothing starts when the gate says stop.
+ * ask, or park the prompt for later instead), then `session.create`, then the folder joins your projects when asked,
+ * and the new session opens. Nothing starts when the gate says stop. On Auto the session opens at once and says Auto
+ * is choosing; the engine sends your message once it has picked.
  */
 export async function startNewSession(start: NewSessionStart, deps: StartDeps): Promise<StartOutcome> {
   if (!start.skipGate) {

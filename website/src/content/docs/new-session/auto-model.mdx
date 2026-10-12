@@ -1,0 +1,91 @@
+---
+title: Auto model
+description: Let Haiku read the first prompt of a new session and pick Haiku, Sonnet or Opus for it. Picked once, shown in the session, easy to undo.
+sidebar:
+  label: Auto model
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+**Auto** is a choice in the model menu, next to the models themselves. With Auto, Haiku reads your prompt when you start the session and picks the model it runs on: Haiku for quick answers, Sonnet for everyday coding, Opus for complex, multi-step work.
+
+<Screenshot name="auto-model-menu" alt="New session with the model menu open: Auto first, with a wand and the line 'Haiku reads your prompt and picks Haiku, Sonnet or Opus. Picked once, when the session starts.', then a line, Default model and the models" eager />
+
+## Pick Auto
+
+Auto is the first item in every model menu: in [New session](/new-session/form/), in the command palette's New session step, and in a project's [Settings tab](/projects/settings/). The model chip under the message box then shows a wand and **Auto**.
+
+The permission mode can also be called Auto. The model chip always shows its wand, so the two never look the same.
+
+## Starting a session
+
+Press **Start** (<Kbd shortcut="new-session.start" />) as usual. The session opens right away, so you can start the next one. It shows your prompt, and under it **Auto is choosing a model…** while Haiku reads the prompt, which takes about a second. The model chip reads **Auto** until then.
+
+Your prompt goes to Claude once Auto has picked, on the model it picked. If you pick a model in the chip before that, your model is used and Auto's pick is dropped. **Stop session** in the session's **⋯** menu stops it before anything is sent.
+
+### What Haiku sees
+
+Only the text of your prompt. It never sees your files, your memory, CLAUDE.md or the project's name. When the prompt has images, Haiku isn't sent them; it is told how many there are.
+
+### Picked once
+
+Auto picks when the session starts and never switches by itself. Claude Code's prompt cache belongs to one model, so switching would read the whole conversation again. Later, Auto can only [suggest a stronger model](#a-stronger-model-later).
+
+### When picking fails
+
+If Haiku doesn't answer within a few seconds, or answers something Switchboard can't use, the session starts on your default model. There is no error to dismiss: the chip reads **Auto · Default model**, and the first line of the session says why.
+
+## In the session
+
+<Screenshot name="auto-model-session" alt="A session with the line 'Auto picked Opus' above Claude's first answer, and the popover from Why: the reason in quotes, an estimate against Opus, the Haiku tokens it used, and Run again with Sonnet and with Haiku" />
+
+The model chip reads **Auto · Sonnet**: the wand, Auto and the model it picked. It keeps saying Auto as long as the session runs on that model. Once you change the model, the chip shows the plain model.
+
+Above Claude's first answer, a quiet line says what Auto picked and why, such as "Auto picked **Sonnet** · a small, local change · Why". **Why** opens the details. So does **Why Auto picked Sonnet** in the model chip's menu.
+
+The details show:
+
+- the reason Haiku gave, in full
+- **Estimate**: how much the model uses against Opus, such as "About three fifths of what Opus would use (est.)". It is an estimate, like the shares in [Usage](/usage/).
+- **Routing**: how many tokens Haiku read to pick. They count in your usage.
+- **Run again with Opus** (and the other models Auto may pick): starts a new session with the same prompt and images on that model, and archives this one. To undo, find it in [Archived](/sessions/archived/).
+- **Use Opus from the next message**: switches the model for the rest of the session. The cache starts over, so the next turn reads the whole conversation again.
+
+## A stronger model later
+
+When a session started by Auto grows past its first prompt, a note above the message box suggests a stronger model:
+
+> **This looks bigger than the first prompt.** Use Opus from this message? The cache starts over, so the next turn reads about 84K tokens again.
+
+The number is the session's context right now. It shows when you ask to plan, refactor or design across many files, when Claude has edited many files, when the session has run for many messages, or when tool calls keep failing. Switchboard reads this from the conversation; it makes no extra model call.
+
+Choose **Use Opus**, **Keep Sonnet** or **Don't suggest in this session**. It never switches without a click, and it shows at most once per session.
+
+## Queued prompts and project defaults
+
+A [queued prompt](/new-session/queue/) on Auto is routed when it starts, not when you add it, so it picks with your settings at that moment.
+
+A project can start every new session on Auto: choose **Auto** for **Model** on the project's [Settings tab](/projects/settings/).
+
+## Usage
+
+Each pick uses a few hundred to a few thousand Haiku tokens. The call runs on the session's Claude profile, so it counts toward that plan. In [Usage](/usage/), the **Model** breakdown shows the calls as their own row, **Auto routing**, with how many picks it made. Each model's row says how many of its sessions Auto picked, such as "Sonnet · 11 by Auto".
+
+## Settings
+
+<Screenshot name="auto-model-settings" alt="Settings, Conversation: the Auto model switch, Models it can pick with Haiku, Sonnet and Opus checked, When in doubt set to Balanced, Suggest a stronger model later, and a note about the Haiku tokens each pick uses" />
+
+In [Settings](/settings/), under **Conversation**:
+
+| Setting | What it does |
+|---|---|
+| **Auto model** | Shows Auto in the model menus. On by default. |
+| **Models it can pick** | Haiku, Sonnet and Opus. At least one stays checked. |
+| **When in doubt** | Which way Auto leans on a close call: **Cheaper**, **Balanced** or **Stronger**. |
+| **Suggest a stronger model later** | The note above the message box. It never switches by itself. |
+
+<Aside>
+With **Auto model** off, Auto leaves every menu. Anything saved as Auto (a project's default, the choice you made last, a queued prompt) starts on your default model, and New session says so under the message box.
+</Aside>

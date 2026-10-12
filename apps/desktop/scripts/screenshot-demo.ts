@@ -20,6 +20,8 @@ export interface DemoWorld {
   home: string;
   /** Session ids the screenshot tour opens. */
   sessions: { hero: string; working: string; needsYou: string };
+  /** The older sessions by title, with the config folder each was written to (the website's Auto model pictures). */
+  history: Record<string, { id: string; configDir: string }>;
   /** Processes that stand in for Claude Code running in a terminal; stop them when done. */
   stop(): void;
 }
@@ -438,12 +440,14 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     'Add pull to refresh on the orders list': { model: 'claude-sonnet-5-5', scale: 0.9 },
     'Add CSV export to the reports endpoint': { model: 'claude-haiku-5-5', scale: 0.6 },
   };
+  const written: DemoWorld['history'] = {};
   for (const [cwd, branch, title, ago, prompt, answer] of history) {
     const t = new Transcript(cwd, branch, now - ago, usage[title])
       .user(prompt)
       .tool('Grep', { pattern: title.split(' ').at(-1)!.toLowerCase(), path: `${cwd}/src` }, 'Found 3 files')
       .say(answer);
     t.write(cwd === payments ? workConfigDir : configDir, title);
+    written[title] = { id: t.id, configDir: cwd === payments ? workConfigDir : configDir };
   }
 
   // Claude Code's live registry: one entry per running process. A sleeping process stands in for each
@@ -461,6 +465,7 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
   return {
     home,
     sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id },
+    history: written,
     stop: () => sleepers.forEach((child) => child.kill()),
   };
 }

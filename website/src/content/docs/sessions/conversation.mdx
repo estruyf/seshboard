@@ -24,10 +24,11 @@ The header shows the title, the [state](/sessions/states/), the project and the 
 
 ## Send a message
 
-Type in the message box and press <Kbd shortcut="composer.send" />. <Kbd shortcut="composer.newline" /> starts a new line.
+Type in the message box and press <Kbd shortcut="composer.send" />. <Kbd shortcut="composer.newline" /> starts a new line. In a list (`- `, `* ` or `1. `) it starts the next item, numbered one up; on an empty item it ends the list.
 
 - **Commands and skills:** type <Kbd shortcut="composer.commands" /> at the start of the message for your commands and skills, your own included.
 - **Mention a file:** type <Kbd shortcut="composer.mention" /> and pick a file from the list.
+- **Code:** select text and type <Kbd keys="`" /> to wrap it as code: one line as `inline code`, several lines in a code block.
 - **Earlier messages:** <Kbd shortcut="composer.history" /> from the first line brings back what you sent before. Esc goes back to what you were typing.
 - **Images:** paste them, drop them on the session, or click the image button under the message box. Images Claude reads or you attach show in the conversation.
 
@@ -105,9 +106,13 @@ Hover over a message for its toolbar:
   - **Copy as Markdown.**
 - **On both:** **Remember this…** (the brain button) saves the message as a memory. See [Remember this](/memory/adding-memory/#remember-this).
 
-You can also select text in any message and press <Kbd keys="mod+c" />. The command palette has *Fork session…* and *Rewind to a message…* to pick a message from a list, and *Copy last reply*.
+You can also select text in any message and press <Kbd keys="mod+c" />. A toolbar shows above the selection with **Quote**, **Copy** and **Remember this…**. Press <Kbd keys="tab" /> to reach it from the keyboard, <Kbd keys="arrowleft|arrowright" /> to move between its buttons, and <Kbd keys="escape" /> to close it. The command palette has *Fork session…* and *Rewind to a message…* to pick a message from a list, and *Copy last reply*.
 
 To save part of a message as a memory, select it and click **Remember this**, or right-click it and choose **Remember this…**.
+
+### Quote in reply
+
+When Claude asks you something, you can answer each question under a quote of it. Select the text in a message and click **Quote**, or right-click it and choose **Quote** (**Quote message** without a selection, for the whole message). It goes at the end of the message box as a Markdown quote, `> ` before each line, with the cursor under it so you can type your answer. Quote the next question the same way and it lands after your answer. *Quote in reply* in the command palette quotes the selected text, or Claude's last reply when nothing is selected.
 
 ## Continue a past session
 

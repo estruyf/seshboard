@@ -21,6 +21,7 @@ import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
 import { Composer } from '../composer/Composer.tsx';
+import { AutoWand } from '../composer/ComposerChips.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
@@ -45,6 +46,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
 import { SessionControls } from '../session/StatusBar.tsx';
+import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
 import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
@@ -88,7 +90,23 @@ const Sep = () => (
 function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string; since: number | null; showIndicator: boolean }) {
   const block = useHosts((s) => s.streaming.get(sessionId));
   const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
-  const now = useTicker(running && showIndicator && block?.kind !== 'text');
+  // A new session on Auto: your message waits until Auto has picked its model.
+  const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
+  const now = useTicker((running || choosing) && showIndicator && block?.kind !== 'text');
+  if (choosing) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-auto-choosing>
+        <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
+          <span className="flex w-4 shrink-0 justify-center">
+            <WorkingDots />
+          </span>
+          {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
+          <AutoWand />
+          <span className="shrink-0">Auto is choosing a model…</span>
+        </p>
+      </div>
+    );
+  }
   if (block?.kind === 'text') {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
@@ -223,6 +241,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     }
   }, [actionTerminals, sessionId]);
   const items = useMemo(() => buildDisplayItems(messages), [messages]);
+  /** What Auto picked when this session started (null: it didn't). */
+  const autoPick = useSessionAutoPick(sessionId);
   /** Your earlier messages here, for ↑ in the message box. */
   const promptHistory = useMemo(() => sessionHistory(items), [items]);
   const toolActivity = usePreferences((s) => s.prefs.toolActivity);
@@ -234,6 +254,12 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     [items, toolActivity, memoryFolders],
   );
   const [commands, setCommands] = useState<SlashCommand[]>([]);
+  /** The first answer after your first message: Auto's line goes above it (-1 before Claude answers). */
+  const firstAnswer = useMemo(() => {
+    if (!autoPick) return -1;
+    const first = renderItems.findIndex((item) => item.kind === 'user');
+    return first < 0 ? -1 : renderItems.findIndex((item, index) => index > first && item.kind !== 'user');
+  }, [renderItems, autoPick]);
 
   const projectRoot = summary?.projectRoot ?? registryLive?.projectRoot ?? null;
   const project = useProjects((s) => (projectRoot ? s.projects.get(projectRoot) : undefined));
@@ -595,13 +621,15 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     };
   }, [client, items, sessionId, select, cwd, projectRoot]);
 
-  // Remember this… from a selection or a whole message (right-click, or the button over a selection).
+  // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
+    container: scrollRef,
     textOf: (key) => {
       const item = items.find((i) => i.key === key);
       return item && (item.kind === 'user' || item.kind === 'text') ? item.text : null;
     },
     onRemember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
+    onQuote: (text) => useDrafts.getState().requestQuote(sessionId, text),
   });
 
   // The command palette's Fork…, Rewind…, Copy last reply: your prompts and Claude's last reply, from the active pane.
@@ -844,7 +872,6 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
               ref={scrollRef}
               onScroll={() => (onScroll(), remember.handlers.onScroll())}
               onContextMenu={remember.handlers.onContextMenu}
-              onMouseUp={remember.handlers.onMouseUp}
               onWheel={markUserScroll}
               onTouchMove={markUserScroll}
               onPointerDown={markUserScroll}
@@ -899,6 +926,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                       className={`absolute inset-x-6 pt-3 ${row.key === highlightKey ? 'search-highlight' : ''}`}
                       style={{ transform: `translateY(${row.start}px)` }}
                     >
+                      {autoPick && row.index === firstAnswer && <AutoPickLine sessionId={sessionId} pick={autoPick} />}
                       <TranscriptItem
                         item={renderItems[row.index]!}
                         cwd={cwd}
@@ -908,6 +936,11 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                       />
                     </div>
                   ))}
+                </div>
+              )}
+              {autoPick && firstAnswer < 0 && renderItems.length > 0 && (
+                <div className="mx-auto max-w-3xl px-6 pt-3">
+                  <AutoPickLine sessionId={sessionId} pick={autoPick} />
                 </div>
               )}
               <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} />
@@ -1046,6 +1079,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                   {actionError}
                 </Notice>
               )}
+              <AutoSuggestNote sessionId={sessionId} pick={autoPick} items={items} contextTokens={host?.contextTokens ?? null} />
+              {autoPick && <AutoPickPopover sessionId={sessionId} pick={autoPick} items={items} cwd={cwd} />}
               {actionsMenu.overlays}
               {restored && (
                 <DraftBanner

@@ -7,6 +7,22 @@ export type PermissionMode = z.infer<typeof PermissionMode>;
 export const Effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 export type Effort = z.infer<typeof Effort>;
 
+/** One of the models Auto can pick. */
+export const AutoTierSchema = z.enum(['haiku', 'sonnet', 'opus']);
+
+/** What Auto decided for a session (see `AutoPickInfo`): kept with the session, so it survives a restart. */
+export const AutoPick = z.object({
+  /** Null: picking failed, and the session runs on the default model. */
+  model: AutoTierSchema.nullable(),
+  reason: z.string().max(500),
+  at: z.number(),
+  tokens: z.number().int().min(0),
+  allowed: z.array(AutoTierSchema).max(3),
+  /** You changed the model since. */
+  left: z.boolean().optional(),
+});
+export type AutoPick = z.infer<typeof AutoPick>;
+
 /** State of a session this app is running (an active Claude Code process owned by the engine). */
 export const HostState = z.enum(['starting', 'running', 'needs-you', 'idle', 'closed', 'error']);
 export type HostState = z.infer<typeof HostState>;
@@ -66,6 +82,10 @@ export const SessionHostInfo = z.object({
   profileId: z.string(),
   /** Background tasks still running; the session can be idle (ready for a message) while these work. */
   backgroundTasks: z.array(BackgroundTask),
+  /** Auto picked the model this session started on (null or missing: it didn't). */
+  autoPick: AutoPick.nullable().optional(),
+  /** Auto is still picking the model this session starts on; your first message waits for it. */
+  autoChoosing: z.boolean().optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 

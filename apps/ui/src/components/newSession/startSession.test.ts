@@ -100,3 +100,20 @@ describe('startNewSession', () => {
     expect(fake.open).toHaveBeenCalled();
   });
 });
+
+describe('startNewSession with Auto', () => {
+  const AUTO: NewSessionStart = { ...START, choices: { ...CHOICES, model: 'auto' }, autoEnabled: true };
+
+  it('starts and opens the session at once, leaving the pick to the engine', async () => {
+    const fake = deps();
+    expect(await startNewSession(AUTO, fake)).toEqual({ kind: 'started', sessionId: 'new-1' });
+    expect(fake.calls).toEqual(['gate', 'create', 'open']);
+    expect(fake.createSession).toHaveBeenCalledWith(expect.objectContaining({ model: 'auto' }));
+  });
+
+  it('starts on the default model with Auto off', async () => {
+    const fake = deps();
+    await startNewSession({ ...AUTO, autoEnabled: false }, fake);
+    expect(fake.createSession).toHaveBeenCalledWith(expect.objectContaining({ model: null }));
+  });
+});

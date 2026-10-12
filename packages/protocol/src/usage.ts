@@ -70,6 +70,10 @@ export const UsageRow = z.object({
   share: z.number(),
   /** The share comes from measured changes in plan % (the session ran alone), not from token weights. */
   measured: z.boolean(),
+  /** The Auto routing row: Haiku's calls that picked a model, and how many there were. */
+  autoRouting: z.object({ picks: z.number() }).optional(),
+  /** A model row: how many of its sessions Auto picked it for. */
+  byAuto: z.number().optional(),
 });
 export type UsageRow = z.infer<typeof UsageRow>;
 

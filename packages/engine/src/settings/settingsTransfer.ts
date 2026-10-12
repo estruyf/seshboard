@@ -19,6 +19,8 @@ import {
   type ImportPreview,
   type Preferences,
   type SettingsFile,
+  tierLabel,
+  type AutoModelPrefs,
 } from '@switchboard/protocol';
 import { parseThemeFile } from '@switchboard/protocol/theme';
 import type { ActionStore } from '../actions/actionStore.ts';
@@ -56,6 +58,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   themeId: 'Theme',
   archiveAfterDays: 'Archive finished sessions after',
   deleteArchived: 'Delete archived sessions',
+  autoModel: 'Auto model',
 };
 
 /** What the settings file is read from and written to. */
@@ -84,9 +87,25 @@ const listOf = (parts: Array<string | false>) => {
 };
 /** Deleting archived sessions: "off", or "after 30 days". */
 const isDeleting = (value: unknown): value is { enabled: boolean; afterDays: number } => typeof value === 'object' && value !== null && 'enabled' in value && 'afterDays' in value;
+/** Auto model: "off", or "on, picks Haiku, Sonnet and Opus, balanced". */
+const isAutoModel = (value: unknown): value is AutoModelPrefs => typeof value === 'object' && value !== null && 'allowed' in value && 'lean' in value;
 // A focus limit of null is the limit turned off.
 const showValue = (value: unknown) =>
-  typeof value === 'boolean' ? (value ? 'on' : 'off') : value === null ? 'off' : isDeleting(value) ? (value.enabled ? `after ${value.afterDays} days` : 'off') : String(value);
+  typeof value === 'boolean'
+    ? value
+      ? 'on'
+      : 'off'
+    : value === null
+      ? 'off'
+      : isDeleting(value)
+        ? value.enabled
+          ? `after ${value.afterDays} days`
+          : 'off'
+        : isAutoModel(value)
+          ? value.enabled
+            ? `on, picks ${listOf(value.allowed.map(tierLabel))}, ${value.lean}`
+            : 'off'
+          : String(value);
 
 /** A stored icon as it travels in a file; an image that is gone or unreadable falls back to the detected icon. */
 function exportIcon(icon: StoredIcon | null): ExportedIcon | null {

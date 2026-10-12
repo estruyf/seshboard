@@ -8,6 +8,7 @@ import { measuredDeltas, SHARE_WEIGHTS, sharesOf, weightOf } from './shares.ts';
 import { hourOf, parseUsageLine } from './transcriptUsage.ts';
 import { breakdown, periodRange, type SessionLookup } from './usageQuery.ts';
 import { scopeOf, UsageScanner } from './usageScanner.ts';
+import { RoutingStore } from '../autoModel/router.ts';
 
 let dir: string;
 let cache: CacheDatabase;
@@ -235,6 +236,33 @@ describe('breakdown', () => {
     const range = periodRange('week', now, 'Pacific/Honolulu');
     const days = breakdown(cache.db, { scope, period: 'week', ...range, groupBy: 'day', model: null, timeZone: 'Pacific/Honolulu' }, lookup);
     expect(days.rows.map((r) => r.label)).toEqual(['2026-10-11', '2026-10-10']);
+  });
+
+  it('shows Auto model routing as its own row, in totals and shares, and counts the sessions Auto picked per model', async () => {
+    const scope = await seeded();
+    const routing = new RoutingStore(cache.db);
+    const tokens = { input: 1_000, output: 40, cacheRead: 0, cacheWrite: 0 };
+    routing.record({ id: 'r1', scope, at: Date.UTC(2026, 9, 12, 8), model: 'claude-haiku-5-5', picked: 'sonnet', tokens });
+    routing.record({ id: 'r2', scope, at: Date.UTC(2026, 9, 12, 9), model: 'claude-haiku-5-5', picked: 'opus', tokens });
+    // Another login's routing call stays out.
+    routing.record({ id: 'r3', scope: 'elsewhere', at: Date.UTC(2026, 9, 12, 9), model: 'claude-haiku-5-5', picked: 'haiku', tokens });
+    routing.attach('r1', 'known');
+    const range = periodRange('week', now, 'UTC');
+    const query = { scope, period: 'week' as const, ...range, model: null, timeZone: 'UTC' };
+    const byModel = breakdown(cache.db, { ...query, groupBy: 'model' }, lookup);
+    expect(byModel.rows.map((r) => [r.label, r.sessions, r.byAuto ?? 0, r.autoRouting?.picks ?? null])).toEqual([
+      ['claude-sonnet-5-5', 2, 1, null],
+      ['claude-opus-5-5', 1, 0, null],
+      ['Auto routing', 0, 0, 2],
+    ]);
+    expect(byModel.rows.reduce((sum, r) => sum + r.share, 0)).toBeCloseTo(1);
+    expect(byModel.totals.turns).toBe(5);
+    expect(byModel.totals.sessions).toBe(2);
+    // In Day, the calls count inside their day.
+    expect(breakdown(cache.db, { ...query, groupBy: 'day' }, lookup).rows.map((r) => [r.label, r.turns])).toEqual([
+      ['2026-10-12', 4],
+      ['2026-10-11', 1],
+    ]);
   });
 
   it('narrows to one model, and counts hours for the 24-hour period', async () => {

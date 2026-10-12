@@ -10,6 +10,7 @@ import { useSidebar } from '../state/sidebarStore.ts';
 import { BackupSettings } from './backup/BackupSettings.tsx';
 import { CompanionSettings } from './companion/CompanionSettings.tsx';
 import { EngineDiagnostics } from './EngineDiagnostics.tsx';
+import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
@@ -207,18 +208,23 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return <SessionsSettings scrollRef={scrollRef} />;
     case 'conversation':
       return (
-        <Section
-          title="Conversation"
-          description="Summarised shows each run of tool calls as one line, like Claude Code: what Claude is doing, or what it did. Click it to see the steps."
-        >
-          <RadioGroup label="Tool activity" className="grid grid-cols-3 gap-4">
-            {ACTIVITY.map(({ value, label }) => (
-              <Choice key={value} value={value} current={prefs.toolActivity} label={label} attr="data-tool-activity" onSelect={(toolActivity) => update({ toolActivity })}>
-                <ActivityPreview mode={value} />
-              </Choice>
-            ))}
-          </RadioGroup>
-        </Section>
+        <>
+          <Section
+            title="Conversation"
+            description="Summarised shows each run of tool calls as one line, like Claude Code: what Claude is doing, or what it did. Click it to see the steps."
+          >
+            <RadioGroup label="Tool activity" className="grid grid-cols-3 gap-4">
+              {ACTIVITY.map(({ value, label }) => (
+                <Choice key={value} value={value} current={prefs.toolActivity} label={label} attr="data-tool-activity" onSelect={(toolActivity) => update({ toolActivity })}>
+                  <ActivityPreview mode={value} />
+                </Choice>
+              ))}
+            </RadioGroup>
+          </Section>
+          <Section title="Auto model" description="Haiku reads the first prompt of a new session and picks the model it starts on. Picked once; after that, Auto only suggests.">
+            <AutoModelSettings />
+          </Section>
+        </>
       );
     case 'focus':
       return (

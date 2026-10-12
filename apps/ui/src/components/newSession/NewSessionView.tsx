@@ -1,6 +1,6 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ImageAttachment, LaterDraft, LaterItem, ProjectInspection, QueueWaitFor, SlashCommand, WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -22,6 +22,8 @@ import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { inScope, rowStatus } from '../../state/sidebarRows.ts';
 import { Composer } from '../composer/Composer.tsx';
 import { StartButton } from './StartButton.tsx';
+import { AutoWand } from '../composer/ComposerChips.tsx';
+import { AUTO_OFF_NOTE, effectiveModel, modelChoices, modelLabel } from '../../lib/autoModel.ts';
 import { focusStartBlock, startButtonState } from './startMenu.ts';
 import { newDraftKey, newSessionDraftBanner } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
@@ -72,6 +74,7 @@ export function NewSessionView() {
   const live = useSessions((s) => s.live);
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
+  const autoModel = usePreferences((s) => s.prefs.autoModel);
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
   const view = useSessions((s) => s.view);
   const [cwd, setCwd] = useState<string | null>(null);
@@ -612,6 +615,7 @@ export function NewSessionView() {
         skipGate,
         addProject: options.addAsProject && !isProject && addAsProject && !!inspection?.exists,
         saveForLater: () => parkInQueue(text, attachments),
+        autoEnabled: autoModel.enabled,
       },
       {
         createSession: (params) => client.call('session.create', params),
@@ -649,7 +653,9 @@ export function NewSessionView() {
     create(text, [], { fromLink: true }).catch((error: Error) => useLinks.getState().fail(`Couldn't start the session: ${error.message}`));
   }, [pendingStart, client, cwd, loaded, projectsLoaded, settled, lookingFor, inspection]);
 
-  const modelLabel = d.model ? (models.find((m) => m.value === d.model)?.displayName ?? d.model) : 'Default model';
+  // Saved as Auto while Auto is off: the default model, and the note under the box says so.
+  const shownModel = effectiveModel(d.model, autoModel.enabled);
+  const autoOff = d.model === AUTO_MODEL && !autoModel.enabled;
   // The same chip row as in a session.
   const controls = (
     <ComposerChipRow
@@ -659,13 +665,10 @@ export function NewSessionView() {
         labelFor: (p) => `${p.name}${p.id === (projectProfile ?? defaultProfile) ? (projectProfile ? ' (project)' : ' (default)') : ''}`,
       }}
       model={{
-        value: d.model,
-        label: modelLabel,
+        value: shownModel,
+        label: modelLabel(models, shownModel),
         onChange: (model) => update({ model }),
-        choices: [
-          { value: '', label: 'Default model', description: models.find((m) => m.value === 'default')?.description || 'What Claude Code would pick' },
-          ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName, description: m.description })),
-        ],
+        choices: modelChoices(models, autoModel, <AutoWand />),
       }}
       effort={{ value: d.effort, onChange: (effort) => update({ effort }) }}
       mode={{ value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
@@ -718,6 +721,10 @@ export function NewSessionView() {
         data-later-notice
       >
         Queued prompt. Changes stay in the queue; starting it takes it off.
+      </Notice>
+    ) : autoOff ? (
+      <Notice inline icon={<AutoWand />} data-auto-off-note>
+        {AUTO_OFF_NOTE}
       </Notice>
     ) : savedNote ? (
       <span role="status" className="min-w-0 truncate text-accent-ink" data-saved-note>

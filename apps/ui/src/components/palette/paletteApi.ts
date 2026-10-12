@@ -19,6 +19,7 @@ import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
+import { useDrafts } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { lastLimit } from '../focus/focusLimit.ts';
 import { syncStep } from '../git/gitPlan.ts';
@@ -31,6 +32,14 @@ import type { PaletteContext } from './paletteContext.ts';
 
 /** Says why a command didn't work: the palette has closed by then, so it can't say it itself. */
 const failed = (what: string) => (error: unknown) => toast(`Couldn't ${what}: ${error instanceof Error ? error.message : String(error)}`);
+
+/** The text selected in a message of the conversation (empty when there is none), and whose message it is. */
+function conversationSelection(): { selected: string; from: 'user' | 'claude' } {
+  const selection = window.getSelection();
+  const node = selection && selection.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null;
+  const source = (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('[data-remember-from]');
+  return { selected: source ? selection!.toString().trim() : '', from: source?.dataset.rememberFrom === 'user' ? 'user' : 'claude' };
+}
 
 /** Shows a terminal tab the engine just opened for the session. */
 function showTerminal(sessionId: string, terminalId: string) {
@@ -103,13 +112,15 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     },
     rememberThis: () => {
       // What you selected in the conversation, else Claude's last reply.
-      const selection = window.getSelection();
-      const node = selection && selection.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null;
-      const source = (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('[data-remember-from]');
-      const selected = source ? selection!.toString().trim() : '';
+      const { selected, from } = conversationSelection();
       const text = selected || usePaletteBus.getState().digest?.lastReply || '';
       if (!text) return;
-      usePaletteBus.getState().showDialog({ kind: 'remember', text, from: selected && source?.dataset.rememberFrom === 'user' ? 'user' : 'claude', sessionId, root: session?.projectRoot ?? null });
+      usePaletteBus.getState().showDialog({ kind: 'remember', text, from: selected ? from : 'claude', sessionId, root: session?.projectRoot ?? null });
+    },
+    quoteInReply: () => {
+      const text = conversationSelection().selected || usePaletteBus.getState().digest?.lastReply || '';
+      // After the palette's own close, which gives focus back to where it was.
+      if (text) setTimeout(() => useDrafts.getState().requestQuote(sessionId, text));
     },
     copySessionId: () => void navigator.clipboard.writeText(sessionId).catch(failed('copy the session id')),
     checkTranscript: () => usePaletteBus.getState().showDialog({ kind: 'transcript-diagnosis', sessionId, title: session?.title ?? null }),

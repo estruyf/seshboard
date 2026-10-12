@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Effort, PermissionMode, ProjectDefaults } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type Effort, type PermissionMode, type ProjectDefaults } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { MODE_CHOICES, MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { usePreferences } from '../../state/preferencesStore.ts';
+import { AUTO_OFF_NOTE } from '../../lib/autoModel.ts';
 import { EFFORT_LABEL, EFFORTS } from '../newSession/route.ts';
 import { Select } from '../ui/Select.tsx';
 
@@ -27,6 +29,7 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const models = useHosts((s) => s.models);
+  const autoEnabled = usePreferences((s) => s.prefs.autoModel.enabled);
   const [branches, setBranches] = useState<{ current: string | null; branches: string[] }>({ current: null, branches: [] });
 
   useEffect(() => {
@@ -66,8 +69,10 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
           onChange={(value) => set({ model: nullable(value) })}
           options={[
             { value: UNSET, label: 'Global default' },
+            // Auto stays listed while it is the saved choice, also with Auto off (the note says what happens then).
+            ...(autoEnabled || defaults.model === AUTO_MODEL ? [{ value: AUTO_MODEL, label: autoEnabled ? 'Auto' : 'Auto (off)' }] : []),
             ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })),
-            ...(defaults.model && !models.some((m) => m.value === defaults.model) ? [{ value: defaults.model, label: defaults.model }] : []),
+            ...(defaults.model && defaults.model !== AUTO_MODEL && !models.some((m) => m.value === defaults.model) ? [{ value: defaults.model, label: defaults.model }] : []),
           ]}
           dataAttrs={{ 'data-default-model': true }}
         />
@@ -80,6 +85,11 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
           dataAttrs={{ 'data-default-effort': true }}
         />
       </Row>
+      {defaults.model === AUTO_MODEL && (
+        <p className="ml-[122px] text-meta text-muted @max-[560px]:ml-0" data-default-model-auto>
+          {autoEnabled ? 'Queued prompts are routed when they start, not when you add them.' : AUTO_OFF_NOTE}
+        </p>
+      )}
       <Row label="Permissions">
         <Select
           label="Permission mode"

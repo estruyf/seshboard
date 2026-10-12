@@ -607,6 +607,46 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'auto-model-menu',
+    async take(t) {
+      await openNewSession(t, 'acme-store');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('Make the update check frequency a setting in General, default once a day.');
+      await t.click('[data-new-session-view] [data-model-select]');
+      await t.click('[data-menu="model"] [data-choice="auto"]');
+      await t.need('[data-new-session-view] [data-model-chip="auto"]', 'picking Auto did not change the chip');
+      await t.click('[data-new-session-view] [data-model-select]');
+      await t.need('[data-menu="model"] [data-choice="auto"]', 'the model menu has no Auto');
+      await t.shot('auto-model-menu', { keepFocus: true });
+      await t.escape();
+      // Back to the default model, so the other pictures show what they did before.
+      await t.click('[data-new-session-view] [data-model-select]');
+      await t.click('[data-menu="model"] [data-choice=""]');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+    },
+  },
+  {
+    name: 'auto-model-session',
+    async take(t) {
+      await t.openSession(HERO);
+      await t.need('[data-auto-pick-line="opus"]', 'the session did not show what Auto picked');
+      await t.click('[data-auto-why]');
+      await t.need('[data-auto-popover]', 'Why did not open the popover');
+      await t.shot('auto-model-session', { keepFocus: true });
+      await t.escape();
+      await t.gone('[data-auto-popover]', 'Esc did not close the popover');
+    },
+  },
+  {
+    name: 'auto-model-settings',
+    async take(t) {
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="conversation"]');
+      await t.need('[data-auto-model-settings]', 'Settings › Conversation has no Auto model block');
+      await t.shot('auto-model-settings', { clip: '[data-auto-model-settings]', pad: 16 });
+      await t.click('[data-close-settings]');
+    },
+  },
+  {
     name: 'new-session-worktree',
     async take(t) {
       await openNewSession(t, 'acme-store');
@@ -822,6 +862,7 @@ const screens: Screen[] = [
       await t.click('[data-usage-breakdown="model"] [data-usage-row]');
       await t.need('[data-usage-model-panel]', 'the model panel did not open');
       await t.shot('usage-model', { clip: '[data-usage-breakdown]', pad: 8 });
+      await t.need('[data-usage-auto-routing]', 'the Model breakdown has no Auto routing row');
       await t.click('[data-usage-group="session"]');
       await t.escape();
       await t.gone('[data-usage-view]', 'Esc did not leave the Usage view');
@@ -909,7 +950,8 @@ async function openUsageView(t: Tour, tab: 'limits' | 'tokens', period: string):
  * Plan numbers for the demo logins, which have none (no credentials): the engine reports these instead of asking
  * Claude Code (SWITCHBOARD_DEMO_USAGE), with a week of % history so the chart has something to draw.
  */
-function demoUsage(home: string): string {
+function demoUsage(world: DemoWorld): string {
+  const home = world.home;
   const now = Date.now();
   const HOUR = 3_600_000;
   const at = (ms: number) => Math.round(ms / 60_000) * 60_000;
@@ -968,9 +1010,41 @@ function demoUsage(home: string): string {
           snapshot: { fetchedAt: now - 60_000, limits: [limit('session', 12, sessionReset), limit('weekly_all', 31, weeklyReset)], extraUsage: null },
         },
       ],
+      autoPicks: demoAutoPicks(world, now),
     }),
   );
   return file;
+}
+
+/**
+ * What Auto model picked for some of the demo sessions, and a few more routing calls, so a session shows its pick
+ * and Usage has an Auto routing row and "by Auto" counts. The engine stores them (SWITCHBOARD_DEMO_USAGE).
+ */
+function demoAutoPicks(world: DemoWorld, now: number) {
+  const personal = join(world.home, '.claude');
+  const tokens = (input: number) => ({ input, output: 38, cacheRead: 0, cacheWrite: 0 });
+  const allowed = ['haiku', 'sonnet', 'opus'];
+  const pick = (model: string, reason: string, ago: number, input = 1_060) => ({ model, reason, at: now - ago, tokens: input + 38, allowed });
+  const of = (title: string) => world.history[title]!;
+  const picks = [
+    { configDir: personal, sessionId: world.sessions.hero, pick: pick('opus', 'A feature across the theme, the settings page and saved preferences.', 27 * 60_000) },
+    { ...of('Refactor auth middleware'), pick: pick('opus', 'Splitting tangled middleware across several routes.', 2 * 3_600_000 + 60_000) },
+    { ...of('Write a getting started guide'), pick: pick('sonnet', 'Writing one docs page from known steps.', 5 * 3_600_000 + 60_000) },
+    { ...of('Add pull to refresh on the orders list'), pick: pick('sonnet', 'A small, local change to one list.', 3 * DAY + 60_000) },
+  ].map(({ configDir, id, sessionId, pick: p }: { configDir: string; id?: string; sessionId?: string; pick: ReturnType<typeof pick> }) => ({
+    configDir,
+    sessionId: sessionId ?? id ?? null,
+    pick: p,
+    routingModel: 'claude-haiku-5-5',
+    tokens: tokens(p.tokens - 38),
+  }));
+  // Quick questions and sessions from before the demo's history: picks without a session to show.
+  for (let i = 0; i < 9; i++) {
+    const model = i % 3 === 0 ? 'haiku' : 'sonnet';
+    const p = pick(model, 'A quick question with a short answer.', (i + 1) * 13 * 3_600_000, 900 + i * 40);
+    picks.push({ configDir: personal, sessionId: null, pick: p, routingModel: 'claude-haiku-5-5', tokens: tokens(p.tokens - 38) });
+  }
+  return picks;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -1078,7 +1152,7 @@ const app = await _electron.launch({
     HOME: world.home,
     CLAUDE_CONFIG_DIR: join(world.home, '.claude'),
     SWITCHBOARD_DRIVEN: '1',
-    SWITCHBOARD_DEMO_USAGE: demoUsage(world.home),
+    SWITCHBOARD_DEMO_USAGE: demoUsage(world),
     // No "Claude Code vX is available" in the pictures: the registry offers nothing newer.
     SWITCHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: claudeVersion, stable: claudeVersion }))}`,
     USER: 'you',

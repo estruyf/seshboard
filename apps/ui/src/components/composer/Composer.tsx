@@ -11,6 +11,7 @@ import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { onFirstLine, onLastLine, textareaRows } from './caretLine.ts';
+import { appendQuote, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { tokenAtCaret } from './tokens.ts';
 import { useAttachments } from './useAttachments.ts';
@@ -123,6 +124,7 @@ export function Composer(props: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const draftKey = props.draftKey;
   // The chips live in the drafts store, not here: context from the editor arrives there while the box isn't on screen.
@@ -225,6 +227,29 @@ export function Composer(props: ComposerProps) {
     useDrafts.getState().clearFocus();
     caretToEnd(true);
   }, [focusRequest, props.disabledReason]);
+
+  // Quote in reply: the quote goes at the end, as if typed (so ⌘Z takes it out), and the caret under it.
+  const quoteRequest = useDrafts((s) => (draftKey !== undefined && s.quote?.key === draftKey ? s.quote : null));
+  useEffect(() => {
+    if (!quoteRequest) return;
+    useDrafts.getState().clearQuote();
+    const el = ref.current;
+    const edit = appendQuote(el?.value ?? text, quoteRequest.text);
+    if (!edit) return;
+    if (!el || el.disabled) return setText((current) => current + edit.insert);
+    history.current!.reset();
+    closePalette();
+    el.focus();
+    applyEdit(el, edit, setText);
+    el.scrollTop = el.scrollHeight;
+    // The frame lights up once, so you see where the quote went (restarted for a quote that follows quickly).
+    const card = cardRef.current;
+    if (card) {
+      card.classList.remove('composer-flash');
+      void card.offsetWidth;
+      card.classList.add('composer-flash');
+    }
+  }, [quoteRequest]);
 
   // Mounting with autoFocus, or a new focusRequest, focuses the prompt. While the prompt is disabled
   // (engine connecting, no folder yet) the request waits, and is dropped if by then the user is typing
@@ -390,6 +415,8 @@ export function Composer(props: ComposerProps) {
         return;
       }
     }
+    // ⇧↵ on a list item starts the next one; ` on a selection wraps it as code.
+    if (editKey(event, setText)) return;
     const send = submitKey(event.nativeEvent, props.secondary?.shortcut);
     if (matches(event.nativeEvent, 'composer.add-context') && addContext) {
       event.preventDefault();
@@ -488,6 +515,8 @@ export function Composer(props: ComposerProps) {
 
       {/* Disabled dims the text, not the card: the chips' menus open from inside it and must stay readable. */}
       <div
+        ref={cardRef}
+        onAnimationEnd={(e) => e.animationName === 'composer-flash' && e.currentTarget.classList.remove('composer-flash')}
         className={`rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${props.restored ? 'border-edge' : 'border-border'} ${disabled ? '' : 'focus-within:border-accent-ink/60'}`}
         style={props.frameColor ? { borderColor: props.frameColor } : undefined}
       >
@@ -531,6 +560,7 @@ export function Composer(props: ComposerProps) {
             updatePalette(e.target.value, e.target.selectionStart);
           }}
           onKeyDown={onKeyDown}
+          {...deadKeyWrap(setText)}
           onPaste={onPaste}
           onBlur={() => {
             // A search still on its way must not reopen the list after focus left; the open list waits a moment so a click on it lands.

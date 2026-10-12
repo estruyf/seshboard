@@ -7,6 +7,7 @@ import { useUsageView } from '../../state/usageViewStore.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { AutoWand } from '../composer/ComposerChips.tsx';
 import { ChartCard, ChartTable, LegendItem, RateLine, StackedBars } from './charts.tsx';
 import { ModelCell, ScanProgress, ShareBar, useOpenSession, useProjectName } from './LimitsTab.tsx';
 import { ShareInfo } from './ShareInfo.tsx';
@@ -125,6 +126,17 @@ type Folded = NonNullable<ReturnType<typeof foldRows>['rest']>;
 
 const num = (n: number) => n.toLocaleString();
 
+/** The Auto routing row's name: the calls Haiku made to pick a model for new sessions (they leave no transcript). */
+function AutoRoutingName({ model }: { model: string | null }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5" data-usage-auto-routing>
+      <AutoWand />
+      <span className="truncate font-medium">Auto routing</span>
+      <span className="shrink-0 text-meta font-normal text-faint">· {modelName(model)}</span>
+    </span>
+  );
+}
+
 /** The columns for each grouping. Numbers are right-aligned in tabular figures. */
 function useColumns(groupBy: UsageGroup): Column[] {
   const projects = useProjects((s) => s.projects);
@@ -147,20 +159,24 @@ function useColumns(groupBy: UsageGroup): Column[] {
     { head: 'Cache read', width: '84px', align: 'right', cell: (r) => formatTokens(r.tokens.cacheRead), total: (rest) => formatTokens(rest.tokens.cacheRead) },
   ];
   const largest: Column = { head: 'Largest context', width: '76px', align: 'right', cell: (r) => formatTokens(r.largestContext) };
-  const sessions: Column = { head: 'Sessions', width: '72px', align: 'right', cell: (r) => num(r.sessions) };
+  // The Auto routing row counts picks, not sessions.
+  const sessions: Column = { head: 'Sessions', width: '72px', align: 'right', cell: (r) => (r.autoRouting ? `${num(r.autoRouting.picks)} ${r.autoRouting.picks === 1 ? 'pick' : 'picks'}` : num(r.sessions)) };
   if (groupBy === 'session') {
     return [
       {
         head: 'Session',
         width: 'minmax(160px,2fr)',
-        cell: (r) => (
-          <span className="flex min-w-0 items-center gap-2.5">
-            {r.projectRoot && <ProjectIcon project={projects.get(r.projectRoot)} root={r.projectRoot} size={18} />}
-            <span className="truncate font-medium">{r.label}</span>
-          </span>
-        ),
+        cell: (r) =>
+          r.autoRouting ? (
+            <AutoRoutingName model={r.model} />
+          ) : (
+            <span className="flex min-w-0 items-center gap-2.5">
+              {r.projectRoot && <ProjectIcon project={projects.get(r.projectRoot)} root={r.projectRoot} size={18} />}
+              <span className="truncate font-medium">{r.label}</span>
+            </span>
+          ),
       },
-      { head: 'Project', width: 'minmax(90px,1fr)', cell: (r) => <span className="truncate text-muted">{nameOf(r.projectRoot)}</span> },
+      { head: 'Project', width: 'minmax(90px,1fr)', cell: (r) => <span className="truncate text-muted">{r.autoRouting ? '' : nameOf(r.projectRoot)}</span> },
       { head: 'Model', width: '72px', cell: (r) => <ModelCell model={r.model} fastTurns={r.fastTurns} /> },
       ...tokens,
       largest,
@@ -172,12 +188,15 @@ function useColumns(groupBy: UsageGroup): Column[] {
       {
         head: 'Project',
         width: 'minmax(180px,2fr)',
-        cell: (r) => (
-          <span className="flex min-w-0 items-center gap-2.5">
-            {r.projectRoot && <ProjectIcon project={projects.get(r.projectRoot)} root={r.projectRoot} size={18} />}
-            <span className="truncate font-medium">{nameOf(r.projectRoot)}</span>
-          </span>
-        ),
+        cell: (r) =>
+          r.autoRouting ? (
+            <AutoRoutingName model={r.model} />
+          ) : (
+            <span className="flex min-w-0 items-center gap-2.5">
+              {r.projectRoot && <ProjectIcon project={projects.get(r.projectRoot)} root={r.projectRoot} size={18} />}
+              <span className="truncate font-medium">{nameOf(r.projectRoot)}</span>
+            </span>
+          ),
       },
       sessions,
       ...tokens,
@@ -190,18 +209,26 @@ function useColumns(groupBy: UsageGroup): Column[] {
       {
         head: 'Model',
         width: 'minmax(160px,2fr)',
-        cell: (r) => (
-          <span className="flex items-center gap-1.5 font-medium">
-            {modelName(r.model)}
-            <span className="truncate font-mono text-meta font-normal text-faint">{r.model}</span>
-            {r.fastTurns > 0 && (
-              <span data-tooltip="Fast mode turns" className="flex items-center gap-0.5 text-meta font-normal text-muted">
-                <Zap size={12} className="text-accent-ink" aria-hidden />
-                {num(r.fastTurns)}
-              </span>
-            )}
-          </span>
-        ),
+        cell: (r) =>
+          r.autoRouting ? (
+            <AutoRoutingName model={r.model} />
+          ) : (
+            <span className="flex items-center gap-1.5 font-medium">
+              {modelName(r.model)}
+              {r.byAuto ? (
+                <span className="shrink-0 text-meta font-normal text-muted" data-tooltip="Sessions Auto started on this model" data-usage-by-auto>
+                  · {num(r.byAuto)} by Auto
+                </span>
+              ) : null}
+              <span className="truncate font-mono text-meta font-normal text-faint">{r.model}</span>
+              {r.fastTurns > 0 && (
+                <span data-tooltip="Fast mode turns" className="flex items-center gap-0.5 text-meta font-normal text-muted">
+                  <Zap size={12} className="text-accent-ink" aria-hidden />
+                  {num(r.fastTurns)}
+                </span>
+              )}
+            </span>
+          ),
       },
       sessions,
       ...tokens,
@@ -232,7 +259,7 @@ function Breakdown({ data, profileId, period, onModel, model }: { data: UsageBre
   const virtualizer = useVirtualizer({ count: shown.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_HEIGHT, overscan: 8 });
   const noun = groupBy === 'session' ? 'sessions' : groupBy === 'project' ? 'projects' : groupBy === 'model' ? 'models' : 'days';
 
-  const rowAction = (row: UsageRow) => (groupBy === 'session' ? open(row.sessionId) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
+  const rowAction = (row: UsageRow) => (row.autoRouting ? null : groupBy === 'session' ? open(row.sessionId) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
   const renderRow = (row: UsageRow, style?: CSSProperties) => {
     const action = rowAction(row);
     const selected = groupBy === 'model' && row.model === model;

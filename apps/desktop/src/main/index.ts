@@ -54,6 +54,8 @@ if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'switchboard-sm
 if (scripted) {
   process.env.SWITCHBOARD_CLAUDE_REGISTRY ??= `data:application/json,${encodeURIComponent(JSON.stringify({ latest: '999.0.0', stable: '999.0.0' }))}`;
   process.env.SWITCHBOARD_NO_CLAUDE_UPDATE = '1';
+  // Auto model never calls a real model here: the engine picks from the prompt's words instead.
+  process.env.SWITCHBOARD_STUB_ROUTER = '1';
 }
 
 // The single-instance lock belongs to the data folder. Development builds keep their own ("Switchboard Dev"), so
@@ -135,13 +137,15 @@ function updatePreferences(patch: unknown): void {
   const item = Menu.getApplicationMenu()?.getMenuItemById(`scheme-${next.colorScheme}`);
   if (item) item.checked = true;
   updateWindowBackgrounds();
-  sendRetention(next);
+  sendEngineSettings(next);
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.preferencesChanged, next);
 }
 
-/** Settings › Sessions, for the engine: the archive days (the VS Code companion lists what the sidebar lists) and deleting. */
-function sendRetention(prefs: Preferences): void {
+/** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting) and Auto model. */
+function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived });
+  // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
+  engine?.sendStanding({ type: 'autoModel', prefs: prefs.autoModel });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -719,6 +723,87 @@ async function chooseOption(win: BrowserWindow, selector: string, value: string)
   if (!(await waitInPage(win, option, 3_000))) return false;
   await js(`${option}.click()`);
   return waitInPage(win, `!document.querySelector('[data-select-list]') && document.querySelector(${JSON.stringify(selector)}).dataset.value === ${JSON.stringify(value)}`, 3_000);
+}
+
+/**
+ * Auto model, without ever calling a model or starting a session: Auto leads the model menu with its wand and a
+ * line under it; picked, the chip reads Auto. Start with a prompt the stubbed router holds forever opens the session
+ * at once, with the prompt and "Auto is choosing a model…" (the held prompt never reaches Claude Code), and Stop
+ * session ends it. Turned
+ * off in Settings, Auto leaves the menu and a saved Auto says it starts on the default model. Settings keeps at least
+ * one model to pick. Everything is put back.
+ */
+async function runAutoModelStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-new-session-view]';
+  const prompt = `document.querySelector('${view} [data-composer]')`;
+  const chip = (value: string) => `document.querySelector('${view} [data-model-chip="${value}"]')`;
+  const before = preferences.get().autoModel;
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+  if (!(await waitInPage(win, `${prompt}`, 5_000))) return 'New session did not open';
+  const previousModel = (await js(`document.querySelector('${view} [data-model-select]').dataset.value`)) as string;
+  const restore = async () => {
+    updatePreferences({ autoModel: before });
+    await setFieldValue(win, `${view} [data-composer]`, '').catch(() => {});
+    if (previousModel !== 'auto') await chooseChoice(win, 'model', previousModel, view).catch(() => false);
+  };
+  try {
+    updatePreferences({ autoModel: { ...before, enabled: true } });
+    await js(`document.querySelector('${view} [data-model-select]').click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-menu=\"model\"] [role=menuitemradio]')", 2_000))) return 'the model menu did not open';
+    const menu = (await js(
+      "(() => { const items = [...document.querySelectorAll('[data-menu=\"model\"] [role=menuitemradio]')]; const first = items[0]; return { first: first?.dataset.choice, wand: !!first?.querySelector('svg'), line: first?.nextElementSibling?.getAttribute('role') === 'separator', second: items[1]?.dataset.choice }; })()",
+    )) as { first?: string; wand: boolean; line: boolean; second?: string };
+    if (menu.first !== 'auto' || !menu.wand || !menu.line || menu.second !== '') return `Auto is not first with its wand and a line before Default model: ${JSON.stringify(menu)}`;
+    await js("document.querySelector('[data-menu=\"model\"] [data-choice=\"auto\"]').click()");
+    if (!(await waitInPage(win, `${chip('auto')}?.querySelector('svg') && ${chip('auto')}.innerText.includes('Auto')`, 2_000))) return 'picking Auto did not show the wand and Auto on the chip';
+    await shot(win, 'auto-model-chip.png');
+
+    // Start on Auto opens the session before Auto has picked. Only with a folder (the prompt is disabled without one),
+    // on Auto, and a prompt the stub holds: then Claude Code never gets it, and the session is stopped after.
+    let choosing = 'skipped (no folder)';
+    const hasFolder = (await js(`!!document.querySelector('[data-folder-select]')?.dataset.value && !${prompt}.disabled`)) as boolean;
+    if (hasFolder) {
+      const text = 'Smoke Auto check, never started [smoke: hold]';
+      await setFieldValue(win, `${view} [data-composer]`, text);
+      if (!(await js(`!!${chip('auto')} && ${prompt}.value.includes('[smoke: hold]')`))) return 'not on Auto with the held prompt; not starting';
+      await js(`document.querySelector('${view} [data-composer-submit]').click()`);
+      const session = '[data-current-session]';
+      const opened = `document.querySelector('${session} [data-auto-choosing]')?.innerText.includes('Auto is choosing a model') && [...document.querySelectorAll('${session} [data-item-kind="user"]')].some((el) => el.innerText.includes('[smoke: hold]'))`;
+      if (!(await waitInPage(win, opened, 5_000))) return 'Start on Auto did not open the session with the prompt and Auto is choosing a model…';
+      await shot(win, 'auto-model-choosing.png');
+      await js(`document.querySelector('${session} [data-more-menu]').click()`);
+      if (!(await waitInPage(win, "document.querySelector('[data-stop-session]:not(:disabled)')", 3_000))) return 'no Stop session while Auto was choosing';
+      await js("document.querySelector('[data-stop-session]').click()");
+      if (!(await waitInPage(win, `!document.querySelector('${session} [data-auto-choosing]')`, 5_000))) return 'Stop session left Auto choosing';
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+      if (!(await waitInPage(win, `${prompt}`, 5_000))) return 'New session did not open again';
+      choosing = 'Start opened the session while Auto chose';
+    }
+
+    // Off in Settings: Auto leaves the menu, and the saved Auto starts on the default model, which the note says.
+    updatePreferences({ autoModel: { ...before, enabled: false } });
+    if (!(await waitInPage(win, `${chip('default')} && document.querySelector('${view} [data-auto-off-note]')`, 3_000))) return 'with Auto off, the chip did not fall back to the default model with a note';
+    await js(`document.querySelector('${view} [data-model-select]').click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-menu=\"model\"] [role=menuitemradio]') && !document.querySelector('[data-menu=\"model\"] [data-choice=\"auto\"]')", 2_000))) return 'Auto stayed in the menu while off';
+    pressKey(win, 'Escape');
+    updatePreferences({ autoModel: { ...before, enabled: true } });
+
+    // Settings › Conversation: the block, and the last model to pick can't be unchecked.
+    await js("document.querySelector('[data-open-settings]').click()");
+    await waitInPage(win, "document.querySelector('[data-settings]')", 3_000);
+    await js("document.querySelector('[data-settings-section=\"conversation\"]').click()");
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-auto-model-settings] [data-auto-model-allowed]').length === 3", 3_000))) return 'Settings › Conversation has no Auto model block';
+    updatePreferences({ autoModel: { ...before, enabled: true, allowed: ['sonnet'] } });
+    if (!(await waitInPage(win, "document.querySelector('[data-auto-model-allowed=\"sonnet\"]')?.disabled === true", 2_000))) return 'the last model to pick could be unchecked';
+    await js("document.querySelector('[data-auto-model-allowed=\"opus\"]').click()");
+    if (!(await until(() => preferences.get().autoModel.allowed.join() === 'sonnet,opus'))) return 'checking Opus did not save';
+    await shot(win, 'auto-model-settings.png');
+    await js("document.querySelector('[data-close-settings]').click()");
+    return `ok: Auto leads the menu, the chip reads Auto; ${choosing}; off, it falls back with a note; settings keep a model`;
+  } finally {
+    await restore();
+  }
 }
 
 /** Picks `value` from a composer chip's menu (`ChoiceMenu`): the chip `[data-<name>-select]` inside `scope`, its menu `[data-menu=<name>]`. */
@@ -1793,6 +1878,8 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   // The command palette's New session needs a project: this is the one moment the throwaway profile has one.
   await smokeRun.step('command palette, new session', () => runPaletteNewSessionStep(win), { cleanup: false });
   await smokeRun.step('unsent New session prompt', () => runUnsentNewSessionStep(win), { cleanup: false });
+  // Here New session has a folder (the project just added), so Esc while choosing can be checked too.
+  await smokeRun.step('auto model: menu, chip, Esc while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
 
   await click('[data-open-projects]');
@@ -2849,8 +2936,8 @@ async function runRememberStep(win: BrowserWindow): Promise<string> {
     return selection.toString().trim();
   })()`)) as string;
   if (!selected) return 'ok: the first reply has no text to select';
-  if (!(await waitInPage(win, "document.querySelector('[data-remember-selection] button')", 3_000))) return 'no Remember this button over the selection';
-  await js("document.querySelector('[data-remember-selection] button').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-remember-selection] [data-remember-button]')", 3_000))) return 'no Remember this button over the selection';
+  await js("document.querySelector('[data-remember-selection] [data-remember-button]').click()");
   if (!(await waitInPage(win, "document.querySelector('[data-remember-dialog] [data-remember-text]')", 3_000))) return 'Remember this did not open its dialog';
   const text = (await js("document.querySelector('[data-remember-dialog] [data-remember-text]').value")) as string;
   const name = (await js("document.querySelector('[data-remember-dialog] [data-remember-name]').value")) as string;
@@ -2863,6 +2950,88 @@ async function runRememberStep(win: BrowserWindow): Promise<string> {
   if (!name) return 'no suggested name';
   if (type !== 'project') return `Claude's text started as type "${type}", not project`;
   return `ok: selected ${selected.length} characters, the dialog suggested "${name}" (project), cancelled`;
+}
+
+/**
+ * The toolbar over a selection, read-only: select one of Claude's replies and check the toolbar shows solid, without
+ * covering the selection; Tab reaches it and → moves to Copy, which says Copied (the clipboard is stubbed for the
+ * step, so yours is left alone); Esc closes it and keeps the selection; Quote puts the selection in the message box
+ * as a Markdown quote with the focus there. Nothing is sent; the box is emptied again.
+ */
+async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const key = (keyCode: string) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  };
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const box = `${view} [data-composer]`;
+  const toolbar = "document.querySelector('[data-remember-selection][data-side]')";
+  if (!(await js(`!!document.querySelector('${view} [data-transcript] [data-remember-from="claude"] p')`))) return 'ok: no reply of Claude on screen to select';
+  if ((await js(`document.querySelector('${box}')?.value ?? null`)) !== '') return 'ok: the message box is not empty, nothing quoted';
+  // A paragraph on screen (the list is virtualised, and its first rows may be scrolled out of view).
+  const select = `(() => {
+    const area = document.querySelector('${view} [data-transcript]').getBoundingClientRect();
+    const shown = [...document.querySelectorAll('${view} [data-transcript] [data-remember-from="claude"] p')].filter((p) => { const r = p.getBoundingClientRect(); return r.height > 0 && r.top >= area.top + 60 && r.bottom <= area.bottom; });
+    const p = shown[shown.length - 1];
+    if (!p) return '';
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    return selection.toString().trim();
+  })()`;
+  const selected = (await js(select)) as string;
+  if (!selected) return 'ok: no paragraph of Claude on screen to select';
+  const done = async (result: string) => {
+    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } true");
+    return result;
+  };
+  if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar over the selection');
+  const look = (await js(`(() => {
+    const bar = ${toolbar}.getBoundingClientRect();
+    const lines = [...window.getSelection().getRangeAt(0).getClientRects()].filter((r) => r.width > 0 && r.height > 0 && r.height < 40);
+    const covers = lines.some((r) => r.left < bar.right && r.right > bar.left && r.top < bar.bottom && r.bottom > bar.top);
+    const style = getComputedStyle(${toolbar});
+    return { covers, solid: !style.backgroundColor.includes('/') && !/rgba\(.*, 0(\.\d+)?\)$/.test(style.backgroundColor), labels: [...${toolbar}.querySelectorAll('button')].map((b) => b.textContent.trim()), role: ${toolbar}.getAttribute('role') };
+  })()`)) as { covers: boolean; solid: boolean; labels: string[]; role: string | null };
+  await shot(win, 'selection-toolbar.png');
+  if (look.covers) return done('the toolbar covers the selection');
+  if (!look.solid) return done('the toolbar is see-through');
+  if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
+
+  // Keyboard: Tab from the transcript into the toolbar, → to Copy, then Copy.
+  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeCopied = null; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; true");
+  key('Tab');
+  if (!(await waitInPage(win, "document.activeElement?.hasAttribute('data-quote-selection')", 2_000))) return done('Tab did not move into the toolbar');
+  key('Right');
+  if (!(await waitInPage(win, "document.activeElement?.hasAttribute('data-copy-selection')", 2_000))) return done('→ did not move to Copy');
+  await js('document.activeElement.click()');
+  if (!(await waitInPage(win, "document.querySelector('[data-copy-selection][data-copied]')?.textContent.includes('Copied')", 2_000))) return done('Copy did not say Copied');
+  const copied = (await js('window.__smokeCopied')) as string | null;
+  if (copied !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (!(await js(`!!${toolbar}`))) return done('the toolbar closed after Copy');
+
+  // Esc closes it and keeps the selection.
+  key('Escape');
+  if (!(await waitInPage(win, `!${toolbar}`, 2_000))) return done('Esc did not close the toolbar');
+  if (((await js('window.getSelection().toString().trim()')) as string) !== selected) return done('Esc lost the selection');
+
+  // Quote.
+  await js(select);
+  if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar after selecting again');
+  await js(`${toolbar}.querySelector('[data-quote-selection]').click()`);
+  const quoted = await waitInPage(win, `document.querySelector('${box}').value !== ''`, 3_000);
+  const value = (await js(`document.querySelector('${box}').value`)) as string;
+  const focused = (await js(`document.activeElement === document.querySelector('${box}')`)) as boolean;
+  await setFieldValue(win, box, '');
+  if (!quoted) return done('Quote did not put anything in the message box');
+  const firstLine = selected.split('\n')[0]!.trim();
+  if (!value.startsWith(`> ${firstLine}`) || !value.endsWith('\n\n')) return done(`the message box does not hold the quote ("${value.slice(0, 40)}")`);
+  if (!focused) return done('the message box did not take focus after Quote');
+  return done(`ok: solid toolbar clear of the selection; Tab, → and Copy said Copied; Esc kept the selection; Quote put ${value.trimEnd().split('\n').length} quote lines in the message box (emptied again)`);
 }
 
 async function runReplyActionsStep(win: BrowserWindow): Promise<string> {
@@ -4861,6 +5030,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('remember this', () => runRememberStep(win));
+  await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
   await step('unsent drafts', () => runDraftStep(win));
   await step('unsent messages', () => runUnsentStep(win));
@@ -4947,7 +5117,7 @@ app.whenReady().then(() => {
       notifier.connect();
     },
   });
-  sendRetention(preferences.get());
+  sendEngineSettings(preferences.get());
   engine.start();
   themes.watch();
   installMenu();
