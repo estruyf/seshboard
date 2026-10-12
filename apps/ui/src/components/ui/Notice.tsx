@@ -2,21 +2,26 @@ import { X } from 'lucide-react';
 import type { HTMLAttributes, ReactNode, Ref } from 'react';
 import { Button } from './Button.tsx';
 
-export type NoticeTone = 'info' | 'accent' | 'warn' | 'error' | 'success';
+export type NoticeTone = 'neutral' | 'info' | 'accent' | 'warn' | 'error' | 'success';
 
-// The edge colour for info, so the box stays visible on dialogs as well as on the app's background.
 const BOX: Record<NoticeTone, string> = {
-  info: 'border-edge bg-card text-muted',
+  // The edge colour, so the quiet box stays visible on dialogs as well as on the app's background.
+  neutral: 'border-edge bg-card text-muted',
+  // Something worth reading that you didn't ask about: tinted, so it stands out on a card too.
+  info: 'border-link/40 bg-link/8 text-text',
   // A limit reached (the focus limit in New session): the readable yellow frame, not a warning.
   accent: 'border-accent-ink/45 bg-accent/6 text-text',
   warn: 'border-warn/40 bg-warn/10 text-text',
   error: 'border-error/40 bg-error/10 text-error',
   success: 'border-ok/40 bg-ok/10 text-text',
 };
-const ICON: Record<NoticeTone, string> = { info: 'text-muted', accent: 'text-accent-ink', warn: 'text-warn', error: 'text-error', success: 'text-ok' };
+const ICON: Record<NoticeTone, string> = { neutral: 'text-muted', info: 'text-link', accent: 'text-accent-ink', warn: 'text-warn', error: 'text-error', success: 'text-ok' };
 
 interface NoticeProps extends Omit<HTMLAttributes<HTMLDivElement>, 'role'> {
-  /** `accent` is for a limit you reached (the focus limit); `warn` for something that needs you. */
+  /**
+   * `neutral` (the default) for a quiet note or an empty state; `info` for something worth reading you
+   * didn't ask about; `accent` for a limit you reached (the focus limit); `warn` for something that needs you.
+   */
   tone?: NoticeTone;
   /** Before the message, in the tone's colour (a class on the icon itself wins). */
   icon?: ReactNode;
@@ -36,11 +41,11 @@ interface NoticeProps extends Omit<HTMLAttributes<HTMLDivElement>, 'role'> {
  * A message about what is going on: a failed action, a session open elsewhere, a prompt that came
  * from a link. Wraps onto more lines as needed; `inline` keeps it to one line without a box.
  */
-export function Notice({ tone = 'info', icon, actions, onDismiss, inline = false, role, className = '', children, ...rest }: NoticeProps) {
+export function Notice({ tone = 'neutral', icon, actions, onDismiss, inline = false, role, className = '', children, ...rest }: NoticeProps) {
   const dismiss = onDismiss && <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} onClick={onDismiss} aria-label="Dismiss" className="shrink-0" />;
   if (inline) {
     return (
-      <div role={role ?? (tone === 'error' ? 'alert' : 'status')} className={`flex min-w-0 items-center gap-1.5 ${tone === 'info' ? '' : ICON[tone]} ${className}`} {...rest}>
+      <div role={role ?? (tone === 'error' ? 'alert' : 'status')} className={`flex min-w-0 items-center gap-1.5 ${tone === 'neutral' ? '' : ICON[tone]} ${className}`} {...rest}>
         {icon && <span className={`flex shrink-0 ${ICON[tone]}`}>{icon}</span>}
         <span className="min-w-0 truncate">{children}</span>
         {actions}

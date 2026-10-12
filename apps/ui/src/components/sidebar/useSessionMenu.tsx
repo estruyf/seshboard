@@ -7,6 +7,7 @@ import { archivesOnMiddleClick, isActive } from '../../state/sidebarRows.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { useDrafts } from '../../state/draftsStore.ts';
+import { usePreferences } from '../../state/preferencesStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
@@ -61,11 +62,11 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   };
 
   const middleClick = (data: SessionRowData) => {
-    if (archivesOnMiddleClick(data, Date.now())) flagAll([data], ARCHIVE);
+    if (archivesOnMiddleClick(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays)) flagAll([data], ARCHIVE);
   };
 
   const openSessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
-    const archivedNow = !isActive(data, Date.now());
+    const archivedNow = !isActive(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
     const flag = (change: FlagChange) => flagAll([data], change);
     const cwd = data.summary?.cwd ?? data.live?.cwd ?? null;
     // Removing the project from here read as removing the session; that lives in the project menus.

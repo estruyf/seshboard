@@ -108,6 +108,8 @@ export interface PaletteApi {
   /** The Unsent messages list. */
   showUnsent(): void;
   openSettings(section?: SettingsSection): void;
+  /** Settings › Sessions: every session, or with the delete switch focused. */
+  manageSessions(options?: { focus?: 'archive' | 'delete' }): void;
   setPreferences(patch: Partial<Preferences>): void;
   setSidebar(state: SidebarState): void;
   /** ⌘B: open, or collapsed as Settings says. */
@@ -244,6 +246,7 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: Lucid
   { id: 'general', label: 'General', icon: SlidersHorizontal },
   { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
+  { id: 'sessions', label: 'Sessions', icon: Archive },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
@@ -419,6 +422,16 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'export-settings', title: 'Export settings…', group: 'general', icon: Upload, keywords: 'backup save move mac projects actions preferences', when: always, run: (api) => api.backup('export') },
   { id: 'import-settings', title: 'Import settings…', group: 'general', icon: Download, keywords: 'backup restore move mac projects actions preferences', when: always, run: (api) => api.backup('import') },
   { id: 'vscode-extension', title: 'VS Code extension', group: 'general', icon: SquareCode, keywords: 'companion cursor windsurf install marketplace settings', when: always, run: (api) => api.openSettings('vscode') },
+  { id: 'manage-sessions', title: 'Manage sessions', group: 'general', icon: Archive, keywords: 'archived archive delete trash clean up old all sessions overview size disk', when: always, run: (api) => api.manageSessions() },
+  {
+    id: 'delete-archived-sessions',
+    title: 'Delete archived sessions…',
+    group: 'general',
+    icon: Trash2,
+    keywords: 'auto delete clean up old archived trash retention days cleanupPeriodDays',
+    when: always,
+    run: (api) => api.manageSessions({ focus: 'delete' }),
+  },
   { id: 'diagnostics', title: 'Engine diagnostics', group: 'general', icon: Activity, keywords: 'settings log version', when: always, run: (api) => api.openSettings('diagnostics') },
   { id: 'shortcuts', title: 'Keyboard shortcuts', group: 'general', shortcut: keysFor('shortcuts'), icon: Keyboard, keywords: 'help keys hotkeys cheat sheet', when: always, run: (api) => api.showShortcuts() },
   { id: 'focus-on', title: 'Focus limit: turn on', group: 'general', icon: Target, keywords: 'limit sessions', when: (ctx) => ctx.focusLimit === null, run: (api) => api.setFocusLimit(true) },

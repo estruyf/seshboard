@@ -49,7 +49,7 @@ export const sidebar = [
   },
   {
     label: 'Settings',
-    items: ['settings', 'settings/claude-profiles', 'settings/updates', 'settings/backup'],
+    items: ['settings', 'settings/sessions', 'settings/claude-profiles', 'settings/updates', 'settings/backup'],
   },
   'vscode-companion',
   'links',

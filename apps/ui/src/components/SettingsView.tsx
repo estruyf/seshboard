@@ -1,9 +1,10 @@
 import { currentPlatform } from '../lib/platform.ts';
-import { Activity, ArchiveRestore, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
 import type { ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity } from '@switchboard/protocol/bridge';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
+import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
 import { useSidebar } from '../state/sidebarStore.ts';
 import { BackupSettings } from './backup/BackupSettings.tsx';
@@ -122,6 +123,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'general', label: 'General', icon: SlidersHorizontal },
   { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
+  { id: 'sessions', label: 'Sessions', icon: Archive },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
@@ -155,7 +157,7 @@ function useEscapeToClose(sheet: RefObject<HTMLElement | null>) {
 }
 
 /** One page of Settings: everything for the section chosen in its sidebar. */
-function SectionPage({ section }: { section: SettingsSection }) {
+function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollRef: RefObject<HTMLDivElement | null> }) {
   const prefs = usePreferences((s) => s.prefs);
   const update = usePreferences((s) => s.update);
 
@@ -198,6 +200,8 @@ function SectionPage({ section }: { section: SettingsSection }) {
           />
         </Section>
       );
+    case 'sessions':
+      return <SessionsSettings scrollRef={scrollRef} />;
     case 'conversation':
       return (
         <Section
@@ -351,6 +355,8 @@ export function SettingsNav() {
 export function SettingsView() {
   const section = useSessions((s) => s.settingsSection);
   const sheet = useRef<HTMLDivElement>(null);
+  /** The page's scroll area: long pages (all sessions) virtualise their lists against it. */
+  const scroller = useRef<HTMLDivElement>(null);
   // Start keyboard focus in Settings (not a trap: the sidebar stays reachable with Tab).
   useEffect(() => {
     if (!sheet.current?.contains(document.activeElement)) sheet.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
@@ -375,9 +381,9 @@ export function SettingsView() {
           <div className="drag flex h-13 shrink-0 items-center justify-end px-6">
             <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} shortcut="settings.close" onClick={close} data-close-settings data-tooltip={`Close (${formatKeys(keysFor('settings.close'))})`} aria-label="Close settings" className="no-drag" />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className={`mx-auto min-w-0 px-8 ${section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
-              <SectionPage section={section} />
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+            <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
+              <SectionPage section={section} scrollRef={scroller} />
             </div>
           </div>
         </div>
