@@ -46,6 +46,14 @@ export function spokenLimit(limit: UsageLimit, now = Date.now()): string {
   return `${scoped}: ${Math.round(limit.percent)}% used${severity}${reset}`;
 }
 
+/**
+ * A usage bar's tooltip: every window on a line ("5h: 38% used, resets in 2h14m"), then what a click does.
+ */
+export function usageSummary(limits: UsageLimit[], now = Date.now()): string {
+  const lines = limits.map((l) => `${limitLabel(l)}: ${Math.round(l.percent)}% used${l.resetsAt ? `, resets in ${countdown(l.resetsAt, now)}` : ''}`);
+  return [...lines, 'Click to see what used it'].join('\n');
+}
+
 /** A profile's usage once it has been asked for: the numbers (null when there are none) and why the last fetch failed. */
 export interface UsageEntry {
   usage: UsageSnapshot | null;

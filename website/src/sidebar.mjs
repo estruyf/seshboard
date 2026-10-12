@@ -43,6 +43,7 @@ export const sidebar = [
   },
   'permissions',
   'focus-limit',
+  'usage',
   {
     label: 'Themes',
     items: ['themes/built-in', 'themes/custom', 'themes/syntax-colours'],

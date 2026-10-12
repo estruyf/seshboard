@@ -56,6 +56,13 @@ const icon = (from: string, to: string, glyph: string) =>
 
 type Block = Record<string, unknown>;
 
+/** How a demo transcript's turns use tokens: the model, a multiplier on the usual sizes, and fast mode. */
+interface TranscriptUsage {
+  model?: string;
+  scale?: number;
+  fast?: boolean;
+}
+
 class Transcript {
   readonly id = randomUUID();
   private lines: string[] = [];
@@ -64,11 +71,15 @@ class Transcript {
   private last = 0;
   private readonly cwd: string;
   private readonly branch: string;
+  private readonly usage: TranscriptUsage;
+  private turns = 0;
 
-  constructor(cwd: string, branch: string, start: number) {
+  /** `usage` sets the model and how heavy the turns are, so the Usage view has something to tell apart. */
+  constructor(cwd: string, branch: string, start: number, usage: TranscriptUsage = {}) {
     this.cwd = cwd;
     this.branch = branch;
     this.time = start;
+    this.usage = usage;
   }
 
   private base(type: string) {
@@ -90,14 +101,27 @@ class Transcript {
       id: `msg_${randomUUID().replaceAll('-', '').slice(0, 24)}`,
       type: 'message',
       role: 'assistant',
-      model: MODEL,
+      model: this.usage.model ?? MODEL,
       content: blocks,
       stop_reason: blocks.some((b) => b.type === 'tool_use') ? 'tool_use' : 'end_turn',
       stop_sequence: null,
-      usage: { input_tokens: 12, output_tokens: 420, cache_read_input_tokens: 38_000, cache_creation_input_tokens: 2_400 },
+      usage: this.nextUsage(),
     };
     this.lines.push(JSON.stringify({ ...this.base('assistant'), message, requestId: `req_${randomUUID().slice(0, 18)}` }));
     return this;
+  }
+
+  /** A turn's tokens: the context grows with each turn, as it does in a real session. */
+  private nextUsage() {
+    const scale = this.usage.scale ?? 1;
+    const turn = this.turns++;
+    return {
+      input_tokens: Math.round(12 * scale),
+      output_tokens: Math.round(420 * scale * (0.6 + Math.random() * 0.8)),
+      cache_read_input_tokens: Math.round((38_000 + turn * 9_000) * scale),
+      cache_creation_input_tokens: Math.round((turn === 0 ? 21_000 : 2_400) * scale),
+      speed: this.usage.fast ? 'fast' : 'standard',
+    };
   }
 
   results(...results: Array<{ id: string; text: string; error?: boolean }>): this {
@@ -335,7 +359,7 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
   });
 
   // The hero: a finished session with a full run of tool calls, an edit, a to-do list and a summary.
-  const hero = new Transcript(acme, 'feat/dark-mode', now - 26 * MINUTE)
+  const hero = new Transcript(acme, 'feat/dark-mode', now - 26 * MINUTE, { scale: 2.5, fast: true })
     .user('Add a dark mode toggle to the settings page. It should follow the system setting until someone picks a theme, and remember their choice.')
     .tool('Glob', { pattern: 'src/**/*theme*' }, `${acme}/src/lib/theme.ts\n${acme}/src/lib/theme.test.ts`, "I'll start with how the theme is set up today.")
     .tool('Read', { file_path: `${acme}/src/lib/theme.ts` }, numbered(themeBefore))
@@ -406,8 +430,16 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     [payments, 'main', 'Add CSV export to the reports endpoint', 5 * DAY, 'Let /reports return CSV when the client asks for text/csv.', '`GET /reports` now honours `Accept: text/csv` and streams the rows. JSON stays the default.'],
     [docs, 'main', 'Fix broken links after the docs move', 8 * DAY, 'Lots of links broke when we moved the API docs. Find and fix them.', 'Fixed 23 links across 9 pages and added redirects for the old `/api/v1/*` URLs.'],
   ];
+  // How heavy each one was, and on which model, for the Usage view.
+  const usage: Record<string, TranscriptUsage> = {
+    'Refactor auth middleware': { scale: 1.6 },
+    'Write a getting started guide': { model: 'claude-sonnet-5-5', scale: 1.2 },
+    'Investigate flaky checkout test': { scale: 2.2 },
+    'Add pull to refresh on the orders list': { model: 'claude-sonnet-5-5', scale: 0.9 },
+    'Add CSV export to the reports endpoint': { model: 'claude-haiku-5-5', scale: 0.6 },
+  };
   for (const [cwd, branch, title, ago, prompt, answer] of history) {
-    const t = new Transcript(cwd, branch, now - ago)
+    const t = new Transcript(cwd, branch, now - ago, usage[title])
       .user(prompt)
       .tool('Grep', { pattern: title.split(' ').at(-1)!.toLowerCase(), path: `${cwd}/src` }, 'Found 3 files')
       .say(answer);

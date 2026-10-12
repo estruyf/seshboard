@@ -5,6 +5,7 @@ import { goInHistory, startRecording, useNavHistory } from './navHistoryStore.ts
 import { openProject, useProjectPage } from './projectPageStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
+import { openUsage, useUsageView } from './usageViewStore.ts';
 
 // The engine connection needs the preload's window.switchboard; these tests only move between views.
 vi.mock('../engine/useEngine.ts', () => ({ useEngineConnection: () => ({ status: 'connecting' }) }));
@@ -33,6 +34,21 @@ describe('goInHistory', () => {
     expect(useProjectPage.getState()).toMatchObject({ root: '/p', tab: 'memory' });
     // Going back and forward added nothing.
     expect(useNavHistory.getState().history.entries).toHaveLength(3);
+    stop();
+  });
+
+  it('comes back to the Usage view of the same profile', () => {
+    vi.useFakeTimers();
+    const stop = startRecording();
+    vi.advanceTimersByTime(1000);
+    openUsage('work');
+    vi.advanceTimersByTime(1000);
+    useSessions.getState().goHome();
+    vi.advanceTimersByTime(1000);
+
+    goInHistory(-1);
+    expect(useSessions.getState().view).toBe('usage');
+    expect(useUsageView.getState().profileId).toBe('work');
     stop();
   });
 

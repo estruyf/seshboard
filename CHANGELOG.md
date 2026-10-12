@@ -13,6 +13,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Back and forward with your mouse.** The back and forward buttons on your mouse return to where you were before, as in a browser: sessions, Home, New session, Settings pages, Projects and project pages.
 - A project opened from Settings (the projects in Settings › Memory) has **Settings › Memory** in its breadcrumb, which takes you back there instead of to Projects.
 - The Archived header in the sidebar has a menu with **Manage sessions…** and **Archive settings…**, the session count at the bottom of the sidebar opens the overview, and the command palette has *Manage sessions* and *Delete archived sessions…*.
+- **Usage view.** Click a usage bar (under the message box, in New session or on Home), or run *Open usage* from the command palette, to see where your plan went. **Limits** shows what is left of each window, when it comes back, your % used over time, and which sessions used the current 5-hour window. **Tokens** shows where the tokens went per session, project, model and day, with the cache hit rate and fast mode turns. Pick the current window, 24 hours, 7 days or 30 days. Every share is an estimate, and no prices are shown.
 
 ### Fixed
 

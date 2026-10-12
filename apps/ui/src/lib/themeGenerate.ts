@@ -174,6 +174,11 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     'profile-red': keepHue(demo['profile-red'], CONTRAST.profile),
     'profile-orange': keepHue(demo['profile-orange'], CONTRAST.profile),
     'profile-gray': keepHue(demo['profile-gray'], CONTRAST.profile),
+    // Chart series keep Demo Time's values: they were picked together, to stay apart for colour-blind readers.
+    'chart-output': demo['chart-output'],
+    'chart-cache-write': demo['chart-cache-write'],
+    'chart-cache-read': demo['chart-cache-read'],
+    'chart-input': demo['chart-input'],
   };
   return { ...tokens, ...deriveTokens(mode, { text, 'accent-ink': accentInk, ok, error }) };
 }

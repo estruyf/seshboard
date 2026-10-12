@@ -87,7 +87,7 @@ export function usePaletteContext(): PaletteContext {
   const editors = useHosts((s) => s.editors);
 
   const pageRoot = useProjectPage((s) => s.root);
-  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : selectedId ? 'session' : 'home';
+  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : selectedId ? 'session' : 'home';
   const id = view === 'session' ? selectedId : null;
 
   const session = useMemo<PaletteSession | null>(() => {

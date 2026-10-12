@@ -100,7 +100,8 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
       "diff-added": "#00806f1f", "diff-removed": "#d73a491f",
       "terminal-bg": "#0d1016", "terminal-shadow": "#15181f29",
       "profile-yellow": "#b08300", "profile-blue": "#1f6feb", "profile-green": "#1a7f37", "profile-purple": "#8250df",
-      "profile-red": "#cf222e", "profile-orange": "#d1600a", "profile-gray": "#6e7781"
+      "profile-red": "#cf222e", "profile-orange": "#d1600a", "profile-gray": "#6e7781",
+      "chart-output": "#7048e8", "chart-cache-write": "#c2255c", "chart-cache-read": "#1c7ed6", "chart-input": "#099268"
     }
   },
   "dark": {
@@ -116,7 +117,8 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
       "diff-added": "#51cf661f", "diff-removed": "#ff6b6b1f",
       "terminal-bg": "#0d1016", "terminal-shadow": "#0000008c",
       "profile-yellow": "#ffd43b", "profile-blue": "#74c0fc", "profile-green": "#51cf66", "profile-purple": "#b197fc",
-      "profile-red": "#ff8787", "profile-orange": "#ffa94d", "profile-gray": "#9ba4b7"
+      "profile-red": "#ff8787", "profile-orange": "#ffa94d", "profile-gray": "#9ba4b7",
+      "chart-output": "#9775fa", "chart-cache-write": "#e64980", "chart-cache-read": "#339af0", "chart-input": "#0ca678"
     },
     "terminal": {
       "background": "#0d1016",
@@ -206,6 +208,7 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 | `terminal-bg` | the terminal panel (always dark) | `#0d1016` | `#0d1016` |
 | `terminal-shadow` | the shadow the terminal panel casts on the conversation | `#15181f29` | `#0000008c` |
 | `profile-yellow`, `-blue`, `-green`, `-purple`, `-red`, `-orange`, `-gray` | the dots, tags and rails that tell Claude profiles apart | see Demo Time above | |
+| `chart-output`, `chart-cache-write`, `chart-cache-read`, `chart-input` | the token types in the Usage view's charts, and its plan windows' lines (Weekly, a model's weekly, Session). Checked together for colour blindness; generated themes keep Demo Time's | `#7048e8`, `#c2255c`, `#1c7ed6`, `#099268` | `#9775fa`, `#e64980`, `#339af0`, `#0ca678` |
 
 The terminal panel always uses the dark mode's tokens, in light mode too.
 

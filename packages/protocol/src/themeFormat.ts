@@ -44,6 +44,10 @@ export const THEME_TOKENS = [
   'profile-red',
   'profile-orange',
   'profile-gray',
+  'chart-output',
+  'chart-cache-write',
+  'chart-cache-read',
+  'chart-input',
 ] as const;
 export type ThemeToken = (typeof THEME_TOKENS)[number];
 /** A full set of tokens for one mode. */

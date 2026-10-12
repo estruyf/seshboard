@@ -3744,6 +3744,71 @@ const PALETTE_MODE = "document.querySelector('[data-command-palette]')?.dataset.
 const PALETTE_STEP = "document.querySelector('[data-command-palette]')?.dataset.paletteStep";
 
 /** Opens the command palette with a shortcut and waits for it in `mode`, with the cursor in its field. */
+/**
+ * The Usage view: a click on the usage bar opens it (the palette's Open usage where no bar shows, as in the demo home
+ * without a login), the tabs and periods switch, a row of the breakdown opens its session, and Esc goes back. Only
+ * reads: the transcripts' tokens go into the throwaway profile's cache.
+ */
+async function runUsageViewStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const opened = [];
+  if (await js("!!document.querySelector('[data-usage-band]')")) {
+    const click = await clickLikeAUser(win, '[data-usage-band]');
+    if (!click.hit) return `the usage bar is covered by ${click.at}`;
+    opened.push('the usage bar');
+  } else {
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return '⌘K did not open the commands';
+    await setFieldValue(win, '[data-palette-input]', 'Open usage');
+    if (!(await waitInPage(win, "[...document.querySelectorAll('[data-command-palette] [role=option]')].some((el) => el.innerText.includes('Open usage'))", 3_000))) return 'the palette has no Open usage';
+    pressKey(win, 'Return');
+    opened.push('the palette');
+  }
+  if (!(await waitInPage(win, "document.querySelector('[data-usage-view]')", 5_000))) return `the Usage view did not open from ${opened[0]}`;
+  const profile = (await js("document.querySelector('[data-usage-view]').dataset.usageProfile")) as string;
+
+  await js("document.querySelector('[data-usage-tab=\"tokens\"]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-usage-tab=\"tokens\"]')?.getAttribute('aria-selected') === 'true' && document.querySelector('[data-usage-headline], [data-usage-scan]')", 15_000))) return 'the Tokens tab showed no totals';
+  for (const period of ['day', 'week', 'month', 'window']) {
+    await js(`document.querySelector('[data-usage-period="${period}"]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-usage-period="${period}"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('[data-usage-headline]')`, 15_000))) return `the ${period} period did not show`;
+  }
+  // Keys: ⌘1 for Limits, 3 for 7 days.
+  pressKey(win, '1', ['meta']);
+  pressKey(win, '3');
+  if (!(await waitInPage(win, "document.querySelector('[data-usage-tab=\"limits\"]')?.getAttribute('aria-selected') === 'true' && document.querySelector('[data-usage-period=\"week\"]')?.getAttribute('aria-checked') === 'true'", 3_000))) return '⌘1 and 3 did not pick Limits and 7 days';
+  const limits = (await js("document.querySelectorAll('[data-usage-limit]').length")) as number;
+  await shot(win, 'usage-view.png');
+
+  // A session from the breakdown, when the period has one that is still in the list (never a running one: opening only reads).
+  pressKey(win, '2', ['meta']);
+  pressKey(win, '4');
+  await waitInPage(win, "document.querySelector('[data-usage-breakdown] [data-usage-row], [data-usage-breakdown] p')", 15_000);
+  const running = (await runningSessions())?.ids ?? new Set<string>();
+  const row = (await js(`(() => {
+    const running = new Set(${JSON.stringify([...running])});
+    const rows = [...document.querySelectorAll('[data-usage-breakdown] [data-usage-row][tabindex]')];
+    const row = rows.find((el) => !running.has(el.dataset.usageRow));
+    return row ? row.dataset.usageRow : null;
+  })()`)) as string | null;
+  let openedSession = 'no session in the list to open';
+  if (row) {
+    await js(`document.querySelector('[data-usage-breakdown] [data-usage-row=${JSON.stringify(JSON.stringify(row)).slice(1, -1)}]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-current-session=${JSON.stringify(JSON.stringify(row)).slice(1, -1)}]')`, 5_000))) return 'a breakdown row did not open its session';
+    openedSession = 'a row opened its session';
+    // Back in, to leave with Esc.
+    await js("document.querySelector('[data-usage-band]')?.click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-usage-view]')", 3_000))) {
+      if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return '⌘K did not open the commands';
+      await setFieldValue(win, '[data-palette-input]', 'Open usage');
+      pressKey(win, 'Return');
+      if (!(await waitInPage(win, "document.querySelector('[data-usage-view]')", 3_000))) return 'the Usage view did not open again';
+    }
+  }
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000))) return 'Esc did not leave the Usage view';
+  return `ok: opened from ${opened[0]} for ${profile}, ${limits} limit card(s), every period, ${openedSession}, Esc went back`;
+}
+
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
   pressKey(win, keyCode, modifiers);
   return waitInPage(win, `${PALETTE_MODE} === ${JSON.stringify(mode)} && document.activeElement?.matches('[data-palette-input]')`, 3_000);
@@ -4828,6 +4893,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     await shot(win, 'usage.png');
     return `ok: ${await js("document.querySelector('[data-usage-band]').innerText.replace(/\\s+/g, ' ')")}`;
   });
+  await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
   await step('settings: theme, sidebar style, session scope, tool activity, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('focus limit', () => runFocusStep(win));
