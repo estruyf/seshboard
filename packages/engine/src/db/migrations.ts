@@ -279,4 +279,10 @@ export const migrations: readonly string[] = [
     version TEXT NOT NULL
   );
   `,
+
+  // v18: when a session was unarchived by hand. It stays in the main list, however quiet, until it has new
+  // activity (then it's archived after 48 quiet hours, like any session). A user choice: keep it.
+  `
+  ALTER TABLE session_flags ADD COLUMN restored_at INTEGER;
+  `,
 ];

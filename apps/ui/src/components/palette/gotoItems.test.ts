@@ -16,6 +16,7 @@ const row = (id: string, updatedAt: number, over: Partial<SessionRowData> = {}):
   summary: null,
   pinned: false,
   archivedAt: null,
+  restoredAt: null,
   unread: false,
   inApp: true,
   error: false,

@@ -8,15 +8,16 @@ import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
 import { coalesce } from '../util/coalesce.ts';
 
 /** What the index derives from disk; user flags are added on the way out (see `decorate`). */
-type RawSummary = Omit<SessionSummary, 'pinned' | 'archivedAt' | 'viewedAt' | 'unread' | 'inApp'>;
+type RawSummary = Omit<SessionSummary, 'pinned' | 'archivedAt' | 'restoredAt' | 'viewedAt' | 'unread' | 'inApp'>;
 
 interface Flags {
   pinned: boolean;
   archivedAt: number | null;
+  restoredAt: number | null;
   viewedAt: number | null;
 }
 
-const NO_FLAGS: Flags = { pinned: false, archivedAt: null, viewedAt: null };
+const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null };
 /** Writes that land right after the user looked are not "new" for them. */
 const UNREAD_SLACK_MS = 2_000;
 
@@ -100,11 +101,12 @@ export class SessionIndex {
           jsonl_path = excluded.jsonl_path, jsonl_mtime = excluded.jsonl_mtime,
           entrypoint = excluded.entrypoint, summary_json = excluded.summary_json`),
       remove: db.prepare('DELETE FROM sessions WHERE id = ?'),
-      flagsAll: db.prepare('SELECT id, pinned, archived_at, viewed_at FROM session_flags'),
+      flagsAll: db.prepare('SELECT id, pinned, archived_at, restored_at, viewed_at FROM session_flags'),
       flagsDelete: db.prepare('DELETE FROM session_flags WHERE id = ?'),
       flagsUpsert: db.prepare(`
-        INSERT INTO session_flags (id, pinned, archived_at, viewed_at) VALUES (?, ?, ?, ?)
-        ON CONFLICT (id) DO UPDATE SET pinned = excluded.pinned, archived_at = excluded.archived_at, viewed_at = excluded.viewed_at`),
+        INSERT INTO session_flags (id, pinned, archived_at, restored_at, viewed_at) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (id) DO UPDATE SET
+          pinned = excluded.pinned, archived_at = excluded.archived_at, restored_at = excluded.restored_at, viewed_at = excluded.viewed_at`),
     };
     this.loadFlags();
     this.loadCache();
@@ -112,8 +114,8 @@ export class SessionIndex {
 
   private loadFlags(): void {
     this.flags.clear();
-    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; viewed_at: number | null }>) {
-      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, viewedAt: row.viewed_at });
+    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; restored_at: number | null; viewed_at: number | null }>) {
+      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, restoredAt: row.restored_at, viewedAt: row.viewed_at });
     }
   }
 
@@ -173,13 +175,17 @@ export class SessionIndex {
     if (this.entries.has(sessionId)) this.apply([], [sessionId]);
   }
 
-  /** Pins or archives a session (or undoes it) and tells every window. */
+  /**
+   * Pins or archives a session (or undoes it) and tells every window. Unarchiving keeps the session in the main
+   * list until it has new activity: one quiet for more than 48 hours would otherwise stay under Archived.
+   */
   setFlags(sessionId: string, change: { pinned?: boolean; archived?: boolean }): void {
     const current = this.flags.get(sessionId) ?? NO_FLAGS;
+    const now = Date.now();
     const next: Flags = {
       ...current,
       ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
-      ...(change.archived !== undefined ? { archivedAt: change.archived ? Date.now() : null } : {}),
+      ...(change.archived !== undefined ? { archivedAt: change.archived ? now : null, restoredAt: change.archived ? null : now } : {}),
     };
     this.writeFlags(sessionId, next);
   }
@@ -200,7 +206,7 @@ export class SessionIndex {
 
   private writeFlags(sessionId: string, flags: Flags): void {
     this.flags.set(sessionId, flags);
-    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.viewedAt);
+    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt);
     this.republish(sessionId);
   }
 

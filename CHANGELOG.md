@@ -2,6 +2,12 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### Fixed
+
+- **Unarchive** now brings back a session that was archived because it was quiet for 48 hours. It stays in the main list until it has new activity.
+
 ## [0.0.14] - 2026-10-11
 
 ### New

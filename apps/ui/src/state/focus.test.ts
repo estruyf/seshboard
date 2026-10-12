@@ -41,6 +41,7 @@ const summary = (id: string, overrides: Partial<SessionSummary> = {}): SessionSu
   tag: null,
   pinned: false,
   archivedAt: null,
+  restoredAt: null,
   viewedAt: null,
   unread: false,
   inApp: true,

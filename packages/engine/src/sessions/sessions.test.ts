@@ -147,11 +147,15 @@ describe('SessionIndex', () => {
     expect(t.index.get(ID_A)!.archivedAt).toBeGreaterThan(0);
     t.index.setFlags(ID_A, { archived: false });
     expect(t.index.get(ID_A)).toMatchObject({ pinned: true, archivedAt: null });
+    // Unarchived by hand: a quiet session stays in the main list until it has new activity.
+    expect(t.index.get(ID_A)!.restoredAt).toBeGreaterThan(0);
     t.index.setFlags(ID_B, { archived: true });
+    expect(t.index.get(ID_B)).toMatchObject({ restoredAt: null });
     expect(t.index.get(ID_B)!.archivedAt).toBeGreaterThan(0);
     t.index.stop();
     const again = setup([], db);
     expect(again.index.get(ID_A)).toMatchObject({ pinned: true });
+    expect(again.index.get(ID_A)!.restoredAt).toBeGreaterThan(0);
     expect(again.index.get(ID_B)).toMatchObject({ unread: false });
     expect(again.index.get(ID_B)!.archivedAt).toBeGreaterThan(0);
   });

@@ -28,6 +28,7 @@ const row = (id: string, updatedAt: number, status: LiveSession['status'] | null
   summary: null,
   pinned: false,
   archivedAt: null,
+  restoredAt: null,
   unread: false,
   inApp: true,
   error: false,

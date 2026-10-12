@@ -36,7 +36,8 @@ export function startupSession(rows: SessionRowData[], lastId: unknown, startupV
 /**
  * Main list or "Archived"? Anything that wants attention (working, waiting,
  * failed, unread, open in Switchboard) or is pinned stays up. Archiving by hand hides a
- * session until it has new activity; otherwise sessions are archived after 48 h.
+ * session until it has new activity; otherwise sessions are archived after 48 h. Unarchiving by hand keeps a
+ * session up until it has new activity; then the 48 h count from there.
  */
 export function isActive(row: SessionRowData, now: number): boolean {
   // Anything that needs you always shows.
@@ -46,6 +47,8 @@ export function isActive(row: SessionRowData, now: number): boolean {
   // working stays archived (its constant updates aren't news); it comes back once it finishes.
   if (row.archivedAt !== null && (row.archivedAt >= row.updatedAt || row.live?.status === 'running')) return false;
   if (row.live?.status === 'running') return true;
+  // Unarchived by hand: back in the main list, however old, until there's something new.
+  if (row.restoredAt !== null && row.restoredAt >= row.updatedAt) return true;
   // Open in Switchboard counts; a process idling elsewhere doesn't (Claude desktop reopens
   // many old sessions at launch, and they shouldn't all come back).
   return row.live?.origin === 'app' || row.unread || now - row.updatedAt < RECENT_MS;

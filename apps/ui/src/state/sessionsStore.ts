@@ -150,6 +150,8 @@ export interface SessionRowData {
   summary: SessionSummary | null;
   pinned: boolean;
   archivedAt: number | null;
+  /** When the user unarchived it by hand: in the main list until there's activity after it. */
+  restoredAt: number | null;
   unread: boolean;
   /** Started, forked or continued in Switchboard, or running in it now. */
   inApp: boolean;
@@ -184,6 +186,7 @@ export function toRows(
       summary: s,
       pinned: s.pinned,
       archivedAt: s.archivedAt,
+      restoredAt: s.restoredAt,
       unread: s.unread,
       inApp: s.inApp || l?.origin === 'app',
       error: hosts.get(s.id)?.state === 'error',
@@ -213,6 +216,7 @@ export function toRows(
       summary: null,
       pinned: false,
       archivedAt: null,
+      restoredAt: null,
       unread: false,
       inApp: l.origin === 'app',
       error: false,
