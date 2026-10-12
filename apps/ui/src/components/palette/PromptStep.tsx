@@ -19,6 +19,7 @@ import { newDraftKey } from '../../state/drafts.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { AttachmentThumbs, DropOverlay } from '../composer/Attachments.tsx';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
+import { deadKeyWrap, editKey } from '../composer/editing.ts';
 import { useAttachments } from '../composer/useAttachments.ts';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { StartButton } from '../newSession/StartButton.tsx';
@@ -356,8 +357,11 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
         value={text}
         onChange={(e) => setText(e.target.value)}
         onPaste={onPaste}
+        {...deadKeyWrap(setText)}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return;
+          // ⇧↵ on a list item starts the next one; ` on a selection wraps it as code.
+          if (editKey(e, setText)) return;
           // Keys the palette takes for itself don't also reach the window's shortcuts (⌘E, ⌘↵).
           if (matches(e.nativeEvent, 'new-session.queue')) (e.preventDefault(), e.stopPropagation(), void queue());
           else if (modKey(e) && e.key === 'Enter') (e.preventDefault(), e.stopPropagation(), void start());

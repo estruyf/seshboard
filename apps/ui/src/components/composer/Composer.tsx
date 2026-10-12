@@ -11,6 +11,7 @@ import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { onFirstLine, onLastLine, textareaRows } from './caretLine.ts';
+import { deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { tokenAtCaret } from './tokens.ts';
 import { useAttachments } from './useAttachments.ts';
@@ -390,6 +391,8 @@ export function Composer(props: ComposerProps) {
         return;
       }
     }
+    // ⇧↵ on a list item starts the next one; ` on a selection wraps it as code.
+    if (editKey(event, setText)) return;
     const send = submitKey(event.nativeEvent, props.secondary?.shortcut);
     if (matches(event.nativeEvent, 'composer.add-context') && addContext) {
       event.preventDefault();
@@ -531,6 +534,7 @@ export function Composer(props: ComposerProps) {
             updatePalette(e.target.value, e.target.selectionStart);
           }}
           onKeyDown={onKeyDown}
+          {...deadKeyWrap(setText)}
           onPaste={onPaste}
           onBlur={() => {
             // A search still on its way must not reopen the list after focus left; the open list waits a moment so a click on it lands.
