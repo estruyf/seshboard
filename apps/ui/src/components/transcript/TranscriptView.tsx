@@ -623,6 +623,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
 
   // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
+    container: scrollRef,
     textOf: (key) => {
       const item = items.find((i) => i.key === key);
       return item && (item.kind === 'user' || item.kind === 'text') ? item.text : null;
@@ -871,7 +872,6 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
               ref={scrollRef}
               onScroll={() => (onScroll(), remember.handlers.onScroll())}
               onContextMenu={remember.handlers.onContextMenu}
-              onMouseUp={remember.handlers.onMouseUp}
               onWheel={markUserScroll}
               onTouchMove={markUserScroll}
               onPointerDown={markUserScroll}

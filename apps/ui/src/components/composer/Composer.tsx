@@ -124,6 +124,7 @@ export function Composer(props: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const draftKey = props.draftKey;
   // The chips live in the drafts store, not here: context from the editor arrives there while the box isn't on screen.
@@ -241,6 +242,13 @@ export function Composer(props: ComposerProps) {
     el.focus();
     applyEdit(el, edit, setText);
     el.scrollTop = el.scrollHeight;
+    // The frame lights up once, so you see where the quote went (restarted for a quote that follows quickly).
+    const card = cardRef.current;
+    if (card) {
+      card.classList.remove('composer-flash');
+      void card.offsetWidth;
+      card.classList.add('composer-flash');
+    }
   }, [quoteRequest]);
 
   // Mounting with autoFocus, or a new focusRequest, focuses the prompt. While the prompt is disabled
@@ -507,6 +515,8 @@ export function Composer(props: ComposerProps) {
 
       {/* Disabled dims the text, not the card: the chips' menus open from inside it and must stay readable. */}
       <div
+        ref={cardRef}
+        onAnimationEnd={(e) => e.animationName === 'composer-flash' && e.currentTarget.classList.remove('composer-flash')}
         className={`rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${props.restored ? 'border-edge' : 'border-border'} ${disabled ? '' : 'focus-within:border-accent-ink/60'}`}
         style={props.frameColor ? { borderColor: props.frameColor } : undefined}
       >

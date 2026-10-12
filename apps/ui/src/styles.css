@@ -197,6 +197,8 @@
   --color-code: var(--sb-code-bg);
   --color-diff-added: var(--sb-diff-added);
   --color-diff-removed: var(--sb-diff-removed);
+  /* The shadow of menus and popovers, for a floating surface built without the `overlay` utility (the selection toolbar). */
+  --shadow-overlay: var(--sb-overlay-shadow);
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, Menlo, monospace;
   /*
@@ -402,6 +404,16 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
     opacity: 1;
     transform: translateY(-2px);
   }
+}
+/* The message box after Quote put text in it: its frame lights up in the accent once, then fades back. */
+@keyframes composer-flash {
+  from {
+    border-color: color-mix(in srgb, var(--sb-accent) 80%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--sb-accent) 25%, transparent);
+  }
+}
+.composer-flash {
+  animation: composer-flash 600ms ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
   .working-dots span {

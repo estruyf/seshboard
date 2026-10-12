@@ -2953,17 +2953,28 @@ async function runRememberStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Quote in reply: select a few words of one of Claude's replies, use the Quote button over the selection, and check
- * the message box holds them as a Markdown quote with the focus in it. Nothing is sent; the box is emptied again.
+ * The toolbar over a selection, read-only: select one of Claude's replies and check the toolbar shows solid, without
+ * covering the selection; Tab reaches it and → moves to Copy, which says Copied (the clipboard is stubbed for the
+ * step, so yours is left alone); Esc closes it and keeps the selection; Quote puts the selection in the message box
+ * as a Markdown quote with the focus there. Nothing is sent; the box is emptied again.
  */
-async function runQuoteStep(win: BrowserWindow): Promise<string> {
+async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
+  const key = (keyCode: string) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  };
   const view = `[data-current-session="${smokeSessionId}"]`;
   const box = `${view} [data-composer]`;
-  if (!(await js(`!!document.querySelector('${view} [data-transcript] [data-remember-from="claude"] p')`))) return 'ok: no reply of Claude on screen to quote';
+  const toolbar = "document.querySelector('[data-remember-selection][data-side]')";
+  if (!(await js(`!!document.querySelector('${view} [data-transcript] [data-remember-from="claude"] p')`))) return 'ok: no reply of Claude on screen to select';
   if ((await js(`document.querySelector('${box}')?.value ?? null`)) !== '') return 'ok: the message box is not empty, nothing quoted';
-  const selected = (await js(`(() => {
-    const p = document.querySelector('${view} [data-transcript] [data-remember-from="claude"] p');
+  // A paragraph on screen (the list is virtualised, and its first rows may be scrolled out of view).
+  const select = `(() => {
+    const area = document.querySelector('${view} [data-transcript]').getBoundingClientRect();
+    const shown = [...document.querySelectorAll('${view} [data-transcript] [data-remember-from="claude"] p')].filter((p) => { const r = p.getBoundingClientRect(); return r.height > 0 && r.top >= area.top + 60 && r.bottom <= area.bottom; });
+    const p = shown[shown.length - 1];
+    if (!p) return '';
     const range = document.createRange();
     range.selectNodeContents(p);
     const selection = window.getSelection();
@@ -2971,20 +2982,56 @@ async function runQuoteStep(win: BrowserWindow): Promise<string> {
     selection.addRange(range);
     p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     return selection.toString().trim();
-  })()`)) as string;
-  if (!selected) return 'ok: the first reply has no text to select';
-  if (!(await waitInPage(win, "document.querySelector('[data-remember-selection] [data-quote-selection]')", 3_000))) return 'no Quote button over the selection';
-  await js("document.querySelector('[data-remember-selection] [data-quote-selection]').click()");
+  })()`;
+  const selected = (await js(select)) as string;
+  if (!selected) return 'ok: no paragraph of Claude on screen to select';
+  const done = async (result: string) => {
+    await js("window.getSelection().removeAllRanges(); if (window.__smokeWriteText) { navigator.clipboard.writeText = window.__smokeWriteText; delete window.__smokeWriteText; } true");
+    return result;
+  };
+  if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar over the selection');
+  const look = (await js(`(() => {
+    const bar = ${toolbar}.getBoundingClientRect();
+    const lines = [...window.getSelection().getRangeAt(0).getClientRects()].filter((r) => r.width > 0 && r.height > 0 && r.height < 40);
+    const covers = lines.some((r) => r.left < bar.right && r.right > bar.left && r.top < bar.bottom && r.bottom > bar.top);
+    const style = getComputedStyle(${toolbar});
+    return { covers, solid: !style.backgroundColor.includes('/') && !/rgba\(.*, 0(\.\d+)?\)$/.test(style.backgroundColor), labels: [...${toolbar}.querySelectorAll('button')].map((b) => b.textContent.trim()), role: ${toolbar}.getAttribute('role') };
+  })()`)) as { covers: boolean; solid: boolean; labels: string[]; role: string | null };
+  await shot(win, 'selection-toolbar.png');
+  if (look.covers) return done('the toolbar covers the selection');
+  if (!look.solid) return done('the toolbar is see-through');
+  if (look.role !== 'toolbar' || look.labels.join(',') !== 'Quote,CopyCopied,Remember this…') return done(`the toolbar holds ${JSON.stringify(look.labels)}`);
+
+  // Keyboard: Tab from the transcript into the toolbar, → to Copy, then Copy.
+  await js("window.__smokeWriteText = navigator.clipboard.writeText.bind(navigator.clipboard); window.__smokeCopied = null; navigator.clipboard.writeText = async (text) => { window.__smokeCopied = text; }; true");
+  key('Tab');
+  if (!(await waitInPage(win, "document.activeElement?.hasAttribute('data-quote-selection')", 2_000))) return done('Tab did not move into the toolbar');
+  key('Right');
+  if (!(await waitInPage(win, "document.activeElement?.hasAttribute('data-copy-selection')", 2_000))) return done('→ did not move to Copy');
+  await js('document.activeElement.click()');
+  if (!(await waitInPage(win, "document.querySelector('[data-copy-selection][data-copied]')?.textContent.includes('Copied')", 2_000))) return done('Copy did not say Copied');
+  const copied = (await js('window.__smokeCopied')) as string | null;
+  if (copied !== selected) return done(`Copy wrote ${JSON.stringify(copied?.slice(0, 40))}, not the selection`);
+  if (!(await js(`!!${toolbar}`))) return done('the toolbar closed after Copy');
+
+  // Esc closes it and keeps the selection.
+  key('Escape');
+  if (!(await waitInPage(win, `!${toolbar}`, 2_000))) return done('Esc did not close the toolbar');
+  if (((await js('window.getSelection().toString().trim()')) as string) !== selected) return done('Esc lost the selection');
+
+  // Quote.
+  await js(select);
+  if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar after selecting again');
+  await js(`${toolbar}.querySelector('[data-quote-selection]').click()`);
   const quoted = await waitInPage(win, `document.querySelector('${box}').value !== ''`, 3_000);
   const value = (await js(`document.querySelector('${box}').value`)) as string;
   const focused = (await js(`document.activeElement === document.querySelector('${box}')`)) as boolean;
   await setFieldValue(win, box, '');
-  await js('window.getSelection().removeAllRanges()');
-  if (!quoted) return 'Quote did not put anything in the message box';
+  if (!quoted) return done('Quote did not put anything in the message box');
   const firstLine = selected.split('\n')[0]!.trim();
-  if (!value.startsWith(`> ${firstLine}`) || !value.endsWith('\n\n')) return `the message box does not hold the quote ("${value.slice(0, 40)}")`;
-  if (!focused) return 'the message box did not take focus after Quote';
-  return `ok: quoted ${selected.length} characters as ${value.trimEnd().split('\n').length} quote lines, focus in the message box, emptied again`;
+  if (!value.startsWith(`> ${firstLine}`) || !value.endsWith('\n\n')) return done(`the message box does not hold the quote ("${value.slice(0, 40)}")`);
+  if (!focused) return done('the message box did not take focus after Quote');
+  return done(`ok: solid toolbar clear of the selection; Tab, → and Copy said Copied; Esc kept the selection; Quote put ${value.trimEnd().split('\n').length} quote lines in the message box (emptied again)`);
 }
 
 async function runReplyActionsStep(win: BrowserWindow): Promise<string> {
@@ -4983,7 +5030,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('remember this', () => runRememberStep(win));
-  await step('quote in reply', () => runQuoteStep(win));
+  await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
   await step('unsent drafts', () => runDraftStep(win));
   await step('unsent messages', () => runUnsentStep(win));
