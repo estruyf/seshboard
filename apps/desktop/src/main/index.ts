@@ -54,6 +54,8 @@ if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'switchboard-sm
 if (scripted) {
   process.env.SWITCHBOARD_CLAUDE_REGISTRY ??= `data:application/json,${encodeURIComponent(JSON.stringify({ latest: '999.0.0', stable: '999.0.0' }))}`;
   process.env.SWITCHBOARD_NO_CLAUDE_UPDATE = '1';
+  // Auto model never calls a real model here: the engine picks from the prompt's words instead.
+  process.env.SWITCHBOARD_STUB_ROUTER = '1';
 }
 
 // The single-instance lock belongs to the data folder. Development builds keep their own ("Switchboard Dev"), so
@@ -135,13 +137,15 @@ function updatePreferences(patch: unknown): void {
   const item = Menu.getApplicationMenu()?.getMenuItemById(`scheme-${next.colorScheme}`);
   if (item) item.checked = true;
   updateWindowBackgrounds();
-  sendRetention(next);
+  sendEngineSettings(next);
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.preferencesChanged, next);
 }
 
-/** Settings › Sessions, for the engine: the archive days (the VS Code companion lists what the sidebar lists) and deleting. */
-function sendRetention(prefs: Preferences): void {
+/** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting) and Auto model. */
+function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived });
+  // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
+  engine?.sendStanding({ type: 'autoModel', prefs: prefs.autoModel });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -719,6 +723,81 @@ async function chooseOption(win: BrowserWindow, selector: string, value: string)
   if (!(await waitInPage(win, option, 3_000))) return false;
   await js(`${option}.click()`);
   return waitInPage(win, `!document.querySelector('[data-select-list]') && document.querySelector(${JSON.stringify(selector)}).dataset.value === ${JSON.stringify(value)}`, 3_000);
+}
+
+/**
+ * Auto model, without ever calling a model or starting a session: Auto leads the model menu with its wand and a
+ * line under it; picked, the chip reads Auto. Start with a prompt the stubbed router holds forever shows "Choosing a
+ * model…", and Esc stops it with the prompt kept (if Esc failed, the held router would never let it start). Turned
+ * off in Settings, Auto leaves the menu and a saved Auto says it starts on the default model. Settings keeps at least
+ * one model to pick. Everything is put back.
+ */
+async function runAutoModelStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-new-session-view]';
+  const prompt = `document.querySelector('${view} [data-composer]')`;
+  const chip = (value: string) => `document.querySelector('${view} [data-model-chip="${value}"]')`;
+  const before = preferences.get().autoModel;
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+  if (!(await waitInPage(win, `${prompt}`, 5_000))) return 'New session did not open';
+  const previousModel = (await js(`document.querySelector('${view} [data-model-select]').dataset.value`)) as string;
+  const restore = async () => {
+    updatePreferences({ autoModel: before });
+    await setFieldValue(win, `${view} [data-composer]`, '').catch(() => {});
+    if (previousModel !== 'auto') await chooseChoice(win, 'model', previousModel, view).catch(() => false);
+  };
+  try {
+    updatePreferences({ autoModel: { ...before, enabled: true } });
+    await js(`document.querySelector('${view} [data-model-select]').click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-menu=\"model\"] [role=menuitemradio]')", 2_000))) return 'the model menu did not open';
+    const menu = (await js(
+      "(() => { const items = [...document.querySelectorAll('[data-menu=\"model\"] [role=menuitemradio]')]; const first = items[0]; return { first: first?.dataset.choice, wand: !!first?.querySelector('svg'), line: first?.nextElementSibling?.getAttribute('role') === 'separator', second: items[1]?.dataset.choice }; })()",
+    )) as { first?: string; wand: boolean; line: boolean; second?: string };
+    if (menu.first !== 'auto' || !menu.wand || !menu.line || menu.second !== '') return `Auto is not first with its wand and a line before Default model: ${JSON.stringify(menu)}`;
+    await js("document.querySelector('[data-menu=\"model\"] [data-choice=\"auto\"]').click()");
+    if (!(await waitInPage(win, `${chip('auto')}?.querySelector('svg') && ${chip('auto')}.innerText.includes('Auto')`, 2_000))) return 'picking Auto did not show the wand and Auto on the chip';
+    await shot(win, 'auto-model-chip.png');
+
+    // Esc while choosing keeps the prompt. Only with a folder (the prompt is disabled without one), on Auto, and a
+    // prompt the stub holds: then nothing can start, whatever happens.
+    let choosing = 'skipped (no folder)';
+    const hasFolder = (await js(`!!document.querySelector('[data-folder-select]')?.dataset.value && !${prompt}.disabled`)) as boolean;
+    if (hasFolder) {
+      const text = 'Smoke Auto check, never started [smoke: hold]';
+      await setFieldValue(win, `${view} [data-composer]`, text);
+      if (!(await js(`!!${chip('auto')} && ${prompt}.value.includes('[smoke: hold]')`))) return 'not on Auto with the held prompt; not starting';
+      await js(`document.querySelector('${view} [data-composer-submit]').click()`);
+      if (!(await waitInPage(win, `document.querySelector('${view} [data-auto-route]')?.innerText.includes('Choosing a model')`, 3_000))) return 'Start on Auto did not show Choosing a model…';
+      await shot(win, 'auto-model-choosing.png');
+      pressKey(win, 'Escape');
+      if (!(await waitInPage(win, `!document.querySelector('[data-auto-route]') && document.querySelector('${view}') && ${prompt}.value === ${JSON.stringify(text)}`, 3_000))) return 'Esc did not stop choosing with the prompt kept';
+      await setFieldValue(win, `${view} [data-composer]`, '');
+      choosing = 'Esc stopped choosing and kept the prompt';
+    }
+
+    // Off in Settings: Auto leaves the menu, and the saved Auto starts on the default model, which the note says.
+    updatePreferences({ autoModel: { ...before, enabled: false } });
+    if (!(await waitInPage(win, `${chip('default')} && document.querySelector('${view} [data-auto-off-note]')`, 3_000))) return 'with Auto off, the chip did not fall back to the default model with a note';
+    await js(`document.querySelector('${view} [data-model-select]').click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-menu=\"model\"] [role=menuitemradio]') && !document.querySelector('[data-menu=\"model\"] [data-choice=\"auto\"]')", 2_000))) return 'Auto stayed in the menu while off';
+    pressKey(win, 'Escape');
+    updatePreferences({ autoModel: { ...before, enabled: true } });
+
+    // Settings › Conversation: the block, and the last model to pick can't be unchecked.
+    await js("document.querySelector('[data-open-settings]').click()");
+    await waitInPage(win, "document.querySelector('[data-settings]')", 3_000);
+    await js("document.querySelector('[data-settings-section=\"conversation\"]').click()");
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-auto-model-settings] [data-auto-model-allowed]').length === 3", 3_000))) return 'Settings › Conversation has no Auto model block';
+    updatePreferences({ autoModel: { ...before, enabled: true, allowed: ['sonnet'] } });
+    if (!(await waitInPage(win, "document.querySelector('[data-auto-model-allowed=\"sonnet\"]')?.disabled === true", 2_000))) return 'the last model to pick could be unchecked';
+    await js("document.querySelector('[data-auto-model-allowed=\"opus\"]').click()");
+    if (!(await until(() => preferences.get().autoModel.allowed.join() === 'sonnet,opus'))) return 'checking Opus did not save';
+    await shot(win, 'auto-model-settings.png');
+    await js("document.querySelector('[data-close-settings]').click()");
+    return `ok: Auto leads the menu, the chip reads Auto; ${choosing}; off, it falls back with a note; settings keep a model`;
+  } finally {
+    await restore();
+  }
 }
 
 /** Picks `value` from a composer chip's menu (`ChoiceMenu`): the chip `[data-<name>-select]` inside `scope`, its menu `[data-menu=<name>]`. */
@@ -1793,6 +1872,8 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   // The command palette's New session needs a project: this is the one moment the throwaway profile has one.
   await smokeRun.step('command palette, new session', () => runPaletteNewSessionStep(win), { cleanup: false });
   await smokeRun.step('unsent New session prompt', () => runUnsentNewSessionStep(win), { cleanup: false });
+  // Here New session has a folder (the project just added), so Esc while choosing can be checked too.
+  await smokeRun.step('auto model: menu, chip, Esc while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
 
   await click('[data-open-projects]');
@@ -4947,7 +5028,7 @@ app.whenReady().then(() => {
       notifier.connect();
     },
   });
-  sendRetention(preferences.get());
+  sendEngineSettings(preferences.get());
   engine.start();
   themes.watch();
   installMenu();

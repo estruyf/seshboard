@@ -11,7 +11,10 @@ import {
   type DeleteArchived,
 } from "./retention.ts";
 
+import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./autoModel.ts";
+
 export * from "./retention.ts";
+export * from "./autoModel.ts";
 
 /**
  * The small API the preload script exposes on `window.switchboard`.
@@ -105,6 +108,8 @@ export interface Preferences {
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
   deleteArchived: DeleteArchived;
+  /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
+  autoModel: AutoModelPrefs;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -124,6 +129,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   themeId: DEFAULT_THEME_ID,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
+  autoModel: DEFAULT_AUTO_MODEL,
 };
 
 /** A theme id: lower-case letters, digits and dashes (built-in ids and the file names of imported themes). */
@@ -179,6 +185,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const afterDays = clampDays(deleting?.afterDays, DELETE_AFTER_DAYS);
   if (typeof deleting?.enabled === "boolean" && afterDays !== null)
     out.deleteArchived = { enabled: deleting.enabled, afterDays };
+  const autoModel = sanitizeAutoModel(raw.autoModel);
+  if (autoModel) out.autoModel = autoModel;
   return out;
 }
 

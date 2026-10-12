@@ -30,6 +30,7 @@ describe('sessionCreateParams', () => {
       worktree: null,
       checkoutBranch: null,
       profileId: 'default',
+      autoPick: null,
     });
     expect(sessionCreateParams({ ...START, choices: { ...CHOICES, model: '', effort: '' } })).toMatchObject({ model: null, effort: null });
   });
@@ -98,5 +99,47 @@ describe('startNewSession', () => {
     fake.addProject.mockRejectedValueOnce(new Error('nope'));
     expect(await startNewSession({ ...START, addProject: true }, fake)).toMatchObject({ kind: 'started' });
     expect(fake.open).toHaveBeenCalled();
+  });
+});
+
+describe('startNewSession with Auto', () => {
+  const AUTO: NewSessionStart = { ...START, choices: { ...CHOICES, model: 'auto' }, attachments: [{ type: 'image', mediaType: 'image/png', data: 'x' }], autoEnabled: true };
+
+  it('routes after the gate, and starts on the picked model with the pick', async () => {
+    const fake = deps();
+    const route = vi.fn(async () => (fake.calls.push('route'), { ok: true as const, routeId: 'r1', model: 'sonnet' as const, reason: 'A small change.', tokens: 900, estimateVsOpus: 0.6, allowed: ['haiku' as const, 'sonnet' as const] }));
+    await startNewSession(AUTO, { ...fake, route });
+    expect(fake.calls).toEqual(['gate', 'route', 'create', 'open']);
+    expect(route).toHaveBeenCalledWith({ profileId: 'default', prompt: 'Fix the login redirect', imageCount: 1 });
+    expect(fake.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'sonnet', autoPick: { routeId: 'r1', model: 'sonnet', reason: 'A small change.', tokens: 900, allowed: ['haiku', 'sonnet'] } }),
+    );
+  });
+
+  it('starts nothing when routing is stopped (Esc), so the prompt stays', async () => {
+    const fake = deps();
+    expect(await startNewSession(AUTO, { ...fake, route: async () => null })).toEqual({ kind: 'stopped' });
+    expect(fake.createSession).not.toHaveBeenCalled();
+  });
+
+  it('starts on the default model when Auto could not pick, and says why', async () => {
+    const fake = deps();
+    await startNewSession(AUTO, { ...fake, route: async () => ({ ok: false as const, routeId: null, reason: "Haiku didn't answer in time", tokens: 0, allowed: ['opus' as const] }) });
+    expect(fake.createSession).toHaveBeenCalledWith(expect.objectContaining({ model: null, autoPick: expect.objectContaining({ model: null, reason: "Haiku didn't answer in time" }) }));
+  });
+
+  it('never routes with Auto off: the default model, and no pick', async () => {
+    const fake = deps();
+    const route = vi.fn();
+    await startNewSession({ ...AUTO, autoEnabled: false }, { ...fake, route });
+    expect(route).not.toHaveBeenCalled();
+    expect(fake.createSession).toHaveBeenCalledWith(expect.objectContaining({ model: null, autoPick: null }));
+  });
+
+  it('does not route when the gate stops the start', async () => {
+    const fake = deps('stop');
+    const route = vi.fn();
+    await startNewSession(AUTO, { ...fake, route });
+    expect(route).not.toHaveBeenCalled();
   });
 });

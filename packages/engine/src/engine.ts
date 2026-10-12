@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -22,6 +23,7 @@ import {
   type WorktreeSize,
   type Transport,
   type UsageSnapshot,
+  type TokenCounts,
   randomWorktreeName,
   isLocalAbsolutePath,
   DAY_MS,
@@ -29,6 +31,10 @@ import {
   KEEP_REASON_TEXT,
   keepReason,
   type KeepReason,
+  AUTO_MODEL,
+  DEFAULT_AUTO_MODEL,
+  type AutoModelPrefs,
+  type AutoPick,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -54,6 +60,8 @@ import { HostManager, type SdkRuntime } from './host/hostManager.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
 import { UsageInsights } from './usage/usageInsights.ts';
+import { scopeOf } from './usage/usageScanner.ts';
+import { ModelRouter, RoutingStore, stubRoute } from './autoModel/router.ts';
 import { ProjectRegistry, type FolderActivity } from './projects/projectRegistry.ts';
 import { QuestionsFolder } from './questions/questionsFolder.ts';
 import { createAppStateStore } from './db/appState.ts';
@@ -119,6 +127,11 @@ export interface EngineOptions {
    * screenshots, whose made-up logins have no plan. Never set in normal use.
    */
   demoUsage?: DemoUsage;
+  /**
+   * Auto model's routing without a model call: the smoke test and the screenshots, which must never call a real
+   * model. Never set in normal use.
+   */
+  stubRouter?: boolean;
 }
 
 /** See `EngineOptions.demoUsage`. */
@@ -128,6 +141,8 @@ export interface DemoUsage {
     snapshot: UsageSnapshot;
     history?: Array<{ at: number; kind: string; scope?: string | null; percent: number; resetsAt: number | null }>;
   }>;
+  /** Auto model's picks and routing calls for the demo sessions (`sessionId` null: a call whose session isn't in the demo). */
+  autoPicks?: Array<{ configDir: string; sessionId: string | null; pick: AutoPick; routingModel: string; tokens: TokenCounts }>;
 }
 
 /** What one run of the clean-up of archived sessions did. */
@@ -147,6 +162,8 @@ export interface Engine {
   log(level: LogLevel, message: string): void;
   /** Settings › Sessions, from main: the archive days and deleting archived sessions. */
   setRetention(policy: RetentionPolicy): void;
+  /** Settings › Conversation › Auto model, from main. */
+  setAutoModel(prefs: AutoModelPrefs): void;
   /** Runs the clean-up of archived sessions now (it also runs on launch and daily). Null when deleting is off. */
   deleteArchivedNow(): Promise<ArchivedCleanup | null>;
   close(): void;
@@ -411,6 +428,43 @@ export function createEngine(options: EngineOptions): Engine {
     return dir ? options.demoUsage?.profiles.find((p) => p.configDir === dir) : undefined;
   };
   for (const demo of options.demoUsage?.profiles ?? []) if (demo.history) insights.seedHistory(demo.configDir, demo.history);
+  // --- Auto model -------------------------------------------------------------------------------------------------
+  /** Main sends Settings › Conversation › Auto model when the engine starts and after each change. */
+  let autoModel: AutoModelPrefs = DEFAULT_AUTO_MODEL;
+  const routing = new RoutingStore(cache.db);
+  const router = new ModelRouter({
+    sdk,
+    env: envFor,
+    claudePath: async () => (await claude)?.path,
+    ephemeral,
+    prefs: () => autoModel,
+    // The call ran on the session's profile, so its tokens count on that login's usage.
+    record: (profileId, entry) => {
+      routing.record({ ...entry, scope: scopeOf(profiles.runtime(profileId).configDir) });
+      broadcast('usage.tokens', { profileIds: [profileId], scan: null });
+    },
+    log,
+    ...(options.stubRouter ? { stub: stubRoute } : {}),
+  });
+  if (options.demoUsage?.autoPicks?.length) {
+    const settings = createSessionSettingsStore(cache.db);
+    for (const demo of options.demoUsage.autoPicks) {
+      const id = randomUUID();
+      routing.record({ id, scope: scopeOf(demo.configDir), at: demo.pick.at, model: demo.routingModel, picked: demo.pick.model, tokens: demo.tokens });
+      if (!demo.sessionId) continue;
+      routing.attach(id, demo.sessionId);
+      settings.set(demo.sessionId, { autoPick: demo.pick });
+    }
+  }
+  /** A pick as kept with the session. */
+  const autoPickOf = (pick: { model: AutoPick['model']; reason: string; tokens: number; allowed: AutoPick['allowed'] }): AutoPick => ({
+    model: pick.model,
+    reason: pick.reason,
+    tokens: pick.tokens,
+    allowed: pick.allowed,
+    at: Date.now(),
+  });
+
   const hosts = new HostManager({
     sdk,
     ephemeral,
@@ -718,8 +772,21 @@ export function createEngine(options: EngineOptions): Engine {
     if (params.worktree && !resolver.resolve(params.cwd).gitDir) {
       throw new RpcError('NOT_A_REPO', 'Worktrees need a git repository');
     }
-    const { checkoutBranch, profileId: chosenProfile, ...create } = params;
+    const { checkoutBranch, profileId: chosenProfile, autoPick: requested, ...create } = params;
     const profileId = requireProfile(chosenProfile ?? folderProfile(params.cwd));
+    // New session and the palette route first (`model.route`) and pass the pick; anything else that still says
+    // Auto (a queued prompt, an older caller) is routed here. With Auto off it starts on the default model.
+    let autoPick: AutoPick | null = requested ? autoPickOf(requested) : null;
+    let routeId = requested?.routeId ?? null;
+    if (create.model === AUTO_MODEL) {
+      create.model = null;
+      if (autoModel.enabled) {
+        const route = await router.route({ profileId, prompt: params.prompt, imageCount: params.attachments.length });
+        autoPick = autoPickOf(route.ok ? route : { ...route, model: null });
+        if (route.ok) create.model = route.model;
+        routeId = route.routeId;
+      }
+    }
     if (checkoutBranch) {
       if (params.worktree) throw new RpcError('INVALID', 'A new worktree gets its own branch; choose the current folder to check out a branch');
       // Only a real switch changes files under another session; starting on the branch already checked out is fine.
@@ -733,7 +800,9 @@ export function createEngine(options: EngineOptions): Engine {
     }
     const worktree = params.worktree;
     const setup = worktree ? (id: string) => worktreeSetup(id, params.cwd, worktree.name)?.() ?? Promise.resolve() : undefined;
-    return { sessionId: await hosts.create({ ...create, profileId, ...(setup ? { beforeFirstMessage: setup } : {}) }) };
+    const sessionId = await hosts.create({ ...create, profileId, autoPick, ...(setup ? { beforeFirstMessage: setup } : {}) });
+    if (routeId) routing.attach(routeId, sessionId);
+    return { sessionId };
   };
 
   if (options.companion) {
@@ -1105,6 +1174,8 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.setPermissionMode(sessionId, mode);
       return {};
     },
+    'model.route': ({ profileId, prompt, imageCount }) => router.route({ profileId: requireProfile(profileId ?? profiles.defaultId()), prompt, imageCount }),
+    'session.autoPick': ({ sessionId }) => ({ autoPick: hosts.autoPick(sessionId) }),
     'session.setEffort': async ({ sessionId, effort }) => {
       await hosts.setEffort(sessionId, effort);
       return {};
@@ -1257,6 +1328,8 @@ export function createEngine(options: EngineOptions): Engine {
         worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: item.baseRef } : null,
         profileId: item.profileId,
         checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
+        // A queued prompt on Auto is routed now, when it starts, not when it was added.
+        autoPick: null,
       });
       later.started(id, sessionId);
       laterChanged();
@@ -1743,6 +1816,9 @@ export function createEngine(options: EngineOptions): Engine {
     },
     log,
     setRetention,
+    setAutoModel: (prefs) => {
+      autoModel = prefs;
+    },
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);

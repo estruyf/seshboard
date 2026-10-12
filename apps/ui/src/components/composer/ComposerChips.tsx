@@ -1,11 +1,12 @@
-import { Cpu } from 'lucide-react';
+import { Cpu, WandSparkles } from 'lucide-react';
+import { AUTO_MODEL } from '@switchboard/protocol/client';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { ClaudeProfile, Effort, PermissionMode } from '@switchboard/protocol/client';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
-import { CHOICE_PILL, ChoiceMenu, type Choice } from '../newSession/ChoiceMenu.tsx';
+import { CHOICE_PILL, ChoiceMenu, type Choice, type ChoiceAction } from '../newSession/ChoiceMenu.tsx';
 import { EFFORT_LABEL, EFFORTS, MODE_DESCRIPTION } from '../newSession/route.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { chipShape, effortBars, FOOTER_LEVELS, footerLevel, MODE_SHORT, modelFamily, shortModelName, type FooterLevel } from './chipFaces.ts';
@@ -23,13 +24,20 @@ const NEW_SESSION_NAMES: ChipNames = { profile: 'profile', model: 'model', effor
 export interface ComposerChipRowProps {
   /** The Claude profile. Without `onChange` it can't change (a running session keeps its profile): the menu shows it and links to Settings. */
   profile: { value: string; onChange?(id: string): void; labelFor?(profile: ClaudeProfile): string };
-  model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void };
+  /**
+   * `auto`: a session on the model Auto picked ("Sonnet", or "Default model" when picking failed); the chip reads
+   * "Auto · Sonnet". `actions` go under the models (the session's "Why Auto picked Sonnet").
+   */
+  model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[] };
   /** Null when the model has no effort setting. */
   effort: { value: Effort | ''; onChange(effort: Effort | ''): void } | null;
   mode: { value: PermissionMode; onChange(mode: PermissionMode): void };
   disabled?: boolean;
   names?: ChipNames;
 }
+
+/** Auto's wand, in the accent: always with the model chip's "Auto", since the permission mode can read "Auto" too. */
+export const AutoWand = ({ size = 13 }: { size?: number }) => <WandSparkles size={size} className="shrink-0 text-accent-ink" aria-hidden />;
 
 /** Three bars that fill with the effort level; above High they turn to the accent. */
 function EffortBars({ effort }: { effort: Effort | '' }) {
@@ -118,16 +126,45 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
       ),
     });
   }
+  const autoPicked = model.auto ?? null;
+  const isAuto = autoPicked !== null || model.value === AUTO_MODEL;
+  const modelTitle = autoPicked !== null ? `Model: Auto picked ${autoPicked}` : `Model: ${model.label}`;
   chips.push({
     key: 'model',
-    face: (l) => (
-      <>
-        <Cpu size={13} className="shrink-0" aria-hidden />
-        <span>{chipShape(l).modelVersion ? modelName : modelFamily(model.label)}</span>
-      </>
-    ),
+    face: (l) =>
+      isAuto ? (
+        <>
+          <AutoWand />
+          <span>Auto</span>
+          {autoPicked !== null && (
+            <>
+              <span aria-hidden className="text-faint">
+                ·
+              </span>
+              <span className="font-semibold text-text">{chipShape(l).modelVersion ? shortModelName(autoPicked) : modelFamily(autoPicked)}</span>
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <Cpu size={13} className="shrink-0" aria-hidden />
+          <span>{chipShape(l).modelVersion ? modelName : modelFamily(model.label)}</span>
+        </>
+      ),
     menu: (face) => (
-      <ChoiceMenu name={names.model} value={model.value} onChange={model.onChange} disabled={disabled} label={`Model: ${model.label}`} title={`Model: ${model.label}`} heading="Model" placement="up" choices={model.choices} width={260}>
+      <ChoiceMenu
+        name={names.model}
+        value={model.value}
+        onChange={model.onChange}
+        disabled={disabled}
+        label={modelTitle}
+        title={modelTitle}
+        heading="Model"
+        placement="up"
+        choices={model.choices}
+        actions={model.actions}
+        width={isAuto || model.choices.some((c) => c.value === AUTO_MODEL) ? 300 : 260}
+      >
         {face}
       </ChoiceMenu>
     ),
@@ -188,7 +225,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
   return (
     <div ref={rowRef} className="relative flex min-w-0 flex-1 items-center gap-0.5" data-composer-chips data-chip-level={level}>
       {chips.map((chip) => (
-        <div key={chip.key} className="shrink-0">
+        <div key={chip.key} className="shrink-0" data-chip={chip.key} {...(chip.key === 'model' ? { 'data-model-chip': isAuto ? 'auto' : model.value || 'default' } : {})}>
           {chip.menu(chip.face(level))}
         </div>
       ))}
