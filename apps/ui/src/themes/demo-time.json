@@ -42,7 +42,11 @@
       "profile-purple": "#8250df",
       "profile-red": "#cf222e",
       "profile-orange": "#d1600a",
-      "profile-gray": "#6e7781"
+      "profile-gray": "#6e7781",
+      "chart-output": "#7048e8",
+      "chart-cache-write": "#c2255c",
+      "chart-cache-read": "#1c7ed6",
+      "chart-input": "#099268"
     }
   },
   "dark": {
@@ -83,14 +87,35 @@
       "profile-purple": "#b197fc",
       "profile-red": "#ff8787",
       "profile-orange": "#ffa94d",
-      "profile-gray": "#9ba4b7"
+      "profile-gray": "#9ba4b7",
+      "chart-output": "#9775fa",
+      "chart-cache-write": "#e64980",
+      "chart-cache-read": "#339af0",
+      "chart-input": "#0ca678"
     },
     "terminal": {
       "background": "#0d1016",
       "foreground": "#d9dbe1",
       "cursor": "#ffd43b",
       "selection": "#ffd43b40",
-      "ansi": ["#15181f", "#ff6b6b", "#51cf66", "#ffd43b", "#74c0fc", "#d0bfff", "#66d9ef", "#d9dbe1", "#6b7280", "#ed217c", "#7ee787", "#e6be36", "#8bb3ff", "#d2a8ff", "#56d4dd", "#ffffff"]
+      "ansi": [
+        "#15181f",
+        "#ff6b6b",
+        "#51cf66",
+        "#ffd43b",
+        "#74c0fc",
+        "#d0bfff",
+        "#66d9ef",
+        "#d9dbe1",
+        "#6b7280",
+        "#ed217c",
+        "#7ee787",
+        "#e6be36",
+        "#8bb3ff",
+        "#d2a8ff",
+        "#56d4dd",
+        "#ffffff"
+      ]
     }
   }
 }

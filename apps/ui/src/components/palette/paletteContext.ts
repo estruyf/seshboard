@@ -6,7 +6,7 @@ import type { SettingsSection } from '../../state/sessionsStore.ts';
 
 /** Where you are: what the main area shows. */
 /** `projects` is the list of projects; `project` one project's page. */
-export type PaletteView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project';
+export type PaletteView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project' | 'usage';
 
 /** The session in the active pane, as far as the palette's commands care. */
 export interface PaletteSession {

@@ -285,4 +285,65 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE session_flags ADD COLUMN restored_at INTEGER;
   `,
+
+  // v19: token usage from the transcripts, for the Usage view. `scope` is a config folder (its real path), so
+  // profiles that share one count once. Claude Code deletes old transcripts (cleanupPeriodDays), and these totals
+  // are the only record left of them: keep the tables when rebuilding the cache.
+  `
+  -- How far each transcript was read: its size and mtime then, the byte offset parsed up to (always after a
+  -- newline), and a hash of the bytes just before it, to notice a file that was rewritten rather than appended to.
+  CREATE TABLE usage_files (
+    path      TEXT PRIMARY KEY,
+    scope     TEXT NOT NULL,
+    size      INTEGER NOT NULL,
+    mtime     INTEGER NOT NULL,
+    offset    INTEGER NOT NULL,
+    tail_hash TEXT
+  );
+  -- One row per API response already counted (message.id + requestId), within a file and across files. Its time
+  -- and session tell whether another session ran during a measured change in plan %.
+  CREATE TABLE usage_messages (
+    key        TEXT PRIMARY KEY,
+    scope      TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    at         INTEGER NOT NULL
+  ) WITHOUT ROWID;
+  CREATE INDEX usage_messages_scope_at ON usage_messages (scope, at);
+  -- Token totals per session, UTC hour and model. Hourly, because one session can span several windows.
+  CREATE TABLE session_usage (
+    scope       TEXT NOT NULL,
+    session_id  TEXT NOT NULL,
+    hour        INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    input       INTEGER NOT NULL DEFAULT 0,
+    output      INTEGER NOT NULL DEFAULT 0,
+    cache_read  INTEGER NOT NULL DEFAULT 0,
+    cache_write INTEGER NOT NULL DEFAULT 0,
+    turns       INTEGER NOT NULL DEFAULT 0,
+    fast_turns  INTEGER NOT NULL DEFAULT 0,
+    max_context INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (scope, session_id, hour, model)
+  );
+  CREATE INDEX session_usage_scope_hour ON session_usage (scope, hour);
+  -- The folder a session ran in, from its transcript: its project after the transcript is gone.
+  CREATE TABLE usage_sessions (
+    scope      TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    cwd        TEXT,
+    PRIMARY KEY (scope, session_id)
+  );
+  -- Plan % over time: every /usage result the usage monitor fetched, and Claude Code's rate-limit updates during a
+  -- turn (with the session that caused them). History starts when this table does.
+  CREATE TABLE plan_usage (
+    scope      TEXT NOT NULL,
+    at         INTEGER NOT NULL,
+    kind       TEXT NOT NULL,
+    limit_scope TEXT NOT NULL DEFAULT '',
+    percent    REAL NOT NULL,
+    resets_at  INTEGER,
+    source     TEXT NOT NULL CHECK (source IN ('usage', 'event')),
+    session_id TEXT
+  );
+  CREATE INDEX plan_usage_scope_at ON plan_usage (scope, at);
+  `,
 ];

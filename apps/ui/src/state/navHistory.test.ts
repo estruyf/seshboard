@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyHistory, HISTORY_LIMIT, PASSING_MS, record, step, type NavHistory, type NavPlace } from './navHistory.ts';
+import { emptyHistory, HISTORY_LIMIT, PASSING_MS, record, settingsOrigin, step, type NavHistory, type NavPlace } from './navHistory.ts';
 
 const session = (mainId: string | null, splitId: string | null = null, activePane: 'main' | 'split' = 'main'): NavPlace => ({ view: 'session', mainId, splitId, activePane });
 const project = (root: string, tab: 'overview' | 'memory' = 'overview'): NavPlace => ({ view: 'project', root, tab });
@@ -70,5 +70,23 @@ describe('step', () => {
     expect(step(h, 1, () => true)).toBeNull();
     expect(step({ ...h, index: 0 }, -1, () => true)).toBeNull();
     expect(step(emptyHistory, -1, () => true)).toBeNull();
+  });
+});
+
+describe('settingsOrigin', () => {
+  const over = (section: 'general' | 'memory'): NavPlace => ({ view: 'settings', section, from: 'project' });
+
+  it('names the Settings page a project was opened from', () => {
+    expect(settingsOrigin(visit(session('a'), settings('memory'), project('/p', 'memory')), '/p')).toBe('memory');
+    expect(settingsOrigin(visit(project('/q'), over('memory'), project('/p', 'memory')), '/p')).toBe('memory');
+  });
+
+  it('is null after closing Settings opened over the same project', () => {
+    expect(settingsOrigin(visit(project('/p'), over('memory'), project('/p')), '/p')).toBeNull();
+  });
+
+  it('is null for a project not reached from Settings', () => {
+    expect(settingsOrigin(visit(session('a'), project('/p')), '/p')).toBeNull();
+    expect(settingsOrigin(visit(settings('memory'), project('/p')), '/q')).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import {
   BACKUP_SECTIONS,
   BUILTIN_PROFILE_ID,
@@ -21,6 +21,7 @@ import {
   type WorktreePullRequest,
   type WorktreeSize,
   type Transport,
+  type UsageSnapshot,
   randomWorktreeName,
   isLocalAbsolutePath,
   DAY_MS,
@@ -52,6 +53,7 @@ import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profi
 import { HostManager, type SdkRuntime } from './host/hostManager.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
+import { UsageInsights } from './usage/usageInsights.ts';
 import { ProjectRegistry, type FolderActivity } from './projects/projectRegistry.ts';
 import { QuestionsFolder } from './questions/questionsFolder.ts';
 import { createAppStateStore } from './db/appState.ts';
@@ -112,6 +114,20 @@ export interface EngineOptions {
    * is made (the temporary folder by default).
    */
   companion?: { appVersion: string; socketParent?: string };
+  /**
+   * Plan usage to report per config folder instead of asking Claude Code, with its % history: the website's
+   * screenshots, whose made-up logins have no plan. Never set in normal use.
+   */
+  demoUsage?: DemoUsage;
+}
+
+/** See `EngineOptions.demoUsage`. */
+export interface DemoUsage {
+  profiles: Array<{
+    configDir: string;
+    snapshot: UsageSnapshot;
+    history?: Array<{ at: number; kind: string; scope?: string | null; percent: number; resetsAt: number | null }>;
+  }>;
 }
 
 /** What one run of the clean-up of archived sessions did. */
@@ -364,17 +380,42 @@ export function createEngine(options: EngineOptions): Engine {
         env: () => envFor(profileId),
         claudePath: async () => (await claude)?.path,
         onChange: (snapshot) => broadcast('usage.changed', { profileId, usage: snapshot }),
+        onFetched: (snapshot) => insights.recordSnapshot(profileId, snapshot),
         log,
         ephemeral,
+        ...(demoFor(profileId) ? { fixed: demoFor(profileId)!.snapshot } : {}),
       });
       usageMonitors.set(profileId, monitor);
     }
     return monitor;
   };
+  /** Where each profile's tokens went (from its transcripts) and its plan % over time, for the Usage view. */
+  const insights = new UsageInsights({
+    db: cache.db,
+    profiles: () => profiles.runtimes().map((p) => ({ id: p.id, configDir: p.configDir })),
+    lookup: {
+      session: (id) => {
+        const summary = sessions.get(id);
+        return summary ? { title: summary.title, projectRoot: summary.projectRoot } : null;
+      },
+      projectOf: (cwd) => resolver.resolve(cwd).root,
+      projectName: (root) => projects.addedEntries().find((p) => p.root === root)?.name ?? basename(root),
+    },
+    snapshot: (profileId) => usageMonitors.get(profileId)?.current() ?? null,
+    onTokens: (profileIds, scan) => broadcast('usage.tokens', { profileIds, scan }),
+    log,
+  });
+  /** The made-up plan numbers for a profile's folder, when the engine runs for the website's screenshots. */
+  const demoFor = (profileId: string) => {
+    const dir = profiles.runtimes().find((p) => p.id === profileId)?.configDir;
+    return dir ? options.demoUsage?.profiles.find((p) => p.configDir === dir) : undefined;
+  };
+  for (const demo of options.demoUsage?.profiles ?? []) if (demo.history) insights.seedHistory(demo.configDir, demo.history);
   const hosts = new HostManager({
     sdk,
     ephemeral,
     onUsageHint: (profileId) => usageMonitors.get(profileId)?.nudge(),
+    onRateLimit: (profileId, sessionId, info) => insights.recordRateLimit(profileId, sessionId, info),
     env: envFor,
     claudePath: async () => (await claude)?.path,
     isOpenElsewhere: (id) => !hosts.has(id) && liveList().some((l) => l.sessionId === id),
@@ -1114,6 +1155,8 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'models.list': () => ({ models: hosts.listModels() }),
     'usage.get': ({ refresh, profileId }) => usageFor(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()).get(refresh),
+    'usage.breakdown': ({ profileId, ...params }) => insights.breakdown(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
+    'usage.history': ({ profileId, ...params }) => insights.planHistory(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
 
     'questions.folder': () => ({ path: questions.ensure() }),
     'projects.inspect': ({ path }) => {
@@ -1712,6 +1755,7 @@ export function createEngine(options: EngineOptions): Engine {
       servers.clear();
       hosts.closeAll();
       for (const monitor of usageMonitors.values()) monitor.stop();
+      insights.close();
       claudeUpdater.close();
       terminals.closeAll();
       clearTimeout(searchTimer);

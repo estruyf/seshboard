@@ -801,6 +801,33 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'usage-limits',
+    async take(t) {
+      await openUsageView(t, 'limits', 'week');
+      await t.need('[data-usage-limit="session"]', 'the Limits tab showed no limits');
+      await t.need('[data-usage-history] [data-usage-line]', 'the % used chart drew no lines');
+      await t.need('[data-usage-window] [data-usage-row]', 'What used this window listed no sessions', 30_000);
+      await t.shot('usage-limits');
+      await t.escape();
+      await t.gone('[data-usage-view]', 'Esc did not leave the Usage view');
+    },
+  },
+  {
+    name: 'usage-tokens',
+    async take(t) {
+      await openUsageView(t, 'tokens', 'week');
+      await t.need('[data-usage-breakdown] [data-usage-row]', 'the breakdown listed no sessions', 30_000);
+      await t.shot('usage-tokens');
+      await t.click('[data-usage-group="model"]');
+      await t.click('[data-usage-breakdown="model"] [data-usage-row]');
+      await t.need('[data-usage-model-panel]', 'the model panel did not open');
+      await t.shot('usage-model', { clip: '[data-usage-breakdown]', pad: 8 });
+      await t.click('[data-usage-group="session"]');
+      await t.escape();
+      await t.gone('[data-usage-view]', 'Esc did not leave the Usage view');
+    },
+  },
+  {
     name: 'theme-catppuccin',
     async take(t) {
       await t.command('theme:catppuccin', 'Theme: Catppuccin');
@@ -867,6 +894,83 @@ async function openMemoryTab(t: Tour): Promise<void> {
 async function openProjectPage(t: Tour, project: string): Promise<void> {
   await t.command(`project:${t.world.home}/Developer/${project}`, `Project: ${project}`);
   await t.need('[data-project-page]', `the ${project} page did not open`);
+}
+
+async function openUsageView(t: Tour, tab: 'limits' | 'tokens', period: string): Promise<void> {
+  await t.home();
+  // The way people get there: the usage bar on Home's profile card.
+  await t.click('[data-home-profile] [data-usage-band]');
+  await t.need('[data-usage-view]', 'the Usage view did not open');
+  await t.click(`[data-usage-tab="${tab}"]`);
+  await t.click(`[data-usage-period="${period}"]`);
+}
+
+/**
+ * Plan numbers for the demo logins, which have none (no credentials): the engine reports these instead of asking
+ * Claude Code (SWITCHBOARD_DEMO_USAGE), with a week of % history so the chart has something to draw.
+ */
+function demoUsage(home: string): string {
+  const now = Date.now();
+  const HOUR = 3_600_000;
+  const at = (ms: number) => Math.round(ms / 60_000) * 60_000;
+  const sessionReset = at(now + 2 * HOUR + 14 * 60_000);
+  const weeklyReset = at(now + 2 * DAY + 15 * HOUR);
+  const lastWeeklyReset = weeklyReset - 7 * DAY;
+  const limit = (kind: string, percent: number, resetsAt: number, scope: string | null = null) => ({ kind, group: kind.startsWith('weekly') ? 'weekly' : kind, percent, resetsAt, scope, severity: 'normal', isActive: true });
+  // Work happens in the day: the % climbs between 08:00 and 19:00 and stays flat at night.
+  const busy = (t: number) => {
+    const h = new Date(t).getHours();
+    return h >= 8 && h < 19;
+  };
+  const history: Array<{ at: number; kind: string; scope: string | null; percent: number; resetsAt: number | null }> = [];
+  const week = (kind: string, scope: string | null, before: number, after: number, end: number) => {
+    // From 7 days ago to the last reset, then from 0 to where it is now.
+    let percent = before;
+    const steps = (from: number, to: number) => {
+      let n = 0;
+      for (let t = from; t < to; t += HOUR) if (busy(t)) n++;
+      return Math.max(1, n);
+    };
+    const climb1 = (end - before) / steps(now - 7 * DAY, lastWeeklyReset);
+    for (let t = now - 7 * DAY; t < lastWeeklyReset; t += HOUR) {
+      if (busy(t)) percent += climb1;
+      history.push({ at: at(t), kind, scope, percent: Math.round(percent * 10) / 10, resetsAt: lastWeeklyReset });
+    }
+    percent = 0;
+    const climb2 = after / steps(lastWeeklyReset, now);
+    for (let t = lastWeeklyReset; t <= now; t += HOUR) {
+      history.push({ at: at(t), kind, scope, percent: Math.round(percent * 10) / 10, resetsAt: weeklyReset });
+      if (busy(t)) percent = Math.min(after, percent + climb2);
+    }
+  };
+  week('weekly_all', null, 58, 52, 71);
+  week('weekly_scoped', 'Opus', 80, 82, 97);
+  // The 5-hour session over the last day: it fills while you work and comes back every five hours.
+  for (let reset = sessionReset - 5 * 5 * HOUR; reset <= sessionReset; reset += 5 * HOUR) {
+    const start = reset - 5 * HOUR;
+    const peak = reset === sessionReset ? 38 : busy(start) ? 45 + ((reset / HOUR) % 4) * 10 : 6;
+    for (let t = Math.max(start, now - 26 * HOUR); t <= Math.min(reset, now); t += 30 * 60_000) {
+      history.push({ at: at(t), kind: 'session', scope: null, percent: Math.round(((t - start) / (Math.min(reset, now) - start || 1)) * peak), resetsAt: reset });
+    }
+  }
+  const file = join(home, '.switchboard-demo-usage.json');
+  writeFileSync(
+    file,
+    JSON.stringify({
+      profiles: [
+        {
+          configDir: join(home, '.claude'),
+          snapshot: { fetchedAt: now - 60_000, limits: [limit('session', 38, sessionReset), limit('weekly_all', 52, weeklyReset), limit('weekly_scoped', 82, weeklyReset, 'Opus')], extraUsage: null },
+          history,
+        },
+        {
+          configDir: join(home, '.claude-work'),
+          snapshot: { fetchedAt: now - 60_000, limits: [limit('session', 12, sessionReset), limit('weekly_all', 31, weeklyReset)], extraUsage: null },
+        },
+      ],
+    }),
+  );
+  return file;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -974,6 +1078,7 @@ const app = await _electron.launch({
     HOME: world.home,
     CLAUDE_CONFIG_DIR: join(world.home, '.claude'),
     SWITCHBOARD_DRIVEN: '1',
+    SWITCHBOARD_DEMO_USAGE: demoUsage(world.home),
     // No "Claude Code vX is available" in the pictures: the registry offers nothing newer.
     SWITCHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: claudeVersion, stable: claudeVersion }))}`,
     USER: 'you',

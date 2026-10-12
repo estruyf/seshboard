@@ -188,6 +188,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘P | Go to a session or project (⌥↩ opens a session beside this one) |
 | ⌘⇧F | Search all conversations |
 | ⌘⇧H | Home |
+|  | Open usage (No key by default: use the command palette, or click a usage bar) |
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
 | ⌘Q then ⌘Q | Quit (Switchboard asks first; Press once if you turned that off) |

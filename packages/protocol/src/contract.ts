@@ -30,7 +30,7 @@ import {
   TranscriptUpdate,
 } from './sessions.ts';
 import { TerminalInfo, TerminalKind } from './terminal.ts';
-import { UsageSnapshot } from './usage.ts';
+import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
 import { ChangesBase, GitChanges, GitSyncAction, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
@@ -337,6 +337,26 @@ export const contract = {
       /** The profile whose plan to report (default: the default profile). */
       params: z.object({ refresh: z.boolean().default(false), profileId: ProfileId.optional() }),
       result: z.object({ usage: UsageSnapshot.nullable(), error: z.string().nullable() }),
+    },
+    /**
+     * Where a profile's tokens went in a period, from its transcripts (read in the background; `scan` is set while the
+     * first read runs). `groupBy` picks the rows; `model` narrows everything to one model (the model panel). Local
+     * days follow `timeZone` (IANA). Profiles that share a config folder report the same numbers.
+     */
+    'usage.breakdown': {
+      params: z.object({
+        profileId: ProfileId.optional(),
+        period: UsagePeriod,
+        groupBy: UsageGroup.default('session'),
+        model: z.string().max(200).nullable().default(null),
+        timeZone: z.string().max(100).default('UTC'),
+      }),
+      result: UsageBreakdown,
+    },
+    /** A profile's plan % over the period, per window, as recorded from /usage results and rate-limit updates. */
+    'usage.history': {
+      params: z.object({ profileId: ProfileId.optional(), period: UsagePeriod, timeZone: z.string().max(100).default('UTC') }),
+      result: PlanHistory,
     },
 
     // --- Folders, files and editors -----------------------------------------------------------
@@ -845,6 +865,11 @@ export const contract = {
     /** Output for an attached terminal (batched). */
     'terminal.data': z.object({ id: z.string(), data: z.string() }),
     'usage.changed': z.object({ profileId: z.string(), usage: UsageSnapshot.nullable() }),
+    /**
+     * New token numbers were read from transcripts for the profiles in `profileIds` (all that share the config folder
+     * that was read): ask for the breakdown again. `scan` is the first read's progress, null once it is done.
+     */
+    'usage.tokens': z.object({ profileIds: z.array(z.string()), scan: UsageScan.nullable() }),
     /** Full list whenever profiles are added, changed or removed, or the default changes. */
     'profiles.changed': ProfilesSnapshot,
     /** Full list whenever terminals start, exit or close. */

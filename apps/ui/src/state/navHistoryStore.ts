@@ -5,6 +5,7 @@ import { emptyHistory, record, step, type NavHistory, type NavPlace } from './na
 import { useProjectPage } from './projectPageStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
+import { openUsage, useUsageView } from './usageViewStore.ts';
 
 export const useNavHistory = create<{ history: NavHistory }>()(() => ({ history: emptyHistory }));
 
@@ -20,6 +21,8 @@ function currentPlace(): NavPlace {
       const { root, tab } = useProjectPage.getState();
       return root ? { view: 'project', root, tab } : { view: 'projects' };
     }
+    case 'usage':
+      return { view: 'usage', profileId: useUsageView.getState().profileId };
     default:
       return { view: s.view };
   }
@@ -53,6 +56,9 @@ function show(place: NavPlace) {
       useProjectPage.getState().setTab(place.tab);
       useSessions.getState().setView('project');
       break;
+    case 'usage':
+      openUsage(place.profileId);
+      break;
     default:
       useSessions.getState().setView(place.view);
   }
@@ -78,7 +84,7 @@ export function goInHistory(direction: 1 | -1): void {
   });
 }
 
-/** Runs on every change of the two stores (sessions change all the time), so it only sets anything when the place did. */
+/** Runs on every change of the stores (sessions change all the time), so it only sets anything when the place did. */
 const note = () => {
   if (restoring) return;
   const { history } = useNavHistory.getState();
@@ -91,9 +97,12 @@ export function startRecording(): () => void {
   note();
   const stopSessions = useSessions.subscribe(note);
   const stopProject = useProjectPage.subscribe(note);
+  // The Usage view's profile is part of its place.
+  const stopUsage = useUsageView.subscribe(note);
   return () => {
     stopSessions();
     stopProject();
+    stopUsage();
   };
 }
 

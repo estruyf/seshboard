@@ -2,7 +2,8 @@
  * Entry point of the engine utilityProcess. Main forks this once and hands it
  * one MessagePort per window; everything the UI needs goes over those ports.
  */
-import { createEngine, type TrashScope } from '@switchboard/engine';
+import { readFileSync } from 'node:fs';
+import { createEngine, type DemoUsage, type TrashScope } from '@switchboard/engine';
 import { ARCHIVE_AFTER_DAYS, clampDays, DELETE_AFTER_DAYS } from '@switchboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
@@ -29,6 +30,18 @@ const trash = (paths: string[], scope: TrashScope) =>
 
 const appVersion = argValue('--app-version') ?? '0.0.0';
 
+/** The website's screenshots give the demo logins plan numbers (SWITCHBOARD_DEMO_USAGE, a JSON file). */
+function demoUsage(): DemoUsage | undefined {
+  const file = process.env.SWITCHBOARD_DEMO_USAGE;
+  if (!file) return undefined;
+  try {
+    return JSON.parse(readFileSync(file, 'utf8')) as DemoUsage;
+  } catch (error) {
+    console.error(`[engine] SWITCHBOARD_DEMO_USAGE unreadable: ${(error as Error).message}`);
+    return undefined;
+  }
+}
+
 const engine = createEngine({
   dataDir,
   trash,
@@ -37,6 +50,7 @@ const engine = createEngine({
   // The smoke test points the Claude Code check at a mock registry and must never run an update.
   claudeUpdates: { allowUpdate: process.env.SWITCHBOARD_NO_CLAUDE_UPDATE !== '1' },
   onLog: (entry) => console.error(`[engine] ${entry.level}: ${entry.message}`),
+  demoUsage: demoUsage(),
 });
 
 // One misbehaving session must never take the whole engine (and every other session) down.
