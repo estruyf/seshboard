@@ -1,7 +1,8 @@
+import { fileManagerName } from '../../lib/platform.ts';
 import { modKey } from '../../lib/shortcuts.ts';
-import { FileText } from 'lucide-react';
+import { FileText, FolderOpen } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { joinPath } from '@switchboard/protocol/client';
+import { joinPath, type ContextItem } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComposerTargets, type ComposerTarget } from '../../state/composerTargets.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
@@ -19,7 +20,8 @@ export function AddContextDialogHost() {
 
 /**
  * Picks several files of the session's folder at once and adds them to the message as chips. Typing filters (like
- * the `@` list), Space picks the highlighted file, Enter adds what is picked (or the highlighted file).
+ * the `@` list), Space picks the highlighted file, Enter adds what is picked (or the highlighted file). Files and
+ * folders anywhere else come from the native open dialog (Choose in Finder…).
  */
 function AddContextDialog({ target, onClose }: { target: ComposerTarget & { cwd: string }; onClose(): void }) {
   const connection = useEngineConnection();
@@ -53,14 +55,17 @@ function AddContextDialog({ target, onClose }: { target: ComposerTarget & { cwd:
   }, [active]);
 
   const toggle = (file: string) => setPicked((list) => (list.includes(file) ? list.filter((f) => f !== file) : [...list, file]));
-  const add = (chosen = picked.length ? picked : files.slice(active, active + 1)) => {
-    if (chosen.length === 0) return;
-    useDrafts.getState().addContext(
-      target.key,
-      chosen.map((file) => ({ kind: 'file', path: joinPath(target.cwd, file), directory: false })),
-    );
+  const add = (chosen = picked.length ? picked : files.slice(active, active + 1), more: ContextItem[] = []) => {
+    if (chosen.length === 0 && more.length === 0) return;
+    useDrafts.getState().addContext(target.key, [...chosen.map((file): ContextItem => ({ kind: 'file', path: joinPath(target.cwd, file), directory: false })), ...more]);
     onClose();
     useDrafts.getState().requestFocus(target.key);
+  };
+  // What is picked in the list goes along with what is chosen in the native dialog.
+  const canBrowse = typeof window.switchboard?.pickContextFiles === 'function';
+  const browse = async () => {
+    const chosen = (await window.switchboard?.pickContextFiles(target.cwd)) ?? [];
+    if (chosen.length) add(picked, chosen.map(({ path, directory }) => ({ kind: 'file', path, directory })));
   };
 
   const count = picked.length;
@@ -88,24 +93,31 @@ function AddContextDialog({ target, onClose }: { target: ComposerTarget & { cwd:
         </>
       }
     >
-      <input
-        autoFocus
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') (e.preventDefault(), setActive((i) => Math.min(files.length - 1, i + 1)));
-          else if (e.key === 'ArrowUp') (e.preventDefault(), setActive((i) => Math.max(0, i - 1)));
-          else if (e.key === ' ' && files[active]) (e.preventDefault(), toggle(files[active]!));
-          else if (e.key === 'Enter' && !modKey(e) && !e.nativeEvent.isComposing) (e.preventDefault(), add());
-        }}
-        placeholder="Search files"
-        aria-label="Search files in the session's folder"
-        aria-controls={`${id}-list`}
-        aria-activedescendant={files[active] ? `${id}-file-${active}` : undefined}
-        spellCheck={false}
-        className="h-10 shrink-0 border-b border-edge bg-transparent px-5 text-body text-text outline-none placeholder:text-faint"
-        data-add-context-search
-      />
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-edge pr-3">
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') (e.preventDefault(), setActive((i) => Math.min(files.length - 1, i + 1)));
+            else if (e.key === 'ArrowUp') (e.preventDefault(), setActive((i) => Math.max(0, i - 1)));
+            else if (e.key === ' ' && files[active]) (e.preventDefault(), toggle(files[active]!));
+            else if (e.key === 'Enter' && !modKey(e) && !e.nativeEvent.isComposing) (e.preventDefault(), add());
+          }}
+          placeholder="Search files"
+          aria-label="Search files in the session's folder"
+          aria-controls={`${id}-list`}
+          aria-activedescendant={files[active] ? `${id}-file-${active}` : undefined}
+          spellCheck={false}
+          className="h-full min-w-0 flex-1 bg-transparent pl-5 text-body text-text outline-none placeholder:text-faint"
+          data-add-context-search
+        />
+        {canBrowse && (
+          <Button size="sm" icon={<FolderOpen size={13} aria-hidden />} className="shrink-0" onClick={() => void browse()} data-add-context-browse>
+            Choose in {fileManagerName()}…
+          </Button>
+        )}
+      </div>
       <div ref={listRef} id={`${id}-list`} role="listbox" aria-multiselectable="true" aria-label="Files" className="min-h-0 flex-1 overflow-y-auto py-1">
         {error ? (
           <p role="alert" className="px-5 py-3 text-ui text-error">

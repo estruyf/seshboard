@@ -43,6 +43,7 @@ import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from './later.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
+import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
 import { CompanionTarget } from './companion.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
@@ -94,7 +95,7 @@ export type LogEntry = z.infer<typeof LogEntry>;
 
 const AppStateKey = z.string().min(1).max(200);
 const SessionId = z.string().min(1).max(200);
-const Prompt = z.string().max(200_000);
+const Prompt = z.string().max(MAX_PROMPT_LENGTH);
 const ProfileId = z.string().min(1).max(100);
 const ProfileName = z.string().trim().min(1).max(60);
 const SettingsFilePath = AbsolutePath.regex(/\.json$/i, 'Settings files end in .json');

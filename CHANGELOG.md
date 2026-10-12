@@ -7,11 +7,14 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### New
 
 - **Copy link.** Right-click a link in a message and choose **Copy link** to copy its address.
+- **Add files from anywhere.** The Add context dialog (the paperclip under the message box) has **Choose in Finder…** (**Choose in File Explorer…** on Windows), so you can add files that are not in the project. On macOS you can pick folders too.
+- **Pasted text cards.** A long paste (more than 2,000 characters or 25 lines) goes in a **Pasted** card above the message instead of in the box. Click it to read or edit the text; Claude gets it with your message.
 
 ### Fixed
 
 - **Usage**: the profile menu shows the whole profile name; a long email is cut short instead.
 - **Usage**: in % used over time, the labels at the end of the lines no longer overlap when two windows are close, such as Weekly and Session.
+- Sending a very long message no longer fails with "Invalid params for session.create". A message can now hold up to 1,000,000 characters, and the message box says so when it is longer. A paste that is longer than that is not put in the box; drop the file instead.
 
 ## [0.0.15] - 2026-10-12
 

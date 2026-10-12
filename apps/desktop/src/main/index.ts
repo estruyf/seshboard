@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join } from 'node:path';
@@ -605,6 +605,27 @@ ipcMain.handle(IpcChannel.pickImage, async (event, defaultPath: unknown) => {
   };
   const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
   return result.canceled ? null : (result.filePaths[0] ?? null);
+});
+
+ipcMain.handle(IpcChannel.pickContextFiles, async (event, defaultPath: unknown) => {
+  if (smokeOutDir) return [];
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const options: Electron.OpenDialogOptions = {
+    title: 'Add context',
+    buttonLabel: 'Add',
+    // Windows can't pick files and folders in one dialog: with both it only shows folders.
+    properties: process.platform === 'darwin' ? ['openFile', 'openDirectory', 'multiSelections'] : ['openFile', 'multiSelections'],
+    ...(typeof defaultPath === 'string' ? { defaultPath } : {}),
+  };
+  const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+  if (result.canceled) return [];
+  return result.filePaths.map((path) => {
+    try {
+      return { path, directory: statSync(path).isDirectory() };
+    } catch {
+      return { path, directory: false };
+    }
+  });
 });
 
 /** The smoke run has no one to answer a file dialog: it exports to (and previews) a file in its throwaway profile. */
@@ -3600,9 +3621,26 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
     key('Return');
     if (!(await waitInPage(win, `!document.querySelector('[data-add-context-dialog]') && ${chips} === 3`, 3_000))) return 'Enter did not add the picked file as a chip';
 
+    // A long paste goes in a Pasted card, not in the box; a click opens it to read or edit, Esc closes it.
+    await js(`(() => {
+      const box = document.querySelector('[data-new-session-view] [data-composer]');
+      box.focus();
+      const data = new DataTransfer();
+      data.setData('text/plain', Array.from({ length: 40 }, (_, i) => 'pasted line ' + (i + 1)).join('\\n'));
+      box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    })()`);
+    if (!(await waitInPage(win, `${tray}?.querySelector('[data-context-chip="paste"]') && ${chips} === 4 && document.querySelector('[data-new-session-view] [data-composer]').value === ''`, 3_000))) {
+      return `a long paste did not become a Pasted card (${String(await js(chips))} chips, ${String(await js("document.querySelector('[data-new-session-view] [data-composer]').value.length"))} characters in the box)`;
+    }
+    await js(`${tray}.querySelector('[data-context-chip="paste"] [data-context-chip-open]').click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-pasted-text-editor]')?.value.startsWith('pasted line 1')", 3_000))) return 'clicking the Pasted card did not open its text';
+    await shot(win, 'pasted-text.png');
+    key('Escape');
+    if (!(await waitInPage(win, `!document.querySelector('[data-pasted-text-dialog]') && ${chips} === 4`, 2_000))) return 'Esc did not close the pasted text, or took the card with it';
+
     // Removing every chip empties the box: no unsent prompt is left behind.
     // One at a time: a second click before the first removal renders would land on the same chip.
-    for (let left = 3; left > 0; left--) {
+    for (let left = 4; left > 0; left--) {
       await js(`${tray}?.querySelector('[data-context-chip-remove]')?.click()`);
       if (!(await waitInPage(win, `${chips} === ${left - 1}`, 2_000))) return `removing a chip did not take it away (${String(await js(chips))} left of ${left})`;
     }
@@ -3616,7 +3654,7 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
     const status = (await js("document.querySelector('[data-companion-status]')?.innerText.trim() ?? 'no status'")) as string;
     await js("document.querySelector('[data-close-settings]').click()");
     if (!connected) return `Settings › VS Code did not show the connected editor (${status})`;
-    return `ok: hello with the token, chips from the socket showed in New session on the folder (${labels}), Start ready but not pressed, ⌘⇧A added notes.md, all removed again; Settings › VS Code says "${status}"`;
+    return `ok: hello with the token, chips from the socket showed in New session on the folder (${labels}), Start ready but not pressed, ⌘⇧A added notes.md, a long paste made a Pasted card that opens, all removed again; Settings › VS Code says "${status}"`;
   } finally {
     client.dispose();
     socket.destroy();

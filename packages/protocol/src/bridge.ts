@@ -32,6 +32,7 @@ export const IpcChannel = {
   rendererReady: "switchboard:renderer-ready",
   pickFolder: "switchboard:pick-folder",
   pickImage: "switchboard:pick-image",
+  pickContextFiles: "switchboard:pick-context-files",
   chooseExportFile: "switchboard:choose-export-file",
   chooseImportFile: "switchboard:choose-import-file",
   chooseMemoryExport: "switchboard:choose-memory-export",
@@ -306,6 +307,12 @@ export const IMAGE_EXTENSIONS: Record<string, string> = {
 };
 
 /** An image from the conversation to save: base64 `data` of `mediaType`, suggested as `fileName`. */
+/** A file or folder picked in the native open dialog, for a message's context. */
+export interface PickedPath {
+  path: string;
+  directory: boolean;
+}
+
 export interface SaveImageRequest {
   mediaType: string;
   data: string;
@@ -340,6 +347,8 @@ export interface SwitchboardBridge {
   onSelectSession(listener: (sessionId: string) => void): () => void;
   /** Native image picker (for project icons). Resolves to null when cancelled. */
   pickImage(defaultPath?: string): Promise<string | null>;
+  /** Native open dialog for files (and folders, on macOS) to add as context, starting in `defaultPath`. Empty when cancelled. */
+  pickContextFiles(defaultPath?: string): Promise<PickedPath[]>;
   /** Native save dialog for a settings export, suggesting `defaultName`. Resolves to null when cancelled. */
   chooseExportFile(defaultName: string): Promise<string | null>;
   /** Native open dialog for a settings file to import. Resolves to null when cancelled. */

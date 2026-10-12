@@ -38,8 +38,16 @@ export function routingSystemPrompt(allowed: readonly AutoTier[], lean: AutoLean
   ].join('\n');
 }
 
-/** The message the routing call sends: the user's text, and a note about images it can't see. */
+/** The most of a prompt the routing call reads: enough to tell the kind of work, while a long paste stays cheap to route. */
+export const ROUTING_PROMPT_MAX = 20_000;
+
+/** The message the routing call sends: the user's text (its start, when it is long), and notes about what it can't see. */
 export function routingUserMessage(prompt: string, imageCount: number): string {
-  const note = imageCount > 0 ? `\n\n[The message also has ${imageCount} attached image${imageCount === 1 ? '' : 's'}, not shown here.]` : '';
-  return `<request>\n${prompt}\n</request>${note}`;
+  const cut = prompt.length - ROUTING_PROMPT_MAX;
+  const notes = [
+    cut > 0 ? `[The message goes on for ${cut.toLocaleString('en-US')} more characters, not shown here.]` : '',
+    imageCount > 0 ? `[The message also has ${imageCount} attached image${imageCount === 1 ? '' : 's'}, not shown here.]` : '',
+  ].filter(Boolean);
+  const text = cut > 0 ? prompt.slice(0, ROUTING_PROMPT_MAX) : prompt;
+  return `<request>\n${text}\n</request>${notes.map((note) => `\n\n${note}`).join('')}`;
 }

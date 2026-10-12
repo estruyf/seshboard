@@ -1,11 +1,11 @@
 import { ImagePlus, Paperclip } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { joinPath, type ContextItem, type ImageAttachment, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { attachmentsAfterSend, textAfterSend } from './afterSend.ts';
 import { AttachmentThumbs, DropOverlay } from './Attachments.tsx';
-import { promptWithContext, type ContextChip } from './contextItems.ts';
+import { isLongPaste, pastedItem, pasteTooLongReason, promptWithContext, tooLongReason, type ContextChip } from './contextItems.ts';
 import { ContextTray } from './ContextTray.tsx';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
@@ -130,7 +130,22 @@ export function Composer(props: ComposerProps) {
   // The chips live in the drafts store, not here: context from the editor arrives there while the box isn't on screen.
   const chips = useDrafts((s) => (draftKey !== undefined ? s.drafts[draftKey]?.context : undefined)) ?? NO_CHIPS;
   const addContext = draftKey !== undefined ? (items: readonly ContextItem[]) => useDrafts.getState().addContext(draftKey, items) : undefined;
-  const { attachments, setAttachments, addFiles, onPaste, drop } = useAttachments({ initial: saved?.attachments, rootRef, textareaRef: ref, cwd: props.cwd, disabledReason: props.disabledReason, setText, onNotice: setNotice, onContext: addContext });
+  const { attachments, setAttachments, addFiles, onPaste: pasteImages, drop } = useAttachments({ initial: saved?.attachments, rootRef, textareaRef: ref, cwd: props.cwd, disabledReason: props.disabledReason, setText, onNotice: setNotice, onContext: addContext });
+  /** Images are attached; a long text becomes a Pasted text card (where the box keeps chips), so the box stays quick. */
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    pasteImages(event);
+    if (event.defaultPrevented) return;
+    const pasted = event.clipboardData.getData('text/plain');
+    const tooLong = pasteTooLongReason(pasted);
+    if (tooLong) {
+      event.preventDefault();
+      setNotice(tooLong);
+    } else if (addContext && isLongPaste(pasted)) {
+      event.preventDefault();
+      setNotice(null);
+      addContext([pastedItem(pasted, chips)]);
+    }
+  };
   /** Bumped whenever the palette's input moves on: a file search that answers after that is dropped. */
   const searchSeq = useRef(0);
   const ids = useId();
@@ -332,6 +347,9 @@ export function Composer(props: ComposerProps) {
     const value = promptWithContext(text, sentChips, cwd);
     const sentAttachments = attachments;
     if (!value && sentAttachments.length === 0) return;
+    // Said here rather than as the engine's "Invalid params": the text stays, so you can trim it.
+    const tooLong = tooLongReason(value);
+    if (tooLong) return setNotice(tooLong);
     setSending(true);
     setNotice(null);
     closePalette();
@@ -534,6 +552,7 @@ export function Composer(props: ComposerProps) {
             if (draftKey !== undefined) useDrafts.getState().removeContext(draftKey, [id]);
             ref.current?.focus();
           }}
+          onEditText={(id, value) => draftKey !== undefined && useDrafts.getState().editContextText(draftKey, id, value)}
         />
         <AttachmentThumbs
           attachments={attachments}

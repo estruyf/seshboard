@@ -1,4 +1,4 @@
-import { isAbsolutePath, MAX_CONTEXT_ITEMS, pathInside, separatorOf, type ContextItem } from '@switchboard/protocol/client';
+import { isAbsolutePath, MAX_CONTEXT_ITEMS, MAX_PROMPT_LENGTH, pathInside, separatorOf, type ContextItem } from '@switchboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 
 /** A chip in the context tray: an item to send with the message, and an id to remove it by. */
@@ -48,9 +48,50 @@ export function chipLabel(item: ContextItem, cwd: string | null): { label: strin
     const range = item.range ? `:${lines(item.range)}` : '';
     return { label: `${basename(item.path)}${range}`, detail: item.range ? `${where}, lines ${lines(item.range)}` : where };
   }
+  if (item.source === 'paste') return { label: item.label, detail: pasteSize(item.text) };
   const where = item.path ? relativeTo(item.path, cwd) + (item.range ? `, lines ${lines(item.range)}` : '') : null;
   const size = item.text.split('\n').length;
   return { label: item.label, detail: [where, size === 1 ? '1 line of text' : `${size} lines of text`].filter(Boolean).join(' · ') };
+}
+
+const lineCount = (text: string) => text.replace(/\n+$/, '').split('\n').length;
+
+/** A paste longer than this many characters, or lines, becomes a Pasted text card rather than text in the box. */
+export const PASTE_CARD_CHARS = 2_000;
+export const PASTE_CARD_LINES = 25;
+
+/** Whether pasted text is long enough to go in a card: a few lines stay in the message, where you can see them. */
+export const isLongPaste = (text: string) => text.length > PASTE_CARD_CHARS || lineCount(text) > PASTE_CARD_LINES;
+
+/** "120 lines · 45,210 characters": how much a pasted text holds. */
+export function pasteSize(text: string): string {
+  const count = lineCount(text);
+  return `${count === 1 ? '1 line' : `${count.toLocaleString('en-US')} lines`} · ${characters(text.length)}`;
+}
+
+const characters = (n: number) => (n === 1 ? '1 character' : `${n.toLocaleString('en-US')} characters`);
+
+/** The start of a pasted text for its card: the first lines, cut short so a long one-line blob doesn't cost a layout. */
+export const pastePreview = (text: string) => text.trimStart().slice(0, 400);
+
+/** A long paste as context: "Pasted text", then "Pasted text 2" and on while others are in the box. */
+export function pastedItem(text: string, chips: readonly ContextItem[]): Extract<ContextItem, { kind: 'text' }> {
+  const taken = new Set(chips.filter((c) => c.kind === 'text' && c.source === 'paste').map((c) => (c as { label: string }).label));
+  let n = 1;
+  while (taken.has(n === 1 ? 'Pasted text' : `Pasted text ${n}`)) n++;
+  return { kind: 'text', source: 'paste', label: n === 1 ? 'Pasted text' : `Pasted text ${n}`, text };
+}
+
+/** Why a message can't be sent as it is (null when it can): over the length a message can hold. */
+export function tooLongReason(prompt: string): string | null {
+  if (prompt.length <= MAX_PROMPT_LENGTH) return null;
+  return `Too long to send: ${characters(prompt.length)}, and a message holds up to ${MAX_PROMPT_LENGTH.toLocaleString('en-US')}. Shorten it or remove a pasted text.`;
+}
+
+/** Why a paste can't be added (null when it can): longer than a whole message can be. */
+export function pasteTooLongReason(text: string): string | null {
+  if (text.length <= MAX_PROMPT_LENGTH) return null;
+  return `Not pasted: ${characters(text.length)} is more than a message holds (${MAX_PROMPT_LENGTH.toLocaleString('en-US')}). Drop the file on the message box instead, and Claude reads what it needs.`;
 }
 
 /**

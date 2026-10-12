@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AbsolutePath } from './absolutePath.ts';
 import { Effort, ImageAttachment, PermissionMode } from './host.ts';
+import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 
 // The queue. People see "Queue" everywhere; inside, it keeps the name it started with (the Later list), so the
 // RPCs (`later.*`), the table (`later_prompts`) and the stores didn't need renaming.
@@ -9,7 +10,7 @@ import { Effort, ImageAttachment, PermissionMode } from './host.ts';
 export const LaterDraft = z.object({
   /** The folder the session would start in (a project's root). */
   cwd: AbsolutePath,
-  prompt: z.string().trim().min(1).max(200_000),
+  prompt: z.string().trim().min(1).max(MAX_PROMPT_LENGTH),
   /** Images pasted or dropped into the message box, sent with the prompt when it starts. */
   attachments: z.array(ImageAttachment).max(20).default([]),
   model: z.string().max(200).nullable().default(null),

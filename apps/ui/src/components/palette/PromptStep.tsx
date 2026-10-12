@@ -18,6 +18,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { newDraftKey } from '../../state/drafts.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { AttachmentThumbs, DropOverlay } from '../composer/Attachments.tsx';
+import { pasteTooLongReason, tooLongReason } from '../composer/contextItems.ts';
 import { AutoWand, ComposerChipRow } from '../composer/ComposerChips.tsx';
 import { deadKeyWrap, editKey } from '../composer/editing.ts';
 import { AUTO_OFF_NOTE, effectiveModel, modelChoices, modelLabel } from '../../lib/autoModel.ts';
@@ -204,6 +205,8 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const start = async (worktree = useWorktree) => {
     if (!client || !canStart) return;
     const prompt = text.trim();
+    const tooLong = tooLongReason(prompt);
+    if (tooLong) return setError(tooLong);
     setBusy(true);
     setError(null);
     const finish = () => {
@@ -245,6 +248,8 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   /** ⌘⇧↵ or Queue: adds the prompt to the queue (waiting for this project) and closes, as New session's Add to queue does. */
   const queue = async () => {
     if (!client || !canStart) return;
+    const tooLong = tooLongReason(text.trim());
+    if (tooLong) return setError(tooLong);
     setBusy(true);
     setError(null);
     try {
@@ -359,7 +364,12 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
         autoFocus
         value={text}
         onChange={(e) => setText(e.target.value)}
-        onPaste={onPaste}
+        onPaste={(e) => {
+          onPaste(e);
+          // A paste longer than a message can be would only slow the box down.
+          const tooLong = e.defaultPrevented ? null : pasteTooLongReason(e.clipboardData.getData('text/plain'));
+          if (tooLong) (e.preventDefault(), setNotice(tooLong));
+        }}
         {...deadKeyWrap(setText)}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return;

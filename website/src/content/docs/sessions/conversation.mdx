@@ -38,9 +38,19 @@ Files you add as context show as chips above the message, each with a × to remo
 
 - Pick a file from the `@` list.
 - Drop files and folders anywhere on the session. While you drag, the message box shows what a drop does: images are attached, other files and folders become context.
-- Choose **Add context** (<Kbd shortcut="composer.add-context" />, the paperclip, or *Add context…* in the command palette) to pick several files at once: <Kbd keys="space" /> picks, <Kbd keys="enter" /> adds.
+- Choose **Add context** (<Kbd shortcut="composer.add-context" />, the paperclip, or *Add context…* in the command palette) to pick several files at once: <Kbd keys="space" /> picks, <Kbd keys="enter" /> adds. The list shows the files of the session's folder. For a file somewhere else, click **Choose in <Os mac="Finder" windows="File Explorer" />…** next to the search field and pick it there. On macOS you can pick folders there too.
 
 With the [VS Code companion](/vscode-companion/) you can send the lines you have selected in VS Code, problems and terminal output as chips too.
+
+### Pasted text
+
+When you paste a long text (more than 2,000 characters or 25 lines), it goes in a **Pasted** card above the message instead of in the box, so the box stays quick and your own words stay easy to read. The card shows the first lines; hover it for its size.
+
+- Click the card to read or change the text. **Save** (<Kbd keys="mod+enter" />) keeps your changes, **Remove** takes it out.
+- Hover the card and click × to remove it.
+- Claude gets the text after what you typed, under its label ("Pasted text", "Pasted text 2"). It stays with an unsent message, also after a restart.
+
+A message holds up to 1,000,000 characters. For a larger file, drop the file on the message box instead: Claude reads the parts it needs from disk.
 
 ### While Claude works
 

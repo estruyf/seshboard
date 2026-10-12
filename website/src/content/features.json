@@ -1782,6 +1782,11 @@
       "page": "memory/import"
     },
     {
+      "id": "feature:pasted-text",
+      "name": "Pasted text cards",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:permission-card",
       "name": "Permission card",
       "page": "permissions"

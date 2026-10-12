@@ -110,6 +110,12 @@ describe('persistence', () => {
     expect(sessionDraftBanner(back['s-1']!, back['s-1']!.updatedAt + 12 * 60_000)).toBe("Unsent message from 12 minutes ago, kept for you. 1 image wasn't kept.");
   });
 
+  it('keeps a pasted text with the draft', () => {
+    const pasted = { kind: 'text' as const, source: 'paste' as const, label: 'Pasted text', text: 'line 1\nline 2' };
+    const back = parseDrafts(JSON.parse(JSON.stringify({ version: 1, drafts: { 's-1': { text: '', updatedAt: 1, images: 0, context: [pasted] } } })));
+    expect(back['s-1']!.context?.map(({ id: _id, ...item }) => item)).toEqual([pasted]);
+  });
+
   it('ignores anything that does not read as saved drafts', () => {
     expect(parseDrafts(null)).toEqual({});
     expect(parseDrafts({ version: 2, drafts: {} })).toEqual({});

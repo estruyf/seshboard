@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AbsolutePath } from './absolutePath.ts';
 import { MAX_CONTEXT_ITEMS } from './companionConstants.ts';
+import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 
 /** Lines `start` to `end` of a file, counted from 1, both included. */
 export const LineRange = z
@@ -14,7 +15,8 @@ export type LineRange = z.infer<typeof LineRange>;
  * - `file`: a file or folder by reference, optionally a range of lines. Claude reads it itself, so a large
  *   selection stays small.
  * - `text`: text that isn't a file on disk, or not as it is on disk: a selection with unsaved changes,
- *   problems, terminal output. `path` and `range` say where it came from, when it came from a file.
+ *   problems, terminal output, or a long paste into the message box (`paste`). `path` and `range` say where it came
+ *   from, when it came from a file.
  */
 export const ContextItem = z.discriminatedUnion('kind', [
   z.object({
@@ -25,10 +27,10 @@ export const ContextItem = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('text'),
-    source: z.enum(['selection', 'problems', 'terminal', 'output']),
+    source: z.enum(['selection', 'problems', 'terminal', 'output', 'paste']),
     /** What the chip says, such as "Problems in auth.ts". */
     label: z.string().trim().min(1).max(200),
-    text: z.string().max(200_000),
+    text: z.string().max(MAX_PROMPT_LENGTH),
     path: AbsolutePath.optional(),
     range: LineRange.optional(),
     /** The language of the text, for the code fence (`ts`, `python`). */

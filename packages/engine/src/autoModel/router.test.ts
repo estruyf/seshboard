@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_AUTO_MODEL, type AutoModelPrefs } from '@switchboard/protocol';
 import type { SdkRuntime } from '../host/hostManager.ts';
 import { clampTier, ModelRouter, parseRoute, ROUTE_FAILURES, stubRoute, type RoutingRecord } from './router.ts';
-import { routingSystemPrompt, routingUserMessage } from './routingRules.ts';
+import { ROUTING_PROMPT_MAX, routingSystemPrompt, routingUserMessage } from './routingRules.ts';
 
 describe('parseRoute', () => {
   it('reads the model and reason from strict JSON, also with text around it', () => {
@@ -46,6 +46,14 @@ describe('routing rules', () => {
   it('sends the text and a note about images it cannot see', () => {
     expect(routingUserMessage('Fix it', 0)).toBe('<request>\nFix it\n</request>');
     expect(routingUserMessage('Fix it', 2)).toContain('2 attached images, not shown here');
+  });
+
+  it('sends only the start of a long prompt, and says how much is left out', () => {
+    const message = routingUserMessage(`Explain this:\n${'x'.repeat(ROUTING_PROMPT_MAX + 1_500)}`, 1);
+    expect(message.length).toBeLessThan(ROUTING_PROMPT_MAX + 300);
+    expect(message).toContain('<request>\nExplain this:\n');
+    expect(message).toContain('[The message goes on for 1,514 more characters, not shown here.]');
+    expect(message).toContain('1 attached image, not shown here');
   });
 });
 

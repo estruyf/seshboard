@@ -30,6 +30,8 @@ interface DraftsState {
   addContext(key: string, items: readonly ContextItem[]): void;
   /** Removes chips by id (the × on a chip, or the ones that were just sent). */
   removeContext(key: string, ids: readonly string[]): void;
+  /** Replaces the text of a text chip (a pasted text, edited); empty text removes the chip. */
+  editContextText(key: string, id: string, text: string): void;
   /** Puts text in a box for you (Edit and resend): it shows no "kept for you" line. */
   seedDraft(key: string, text: string): void;
   /** New session's choices for the prompt under `key`, kept with it while there is one. */
@@ -126,6 +128,17 @@ export const useDrafts = create<DraftsState>()((set, get) => {
         key,
         previous,
         previous.context.filter((chip) => !ids.includes(chip.id)),
+      );
+    },
+    editContextText: (key, id, text) => {
+      const previous = get().drafts[key];
+      const chip = previous?.context?.find((c) => c.id === id);
+      if (!previous?.context || !chip || chip.kind !== 'text' || chip.text === text) return;
+      if (!text.trim()) return get().removeContext(key, [id]);
+      writeContext(
+        key,
+        previous,
+        previous.context.map((c) => (c.id === id ? { ...chip, text } : c)),
       );
     },
     seedDraft: (key, text) => {
