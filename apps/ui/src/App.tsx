@@ -32,6 +32,7 @@ import { useLaterSync } from './state/laterStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
+import { useNavHistorySync } from './state/navHistoryStore.ts';
 import { useSessions, type Pane } from './state/sessionsStore.ts';
 import { useOverlay } from './state/overlayStore.ts';
 import { usePreferencesSync } from './state/preferencesStore.ts';
@@ -177,6 +178,7 @@ export function App() {
   useSidebarSectionsSync();
   useCompanionSync();
   useWorktreesSync();
+  useNavHistorySync();
   // Listen for links before telling main the window is ready: main hands over waiting links then.
   useLinksSync();
   useReadyReport();

@@ -21,6 +21,8 @@ import { WorktreesTab } from '../worktrees/WorktreesTab.tsx';
 import { MemoryTab } from '../memory/MemoryTab.tsx';
 import { useMemoryList } from '../memory/useMemoryList.ts';
 import { guardMemoryEdits } from '../../state/memoryStore.ts';
+import { goInHistory, useNavHistory } from '../../state/navHistoryStore.ts';
+import { settingsSectionLabel } from '../SettingsView.tsx';
 import { menuPoint } from './ProjectManagerView.tsx';
 import { ProjectActionsTab, ProjectSettingsTab, ProjectOverview, ProjectSessions, useProjectSessionRows } from './ProjectTabs.tsx';
 
@@ -47,7 +49,7 @@ function useCheckoutStatus(root: string, isGitRepo: boolean): WorktreeStatus | n
 }
 
 /**
- * Projects › <project>: a project's own page. The header says where it is (path, branch, upstream) with Open in
+ * Projects › <project> (or Settings › <page> › <project> when a Settings page opened it): a project's own page. The header says where it is (path, branch, upstream) with Open in
  * editor and New session; tabs below hold its Overview, Sessions, Worktrees, Branches, Memory, Actions and Settings. The tab you
  * leave a project on is the one it opens on next time (while the app runs).
  */
@@ -66,6 +68,13 @@ export function ProjectPage() {
   const tabRefs = useRef(new Map<ProjectTab, HTMLButtonElement>());
   const icons = useProjectIconEntries();
   const [iconMenu, setIconMenu] = useState<{ x: number; y: number } | null>(null);
+  // Opened from a page of Settings (Memory's list of projects), the breadcrumb leads back there instead of to Projects.
+  const fromSettings = useNavHistory((s) => {
+    const { entries, index } = s.history;
+    const here = entries[index];
+    const before = entries[index - 1];
+    return here?.view === 'project' && here.root === root && before?.view === 'settings' ? before.section : null;
+  });
 
   useEffect(() => {
     setIsGitRepo(false);
@@ -139,9 +148,21 @@ export function ProjectPage() {
         <div className="flex h-8 items-center gap-1">
           <SidebarToggle />
           <nav aria-label="Breadcrumb" className="no-drag flex items-center gap-0.5 text-ui text-muted">
-            <Button variant="quiet" size="sm" onClick={() => useSessions.getState().setView('projects')} data-project-breadcrumb>
-              Projects
-            </Button>
+            {fromSettings ? (
+              <>
+                <Button variant="quiet" size="sm" onClick={() => goInHistory(-1)} data-project-breadcrumb-settings>
+                  Settings
+                </Button>
+                <ChevronRight size={13} className="text-faint" aria-hidden />
+                <Button variant="quiet" size="sm" onClick={() => goInHistory(-1)} data-project-breadcrumb-settings-page={fromSettings}>
+                  {settingsSectionLabel(fromSettings)}
+                </Button>
+              </>
+            ) : (
+              <Button variant="quiet" size="sm" onClick={() => useSessions.getState().setView('projects')} data-project-breadcrumb>
+                Projects
+              </Button>
+            )}
             <ChevronRight size={13} className="text-faint" aria-hidden />
           </nav>
         </div>

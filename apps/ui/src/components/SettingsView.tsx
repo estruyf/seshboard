@@ -134,6 +134,9 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'about', label: 'About', icon: Info },
 ];
 
+/** A Settings page's name, as its sidebar lists it. */
+export const settingsSectionLabel = (section: SettingsSection) => SECTIONS.find((s) => s.id === section)?.label ?? 'Settings';
+
 const close = () => useSessions.getState().closeSettings();
 
 /**
