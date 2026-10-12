@@ -105,6 +105,23 @@ export function visibleSeries(period: UsagePeriod, series: readonly PlanSeries[]
   return shown.sort((a, b) => rank(a) - rank(b));
 }
 
+/**
+ * Whether the % used chart has too little to draw: no readings, or less than a day of them at 7 and 30 days, where a
+ * few hours are a pixel at the right edge.
+ */
+export function historyTooShort(period: UsagePeriod, since: number | null, seriesCount: number, now: number): boolean {
+  if (seriesCount === 0 || since === null) return true;
+  return (period === 'week' || period === 'month') && now - since < 24 * 3_600_000;
+}
+
+/** When the readings start, if that is inside the chart's range: "Oct 12" at 7 and 30 days, "14:30" otherwise. */
+export function recordedSince(period: UsagePeriod, since: number | null, from: number, locale?: string, timeZone?: string): string | null {
+  if (since === null || since <= from) return null;
+  return period === 'week' || period === 'month'
+    ? new Date(since).toLocaleDateString(locale, { month: 'short', day: 'numeric', timeZone })
+    : new Date(since).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false, timeZone });
+}
+
 /** The first `count` rows, and the rest folded into one line with their totals. */
 export function foldRows(rows: readonly UsageRow[], count: number): { shown: UsageRow[]; rest: { count: number; turns: number; tokens: TokenCounts; share: number } | null } {
   if (rows.length <= count) return { shown: [...rows], rest: null };

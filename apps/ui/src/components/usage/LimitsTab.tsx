@@ -10,7 +10,7 @@ import { usageMessage, visibleLimits } from '../usageFormat.ts';
 import { ChartCard, ChartTable, LegendItem, PercentLines } from './charts.tsx';
 import { ShareInfo } from './ShareInfo.tsx';
 import { useBreakdown, usePlanHistory } from './useUsageData.ts';
-import { foldRows, formatShare, isLow, limitTitle, modelName, percentLeft, PERIOD_SHORT, resetsIn, seriesColor, seriesName, sinceLabel, visibleSeries } from './usageModel.ts';
+import { foldRows, formatShare, historyTooShort, isLow, limitTitle, modelName, percentLeft, PERIOD_SHORT, recordedSince, resetsIn, seriesColor, seriesName, sinceLabel, visibleSeries } from './usageModel.ts';
 
 /** One plan window: what's left in large type, a bar whose used part is hatched (it comes back at the reset), and when. */
 function LimitCard({ limit, now }: { limit: UsageLimit; now: number }) {
@@ -197,6 +197,9 @@ export function LimitsTab({ profileId, period }: { profileId: string; period: Us
     return { from, to };
   }, [period, now, entry]);
   const weeklyOnly = period === 'week' || period === 'month';
+  const since = history?.since ?? null;
+  const tooShort = historyTooShort(period, since, series.length, now);
+  const startedAt = recordedSince(period, since, range.from);
 
   return (
     <>
@@ -215,8 +218,8 @@ export function LimitsTab({ profileId, period }: { profileId: string; period: Us
       <div className="grid items-start gap-4 min-[1200px]:grid-cols-[minmax(0,1.4fr)_minmax(380px,1fr)]">
         <ChartCard
           title="% used over time"
-          subtitle={`${period === 'window' ? 'current window' : `last ${PERIOD_SHORT[period]}`}${weeklyOnly ? ' · the 5h session shows at 24 hours and less' : ''}`}
-          legend={series.length >= 2 ? series.map((s) => <LegendItem key={`${s.kind}:${s.scope ?? ''}`} color={seriesColor(s)} label={seriesName(s)} dashed={s.kind === 'session'} />) : null}
+          subtitle={`${period === 'window' ? 'current window' : `last ${PERIOD_SHORT[period]}`}${startedAt && !tooShort ? ` · recorded since ${startedAt}` : ''}${weeklyOnly ? ' · the 5h session shows at 24 hours and less' : ''}`}
+          legend={series.length >= 2 && !tooShort ? series.map((s) => <LegendItem key={`${s.kind}:${s.scope ?? ''}`} color={seriesColor(s)} label={seriesName(s)} dashed={s.kind === 'session'} />) : null}
           table={
             <ChartTable
               caption="% used over time"
@@ -231,10 +234,14 @@ export function LimitsTab({ profileId, period }: { profileId: string; period: Us
           }
           data-usage-history
         >
-          {series.length === 0 ? (
-            <div className="grid h-[300px] place-content-center justify-items-center gap-1 rounded-lg border border-dashed border-edge text-center" data-usage-history-empty>
+          {tooShort ? (
+            <div className="grid h-[300px] place-content-center justify-items-center gap-1 rounded-lg border border-dashed border-edge px-8 text-center" data-usage-history-empty>
               <p className="text-ui font-semibold">History starts now</p>
-              <p className="text-ui text-muted">Switchboard records your plan % each time it checks. The chart fills in from today.</p>
+              <p className="max-w-[48ch] text-balance text-ui text-muted">
+                {series.length === 0 || since === null
+                  ? 'Switchboard records your plan % each time it checks. The chart fills in from today.'
+                  : `Switchboard has recorded your plan % since ${recordedSince('day', since, 0)}. This chart fills in over the next days. Pick 24 hours to see it now.`}
+              </p>
             </div>
           ) : (
             <PercentLines series={series} from={range.from} to={range.to} period={period} />

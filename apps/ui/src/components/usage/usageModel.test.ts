@@ -8,12 +8,14 @@ import {
   foldRows,
   formatShare,
   formatTokens,
+  historyTooShort,
   isLow,
   limitTitle,
   modelName,
   niceMax,
   percentLeft,
   PERIODS,
+  recordedSince,
   resetsIn,
   seriesColor,
   stackOf,
@@ -128,6 +130,24 @@ describe('charts', () => {
       { type: 'input', from: 0, to: 2 },
       { type: 'output', from: 2, to: 5 },
     ]);
+  });
+
+  it('waits for a day of plan history at 7 and 30 days', () => {
+    const now = Date.UTC(2026, 9, 12, 14);
+    const hours = (n: number) => now - n * 3_600_000;
+    expect(historyTooShort('month', null, 0, now)).toBe(true);
+    expect(historyTooShort('month', hours(3), 2, now)).toBe(true);
+    expect(historyTooShort('week', hours(30), 2, now)).toBe(false);
+    expect(historyTooShort('day', hours(3), 2, now)).toBe(false);
+    expect(historyTooShort('window', hours(1), 0, now)).toBe(true);
+  });
+
+  it('names when the plan history starts, inside the range only', () => {
+    const since = Date.UTC(2026, 9, 12, 9, 30);
+    expect(recordedSince('month', since, since - 1, 'en-GB', 'UTC')).toBe('12 Oct');
+    expect(recordedSince('day', since, since - 1, 'en-GB', 'UTC')).toBe('09:30');
+    expect(recordedSince('week', since, since + 1, 'en-GB', 'UTC')).toBeNull();
+    expect(recordedSince('week', null, 0)).toBeNull();
   });
 
   it('labels hours and days', () => {
