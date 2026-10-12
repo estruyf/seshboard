@@ -224,6 +224,10 @@ describe('the shortcut registry', () => {
       'new-session.start': [at({ view: 'new-session' }), SESSION],
       'new-session.queue': [at({ view: 'new-session' }), SESSION],
       'settings.close': [at({ view: 'settings' }), SESSION],
+      'usage.limits': [at({ view: 'usage' }), SESSION],
+      'usage.tokens': [at({ view: 'usage' }), at({ view: 'new-session' })],
+      'usage.period': [at({ view: 'usage' }), HOME],
+      'usage.back': [at({ view: 'usage' }), SESSION],
       'memory.save': [at({ view: 'project' }), SESSION],
     };
     const conditional = (SHORTCUTS as readonly ShortcutDef[]).filter((s) => s.when).map((s) => s.id);
@@ -245,7 +249,7 @@ const INTENDED_OVERLAPS: Record<string, string> = {
 };
 
 describe('shortcut collisions', () => {
-  const VIEWS: ShortcutContext['view'][] = ['home', 'new-session', 'session', 'settings', 'projects'];
+  const VIEWS: ShortcutContext['view'][] = ['home', 'new-session', 'session', 'settings', 'projects', 'usage'];
   const FOCUS: ShortcutContext['focus'][] = ['terminal', 'composer', 'other'];
   /** Every view and focus, with everything off and with everything on (the most shortcuts at once). */
   const contexts = VIEWS.flatMap((view) =>

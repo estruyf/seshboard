@@ -1,0 +1,93 @@
+---
+title: Usage
+description: See what is left of your plan, when it comes back, and which sessions, projects and models used your tokens.
+---
+
+import Kbd from '../../components/Kbd.astro';
+import Screenshot from '../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+The usage bar tells you how much of your plan is used. The Usage view tells you what used it: which sessions, projects and models, in the current 5-hour window, the last 24 hours, or the last 7 or 30 days. It counts every session, also the ones you started with `claude` in a terminal.
+
+It shows tokens and shares. It never shows prices or dollars: your plan is a subscription.
+
+<Screenshot name="usage-limits" alt="The Usage view on the Limits tab: cards for Session, Weekly and Weekly · Opus with the % left, a chart of % used over the last 7 days with a weekly reset, and What used this window with each session's share" eager />
+
+## Open it
+
+- Click a usage bar: the one under the message box, the one in [New session](/new-session/form/), or a profile's card on [Home](/sessions/home/). The view opens for that bar's profile. The bar's tooltip says *Click to see what used it*.
+- In the command palette: *Open usage*. It has no key by default.
+
+It opens in the window like Home. **Back** or <Kbd keys="escape" /> returns to where you were, and so does your mouse's back button.
+
+## The header
+
+- The profile menu picks whose usage you see. Each profile has its own login and limits. Profiles that share a config folder are counted once. See [Claude profiles](/settings/claude-profiles/).
+- *Plan usage updated 1m ago* says when the plan numbers were last checked. The refresh button checks now.
+- **Limits** and **Tokens** are the two tabs. The period on the right applies to both: **Current window (5h)**, **24 hours**, **7 days** or **30 days**. Switchboard remembers the tab and the period.
+
+| Keys | Does |
+|---|---|
+| <Kbd shortcut="usage.limits" /> | Show Limits |
+| <Kbd shortcut="usage.tokens" /> | Show Tokens |
+| <Kbd keys="1" /> to <Kbd keys="4" /> | Pick a period |
+| <Kbd shortcut="usage.back" /> | Back to where you were |
+
+## Limits
+
+One card per plan window: **Session** (5 hours), **Weekly** (all models) and a model's own weekly limit when you use it, such as **Weekly · Opus**.
+
+- The large number is what is left.
+- The bar's striped part is what you used. It comes back at the reset.
+- Under the bar: how much is used, and when the window resets, such as *Resets in 2h 14m · 19:30*.
+
+A card turns orange when 20% or less is left.
+
+### % used over time
+
+A line per window shows how its % used went up, with a dashed line at each reset. Hover the chart to read every line at that moment. At 7 and 30 days the chart shows only the weekly windows; the 5-hour session shows at 24 hours and less.
+
+Switchboard records your plan % each time it checks, so the chart starts the day you install this version: *History starts now* until there is something to draw.
+
+### What used this window
+
+The sessions that used the current 5-hour window, with their project, model and share. The top five are listed, the rest fold into one line. Click a session to open it.
+
+## Tokens
+
+<Screenshot name="usage-tokens" alt="The Usage view on the Tokens tab for 7 days: total tokens with cache read, cache write, output, uncached input and the cache hit rate, tokens per day as stacked bars without cache reads, and the breakdown per session" />
+
+- **The totals**: all tokens in the period, the sessions and turns, and each type of token with its part of the whole.
+- **Cache hit rate**: cache reads out of all input. A low rate means the cache keeps being rebuilt, for example after a long break in a session.
+- **Tokens per day** (per hour for 5 hours and 24 hours), stacked by type. Cache reads are most of the tokens and would hide everything else, so the chart starts at **Without cache reads**; **All tokens** adds them. Hover a bar to see every type for that day.
+
+Each chart has **Show as table** for the same numbers as a table.
+
+### Breakdown
+
+Group the tokens by **Session**, **Project**, **Model** or **Day**, and filter the list by name, project or model.
+
+- The session rows show the turns, output, cache write, cache read, the largest context of one turn, and the share. A bolt marks sessions with fast mode turns, which use the plan faster.
+- Click a session to open it.
+- Click a model for its tokens, sessions, fast mode turns, largest context, and its cache hit rate over the period.
+
+<Screenshot name="usage-model" alt="The breakdown grouped by model, with Opus selected: its tokens, sessions, fast mode turns, largest context, average turn and its cache hit rate" width={900} />
+
+## How shares are counted
+
+Claude doesn't report usage per session, so every **Share (est.)** is an estimate. Click the column's header for how it works:
+
+- Tokens weigh differently against your plan. Compared to input, a cache write counts 1.25×, a cache read 0.1× and output 5×.
+- When only one session ran, the share uses the measured change in plan % (from Claude Code's rate-limit updates during that session's turns). Otherwise it is the estimate.
+
+A share is a session's part of the period's activity, never a part of a limit.
+
+## Where the numbers come from
+
+<Aside>
+The first time, Switchboard reads all your transcripts to count their tokens: *Reading transcripts* shows how far it is, and the numbers grow as it goes. After that it only reads what is new.
+</Aside>
+
+- Tokens come from Claude Code's transcripts, in each profile's config folder. Each answer from Claude counts once, also when Claude Code writes it on several lines. Subagents count for the session that started them.
+- Claude Code deletes old transcripts after a while (30 days by default). The totals Switchboard counted stay, so 30 days stays complete.
+- The plan % comes from the same check as the usage bar. No extra checks are made for this view.

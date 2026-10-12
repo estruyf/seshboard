@@ -7,7 +7,8 @@ export type NavPlace =
   | { view: 'new' }
   | { view: 'settings'; section: SettingsSection; from: Exclude<MainView, 'settings'> }
   | { view: 'projects' }
-  | { view: 'project'; root: string; tab: ProjectTab };
+  | { view: 'project'; root: string; tab: ProjectTab }
+  | { view: 'usage'; profileId: string | null };
 
 export interface NavHistory {
   entries: readonly NavPlace[];

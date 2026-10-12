@@ -100,6 +100,8 @@ export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-qu
 /** What commands do, implemented against the stores in `paletteApi.ts` (and faked in tests). */
 export interface PaletteApi {
   goHome(): void;
+  /** The Usage view, for the default profile. */
+  openUsage(): void;
   showSearch(): void;
   /** Search, on memory only. */
   showMemorySearch(): void;
@@ -300,6 +302,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'sidebar-minimize', title: 'Minimize sidebar', group: 'general', icon: PanelLeftDashed, keywords: 'rail icons collapse narrow', when: (ctx) => ctx.sidebar !== 'minimal', run: (api) => api.setSidebar('minimal') },
   { id: 'sidebar-close', title: 'Close sidebar', group: 'general', icon: PanelLeftClose, keywords: 'hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
   { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: House, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
+  { id: 'open-usage', title: 'Open usage', group: 'general', icon: Gauge, keywords: 'plan limits tokens usage insights session weekly cache', when: (ctx) => ctx.view !== 'usage', run: (api) => api.openUsage() },
   { id: 'search-memory', title: 'Search memory…', group: 'general', icon: Brain, keywords: 'find memories knowledge notes', when: (ctx) => ctx.connected, run: (api) => api.showMemorySearch() },
   { id: 'search', title: 'Search conversations', group: 'general', shortcut: keysFor('search'), icon: TextSearch, keywords: 'find text', when: always, run: (api) => api.showSearch() },
   { id: 'settings', title: 'Settings', group: 'general', shortcut: keysFor('settings'), icon: Settings, keywords: 'preferences', when: (ctx) => ctx.view !== 'settings', run: (api) => api.openSettings() },

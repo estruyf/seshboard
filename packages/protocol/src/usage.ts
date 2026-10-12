@@ -30,3 +30,83 @@ export const UsageSnapshot = z.object({
     .nullable(),
 });
 export type UsageSnapshot = z.infer<typeof UsageSnapshot>;
+
+/** The Usage view's periods: the current 5-hour window, the last 24 hours, the last 7 and 30 days (local days). */
+export const UsagePeriod = z.enum(['window', 'day', 'week', 'month']);
+export type UsagePeriod = z.infer<typeof UsagePeriod>;
+
+/** How the Tokens tab groups its breakdown. */
+export const UsageGroup = z.enum(['session', 'project', 'model', 'day']);
+export type UsageGroup = z.infer<typeof UsageGroup>;
+
+/** Tokens by type, as Claude Code's transcripts report them. Thinking tokens are part of `output`. */
+export const TokenCounts = z.object({
+  /** Uncached input. */
+  input: z.number(),
+  output: z.number(),
+  cacheRead: z.number(),
+  cacheWrite: z.number(),
+});
+export type TokenCounts = z.infer<typeof TokenCounts>;
+
+/** One line of the breakdown: a session, a project, a model or a local day. */
+export const UsageRow = z.object({
+  key: z.string(),
+  /** A session's title, a project's name, a model id, or the day as YYYY-MM-DD. */
+  label: z.string(),
+  sessionId: z.string().nullable(),
+  projectRoot: z.string().nullable(),
+  /** The model of a model row, or the model a session used most. */
+  model: z.string().nullable(),
+  sessions: z.number(),
+  /** API responses (one per request Claude Code made). */
+  turns: z.number(),
+  /** Turns in fast mode (`usage.speed` is `fast`), which use the plan faster. */
+  fastTurns: z.number(),
+  tokens: TokenCounts,
+  /** The largest context of a single turn: its input, cache read and cache write together. */
+  largestContext: z.number(),
+  /** Estimated share of the period's activity, 0–1. Never a share of a plan limit. */
+  share: z.number(),
+  /** The share comes from measured changes in plan % (the session ran alone), not from token weights. */
+  measured: z.boolean(),
+});
+export type UsageRow = z.infer<typeof UsageRow>;
+
+/** Tokens in one hour or one local day, for the chart. */
+export const UsageBucket = z.object({ start: z.number(), tokens: TokenCounts, turns: z.number() });
+export type UsageBucket = z.infer<typeof UsageBucket>;
+
+/** How far the first read of the transcripts is (files read, of how many). */
+export const UsageScan = z.object({ done: z.number(), total: z.number() });
+export type UsageScan = z.infer<typeof UsageScan>;
+
+export const UsageBreakdown = z.object({
+  period: UsagePeriod,
+  from: z.number(),
+  to: z.number(),
+  bucket: z.enum(['hour', 'day']),
+  totals: z.object({ tokens: TokenCounts, sessions: z.number(), turns: z.number(), fastTurns: z.number(), largestContext: z.number() }),
+  rows: z.array(UsageRow),
+  buckets: z.array(UsageBucket),
+  /** Set while transcripts are being read for the first time: the numbers grow as it goes. */
+  scan: UsageScan.nullable(),
+});
+export type UsageBreakdown = z.infer<typeof UsageBreakdown>;
+
+/** One plan window's % used over time, from /usage results and rate-limit updates. */
+export const PlanSeries = z.object({
+  kind: z.string(),
+  scope: z.string().nullable(),
+  points: z.array(z.object({ at: z.number(), percent: z.number() })),
+  /** When the window reset within the period. */
+  resets: z.array(z.number()),
+});
+export type PlanSeries = z.infer<typeof PlanSeries>;
+
+export const PlanHistory = z.object({
+  /** The first recorded value for this profile; null before any. */
+  since: z.number().nullable(),
+  series: z.array(PlanSeries),
+});
+export type PlanHistory = z.infer<typeof PlanHistory>;

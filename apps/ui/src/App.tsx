@@ -23,6 +23,7 @@ import { useProjectPage } from './state/projectPageStore.ts';
 import { useWorktreesSync } from './state/worktreesStore.ts';
 import { SettingsView } from './components/SettingsView.tsx';
 import { useUsageSync } from './components/UsageBand.tsx';
+import { UsageView } from './components/usage/UsageView.tsx';
 import { SessionHud } from './components/sidebar/SessionHud.tsx';
 import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { TranscriptView } from './components/transcript/TranscriptView.tsx';
@@ -207,7 +208,9 @@ export function App() {
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Settings is a sheet over the view it opened from, which stays on screen (inert) behind it. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={view === 'settings'}>
-        {behind === 'projects' ? (
+        {behind === 'usage' ? (
+          <UsageView />
+        ) : behind === 'projects' ? (
           <ProjectManagerView />
         ) : behind === 'project' ? (
           <ProjectPage />

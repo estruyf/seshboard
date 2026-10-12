@@ -7,7 +7,8 @@ import { useProfile, useProfiles } from '../state/profilesStore.ts';
 import { ProfileBadge, ProfileDot } from './profiles/ProfileBadge.tsx';
 import { Meter } from './ui/Meter.tsx';
 import type { UsageLine } from './session/foldedMeter.ts';
-import { countdown, limitLabel, nextUsageEntry, resetLabel, spokenLimit, usageMessage, visibleLimits, type UsageEntry } from './usageFormat.ts';
+import { countdown, limitLabel, nextUsageEntry, resetLabel, spokenLimit, usageMessage, usageSummary, visibleLimits, type UsageEntry } from './usageFormat.ts';
+import { openUsage } from '../state/usageViewStore.ts';
 
 interface UsageState {
   /** Plan usage per Claude profile (each login has its own limits). No entry: not loaded yet. */
@@ -27,9 +28,9 @@ export const useUsage = create<UsageState>()((set) => ({
     })),
 }));
 
-/** Asks the engine for a profile's usage and stores the answer, or why there is none. */
-function fetchUsage(client: EngineClient, profileId: string): Promise<void> {
-  return client.call('usage.get', { refresh: false, profileId }).then(
+/** Asks the engine for a profile's usage (`refresh`: fetch now rather than from its cache) and stores the answer, or why there is none. */
+export function fetchUsage(client: EngineClient, profileId: string, refresh = false): Promise<void> {
+  return client.call('usage.get', { refresh, profileId }).then(
     (result) => useUsage.getState().set(profileId, result),
     (error: unknown) => useUsage.getState().set(profileId, { usage: null, error: error instanceof Error ? error.message : String(error) }),
   );
@@ -54,7 +55,7 @@ export function useUsageSync(): void {
 }
 
 /** Loads a profile's usage the first time a band shows it. Undefined until the first answer. */
-function useUsageFor(profileId: string): UsageEntry | undefined {
+export function useUsageFor(profileId: string): UsageEntry | undefined {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   useEffect(() => {
@@ -65,6 +66,9 @@ function useUsageFor(profileId: string): UsageEntry | undefined {
   }, [client, profileId]);
   return useUsage((s) => s.usage.get(profileId));
 }
+
+/** A usage bar is a button that opens the Usage view: it keeps its look and lights up on hover. */
+const BAND_HOVER = 'no-drag cursor-pointer hover:bg-border/45 focus-visible:bg-border/45';
 
 const money = (minorUnits: number, currency: string | null) =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency: currency ?? 'USD', maximumFractionDigits: 2 }).format(minorUnits / 100);
@@ -112,15 +116,23 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
   if (tray) {
     // The profile shows at once, also while its usage loads: it is the answer to "which account?".
     return (
-      <div role="group" aria-label="Plan usage" className="flex min-w-0 items-center gap-3 text-meta text-muted" data-usage-band data-usage-profile={id}>
+      <button
+        type="button"
+        onClick={() => openUsage(id)}
+        aria-label={`Plan usage${profile ? ` of ${profile.name}` : ''}. Open usage`}
+        data-tooltip={usageSummary(limits, now)}
+        className={`flex min-w-0 items-center gap-3 rounded-md px-1.5 py-0.5 -mx-1.5 text-meta text-muted ${BAND_HOVER}`}
+        data-usage-band
+        data-usage-profile={id}
+      >
         {profile && (
-          <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap" data-tooltip={profile.account?.email ? `Claude profile: ${profile.name} (${profile.account.email})` : `Claude profile: ${profile.name}`} data-usage-profile-name>
+          <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap" data-usage-profile-name>
             <ProfileDot color={profile.color} />
             <span className="truncate text-text">{profile.name}</span>
           </span>
         )}
         {limits.map((limit) => (
-          <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap" data-tooltip={resetTitle(limit, now)}>
+          <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap">
             <Meter percent={limit.percent} label={spokenLimit(limit, now)} showValue hideTrackNarrow="tight">
               <span>{footerLabel(limit)}</span>
             </Meter>
@@ -133,11 +145,11 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
           </span>
         ))}
         {extra?.enabled && extra.usedCredits !== null && extra.usedCredits > 0 && (
-          <span className="whitespace-nowrap @max-[640px]:hidden" data-tooltip={extra.monthlyLimit !== null ? `Extra usage this month, of ${money(extra.monthlyLimit, extra.currency)}` : 'Extra usage this month'}>
+          <span className="whitespace-nowrap @max-[640px]:hidden">
             <span className="text-ok">{money(extra.usedCredits, extra.currency)}</span> extra
           </span>
         )}
-      </div>
+      </button>
     );
   }
   if (!usage || limits.length === 0) return null;
@@ -152,18 +164,26 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
 
   if (footer) {
     return (
-      <div role="group" aria-label="Plan usage" className="flex min-w-0 items-center gap-4 text-meta text-muted" data-usage-band data-usage-profile={id}>
+      <button
+        type="button"
+        onClick={() => openUsage(id)}
+        aria-label={`Plan usage: ${limits.map((l) => spokenLimit(l, now)).join('. ')}. Open usage`}
+        data-tooltip={usageSummary(limits, now)}
+        className={`flex min-w-0 items-center gap-4 rounded-md px-1 py-0.5 text-meta text-muted ${BAND_HOVER}`}
+        data-usage-band
+        data-usage-profile={id}
+      >
         {limits.map((limit) => (
-          <Meter key={`${limit.kind}:${limit.scope ?? ''}`} percent={limit.percent} label={spokenLimit(limit, now)} showValue hideTrackNarrow data-tooltip={resetTitle(limit, now)}>
+          <Meter key={`${limit.kind}:${limit.scope ?? ''}`} percent={limit.percent} showValue hideTrackNarrow>
             <span>{footerLabel(limit)}</span>
           </Meter>
         ))}
         {extra?.enabled && extra.usedCredits !== null && extra.usedCredits > 0 && (
-          <span className="whitespace-nowrap @max-[860px]:hidden" data-tooltip={extra.monthlyLimit !== null ? `Extra usage this month, of ${money(extra.monthlyLimit, extra.currency)}` : 'Extra usage this month'}>
+          <span className="whitespace-nowrap @max-[860px]:hidden">
             <span className="text-ok">{money(extra.usedCredits, extra.currency)}</span> extra
           </span>
         )}
-      </div>
+      </button>
     );
   }
 
@@ -247,15 +267,23 @@ export function ProfileUsageCard({ profileId, activity }: { profileId: string; a
           {usageMessage(entry)}
         </p>
       ) : (
-        <div className="grid gap-2" role="group" aria-label="Plan usage">
+        <button
+          type="button"
+          onClick={() => openUsage(profileId)}
+          aria-label={`Plan usage: ${limits.map((l) => spokenLimit(l, now)).join('. ')}. Open usage`}
+          data-tooltip={usageSummary(limits, now)}
+          className={`-mx-1.5 grid gap-2 rounded-md px-1.5 py-1 text-left ${BAND_HOVER}`}
+          data-usage-band
+          data-usage-profile={profileId}
+        >
           {limits.map((limit) => (
-            <Meter key={`${limit.kind}:${limit.scope ?? ''}`} percent={limit.percent} size="md" label={spokenLimit(limit, now)} showValue>
+            <Meter key={`${limit.kind}:${limit.scope ?? ''}`} percent={limit.percent} size="md" showValue>
               <span className="text-muted">{footerLabel(limit)}</span>
               <span className="flex-1" />
               {limit.resetsAt && <span className="text-faint">resets in {countdown(limit.resetsAt, now)}</span>}
             </Meter>
           ))}
-        </div>
+        </button>
       )}
       {extra?.enabled && extra.usedCredits !== null && extra.usedCredits > 0 && (
         <p className="text-meta text-muted">

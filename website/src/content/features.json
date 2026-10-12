@@ -2685,6 +2685,36 @@
       "id": "feature:worktree-setup-actions",
       "name": "Run when a new worktree is created",
       "page": "new-session/worktrees"
+    },
+    {
+      "id": "palette:open-usage",
+      "name": "Open usage",
+      "page": "usage"
+    },
+    {
+      "id": "shortcut:usage.open",
+      "name": "usage.open",
+      "page": "usage"
+    },
+    {
+      "id": "shortcut:usage.limits",
+      "name": "usage.limits",
+      "page": "usage"
+    },
+    {
+      "id": "shortcut:usage.tokens",
+      "name": "usage.tokens",
+      "page": "usage"
+    },
+    {
+      "id": "shortcut:usage.period",
+      "name": "usage.period",
+      "page": "usage"
+    },
+    {
+      "id": "shortcut:usage.back",
+      "name": "usage.back",
+      "page": "usage"
     }
   ]
 }

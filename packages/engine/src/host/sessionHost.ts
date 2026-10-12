@@ -32,6 +32,8 @@ export interface HostEvents {
   log(level: LogLevel, message: string): void;
   /** Plan usage probably changed (a turn finished, or Claude Code reported a rate-limit update). */
   usageHint?(): void;
+  /** Claude Code's rate-limit update during a turn of this session (`rate_limit_event`), for the plan % history. */
+  rateLimit?(sessionId: string, info: { rateLimitType?: string; utilization?: number; resetsAt?: number }): void;
   /** Commands already listed for this folder, for a message sent before this session has listed its own. */
   knownCommands?(): readonly SlashCommand[];
   /** The command list changed while running (a skill was added or removed), so lists cached for the profile are stale. */
@@ -373,6 +375,7 @@ export class SessionHost {
         this.events.usageHint?.();
         return;
       case 'rate_limit_event':
+        this.events.rateLimit?.(this.sessionId, message.rate_limit_info);
         this.events.usageHint?.();
         return;
       default:

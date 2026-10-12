@@ -58,14 +58,14 @@ export interface SheetAction {
 }
 
 /** Sections in reading order. In All mode the first two (and New session and Settings, when shown) are the left column. */
-const ORDER: ShortcutSection[] = ['general', 'sessions', 'session', 'composer', 'permissions', 'actions', 'new-session', 'settings'];
-const LEFT = new Set<ShortcutSection>(['general', 'sessions', 'new-session', 'settings']);
+const ORDER: ShortcutSection[] = ['general', 'sessions', 'session', 'composer', 'permissions', 'actions', 'new-session', 'settings', 'usage'];
+const LEFT = new Set<ShortcutSection>(['general', 'sessions', 'new-session', 'settings', 'usage']);
 /** Shown in All mode only when a filter matches them; Here mode shows them where they apply. */
-const ON_DEMAND = new Set<ShortcutSection>(['new-session', 'settings']);
+const ON_DEMAND = new Set<ShortcutSection>(['new-session', 'settings', 'usage']);
 
 /** The section that belongs to the view you're on: Here mode puts it first. */
 export function sectionForView(view: ShortcutContext['view']): ShortcutSection {
-  return view === 'new-session' ? 'new-session' : view === 'settings' ? 'settings' : view === 'session' ? 'session' : 'general';
+  return view === 'new-session' ? 'new-session' : view === 'settings' ? 'settings' : view === 'usage' ? 'usage' : view === 'session' ? 'session' : 'general';
 }
 
 /** The sheet's context from the command palette's (both come from the same stores), plus what only the sheet knows. */

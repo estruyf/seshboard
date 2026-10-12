@@ -60,6 +60,8 @@ export interface HostManagerDeps {
   warmTtlMs?: number;
   /** Plan usage of this profile probably changed. */
   onUsageHint?: (profileId: string) => void;
+  /** A session's turn reported where a plan window stands (Claude Code's `rate_limit_event`). */
+  onRateLimit?: (profileId: string, sessionId: string, info: { rateLimitType?: string; utilization?: number; resetsAt?: number }) => void;
   /** Helper processes register in the live registry while they run; the engine hides them. */
   ephemeral?: { add(sessionId: string): void; delete(sessionId: string): void };
   /** A profile's installed plugins, for sessions that aren't running (their own list comes from Claude Code). */
@@ -596,6 +598,7 @@ export class HostManager {
         messages: (id, messages) => this.deps.onMessages(id, messages),
         log: this.deps.log,
         usageHint: () => this.deps.onUsageHint?.(config.profileId),
+        rateLimit: (sessionId, info) => this.deps.onRateLimit?.(config.profileId, sessionId, info),
         knownCommands: () => this.commandsByCwd.get(keyOf({ profileId: config.profileId, cwd: config.cwd })) ?? [],
         // onInfo stores this session's new list right after.
         commandsChanged: () => this.forgetCommands(config.profileId),
