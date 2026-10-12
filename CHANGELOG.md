@@ -22,6 +22,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Unarchive** now brings back a session that was archived because it was quiet for a while. It stays in the main list until it has new activity.
 - Menus and dropdowns now open over toasts, so a toast no longer covers their bottom items.
+- ↑ in the message box first takes the caret to the start of your text, and only the next ↑ brings back an earlier message. ↓ goes to the end first in the same way. Before, ↑ anywhere on the first line jumped straight to the earlier message.
 
 ## [0.0.14] - 2026-10-11
 

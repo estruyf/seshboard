@@ -40,7 +40,7 @@ export interface ComposerProps {
   onDraftLoaded?(draft: ComposerDraft): void;
   /** It holds a draft kept from before: a slightly stronger border, until it is edited. */
   restored?: boolean;
-  /** Earlier messages, newest first, that ↑ on the first line brings back. */
+  /** Earlier messages, newest first, that ↑ at the start of the box brings back. */
   history?: readonly string[];
   /** Replaces the text whenever `seq` changes (a prompt from a `switchboard://` link, or clearing it), and the images when it has `attachments` (a prompt moved over from the palette). */
   preset?: { text: string; attachments?: ImageAttachment[]; seq: number };
@@ -387,6 +387,12 @@ export function Composer(props: ComposerProps) {
       return;
     }
     if (route?.kind === 'history') {
+      const caret = history.current!.caretFirst(route.direction, el.value, el.selectionStart);
+      if (caret !== null) {
+        event.preventDefault();
+        el.setSelectionRange(caret, caret);
+        return;
+      }
       const recall = history.current!.recall(route.direction, el.value, el.selectionStart);
       // At the oldest message ↑ does nothing; with no history at all it moves the caret as usual.
       if (recall || history.current!.browsing) event.preventDefault();

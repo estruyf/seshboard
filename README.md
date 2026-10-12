@@ -248,7 +248,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | / | Commands and skills (at the start of the message) |
 | @ | Mention a file |
 | ⌘⇧A | Add files as context (Several at once; they show as chips) |
-| ↑ or ↓ | Bring back an earlier message (from the first line; Esc goes back to what you were typing) |
+| ↑ or ↓ | Bring back an earlier message (at the start of your text; Esc goes back to what you were typing) |
 
 **Permissions and questions**
 

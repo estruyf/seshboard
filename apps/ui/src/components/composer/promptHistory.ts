@@ -64,6 +64,17 @@ export class PromptHistory {
   }
 
   /**
+   * Where the caret goes before a step, as in any text field: in your own text ↑ takes it to the start
+   * of the box first and ↓ to the end, and only the next press steps. A recalled message you haven't
+   * edited steps at once. Null: step now.
+   */
+  caretFirst(direction: HistoryDirection, text: string, caret: number): number | null {
+    if (this.browsing && text === this.shown) return null;
+    const edge = direction === 'older' ? 0 : text.length;
+    return caret === edge ? null : edge;
+  }
+
+  /**
    * Esc while browsing: your draft comes back. Null when not browsing, or when you edited the recalled
    * message (it's your text now): Esc then keeps its usual meaning.
    */
