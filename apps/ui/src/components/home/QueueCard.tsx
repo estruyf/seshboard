@@ -13,6 +13,7 @@ import { QUEUE_SURFACE } from '../sidebar/QueueRow.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+import { modelLabel } from '../../lib/autoModel.ts';
 
 /**
  * Home's Queue: every queued prompt in order, the full width under Needs you and Working. Each row says why it is
@@ -29,7 +30,8 @@ export function QueueCard({ now }: { now: number }) {
   if (queue.entries.length === 0) return null;
 
   const meta = ({ item, state, detail }: QueueEntry) => {
-    const model = item.model ? (models.find((m) => m.value === item.model)?.displayName ?? item.model) : null;
+    // Auto shows as Auto: a queued prompt is routed when it starts.
+    const model = item.model ? modelLabel(models, item.model) : null;
     const choices = [model, item.workspace === 'worktree' ? 'worktree' : item.branch ? `on ${item.branch}` : null].filter(Boolean);
     const rest = [state === 'ready' ? null : projectName(item.cwd), ...choices, `queued ${savedAgo(item.createdAt, now)}`].filter(Boolean).join(' · ');
     return { lead: detail, rest };

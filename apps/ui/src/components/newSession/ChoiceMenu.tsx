@@ -1,6 +1,6 @@
 import { localizeKeys } from '../../lib/shortcuts.ts';
 import { Check, ChevronDown } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 export interface Choice<T extends string> {
   value: T;
@@ -12,6 +12,10 @@ export interface Choice<T extends string> {
   note?: string;
   /** Shown but not choosable (its description says why). */
   disabled?: boolean;
+  /** An icon before the label, in place of a dot (Auto's wand). */
+  icon?: ReactNode;
+  /** A line after this choice (Auto, before Default model and the models). */
+  separatorAfter?: boolean;
 }
 
 /** A plain command under the choices, after a divider ("Save as project default"). */
@@ -192,29 +196,32 @@ export function ChoiceMenu<T extends string>({
             />
           )}
           {listed.map((choice) => (
-            <button
-              key={choice.value}
-              type="button"
-              role="menuitemradio"
-              aria-checked={choice.value === value}
-              data-choice={choice.value}
-              disabled={choice.disabled}
-              onClick={() => {
-                onChange(choice.value);
-                close(true);
-              }}
-              className="flex w-full items-start gap-2 px-3 py-1.5 text-left outline-none hover:bg-accent/15 focus-visible:bg-accent/15 disabled:opacity-40 disabled:hover:bg-transparent"
-            >
-              {choice.dot && <span aria-hidden className={`mt-[5px] size-2 shrink-0 rounded-full ${choice.dot}`} />}
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-2">
-                  <span className={`min-w-0 truncate text-text ${mono ? 'font-mono text-ui' : 'text-ui'}`}>{choice.label}</span>
-                  {choice.note && <span className="shrink-0 text-meta text-faint tabular-nums">{choice.note}</span>}
+            <Fragment key={choice.value}>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={choice.value === value}
+                data-choice={choice.value}
+                disabled={choice.disabled}
+                onClick={() => {
+                  onChange(choice.value);
+                  close(true);
+                }}
+                className="flex w-full items-start gap-2 px-3 py-1.5 text-left outline-none hover:bg-accent/15 focus-visible:bg-accent/15 disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                {choice.icon ? <span aria-hidden className="mt-[2px] flex shrink-0">{choice.icon}</span> : choice.dot && <span aria-hidden className={`mt-[5px] size-2 shrink-0 rounded-full ${choice.dot}`} />}
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className={`min-w-0 truncate text-text ${mono ? 'font-mono text-ui' : 'text-ui'}`}>{choice.label}</span>
+                    {choice.note && <span className="shrink-0 text-meta text-faint tabular-nums">{choice.note}</span>}
+                  </span>
+                  {/* A choice that stands apart (Auto) gets room for its whole description. */}
+                  {choice.description && <span className={`block text-meta text-muted ${choice.separatorAfter ? '' : 'truncate'}`}>{choice.description}</span>}
                 </span>
-                {choice.description && <span className="block truncate text-meta text-muted">{choice.description}</span>}
-              </span>
-              <Check size={13} aria-hidden className={`mt-[3px] shrink-0 text-accent-ink ${choice.value === value ? '' : 'invisible'}`} />
-            </button>
+                <Check size={13} aria-hidden className={`mt-[3px] shrink-0 text-accent-ink ${choice.value === value ? '' : 'invisible'}`} />
+              </button>
+              {choice.separatorAfter && !needle && <div role="separator" className="my-1 border-t border-border" />}
+            </Fragment>
           ))}
           {search && listed.length === 0 && <p className="px-3 py-1.5 text-ui text-muted">No matches</p>}
           {extra}

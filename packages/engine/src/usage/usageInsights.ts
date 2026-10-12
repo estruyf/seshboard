@@ -84,6 +84,8 @@ export class UsageInsights {
   }
 
   private notifySoon(now = false): void {
+    // A scan that was still reading when the engine closed has nothing left to tell (and no database to ask).
+    if (this.closed) return;
     const flush = () => {
       this.notifyTimer = undefined;
       const scopes = [...this.dirty];
@@ -151,7 +153,10 @@ export class UsageInsights {
     if (scope) this.history.recordEvent(scope, sessionId, info);
   }
 
+  private closed = false;
+
   close(): void {
+    this.closed = true;
     clearTimeout(this.notifyTimer);
   }
 }

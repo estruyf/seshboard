@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Folder, FolderGit2, GitBranch, GitBranchPlus, SquarePen } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import type { ImageAttachment, LaterDraft, ProjectInspection } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type ImageAttachment, type LaterDraft, type ProjectInspection } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
@@ -18,8 +18,11 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { newDraftKey } from '../../state/drafts.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { AttachmentThumbs, DropOverlay } from '../composer/Attachments.tsx';
-import { ComposerChipRow } from '../composer/ComposerChips.tsx';
+import { AutoWand, ComposerChipRow } from '../composer/ComposerChips.tsx';
 import { deadKeyWrap, editKey } from '../composer/editing.ts';
+import { ChoosingModel, useAutoRoute } from '../newSession/AutoRoute.tsx';
+import { AUTO_OFF_NOTE, effectiveModel, modelChoices, modelLabel } from '../../lib/autoModel.ts';
+import { usePreferences } from '../../state/preferencesStore.ts';
 import { useAttachments } from '../composer/useAttachments.ts';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { StartButton } from '../newSession/StartButton.tsx';
@@ -72,6 +75,8 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const [saved] = useState(() => (moved ? savedDraft(moved) : undefined) ?? savedDraft(root));
   const [text, setText] = useState(saved?.text ?? '');
   const [busy, setBusy] = useState(false);
+  const autoModel = usePreferences((s) => s.prefs.autoModel);
+  const autoRoute = useAutoRoute();
   const [error, setError] = useState<string | null>(null);
   /** What a paste or drop left out. */
   const [notice, setNotice] = useState<string | null>(null);
@@ -219,9 +224,11 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
           profileId,
           addProject: options.addAsProject && !isProject && !!inspection?.exists,
           saveForLater: () => addToQueue(laterDraft(prompt)),
+          autoEnabled: autoModel.enabled,
         },
         {
           createSession: (params) => client.call('session.create', params),
+          route: autoRoute.route,
           gate: passFocusGate,
           addProject: (path) => client.call('projects.add', { path }).then(() => useProjects.getState().reload()),
           open: (sessionId) => {
@@ -261,7 +268,6 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
     useSessions.getState().openNewSession();
   };
 
-  const modelLabel = d.model ? (models.find((m) => m.value === d.model)?.displayName ?? d.model) : 'Default model';
   return (
     // The whole step takes dropped files, like a session view.
     <div ref={zoneRef} className="relative flex min-h-0 flex-1 flex-col" data-drop-zone>
@@ -390,25 +396,32 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
             names={{ profile: 'palette-profile', model: 'palette-model', effort: 'palette-effort', mode: 'palette-mode' }}
             profile={{ value: profileId, onChange: (id) => setProfileOverride(id), labelFor: (p) => `${p.name}${p.id === (projectProfile ?? defaultProfile) ? (projectProfile ? ' (project)' : ' (default)') : ''}` }}
             model={{
-              value: d.model,
-              label: modelLabel,
+              value: effectiveModel(d.model, autoModel.enabled),
+              label: modelLabel(models, effectiveModel(d.model, autoModel.enabled)),
               onChange: (model) => update({ model }),
-              choices: [
-                { value: '', label: 'Default model', description: models.find((m) => m.value === 'default')?.description || 'What Claude Code would pick' },
-                ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName, description: m.description })),
-              ],
+              choices: modelChoices(models, autoModel, <AutoWand />),
             }}
             effort={{ value: d.effort, onChange: (effort) => update({ effort }) }}
             mode={{ value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
           />
         </div>
-        <StartButton
-          state={startButtonState({ blocked, sending: busy, hasMessage: text.trim() !== '', hasText: text.trim() !== '', startBlocked: focusStartBlock(focus), canWorktree, worktree: useWorktree, question })}
-          onAction={(action) => void (action === 'queue' ? queue() : start(action === 'start-worktree' || useWorktree))}
-          data={{ 'data-palette-start': true }}
-          itemData={{ queue: { 'data-palette-queue': true } }}
-        />
+        {autoRoute.choosing ? (
+          <ChoosingModel onStop={autoRoute.stop} />
+        ) : (
+          <StartButton
+            state={startButtonState({ blocked, sending: busy, hasMessage: text.trim() !== '', hasText: text.trim() !== '', startBlocked: focusStartBlock(focus), canWorktree, worktree: useWorktree, question })}
+            onAction={(action) => void (action === 'queue' ? queue() : start(action === 'start-worktree' || useWorktree))}
+            data={{ 'data-palette-start': true }}
+            itemData={{ queue: { 'data-palette-queue': true } }}
+          />
+        )}
       </div>
+      {d.model === AUTO_MODEL && !autoModel.enabled && (
+        <p className="flex shrink-0 items-center gap-1.5 px-4 pb-2 text-meta text-muted" data-auto-off-note>
+          <AutoWand size={12} />
+          {AUTO_OFF_NOTE}
+        </p>
+      )}
       {(error ?? notice) && (
         <p role="alert" className="shrink-0 px-4 pb-2 text-ui text-error">
           {error ?? notice}

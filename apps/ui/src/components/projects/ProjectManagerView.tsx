@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowDown, ArrowUp, Ellipsis, FolderPlus, SquarePen } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import type { ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type ProjectDefaults, type ProjectInfo } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { agoText, guessHome, tildify } from '../../lib/format.ts';
 import { openProject } from '../../state/projectPageStore.ts';
@@ -18,7 +18,7 @@ import { WorktreePill } from '../worktrees/WorktreePill.tsx';
 /** Shows a summary of the defaults a project sets, e.g. "Opus · high effort · worktree". */
 function describeDefaults(d: ProjectDefaults): string {
   const parts = [
-    d.model,
+    d.model === AUTO_MODEL ? 'Auto' : d.model,
     d.effort && `${d.effort} effort`,
     d.permissionMode && d.permissionMode !== 'default' && d.permissionMode,
     d.workspace === 'worktree' ? `worktree${d.baseRef === 'head' ? ' from HEAD' : ''}` : d.workspace === 'current' && 'current folder',

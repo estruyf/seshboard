@@ -5,12 +5,14 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { removeFromQueue, useLater } from '../../state/laterStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+import { modelLabel } from '../../lib/autoModel.ts';
 
 /** The choices an item starts with, in a few words: "Opus · worktree · queued 25m ago". */
 export function useQueueItemMeta(): (item: LaterItem, now: number) => string {
   const models = useHosts((s) => s.models);
   return (item, now) => {
-    const model = item.model ? (models.find((m) => m.value === item.model)?.displayName ?? item.model) : null;
+    // Auto shows as Auto: a queued prompt is routed when it starts.
+    const model = item.model ? modelLabel(models, item.model) : null;
     const route = item.workspace === 'worktree' ? 'worktree' : item.branch ? `on ${item.branch}` : 'current checkout';
     return [model, route, `queued ${savedAgo(item.createdAt, now)}`].filter(Boolean).join(' · ');
   };

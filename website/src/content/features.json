@@ -1062,6 +1062,31 @@
       "page": "sessions/archived"
     },
     {
+      "id": "feature:auto-model",
+      "name": "Auto model: Haiku picks the model a new session starts on",
+      "page": "new-session/auto-model"
+    },
+    {
+      "id": "feature:auto-model-pick",
+      "name": "Auto picked line, Why popover, Run again with another model",
+      "page": "new-session/auto-model"
+    },
+    {
+      "id": "feature:auto-model-settings",
+      "name": "Settings › Conversation › Auto model",
+      "page": "new-session/auto-model"
+    },
+    {
+      "id": "feature:auto-model-suggest",
+      "name": "Suggest a stronger model later",
+      "page": "new-session/auto-model"
+    },
+    {
+      "id": "feature:auto-routing-usage",
+      "name": "Auto routing in Usage",
+      "page": "usage"
+    },
+    {
       "id": "feature:auto-update-checks",
       "name": "Check for updates automatically",
       "page": "settings/updates"

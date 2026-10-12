@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { AbsolutePath } from './absolutePath.ts';
 import type { ContractShape } from './rpc.ts';
 import {
+  AutoPick,
+  AutoTierSchema,
   EditorInfo,
   Effort,
   ImageAttachment,
@@ -108,6 +110,25 @@ const MemoryBody = z.string().max(500_000);
 const SharePlacement = z.enum(['add', 'replace']).default('add');
 /** Theme files as main keeps them (validated where they are read). */
 const ThemeFiles = z.array(z.unknown()).max(500).default([]);
+
+/** What New session hands `session.create` after `model.route`: the engine adds when. `routeId` ties the routing call's tokens to the session. */
+const AutoPickRequest = AutoPick.omit({ at: true, left: true }).extend({ routeId: z.string().max(100).nullable().default(null) });
+
+/** `model.route`'s answer: the model and Haiku's reason, or why it couldn't pick. */
+export const RouteResult = z.discriminatedUnion('ok', [
+  z.object({
+    ok: z.literal(true),
+    routeId: z.string(),
+    model: AutoTierSchema,
+    reason: z.string(),
+    tokens: z.number(),
+    /** What the model uses against Opus, 0–1 (an estimate). */
+    estimateVsOpus: z.number(),
+    allowed: z.array(AutoTierSchema),
+  }),
+  z.object({ ok: z.literal(false), routeId: z.string().nullable(), reason: z.string(), tokens: z.number(), allowed: z.array(AutoTierSchema) }),
+]);
+export type RouteResult = z.infer<typeof RouteResult>;
 
 /** Every request the UI can make and every event the engine can push. */
 export const contract = {
@@ -266,9 +287,26 @@ export const contract = {
         profileId: ProfileId.nullable().default(null),
         /** Check out this branch in `cwd` first (not with a worktree). Fails when git refuses, e.g. over uncommitted changes. */
         checkoutBranch: z.string().min(1).max(250).nullable().default(null),
+        /** Auto picked `model` (from `model.route`): kept with the session and shown in it. */
+        autoPick: AutoPickRequest.nullable().default(null),
       }),
       result: z.object({ sessionId: z.string() }),
     },
+    /**
+     * Auto model: one Haiku call on the profile reads the prompt (only its text, and how many images it has) and
+     * picks a model from Settings' "Models it can pick". The call's tokens count in Usage as Auto routing. A
+     * failure (no answer in time, an answer that isn't usable) is a result, not an error: start on the default model.
+     */
+    'model.route': {
+      params: z.object({
+        profileId: ProfileId.nullable().default(null),
+        prompt: Prompt,
+        imageCount: z.number().int().min(0).max(100).default(0),
+      }),
+      result: RouteResult,
+    },
+    /** What Auto picked for a session, also when it isn't running (null: Auto didn't pick its model). */
+    'session.autoPick': { params: z.object({ sessionId: SessionId }), result: z.object({ autoPick: AutoPick.nullable() }) },
     /**
      * Sends a message, resuming the session first when it isn't running in this app.
      * Fails with SESSION_BUSY_ELSEWHERE when another Claude Code process has it open, unless `fork` is set.
