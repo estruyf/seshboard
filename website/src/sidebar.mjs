@@ -25,7 +25,7 @@ export const sidebar = [
   },
   {
     label: 'New session',
-    items: ['new-session/form', 'new-session/models-and-options', 'new-session/worktrees', 'new-session/quick-questions', 'new-session/queue'],
+    items: ['new-session/form', 'new-session/models-and-options', 'new-session/auto-model', 'new-session/worktrees', 'new-session/quick-questions', 'new-session/queue'],
   },
   'command-palette',
   { label: 'Keyboard shortcuts', link: '/keyboard-shortcuts/' },

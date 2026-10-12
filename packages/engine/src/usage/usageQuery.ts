@@ -1,9 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { TokenCounts, UsageBreakdown, UsageBucket, UsageGroup, UsagePeriod, UsageRow } from '@switchboard/protocol';
+import { tierOf, type TokenCounts, UsageBreakdown, UsageBucket, UsageGroup, UsagePeriod, UsageRow } from '@switchboard/protocol';
 import { hourOf } from './transcriptUsage.ts';
 import { measuredDeltas, sharesOf, weightOf, type PlanSample } from './shares.ts';
 
 const HOUR = 3_600_000;
+
+/** The key of the Auto routing row: Haiku's calls that picked a model for new sessions. */
+export const AUTO_ROUTING_KEY = 'auto-routing';
 
 /** `YYYY-MM-DD` of a moment in a time zone (UTC when the zone is unknown). */
 export function dayKeyFormatter(timeZone: string): (at: number) => string {
@@ -98,6 +101,17 @@ interface Group {
   sessions: Set<string>;
   /** Weight per model, for a session's main model. */
   models: Map<string, number>;
+  /** Auto routing calls folded in. */
+  picks: number;
+}
+
+interface Routed {
+  at: number;
+  model: string;
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
 }
 
 /** Where the scope's tokens went in a period: totals, a row per group with its estimated share, and the chart's buckets. */
@@ -132,6 +146,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   };
 
   const groups = new Map<string, Group>();
+  const newGroup = (key: string): Group => ({ key, tokens: empty(), turns: 0, fastTurns: 0, largestContext: 0, sessions: new Set(), models: new Map(), picks: 0 });
   const totals = { tokens: empty(), sessions: new Set<string>(), turns: 0, fastTurns: 0, largestContext: 0 };
   const buckets = new Map<string, UsageBucket>();
   const bucketKey = (hour: number) => (bucket === 'hour' ? String(hour) : dayOf(hour));
@@ -145,7 +160,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     const tokens: TokenCounts = { input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write };
     const key = keyOf(row);
     let group = groups.get(key);
-    if (!group) groups.set(key, (group = { key, tokens: empty(), turns: 0, fastTurns: 0, largestContext: 0, sessions: new Set(), models: new Map() }));
+    if (!group) groups.set(key, (group = newGroup(key)));
     addTo(group.tokens, tokens);
     group.turns += row.turns;
     group.fastTurns += row.fast_turns;
@@ -164,6 +179,39 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     }
   }
 
+  // Auto model's routing calls leave no transcript, so the scanner never sees them: they are kept apart and shown
+  // as their own row (in Day, inside their day), so their tokens are never hidden.
+  const routed = db
+    .prepare(`SELECT at, model, input, output, cache_read, cache_write FROM auto_routing WHERE scope = ? AND at >= ? AND at <= ? ${model ? 'AND model = ?' : ''}`)
+    .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Routed[];
+  for (const route of routed) {
+    const tokens: TokenCounts = { input: route.input, output: route.output, cacheRead: route.cache_read, cacheWrite: route.cache_write };
+    const hour = hourOf(route.at);
+    const key = groupBy === 'day' ? dayOf(hour) : AUTO_ROUTING_KEY;
+    let group = groups.get(key);
+    if (!group) groups.set(key, (group = newGroup(key)));
+    addTo(group.tokens, tokens);
+    group.turns += 1;
+    group.picks += 1;
+    group.models.set(route.model, (group.models.get(route.model) ?? 0) + weightOf(tokens));
+    addTo(totals.tokens, tokens);
+    totals.turns += 1;
+    const b = buckets.get(bucketKey(hour));
+    if (b) {
+      addTo(b.tokens, tokens);
+      b.turns += 1;
+    }
+  }
+  /** The model Auto picked for each session, for "· 4 by Auto" on the model rows. */
+  const autoPicked =
+    groupBy === 'model'
+      ? new Map(
+          (db.prepare('SELECT session_id AS sessionId, picked FROM auto_routing WHERE scope = ? AND session_id IS NOT NULL AND picked IS NOT NULL').all(scope) as Array<{ sessionId: string; picked: string }>).map(
+            (r) => [r.sessionId, r.picked],
+          ),
+        )
+      : new Map<string, string>();
+
   // Measured shares only mean something per session, in the current window, for everything that ran in it.
   let measured = new Map<string, number>();
   if (groupBy === 'session' && !model && query.measure && query.measure.percent > 0) {
@@ -181,6 +229,9 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   const result: UsageRow[] = [...groups.values()].map((g) => {
     const share = shares.get(g.key) ?? { share: 0, measured: false };
     const mainModel = [...g.models].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    if (g.key === AUTO_ROUTING_KEY && groupBy !== 'day') {
+      return { key: g.key, label: 'Auto routing', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, largestContext: 0, share: share.share, measured: false, autoRouting: { picks: g.picks } };
+    }
     const base = { key: g.key, sessions: g.sessions.size, turns: g.turns, fastTurns: g.fastTurns, tokens: g.tokens, largestContext: g.largestContext, share: share.share, measured: share.measured };
     if (groupBy === 'session') {
       const known = lookup.session(g.key);
@@ -188,7 +239,11 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
       return { ...base, label: known?.title ?? 'Session', sessionId: g.key, projectRoot: root, model: mainModel };
     }
     if (groupBy === 'project') return { ...base, label: g.key ? lookup.projectName(g.key) : 'Unknown folder', sessionId: null, projectRoot: g.key || null, model: mainModel };
-    if (groupBy === 'model') return { ...base, label: g.key, sessionId: null, projectRoot: null, model: g.key };
+    if (groupBy === 'model') {
+      const tier = tierOf(g.key);
+      const byAuto = tier ? [...g.sessions].filter((id) => autoPicked.get(id) === tier).length : 0;
+      return { ...base, label: g.key, sessionId: null, projectRoot: null, model: g.key, ...(byAuto ? { byAuto } : {}) };
+    }
     return { ...base, label: g.key, sessionId: null, projectRoot: null, model: mainModel };
   });
   // Days in order, newest first; everything else by share.

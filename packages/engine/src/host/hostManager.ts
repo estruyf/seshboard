@@ -13,6 +13,7 @@ import {
   type PermissionRequest,
   type PluginInfo,
   type RewindResult,
+  type AutoPick,
   type SessionHostInfo,
   type SlashCommand,
   type StreamDelta,
@@ -121,6 +122,8 @@ export interface CreateParams {
    * the first message, e.g. setup actions. Failures are logged; the message still goes.
    */
   beforeFirstMessage?: (sessionId: string) => Promise<void>;
+  /** Auto picked `model`: kept with the session and reported in its info. */
+  autoPick?: AutoPick | null;
 }
 
 const DEFAULT_MODELS: ModelOption[] = [
@@ -146,6 +149,8 @@ export class HostManager {
   private readonly settings: SessionSettingsStore;
   /** The mode last saved per session, so info updates don't write to the database every time. */
   private readonly lastMode = new Map<string, PermissionMode>();
+  /** What Auto picked per session, read once from the settings (null: it didn't), so info updates don't hit the database. */
+  private readonly picks = new Map<string, AutoPick | null>();
   private readonly reaper: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: HostManagerDeps) {
@@ -157,7 +162,7 @@ export class HostManager {
 
   list(): { hosts: SessionHostInfo[]; permissions: PermissionRequest[] } {
     return {
-      hosts: [...this.hosts.values()].map((h) => h.info),
+      hosts: [...this.hosts.values()].map((h) => this.withPick(h.info)),
       permissions: [...this.pending.values()].map((p) => p.request),
     };
   }
@@ -183,7 +188,8 @@ export class HostManager {
       warm,
     );
     this.deps.onCreated(sessionId);
-    if (params.model || params.effort) this.settings.set(sessionId, { model: params.model, effort: params.effort });
+    if (params.model || params.effort || params.autoPick) this.settings.set(sessionId, { model: params.model, effort: params.effort, autoPick: params.autoPick ?? null });
+    this.picks.set(sessionId, params.autoPick ?? null);
     if (warm) {
       // The warm process started with defaults; apply this session's choices before the first message.
       if (params.model) await host.setModel(params.model).catch(() => {});
@@ -303,7 +309,21 @@ export class HostManager {
 
   async setModel(sessionId: string, model: string | null): Promise<void> {
     await this.require(sessionId).setModel(model);
-    this.settings.set(sessionId, { model });
+    // Once you pick a model yourself, the session is no longer on Auto's pick: its chip shows the plain model.
+    const pick = this.autoPick(sessionId);
+    const left = pick && !pick.left ? { ...pick, left: true } : null;
+    if (left) this.picks.set(sessionId, left);
+    this.settings.set(sessionId, { model, ...(left ? { autoPick: left } : {}) });
+  }
+
+  /** What Auto picked for a session (null: it didn't), also when it isn't running. */
+  autoPick(sessionId: string): AutoPick | null {
+    if (!this.picks.has(sessionId)) this.picks.set(sessionId, this.settings.get(sessionId)?.autoPick ?? null);
+    return this.picks.get(sessionId) ?? null;
+  }
+
+  private withPick(info: SessionHostInfo): SessionHostInfo {
+    return { ...info, autoPick: this.autoPick(info.sessionId) };
   }
 
   close(sessionId: string): void {
@@ -477,6 +497,7 @@ export class HostManager {
   /** Forgets what a session ran with (it was moved to the Trash). */
   forget(sessionId: string): void {
     this.lastMode.delete(sessionId);
+    this.picks.delete(sessionId);
     this.settings.delete(sessionId);
   }
 
@@ -631,7 +652,7 @@ export class HostManager {
       this.lastMode.set(info.sessionId, info.permissionMode);
       this.settings.set(info.sessionId, { permissionMode: info.permissionMode });
     }
-    this.deps.onInfo(info);
+    this.deps.onInfo(this.withPick(info));
   }
 
   private ask(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2]): Promise<PermissionResult> {

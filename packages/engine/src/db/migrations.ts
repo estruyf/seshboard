@@ -346,4 +346,24 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX plan_usage_scope_at ON plan_usage (scope, at);
   `,
+
+  // v20: Auto model. What Auto picked for a session (with its reason) is kept with the session's settings, and
+  // each routing call's tokens are kept here, since the call leaves no transcript for the Usage scanner. Both are
+  // user data (a choice made for the session, and the only record of those tokens): keep them when rebuilding.
+  `
+  ALTER TABLE session_settings ADD COLUMN auto_pick_json TEXT;
+  CREATE TABLE auto_routing (
+    id          TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    at          INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    picked      TEXT,
+    session_id  TEXT,
+    input       INTEGER NOT NULL,
+    output      INTEGER NOT NULL,
+    cache_read  INTEGER NOT NULL,
+    cache_write INTEGER NOT NULL
+  );
+  CREATE INDEX auto_routing_scope_at ON auto_routing (scope, at);
+  `,
 ];

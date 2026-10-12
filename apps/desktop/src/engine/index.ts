@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createEngine, type DemoUsage, type TrashScope } from '@switchboard/engine';
-import { ARCHIVE_AFTER_DAYS, clampDays, DELETE_AFTER_DAYS } from '@switchboard/protocol/bridge';
+import { ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@switchboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
 function argValue(name: string): string | undefined {
@@ -51,6 +51,8 @@ const engine = createEngine({
   claudeUpdates: { allowUpdate: process.env.SWITCHBOARD_NO_CLAUDE_UPDATE !== '1' },
   onLog: (entry) => console.error(`[engine] ${entry.level}: ${entry.message}`),
   demoUsage: demoUsage(),
+  // The smoke test and the screenshots: Auto model picks without calling a model.
+  stubRouter: process.env.SWITCHBOARD_STUB_ROUTER === '1',
 });
 
 // One misbehaving session must never take the whole engine (and every other session) down.
@@ -60,7 +62,12 @@ process.on('unhandledRejection', (reason) =>
 );
 
 process.parentPort.on('message', (event) => {
-  const data = event.data as { type?: unknown; id?: number; error?: string; archiveAfterDays?: unknown; deleteArchived?: { enabled?: unknown; afterDays?: unknown } } | null;
+  const data = event.data as { type?: unknown; id?: number; error?: string; archiveAfterDays?: unknown; deleteArchived?: { enabled?: unknown; afterDays?: unknown }; prefs?: unknown } | null;
+  // Settings › Conversation › Auto model, from main's preferences.
+  if (data?.type === 'autoModel') {
+    engine.setAutoModel(sanitizeAutoModel(data.prefs) ?? DEFAULT_AUTO_MODEL);
+    return;
+  }
   // Settings › Sessions, from main's preferences (sent at start and after each change).
   if (data?.type === 'retention') {
     const archiveAfterDays = clampDays(data.archiveAfterDays, ARCHIVE_AFTER_DAYS) ?? ARCHIVE_AFTER_DAYS.default;
