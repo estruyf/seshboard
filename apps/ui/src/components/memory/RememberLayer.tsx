@@ -1,4 +1,4 @@
-import { Brain, Check, Copy, TextQuote } from 'lucide-react';
+import { Brain, Check, Copy, Link, TextQuote } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import { contextMenuPoint, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { Menu } from '../Menu.tsx';
@@ -44,12 +44,12 @@ function anchorIn(root: HTMLElement | null): Anchor | null {
 }
 
 /**
- * Remember this and Quote from the conversation: right-click a message (Copy for a selection, then Quote and
+ * Remember this and Quote from the conversation: right-click a message (Copy link on a link, Copy for a selection, then Quote and
  * Remember this…, for the selection or the whole message), or select text in `container` and use the toolbar that
  * shows above it (Quote, Copy, Remember this…).
  */
 export function useRememberLayer({ container, textOf, onRemember, onQuote }: { container: RefObject<HTMLElement | null>; textOf(key: string): string | null; onRemember(text: string, from: 'user' | 'claude'): void; onQuote(text: string): void }) {
-  const [menu, setMenu] = useState<{ at: ContextMenuPoint; text: string; selection: boolean; from: 'user' | 'claude' } | null>(null);
+  const [menu, setMenu] = useState<{ at: ContextMenuPoint; text: string; selection: boolean; from: 'user' | 'claude'; link: string | null } | null>(null);
   const [chip, setChip] = useState<Anchor | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const showTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -95,11 +95,14 @@ export function useRememberLayer({ container, textOf, onRemember, onQuote }: { c
       if (!text) return;
       event.preventDefault();
       hide();
-      setMenu({ at: contextMenuPoint({ x: event.clientX, y: event.clientY }, element.getBoundingClientRect(), window.innerHeight), text, selection: selected?.element === element, from: fromOf(element) });
+      const href = (event.target as Element).closest('a[href]')?.getAttribute('href') ?? null;
+      const link = href && /^(https?|mailto):/i.test(href) ? href : null;
+      setMenu({ at: contextMenuPoint({ x: event.clientX, y: event.clientY }, element.getBoundingClientRect(), window.innerHeight), text, selection: selected?.element === element, from: fromOf(element), link });
     },
     onScroll: hide,
   };
 
+  const link = menu?.link;
   const overlay = (
     <>
       {chip && (
@@ -121,6 +124,7 @@ export function useRememberLayer({ container, textOf, onRemember, onQuote }: { c
           label="Message"
           onClose={() => setMenu(null)}
           entries={[
+            ...(link ? [{ label: 'Copy link', icon: <Link size={13} aria-hidden />, onSelect: () => void navigator.clipboard.writeText(link), data: { 'data-copy-link-menu': true } }, 'separator' as const] : []),
             ...(menu.selection ? [{ label: 'Copy', icon: <Copy size={13} aria-hidden />, onSelect: () => void navigator.clipboard.writeText(menu.text) }] : []),
             { label: menu.selection ? 'Quote' : 'Quote message', icon: <TextQuote size={13} aria-hidden />, onSelect: () => onQuote(menu.text), data: { 'data-quote-menu': true } },
             { label: menu.selection ? 'Remember this…' : 'Remember this message…', icon: <Brain size={13} aria-hidden />, onSelect: () => onRemember(menu.text, menu.from), data: { 'data-remember-menu': true } },

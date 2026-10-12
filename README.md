@@ -4,7 +4,11 @@
 
 <h1 align="center">Switchboard</h1>
 
-<p align="center">A fast Mac app for running and keeping track of your Claude Code sessions, across all your Claude accounts.</p>
+<p align="center">A fast app for Mac and Windows to run and keep track of your Claude Code sessions, across all your Claude accounts.</p>
+
+<p align="center">
+  <a href="https://github.com/estruyf/switchboard/releases/latest"><b>Download for Mac or Windows</b></a> · <a href="https://switchboard.struyfconsulting.com/">Docs</a> · <code>brew install --cask estruyf/tap/switchboard</code>
+</p>
 
 <p align="center">
   <a href="https://visitorbadge.io/status?path=https%3A%2F%2Fgithub.com%2Festruyf%2Fswitchboard"><img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2Festruyf%2Fswitchboard&labelColor=%2315181f&countColor=%23ffd43b" alt="Visitors"></a>
@@ -116,14 +120,16 @@ It uses the Claude Code you already have installed, with your login, settings, c
 
 ## Requirements
 
-- A Mac with Apple Silicon
+- A Mac with Apple Silicon, or a PC with Windows 10 or 11
 - [Claude Code](https://github.com/anthropics/claude-code) installed and signed in (`claude` works in your terminal)
 
-Switchboard also runs on Windows 10 and 11. Until a release has a signed Windows installer, build it from source. See [Windows support](docs/windows-support.md).
+What works differently on Windows is in [Windows support](docs/windows-support.md).
 
 ## Install
 
 Download the `.dmg` from the [latest release](https://github.com/estruyf/switchboard/releases/latest), open it and drag Switchboard to Applications.
+
+On Windows, download `Switchboard-<version>-setup.exe` from the same release and run it. It installs for you only, without admin rights, and updates itself.
 
 Or install it with [Homebrew](https://brew.sh):
 

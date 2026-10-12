@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **Copy link.** Right-click a link in a message and choose **Copy link** to copy its address.
+
 ### Fixed
 
 - **Usage**: the profile menu shows the whole profile name; a long email is cut short instead.
