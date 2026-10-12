@@ -1,4 +1,4 @@
-import type { SessionHostInfo } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type SessionHostInfo } from '@switchboard/protocol/client';
 import { useRef } from 'react';
 import { autoChipModel } from '../../lib/autoModel.ts';
 import { useAutoPick } from '../../state/autoPickStore.ts';
@@ -24,6 +24,8 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
   const supportsEffort = modelOption?.supportsEffort ?? true;
   // On the model Auto picked: the chip reads "Auto · Sonnet", and its menu explains the pick.
   const autoModel = autoChipModel(host.autoPick);
+  // Still choosing: the chip reads Auto, without a model yet.
+  const choosing = host.autoChoosing === true;
   const row = useRef<HTMLDivElement>(null);
   const openPopover = useAutoPick((s) => s.openPopover);
 
@@ -34,8 +36,8 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
         disabled={disabled}
         profile={{ value: host.profileId }}
         model={{
-          value: modelOption?.value ?? '',
-          label: modelOption?.displayName ?? host.model ?? 'Default model',
+          value: choosing ? AUTO_MODEL : (modelOption?.value ?? ''),
+          label: choosing ? 'Auto' : (modelOption?.displayName ?? host.model ?? 'Default model'),
           choices: [...(modelOption ? [] : [{ value: '', label: host.model ?? 'Default model' }]), ...models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }))],
           onChange: (model) => void client?.call('session.setModel', { sessionId: host.sessionId, model: model || null }),
           auto: autoModel,

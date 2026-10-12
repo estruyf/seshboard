@@ -1,4 +1,4 @@
-import { AUTO_MODEL, type AutoTier, type ImageAttachment, type PermissionMode, type RouteResult } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type ImageAttachment, type PermissionMode } from '@switchboard/protocol/client';
 import { randomWorktreeName } from '../../lib/modes.ts';
 import type { GateOutcome } from '../../state/focusGate.ts';
 import { linkPermissionMode, type Choices } from './choices.ts';
@@ -36,11 +36,6 @@ export interface StartDeps {
   addProject(path: string): Promise<void>;
   /** Shows the new session. */
   open(sessionId: string): void;
-  /**
-   * Auto model's routing (`model.route`), while Start says "Choosing a model…". Null: stopped with Esc, and
-   * nothing starts (the prompt stays).
-   */
-  route?(params: { profileId: string; prompt: string; imageCount: number }): Promise<RouteResult | null>;
 }
 
 export interface SessionCreateParams {
@@ -53,8 +48,6 @@ export interface SessionCreateParams {
   worktree: { name: string; baseRef: Choices['baseRef'] } | null;
   checkoutBranch: string | null;
   profileId: string;
-  /** What Auto picked (or why it couldn't), when the model was Auto. */
-  autoPick: { routeId: string | null; model: AutoTier | null; reason: string; tokens: number; allowed: AutoTier[] } | null;
 }
 
 export type StartOutcome = { kind: 'started'; sessionId: string } | { kind: 'saved' } | { kind: 'stopped' };
@@ -71,29 +64,25 @@ export function sessionCreateParams(start: NewSessionStart): SessionCreateParams
     cwd: start.cwd,
     prompt: start.prompt,
     attachments: start.attachments ?? [],
-    // Auto is resolved by `startNewSession` (routing); here it is the default model until then.
-    model: choices.model === AUTO_MODEL ? null : choices.model || null,
+    // The engine routes Auto once the session is open; with Auto off it is the default model.
+    model: choices.model === AUTO_MODEL && start.autoEnabled === false ? null : choices.model || null,
     // A link never starts a session in a mode that skips permission prompts.
     permissionMode: start.fromLink ? linkPermissionMode(choices.permissionMode) : choices.permissionMode,
     effort: choices.effort || null,
     worktree: start.worktree ? { name: start.worktreeName || randomWorktreeName(), baseRef: choices.baseRef } : null,
     checkoutBranch: checkoutBranchFor(choices, start.worktree, start.currentBranch),
     profileId: start.profileId,
-    autoPick: null,
   };
 }
-
-/** Whether starting routes first: the model is Auto, Auto is on, and there is a router. */
-export const routesFirst = (start: Pick<NewSessionStart, 'choices' | 'autoEnabled'>, deps: Pick<StartDeps, 'route'>) =>
-  start.choices.model === AUTO_MODEL && start.autoEnabled !== false && !!deps.route;
 
 /** Claude Code can be warmed up for the folder while you type: only for this checkout as it is (no worktree, no branch to switch to). */
 export const shouldPrewarm = (choices: Pick<Choices, 'workspace' | 'branch'>) => choices.workspace === 'current' && !choices.branch;
 
 /**
  * Starts a new session the one way every New session does: the focus limit's gate first (which may
- * ask, or park the prompt for later instead), then Auto model's routing when the model is Auto, then `session.create`, then the folder joins your
- * projects when asked, and the new session opens. Nothing starts when the gate says stop.
+ * ask, or park the prompt for later instead), then `session.create`, then the folder joins your projects when asked,
+ * and the new session opens. Nothing starts when the gate says stop. On Auto the session opens at once and says Auto
+ * is choosing; the engine sends your message once it has picked.
  */
 export async function startNewSession(start: NewSessionStart, deps: StartDeps): Promise<StartOutcome> {
   if (!start.skipGate) {
@@ -101,15 +90,7 @@ export async function startNewSession(start: NewSessionStart, deps: StartDeps): 
     if (outcome === 'stop') return { kind: 'stopped' };
     if (outcome === 'saved') return { kind: 'saved' };
   }
-  const params = sessionCreateParams(start);
-  if (routesFirst(start, deps)) {
-    const route = await deps.route!({ profileId: start.profileId, prompt: start.prompt, imageCount: params.attachments.length });
-    if (!route) return { kind: 'stopped' };
-    // A failure starts on the default model; the session says why.
-    params.model = route.ok ? route.model : null;
-    params.autoPick = { routeId: route.routeId, model: route.ok ? route.model : null, reason: route.reason, tokens: route.tokens, allowed: route.allowed };
-  }
-  const { sessionId } = await deps.createSession(params);
+  const { sessionId } = await deps.createSession(sessionCreateParams(start));
   if (start.addProject && !start.fromLink) await deps.addProject(start.cwd).catch(() => {});
   deps.open(sessionId);
   return { kind: 'started', sessionId };

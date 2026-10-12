@@ -84,6 +84,8 @@ export const SessionHostInfo = z.object({
   backgroundTasks: z.array(BackgroundTask),
   /** Auto picked the model this session started on (null or missing: it didn't). */
   autoPick: AutoPick.nullable().optional(),
+  /** Auto is still picking the model this session starts on; your first message waits for it. */
+  autoChoosing: z.boolean().optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 

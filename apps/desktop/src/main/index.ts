@@ -727,8 +727,9 @@ async function chooseOption(win: BrowserWindow, selector: string, value: string)
 
 /**
  * Auto model, without ever calling a model or starting a session: Auto leads the model menu with its wand and a
- * line under it; picked, the chip reads Auto. Start with a prompt the stubbed router holds forever shows "Choosing a
- * model…", and Esc stops it with the prompt kept (if Esc failed, the held router would never let it start). Turned
+ * line under it; picked, the chip reads Auto. Start with a prompt the stubbed router holds forever opens the session
+ * at once, with the prompt and "Auto is choosing a model…" (the held prompt never reaches Claude Code), and Stop
+ * session ends it. Turned
  * off in Settings, Auto leaves the menu and a saved Auto says it starts on the default model. Settings keeps at least
  * one model to pick. Everything is put back.
  */
@@ -758,8 +759,8 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${chip('auto')}?.querySelector('svg') && ${chip('auto')}.innerText.includes('Auto')`, 2_000))) return 'picking Auto did not show the wand and Auto on the chip';
     await shot(win, 'auto-model-chip.png');
 
-    // Esc while choosing keeps the prompt. Only with a folder (the prompt is disabled without one), on Auto, and a
-    // prompt the stub holds: then nothing can start, whatever happens.
+    // Start on Auto opens the session before Auto has picked. Only with a folder (the prompt is disabled without one),
+    // on Auto, and a prompt the stub holds: then Claude Code never gets it, and the session is stopped after.
     let choosing = 'skipped (no folder)';
     const hasFolder = (await js(`!!document.querySelector('[data-folder-select]')?.dataset.value && !${prompt}.disabled`)) as boolean;
     if (hasFolder) {
@@ -767,12 +768,17 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
       await setFieldValue(win, `${view} [data-composer]`, text);
       if (!(await js(`!!${chip('auto')} && ${prompt}.value.includes('[smoke: hold]')`))) return 'not on Auto with the held prompt; not starting';
       await js(`document.querySelector('${view} [data-composer-submit]').click()`);
-      if (!(await waitInPage(win, `document.querySelector('${view} [data-auto-route]')?.innerText.includes('Choosing a model')`, 3_000))) return 'Start on Auto did not show Choosing a model…';
+      const session = '[data-current-session]';
+      const opened = `document.querySelector('${session} [data-auto-choosing]')?.innerText.includes('Auto is choosing a model') && [...document.querySelectorAll('${session} [data-item-kind="user"]')].some((el) => el.innerText.includes('[smoke: hold]'))`;
+      if (!(await waitInPage(win, opened, 5_000))) return 'Start on Auto did not open the session with the prompt and Auto is choosing a model…';
       await shot(win, 'auto-model-choosing.png');
-      pressKey(win, 'Escape');
-      if (!(await waitInPage(win, `!document.querySelector('[data-auto-route]') && document.querySelector('${view}') && ${prompt}.value === ${JSON.stringify(text)}`, 3_000))) return 'Esc did not stop choosing with the prompt kept';
-      await setFieldValue(win, `${view} [data-composer]`, '');
-      choosing = 'Esc stopped choosing and kept the prompt';
+      await js(`document.querySelector('${session} [data-more-menu]').click()`);
+      if (!(await waitInPage(win, "document.querySelector('[data-stop-session]:not(:disabled)')", 3_000))) return 'no Stop session while Auto was choosing';
+      await js("document.querySelector('[data-stop-session]').click()");
+      if (!(await waitInPage(win, `!document.querySelector('${session} [data-auto-choosing]')`, 5_000))) return 'Stop session left Auto choosing';
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+      if (!(await waitInPage(win, `${prompt}`, 5_000))) return 'New session did not open again';
+      choosing = 'Start opened the session while Auto chose';
     }
 
     // Off in Settings: Auto leaves the menu, and the saved Auto starts on the default model, which the note says.

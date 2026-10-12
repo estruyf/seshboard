@@ -22,7 +22,6 @@ import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { inScope, rowStatus } from '../../state/sidebarRows.ts';
 import { Composer } from '../composer/Composer.tsx';
 import { StartButton } from './StartButton.tsx';
-import { ChoosingModel, useAutoRoute } from './AutoRoute.tsx';
 import { AutoWand } from '../composer/ComposerChips.tsx';
 import { AUTO_OFF_NOTE, effectiveModel, modelChoices, modelLabel } from '../../lib/autoModel.ts';
 import { focusStartBlock, startButtonState } from './startMenu.ts';
@@ -76,7 +75,6 @@ export function NewSessionView() {
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const autoModel = usePreferences((s) => s.prefs.autoModel);
-  const autoRoute = useAutoRoute();
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
   const view = useSessions((s) => s.view);
   const [cwd, setCwd] = useState<string | null>(null);
@@ -621,7 +619,6 @@ export function NewSessionView() {
       },
       {
         createSession: (params) => client.call('session.create', params),
-        route: autoRoute.route,
         gate: passFocusGate,
         addProject: (path) => client.call('projects.add', { path }).then(reloadProjects),
         open: (sessionId) => {
@@ -1036,19 +1033,15 @@ export function NewSessionView() {
               disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? 'That folder no longer exists' : null}
               onSubmit={(text, attachments, requested) => create(text, attachments, { skipGate: requested === true })}
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments) => queuePrompt(text, attachments) }}
-              submitControl={(box) =>
-                autoRoute.choosing ? (
-                  <ChoosingModel onStop={autoRoute.stop} />
-                ) : (
-                  <StartButton
-                    state={startButtonState({ ...box, startBlocked, canWorktree, worktree: useWorktree, question })}
-                    onAction={(action) =>
-                      action === 'queue' ? box.submitSecondary() : action === 'start-worktree' ? box.submitWith((text, attachments) => create(text, attachments, { worktree: true })) : box.submit()
-                    }
-                    data={{ 'data-composer-submit': true }}
-                  />
-                )
-              }
+              submitControl={(box) => (
+                <StartButton
+                  state={startButtonState({ ...box, startBlocked, canWorktree, worktree: useWorktree, question })}
+                  onAction={(action) =>
+                    action === 'queue' ? box.submitSecondary() : action === 'start-worktree' ? box.submitWith((text, attachments) => create(text, attachments, { worktree: true })) : box.submit()
+                  }
+                  data={{ 'data-composer-submit': true }}
+                />
+              )}
             />
           </div>
 

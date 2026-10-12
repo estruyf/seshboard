@@ -20,7 +20,6 @@ import { useDrafts } from '../../state/draftsStore.ts';
 import { AttachmentThumbs, DropOverlay } from '../composer/Attachments.tsx';
 import { AutoWand, ComposerChipRow } from '../composer/ComposerChips.tsx';
 import { deadKeyWrap, editKey } from '../composer/editing.ts';
-import { ChoosingModel, useAutoRoute } from '../newSession/AutoRoute.tsx';
 import { AUTO_OFF_NOTE, effectiveModel, modelChoices, modelLabel } from '../../lib/autoModel.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useAttachments } from '../composer/useAttachments.ts';
@@ -76,7 +75,6 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const [text, setText] = useState(saved?.text ?? '');
   const [busy, setBusy] = useState(false);
   const autoModel = usePreferences((s) => s.prefs.autoModel);
-  const autoRoute = useAutoRoute();
   const [error, setError] = useState<string | null>(null);
   /** What a paste or drop left out. */
   const [notice, setNotice] = useState<string | null>(null);
@@ -228,7 +226,6 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
         },
         {
           createSession: (params) => client.call('session.create', params),
-          route: autoRoute.route,
           gate: passFocusGate,
           addProject: (path) => client.call('projects.add', { path }).then(() => useProjects.getState().reload()),
           open: (sessionId) => {
@@ -405,16 +402,12 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
             mode={{ value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
           />
         </div>
-        {autoRoute.choosing ? (
-          <ChoosingModel onStop={autoRoute.stop} />
-        ) : (
-          <StartButton
-            state={startButtonState({ blocked, sending: busy, hasMessage: text.trim() !== '', hasText: text.trim() !== '', startBlocked: focusStartBlock(focus), canWorktree, worktree: useWorktree, question })}
-            onAction={(action) => void (action === 'queue' ? queue() : start(action === 'start-worktree' || useWorktree))}
-            data={{ 'data-palette-start': true }}
-            itemData={{ queue: { 'data-palette-queue': true } }}
-          />
-        )}
+        <StartButton
+          state={startButtonState({ blocked, sending: busy, hasMessage: text.trim() !== '', hasText: text.trim() !== '', startBlocked: focusStartBlock(focus), canWorktree, worktree: useWorktree, question })}
+          onAction={(action) => void (action === 'queue' ? queue() : start(action === 'start-worktree' || useWorktree))}
+          data={{ 'data-palette-start': true }}
+          itemData={{ queue: { 'data-palette-queue': true } }}
+        />
       </div>
       {d.model === AUTO_MODEL && !autoModel.enabled && (
         <p className="flex shrink-0 items-center gap-1.5 px-4 pb-2 text-meta text-muted" data-auto-off-note>

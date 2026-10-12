@@ -463,6 +463,41 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('opens a session on Auto at once, shows your message, and sends it on the model Auto picks', async () => {
+    const t = setup();
+    let answer!: (pick: { model: string | null; autoPick: { model: 'sonnet'; reason: string; at: number; tokens: number; allowed: Array<'sonnet'> } }) => void;
+    const picked = new Promise<Parameters<typeof answer>[0]>((resolve) => (answer = resolve));
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', pickModel: () => picked });
+    // Your message shows, and the session says Auto is choosing; Claude Code hasn't got it yet.
+    expect(t.messages[0]).toMatchObject({ id, messages: [{ type: 'user' }] });
+    expect(t.infos.at(-1)).toMatchObject({ sessionId: id, autoChoosing: true });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(lastState(t.infos, id)).toBe('starting');
+    const autoPick = { model: 'sonnet' as const, reason: 'A small change.', at: 1, tokens: 900, allowed: ['sonnet' as const] };
+    answer({ model: 'sonnet', autoPick });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.model).toBeUndefined();
+    expect(t.infos.at(-1)).toMatchObject({ model: 'sonnet', autoPick });
+    expect(t.infos.at(-1)!.autoChoosing).toBeUndefined();
+    t.manager.closeAll();
+  });
+
+  it('keeps the model you pick while Auto is still choosing', async () => {
+    const t = setup();
+    let answer!: () => void;
+    const id = await t.manager.create({
+      ...base,
+      cwd: '/w',
+      prompt: 'hello',
+      pickModel: () => new Promise((resolve) => (answer = () => resolve({ model: 'haiku', autoPick: { model: 'haiku', reason: 'Tiny.', at: 1, tokens: 1, allowed: ['haiku'] } }))),
+    });
+    await t.manager.setModel(id, 'opus');
+    answer();
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)).toMatchObject({ model: 'opus', autoPick: null });
+    t.manager.closeAll();
+  });
+
   it('lists commands for a folder without starting a session, once', async () => {
     const t = setup();
     const first = await t.manager.commands(undefined, '/projects/web', 'default');

@@ -21,6 +21,7 @@ import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
 import { Composer } from '../composer/Composer.tsx';
+import { AutoWand } from '../composer/ComposerChips.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
@@ -89,7 +90,23 @@ const Sep = () => (
 function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string; since: number | null; showIndicator: boolean }) {
   const block = useHosts((s) => s.streaming.get(sessionId));
   const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
-  const now = useTicker(running && showIndicator && block?.kind !== 'text');
+  // A new session on Auto: your message waits until Auto has picked its model.
+  const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
+  const now = useTicker((running || choosing) && showIndicator && block?.kind !== 'text');
+  if (choosing) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-auto-choosing>
+        <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
+          <span className="flex w-4 shrink-0 justify-center">
+            <WorkingDots />
+          </span>
+          {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
+          <AutoWand />
+          <span className="shrink-0">Auto is choosing a model…</span>
+        </p>
+      </div>
+    );
+  }
   if (block?.kind === 'text') {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>

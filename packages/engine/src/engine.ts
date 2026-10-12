@@ -772,21 +772,17 @@ export function createEngine(options: EngineOptions): Engine {
     if (params.worktree && !resolver.resolve(params.cwd).gitDir) {
       throw new RpcError('NOT_A_REPO', 'Worktrees need a git repository');
     }
-    const { checkoutBranch, profileId: chosenProfile, autoPick: requested, ...create } = params;
+    const { checkoutBranch, profileId: chosenProfile, ...create } = params;
     const profileId = requireProfile(chosenProfile ?? folderProfile(params.cwd));
-    // New session and the palette route first (`model.route`) and pass the pick; anything else that still says
-    // Auto (a queued prompt, an older caller) is routed here. With Auto off it starts on the default model.
-    let autoPick: AutoPick | null = requested ? autoPickOf(requested) : null;
-    let routeId = requested?.routeId ?? null;
-    if (create.model === AUTO_MODEL) {
-      create.model = null;
-      if (autoModel.enabled) {
-        const route = await router.route({ profileId, prompt: params.prompt, imageCount: params.attachments.length });
-        autoPick = autoPickOf(route.ok ? route : { ...route, model: null });
-        if (route.ok) create.model = route.model;
-        routeId = route.routeId;
-      }
-    }
+    // Auto routes once the session is open, so starting doesn't wait for it; the session says Auto is choosing until
+    // it has picked. With Auto off it starts on the default model.
+    const routes = create.model === AUTO_MODEL && autoModel.enabled;
+    if (create.model === AUTO_MODEL) create.model = null;
+    const pickModel = async (sessionId: string) => {
+      const route = await router.route({ profileId, prompt: params.prompt, imageCount: params.attachments.length });
+      if (route.routeId) routing.attach(route.routeId, sessionId);
+      return { model: route.ok ? route.model : null, autoPick: autoPickOf(route.ok ? route : { ...route, model: null }) };
+    };
     if (checkoutBranch) {
       if (params.worktree) throw new RpcError('INVALID', 'A new worktree gets its own branch; choose the current folder to check out a branch');
       // Only a real switch changes files under another session; starting on the branch already checked out is fine.
@@ -800,8 +796,7 @@ export function createEngine(options: EngineOptions): Engine {
     }
     const worktree = params.worktree;
     const setup = worktree ? (id: string) => worktreeSetup(id, params.cwd, worktree.name)?.() ?? Promise.resolve() : undefined;
-    const sessionId = await hosts.create({ ...create, profileId, autoPick, ...(setup ? { beforeFirstMessage: setup } : {}) });
-    if (routeId) routing.attach(routeId, sessionId);
+    const sessionId = await hosts.create({ ...create, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
     return { sessionId };
   };
 
@@ -1174,7 +1169,6 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.setPermissionMode(sessionId, mode);
       return {};
     },
-    'model.route': ({ profileId, prompt, imageCount }) => router.route({ profileId: requireProfile(profileId ?? profiles.defaultId()), prompt, imageCount }),
     'session.autoPick': ({ sessionId }) => ({ autoPick: hosts.autoPick(sessionId) }),
     'session.setEffort': async ({ sessionId, effort }) => {
       await hosts.setEffort(sessionId, effort);
@@ -1327,9 +1321,8 @@ export function createEngine(options: EngineOptions): Engine {
         effort: item.effort,
         worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: item.baseRef } : null,
         profileId: item.profileId,
-        checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
         // A queued prompt on Auto is routed now, when it starts, not when it was added.
-        autoPick: null,
+        checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
       });
       later.started(id, sessionId);
       laterChanged();

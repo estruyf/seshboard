@@ -198,8 +198,11 @@ export class SessionHost {
     this.events.info(this.info);
   }
 
-  /** Queues a user message. It shows up in the transcript immediately, with the uuid Claude Code will store. */
-  send(text: string, attachments: readonly ImageAttachment[] = []): string {
+  /**
+   * Queues a user message. It shows up in the transcript immediately, with the uuid Claude Code will store.
+   * `after`: Claude Code only gets it once that has settled (Auto choosing the model of a new session).
+   */
+  send(text: string, attachments: readonly ImageAttachment[] = [], after?: Promise<unknown>): string {
     if (!this.active) throw new Error('This session is not running');
     const uuid = randomUUID();
     const content = [
@@ -207,7 +210,8 @@ export class SessionHost {
       ...(text ? [{ type: 'text' as const, text }] : []),
     ];
     const message: SDKUserMessage = { type: 'user', uuid, parent_tool_use_id: null, message: { role: 'user', content } };
-    this.input.push(message);
+    if (after) void after.then(() => this.active && this.input.push(message));
+    else this.input.push(message);
     this.lastActivity = Date.now();
     // Claude Code gets the text as typed; the echo shows a slash command the way the stored transcript will.
     const commands = this.commands.length ? this.commands : (this.events.knownCommands?.() ?? []);

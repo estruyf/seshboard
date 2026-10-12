@@ -124,6 +124,11 @@ export interface CreateParams {
   beforeFirstMessage?: (sessionId: string) => Promise<void>;
   /** Auto picked `model`: kept with the session and reported in its info. */
   autoPick?: AutoPick | null;
+  /**
+   * Auto picks the model after the session has opened: it starts on `model`, shows your message and that Auto is
+   * choosing, and the message goes once the pick is in (and setup has finished). Null model: the default model.
+   */
+  pickModel?: (sessionId: string) => Promise<{ model: string | null; autoPick: AutoPick }>;
 }
 
 const DEFAULT_MODELS: ModelOption[] = [
@@ -151,6 +156,8 @@ export class HostManager {
   private readonly lastMode = new Map<string, PermissionMode>();
   /** What Auto picked per session, read once from the settings (null: it didn't), so info updates don't hit the database. */
   private readonly picks = new Map<string, AutoPick | null>();
+  /** Sessions whose first message waits for Auto's pick. */
+  private readonly choosing = new Set<string>();
   private readonly reaper: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: HostManagerDeps) {
@@ -195,12 +202,13 @@ export class HostManager {
       if (params.model) await host.setModel(params.model).catch(() => {});
       if (params.permissionMode !== 'default') await host.setPermissionMode(params.permissionMode).catch(() => {});
     }
-    if (params.beforeFirstMessage) {
-      // Return the id now, so the window can show the session (and its setup terminals) right away.
-      const before = params.beforeFirstMessage;
-      void before(sessionId)
-        .catch((error: Error) => this.deps.log('warn', `Worktree setup failed: ${error.message}`))
-        .then(() => host.active && host.send(params.prompt, params.attachments));
+    // Return the id now, so the window can show the session (and its setup terminals) right away.
+    const setup = params.beforeFirstMessage?.(sessionId).catch((error: Error) => this.deps.log('warn', `Worktree setup failed: ${error.message}`));
+    if (params.pickModel) {
+      // Your message shows while Auto chooses; Claude Code gets it once the model is set.
+      host.send(params.prompt, params.attachments, Promise.all([setup, this.pickModel(host, sessionId, params.pickModel)]));
+    } else if (setup) {
+      void setup.then(() => host.active && host.send(params.prompt, params.attachments));
     } else {
       host.send(params.prompt, params.attachments);
     }
@@ -307,7 +315,30 @@ export class HostManager {
     }
   }
 
+  /**
+   * Waits for Auto's pick and switches the new session to it. Picking the model yourself meanwhile wins: the pick
+   * is dropped. A failure starts on the default model, as a pick that failed does.
+   */
+  private async pickModel(host: SessionHost, sessionId: string, pick: NonNullable<CreateParams['pickModel']>): Promise<void> {
+    this.choosing.add(sessionId);
+    this.deps.onInfo(this.withPick(host.info));
+    try {
+      const { model, autoPick } = await pick(sessionId);
+      if (!this.choosing.has(sessionId)) return;
+      if (model) await host.setModel(model).catch(() => {});
+      this.picks.set(sessionId, autoPick);
+      this.settings.set(sessionId, { model, autoPick });
+    } catch (error) {
+      this.deps.log('warn', `Auto couldn't pick a model: ${(error as Error).message}`);
+    } finally {
+      this.choosing.delete(sessionId);
+      this.deps.onInfo(this.withPick(host.info));
+    }
+  }
+
   async setModel(sessionId: string, model: string | null): Promise<void> {
+    // Changed while Auto was still choosing: your model stays, and Auto's pick won't replace it.
+    this.choosing.delete(sessionId);
     await this.require(sessionId).setModel(model);
     // Once you pick a model yourself, the session is no longer on Auto's pick: its chip shows the plain model.
     const pick = this.autoPick(sessionId);
@@ -323,12 +354,14 @@ export class HostManager {
   }
 
   private withPick(info: SessionHostInfo): SessionHostInfo {
-    return { ...info, autoPick: this.autoPick(info.sessionId) };
+    return { ...info, autoPick: this.autoPick(info.sessionId), ...(this.choosing.has(info.sessionId) ? { autoChoosing: true } : {}) };
   }
 
   close(sessionId: string): void {
     const host = this.hosts.get(sessionId);
     if (host?.active) this.closedAt.set(sessionId, Date.now());
+    // Stopped while Auto was choosing: the message never goes, and the session no longer says Auto is choosing.
+    this.choosing.delete(sessionId);
     host?.close();
     for (const [requestId, pending] of this.pending) {
       if (pending.request.sessionId === sessionId) this.settle(requestId, { behavior: 'deny', message: 'Session closed.' });

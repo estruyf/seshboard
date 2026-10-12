@@ -163,9 +163,15 @@ describe('engine over a MessagePort', () => {
     const { client, dataDir } = connect({ sdk });
     const { item } = await client.call('later.add', { draft: { cwd: dataDir, prompt: 'Make the update check a setting', model: 'auto' } });
     const { sessionId } = await client.call('later.start', { id: item.id });
-    // Only the text went to Haiku, and the session started on what it picked.
+    // The session opens before Auto has picked, then switches to what it picked.
+    expect(created).toEqual([expect.objectContaining({ cwd: dataDir })]);
+    expect(created[0]!.model).toBeUndefined();
+    for (let tries = 0; !(await client.call('hosts.list', {})).hosts.some((h) => h.sessionId === sessionId && h.model === 'sonnet'); tries++) {
+      if (tries > 100) throw new Error('Auto never switched the session to its pick');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    // Only the text went to Haiku.
     expect(routed).toEqual(['<request>\nMake the update check a setting\n</request>']);
-    expect(created).toEqual([expect.objectContaining({ cwd: dataDir, model: 'sonnet' })]);
     const { autoPick } = await client.call('session.autoPick', { sessionId });
     expect(autoPick).toMatchObject({ model: 'sonnet', reason: 'A small, local change.', tokens: 1_040, allowed: ['haiku', 'sonnet', 'opus'] });
     const usage = await client.call('usage.breakdown', { period: 'day', groupBy: 'model' });
