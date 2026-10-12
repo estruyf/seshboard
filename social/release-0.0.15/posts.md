@@ -58,7 +58,7 @@ Usage view. Click a usage bar and see where your plan went:
 • Tokens: where the tokens went per session, project, model and day, with the cache hit rate and fast mode turns
 • The current window, 24 hours, 7 days or 30 days
 
-Also new: Quote in reply, lists and code in the message box, back and forward with your mouse, and all your sessions in one table, where you can unarchive or clean up a whole month at once.
+Also new: Quote in reply, lists and code in the message box, back and forward with your mouse, all your sessions in one table where you can unarchive or clean up a whole month at once, and an option to move old archived sessions to the Trash by itself.
 
 Switchboard is free and open source, for macOS and Windows: https://switchboard.struyfconsulting.com/
 
