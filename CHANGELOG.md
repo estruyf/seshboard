@@ -15,6 +15,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### Fixed
 
 - **Unarchive** now brings back a session that was archived because it was quiet for a while. It stays in the main list until it has new activity.
+- Menus and dropdowns now open over toasts, so a toast no longer covers their bottom items.
 
 ## [0.0.14] - 2026-10-11
 
