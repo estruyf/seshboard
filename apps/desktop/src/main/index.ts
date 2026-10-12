@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { IMAGE_EXTENSIONS, IpcChannel, isThemeId, sanitizePreferences, type AppInfo, type DeepLinkMessage, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { IMAGE_EXTENSIONS, IpcChannel, isThemeId, sanitizePreferences, type AppInfo, type DeepLinkMessage, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
@@ -135,7 +135,13 @@ function updatePreferences(patch: unknown): void {
   const item = Menu.getApplicationMenu()?.getMenuItemById(`scheme-${next.colorScheme}`);
   if (item) item.checked = true;
   updateWindowBackgrounds();
+  sendRetention(next);
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.preferencesChanged, next);
+}
+
+/** Settings › Sessions, for the engine: the archive days (the VS Code companion lists what the sidebar lists) and deleting. */
+function sendRetention(prefs: Preferences): void {
+  engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -1536,6 +1542,74 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
  * themes, with its list of the sessions that count; turning it off hides it again. Only preferences in
  * the throwaway profile change: no session is started and nothing is saved for later.
  */
+/**
+ * Settings › Sessions, read-only on real sessions: the archive days apply and are saved, turning deleting on asks first
+ * (cancelled: it stays off), the overview filters to Archived, a month's checkbox picks its sessions, and the Trash
+ * confirmation opens (cancelled). Nothing is ever deleted: the step refuses to run with deleting on.
+ */
+async function runSessionsSettingsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const cancelDialog = () => js("[...document.querySelectorAll('[role=alertdialog] button')].find((b) => b.innerText.trim() === 'Cancel')?.click()");
+  const summaryText = "document.querySelector('[data-session-manager-summary]')?.innerText ?? ''";
+  if (preferences.get().deleteArchived.enabled) return 'deleting archived sessions was on in a new profile; refusing to go on';
+
+  await click('[data-open-settings]');
+  if (!(await waitInPage(win, "document.querySelector('[data-settings]')", 3_000))) return 'settings did not open';
+  await click('[data-settings-section="sessions"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-page=sessions] [data-auto-archive]') && document.querySelector('[data-auto-delete]')", 3_000))) return 'the Sessions page did not show its settings';
+  if ((await js("document.querySelector('[data-auto-delete]').getAttribute('aria-checked')")) !== 'false') return 'deleting looked on';
+  if (!(await js("document.querySelector('[data-auto-delete-days-value]')?.disabled === true"))) return 'the delete days were not disabled while deleting is off';
+
+  // The archive days: + and − apply at once and are saved.
+  const days = preferences.get().archiveAfterDays;
+  await click('[data-auto-archive-more]');
+  if (!(await until(() => preferences.get().archiveAfterDays === days + 1))) return `+ did not raise the archive days from ${days}`;
+  await click('[data-auto-archive-less]');
+  if (!(await until(() => preferences.get().archiveAfterDays === days))) return '− did not put the archive days back';
+
+  // Turning deleting on asks first; Cancel leaves it off.
+  await click('[data-auto-delete]');
+  if (!(await waitInPage(win, "document.querySelector('[data-delete-archived-dialog=turn-on]')", 2_000))) return 'turning deleting on did not ask first';
+  const question = (await js("document.querySelector('[data-delete-archived-dialog]').innerText")) as string;
+  await cancelDialog();
+  if (!(await waitInPage(win, "!document.querySelector('[data-delete-archived-dialog]')", 2_000))) return 'Cancel did not close the question';
+  await settle(win);
+  if (preferences.get().deleteArchived.enabled || (await js("document.querySelector('[data-auto-delete]').getAttribute('aria-checked')")) !== 'false') return 'Cancel turned deleting on';
+  if (!/Turn on deleting after \d+ days\?/.test(question)) return `the question did not say what it turns on: ${question.slice(0, 120)}`;
+
+  // The overview: Archived only, then a month picked, then the Trash confirmation cancelled.
+  if (!(await waitInPage(win, `/\\d+ sessions?/.test(${summaryText})`, 3_000))) return 'the overview did not say how many sessions there are';
+  const summary = (await js(summaryText)) as string;
+  await click('[data-session-status-filter="archived"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-session-status-filter=archived]')?.getAttribute('aria-checked') === 'true' && [...document.querySelectorAll('[data-session-manager-row]')].every((r) => r.dataset.status === 'archived')", 2_000))) {
+    return 'the Archived filter showed other sessions';
+  }
+  const month = (await js("document.querySelector('[data-session-manager-month-pick]:not(:disabled)')?.getAttribute('data-session-manager-month-pick') ?? null")) as string | null;
+  let picked = 'no archived sessions to pick';
+  if (month) {
+    const box = `document.querySelector('[data-session-manager-month-pick="${month}"]')`;
+    await js(`${box}.click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-session-selection-bar]') && ${box}?.getAttribute('aria-checked') === 'true'`, 2_000))) return 'the month checkbox did not pick its sessions';
+    const count = Number(await js("document.querySelector('[data-session-selection-count]').getAttribute('data-session-selection-count')"));
+    await click('[data-session-move-to-trash]');
+    if (!(await waitInPage(win, "document.querySelector('[data-move-to-trash-dialog]')", 2_000))) return 'Move to Trash did not ask first';
+    const title = (await js("document.querySelector('[data-move-to-trash-dialog]').innerText.split('\\n')[0]")) as string;
+    await cancelDialog();
+    if (!(await waitInPage(win, "!document.querySelector('[data-move-to-trash-dialog]')", 2_000))) return 'Cancel did not close the Trash confirmation';
+    await settle(win);
+    if ((await js(summaryText)) !== summary) return 'the sessions changed after Cancel';
+    await click('[data-session-clear-selection]');
+    if (!(await waitInPage(win, "!document.querySelector('[data-session-selection-bar]')", 2_000))) return 'Clear did not take the picks away';
+    picked = `picked ${count} in ${month}, "${title.trim().slice(0, 60)}" cancelled`;
+  }
+  await click('[data-session-status-filter="all"]');
+  await click('[data-close-settings]');
+  await waitInPage(win, "!document.querySelector('[data-settings]')", 2_000);
+  if (preferences.get().deleteArchived.enabled) return 'deleting was on at the end';
+  return `ok: ${summary}; ${picked}`;
+}
+
 async function runFocusStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
@@ -4757,6 +4831,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
   await step('settings: theme, sidebar style, session scope, tool activity, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('focus limit', () => runFocusStep(win));
+  await step('settings › sessions: archive days, deleting asks first, overview picks a month (nothing deleted)', () => runSessionsSettingsStep(win));
   await step('terminal panel opened a shell', () => runTerminalStep(win));
   await step('⌘K in the terminal', () => runTerminalClearStep(win));
   await step('terminal layout', () => runTerminalLayoutStep(win));
@@ -4806,6 +4881,7 @@ app.whenReady().then(() => {
       notifier.connect();
     },
   });
+  sendRetention(preferences.get());
   engine.start();
   themes.watch();
   installMenu();

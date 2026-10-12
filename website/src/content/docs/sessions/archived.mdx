@@ -21,7 +21,7 @@ While you type in **Search sessions**, archived sessions that match show under t
 
 ## What gets archived
 
-**On its own.** A session moves to Archived after 48 hours without activity. It stays in the main list while it is:
+**On its own.** A finished session moves to Archived after 3 days without activity. Choose the number of days in [Settings › Sessions](/settings/sessions/). It stays in the main list while it is:
 
 - working, or waiting for you;
 - failed;
@@ -47,8 +47,16 @@ If the session has an [unsent message](/sessions/unsent-drafts/), Switchboard as
 ## Bring a session back
 
 - **New activity** brings it back by itself: when you send it a message, or it finishes something new.
-- **Unarchive** it from its menu, from the command palette, or with several selected (**Unarchive** in the bar at the bottom). An unarchived session stays in the main list until it has new activity, however long it was quiet. After that, it's archived again once it has been quiet for 48 hours.
+- **Unarchive** it from its menu, from the command palette, or with several selected (**Unarchive** in the bar at the bottom). An unarchived session stays in the main list until it has new activity, however long it was quiet. After that, it's archived again once it has been quiet for the days you set.
 - **Select all** on the Archived header (while selecting) picks every archived session at once.
+
+## Manage archived sessions
+
+Click the **⋯** on the Archived header:
+
+- **Manage sessions…** opens [Settings › Sessions](/settings/sessions/) with only archived sessions listed, grouped by month, to unarchive them or move many to the <Os mac="Trash" windows="Recycle Bin" /> at once.
+- **Archive settings…** opens the same page on the number of days.
+
 ## Delete a session
 
 To remove a session for good, delete it:
@@ -59,6 +67,12 @@ To remove a session for good, delete it:
 
 After you confirm with **Move to <Os mac="Trash" windows="Recycle Bin" />**, the conversation and any subagent transcripts go to the <Os mac="Trash" windows="Recycle Bin" />, so you can still get them back from there.
 
+## Delete old archived sessions
+
+Archived sessions stay on disk until you delete them. To have Switchboard move them to the <Os mac="Trash" windows="Recycle Bin" /> after some time, turn on **Delete archived sessions** in [Settings › Sessions](/settings/sessions/#delete-archived-sessions). It is off by default and asks first.
+
+Claude Code also deletes old transcripts by itself, after 30 days unless you changed `cleanupPeriodDays`. [Settings › Sessions](/settings/sessions/#claude-codes-own-cleanup) shows what each Claude profile uses and lets you change it.
+
 ## Settings
 
-The 48 hours can't be changed. [Settings, Backup](/settings/#backup) can include your archived sessions in an export when you tick them.
+[Settings › Sessions](/settings/sessions/) sets when sessions are archived and deleted. [Settings, Backup](/settings/#backup) can include your archived sessions in an export when you tick them.

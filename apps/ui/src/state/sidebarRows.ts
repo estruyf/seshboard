@@ -1,4 +1,4 @@
-import type { SessionScope, StartupView } from '@switchboard/protocol/bridge';
+import { archivedSince as archivedSinceOf, listedInMainList, type ListingState, type SessionScope, type StartupView } from '@switchboard/protocol/bridge';
 import type { QueueEntry } from './queue.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import type { SectionKey } from './sidebarSections.ts';
@@ -17,9 +17,6 @@ export function rowStatus(row: SessionRowData): RowStatus {
   return null;
 }
 
-/** Sessions with activity in this window stay in the main list. */
-export const RECENT_MS = 48 * 60 * 60 * 1000;
-
 /** Whether the sidebar (and the palette) list a session under the chosen scope. */
 export const inScope = (row: SessionRowData, scope: SessionScope) => scope === 'all' || row.inApp;
 
@@ -33,34 +30,42 @@ export function startupSession(rows: SessionRowData[], lastId: unknown, startupV
   return last && inScope(last, scope) ? last.id : null;
 }
 
-/**
- * Main list or "Archived"? Anything that wants attention (working, waiting,
- * failed, unread, open in Switchboard) or is pinned stays up. Archiving by hand hides a
- * session until it has new activity; otherwise sessions are archived after 48 h. Unarchiving by hand keeps a
- * session up until it has new activity; then the 48 h count from there.
- */
-export function isActive(row: SessionRowData, now: number): boolean {
-  // Anything that needs you always shows.
-  if (row.live?.status === 'needs-you' || row.error) return true;
-  if (row.pinned) return true;
-  // Archived by hand: hidden until there's something new to see. A session that's still
-  // working stays archived (its constant updates aren't news); it comes back once it finishes.
-  if (row.archivedAt !== null && (row.archivedAt >= row.updatedAt || row.live?.status === 'running')) return false;
-  if (row.live?.status === 'running') return true;
-  // Unarchived by hand: back in the main list, however old, until there's something new.
-  if (row.restoredAt !== null && row.restoredAt >= row.updatedAt) return true;
-  // Open in Switchboard counts; a process idling elsewhere doesn't (Claude desktop reopens
-  // many old sessions at launch, and they shouldn't all come back).
-  return row.live?.origin === 'app' || row.unread || now - row.updatedAt < RECENT_MS;
+/** What the archive rule reads from a row (`listedInMainList`, shared with the VS Code companion and the engine). */
+export function rowListing(row: SessionRowData): ListingState {
+  return {
+    attention: row.live?.status === 'needs-you' || row.error,
+    working: row.live?.status === 'running',
+    pinned: row.pinned,
+    archivedAt: row.archivedAt,
+    restoredAt: row.restoredAt,
+    unread: row.unread,
+    updatedAt: row.updatedAt,
+    // Open in Switchboard counts; a process idling elsewhere doesn't (Claude desktop reopens many old sessions at
+    // launch, and they shouldn't all come back).
+    openInApp: row.live?.origin === 'app',
+  };
 }
+
+/**
+ * Main list or "Archived"? Anything that wants attention (working, waiting, failed, unread, open in Switchboard) or
+ * is pinned stays up. Archiving by hand hides a session until it has new activity; otherwise sessions are archived
+ * after `archiveAfterDays` (Settings › Sessions). Unarchiving by hand keeps a session up until it has new activity;
+ * then the days count from there.
+ */
+export function isActive(row: SessionRowData, now: number, archiveAfterDays: number): boolean {
+  return listedInMainList(rowListing(row), now, archiveAfterDays);
+}
+
+/** When an archived row went to Archived (by hand, or its last activity plus the archive days); null while it is listed. */
+export const archivedSince = (row: SessionRowData, now: number, archiveAfterDays: number): number | null => archivedSinceOf(rowListing(row), now, archiveAfterDays);
 
 /**
  * Whether a middle-click on the row archives it: an indexed session in the main list that has finished
  * (idle, unread or closed). Work in progress, a question, a failure or an archived row stay as they are.
  */
-export function archivesOnMiddleClick(row: SessionRowData, now: number): boolean {
+export function archivesOnMiddleClick(row: SessionRowData, now: number, archiveAfterDays: number): boolean {
   const status = rowStatus(row);
-  return row.summary !== null && (status === null || status === 'idle' || status === 'unread') && isActive(row, now);
+  return row.summary !== null && (status === null || status === 'idle' || status === 'unread') && isActive(row, now, archiveAfterDays);
 }
 
 export interface SessionListOptions {
@@ -68,6 +73,8 @@ export interface SessionListOptions {
   /** Only this project folder; null = all. */
   project: string | null;
   now: number;
+  /** Settings › Sessions: finished sessions are archived after this many days. */
+  archiveAfterDays: number;
   /** Default: every session. */
   scope?: SessionScope;
 }
@@ -89,7 +96,7 @@ export function buildSessionList(
     if (options.scope && !inScope(row, options.scope)) continue;
     if (options.project && row.projectRoot !== options.project) continue;
     if (needle && !matches(row, needle)) continue;
-    (isActive(row, options.now) ? active : archived).push(row);
+    (isActive(row, options.now, options.archiveAfterDays) ? active : archived).push(row);
   }
   active.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt);
   archived.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -259,9 +266,9 @@ export function headerSummary(row: Extract<SidebarListRow, { kind: 'group' | 'qu
 }
 
 /** The section a session sits in (its group), so opening it can open a closed section. Null for an archived one. */
-export function sectionOfSession(rows: readonly SessionRowData[], id: string, now: number): SessionGroup | null {
+export function sectionOfSession(rows: readonly SessionRowData[], id: string, now: number, archiveAfterDays: number): SessionGroup | null {
   const row = rows.find((r) => r.id === id);
-  return row && isActive(row, now) ? sessionGroup(row, now) : null;
+  return row && isActive(row, now, archiveAfterDays) ? sessionGroup(row, now) : null;
 }
 
 /** What a waiting session asks for, in a few words for its row: the question, a plan, or the tool it wants to run. */

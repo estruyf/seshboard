@@ -4,9 +4,20 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **Settings › Sessions.** Choose after how many days finished sessions move to Archived (3 by default, it was a fixed 48 hours). The VS Code companion follows the same setting.
+- **Delete archived sessions**, off until you turn it on: sessions that have been in Archived for longer than the days you set go to the Trash (the Recycle Bin on Windows), checked at launch and once a day. Pinned and working sessions, and ones open in another window, with a queued prompt or an unsent message, are always kept. Turning it on says how many go today, with **Review** to see exactly those first. Each run is in the Diagnostics log.
+- **All sessions in one table**, on the same page: every session (also from other apps), grouped by month, with filters for text, time, project, app and status, its size and where it came from. Select a month or single sessions to unarchive them or move them to the Trash in one go; the confirmation says how much space it frees and which sessions are kept and why.
+- **Claude Code's own cleanup** per Claude profile: Settings › Sessions says after how many days Claude Code deletes old transcripts by itself (`cleanupPeriodDays`), and **Change…** sets it in each profile's settings.json, leaving the rest of the file as it was.
+- **Back and forward with your mouse.** The back and forward buttons on your mouse return to where you were before, as in a browser: sessions, Home, New session, Settings pages, Projects and project pages.
+- A project opened from Settings (the projects in Settings › Memory) has **Settings › Memory** in its breadcrumb, which takes you back there instead of to Projects.
+- The Archived header in the sidebar has a menu with **Manage sessions…** and **Archive settings…**, the session count at the bottom of the sidebar opens the overview, and the command palette has *Manage sessions* and *Delete archived sessions…*.
+
 ### Fixed
 
-- **Unarchive** now brings back a session that was archived because it was quiet for 48 hours. It stays in the main list until it has new activity.
+- **Unarchive** now brings back a session that was archived because it was quiet for a while. It stays in the main list until it has new activity.
+- Menus and dropdowns now open over toasts, so a toast no longer covers their bottom items.
 
 ## [0.0.14] - 2026-10-11
 

@@ -18,6 +18,8 @@ export class EngineProcess {
   private consecutiveCrashes = 0;
   private stableTimer: NodeJS.Timeout | undefined;
   private stopping = false;
+  /** Messages every new process gets right after it starts (settings it keeps), by type: the latest of each. */
+  private readonly standing = new Map<string, unknown>();
 
   constructor(private readonly options: EngineProcessOptions) {}
 
@@ -27,6 +29,7 @@ export class EngineProcess {
       stdio: 'inherit',
     });
     this.child = child;
+    for (const message of this.standing.values()) child.postMessage(message);
     for (const port of this.queued.splice(0)) child.postMessage({ type: 'connect' }, [port]);
     child.on('message', (message: unknown) => {
       // onRequest answers its own failures; this only keeps a bug there from becoming an unhandled rejection.
@@ -53,6 +56,12 @@ export class EngineProcess {
         this.options.onRestarted();
       }, delay);
     });
+  }
+
+  /** Sends a setting to the engine now and again to every process that replaces it, so a restart keeps it. */
+  sendStanding(message: { type: string } & Record<string, unknown>): void {
+    this.standing.set(message.type, message);
+    this.child?.postMessage(message);
   }
 
   /** Hands a window's port to the engine (queued while a restart is pending). */

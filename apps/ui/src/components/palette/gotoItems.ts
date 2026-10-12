@@ -60,9 +60,9 @@ export function matchProjects(roots: readonly string[], query: string, nameOf: (
  * Pinned, Today, Yesterday, Earlier; archived ones left out), so it can stand in for the sidebar while that is
  * closed. At most `limit` sessions; the urgent groups come first, so they are never the ones cut.
  */
-export function gotoGroups(rows: readonly SessionRowData[], now: number, limit: number): { group: SessionGroup; rows: SessionRowData[] }[] {
+export function gotoGroups(rows: readonly SessionRowData[], now: number, archiveAfterDays: number, limit: number): { group: SessionGroup; rows: SessionRowData[] }[] {
   let left = limit;
-  return sidebarGroups(rows, { now }).flatMap(({ group, rows: inGroup }) => {
+  return sidebarGroups(rows, { now, archiveAfterDays }).flatMap(({ group, rows: inGroup }) => {
     const shown = inGroup.slice(0, Math.max(0, left));
     left -= shown.length;
     return shown.length ? [{ group, rows: shown }] : [];
@@ -78,6 +78,7 @@ export function gotoWithDrafts(
   rows: readonly SessionRowData[],
   drafts: readonly DraftItem[],
   now: number,
+  archiveAfterDays: number,
   limit: number,
 ): { unsent: DraftItem[]; groups: { group: SessionGroup; rows: SessionRowData[] }[] } {
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -87,5 +88,5 @@ export function gotoWithDrafts(
     return !row || rowStatus(row) !== 'needs-you';
   });
   const listed = new Set(unsent.flatMap((item) => (item.kind === 'session' ? [item.sessionId] : [])));
-  return { unsent, groups: gotoGroups(rows.filter((row) => !listed.has(row.id)), now, limit) };
+  return { unsent, groups: gotoGroups(rows.filter((row) => !listed.has(row.id)), now, archiveAfterDays, limit) };
 }

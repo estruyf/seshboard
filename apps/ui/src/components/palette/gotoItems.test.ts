@@ -70,16 +70,16 @@ describe('gotoGroups', () => {
   ];
 
   it('lists the groups and sessions in the sidebar order, without archived ones', () => {
-    const groups = gotoGroups(rows, now, 20);
+    const groups = gotoGroups(rows, now, 2, 20);
     expect(groups.map((g) => g.group)).toEqual(['needs-you', 'working', 'today', 'yesterday']);
-    const { active, archived } = buildSessionList(rows, { search: '', project: null, now });
+    const { active, archived } = buildSessionList(rows, { search: '', project: null, now, archiveAfterDays: 2 });
     const sidebar = buildListRows(active, archived, { now, archivedOpen: false }).flatMap((r) => (r.kind === 'group' ? [r.group] : []));
     expect(groups.map((g) => g.group)).toEqual(sidebar);
     expect(groups.flatMap((g) => g.rows.map((r) => r.id))).toEqual(['asking', 'working', 'today', 'yesterday']);
   });
 
   it('cuts the later groups first', () => {
-    expect(gotoGroups(rows, now, 3).map((g) => [g.group, g.rows.length])).toEqual([
+    expect(gotoGroups(rows, now, 2, 3).map((g) => [g.group, g.rows.length])).toEqual([
       ['needs-you', 1],
       ['working', 1],
       ['today', 1],
@@ -102,7 +102,7 @@ describe('gotoWithDrafts', () => {
   ];
 
   it('puts unsent messages first and leaves a session that needs you in Needs you', () => {
-    const { unsent, groups } = gotoWithDrafts(rows, drafts, now, 20);
+    const { unsent, groups } = gotoWithDrafts(rows, drafts, now, 2, 20);
     expect(unsent.map((d) => d.key)).toEqual(['new:/work/app', 'today']);
     expect(groups.map((g) => [g.group, g.rows.map((r) => r.id)])).toEqual([
       ['needs-you', ['asking']],
@@ -111,8 +111,8 @@ describe('gotoWithDrafts', () => {
   });
 
   it('lists nothing extra without drafts', () => {
-    const { unsent, groups } = gotoWithDrafts(rows, [], now, 20);
+    const { unsent, groups } = gotoWithDrafts(rows, [], now, 2, 20);
     expect(unsent).toEqual([]);
-    expect(groups).toEqual(gotoGroups(rows, now, 20));
+    expect(groups).toEqual(gotoGroups(rows, now, 2, 20));
   });
 });

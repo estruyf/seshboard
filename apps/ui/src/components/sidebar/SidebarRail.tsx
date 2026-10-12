@@ -217,13 +217,14 @@ export function SidebarRail() {
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
   const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.mainId === null);
   const scope = usePreferences((s) => s.prefs.sessionScope);
+  const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const now = useNow();
   const unsent = useUnsent();
   const draftPreviews = useMemo(() => new Map(unsent.flatMap((e) => (e.item.kind === 'session' ? [[e.item.sessionId, e.item.preview] as const] : []))), [unsent]);
   const newDraft = useNewSessionDraft();
 
   const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
-  const groups = useMemo(() => sidebarGroups(all, { now }), [all, now]);
+  const groups = useMemo(() => sidebarGroups(all, { now, archiveAfterDays }), [all, now, archiveAfterDays]);
   const sectionsOpen = useSidebarSections((s) => s.open);
   const queue = useQueue(all);
   const items = useMemo<RailItem[]>(() => {

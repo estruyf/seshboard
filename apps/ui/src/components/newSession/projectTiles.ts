@@ -95,9 +95,9 @@ const urgency = (row: SessionRowData) => (row.live?.status === 'needs-you' ? 0 :
  * "Pick up in <project>": the project's sessions from the main list (not archived), the ones that
  * need you or are working first, then the newest.
  */
-export function pickUpRows(rows: readonly SessionRowData[], root: string, now: number, limit = 5): SessionRowData[] {
+export function pickUpRows(rows: readonly SessionRowData[], root: string, now: number, archiveAfterDays: number, limit = 5): SessionRowData[] {
   return rows
-    .filter((row) => row.projectRoot === root && isActive(row, now))
+    .filter((row) => row.projectRoot === root && isActive(row, now, archiveAfterDays))
     .sort((a, b) => urgency(a) - urgency(b) || b.updatedAt - a.updatedAt)
     .slice(0, limit);
 }

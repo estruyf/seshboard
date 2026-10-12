@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useHosts } from './hostsStore.ts';
+import { usePreferences } from './preferencesStore.ts';
 import { toRows, useSessions } from './sessionsStore.ts';
 import { useSidebar } from './sidebarStore.ts';
 import { sectionOfSession } from './sidebarRows.ts';
@@ -69,7 +70,7 @@ export function useSidebarSectionsSync(): void {
         const id = state.selectedId;
         if (!id || id === previous.selectedId) return;
         const rows = toRows(state.sessions, state.live, useHosts.getState().hosts);
-        const section = sectionOfSession(rows, id, Date.now());
+        const section = sectionOfSession(rows, id, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
         if (isSectionKey(section)) useSidebarSections.getState().setOpen(section, true);
       }),
     [],
