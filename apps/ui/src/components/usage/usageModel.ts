@@ -149,6 +149,23 @@ export function niceMax(value: number): number {
   return 10 * power;
 }
 
+/**
+ * Positions for labels that each want to sit at a height, at least `gap` apart and kept between `min` and `max`, moved
+ * as little as they can. In the same order as `wanted`.
+ */
+export function spreadLabels(wanted: readonly number[], gap: number, min: number, max: number): number[] {
+  const order = wanted.map((y, i) => ({ y, i })).sort((a, b) => a.y - b.y);
+  const placed = order.map((o) => Math.max(min, Math.min(max, o.y)));
+  for (let k = 1; k < placed.length; k++) placed[k] = Math.max(placed[k]!, placed[k - 1]! + gap);
+  // Pushed past the bottom: shift back up from the end, then hold the top.
+  if (placed.length) placed[placed.length - 1] = Math.min(placed.at(-1)!, max);
+  for (let k = placed.length - 2; k >= 0; k--) placed[k] = Math.min(placed[k]!, placed[k + 1]! - gap);
+  for (let k = 0; k < placed.length; k++) placed[k] = Math.max(placed[k]!, k ? placed[k - 1]! + gap : min);
+  const out: number[] = [];
+  order.forEach((o, k) => (out[o.i] = placed[k]!));
+  return out;
+}
+
 /** The height of each type's part in a stacked bar, from the baseline up, in units of the value. */
 export function stackOf(bucket: UsageBucket, types: readonly TokenType[]): Array<{ type: TokenType; from: number; to: number }> {
   let at = 0;
