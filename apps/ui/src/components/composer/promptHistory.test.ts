@@ -83,6 +83,25 @@ describe('PromptHistory', () => {
     history.setEntries(['fourth', ...entries]);
     expect(history.recall('older', 'second', 6)).toMatchObject({ text: 'first', index: 3, total: 4 });
   });
+
+  it('takes the caret to the edge of your own text before a step', () => {
+    const history = new PromptHistory(entries);
+    // ↑ at the end of one line: to the start first, then the step.
+    expect(history.caretFirst('older', 'fix the tests', 13)).toBe(0);
+    expect(history.caretFirst('older', 'fix the tests', 0)).toBeNull();
+    expect(history.caretFirst('older', '', 0)).toBeNull();
+    // ↓ goes to the end first.
+    expect(history.caretFirst('newer', 'fix the tests', 4)).toBe(13);
+    expect(history.caretFirst('newer', 'fix the tests', 13)).toBeNull();
+  });
+
+  it('steps at once through recalled messages, until you edit one', () => {
+    const history = new PromptHistory(entries);
+    history.recall('older', '', 0);
+    expect(history.caretFirst('older', 'third', 5)).toBeNull();
+    expect(history.caretFirst('newer', 'third', 2)).toBeNull();
+    expect(history.caretFirst('older', 'third, edited', 13)).toBe(0);
+  });
 });
 
 describe('recallAnnouncement', () => {

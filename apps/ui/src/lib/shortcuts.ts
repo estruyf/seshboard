@@ -695,7 +695,7 @@ export const SHORTCUTS = [
     keys: ["arrowup", "arrowdown"],
     action: "Bring back an earlier message",
     section: "composer",
-    context: "From the first line",
+    context: "At the start of your text",
     note: "Esc goes back to what you were typing",
     when: inSession,
     where: "composer",
