@@ -7,7 +7,8 @@ export type NavPlace =
   | { view: 'new' }
   | { view: 'settings'; section: SettingsSection; from: Exclude<MainView, 'settings'> }
   | { view: 'projects' }
-  | { view: 'project'; root: string; tab: ProjectTab };
+  | { view: 'project'; root: string; tab: ProjectTab }
+  | { view: 'usage'; profileId: string | null };
 
 export interface NavHistory {
   entries: readonly NavPlace[];
@@ -53,4 +54,18 @@ export function step(history: NavHistory, direction: 1 | -1, usable: (place: Nav
     if (usable(history.entries[i]!)) return i;
   }
   return null;
+}
+
+/**
+ * The page of Settings a project page was opened from (Memory's list of projects), or null. Closing Settings opened
+ * over the same project also puts it right after Settings: that is a return, not an open from Settings.
+ */
+export function settingsOrigin(history: NavHistory, root: string | null): SettingsSection | null {
+  const { entries, index } = history;
+  const here = entries[index];
+  const before = entries[index - 1];
+  if (here?.view !== 'project' || here.root !== root || before?.view !== 'settings') return null;
+  const under = entries[index - 2];
+  if (before.from === 'project' && under?.view === 'project' && under.root === root) return null;
+  return before.section;
 }

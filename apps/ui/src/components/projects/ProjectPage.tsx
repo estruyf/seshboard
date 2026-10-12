@@ -22,6 +22,7 @@ import { MemoryTab } from '../memory/MemoryTab.tsx';
 import { useMemoryList } from '../memory/useMemoryList.ts';
 import { guardMemoryEdits } from '../../state/memoryStore.ts';
 import { goInHistory, useNavHistory } from '../../state/navHistoryStore.ts';
+import { settingsOrigin } from '../../state/navHistory.ts';
 import { settingsSectionLabel } from '../SettingsView.tsx';
 import { menuPoint } from './ProjectManagerView.tsx';
 import { ProjectActionsTab, ProjectSettingsTab, ProjectOverview, ProjectSessions, useProjectSessionRows } from './ProjectTabs.tsx';
@@ -69,12 +70,7 @@ export function ProjectPage() {
   const icons = useProjectIconEntries();
   const [iconMenu, setIconMenu] = useState<{ x: number; y: number } | null>(null);
   // Opened from a page of Settings (Memory's list of projects), the breadcrumb leads back there instead of to Projects.
-  const fromSettings = useNavHistory((s) => {
-    const { entries, index } = s.history;
-    const here = entries[index];
-    const before = entries[index - 1];
-    return here?.view === 'project' && here.root === root && before?.view === 'settings' ? before.section : null;
-  });
+  const fromSettings = useNavHistory((s) => settingsOrigin(s.history, root));
 
   useEffect(() => {
     setIsGitRepo(false);

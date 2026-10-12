@@ -105,7 +105,8 @@ describe('cache database', () => {
     const raw = new DatabaseSync(path);
     expect(schemaVersion(raw)).toBe(2);
     raw.close();
-  });
+    // Every migration runs again in the side file; on a busy Windows runner that has taken 9s.
+  }, 30_000);
 
   it('tells corruption apart from other SQLite errors', () => {
     expect(isCorruptionError({ errcode: 26, message: 'file is not a database' })).toBe(true);

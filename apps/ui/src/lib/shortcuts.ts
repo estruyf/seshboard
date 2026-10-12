@@ -217,7 +217,7 @@ export const sameShortcut = (a: string, b: string) =>
 
 /** Where you are, for `when()`. Built from the stores (and where focus was) when the shortcuts sheet opens. */
 export interface ShortcutContext {
-  view: "home" | "new-session" | "session" | "settings" | "projects" | "project";
+  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage";
   /** A session is open in the session view. */
   session: boolean;
   /** Claude is working, or waiting for you, in that session. */
@@ -243,7 +243,8 @@ export type ShortcutSection =
   | "permissions"
   | "actions"
   | "new-session"
-  | "settings";
+  | "settings"
+  | "usage";
 
 /** The sections' headings, in the sheet and the README. */
 export const SECTION_TITLES: Record<ShortcutSection, string> = {
@@ -254,6 +255,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
   permissions: "Permissions and questions",
   actions: "Project actions",
   "new-session": "New session",
+  usage: "Usage",
   settings: "Settings",
 };
 
@@ -324,6 +326,13 @@ export const SHORTCUTS = [
     section: "general",
   },
   { id: "home", keys: ["mod+shift+h"], action: "Home", section: "general" },
+  {
+    id: "usage.open",
+    keys: [],
+    action: "Open usage",
+    section: "general",
+    note: "No key by default: use the command palette, or click a usage bar",
+  },
   {
     id: "settings",
     keys: ["mod+,"],
@@ -744,6 +753,40 @@ export const SHORTCUTS = [
     context: "Starts when you say so",
     when: (ctx) => ctx.view === "new-session",
     where: "composer",
+  },
+
+  // Usage
+  {
+    id: "usage.limits",
+    keys: ["mod+1"],
+    action: "Show Limits",
+    section: "usage",
+    when: (ctx) => ctx.view === "usage",
+    reserve: false,
+  },
+  {
+    id: "usage.tokens",
+    keys: ["mod+2"],
+    action: "Show Tokens",
+    section: "usage",
+    when: (ctx) => ctx.view === "usage",
+    reserve: false,
+  },
+  {
+    id: "usage.period",
+    keys: ["1..4"],
+    action: "Pick a period",
+    section: "usage",
+    reserve: false,
+    context: "Current window, 24 hours, 7 days, 30 days",
+    when: (ctx) => ctx.view === "usage",
+  },
+  {
+    id: "usage.back",
+    keys: ["escape"],
+    action: "Back to where you were",
+    section: "usage",
+    when: (ctx) => ctx.view === "usage",
   },
 
   // Settings

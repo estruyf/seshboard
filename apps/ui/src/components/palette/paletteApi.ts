@@ -14,6 +14,7 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from '../../state/sessionNav.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { openUsage } from '../../state/usageViewStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
@@ -56,6 +57,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
 
   return {
     goHome: () => useSessions.getState().goHome(),
+    openUsage: () => openUsage(),
     showSearch: () => useOverlay.getState().show('search'),
     showMemorySearch: () => useOverlay.getState().searchMemory(),
     showShortcuts: () => useOverlay.getState().show('shortcuts'),

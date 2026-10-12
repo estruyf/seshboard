@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react';
 import { localizeKeys } from '../lib/shortcuts.ts';
 import { useEffect, useId, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../lib/contextMenu.ts';
@@ -5,8 +6,12 @@ import { Popover } from './ui/Popover.tsx';
 
 export interface MenuItem {
   label: string;
+  /** A second, quieter line under the label (a profile's account and folder). */
+  detail?: string;
   icon?: ReactNode;
   hint?: string;
+  /** Marks the current choice with a check. */
+  checked?: boolean;
   danger?: boolean;
   disabled?: boolean;
   /** `data-*` attributes for the item's button (test hooks). */
@@ -23,7 +28,7 @@ export type MenuEntry = MenuItem | 'separator' | { heading: string } | { title: 
 
 /** The enabled items of a menu, in order. */
 function menuItems(menu: HTMLElement | null): HTMLElement[] {
-  return menu ? Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')) : [];
+  return menu ? Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled)')) : [];
 }
 
 /**
@@ -118,7 +123,8 @@ export function Menu({
           <button
             key={i}
             type="button"
-            role="menuitem"
+            role={entry.checked === undefined ? 'menuitem' : 'menuitemradio'}
+            aria-checked={entry.checked}
             disabled={entry.disabled}
             {...entry.data}
             onClick={() => {
@@ -148,8 +154,16 @@ export function Menu({
                 {entry.icon}
               </span>
             )}
-            <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+            {entry.detail ? (
+              <span className="grid min-w-0 flex-1">
+                <span className="truncate">{entry.label}</span>
+                <span className="truncate text-meta text-muted">{entry.detail}</span>
+              </span>
+            ) : (
+              <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+            )}
             {entry.hint && <span className="shrink-0 text-meta text-faint">{localizeKeys(entry.hint)}</span>}
+            {entry.checked && <Check size={13} className="shrink-0 text-accent-ink" aria-hidden />}
           </button>
         ),
       )}

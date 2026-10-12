@@ -59,6 +59,8 @@ export interface UsageMonitorOptions {
   env: () => Promise<Record<string, string>>;
   claudePath: () => Promise<string | undefined>;
   onChange: (usage: UsageSnapshot | null) => void;
+  /** Every fetch that brought numbers, changed or not (the plan % history records each check). */
+  onFetched?: (usage: UsageSnapshot) => void;
   log: (level: LogLevel, message: string) => void;
   /** Helper processes register in the live registry while they run; tell the engine to ignore them. */
   ephemeral: { add(sessionId: string): void; delete(sessionId: string): void };
@@ -67,6 +69,8 @@ export interface UsageMonitorOptions {
   retryMs?: number;
   /** Give up on a fetch after this long (default 20 s). */
   timeoutMs?: number;
+  /** Report these numbers and never start Claude Code (the website's screenshots, whose demo logins have no plan). */
+  fixed?: UsageSnapshot;
 }
 
 const STALE_MS = 60_000;
@@ -90,10 +94,19 @@ export class UsageMonitor {
   constructor(private readonly options: UsageMonitorOptions) {}
 
   async get(refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }> {
+    if (this.options.fixed) {
+      this.snapshot ??= this.options.fixed;
+      return { usage: this.snapshot, error: null };
+    }
     const stale = !this.snapshot || Date.now() - this.snapshot.fetchedAt > STALE_MS;
     if (refresh || stale) await this.fetch();
     if (!this.stopped) this.start();
     return { usage: this.snapshot, error: this.error };
+  }
+
+  /** The last numbers fetched, without fetching. */
+  current(): UsageSnapshot | null {
+    return this.snapshot;
   }
 
   /** Something used the plan (a turn finished, a rate-limit update): refresh soon, once. */
@@ -135,7 +148,7 @@ export class UsageMonitor {
   }
 
   private fetch(): Promise<void> {
-    if (this.stopped) return Promise.resolve();
+    if (this.stopped || this.options.fixed) return Promise.resolve();
     this.inflight ??= this.run().finally(() => (this.inflight = undefined));
     return this.inflight;
   }
@@ -173,7 +186,10 @@ export class UsageMonitor {
         : timedOut
           ? 'Claude Code did not report plan usage in time'
           : 'No plan usage available (API key sign-in, or the usage endpoint is unreachable)';
-      if (next) this.misses = 0;
+      if (next) {
+        this.misses = 0;
+        this.options.onFetched?.(next);
+      }
       if (!next) {
         // A miss (the endpoint can be briefly unavailable): keep the last good numbers, try again soon.
         this.retrySoon();
