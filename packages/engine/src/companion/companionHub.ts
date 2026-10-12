@@ -18,6 +18,8 @@ export interface CompanionHubOptions {
   appVersion: string;
   /** Everything the engine knows about sessions right now. */
   sources(): SessionSources;
+  /** Settings › Sessions: the archive days, so the editor lists what the sidebar lists. */
+  archiveAfterDays(): number;
   /** Switchboard windows attached to the engine. */
   windows(): number;
   /** Answers a permission prompt, question or plan (throws NOT_FOUND when it was already answered). */
@@ -152,7 +154,7 @@ export class CompanionHub {
     const window = this.windowFocus.at(-1);
     const focusedId = window?.sessionId ?? null;
     const sources = this.options.sources();
-    const all = companionSessions(sources, { keep: focusedId, scope: window?.scope ?? 'switchboard' });
+    const all = companionSessions(sources, { keep: focusedId, scope: window?.scope ?? 'switchboard', archiveAfterDays: this.options.archiveAfterDays() });
     const sessions = sessionsFor(all, folders, limit);
     return {
       sessions,

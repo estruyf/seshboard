@@ -44,6 +44,7 @@ import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { ContextItems } from './context.ts';
 import { CompanionTarget } from './companion.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
+import { KEEP_REASONS } from './retention.ts';
 import { ExportCandidate, HealthFinding, LoadEntry, MemoryHit, MemoryImportPreview, MemoryList, PersonalMemory, SectionCopy, SharePreview, ShareTarget } from './memory.ts';
 
 export const ClaudeInstall = z.object({
@@ -142,6 +143,32 @@ export const contract = {
      * Stops it first when it runs in this app; refuses (SESSION_BUSY_ELSEWHERE) when another window has it open.
      */
     'session.delete': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /**
+     * Moves many sessions to the Trash, as `session.delete` does for one, and says which went and which stayed. Keeps
+     * pinned and working sessions, ones that need you, are open in another window, or have a queued prompt or an unsent
+     * message. Refuses (NO_TRASH) when nothing can move files to the Trash: it never deletes for good.
+     */
+    'sessions.deleteMany': {
+      params: z.object({ sessionIds: z.array(SessionId).max(20_000) }),
+      result: z.object({
+        deleted: z.array(z.object({ id: z.string(), fileSize: z.number().nullable() })),
+        skipped: z.array(z.object({ id: z.string(), reason: z.enum([...KEEP_REASONS, 'not-found', 'failed']), error: z.string().nullable() })),
+      }),
+    },
+    /** Shows a session's transcript in Finder (Explorer on Windows). */
+    'session.reveal': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Shows a profile's projects folder, where Claude Code keeps its transcripts. */
+    'profiles.revealProjects': { params: z.object({ profileId: ProfileId }), result: z.object({}) },
+    /**
+     * Claude Code's own clean-up, per profile: `cleanupPeriodDays` in its config folder's `settings.json` (null when the
+     * key is missing, so Claude Code uses 30 days). `error` when the file isn't readable JSON.
+     */
+    'profiles.cleanupPeriods': {
+      params: z.object({}),
+      result: z.object({ profiles: z.array(z.object({ profileId: z.string(), settingsPath: z.string(), days: z.number().nullable(), error: z.string().nullable() })) }),
+    },
+    /** Sets `cleanupPeriodDays` in a profile's `settings.json` (null removes it), keeping every other setting. */
+    'profiles.setCleanupPeriod': { params: z.object({ profileId: ProfileId, days: z.number().int().min(1).max(36_500).nullable() }), result: z.object({}) },
     /**
      * Gives a session a title of your own, stored in its transcript like Claude Code's `/rename`,
      * so `claude --resume` shows it too. The new title arrives with `sessions.changed`.

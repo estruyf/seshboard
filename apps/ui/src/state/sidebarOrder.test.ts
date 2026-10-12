@@ -39,15 +39,15 @@ const rows = [
 
 describe('sidebarGroups', () => {
   it('lists the same sessions in the same order as the open sidebar, without archived ones', () => {
-    const { active, archived } = buildSessionList(rows, { search: '', project: null, now: NOW });
+    const { active, archived } = buildSessionList(rows, { search: '', project: null, now: NOW, archiveAfterDays: 2 });
     const sidebar = buildListRows(active, archived, { now: NOW, archivedOpen: false }).flatMap((r) => (r.kind === 'session' ? [r.data.id] : []));
-    const order = sidebarOrder(sidebarGroups(rows, { now: NOW })).map((r) => r.id);
+    const order = sidebarOrder(sidebarGroups(rows, { now: NOW, archiveAfterDays: 2 })).map((r) => r.id);
     expect(order).toEqual(sidebar);
     expect(order).not.toContain('archived');
   });
 
   it('puts the groups in the sidebar order', () => {
-    expect(sidebarGroups(rows, { now: NOW }).map((g) => g.group)).toEqual(['needs-you', 'working', 'today', 'yesterday']);
+    expect(sidebarGroups(rows, { now: NOW, archiveAfterDays: 2 }).map((g) => g.group)).toEqual(['needs-you', 'working', 'today', 'yesterday']);
   });
 });
 
@@ -71,7 +71,7 @@ describe('stepSession', () => {
   });
 
   it('skips archived sessions because the order leaves them out', () => {
-    const ids = sidebarOrder(sidebarGroups(rows, { now: NOW })).map((r) => r.id);
+    const ids = sidebarOrder(sidebarGroups(rows, { now: NOW, archiveAfterDays: 2 })).map((r) => r.id);
     const seen = new Set<string>();
     let id: string | null = ids[0]!;
     for (let i = 0; i < ids.length; i++) {
@@ -84,7 +84,7 @@ describe('stepSession', () => {
 });
 
 describe('nextNeedsYou', () => {
-  const order = sidebarOrder(sidebarGroups(rows, { now: NOW }));
+  const order = sidebarOrder(sidebarGroups(rows, { now: NOW, archiveAfterDays: 2 }));
 
   it('goes to the next waiting session, wrapping', () => {
     expect(nextNeedsYou(order, 'working')).toBe('asking');

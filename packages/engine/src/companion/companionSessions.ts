@@ -1,4 +1,4 @@
-import { isSameOrInside, type CompanionSession, type CompanionStatus, type LiveSession, type PermissionRequest, type SessionHostInfo, type SessionSummary } from '@switchboard/protocol';
+import { isSameOrInside, listedInMainList, type CompanionSession, type CompanionStatus, type LiveSession, type PermissionRequest, type SessionHostInfo, type SessionSummary } from '@switchboard/protocol';
 
 /** What the engine knows about sessions: transcripts, running processes, and the ones this app runs. */
 export interface SessionSources {
@@ -31,9 +31,6 @@ export function companionStatus(summary: SessionSummary | null, live: LiveSessio
 
 const realBranch = (branch: string | null) => (branch && branch !== 'HEAD' ? branch : null);
 
-/** Sessions with activity in this window stay in the sidebar's main list (`RECENT_MS` in the UI). */
-export const RECENT_MS = 48 * 60 * 60 * 1000;
-
 interface Listing {
   status: CompanionStatus;
   pinned: boolean;
@@ -47,17 +44,24 @@ interface Listing {
 }
 
 /**
- * Whether Switchboard's sidebar shows the session in its main list rather than under Archived (`isActive` in the
- * UI): what needs you, failed or is pinned; nothing archived by hand until there's news; then what works, is open
- * in the app, was unarchived by hand with nothing new since, is unread, or had activity in the last 48 hours.
+ * Whether Switchboard's sidebar shows the session in its main list rather than under Archived: the sidebar's own rule
+ * (`listedInMainList`, which its `isActive` uses too), with the archive days from Settings › Sessions.
  */
-export function listedInSidebar(s: Listing, now: number): boolean {
-  if (s.status === 'needs-you' || s.status === 'error' || s.pinned) return true;
-  // A session archived while it works stays archived until it has finished.
-  if (s.archivedAt !== null && (s.archivedAt >= s.updatedAt || s.status === 'working')) return false;
-  if (s.status === 'working') return true;
-  if (s.restoredAt !== null && s.restoredAt >= s.updatedAt) return true;
-  return s.openInApp || s.unread || now - s.updatedAt < RECENT_MS;
+export function listedInSidebar(s: Listing, now: number, archiveAfterDays: number): boolean {
+  return listedInMainList(
+    {
+      attention: s.status === 'needs-you' || s.status === 'error',
+      working: s.status === 'working',
+      pinned: s.pinned,
+      archivedAt: s.archivedAt,
+      restoredAt: s.restoredAt,
+      unread: s.unread,
+      updatedAt: s.updatedAt,
+      openInApp: s.openInApp,
+    },
+    now,
+    archiveAfterDays,
+  );
 }
 
 export interface ListingOptions {
@@ -66,13 +70,15 @@ export interface ListingOptions {
   keep?: string | null;
   /** The sidebar's choice: only sessions from Switchboard (the default), or every session. */
   scope?: 'switchboard' | 'all';
+  /** Settings › Sessions: finished sessions are archived after this many days. */
+  archiveAfterDays: number;
 }
 
 /**
  * The sessions Switchboard's sidebar lists outside Archived, under its scope: indexed ones, and running ones that
  * haven't written a transcript yet.
  */
-export function companionSessions(sources: SessionSources, { now = Date.now(), keep = null, scope = 'all' }: ListingOptions = {}): CompanionSession[] {
+export function companionSessions(sources: SessionSources, { now = Date.now(), keep = null, scope = 'all', archiveAfterDays }: ListingOptions): CompanionSession[] {
   const live = new Map(sources.live.map((l) => [l.sessionId, l]));
   const hosts = new Map(sources.hosts.map((h) => [h.sessionId, h]));
   const out: CompanionSession[] = [];
@@ -87,7 +93,7 @@ export function companionSessions(sources: SessionSources, { now = Date.now(), k
     const inApp = summary.inApp || l?.origin === 'app';
     if (summary.id !== keep) {
       if (scope === 'switchboard' && !inApp) continue;
-      if (!listedInSidebar({ status, pinned: summary.pinned, archivedAt: summary.archivedAt, restoredAt: summary.restoredAt, unread: summary.unread, updatedAt, openInApp }, now)) continue;
+      if (!listedInSidebar({ status, pinned: summary.pinned, archivedAt: summary.archivedAt, restoredAt: summary.restoredAt, unread: summary.unread, updatedAt, openInApp }, now, archiveAfterDays)) continue;
     }
     out.push({
       id: summary.id,
@@ -110,7 +116,7 @@ export function companionSessions(sources: SessionSources, { now = Date.now(), k
     const status = companionStatus(null, l, host);
     if (p.id !== keep) {
       if (scope === 'switchboard' && p.origin !== 'app') continue;
-      if (!listedInSidebar({ status, pinned: false, archivedAt: null, restoredAt: null, unread: false, updatedAt: p.at, openInApp: p.origin === 'app' }, now)) continue;
+      if (!listedInSidebar({ status, pinned: false, archivedAt: null, restoredAt: null, unread: false, updatedAt: p.at, openInApp: p.origin === 'app' }, now, archiveAfterDays)) continue;
     }
     out.push({
       id: p.id,

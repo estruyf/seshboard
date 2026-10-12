@@ -102,8 +102,8 @@ describe('project tiles', () => {
       row('archived', { archivedAt: NOW, updatedAt: NOW - 2 * HOUR }),
       row('elsewhere', { projectRoot: '/p/b' }),
     ];
-    expect(pickUpRows(rows, '/p/a', NOW).map((r) => r.id)).toEqual(['waiting', 'working', 'new', 'old']);
-    expect(pickUpRows(rows, '/p/a', NOW, 2).map((r) => r.id)).toEqual(['waiting', 'working']);
+    expect(pickUpRows(rows, '/p/a', NOW, 2).map((r) => r.id)).toEqual(['waiting', 'working', 'new', 'old']);
+    expect(pickUpRows(rows, '/p/a', NOW, 2, 2).map((r) => r.id)).toEqual(['waiting', 'working']);
   });
 
   it('remember the branch of each folder\'s latest session, not its worktrees', () => {

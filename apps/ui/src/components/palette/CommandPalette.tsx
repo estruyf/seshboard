@@ -202,7 +202,7 @@ export function CommandPalette() {
         if (found.length) out.push({ id: 'sessions', label: 'Sessions', rows: found.map(({ item, indices }) => ({ kind: 'session', key: `session:${item.id}`, data: item, indices, draft: drafted.has(item.id) })) });
       } else {
         // Nothing typed: unsent messages first, then the sidebar's groups in its order, so ⌘P stands in for it while it's closed.
-        const { unsent: unsentItems, groups } = gotoWithDrafts(sessionRows, unsent.map((e) => e.item), Date.now(), GOTO_SESSIONS);
+        const { unsent: unsentItems, groups } = gotoWithDrafts(sessionRows, unsent.map((e) => e.item), Date.now(), usePreferences.getState().prefs.archiveAfterDays, GOTO_SESSIONS);
         const entries = new Map(unsent.map((e) => [e.item.key, e]));
         if (unsentItems.length) {
           out.push({

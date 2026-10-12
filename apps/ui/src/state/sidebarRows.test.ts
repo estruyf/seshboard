@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LaterItem, LiveSession, SessionHostInfo } from '@switchboard/protocol/client';
 import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
 import type { QueueEntry } from './queue.ts';
-import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, RECENT_MS, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startOfDay, startupSession, waitingLabel } from './sidebarRows.ts';
+import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startOfDay, startupSession, waitingLabel } from './sidebarRows.ts';
 import { closedSections, DEFAULT_SECTIONS, parseSections, toggleAllSections } from './sidebarSections.ts';
 
 const NOW = Date.UTC(2026, 9, 5, 12);
@@ -41,7 +41,9 @@ const live = (status: LiveSession['status']): LiveSession => ({
   profileId: 'default',
 });
 
-const old = NOW - RECENT_MS - HOUR;
+/** The archive days these tests use: two, the 48 hours sessions were archived after before it was a setting. */
+const DAYS = 2;
+const old = NOW - DAYS * 24 * HOUR - HOUR;
 const ids = (rows: SessionRowData[]) => rows.map((r) => r.id);
 
 describe('rowStatus', () => {
@@ -59,33 +61,41 @@ describe('rowStatus', () => {
 
 describe('isActive', () => {
   it('keeps recent, open, unread, pinned and failing sessions in the main list', () => {
-    expect(isActive(row('a'), NOW)).toBe(true);
-    expect(isActive(row('a', { updatedAt: old }), NOW)).toBe(false);
-    expect(isActive(row('a', { updatedAt: old, unread: true }), NOW)).toBe(true);
-    expect(isActive(row('a', { updatedAt: old, pinned: true }), NOW)).toBe(true);
-    expect(isActive(row('a', { updatedAt: old, live: { ...live('idle'), origin: 'app' } }), NOW)).toBe(true);
+    expect(isActive(row('a'), NOW, DAYS)).toBe(true);
+    expect(isActive(row('a', { updatedAt: old }), NOW, DAYS)).toBe(false);
+    expect(isActive(row('a', { updatedAt: old, unread: true }), NOW, DAYS)).toBe(true);
+    expect(isActive(row('a', { updatedAt: old, pinned: true }), NOW, DAYS)).toBe(true);
+    expect(isActive(row('a', { updatedAt: old, live: { ...live('idle'), origin: 'app' } }), NOW, DAYS)).toBe(true);
     // Idle in another Claude Code window (e.g. Claude desktop reopening it at launch) isn't news.
-    expect(isActive(row('a', { updatedAt: old, live: live('idle') }), NOW)).toBe(false);
-    expect(isActive(row('a', { updatedAt: old, error: true }), NOW)).toBe(true);
+    expect(isActive(row('a', { updatedAt: old, live: live('idle') }), NOW, DAYS)).toBe(false);
+    expect(isActive(row('a', { updatedAt: old, error: true }), NOW, DAYS)).toBe(true);
   });
 
   it('honours archiving by hand until there is new activity, but never hides work in progress', () => {
-    expect(isActive(row('a', { archivedAt: NOW - HOUR / 2 }), NOW)).toBe(false);
-    expect(isActive(row('a', { archivedAt: NOW - 2 * HOUR }), NOW)).toBe(true);
-    expect(isActive(row('a', { archivedAt: NOW, live: live('idle') }), NOW)).toBe(false);
-    expect(isActive(row('a', { archivedAt: NOW, live: live('needs-you') }), NOW)).toBe(true);
+    expect(isActive(row('a', { archivedAt: NOW - HOUR / 2 }), NOW, DAYS)).toBe(false);
+    expect(isActive(row('a', { archivedAt: NOW - 2 * HOUR }), NOW, DAYS)).toBe(true);
+    expect(isActive(row('a', { archivedAt: NOW, live: live('idle') }), NOW, DAYS)).toBe(false);
+    expect(isActive(row('a', { archivedAt: NOW, live: live('needs-you') }), NOW, DAYS)).toBe(true);
     // Archiving a session that's working hides it until it finishes, despite its updates.
-    expect(isActive(row('a', { archivedAt: NOW - HOUR, updatedAt: NOW, live: live('running') }), NOW)).toBe(false);
-    expect(isActive(row('a', { archivedAt: NOW - HOUR, updatedAt: NOW, live: live('idle') }), NOW)).toBe(true);
+    expect(isActive(row('a', { archivedAt: NOW - HOUR, updatedAt: NOW, live: live('running') }), NOW, DAYS)).toBe(false);
+    expect(isActive(row('a', { archivedAt: NOW - HOUR, updatedAt: NOW, live: live('idle') }), NOW, DAYS)).toBe(true);
   });
 
   it('keeps a session unarchived by hand in the main list until it has new activity', () => {
-    expect(isActive(row('a', { updatedAt: old, restoredAt: old + HOUR }), NOW)).toBe(true);
-    expect(isActive(row('a', { updatedAt: old - 30 * 24 * HOUR, restoredAt: old }), NOW)).toBe(true);
+    expect(isActive(row('a', { updatedAt: old, restoredAt: old + HOUR }), NOW, DAYS)).toBe(true);
+    expect(isActive(row('a', { updatedAt: old - 30 * 24 * HOUR, restoredAt: old }), NOW, DAYS)).toBe(true);
     // Activity since then: archived again after 48 quiet hours, like any session.
-    expect(isActive(row('a', { updatedAt: old, restoredAt: old - HOUR }), NOW)).toBe(false);
+    expect(isActive(row('a', { updatedAt: old, restoredAt: old - HOUR }), NOW, DAYS)).toBe(false);
   });
 
+  it('archives after the days set in Settings › Sessions', () => {
+    const day = 24 * HOUR;
+    const quiet = row('a', { updatedAt: NOW - 4 * day });
+    expect(isActive(quiet, NOW, 3)).toBe(false);
+    expect(isActive(quiet, NOW, 5)).toBe(true);
+    expect(isActive(row('a', { updatedAt: NOW - 2 * day }), NOW, 1)).toBe(false);
+    expect(isActive(row('a', { updatedAt: NOW - 300 * day }), NOW, 365)).toBe(true);
+  });
 });
 
 describe('archivesOnMiddleClick', () => {
@@ -93,16 +103,16 @@ describe('archivesOnMiddleClick', () => {
   const indexed = (id: string, overrides: Partial<SessionRowData> = {}) => row(id, { summary: { id } as SessionRowData['summary'], ...overrides });
 
   it('archives finished sessions in the main list only', () => {
-    expect(archivesOnMiddleClick(indexed('a'), NOW)).toBe(true);
-    expect(archivesOnMiddleClick(indexed('a', { unread: true }), NOW)).toBe(true);
-    expect(archivesOnMiddleClick(indexed('a', { live: live('idle') }), NOW)).toBe(true);
-    expect(archivesOnMiddleClick(indexed('a', { pinned: true }), NOW)).toBe(true);
-    expect(archivesOnMiddleClick(indexed('a', { live: live('running') }), NOW)).toBe(false);
-    expect(archivesOnMiddleClick(indexed('a', { live: live('needs-you') }), NOW)).toBe(false);
-    expect(archivesOnMiddleClick(indexed('a', { live: { ...live('idle'), background: ['npm run dev'] } }), NOW)).toBe(false);
-    expect(archivesOnMiddleClick(indexed('a', { error: true }), NOW)).toBe(false);
-    expect(archivesOnMiddleClick(indexed('a', { archivedAt: NOW }), NOW)).toBe(false);
-    expect(archivesOnMiddleClick(row('a'), NOW)).toBe(false);
+    expect(archivesOnMiddleClick(indexed('a'), NOW, DAYS)).toBe(true);
+    expect(archivesOnMiddleClick(indexed('a', { unread: true }), NOW, DAYS)).toBe(true);
+    expect(archivesOnMiddleClick(indexed('a', { live: live('idle') }), NOW, DAYS)).toBe(true);
+    expect(archivesOnMiddleClick(indexed('a', { pinned: true }), NOW, DAYS)).toBe(true);
+    expect(archivesOnMiddleClick(indexed('a', { live: live('running') }), NOW, DAYS)).toBe(false);
+    expect(archivesOnMiddleClick(indexed('a', { live: live('needs-you') }), NOW, DAYS)).toBe(false);
+    expect(archivesOnMiddleClick(indexed('a', { live: { ...live('idle'), background: ['npm run dev'] } }), NOW, DAYS)).toBe(false);
+    expect(archivesOnMiddleClick(indexed('a', { error: true }), NOW, DAYS)).toBe(false);
+    expect(archivesOnMiddleClick(indexed('a', { archivedAt: NOW }), NOW, DAYS)).toBe(false);
+    expect(archivesOnMiddleClick(row('a'), NOW, DAYS)).toBe(false);
   });
 });
 
@@ -116,27 +126,27 @@ describe('buildSessionList', () => {
   ];
 
   it('puts pinned first, then newest, and the rest in Archived', () => {
-    const list = buildSessionList(rows, { search: '', project: null, now: NOW });
+    const list = buildSessionList(rows, { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
     expect(ids(list.active)).toEqual(['pinned-old', 'newest', 'recent']);
     expect(ids(list.archived)).toEqual(['old', 'older']);
   });
 
   it('lists sessions archived by hand with the quiet ones, newest first', () => {
-    const list = buildSessionList([...rows, row('gone-recent', { archivedAt: NOW })], { search: '', project: null, now: NOW });
+    const list = buildSessionList([...rows, row('gone-recent', { archivedAt: NOW })], { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
     expect(ids(list.active)).toEqual(['pinned-old', 'newest', 'recent']);
     expect(ids(list.archived)).toEqual(['gone-recent', 'old', 'older']);
   });
 
   it('lists only Switchboard sessions in that scope', () => {
     const mixed = [row('mine', { inApp: true }), row('cli')];
-    expect(ids(buildSessionList(mixed, { search: '', project: null, now: NOW, scope: 'switchboard' }).active)).toEqual(['mine']);
-    expect(ids(buildSessionList(mixed, { search: '', project: null, now: NOW, scope: 'all' }).active)).toEqual(['mine', 'cli']);
+    expect(ids(buildSessionList(mixed, { search: '', project: null, now: NOW, archiveAfterDays: DAYS, scope: 'switchboard' }).active)).toEqual(['mine']);
+    expect(ids(buildSessionList(mixed, { search: '', project: null, now: NOW, archiveAfterDays: DAYS, scope: 'all' }).active)).toEqual(['mine', 'cli']);
     expect(inScope(row('cli'), 'switchboard')).toBe(false);
   });
 
   it('filters by project and by search', () => {
-    expect(ids(buildSessionList(rows, { search: '', project: '/p/b', now: NOW }).active)).toEqual(['newest']);
-    const found = buildSessionList(rows, { search: 'LOGIN', project: null, now: NOW });
+    expect(ids(buildSessionList(rows, { search: '', project: '/p/b', now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['newest']);
+    const found = buildSessionList(rows, { search: 'LOGIN', project: null, now: NOW, archiveAfterDays: DAYS });
     expect([...ids(found.active), ...ids(found.archived)]).toEqual(['old']);
   });
 });
@@ -192,14 +202,14 @@ describe('groupSessions', () => {
     const working = (id: string, since: number, updatedAt: number, pinned = false) => row(id, { updatedAt, pinned, live: { ...live('running'), updatedAt: since } });
     // 'first' was started before 'second' but wrote more recently: it stays below.
     const rows = [working('first', NOW - 10 * 60_000, NOW), working('second', NOW - 5 * 60_000, NOW - 60_000), working('pin', NOW - HOUR, NOW - HOUR, true)];
-    const list = buildSessionList(rows, { search: '', project: null, now: NOW });
+    const list = buildSessionList(rows, { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
     expect(groupSessions(list.active, NOW).map((g) => ids(g.rows))).toEqual([['pin', 'second', 'first']]);
   });
 
   it('lists pinned sessions above the days, newest first', () => {
     const list = buildSessionList(
       [row('new', { updatedAt: NOW - 60_000 }), row('pin', { updatedAt: midnight + 1, pinned: true }), row('old-pin', { updatedAt: old, pinned: true })],
-      { search: '', project: null, now: NOW },
+      { search: '', project: null, now: NOW, archiveAfterDays: DAYS },
     );
     expect(groupSessions(list.active, NOW).map((g) => [g.group, ids(g.rows)])).toEqual([
       ['pinned', ['pin', 'old-pin']],
@@ -208,7 +218,7 @@ describe('groupSessions', () => {
   });
 
   it('keeps pinned sessions at the top of Needs you', () => {
-    const list = buildSessionList([row('ask', { updatedAt: NOW, live: live('needs-you') }), row('pin', { updatedAt: old, pinned: true, live: live('needs-you') })], { search: '', project: null, now: NOW });
+    const list = buildSessionList([row('ask', { updatedAt: NOW, live: live('needs-you') }), row('pin', { updatedAt: old, pinned: true, live: live('needs-you') })], { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
     expect(groupSessions(list.active, NOW).map((g) => ids(g.rows))).toEqual([['pin', 'ask']]);
   });
 });
@@ -318,10 +328,10 @@ describe('buildListRows', () => {
 
   it('finds the section a session sits in', () => {
     const all = [...active, ...archived];
-    expect(sectionOfSession(all, 'busy', NOW)).toBe('working');
-    expect(sectionOfSession(all, 'a', NOW)).toBe('today');
-    expect(sectionOfSession(all, 'old', NOW)).toBeNull();
-    expect(sectionOfSession(all, 'missing', NOW)).toBeNull();
+    expect(sectionOfSession(all, 'busy', NOW, DAYS)).toBe('working');
+    expect(sectionOfSession(all, 'a', NOW, DAYS)).toBe('today');
+    expect(sectionOfSession(all, 'old', NOW, DAYS)).toBeNull();
+    expect(sectionOfSession(all, 'missing', NOW, DAYS)).toBeNull();
   });
 
   it('lists the sessions under each header, for Select all', () => {
@@ -408,7 +418,7 @@ describe('toRows', () => {
     const busy: SessionHostInfo = { sessionId: 'busy', cwd: '/p/a', state: 'running', model: null, permissionMode: 'default', effort: null, costUsd: 0, contextPercent: null, contextTokens: null, contextMax: null, error: null, startedAt: NOW - 2 * HOUR, promptedAt: null, queued: 0, profileId: 'default', backgroundTasks: [] };
     const fresh: SessionHostInfo = { ...busy, sessionId: 'fresh', state: 'starting', startedAt: NOW };
     const rows = toRows(new Map([['busy', summary]]), new Map(), new Map([['busy', busy], ['fresh', fresh]]));
-    expect(ids(buildSessionList(rows, { search: '', project: null, now: NOW }).active)).toEqual(['fresh', 'busy']);
+    expect(ids(buildSessionList(rows, { search: '', project: null, now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['fresh', 'busy']);
   });
 
   it('dates a session from this app by the last message you sent it', () => {

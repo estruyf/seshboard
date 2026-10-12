@@ -117,6 +117,16 @@
       "page": "settings"
     },
     {
+      "id": "palette:manage-sessions",
+      "name": "Manage sessions",
+      "page": "settings/sessions"
+    },
+    {
+      "id": "palette:delete-archived-sessions",
+      "name": "Delete archived sessions…",
+      "page": "settings/sessions"
+    },
+    {
       "id": "palette:dock-below",
       "name": "Dock terminal below",
       "page": "terminal-changes-git/terminal"
@@ -415,6 +425,11 @@
       "id": "palette:settings-sidebar",
       "name": "settings-sidebar",
       "page": "settings"
+    },
+    {
+      "id": "palette:settings-sessions",
+      "name": "Settings: Sessions",
+      "page": "settings/sessions"
     },
     {
       "id": "palette:settings-theme",
@@ -892,6 +907,11 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "settings:sessions",
+      "name": "Settings: Sessions",
+      "page": "settings/sessions"
+    },
+    {
       "id": "settings:theme",
       "name": "Settings: Theme",
       "page": "settings"
@@ -1038,7 +1058,7 @@
     },
     {
       "id": "feature:auto-archive",
-      "name": "Auto-archive after 48 hours",
+      "name": "Auto-archive after the days you set",
       "page": "sessions/archived"
     },
     {

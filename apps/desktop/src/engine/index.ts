@@ -3,6 +3,7 @@
  * one MessagePort per window; everything the UI needs goes over those ports.
  */
 import { createEngine, type TrashScope } from '@switchboard/engine';
+import { ARCHIVE_AFTER_DAYS, clampDays, DELETE_AFTER_DAYS } from '@switchboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
 function argValue(name: string): string | undefined {
@@ -45,7 +46,14 @@ process.on('unhandledRejection', (reason) =>
 );
 
 process.parentPort.on('message', (event) => {
-  const data = event.data as { type?: unknown; id?: number; error?: string } | null;
+  const data = event.data as { type?: unknown; id?: number; error?: string; archiveAfterDays?: unknown; deleteArchived?: { enabled?: unknown; afterDays?: unknown } } | null;
+  // Settings › Sessions, from main's preferences (sent at start and after each change).
+  if (data?.type === 'retention') {
+    const archiveAfterDays = clampDays(data.archiveAfterDays, ARCHIVE_AFTER_DAYS) ?? ARCHIVE_AFTER_DAYS.default;
+    const afterDays = clampDays(data.deleteArchived?.afterDays, DELETE_AFTER_DAYS) ?? DELETE_AFTER_DAYS.default;
+    engine.setRetention({ archiveAfterDays, deleteArchived: { enabled: data.deleteArchived?.enabled === true, afterDays } });
+    return;
+  }
   if (data?.type === 'trash-result' && typeof data.id === 'number') {
     const pending = pendingTrash.get(data.id);
     pendingTrash.delete(data.id);

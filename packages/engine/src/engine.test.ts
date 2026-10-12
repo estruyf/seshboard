@@ -54,7 +54,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime } = {}) {
+function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -62,7 +62,7 @@ function connect(extra: { trashed?: string[][]; source?: SessionSource | ((dataD
   writeFileSync(join(projectDir, `${SESSION_ID}.jsonl`), '{"entrypoint":"cli"}\n');
   mkdirSync(join(projectDir, SESSION_ID, 'subagents'), { recursive: true });
   const engine = createEngine({
-    trash: async (paths) => void extra.trashed?.push(paths),
+    ...(extra.noTrash ? {} : { trash: async (paths: string[]) => void extra.trashed?.push(paths) }),
     dataDir,
     claudeConfigDir: join(dataDir, 'claude'),
     // No login shell and an empty PATH, so the test never depends on the machine.
@@ -258,6 +258,86 @@ describe('engine over a MessagePort', () => {
     await client.call('sessions.refresh', {});
     await expect(client.call('session.delete', { sessionId: SESSION_ID })).rejects.toMatchObject({ code: 'SESSION_BUSY_ELSEWHERE' });
     expect(trashed).toEqual([]);
+  });
+
+  it('refuses to delete sessions when nothing can move them to the Trash', async () => {
+    const { client, projectDir } = connect({ noTrash: true });
+    await new Promise((resolve) => client.on('sessions.changed', resolve));
+    await expect(client.call('session.delete', { sessionId: SESSION_ID })).rejects.toMatchObject({ code: 'NO_TRASH' });
+    await expect(client.call('sessions.deleteMany', { sessionIds: [SESSION_ID] })).rejects.toMatchObject({ code: 'NO_TRASH' });
+    expect(existsSync(join(projectDir, `${SESSION_ID}.jsonl`))).toBe(true);
+    expect((await client.call('sessions.list', {})).sessions.map((s) => s.id)).toEqual([SESSION_ID]);
+  });
+
+  describe('deleting many sessions', () => {
+    const OTHER_ID = '44444444-4444-4444-8444-444444444444';
+    const PINNED_ID = '55555555-5555-4555-8555-555555555555';
+    const DRAFT_ID = '66666666-6666-4666-8666-666666666666';
+    const QUEUED_ID = '77777777-7777-4777-8777-777777777777';
+    const ids = [SESSION_ID, OTHER_ID, PINNED_ID, DRAFT_ID, QUEUED_ID];
+    // Five old sessions, each with a transcript on disk.
+    const source = (dataDir: string): SessionSource => {
+      const dir = join(dataDir, 'claude', 'projects', '-work-parser');
+      mkdirSync(dir, { recursive: true });
+      for (const id of ids) writeFileSync(join(dir, `${id}.jsonl`), '{"entrypoint":"cli"}\n');
+      return { ...fakeSource, list: async () => ids.map((sessionId) => ({ sessionId, summary: sessionId.slice(0, 4), lastModified: 42, cwd: PARSER })) };
+    };
+    const ready = async (client: ReturnType<typeof connect>['client']) => {
+      await new Promise((resolve) => client.on('sessions.changed', resolve));
+      await client.call('sessions.setFlags', { sessionId: PINNED_ID, pinned: true });
+      await client.call('appState.set', { key: 'ui.drafts', value: { version: 1, drafts: { [DRAFT_ID]: { text: 'not sent yet', updatedAt: 1, images: 0 }, 'new:/work/parser': { text: 'a new one', updatedAt: 1, images: 0 } } } });
+      await client.call('later.add', { draft: { cwd: PARSER, prompt: 'After that one' }, waitFor: { kind: 'session', sessionId: QUEUED_ID } });
+    };
+
+    it('moves the free ones to the Trash and says why the others stay', async () => {
+      const trashed: string[][] = [];
+      const { client } = connect({ trashed, source });
+      await ready(client);
+      const result = await client.call('sessions.deleteMany', { sessionIds: [...ids, 'gone-already'] });
+      expect(result.deleted.map((d) => d.id).sort()).toEqual([OTHER_ID, SESSION_ID].sort());
+      expect(Object.fromEntries(result.skipped.map((s) => [s.id, s.reason]))).toEqual({ [PINNED_ID]: 'pinned', [DRAFT_ID]: 'draft', [QUEUED_ID]: 'queued', 'gone-already': 'not-found' });
+      expect(trashed.flat().filter((p) => p.endsWith('.jsonl'))).toHaveLength(2);
+      expect((await client.call('sessions.list', {})).sessions.map((s) => s.id).sort()).toEqual([PINNED_ID, DRAFT_ID, QUEUED_ID].sort());
+    });
+
+    it('keeps a session another Claude Code window has open', async () => {
+      const trashed: string[][] = [];
+      const { client, dataDir } = connect({ trashed, source });
+      await ready(client);
+      const registry = join(dataDir, 'claude', 'sessions');
+      mkdirSync(registry, { recursive: true });
+      writeFileSync(join(registry, `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: OTHER_ID, status: 'idle' }));
+      await client.call('sessions.refresh', {});
+      const result = await client.call('sessions.deleteMany', { sessionIds: [OTHER_ID] });
+      expect(result).toEqual({ deleted: [], skipped: [{ id: OTHER_ID, reason: 'open-elsewhere', error: null }] });
+      expect(trashed).toEqual([]);
+    });
+
+    it('does nothing in the daily run while deleting is off', async () => {
+      const trashed: string[][] = [];
+      const { engine, client } = connect({ trashed, source });
+      await ready(client);
+      engine.setRetention({ archiveAfterDays: 3, deleteArchived: { enabled: false, afterDays: 1 } });
+      await expect(engine.deleteArchivedNow()).resolves.toBeNull();
+      expect(trashed).toEqual([]);
+      expect((await client.call('sessions.list', {})).sessions).toHaveLength(ids.length);
+    });
+
+    it('deletes archived sessions as soon as it is on, with the same sessions kept, and logs it', async () => {
+      const trashed: string[][] = [];
+      const logs: string[] = [];
+      const { engine, client } = connect({ trashed, source });
+      client.on('engine.log', (entry) => void logs.push(entry.message));
+      await ready(client);
+      // The first settings after the scan start the launch run; a run asked for now waits for it.
+      engine.setRetention({ archiveAfterDays: 3, deleteArchived: { enabled: true, afterDays: 30 } });
+      await expect(engine.deleteArchivedNow()).resolves.toMatchObject({ deleted: 0, failed: 0 });
+      expect((await client.call('sessions.list', {})).sessions.map((s) => s.id).sort()).toEqual([PINNED_ID, DRAFT_ID, QUEUED_ID].sort());
+      expect(trashed.flat().filter((p) => p.endsWith('.jsonl'))).toHaveLength(2);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      // Pinned isn't archived at all; the draft and the queued prompt keep theirs.
+      expect(logs.find((line) => line.startsWith('Deleting archived sessions'))).toMatch(/moved 2 to the Trash \(.+\); kept 2 \(has an unsent message, has a queued prompt\)|moved 2 to the Trash \(.+\); kept 2 \(has a queued prompt, has an unsent message\)/);
+    });
   });
 
   it('runs shell actions in a terminal tab and refuses unapproved shared ones', async () => {

@@ -177,7 +177,7 @@ export class SessionIndex {
 
   /**
    * Pins or archives a session (or undoes it) and tells every window. Unarchiving keeps the session in the main
-   * list until it has new activity: one quiet for more than 48 hours would otherwise stay under Archived.
+   * list until it has new activity: one quiet for longer than the archive days would otherwise stay under Archived.
    */
   setFlags(sessionId: string, change: { pinned?: boolean; archived?: boolean }): void {
     const current = this.flags.get(sessionId) ?? NO_FLAGS;
