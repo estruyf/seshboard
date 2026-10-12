@@ -129,8 +129,9 @@ export function UsageView() {
             data-usage-profile-menu
           >
             {profile && <ProfileDot color={profile.color} size={8} />}
-            <span className="truncate">{profile?.name ?? 'Claude'}</span>
-            {profile?.account?.email && <span className="truncate text-faint">{profile.account.email}</span>}
+            {/* The name stays whole; the email gives way first. */}
+            <span className="max-w-40 shrink-0 truncate">{profile?.name ?? 'Claude'}</span>
+            {profile?.account?.email && <span className="min-w-0 truncate text-faint">{profile.account.email}</span>}
             <ChevronDown size={13} className="shrink-0 text-muted" aria-hidden />
           </button>
           <div className="no-drag ml-auto flex shrink-0 items-center gap-2">

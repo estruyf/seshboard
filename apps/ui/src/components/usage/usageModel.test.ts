@@ -19,6 +19,7 @@ import {
   resetsIn,
   seriesColor,
   stackOf,
+  spreadLabels,
   sumTokens,
   visibleSeries,
 } from './usageModel.ts';
@@ -155,5 +156,14 @@ describe('charts', () => {
     expect(bucketLabel(at, 'hour', 'day', 'en-GB', 'UTC')).toBe('14:00');
     expect(bucketLabel(at, 'day', 'week', 'en-GB', 'UTC')).toBe('Mon');
     expect(bucketLabel(at, 'day', 'month', 'en-GB', 'UTC')).toBe('12 Oct');
+  });
+
+  it('spreads end labels that would overlap, keeping them in bounds', () => {
+    expect(spreadLabels([100, 200], 14, 0, 300)).toEqual([100, 200]);
+    // Weekly 31% and Session 32%: a pixel apart, pushed to a full line apart.
+    expect(spreadLabels([180, 179], 14, 0, 300)).toEqual([193, 179]);
+    // At the bottom edge they move up instead.
+    expect(spreadLabels([300, 298], 14, 0, 300)).toEqual([300, 286]);
+    expect(spreadLabels([], 14, 0, 300)).toEqual([]);
   });
 });

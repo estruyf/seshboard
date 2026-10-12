@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import type { PlanSeries, UsageBucket, UsagePeriod } from '@switchboard/protocol/client';
-import { bucketLabel, formatTokens, niceMax, seriesColor, seriesName, stackOf, sumTokens, TOKEN_COLOR, TOKEN_LABEL, TOKEN_TYPES, type TokenType } from './usageModel.ts';
+import { bucketLabel, formatTokens, niceMax, seriesColor, seriesName, spreadLabels, stackOf, sumTokens, TOKEN_COLOR, TOKEN_LABEL, TOKEN_TYPES, type TokenType } from './usageModel.ts';
 
 /** The width of an element, following resizes. */
 function useWidth(ref: RefObject<HTMLElement | null>): number {
@@ -249,6 +249,9 @@ export function PercentLines({ series, from, to, period, height = 300 }: { serie
       resets.push({ at, name: seriesName(s) });
     }
   }
+  // Each line's points in range, and its end label nudged clear of the others (Weekly and Session often sit close).
+  const ends = series.map((s) => ({ s, points: s.points.filter((p) => p.at >= from && p.at <= to) })).filter((l) => l.points.length);
+  const labelY = spreadLabels(ends.map((l) => y(l.points.at(-1)!.percent)), 14, top, top + plotH);
   const onMove = (event: MouseEvent<SVGRectElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
     const at = from + ((event.clientX - box.left) / box.width) * (to - from);
@@ -281,9 +284,7 @@ export function PercentLines({ series, from, to, period, height = 300 }: { serie
               </text>
             </g>
           ))}
-          {series.map((s) => {
-            const points = s.points.filter((p) => p.at >= from && p.at <= to);
-            if (!points.length) return null;
+          {ends.map(({ s, points }, i) => {
             const last = points.at(-1)!;
             return (
               <g key={`${s.kind}:${s.scope ?? ''}`} data-usage-line={s.kind}>
@@ -298,7 +299,7 @@ export function PercentLines({ series, from, to, period, height = 300 }: { serie
                 />
                 {/* A ring in the card's colour keeps the end dot clear of lines it overlaps. */}
                 <circle cx={x(last.at)} cy={y(last.percent)} r="4" fill={seriesColor(s)} stroke="var(--sb-card)" strokeWidth="2" />
-                <text x={x(last.at) + 10} y={y(last.percent)} dy="0.32em" fontSize="12" fill="var(--sb-text)">
+                <text x={x(last.at) + 10} y={labelY[i]} dy="0.32em" fontSize="12" fill="var(--sb-text)">
                   {seriesName(s)} {Math.round(last.percent)}%
                 </text>
               </g>
