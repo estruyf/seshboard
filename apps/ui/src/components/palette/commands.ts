@@ -74,6 +74,7 @@ import {
   StopCircle,
   Sun,
   Target,
+  TextQuote,
   TextSearch,
   Trash2,
   Undo2,
@@ -140,6 +141,8 @@ export interface PaletteApi {
   copyLastReply(): void;
   /** Remember this…: the selected text in the conversation, else Claude's last reply, as a memory. */
   rememberThis(): void;
+  /** Quote in reply: the selected text in the conversation, else Claude's last reply, quoted in the message box. */
+  quoteInReply(): void;
   copySessionId(): void;
   checkTranscript(): void;
   toggleTerminal(): void;
@@ -527,6 +530,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'change-effort', title: 'Change effort…', group: 'session', icon: Gauge, keywords: 'thinking', when: (ctx) => hosted(ctx) && session(ctx)!.host!.supportsEffort, next: () => ({ kind: 'pick', list: 'effort', chip: 'Effort' }) },
   { id: 'change-mode', title: 'Change permission mode…', group: 'session', shortcut: keysFor('mode.cycle'), icon: ShieldCheck, keywords: 'plan accept edits auto', when: hosted, next: () => ({ kind: 'pick', list: 'mode', chip: 'Permission mode' }) },
   { id: 'remember-this', title: 'Remember this…', group: 'session', icon: Brain, keywords: 'memory save note selection reply', when: (ctx) => !!session(ctx)?.hasReply && ctx.connected, run: (api) => api.rememberThis() },
+  { id: 'quote-in-reply', title: 'Quote in reply', group: 'session', icon: TextQuote, keywords: 'quote answer question selection reply message box', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.quoteInReply() },
   { id: 'copy-last-reply', title: 'Copy last reply', group: 'session', icon: Copy, keywords: 'clipboard markdown answer', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.copyLastReply() },
   { id: 'copy-session-id', title: 'Copy session id', group: 'session', icon: Hash, keywords: 'clipboard uuid resume', when: (ctx) => session(ctx) !== null, run: (api) => api.copySessionId() },
   { id: 'check-transcript', title: 'Check transcript…', group: 'session', icon: Stethoscope, keywords: 'diagnose empty missing messages error debug compacted', when: (ctx) => session(ctx) !== null && ctx.connected, run: (api) => api.checkTranscript() },

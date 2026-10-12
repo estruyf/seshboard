@@ -1,4 +1,4 @@
-import { Brain, Copy } from 'lucide-react';
+import { Brain, Copy, TextQuote } from 'lucide-react';
 import { useEffect, useState, type MouseEvent } from 'react';
 import { contextMenuPoint, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { Menu } from '../Menu.tsx';
@@ -20,10 +20,10 @@ function selectionIn(): { text: string; element: HTMLElement } | null {
 const fromOf = (element: HTMLElement): 'user' | 'claude' => (element.dataset.rememberFrom === 'user' ? 'user' : 'claude');
 
 /**
- * Remember this from the conversation: right-click a message (Copy for a selection, and Remember this…, for the
- * selection or the whole message), or select text and use the small Remember this button that shows over it.
+ * Remember this and Quote from the conversation: right-click a message (Copy for a selection, then Quote and
+ * Remember this…, for the selection or the whole message), or select text and use the small buttons that show over it.
  */
-export function useRememberLayer({ textOf, onRemember }: { textOf(key: string): string | null; onRemember(text: string, from: 'user' | 'claude'): void }) {
+export function useRememberLayer({ textOf, onRemember, onQuote }: { textOf(key: string): string | null; onRemember(text: string, from: 'user' | 'claude'): void; onQuote(text: string): void }) {
   const [menu, setMenu] = useState<{ at: ContextMenuPoint; text: string; selection: boolean; from: 'user' | 'claude' } | null>(null);
   const [chip, setChip] = useState<{ x: number; y: number; text: string; from: 'user' | 'claude' } | null>(null);
 
@@ -63,9 +63,14 @@ export function useRememberLayer({ textOf, onRemember }: { textOf(key: string): 
     <>
       {chip && (
         <div className="overlay fixed z-50 -translate-x-full -translate-y-full rounded-lg border p-0.5" style={{ left: chip.x, top: chip.y - 4 }} data-remember-selection>
-          <Button size="sm" variant="quiet" icon={<Brain size={12} aria-hidden />} onMouseDown={(e) => e.preventDefault()} onClick={() => (setChip(null), onRemember(chip.text, chip.from))}>
-            Remember this
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <Button size="sm" variant="quiet" icon={<TextQuote size={12} aria-hidden />} onMouseDown={(e) => e.preventDefault()} onClick={() => (setChip(null), onQuote(chip.text))} data-tooltip="Quote it in the message box" data-quote-selection>
+              Quote
+            </Button>
+            <Button size="sm" variant="quiet" icon={<Brain size={12} aria-hidden />} onMouseDown={(e) => e.preventDefault()} onClick={() => (setChip(null), onRemember(chip.text, chip.from))} data-remember-button>
+              Remember this
+            </Button>
+          </div>
         </div>
       )}
       {menu && (
@@ -77,6 +82,7 @@ export function useRememberLayer({ textOf, onRemember }: { textOf(key: string): 
           onClose={() => setMenu(null)}
           entries={[
             ...(menu.selection ? [{ label: 'Copy', icon: <Copy size={13} aria-hidden />, onSelect: () => void navigator.clipboard.writeText(menu.text) }] : []),
+            { label: menu.selection ? 'Quote' : 'Quote message', icon: <TextQuote size={13} aria-hidden />, onSelect: () => onQuote(menu.text), data: { 'data-quote-menu': true } },
             { label: menu.selection ? 'Remember this…' : 'Remember this message…', icon: <Brain size={13} aria-hidden />, onSelect: () => onRemember(menu.text, menu.from), data: { 'data-remember-menu': true } },
           ]}
         />

@@ -54,6 +54,23 @@ export function wrapInCode(text: string, start: number, end: number): TextEdit |
   return { from: start, to: end, insert: `${open}${selected}${pad}${ticks}`, select: [start + open.length, start + open.length + selected.length] };
 }
 
+/** `quoted` as a Markdown quote: `> ` before each line, runs of blank lines as one `>`, no blank lines around it. */
+export function asQuote(quoted: string): string {
+  const lines = quoted.replace(/\r\n?/g, '\n').replace(/\s+$/, '').replace(/^\s*\n/, '').replace(/\n\s*\n(\s*\n)+/g, '\n\n').split('\n');
+  return lines.map((line) => (line.trim() ? `> ${line.trimEnd()}` : '>')).join('\n');
+}
+
+/**
+ * Quote in reply: `quoted` as a Markdown quote at the end of the message, after a blank line, with the caret
+ * on a new line under it, ready for your answer. Null when there is nothing to quote.
+ */
+export function appendQuote(text: string, quoted: string): TextEdit | null {
+  const quote = asQuote(quoted);
+  if (quote === '>' || !quote) return null;
+  const before = !text ? '' : text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n';
+  return { from: text.length, to: text.length, insert: `${before}${quote}\n\n` };
+}
+
 /** Makes the edit as if typed, so ⌘Z undoes it; `fallback` sets the text where the browser can't. */
 export function applyEdit(el: HTMLTextAreaElement, edit: TextEdit, fallback: (text: string) => void) {
   const [selectStart, selectEnd] = edit.select ?? [edit.from + edit.insert.length, edit.from + edit.insert.length];

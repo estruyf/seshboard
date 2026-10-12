@@ -2930,8 +2930,8 @@ async function runRememberStep(win: BrowserWindow): Promise<string> {
     return selection.toString().trim();
   })()`)) as string;
   if (!selected) return 'ok: the first reply has no text to select';
-  if (!(await waitInPage(win, "document.querySelector('[data-remember-selection] button')", 3_000))) return 'no Remember this button over the selection';
-  await js("document.querySelector('[data-remember-selection] button').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-remember-selection] [data-remember-button]')", 3_000))) return 'no Remember this button over the selection';
+  await js("document.querySelector('[data-remember-selection] [data-remember-button]').click()");
   if (!(await waitInPage(win, "document.querySelector('[data-remember-dialog] [data-remember-text]')", 3_000))) return 'Remember this did not open its dialog';
   const text = (await js("document.querySelector('[data-remember-dialog] [data-remember-text]').value")) as string;
   const name = (await js("document.querySelector('[data-remember-dialog] [data-remember-name]').value")) as string;
@@ -2944,6 +2944,41 @@ async function runRememberStep(win: BrowserWindow): Promise<string> {
   if (!name) return 'no suggested name';
   if (type !== 'project') return `Claude's text started as type "${type}", not project`;
   return `ok: selected ${selected.length} characters, the dialog suggested "${name}" (project), cancelled`;
+}
+
+/**
+ * Quote in reply: select a few words of one of Claude's replies, use the Quote button over the selection, and check
+ * the message box holds them as a Markdown quote with the focus in it. Nothing is sent; the box is emptied again.
+ */
+async function runQuoteStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const box = `${view} [data-composer]`;
+  if (!(await js(`!!document.querySelector('${view} [data-transcript] [data-remember-from="claude"] p')`))) return 'ok: no reply of Claude on screen to quote';
+  if ((await js(`document.querySelector('${box}')?.value ?? null`)) !== '') return 'ok: the message box is not empty, nothing quoted';
+  const selected = (await js(`(() => {
+    const p = document.querySelector('${view} [data-transcript] [data-remember-from="claude"] p');
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    return selection.toString().trim();
+  })()`)) as string;
+  if (!selected) return 'ok: the first reply has no text to select';
+  if (!(await waitInPage(win, "document.querySelector('[data-remember-selection] [data-quote-selection]')", 3_000))) return 'no Quote button over the selection';
+  await js("document.querySelector('[data-remember-selection] [data-quote-selection]').click()");
+  const quoted = await waitInPage(win, `document.querySelector('${box}').value !== ''`, 3_000);
+  const value = (await js(`document.querySelector('${box}').value`)) as string;
+  const focused = (await js(`document.activeElement === document.querySelector('${box}')`)) as boolean;
+  await setFieldValue(win, box, '');
+  await js('window.getSelection().removeAllRanges()');
+  if (!quoted) return 'Quote did not put anything in the message box';
+  const firstLine = selected.split('\n')[0]!.trim();
+  if (!value.startsWith(`> ${firstLine}`) || !value.endsWith('\n\n')) return `the message box does not hold the quote ("${value.slice(0, 40)}")`;
+  if (!focused) return 'the message box did not take focus after Quote';
+  return `ok: quoted ${selected.length} characters as ${value.trimEnd().split('\n').length} quote lines, focus in the message box, emptied again`;
 }
 
 async function runReplyActionsStep(win: BrowserWindow): Promise<string> {
@@ -4942,6 +4977,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('remember this', () => runRememberStep(win));
+  await step('quote in reply', () => runQuoteStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
   await step('unsent drafts', () => runDraftStep(win));
   await step('unsent messages', () => runUnsentStep(win));

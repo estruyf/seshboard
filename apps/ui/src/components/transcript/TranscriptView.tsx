@@ -604,13 +604,14 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     };
   }, [client, items, sessionId, select, cwd, projectRoot]);
 
-  // Remember this… from a selection or a whole message (right-click, or the button over a selection).
+  // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
     textOf: (key) => {
       const item = items.find((i) => i.key === key);
       return item && (item.kind === 'user' || item.kind === 'text') ? item.text : null;
     },
     onRemember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
+    onQuote: (text) => useDrafts.getState().requestQuote(sessionId, text),
   });
 
   // The command palette's Fork…, Rewind…, Copy last reply: your prompts and Claude's last reply, from the active pane.

@@ -11,7 +11,7 @@ import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { onFirstLine, onLastLine, textareaRows } from './caretLine.ts';
-import { deadKeyWrap, editKey } from './editing.ts';
+import { appendQuote, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { tokenAtCaret } from './tokens.ts';
 import { useAttachments } from './useAttachments.ts';
@@ -226,6 +226,22 @@ export function Composer(props: ComposerProps) {
     useDrafts.getState().clearFocus();
     caretToEnd(true);
   }, [focusRequest, props.disabledReason]);
+
+  // Quote in reply: the quote goes at the end, as if typed (so ⌘Z takes it out), and the caret under it.
+  const quoteRequest = useDrafts((s) => (draftKey !== undefined && s.quote?.key === draftKey ? s.quote : null));
+  useEffect(() => {
+    if (!quoteRequest) return;
+    useDrafts.getState().clearQuote();
+    const el = ref.current;
+    const edit = appendQuote(el?.value ?? text, quoteRequest.text);
+    if (!edit) return;
+    if (!el || el.disabled) return setText((current) => current + edit.insert);
+    history.current!.reset();
+    closePalette();
+    el.focus();
+    applyEdit(el, edit, setText);
+    el.scrollTop = el.scrollHeight;
+  }, [quoteRequest]);
 
   // Mounting with autoFocus, or a new focusRequest, focuses the prompt. While the prompt is disabled
   // (engine connecting, no folder yet) the request waits, and is dropped if by then the user is typing

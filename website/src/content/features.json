@@ -322,6 +322,11 @@
       "page": "new-session/quick-questions"
     },
     {
+      "id": "palette:quote-in-reply",
+      "name": "Quote in reply",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "palette:reload-skills",
       "name": "Reload skills",
       "page": "command-palette"
@@ -2030,6 +2035,11 @@
       "id": "feature:quit-show-unsent",
       "name": "Show unsent in the quit prompt",
       "page": "sessions/unsent-drafts"
+    },
+    {
+      "id": "feature:quote-in-reply",
+      "name": "Quote a selection in the message box",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:recovery-refs",

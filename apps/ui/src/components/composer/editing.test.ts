@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { continueList, wrapInCode, type TextEdit } from './editing.ts';
+import { appendQuote, asQuote, continueList, wrapInCode, type TextEdit } from './editing.ts';
 
 /** Presses ⇧↵ with the caret at `|` and returns the text with the caret after the edit. */
 function press(withCaret: string): string | null {
@@ -86,5 +86,36 @@ describe('wrapInCode', () => {
 
   it('does nothing without a selection', () => {
     expect(backtick('caret here[]')).toBeNull();
+  });
+});
+
+/** Quotes `quoted` at the end of `text` and returns the result with the caret after the edit. */
+function quote(text: string, quoted: string): string | null {
+  const edit = appendQuote(text, quoted);
+  if (!edit) return null;
+  return `${text.slice(0, edit.from)}${edit.insert}|${text.slice(edit.to)}`;
+}
+
+describe('asQuote', () => {
+  it('puts > before every line and keeps one empty quote line between paragraphs', () => {
+    expect(asQuote('Which port?')).toBe('> Which port?');
+    expect(asQuote('One.\nTwo.')).toBe('> One.\n> Two.');
+    expect(asQuote('\n\nOne.\r\n\r\n\r\n  \nTwo.  \n\n')).toBe('> One.\n>\n> Two.');
+  });
+});
+
+describe('appendQuote', () => {
+  it('quotes into an empty box with the caret on a new line under it', () => {
+    expect(quote('', 'Should I keep the old API?')).toBe('> Should I keep the old API?\n\n|');
+  });
+
+  it('adds the quote after a blank line under what is there', () => {
+    expect(quote('> First?\n\nYes.', 'Second?')).toBe('> First?\n\nYes.\n\n> Second?\n\n|');
+    expect(quote('Yes.\n', 'Second?')).toBe('Yes.\n\n> Second?\n\n|');
+    expect(quote('Yes.\n\n', 'Second?')).toBe('Yes.\n\n> Second?\n\n|');
+  });
+
+  it('does nothing with only white space', () => {
+    expect(quote('Hi', ' \n\n ')).toBeNull();
   });
 });
