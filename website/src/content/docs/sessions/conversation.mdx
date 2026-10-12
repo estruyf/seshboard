@@ -56,7 +56,8 @@ Each run of tool calls is one line, like Claude Code: what Claude is doing right
 - A **Tasks** pill above the message box shows Claude's to-do list ("Tasks 2 of 5"); click it to open the list.
 - A green pill above the message box lists what runs in the background, such as a long command or an agent, with a way to stop each one.
 - A file Claude names in a reply, such as `src/search/suggestions.ts:69`, is a link. Click it to open the file in your editor at that line.
-- Images open full size with a click. ← and → step through a message's images.
+- Images in your messages show above the text, so **Show more** never hides them: one image at its own shape, two to four as thumbnails, and five or more as tiles with +N for the rest. Hover one for its type, size and pixel size.
+- Images open full size with a click. <Kbd keys="arrowleft|arrowright" /> (or the filmstrip at the bottom) step through all of a message's images.
 
 Prefer to see each tool call as its own card? Choose **Every step** in [Settings, Conversation](/settings/#conversation).
 
@@ -89,6 +90,8 @@ In a narrow pane the chips get shorter (effort and mode show only their icon) in
 
 Under the message box, a line shows your plan usage (your 5-hour and weekly limits; hover for when they reset) and a ring for how full the **context window** is. Click the ring to see what fills it, like `/context`, and **Compact now** to compact the conversation. *Compact context* in the command palette does the same.
 
+After a compaction the whole conversation stays: a *Conversation compacted* line marks each place it was compacted, and you can scroll back past it.
+
 ## The hover toolbar
 
 Hover over a message for its toolbar:
@@ -100,8 +103,11 @@ Hover over a message for its toolbar:
 - **On Claude's replies:**
   - **Fork from here.** A new session with the conversation up to this message.
   - **Copy as Markdown.**
+- **On both:** **Remember this…** (the brain button) saves the message as a memory. See [Remember this](/memory/adding-memory/#remember-this).
 
 You can also select text in any message and press <Kbd keys="mod+c" />. The command palette has *Fork session…* and *Rewind to a message…* to pick a message from a list, and *Copy last reply*.
+
+To save part of a message as a memory, select it and click **Remember this**, or right-click it and choose **Remember this…**.
 
 ## Continue a past session
 
@@ -124,6 +130,7 @@ The **⋯** button in the header holds:
 - **Continue in VS Code:** stops the session in Switchboard and opens it in Claude Code's VS Code extension, in the window for its folder. It shows when VS Code is installed, and waits until Claude is done. Also *Continue in VS Code* in the command palette.
 - The project's [actions](/projects/actions/).
 - **Profile** (with more than one Claude profile), **Rename…**, **Agents**, and **Check transcript…**, which explains why a conversation looks empty or short.
+- **Memories from this session**, when Claude saved memories during it. Click one to open it in the editor.
 - **Stop session:** ends the Claude Code process for this session. The conversation is kept, and sending a message starts it again.
 
 <OnlyOn os="windows">

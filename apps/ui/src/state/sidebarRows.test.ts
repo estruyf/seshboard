@@ -19,6 +19,7 @@ const row = (id: string, overrides: Partial<SessionRowData> = {}): SessionRowDat
   summary: null,
   pinned: false,
   archivedAt: null,
+  restoredAt: null,
   unread: false,
   inApp: false,
   error: false,
@@ -76,6 +77,13 @@ describe('isActive', () => {
     // Archiving a session that's working hides it until it finishes, despite its updates.
     expect(isActive(row('a', { archivedAt: NOW - HOUR, updatedAt: NOW, live: live('running') }), NOW)).toBe(false);
     expect(isActive(row('a', { archivedAt: NOW - HOUR, updatedAt: NOW, live: live('idle') }), NOW)).toBe(true);
+  });
+
+  it('keeps a session unarchived by hand in the main list until it has new activity', () => {
+    expect(isActive(row('a', { updatedAt: old, restoredAt: old + HOUR }), NOW)).toBe(true);
+    expect(isActive(row('a', { updatedAt: old - 30 * 24 * HOUR, restoredAt: old }), NOW)).toBe(true);
+    // Activity since then: archived again after 48 quiet hours, like any session.
+    expect(isActive(row('a', { updatedAt: old, restoredAt: old - HOUR }), NOW)).toBe(false);
   });
 
 });
@@ -381,7 +389,7 @@ describe('toRows', () => {
   });
 
   it('does not let an idle process move a session up', () => {
-    const summary = { id: 's', title: 's', firstPrompt: null, customTitle: null, cwd: '/p/a', projectRoot: '/p/a', gitBranch: null, worktree: null, origin: 'cli', createdAt: null, updatedAt: 1_000, fileSize: null, tag: null, pinned: false, archivedAt: null, viewedAt: null, unread: false, inApp: false, profileId: 'default' } as const;
+    const summary = { id: 's', title: 's', firstPrompt: null, customTitle: null, cwd: '/p/a', projectRoot: '/p/a', gitBranch: null, worktree: null, origin: 'cli', createdAt: null, updatedAt: 1_000, fileSize: null, tag: null, pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, unread: false, inApp: false, profileId: 'default' } as const;
     const sessions = new Map([['s', summary]]);
     expect(toRows(sessions, new Map([['s', { ...live('idle'), sessionId: 's', updatedAt: 9_000 }]]))[0]!.updatedAt).toBe(1_000);
     expect(toRows(sessions, new Map([['s', { ...live('running'), sessionId: 's', updatedAt: 9_000 }]]))[0]!.updatedAt).toBe(9_000);
@@ -396,7 +404,7 @@ describe('toRows', () => {
   });
 
   it('puts a session started in this app above one already working', () => {
-    const summary = { id: 'busy', title: 'busy', firstPrompt: null, customTitle: null, cwd: '/p/a', projectRoot: '/p/a', gitBranch: null, worktree: null, origin: 'cli', createdAt: null, updatedAt: NOW - HOUR, fileSize: null, tag: null, pinned: false, archivedAt: null, viewedAt: null, unread: false, inApp: true, profileId: 'default' } as const;
+    const summary = { id: 'busy', title: 'busy', firstPrompt: null, customTitle: null, cwd: '/p/a', projectRoot: '/p/a', gitBranch: null, worktree: null, origin: 'cli', createdAt: null, updatedAt: NOW - HOUR, fileSize: null, tag: null, pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, unread: false, inApp: true, profileId: 'default' } as const;
     const busy: SessionHostInfo = { sessionId: 'busy', cwd: '/p/a', state: 'running', model: null, permissionMode: 'default', effort: null, costUsd: 0, contextPercent: null, contextTokens: null, contextMax: null, error: null, startedAt: NOW - 2 * HOUR, promptedAt: null, queued: 0, profileId: 'default', backgroundTasks: [] };
     const fresh: SessionHostInfo = { ...busy, sessionId: 'fresh', state: 'starting', startedAt: NOW };
     const rows = toRows(new Map([['busy', summary]]), new Map(), new Map([['busy', busy], ['fresh', fresh]]));

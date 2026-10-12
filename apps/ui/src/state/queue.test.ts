@@ -48,6 +48,7 @@ const session = (id: string, status: LiveSession['status'] | null, overrides: Pa
   summary: null,
   pinned: false,
   archivedAt: null,
+  restoredAt: null,
   unread: false,
   inApp: true,
   error: false,

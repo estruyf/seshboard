@@ -31,6 +31,7 @@ const row = (id: string, overrides: Partial<SessionRowData> = {}): SessionRowDat
   summary: null,
   pinned: false,
   archivedAt: null,
+  restoredAt: null,
   unread: false,
   inApp: true,
   error: false,

@@ -224,7 +224,7 @@ describe('prompts', () => {
   it('hands an editor the prompts of its folders, and its answers to the engine', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-companion-'));
     const answers: Array<[string, PermissionDecision, boolean]> = [];
-    const summary = { id: SESSION_ID, title: 'Fix the login form', firstPrompt: null, customTitle: null, cwd: WEB, projectRoot: WEB, gitBranch: 'main', worktree: null, origin: 'app', createdAt: null, updatedAt: Date.now(), fileSize: null, tag: null, pinned: false, archivedAt: null, viewedAt: null, unread: false, inApp: true, profileId: 'default' } satisfies SessionSummary;
+    const summary = { id: SESSION_ID, title: 'Fix the login form', firstPrompt: null, customTitle: null, cwd: WEB, projectRoot: WEB, gitBranch: 'main', worktree: null, origin: 'app', createdAt: null, updatedAt: Date.now(), fileSize: null, tag: null, pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, unread: false, inApp: true, profileId: 'default' } satisfies SessionSummary;
     const hub = new CompanionHub({
       infoDir: join(dataDir, COMPANION_DIR),
       appVersion: '9.9.9',
@@ -310,6 +310,7 @@ describe('which sessions are listed', () => {
     tag: null,
     pinned: false,
     archivedAt: null,
+    restoredAt: null,
     viewedAt: null,
     unread: false,
     inApp: true,
@@ -327,8 +328,10 @@ describe('which sessions are listed', () => {
       summary('old', { updatedAt: now - RECENT_MS - 1 }),
       summary('old-unread', { updatedAt: now - RECENT_MS - 1, unread: true }),
       summary('old-pinned', { updatedAt: now - RECENT_MS - 1, pinned: true, archivedAt: now }),
+      summary('old-unarchived', { updatedAt: now - 2 * RECENT_MS, restoredAt: now - RECENT_MS }),
+      summary('quiet-since-unarchived', { updatedAt: now - RECENT_MS - 1, restoredAt: now - 2 * RECENT_MS }),
     ];
-    expect(ids(list)).toEqual(['recent', 'news-since-archived', 'old-unread', 'old-pinned']);
+    expect(ids(list)).toEqual(['recent', 'news-since-archived', 'old-unread', 'old-pinned', 'old-unarchived']);
   });
 
   it('lists only sessions from Switchboard under its default scope', () => {

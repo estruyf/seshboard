@@ -38,6 +38,8 @@ interface Listing {
   status: CompanionStatus;
   pinned: boolean;
   archivedAt: number | null;
+  /** When the user unarchived it by hand; listed until there's activity after it. */
+  restoredAt: number | null;
   unread: boolean;
   updatedAt: number;
   /** Running in this app, or a process this app started. */
@@ -47,13 +49,14 @@ interface Listing {
 /**
  * Whether Switchboard's sidebar shows the session in its main list rather than under Archived (`isActive` in the
  * UI): what needs you, failed or is pinned; nothing archived by hand until there's news; then what works, is open
- * in the app, is unread, or had activity in the last 48 hours.
+ * in the app, was unarchived by hand with nothing new since, is unread, or had activity in the last 48 hours.
  */
 export function listedInSidebar(s: Listing, now: number): boolean {
   if (s.status === 'needs-you' || s.status === 'error' || s.pinned) return true;
   // A session archived while it works stays archived until it has finished.
   if (s.archivedAt !== null && (s.archivedAt >= s.updatedAt || s.status === 'working')) return false;
   if (s.status === 'working') return true;
+  if (s.restoredAt !== null && s.restoredAt >= s.updatedAt) return true;
   return s.openInApp || s.unread || now - s.updatedAt < RECENT_MS;
 }
 
@@ -84,7 +87,7 @@ export function companionSessions(sources: SessionSources, { now = Date.now(), k
     const inApp = summary.inApp || l?.origin === 'app';
     if (summary.id !== keep) {
       if (scope === 'switchboard' && !inApp) continue;
-      if (!listedInSidebar({ status, pinned: summary.pinned, archivedAt: summary.archivedAt, unread: summary.unread, updatedAt, openInApp }, now)) continue;
+      if (!listedInSidebar({ status, pinned: summary.pinned, archivedAt: summary.archivedAt, restoredAt: summary.restoredAt, unread: summary.unread, updatedAt, openInApp }, now)) continue;
     }
     out.push({
       id: summary.id,
@@ -107,7 +110,7 @@ export function companionSessions(sources: SessionSources, { now = Date.now(), k
     const status = companionStatus(null, l, host);
     if (p.id !== keep) {
       if (scope === 'switchboard' && p.origin !== 'app') continue;
-      if (!listedInSidebar({ status, pinned: false, archivedAt: null, unread: false, updatedAt: p.at, openInApp: p.origin === 'app' }, now)) continue;
+      if (!listedInSidebar({ status, pinned: false, archivedAt: null, restoredAt: null, unread: false, updatedAt: p.at, openInApp: p.origin === 'app' }, now)) continue;
     }
     out.push({
       id: p.id,

@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0]
 
 - Works with Switchboard on Windows (where it listens on a named pipe), and matches Windows folders without regard to case. It starts Switchboard and brings it up there too (with a `switchboard://show` link).
 - The **App Data Folder** setting can only be set in your user settings, not by a workspace, and a folder on another computer is ignored. Only the pipe Switchboard itself makes is connected to.

@@ -21,7 +21,7 @@ The extension's id is `eliostruyf.switchboard-companion`. Install it from:
 - the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=eliostruyf.switchboard-companion), for VS Code;
 - [Open VSX](https://open-vsx.org/extension/eliostruyf/switchboard-companion), for Cursor, Windsurf and VSCodium.
 
-It needs Switchboard on the same computer (a Mac or a Windows PC), and VS Code 1.95 or later. If Switchboard isn't running when you send something, the extension opens it first.
+It needs Switchboard on the same computer (a Mac or a Windows PC), and VS Code 1.95 or later. On Windows, use version 0.2.0 or later of the extension. If Switchboard isn't running when you send something, the extension opens it first.
 
 ## Open it
 
@@ -57,11 +57,13 @@ The extension only adds chips to the message box. Nothing is sent to Claude unti
 
 </Steps>
 
+On Windows, folders match without regard to case.
+
 Switchboard comes to the front on the session when you add something. Turn off `switchboard.bringToFront` in VS Code's settings to add context quietly.
 
 ## Answer prompts in VS Code
 
-When a session in this workspace waits for you, a VS Code notification says which session and what it asks:
+This needs Switchboard 0.0.14 or later. When a session in this workspace waits for you, a VS Code notification says which session and what it asks:
 
 - **A permission** ("Claude wants to run `npm test`"): **Allow**, **Always allow** (when Claude Code offers a rule), **Deny…** (with what to do instead, if you like) or **Show in Switchboard**.
 - **A question**: **Answer…** asks each question in a list (pick several where the question allows, or type your own answer), or **Skip**.

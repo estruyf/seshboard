@@ -36,6 +36,8 @@ export const SessionSummary = z.object({
   pinned: z.boolean(),
   /** When the user archived it by hand; new activity after this brings it back to the main list. */
   archivedAt: z.number().nullable(),
+  /** When the user unarchived it by hand; it stays in the main list until there's activity after this. */
+  restoredAt: z.number().nullable(),
   /** When the user last looked at it in this app. */
   viewedAt: z.number().nullable(),
   /** Changed since the user last looked at it. */

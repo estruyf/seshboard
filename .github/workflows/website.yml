@@ -1,5 +1,5 @@
 # Builds the website (website/, Astro + Starlight) and publishes it to GitHub Pages at
-# https://estruyf.github.io/switchboard/. Pull requests that touch the site, the UI (the shortcuts page is
+# https://switchboard.struyfconsulting.com/. Pull requests that touch the site, the UI (the shortcuts page is
 # built from its registry) or the changelog only build it, so a broken link or a missing screenshot fails there.
 name: Website
 
@@ -7,17 +7,17 @@ on:
   push:
     branches: [main]
     paths:
-      - 'website/**'
-      - 'apps/ui/src/lib/shortcuts.ts'
-      - 'CHANGELOG.md'
-      - 'docs/videos/**'
-      - '.github/workflows/website.yml'
+      - "website/**"
+      - "apps/ui/src/lib/shortcuts.ts"
+      - "CHANGELOG.md"
+      - "docs/videos/**"
+      - ".github/workflows/website.yml"
   pull_request:
     paths:
-      - 'website/**'
-      - 'apps/ui/**'
-      - 'CHANGELOG.md'
-      - '.github/workflows/website.yml'
+      - "website/**"
+      - "apps/ui/**"
+      - "CHANGELOG.md"
+      - ".github/workflows/website.yml"
   release:
     types: [published]
   workflow_dispatch:
@@ -34,9 +34,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -45,7 +45,7 @@ jobs:
       - name: Install
         run: npm ci --workspace @switchboard/website --include-workspace-root
         env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
 
       # Fails on a broken internal link (starlight-links-validator) or a missing screenshot.
       - name: Build

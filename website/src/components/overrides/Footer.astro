@@ -10,12 +10,23 @@ const links = [
   { label: 'MIT License', href: 'https://github.com/estruyf/switchboard/blob/main/LICENSE' },
 ];
 const splash = Astro.locals.starlightRoute.entry.data.template === 'splash';
+/** The README's visitorbadge.io badge, with a slug per page: `website` for the homepage, `website/sessions/sidebar` for the others. */
+const pageId = Astro.locals.starlightRoute.id.replace(/^\/|\/$/g, '');
+const badgeQuery = new URLSearchParams({
+  path: 'https://github.com/estruyf/switchboard',
+  slug: pageId ? `website/${pageId}` : 'website',
+});
+const badge = {
+  href: `https://visitorbadge.io/status?${badgeQuery}`,
+  src: `https://api.visitorbadge.io/api/visitors?${badgeQuery}&labelColor=%2315181f&countColor=%23ffd43b`,
+};
 ---
 
 {!splash && <Default />}
 <nav class="sb-footer not-content" aria-label="Switchboard links">
   <span class="sb-footer-name">Switchboard</span>
   {links.map((link) => <a href={link.href}>{link.label}</a>)}
+  <a class="sb-footer-badge" href={badge.href}><img src={badge.src} alt="Visitors" height="20" /></a>
 </nav>
 
 <style>
@@ -40,5 +51,12 @@ const splash = Astro.locals.starlightRoute.entry.data.template === 'splash';
   }
   .sb-footer a:hover {
     color: var(--sb-text);
+  }
+  .sb-footer-badge {
+    display: inline-flex;
+  }
+  .sb-footer-badge img {
+    display: block;
+    height: 20px;
   }
 </style>
