@@ -1,4 +1,4 @@
-# Every check on macOS and Windows, for every pull request and every push to main, so a change for one platform
+# Every check on macOS and Windows, for every pull request (and on demand), so a change for one platform
 # can't break the other: typecheck and unit tests (npm run check), then the smoke test.
 #
 # The smoke test builds the app, launches the real Electron window with a throwaway profile and drives the UI
