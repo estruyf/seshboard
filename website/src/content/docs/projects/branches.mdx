@@ -1,6 +1,6 @@
 ---
 title: Branches
-description: See every branch of a project, here and on the remote, and delete the ones you no longer need.
+description: See every branch of a project, here and on the remote, switch between them, and delete the ones you no longer need.
 sidebar:
   label: Branches tab
 ---
@@ -10,7 +10,7 @@ import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-The **Branches** tab of a project's page has one row per branch, here and on the remote. It says which ones are merged or deleted on the remote, and deletes the ones you pick: the local copy, the one on the remote, or both.
+The **Branches** tab of a project's page has one row per branch, here and on the remote. It says which ones are merged or deleted on the remote, switches the project to another branch, and deletes the ones you pick: the local copy, the one on the remote, or both.
 
 <Screenshot name="project-branches" alt="The Branches tab of acme-store: a summary strip with local branches, branches on origin, safe to delete and deleted on the remote, then a filter field and a table grouped into In use, Safe to delete, Deleted on the remote and Active" eager />
 
@@ -49,6 +49,17 @@ Type in **Filter branches** to narrow the list by name, remote, last commit or a
 | **Inactive** | No commits for 90 days. |
 | **Active** | Everything else. |
 
+## Switch branches
+
+Right-click a row, or click its **⋯**, and choose **Switch to this branch**. The project's folder (the main checkout) switches to it with `git switch`. A branch that is only on the remote gets a local branch that tracks it.
+
+On the branch the project is on, the menu has **Switch to &lt;base&gt;** instead. Use it when you want to delete that branch: a checked-out branch can't be deleted, so switch to the base branch first, then delete it from the same menu.
+
+- Uncommitted changes come along to the other branch. When git would overwrite them, it refuses, and a toast says why.
+- While Claude is working in the project's folder, wait for it to finish, or stop it first.
+- When other sessions are open in the project's folder, Switchboard asks first: they see the new branch too.
+- A branch checked out in a worktree can't be switched to here. Open the worktree instead, from the [Worktrees tab](/projects/worktrees/).
+
 ## Delete branches
 
 <Steps>
@@ -79,6 +90,7 @@ Use <Kbd keys="arrowup|arrowdown" /> to move between rows, and <Kbd shortcut="co
 
 Right-click a row, or click its **⋯**, for:
 
+- **Switch to this branch**, or **Switch to &lt;base&gt;** on the branch the project is on (see [Switch branches](#switch-branches));
 - **Copy branch name**;
 - **Open pull request #N**, when it has one;
 - **Delete local branch…**;
@@ -102,4 +114,4 @@ Switchboard never deletes:
 
 ## Settings
 
-There are no settings for this tab. To switch the branch a session works on, see [Git](/terminal-changes-git/git/#switch-branch).
+There are no settings for this tab. To switch the branch from a session, see [Git](/terminal-changes-git/git/#switch-branch).

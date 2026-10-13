@@ -2120,8 +2120,8 @@ async function runProjectPageStep(win: BrowserWindow, root: string): Promise<str
 
 /**
  * A project's Branches tab, read-only on a real project: the base branch is locked, the groups render, the filter
- * narrows the rows, and a row's menu and the delete confirmation open and close with Escape. Nothing is ever
- * deleted, and Refresh (which fetches) is never pressed.
+ * narrows the rows, a row's menu (with Switch to this branch on a branch outside In use) and the delete confirmation
+ * open and close with Escape. Nothing is ever deleted or switched to, and Refresh (which fetches) is never pressed.
  */
 async function runProjectBranchesStep(win: BrowserWindow, root: string): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -2160,6 +2160,17 @@ async function runProjectBranchesStep(win: BrowserWindow, root: string): Promise
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
   if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return 'Escape did not close the row menu';
 
+  // A branch that isn't checked out anywhere offers to switch the main checkout to it. The item is never chosen.
+  let switchItem = 'no branch outside In use';
+  const outside = '[data-branch-row]:not([data-group="in-use"]) [data-branch-more]';
+  if (await js(`!!${q(outside)}`)) {
+    await js(`${q(outside)}.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-branch-switch]')", 2_000))) return 'the row menu of a branch that is not checked out has no Switch to this branch';
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return 'Escape did not close the row menu';
+    switchItem = 'switch item shown';
+  }
+
   // The delete confirmation opens on Cancel and closes with Escape. Its Delete button is never pressed.
   let confirm = 'nothing picked';
   if (await js(`!!document.querySelector(${JSON.stringify(`${pageSelector} [data-branch-delete-selected]:not(:disabled)`)})`)) {
@@ -2172,7 +2183,7 @@ async function runProjectBranchesStep(win: BrowserWindow, root: string): Promise
     if (!(await waitInPage(win, "!document.querySelector('[data-branch-delete]')", 2_000))) return 'Escape did not close the delete confirmation';
     confirm = 'delete confirmation opened and cancelled';
   }
-  return `ok: ${rows} branch rows (groups: ${groups.join(', ') || 'none'}), in-use branch locked, filter narrowed and cleared, row menu opened and closed, ${confirm}`;
+  return `ok: ${rows} branch rows (groups: ${groups.join(', ') || 'none'}), in-use branch locked, filter narrowed and cleared, row menu opened and closed (${switchItem}), ${confirm}`;
 }
 
 /**

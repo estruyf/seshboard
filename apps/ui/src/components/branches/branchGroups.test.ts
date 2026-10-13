@@ -16,6 +16,7 @@ import {
   prLabel,
   remoteLock,
   remoteLoss,
+  switchAction,
   toggleSelection,
   validSelection,
 } from './branchGroups.ts';
@@ -70,6 +71,35 @@ describe('locks', () => {
     expect(rows.find((r) => r.key === 'main')!.locked).toBe('The base branch is never deleted');
     expect(rows.find((r) => r.key === 'pr')!.locked).toBe('Checked out in wt');
     expect(rows.find((r) => r.key === 'half')!.locked).toBeNull();
+  });
+});
+
+describe('switchAction', () => {
+  const root = '/work/app';
+  const onMain = (main: BranchEntry) => [main, branch('feature'), branch('wt', { local: local({ checkedOutIn: '/work/app/.claude/worktrees/brave-otter' }) }), branch('remote-only', { local: null, remote: remote('remote-only') })];
+
+  it('switches the main checkout to a branch that is not checked out, here or only on the remote', () => {
+    const entries = onMain(main);
+    expect(switchAction(entries[1]!, entries, root)).toEqual({ branch: 'feature', label: 'Switch to this branch', blocked: null });
+    expect(switchAction(entries[3]!, entries, root)).toEqual({ branch: 'remote-only', label: 'Switch to this branch', blocked: null });
+  });
+
+  it("can't switch to a branch checked out in a worktree", () => {
+    const entries = onMain(main);
+    expect(switchAction(entries[2]!, entries, root)).toEqual({ branch: 'wt', label: 'Switch to this branch', blocked: 'Checked out in brave-otter' });
+  });
+
+  it('offers nothing on the base while it is checked out', () => {
+    expect(switchAction(main, onMain(main), root)).toBeNull();
+  });
+
+  it('offers the base on the branch checked out in the main checkout, so it can be deleted next', () => {
+    const base = branch('main', { isBase: true, local: local() });
+    const current = branch('cleanup', { local: local({ checkedOutIn: root }) });
+    expect(switchAction(current, [base, current], root)).toEqual({ branch: 'main', label: 'Switch to main', blocked: null });
+    const elsewhere = branch('main', { isBase: true, local: local({ checkedOutIn: '/work/app-main' }) });
+    expect(switchAction(current, [elsewhere, current], root)).toEqual({ branch: 'main', label: 'Switch to main', blocked: 'main is checked out in app-main' });
+    expect(switchAction(current, [current], root)).toBeNull();
   });
 });
 

@@ -1,12 +1,11 @@
 import { Check, ChevronDown, GitBranch } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
-import { useSessions } from '../../state/sessionsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { Popover } from '../ui/Popover.tsx';
-import { branchButton, FILTER_FROM, filterBranches, sharedWarning, sharingCheckout } from './branchMenu.ts';
+import { branchButton, FILTER_FROM, filterBranches, sharedWarning } from './branchMenu.ts';
+import { useSharingCheckout } from './useSharingCheckout.ts';
 
 /**
  * The branch checked out in a session's folder (not a worktree), read live from git, as a small text
@@ -47,17 +46,7 @@ export function BranchMenu({ sessionId, cwd, root, busy, onSwitched, openRequest
   }, [load]);
 
   // Other live sessions (in this app or anywhere else) working in the same checkout.
-  const registry = useSessions((s) => s.live);
-  const hosts = useHosts((s) => s.hosts);
-  const others = useMemo(() => {
-    const live = new Map(registry);
-    for (const host of hosts.values()) {
-      const asLive = isActiveHost(host) ? hostAsLive(host) : null;
-      if (asLive) live.set(host.sessionId, asLive);
-    }
-    const ids = sharingCheckout(root, sessionId, live.values());
-    return { ids, cwds: ids.flatMap((id) => live.get(id)?.cwd ?? []) };
-  }, [registry, hosts, root, sessionId]);
+  const others = useSharingCheckout(root, sessionId);
 
   const close = (refocus: boolean) => {
     setOpen(null);

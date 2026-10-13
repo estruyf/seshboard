@@ -696,6 +696,12 @@ describe('Claude profiles', () => {
     expect((await client.call('git.branches', { cwd: repo })).current).toBe('feature');
     writeFileSync(join(registry, `${process.pid}.json`), entry('idle'));
     await expect(client.call('git.switch', { cwd: repo, branch: 'main' })).resolves.toEqual({ current: 'main' });
+
+    // A branch only on a remote (the Branches tab's rows): git makes a local branch that tracks it.
+    await run('remote', 'add', 'origin', join(repo, 'nowhere.git'));
+    await run('update-ref', 'refs/remotes/origin/remote-only', 'other');
+    await expect(client.call('git.switch', { cwd: repo, branch: 'remote-only' })).resolves.toEqual({ current: 'remote-only' });
+    expect((await run('rev-parse', '--abbrev-ref', 'remote-only@{upstream}')).trim()).toBe('origin/remote-only');
   });
 
   it('refuses to switch, merge into or remove a checkout while another session works there', async () => {

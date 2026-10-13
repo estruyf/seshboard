@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Copy, Ellipsis, ExternalLink, GitBranch, Lock, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, Copy, Ellipsis, ExternalLink, GitBranch, Lock, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import type { BranchDeleteResult } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -7,7 +7,9 @@ import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { agoText } from '../../lib/format.ts';
 import { localizeKeys } from '../../lib/shortcuts.ts';
 import { loadBranches, useBranchRows } from '../../state/branchesStore.ts';
+import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { toast } from '../../state/toastStore.ts';
+import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
@@ -24,12 +26,15 @@ import {
   groupRows,
   localLabel,
   prLabel,
+  switchAction,
   toggleSelection,
   validSelection,
   type BranchGroup,
   type BranchRow,
   type DeleteScope,
 } from './branchGroups.ts';
+import { sharedWarning } from '../worktree/branchMenu.ts';
+import { useSharingCheckout } from '../worktree/useSharingCheckout.ts';
 import { DeleteBranchesDialog } from './DeleteBranchesDialog.tsx';
 
 /** Above this many branches the table only renders the rows in view. */
@@ -58,7 +63,8 @@ function Stat({ value, label, tone = '' }: { value: number; label: string; tone?
  * upstream gone), its copy on the remote, where it stands against the base, its pull request and its last commit,
  * grouped by what to do with it (In use, Safe to delete, Deleted on the remote, Inactive, Active). Rows are picked
  * with checkboxes (shift-click for a range, Space on a row) and deleted after one confirmation, which says whether
- * the local copies, the remote ones or both go.
+ * the local copies, the remote ones or both go. A row's menu switches the main checkout to its branch, or, on the
+ * branch checked out there, back to the base so that branch can be deleted.
  */
 export function BranchesTab({ root, name, scrollRef }: { root: string; name: string; scrollRef: RefObject<HTMLDivElement | null> }) {
   const connection = useEngineConnection();
@@ -75,6 +81,10 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
   const [deleting, setDeleting] = useState<{ rows: BranchRow[]; scope: DeleteScope } | null>(null);
   const [failures, setFailures] = useState<BranchDeleteResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [switching, setSwitching] = useState<string | null>(null);
+  // Live sessions in the main checkout see a switch too, so it's asked first.
+  const [confirmSwitch, setConfirmSwitch] = useState<string | null>(null);
+  const sharers = useSharingCheckout(state.list?.root ?? root);
 
   // Safe local branches start picked, the first time the list is read; later reads keep your picks where still allowed.
   useEffect(() => {
@@ -126,6 +136,27 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
     setRefreshing(false);
   };
 
+  /** Switches the main checkout to `branch`; git keeps uncommitted changes, or refuses when they'd be lost. */
+  const switchTo = async (branch: string) => {
+    if (!client || !state.list) return;
+    setSwitching(branch);
+    try {
+      const result = await client.call('git.switch', { cwd: state.list.root, branch });
+      // Session headers and sidebar rows of the sessions in this checkout show the new branch too.
+      useCheckoutBranches.getState().set([state.list.root, ...sharers.cwds], result.current);
+      useCheckoutBranches.getState().switched();
+      toast(`Switched to ${branch}`);
+    } finally {
+      setSwitching(null);
+      void loadBranches(client, root);
+    }
+  };
+
+  const askSwitch = (branch: string) => {
+    if (sharers.ids.length > 0) return setConfirmSwitch(branch);
+    switchTo(branch).catch((e: unknown) => toast(`Couldn't switch to ${branch}: ${e instanceof Error ? e.message : String(e)}`));
+  };
+
   const pick = (row: BranchRow, range: boolean) => {
     setSelected((s) => toggleSelection(s, order, row.key, anchor.current, range));
     anchor.current = row.key;
@@ -170,9 +201,18 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
     const canLocal = !!entry.local && !row.localLock;
     const canRemote = !!entry.remote && !row.remoteLock;
     const remote = entry.remote?.ref ?? `${remoteName}/${entry.name}`;
-    const why = [entry.local && row.localLock && `Here: ${row.localLock}.`, entry.remote && row.remoteLock && `${entry.remote.ref}: ${row.remoteLock}.`].filter((t): t is string => !!t);
+    const toSwitch = state.list ? switchAction(entry, state.list.branches, state.list.root) : null;
+    const switchBlocked = toSwitch?.blocked ?? (switching ? `Switching to ${switching}` : null);
+    const why = [
+      toSwitch?.blocked && `Switch: ${toSwitch.blocked}.`,
+      entry.local && row.localLock && `Here: ${row.localLock}.`,
+      entry.remote && row.remoteLock && `${entry.remote.ref}: ${row.remoteLock}.`,
+    ].filter((t): t is string => !!t);
     return [
       { title: entry.name, detail: entry.subject ?? undefined },
+      ...(toSwitch
+        ? [{ label: toSwitch.label, icon: <ArrowRightLeft size={13} />, disabled: switchBlocked !== null, onSelect: () => askSwitch(toSwitch.branch), data: { 'data-branch-switch': toSwitch.branch } }]
+        : []),
       { label: 'Copy branch name', icon: <Copy size={13} />, onSelect: () => void navigator.clipboard.writeText(entry.name).then(() => toast('Copied the branch name'), fail('copy the branch name')) },
       ...(entry.pr ? [{ label: `Open pull request #${entry.pr.number}`, icon: <ExternalLink size={13} />, onSelect: () => void window.open(entry.pr!.url, '_blank') }] : []),
       'separator',
@@ -449,6 +489,15 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
       </div>
 
       {menu && <Menu x={menu.x} y={menu.y} width={260} entries={menuEntries(menu.row)} label={`Branch ${menu.row.entry.name}`} onClose={() => setMenu(null)} />}
+      {confirmSwitch && (
+        <ConfirmDialog
+          title={`Switch to ${confirmSwitch}?`}
+          confirmLabel="Switch"
+          body={<p>{sharedWarning(sharers.ids.length)}</p>}
+          onConfirm={() => switchTo(confirmSwitch)}
+          onClose={() => setConfirmSwitch(null)}
+        />
+      )}
       {deleting && (
         <DeleteBranchesDialog
           root={root}
