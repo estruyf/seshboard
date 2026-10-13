@@ -65,6 +65,8 @@ import { FindBar } from './FindBar.tsx';
 import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
+import { SideQuestionChip, SideQuestionPanel } from '../sideQuestions/SideQuestionPanel.tsx';
+import { askSideQuestion, closeSideQuestion, dropSideChip, expandSideQuestion, loadSideQuestions, moveSideQuestion, openLatestSideQuestion, openSideQuestion, retrySideQuestion, useSessionSide } from '../../state/sideQuestionsStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { TranscriptItem } from './TranscriptItem.tsx';
@@ -658,9 +660,24 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     usePaletteBus.setState({ digest: { sessionId, prompts, lastUuid: before, lastReply } });
   }, [active, items, sessionId]);
   useEffect(() => () => usePaletteBus.setState((s) => (s.digest?.sessionId === sessionId ? { digest: null } : {})), [sessionId]);
+  // Side questions (/btw): read once per session, so the palette can count them and a bare /btw opens at once.
+  const side = useSessionSide(sessionId);
+  const sideChip = side.chip ? side.items.find((item) => item.id === side.chip) : undefined;
+  /** Bumped by the palette's Ask a side question…: the message box takes the /btw token. */
+  const [sideRequest, setSideRequest] = useState(0);
+  useEffect(() => {
+    if (client) void loadSideQuestions(client, sessionId).catch(() => {});
+  }, [client, sessionId]);
+  const closeSide = () => {
+    closeSideQuestion(sessionId);
+    useDrafts.getState().requestFocus(sessionId);
+  };
+
   // The palette's Switch branch… and Finish worktree… open the header's branch menu; Rewind… asks to undo since a message.
   useSessionRequests(active, (request) => {
     if (request.kind === 'branch-menu') setBranchMenuRequest((n) => n + 1);
+    else if (request.kind === 'side-ask') setSideRequest((n) => n + 1);
+    else if (request.kind === 'side-show') void openLatestSideQuestion(client, sessionId);
     else if (request.kind === 'rewind' && request.arg) messageActions?.rewind(request.arg);
   });
 
@@ -674,6 +691,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     if (!client) throw new Error('Not connected to the engine');
     if (!ungated && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return false;
     const result = await client.call('session.send', { sessionId, text, attachments, fork, ...(mode ? { mode } : {}) });
+    // A new message moves on from the last side answer: its chip goes.
+    dropSideChip(sessionId);
     // A queued message waits in Up next, so the conversation has nothing new to scroll to.
     if (!result.queued) stickToBottom.current = true;
     if (result.sessionId !== sessionId) select(result.sessionId);
@@ -1158,80 +1177,111 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                 />
               )}
               <UpNext queue={upNext} hold={upNextHold} actions={upNextActions} />
-              <Composer
-                draftKey={sessionId}
-                onDraftLoaded={onDraftLoaded}
-                onTextChange={onDraftText}
-                restored={restored !== null}
-                preset={boxPreset ?? undefined}
-                history={promptHistory}
-                cwd={cwd}
-                commands={commands}
-                running={running}
-                placeholder={running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : 'Message Claude to resume this session'}
-                submitLabel={openElsewhere ? 'Fork and send' : undefined}
-                dropHint={status === 'ready' && messages.length === 0}
-                disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
-                runningHint={
-                  canSendNow
-                    ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : 'Messages go to Claude now'} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
-                    : undefined
-                }
-                onSubmit={(text, attachments) => send(text, attachments, openElsewhere, false, whileWorking)}
-                secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(text, attachments, false, false, 'now') } : undefined}
-                others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(text, attachments, false, false, otherMode) }] : undefined}
-                onRecallQueued={() => {
-                  const last = lastQueued(upNext);
-                  if (!last) return false;
-                  upNextActions.edit(last);
-                  return true;
-                }}
-                submitControl={
-                  canSendNow
-                    ? (box) => (
-                        <QueueButton
-                          state={queueButtonState({ ...box, whileWorking })}
-                          onAction={(action) => (action === 'send-now' ? box.submitSecondary() : action === whileWorking ? box.submit() : box.submitOther('composer.send-other'))}
-                        />
-                      )
-                    : undefined
-                }
-                onInterrupt={() => void client?.call('session.interrupt', { sessionId })}
-                onCycleMode={
-                  activeHost ? () => void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) }) : undefined
-                }
-                controls={
-                  activeHost ? (
-                    <SessionControls host={activeHost} />
-                  ) : (
-                    <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-tooltip={host?.state === 'error' ? (host.error ?? undefined) : undefined} data-session-elsewhere>
-                      {host?.state === 'error' ? (
-                        <span className="text-error">Last run failed: {host.error}</span>
-                      ) : registryLive ? (
-                        `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Switchboard.`
-                      ) : (
-                        'Not running in Switchboard. Send a message to pick it up here.'
-                      )}
-                    </span>
-                  )
-                }
-                meter={foldFooter && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />}
-                actions={
-                  cwd && (
-                    <Button
-                      variant="quiet"
-                      size="sm"
-                      iconOnly
-                      icon={<Blocks size={15} aria-hidden />}
-                      data-open-tools
-                      onClick={() => useOverlay.getState().show('tools')}
-                      data-tooltip="Tools: the MCP servers, skills, agents and plugins this session can use"
-                      aria-label="Tools: MCP servers, skills, agents and plugins"
-                      aria-haspopup="dialog"
-                    />
-                  )
-                }
-              />
+              {/* The side question floats over the conversation, as wide as the message box, so the transcript never moves. */}
+              <div className="relative">
+                {(side.open || sideChip) && (
+                  <div className="absolute inset-x-0 bottom-full z-10 mb-2 flex">
+                    {side.open ? (
+                      <SideQuestionPanel
+                        state={side}
+                        onClose={closeSide}
+                        onMove={(step) => moveSideQuestion(sessionId, step)}
+                        onExpand={() => expandSideQuestion(sessionId)}
+                        onRetry={(item) => client && void retrySideQuestion(client, sessionId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
+                      />
+                    ) : (
+                      sideChip && <SideQuestionChip item={sideChip} onOpen={() => openSideQuestion(sessionId, sideChip.id)} />
+                    )}
+                  </div>
+                )}
+                <Composer
+                  draftKey={sessionId}
+                  onDraftLoaded={onDraftLoaded}
+                  onTextChange={onDraftText}
+                  restored={restored !== null}
+                  preset={boxPreset ?? undefined}
+                  history={promptHistory}
+                  cwd={cwd}
+                  commands={commands}
+                  running={running}
+                  placeholder={running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : 'Message Claude to resume this session'}
+                  submitLabel={openElsewhere ? 'Fork and send' : undefined}
+                  dropHint={status === 'ready' && messages.length === 0}
+                  disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
+                  runningHint={
+                    canSendNow
+                      ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : 'Messages go to Claude now'} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
+                      : undefined
+                  }
+                  onSubmit={(text, attachments) => send(text, attachments, openElsewhere, false, whileWorking)}
+                  secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(text, attachments, false, false, 'now') } : undefined}
+                  others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(text, attachments, false, false, otherMode) }] : undefined}
+                  onRecallQueued={() => {
+                    const last = lastQueued(upNext);
+                    if (!last) return false;
+                    upNextActions.edit(last);
+                    return true;
+                  }}
+                  submitControl={
+                    canSendNow
+                      ? (box) => (
+                          <QueueButton
+                            state={queueButtonState({ ...box, whileWorking })}
+                            onAction={(action) => (action === 'send-now' ? box.submitSecondary() : action === whileWorking ? box.submit() : box.submitOther('composer.send-other'))}
+                          />
+                        )
+                      : undefined
+                  }
+                  onInterrupt={() => void client?.call('session.interrupt', { sessionId })}
+                  sideQuestions={{
+                    onAsk: async (question) => {
+                      if (!client) throw new Error('Not connected to the engine');
+                      await askSideQuestion(client, sessionId, question);
+                    },
+                    onBare: () => void openLatestSideQuestion(client, sessionId),
+                    request: sideRequest,
+                  }}
+                  onEscape={() => {
+                    if (!side.open) return false;
+                    closeSideQuestion(sessionId);
+                    return true;
+                  }}
+                  onCycleMode={
+                    activeHost ? () => void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) }) : undefined
+                  }
+                  controls={
+                    activeHost ? (
+                      <SessionControls host={activeHost} />
+                    ) : (
+                      <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-tooltip={host?.state === 'error' ? (host.error ?? undefined) : undefined} data-session-elsewhere>
+                        {host?.state === 'error' ? (
+                          <span className="text-error">Last run failed: {host.error}</span>
+                        ) : registryLive ? (
+                          `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Switchboard.`
+                        ) : (
+                          'Not running in Switchboard. Send a message to pick it up here.'
+                        )}
+                      </span>
+                    )
+                  }
+                  meter={foldFooter && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />}
+                  actions={
+                    cwd && (
+                      <Button
+                        variant="quiet"
+                        size="sm"
+                        iconOnly
+                        icon={<Blocks size={15} aria-hidden />}
+                        data-open-tools
+                        onClick={() => useOverlay.getState().show('tools')}
+                        data-tooltip="Tools: the MCP servers, skills, agents and plugins this session can use"
+                        aria-label="Tools: MCP servers, skills, agents and plugins"
+                        aria-haspopup="dialog"
+                      />
+                    )
+                  }
+                />
+              </div>
               {/* One quiet line: plan usage (of the session's profile, which is a chip in the box) and how full the context is. */}
               {!foldFooter && (
                 <div className="flex min-h-6 items-center gap-3 px-1 text-meta text-muted" data-session-footer>

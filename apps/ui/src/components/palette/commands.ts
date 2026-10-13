@@ -42,6 +42,7 @@ import {
   PencilLine,
   Maximize2,
   MessageSquare,
+  MessageCircleDashed,
   MessageCircleQuestion,
   MessagesSquare,
   Monitor,
@@ -98,7 +99,7 @@ import type { PaletteContext } from './paletteContext.ts';
 import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteState.ts';
 
 /** Requests the session view answers, because the dialog or menu they open lives there. */
-export type SessionRequest = 'commit' | 'create-pr' | 'branch-menu' | 'edit-actions' | 'new-action';
+export type SessionRequest = 'commit' | 'create-pr' | 'branch-menu' | 'edit-actions' | 'new-action' | 'side-ask' | 'side-show';
 /** Requests the New session view answers: they change its own choices. */
 export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up';
 
@@ -539,6 +540,25 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'change-model', title: 'Change model…', group: 'session', icon: Cpu, keywords: 'opus sonnet haiku', when: hosted, next: () => ({ kind: 'pick', list: 'model', chip: 'Model' }) },
   { id: 'change-effort', title: 'Change effort…', group: 'session', icon: Gauge, keywords: 'thinking', when: (ctx) => hosted(ctx) && session(ctx)!.host!.supportsEffort, next: () => ({ kind: 'pick', list: 'effort', chip: 'Effort' }) },
   { id: 'change-mode', title: 'Change permission mode…', group: 'session', shortcut: keysFor('mode.cycle'), icon: ShieldCheck, keywords: 'plan accept edits auto', when: hosted, next: () => ({ kind: 'pick', list: 'mode', chip: 'Permission mode' }) },
+  {
+    id: 'side-question',
+    title: 'Ask a side question…',
+    group: 'session',
+    icon: MessageCircleDashed,
+    keywords: '/btw by the way aside not added to the conversation',
+    when: (ctx) => session(ctx) !== null && ctx.connected,
+    run: (api) => api.sessionRequest('side-ask'),
+  },
+  {
+    id: 'side-questions',
+    title: 'Show side questions',
+    group: 'session',
+    icon: MessageCircleDashed,
+    keywords: '/btw earlier answers browse',
+    hint: (ctx) => String(session(ctx)?.sideQuestions ?? 0),
+    when: (ctx) => (session(ctx)?.sideQuestions ?? 0) > 0,
+    run: (api) => api.sessionRequest('side-show'),
+  },
   { id: 'remember-this', title: 'Remember this…', group: 'session', icon: Brain, keywords: 'memory save note selection reply', when: (ctx) => !!session(ctx)?.hasReply && ctx.connected, run: (api) => api.rememberThis() },
   { id: 'quote-in-reply', title: 'Quote in reply', group: 'session', icon: TextQuote, keywords: 'quote answer question selection reply message box', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.quoteInReply() },
   { id: 'copy-last-reply', title: 'Copy last reply', group: 'session', icon: Copy, keywords: 'clipboard markdown answer', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.copyLastReply() },

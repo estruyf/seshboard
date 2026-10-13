@@ -26,6 +26,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery } from './sessionHost.ts';
+import { askSideQuestion, type SideAnswer, type SideExchange } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
@@ -568,16 +569,33 @@ export class HostManager {
   }
 
   /**
+   * Answers a side question for a session. One running here answers on its own process, beside its turn. Otherwise a
+   * short-lived copy answers: resumed as a fork that persists nothing, so the session isn't started, nothing is
+   * written, and it works while another Claude Code window has the session open.
+   */
+  async sideQuestion(sessionId: string, question: string, history: SideExchange[]): Promise<SideAnswer> {
+    const host = this.running(sessionId) ?? (await this.starting.get(sessionId)?.catch(() => null));
+    if (host?.active) return host.askSideQuestion(question, history);
+    const cwd = this.deps.sessionCwd(sessionId);
+    if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');
+    const model = this.settings.get(sessionId)?.model ?? null;
+    return this.withHelper(cwd, this.deps.sessionProfile(sessionId), (query) => askSideQuestion(query, question, history), {
+      extra: { resume: sessionId, forkSession: true, ...(model ? { model } : {}) },
+      // A long conversation takes a while to load and answer from.
+      timeoutMs: 180_000,
+    });
+  }
+
+  /**
    * Runs `ask` against a short-lived Claude Code process for `cwd` that never gets a prompt,
    * so no session is written. It answers control requests (commands, agents, MCP) and is closed after.
    */
-  private async withHelper<T>(cwd: string, profileId: string, ask: (query: Query) => Promise<T>): Promise<T> {
+  private async withHelper<T>(cwd: string, profileId: string, ask: (query: Query) => Promise<T>, more: { extra?: Partial<Options>; timeoutMs?: number } = {}): Promise<T> {
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
     // A prompt that never yields: Claude Code starts, answers the question, and no session is written.
     const idle: AsyncIterable<SDKUserMessage> = { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) };
     const helperId = randomUUID();
     this.deps.ephemeral?.add(helperId);
-    setTimeout(() => this.deps.ephemeral?.delete(helperId), 30_000).unref?.();
     const query = sdk.query({
       prompt: idle,
       options: {
@@ -588,12 +606,15 @@ export class HostManager {
         pathToClaudeCodeExecutable: claudePath,
         settingSources: ['user', 'project', 'local'],
         systemPrompt: { type: 'preset', preset: 'claude_code' },
+        ...more.extra,
       },
     });
     try {
-      return await Promise.race([ask(query), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timed out')), 20_000))]);
+      return await Promise.race([ask(query), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timed out')), more.timeoutMs ?? 20_000))]);
     } finally {
       query.close();
+      // Its registry entry stays until the process has exited.
+      setTimeout(() => this.deps.ephemeral?.delete(helperId), 30_000).unref?.();
     }
   }
 

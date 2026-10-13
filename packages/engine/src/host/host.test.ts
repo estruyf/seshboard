@@ -136,6 +136,12 @@ class FakeQuery {
   async getContextUsage() {
     return { percentage: 12.4 };
   }
+  /** Side questions asked, with the history that came along. */
+  sideQuestions: Array<{ question: string; history: unknown }> = [];
+  async askSideQuestion(question: string, options?: { history?: unknown }) {
+    this.sideQuestions.push({ question, history: options?.history ?? [] });
+    return { response: `Side answer to ${question}`, synthetic: false };
+  }
   close() {
     this.closed = true;
     this.out.end();
@@ -338,6 +344,49 @@ describe('HostManager', () => {
       expect(lengths.lastIndexOf(1)).toBeLessThan(lengths.lastIndexOf(0));
       await until(() => queue(t, id).length === 0 && lastState(t.infos, id) === 'idle');
       expect(inTranscript(t, 'Then the docs')).toBe(true);
+      t.manager.closeAll();
+    });
+
+    it('answers a side question beside a running turn, without touching the turn, the queue or the transcript', async () => {
+      const t = setup();
+      const id = await busy(t);
+      await send(t, id, 'Then the docs');
+      const infosBefore = t.infos.length;
+      const messagesBefore = t.messages.length;
+
+      const history = [{ question: 'Earlier?', response: 'Yes' }];
+      await expect(t.manager.sideQuestion(id, 'Which flag?', history)).resolves.toEqual({ response: 'Side answer to Which flag?', synthetic: false });
+      // Asked on the session's own process, with the earlier exchanges, never as a message.
+      expect(t.queries).toHaveLength(1);
+      expect(t.queries[0]!.sideQuestions).toEqual([{ question: 'Which flag?', history }]);
+      expect(t.queries[0]!.received).toEqual([{ text: 'bash:npm test' }]);
+      expect(t.queries[0]!.interrupts).toBe(0);
+      // No status, queue or transcript change came from it.
+      expect(t.infos.length).toBe(infosBefore);
+      expect(t.messages.length).toBe(messagesBefore);
+      expect(lastState(t.infos, id)).toBe('needs-you');
+      expect(queue(t, id).map((m) => m.text)).toEqual(['Then the docs']);
+      expect(inTranscript(t, 'Which flag?')).toBe(false);
+
+      // The turn then goes on as before: its reply, then the queued message.
+      t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
+      await until(() => t.queries[0]!.received.length === 2);
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['bash:npm test', 'Then the docs']);
+      expect(t.messages.flatMap((m) => m.messages.map((x) => x.uuid))).toContain('a-allow');
+      t.manager.closeAll();
+    });
+
+    it('answers a side question for a session that is not running from a fork that writes nothing', async () => {
+      const t = setup({ cwds: { 'old-1': '/work/app' }, openElsewhere: ['old-1'] });
+      await expect(t.manager.sideQuestion('old-1', 'What changed?', [])).resolves.toMatchObject({ response: 'Side answer to What changed?' });
+      // Not resumed: a short-lived copy, even with the session open in another window.
+      expect(t.manager.has('old-1')).toBe(false);
+      expect(t.queries).toHaveLength(1);
+      expect(t.queries[0]!.options).toMatchObject({ resume: 'old-1', forkSession: true, persistSession: false, cwd: '/work/app' });
+      expect(t.queries[0]!.options.sessionId).not.toBe('old-1');
+      expect(t.queries[0]!.received).toEqual([]);
+      expect(t.queries[0]!.closed).toBe(true);
+      expect(t.ephemeral.has(t.queries[0]!.options.sessionId!)).toBe(true);
       t.manager.closeAll();
     });
 

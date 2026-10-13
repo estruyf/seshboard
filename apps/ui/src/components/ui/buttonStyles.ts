@@ -3,7 +3,7 @@
  * tested without React. See AGENTS.md, Design system, for when to use which variant.
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'side';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonLook {
@@ -33,12 +33,14 @@ const VARIANT: Record<ButtonVariant, string> = {
   secondary: 'btn-secondary',
   quiet: 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text',
   danger: 'btn-secondary border-error/50 text-error enabled:hover:bg-error/10',
+  // Ask in the message box while it holds a side question (/btw): the side channel's blue, never the accent.
+  side: 'bg-link font-semibold text-bg enabled:hover:bg-link/85',
 };
 const DANGER_FILLED = 'bg-error font-semibold text-white enabled:hover:bg-error/85';
 const QUIET_SELECTED = 'bg-selected text-text';
 // The ▾ of a split button: narrower than a square, behind a 1px line in the button's own ink.
 const MENU_WIDTH: Record<ButtonSize, string> = { sm: 'w-5', md: 'w-6', lg: 'w-7' };
-const SEGMENT_DIVIDER: Record<ButtonVariant, string> = { primary: 'border-l border-on-accent/20', secondary: '', quiet: 'border-l border-border', danger: '' };
+const SEGMENT_DIVIDER: Record<ButtonVariant, string> = { primary: 'border-l border-on-accent/20', secondary: '', quiet: 'border-l border-border', danger: '', side: '' };
 
 /** The classes for a button: shape, size and variant. Callers add layout (`ml-auto`, `w-full`) on top. */
 export function buttonClass({ variant, size, iconOnly, filled, selected, segment }: ButtonLook): string {

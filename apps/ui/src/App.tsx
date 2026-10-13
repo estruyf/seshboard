@@ -31,6 +31,7 @@ import { useReadyReport } from './engine/useReadyReport.ts';
 import { isActiveHost, useHosts } from './state/hostsStore.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
+import { useSideQuestionsSync } from './state/sideQuestionsStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
@@ -177,6 +178,7 @@ export function App() {
   useThemesSync();
   useLaterSync();
   useUpNextSync();
+  useSideQuestionsSync();
   useQueueToasts();
   useSidebarSectionsSync();
   useCompanionSync();

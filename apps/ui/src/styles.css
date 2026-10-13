@@ -242,6 +242,16 @@
 }
 
 /*
+ * The side question panel (/btw) over the message box: the floating surface and shadow, with a frame in the
+ * side channel's blue (`link`), so it never reads as part of the conversation.
+ */
+@utility side-panel {
+  background-color: var(--sb-popover);
+  border: 1px solid var(--sb-link);
+  box-shadow: var(--sb-overlay-shadow);
+}
+
+/*
  * A secondary button (Cancel, Close, Choose…): a real button next to the yellow primary, on any
  * surface. Its edge uses the overlay border, because the plain border colour disappears on dialogs.
  */
@@ -444,7 +454,28 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
 .composer-flash {
   animation: composer-flash 600ms ease-out;
 }
+/* A side answer still coming in: a blinking block after its last line, in the side channel's blue. */
+.stream-caret > :last-child > :last-child::after,
+.stream-caret:empty::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 0.15em;
+  vertical-align: text-bottom;
+  background: var(--sb-link);
+  animation: stream-caret 1s steps(2, start) infinite;
+}
+@keyframes stream-caret {
+  to {
+    visibility: hidden;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .stream-caret > :last-child > :last-child::after,
+  .stream-caret:empty::after {
+    animation: none;
+  }
   .working-dots span {
     animation: none;
     opacity: 0.8;
