@@ -27,8 +27,11 @@ export type StartQuery = (args: { prompt: AsyncIterable<SDKUserMessage>; options
 export interface HostEvents {
   info(info: SessionHostInfo): void;
   stream(delta: StreamDelta): void;
-  /** Complete messages as they happen, for the live transcript (same uuids as the file). */
-  messages(sessionId: string, messages: RawSessionMessage[]): void;
+  /**
+   * Complete messages as they happen, for the live transcript (same uuids as the file). `held`: Claude Code doesn't
+   * have it yet (a new session's first message while Auto chooses), so the file won't either for a while.
+   */
+  messages(sessionId: string, messages: RawSessionMessage[], held?: boolean): void;
   log(level: LogLevel, message: string): void;
   /** Plan usage probably changed (a turn finished, or Claude Code reported a rate-limit update). */
   usageHint?(): void;
@@ -216,7 +219,7 @@ export class SessionHost {
     // Claude Code gets the text as typed; the echo shows a slash command the way the stored transcript will.
     const commands = this.commands.length ? this.commands : (this.events.knownCommands?.() ?? []);
     const echo = attachments.length === 0 && text ? { role: 'user' as const, content: [{ type: 'text' as const, text: commandEcho(text, commands.map((c) => c.name)) }] } : message.message;
-    this.events.messages(this.sessionId, [{ type: 'user', uuid, message: echo, parent_tool_use_id: null, timestamp: new Date().toISOString() }]);
+    this.events.messages(this.sessionId, [{ type: 'user', uuid, message: echo, parent_tool_use_id: null, timestamp: new Date().toISOString() }], after !== undefined);
     const busy = this.info.state === 'running' || this.info.state === 'needs-you';
     this.update({ promptedAt: this.lastActivity, ...(busy ? { queued: this.info.queued + 1 } : {}) });
     return uuid;

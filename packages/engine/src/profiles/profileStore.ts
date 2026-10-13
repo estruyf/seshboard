@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { BUILTIN_PROFILE_ID, RpcError, type ClaudeProfile, type ProfileColor, type ProfilesSnapshot } from '@switchboard/protocol';
+import { BUILTIN_PROFILE_ID, RpcError, type ClaudeProfile, type ProfileColor, type ProfileDefaults, type ProfilesSnapshot } from '@switchboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
+import { parseDefaults } from '../projects/projectRegistry.ts';
 
 const DEFAULT_KEY = 'profiles.default';
 
@@ -14,6 +15,7 @@ interface Row {
   color: string;
   config_dir: string | null;
   sort: number;
+  defaults_json: string | null;
 }
 
 /** What the engine needs to read and run a profile. */
@@ -51,6 +53,16 @@ export function readAccount(globalConfigFile: string): ClaudeProfile['account'] 
 /** Where Claude Code keeps the login for a profile: see `readAccount`. */
 const accountFile = (envDir: string | undefined) => (envDir ? join(envDir, '.claude.json') : join(homedir(), '.claude.json'));
 
+/** Reads a profile's defaults leniently, as a project's: a field that no longer validates is unset. */
+export function readProfileDefaults(json: string | null): ProfileDefaults {
+  let raw: unknown = {};
+  try {
+    raw = json ? JSON.parse(json) : {};
+  } catch {}
+  const { branch: _branch, ...defaults } = parseDefaults(raw);
+  return defaults;
+}
+
 const COLORS: readonly ProfileColor[] = ['yellow', 'blue', 'green', 'purple', 'red', 'orange', 'gray'];
 const asColor = (value: string): ProfileColor => (COLORS.includes(value as ProfileColor) ? (value as ProfileColor) : 'gray');
 
@@ -71,10 +83,11 @@ export class ProfileStore {
     private readonly onChange: (snapshot: ProfilesSnapshot) => void = () => {},
   ) {
     this.statements = {
-      all: db.prepare('SELECT id, name, color, config_dir, sort FROM claude_profiles ORDER BY sort, created_at'),
+      all: db.prepare('SELECT id, name, color, config_dir, sort, defaults_json FROM claude_profiles ORDER BY sort, created_at'),
       insert: db.prepare('INSERT INTO claude_profiles (id, name, color, config_dir, sort, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
       rename: db.prepare('UPDATE claude_profiles SET name = ? WHERE id = ?'),
       recolor: db.prepare('UPDATE claude_profiles SET color = ? WHERE id = ?'),
+      setDefaults: db.prepare('UPDATE claude_profiles SET defaults_json = ? WHERE id = ?'),
       remove: db.prepare('DELETE FROM claude_profiles WHERE id = ?'),
       unlinkProjects: db.prepare('UPDATE project_settings SET profile_id = NULL WHERE profile_id = ?'),
       linkProject: db.prepare(
@@ -130,6 +143,7 @@ export class ProfileStore {
         isDefault: row.id === defaultId,
         exists: existsSync(configDir),
         account: readAccount(accountFile(envDir)),
+        defaults: readProfileDefaults(row.defaults_json),
       };
     });
     this.accountsSeen = JSON.stringify(profiles.map((p) => [p.id, p.account]));
@@ -167,6 +181,14 @@ export class ProfileStore {
     this.require(id);
     if (change.name !== undefined) this.statements.rename.run(change.name, id);
     if (change.color !== undefined) this.statements.recolor.run(change.color, id);
+    this.changed();
+  }
+
+  /** Replaces what new sessions with this profile start with (where their project sets nothing). */
+  setDefaults(id: string, defaults: ProfileDefaults): void {
+    this.require(id);
+    const empty = Object.values(defaults).every((v) => v === null);
+    this.statements.setDefaults.run(empty ? null : JSON.stringify(defaults), id);
     this.changed();
   }
 

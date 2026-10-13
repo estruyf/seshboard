@@ -331,9 +331,9 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
         <span role="cell" className={`truncate text-ui ${ahead?.caution ? 'text-caution' : ''} ${NARROW_HIDDEN}`}>
           {ahead ? ahead.text : dash}
         </span>
-        <span role="cell" className="min-w-0">
+        <span role="cell" className="flex min-w-0">
           {merge ? (
-            <Pill tone={merge.tone === 'muted' ? 'muted' : merge.tone} shrink icon={merge.tone === 'ok' ? <GitMerge size={11} aria-hidden /> : undefined} data-tooltip={entry.pr?.url}>
+            <Pill tone={merge.tone === 'muted' ? 'muted' : merge.tone} shrink icon={merge.tone === 'ok' ? <GitMerge size={11} className="shrink-0" aria-hidden /> : undefined} data-tooltip={entry.pr?.url}>
               <span className="truncate">{merge.text}</span>
             </Pill>
           ) : (

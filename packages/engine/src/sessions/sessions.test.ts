@@ -319,6 +319,39 @@ describe('TranscriptHub', () => {
     hub.stop();
   });
 
+  it('keeps a held message until the file has it, also for a window that starts watching later', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, []);
+    const hub = new TranscriptHub(source, () => {});
+    // Sent before any window watches, and held back from Claude Code (Auto choosing): not in the file.
+    hub.pushLive(ID_A, [msg('1')], true);
+    // A plain live message nobody watches is not kept.
+    hub.pushLive(ID_B, [msg('x')]);
+    const updates: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => updates.push(u));
+    await until(() => updates.length === 1);
+    expect(uuids(updates[0]!.messages)).toEqual(['1']);
+
+    // The file still doesn't have it: nothing changes. Then it does, with a reply: only the reply is new.
+    hub.changed(ID_A);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(updates).toHaveLength(1);
+    messages.set(ID_A, [msg('1'), msg('2')]);
+    hub.changed(ID_A);
+    await until(() => updates.length === 2);
+    expect(updates[1]).toMatchObject({ mode: 'append' });
+    expect(uuids(updates[1]!.messages)).toEqual(['2']);
+
+    // Stopped before it was sent: a later window doesn't show it.
+    hub.pushLive(ID_B, [msg('y')], true);
+    hub.dropHeld(ID_B);
+    const later: TranscriptUpdate[] = [];
+    hub.watch(ID_B, (u) => later.push(u));
+    await until(() => later.length === 1);
+    expect(later[0]!.messages).toEqual([]);
+    hub.stop();
+  });
+
   it('never sends duplicates when a change lands during the initial load', async () => {
     const { source, messages } = fakeSource([]);
     messages.set(ID_A, [msg('1')]);

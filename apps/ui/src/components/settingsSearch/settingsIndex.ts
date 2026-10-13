@@ -22,6 +22,14 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'sort recent your order',
       target: '[data-project-order]',
     },
+    {
+      id: 'new-session-mode',
+      page: 'general',
+      label: 'Permission mode',
+      detail: 'What New session starts in. A project’s or profile’s own default comes first, and a link never starts in Auto mode.',
+      keywords: 'new session default ask first accept edits plan auto mode permissions',
+      target: '[data-new-session-mode]',
+    },
     { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
 
     // Theme
@@ -121,6 +129,15 @@ export function settingsIndex(): SettingEntry[] {
       detail: 'Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login.',
       keywords: 'accounts login work personal config folder',
       target: '[data-profiles]',
+    },
+    {
+      id: 'profile-defaults',
+      page: 'profiles',
+      label: 'New session defaults',
+      detail: 'The model, effort, permission mode and workspace new sessions with a profile start with, unless their project sets its own.',
+      keywords: 'account model effort permissions mode worktree default',
+      target: '[data-profile-defaults-toggle]',
+      fallback: '[data-profiles]',
     },
     { id: 'add-profile', page: 'profiles', label: 'Add profile', detail: 'A Claude Code config folder with its own login.', keywords: 'account new', target: '[data-add-profile]', fallback: '[data-profiles]' },
     { id: 'profile-guide', page: 'profiles', label: 'How to set up another profile', detail: 'Create a config folder and sign in, add it here, and link your projects.', keywords: 'account help', target: '[data-profile-guide-toggle]' },

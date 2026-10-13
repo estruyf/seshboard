@@ -791,7 +791,12 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
       await js(`document.querySelector('${view} [data-composer-submit]').click()`);
       const session = '[data-current-session]';
       const opened = `document.querySelector('${session} [data-auto-choosing]')?.innerText.includes('Auto is choosing a model') && [...document.querySelectorAll('${session} [data-item-kind="user"]')].some((el) => el.innerText.includes('[smoke: hold]'))`;
-      if (!(await waitInPage(win, opened, 5_000))) return 'Start on Auto did not open the session with the prompt and Auto is choosing a model…';
+      if (!(await waitInPage(win, opened, 5_000))) {
+        const seen = await js(
+          `JSON.stringify({ newSession: !!document.querySelector('${view}'), session: document.querySelector('${session}')?.dataset.currentSession ?? null, choosing: document.querySelector('${session} [data-auto-choosing]')?.innerText ?? null, streaming: document.querySelector('${session} [data-streaming]')?.innerText ?? null, userItems: [...document.querySelectorAll('${session} [data-item-kind="user"]')].map((el) => el.innerText.slice(0, 60)), toasts: [...document.querySelectorAll('[data-toast]')].map((t) => t.innerText) })`,
+        ).catch(() => 'unknown');
+        return `Start on Auto did not open the session with the prompt and Auto is choosing a model…: ${seen}`;
+      }
       await shot(win, 'auto-model-choosing.png');
       await js(`document.querySelector('${session} [data-more-menu]').click()`);
       if (!(await waitInPage(win, "document.querySelector('[data-stop-session]:not(:disabled)')", 3_000))) return 'no Stop session while Auto was choosing';
@@ -1715,6 +1720,51 @@ async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Settings › General › Permission mode: a fixed mode is what New session's mode chip starts on, and The last one
+ * you picked brings back the remembered one. Runs before any step types in New session, since an unsent prompt there
+ * keeps the choices it was written with. Starts no session; only the throwaway profile's preference changes, and it
+ * is put back, with the session that was open.
+ */
+async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const chip = "document.querySelector('[data-new-session-view] [data-mode-select]')";
+  const open = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
+  /** New session opened afresh (from Home, so it mounts again): the mode its chip starts on. */
+  const freshMode = async () => {
+    await js("document.querySelector('[data-go-home]')?.click()");
+    await waitInPage(win, `!${chip}`, 2_000);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+    return (await waitInPage(win, `${chip}?.dataset.value`, 5_000)) ? ((await js(`${chip}.dataset.value`)) as string) : null;
+  };
+  const setMode = async (mode: string) => {
+    await js("document.querySelector('[data-open-settings]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"general\"]')", 3_000))) return false;
+    await js("document.querySelector('[data-settings-section=\"general\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-new-session-mode]')", 2_000))) return false;
+    const picked = await chooseOption(win, '[data-new-session-mode]', mode);
+    if (mode !== 'last') await shot(win, 'settings-new-session-mode.png');
+    await js("document.querySelector('[data-close-settings]').click()");
+    return picked && (await until(() => preferences.get().newSessionMode === mode));
+  };
+
+  if (preferences.get().newSessionMode !== 'last') return `the preference started as ${preferences.get().newSessionMode}, not The last one you picked`;
+  const remembered = await freshMode();
+  if (!remembered) return 'New session has no mode chip';
+  const fixed = remembered === 'plan' ? 'acceptEdits' : 'plan';
+  if (!(await setMode(fixed))) return `could not set Permission mode to ${fixed} in Settings › General`;
+  const withFixed = await freshMode();
+  if (withFixed !== fixed) return `with ${fixed} set, New session's mode chip starts on ${withFixed}`;
+  if (!(await setMode('last'))) return 'could not set Permission mode back to The last one you picked';
+  const again = await freshMode();
+  if (again !== remembered) return `back on The last one you picked, the chip starts on ${again}, not ${remembered}`;
+  if (open) {
+    openSession(open);
+    if (!(await waitInPage(win, `document.querySelector('[data-current-session="${open}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session that was open';
+  }
+  return `ok: ${fixed} from Settings, then ${remembered} again as the one picked last`;
+}
+
+/**
  * The focus limit: turning it on in Settings › Focus shows the counter in the sidebar footer, in both
  * themes, with its list of the sessions that count; turning it off hides it again. Only preferences in
  * the throwaway profile change: no session is started and nothing is saved for later.
@@ -1970,8 +2020,8 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   // The command palette's New session needs a project: this is the one moment the throwaway profile has one.
   await smokeRun.step('command palette, new session', () => runPaletteNewSessionStep(win), { cleanup: false });
   await smokeRun.step('unsent New session prompt', () => runUnsentNewSessionStep(win), { cleanup: false });
-  // Here New session has a folder (the project just added), so Esc while choosing can be checked too.
-  await smokeRun.step('auto model: menu, chip, Esc while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
+  // Here New session has a folder (the project just added), so starting while Auto chooses can be checked too.
+  await smokeRun.step('auto model: menu, chip, Stop while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
 
   await click('[data-open-projects]');
@@ -2350,7 +2400,8 @@ async function checkShareDialog(win: BrowserWindow, root: string, listed: string
 /**
  * Claude profiles: with one, nothing about profiles shows outside Settings. Adding a second (a config
  * folder inside the throwaway app profile, never a real one) marks sessions with their profile and
- * offers a choice in New session; it becomes the default, then is removed again.
+ * offers a choice in New session; its effort default reaches New session once it is the default, then
+ * it is removed again.
  */
 async function runProfilesStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -2376,12 +2427,22 @@ async function runProfilesStep(win: BrowserWindow): Promise<string> {
   const card = `[data-profile=${JSON.stringify(id)}]`;
   if (!(await js(`document.querySelector(${JSON.stringify(card)}).innerText.includes(${JSON.stringify(folder)})`))) return 'the sign-in command does not name the folder';
   await shot(win, 'profiles.png');
+  // Its defaults for new sessions: Max effort, which New session takes where the project sets none.
+  await click(`${card} [data-profile-defaults-toggle]`);
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`${card} [data-default-effort]`)})`, 2_000))) return 'the profile defaults did not open';
+  if (!(await chooseOption(win, `${card} [data-default-effort]`, 'max'))) return 'could not pick an effort default for the profile';
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`${card} [data-profile-defaults-summary]`)})?.innerText.includes('max effort')`, 3_000))) return 'the profile default was not saved';
+  await shot(win, 'profile-defaults.png');
   await click(`[data-profile-default=${JSON.stringify(id)}]`);
   await click('[data-close-settings]');
   if (!(await waitInPage(win, "document.querySelector('[data-session-id] [data-profile-badge]')", 3_000))) return 'sessions do not show their profile with two profiles';
   await click('[data-new-session]');
   if (!(await waitInPage(win, `document.querySelector('[data-profile-select]')?.dataset.value === ${JSON.stringify(id)}`, 5_000))) {
     return 'New session did not offer the profiles with the new default chosen';
+  }
+  // No project is added by now (the projects step removes its own), so nothing sets an effort over the profile's.
+  if (!(await waitInPage(win, "document.querySelector('[data-new-session-view] [data-effort-select]')?.dataset.value === 'max'", 3_000))) {
+    return `New session did not start from the profile's defaults (effort ${String(await js("document.querySelector('[data-new-session-view] [data-effort-select]')?.dataset.value"))})`;
   }
   await click('[data-profile-select]');
   if (!(await waitInPage(win, "document.querySelectorAll('[data-menu=\"profile\"] [role=menuitemradio]').length === 2", 3_000))) return 'the profile menu did not list both profiles';
@@ -2401,7 +2462,7 @@ async function runProfilesStep(win: BrowserWindow): Promise<string> {
   await click('[data-close-settings]');
   if (!(await waitInPage(win, "document.querySelector('[data-session-id]') && !document.querySelector('[data-session-id] [data-profile-badge]')", 3_000))) return 'sessions still show a profile after removing it';
   if (!builtinDefault) return 'the built-in profile did not become the default again';
-  return 'ok: added a second profile, sessions and New session showed it, made it the default, removed it';
+  return "ok: added a second profile, set its effort default, sessions and New session showed it (with the profile's effort), made it the default, removed it";
 }
 
 /**
@@ -3457,6 +3518,8 @@ async function runNewSessionStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelectorAll('[data-menu=\"mode\"] [role=menuitemradio]').length >= 4", 2_000))) return 'the permission menu did not open';
   await shot(win, 'new-session-view.png');
   escape();
+  // A click while the menu is still closing can land on its way out, and the effort menu never opens.
+  if (!(await waitInPage(win, "!document.querySelector('[data-menu=\"mode\"]')", 2_000))) return 'Escape did not close the permission menu';
   // Put back the effort it had (the default, usually), so the remembered defaults are as they were.
   if (!(await chooseChoice(win, 'effort', effortBefore, '[data-new-session-view]'))) return 'could not put the effort back';
   // ⌘N while already on New session puts the cursor back in the prompt.
@@ -3616,6 +3679,10 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-folder-select]')?.dataset.value === '' && document.querySelector('[data-route-hint]')?.innerText.includes('switchboard-smoke/no-such-repo')", 20_000))) {
     return `a repo without a checkout did not leave the folder empty (${String(await js("document.querySelector('[data-route-hint]')?.innerText"))})`;
   }
+  // Empty the prompt the links left: kept, it would count as an unsent New session prompt 2s later, and put a pen on
+  // the + button that later steps check for.
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  if (!(await waitInPage(win, `${composer}?.value === ''`, 2_000))) return 'could not empty the prompt the links left';
 
   if (!smokeSessionId) return 'ok: filled in folder and prompt, refused a bad link, empty folder for an unknown repo (no session to open)';
   openDeepLink(`switchboard://session/${smokeSessionId}`);
@@ -3715,7 +3782,13 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
       await js(`${tray}?.querySelector('[data-context-chip-remove]')?.click()`);
       if (!(await waitInPage(win, `${chips} === ${left - 1}`, 2_000))) return `removing a chip did not take it away (${String(await js(chips))} left of ${left})`;
     }
-    if (!(await waitInPage(win, `!${tray} && !document.querySelector('[data-new-session-draft]')`, 3_000))) return `removing the chips left ${(await js(`${tray}`)) ? 'the tray' : 'an unsent New session prompt'} behind`;
+    if (!(await waitInPage(win, `!${tray} && !document.querySelector('[data-new-session-draft]')`, 3_000))) {
+      if (await js(`!!${tray}`)) return 'removing the chips left the tray behind';
+      const left = await js(
+        `JSON.stringify({ pen: document.querySelector('[data-new-session-draft]')?.dataset.newSessionDraft ?? null, thisFolder: ${JSON.stringify(folder)}, box: document.querySelector('[data-new-session-view] [data-composer]')?.value ?? null })`,
+      );
+      return `removing the chips left an unsent New session prompt behind: ${left}`;
+    }
 
     // Settings › VS Code counts this step's socket as a connected editor and links to the extension.
     await js("document.querySelector('[data-open-settings]').click()");
@@ -4719,6 +4792,10 @@ async function runHistoryStep(win: BrowserWindow): Promise<string> {
   await js(`${box}.focus()`);
   await win.webContents.insertText(draft);
   await pause();
+  // In your own text ↑ first takes the caret to the start of the box, as in any text field; the next ↑ steps.
+  press('Up');
+  const toStart = await waitInPage(win, `${box}.selectionStart === 0 && ${box}.value === ${JSON.stringify(draft)}`, 2_000);
+  await pause();
   press('Up');
   const recalled = await waitInPage(win, `${box}.value !== ${JSON.stringify(draft)}`, 2_000);
   const afterUp = (await js(`({ value: ${box}.value, said: document.querySelector('[data-current-session] [data-history-announcer]')?.textContent ?? '', total: Number(${box}.dataset.history) })`)) as {
@@ -4738,7 +4815,8 @@ async function runHistoryStep(win: BrowserWindow): Promise<string> {
   const left = (await js(`${box}.value`)) as string;
   if (smokeSessionId) await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
 
-  if (!recalled || !afterUp.value.trim()) return '↑ on the first line did not bring back the last message';
+  if (!toStart) return '↑ at the end of a draft did not take the caret to the start of the box first';
+  if (!recalled || !afterUp.value.trim()) return '↑ at the start of the box did not bring back the last message';
   if (afterUp.said.trim() !== `Earlier message 1 of ${afterUp.total}`) return `↑ announced ${JSON.stringify(afterUp.said)}`;
   if (!restored) return `↓ did not put the draft back (${JSON.stringify(afterDown.value.slice(0, 60))})`;
   if (afterDown.said.trim() !== 'Back to your draft') return `↓ announced ${JSON.stringify(afterDown.said)}`;
@@ -5122,6 +5200,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   });
   await step('newest session with messages rendered', () => openSmokeSession(win));
   await step('transcript opens at the end', () => checkTranscriptEnd(win));
+  await step('permission mode for new sessions: a fixed mode starts New session in it, the last one picked comes back', () => runNewSessionModeStep(win));
   await step('tool calls summarised', async () => {
     const activity = await runActivityStep(win);
     if (!activity) return 'failed: no groups';

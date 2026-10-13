@@ -47,7 +47,10 @@ export interface HostManagerDeps {
   sessionProfile: (sessionId: string) => string;
   onInfo: (info: SessionHostInfo) => void;
   onStream: (delta: StreamDelta) => void;
-  onMessages: (sessionId: string, messages: RawSessionMessage[]) => void;
+  /** `held`: a message Claude Code doesn't have yet (see `HostEvents.messages`). */
+  onMessages: (sessionId: string, messages: RawSessionMessage[], held?: boolean) => void;
+  /** A session this app ran was stopped: a message it still held back will never be sent. */
+  onClosed?: (sessionId: string) => void;
   onPermission: (request: PermissionRequest) => void;
   onPermissionResolved: (requestId: string, sessionId: string) => void;
   /** A session this app created (for the "Switchboard" origin badge). */
@@ -363,6 +366,7 @@ export class HostManager {
     // Stopped while Auto was choosing: the message never goes, and the session no longer says Auto is choosing.
     this.choosing.delete(sessionId);
     host?.close();
+    this.deps.onClosed?.(sessionId);
     for (const [requestId, pending] of this.pending) {
       if (pending.request.sessionId === sessionId) this.settle(requestId, { behavior: 'deny', message: 'Session closed.' });
     }
@@ -649,7 +653,7 @@ export class HostManager {
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),
-        messages: (id, messages) => this.deps.onMessages(id, messages),
+        messages: (id, messages, held) => this.deps.onMessages(id, messages, held),
         log: this.deps.log,
         usageHint: () => this.deps.onUsageHint?.(config.profileId),
         rateLimit: (sessionId, info) => this.deps.onRateLimit?.(config.profileId, sessionId, info),

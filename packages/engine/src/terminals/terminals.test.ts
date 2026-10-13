@@ -19,7 +19,8 @@ const tempDir = () => {
   dirs.push(dir);
   return dir;
 };
-const until = async (check: () => boolean, timeoutMs = 5000) => {
+// PowerShell on a busy Windows runner can take longer than 5s just to start.
+const until = async (check: () => boolean, timeoutMs = process.platform === 'win32' ? 20_000 : 5000) => {
   const start = Date.now();
   while (!check()) {
     if (Date.now() - start > timeoutMs) throw new Error('timed out');

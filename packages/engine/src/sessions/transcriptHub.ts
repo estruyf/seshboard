@@ -38,6 +38,12 @@ export function diffTranscript(
 export class TranscriptHub {
   private readonly watchers = new Map<string, Set<Watcher>>();
   private readonly reloads = new Map<string, ReturnType<typeof coalesce>>();
+  /**
+   * Messages a session holds back from Claude Code (a new session's first message while Auto chooses), by uuid.
+   * They are not in the file yet, and the window usually starts watching after they were sent, so each load adds
+   * them until the file has them.
+   */
+  private readonly held = new Map<string, Map<string, TranscriptMessage>>();
   readonly images = new ImageStore();
 
   constructor(
@@ -80,11 +86,18 @@ export class TranscriptHub {
    * carry the same uuids Claude Code writes, so the later file read confirms
    * them instead of duplicating them.
    */
-  pushLive(sessionId: string, raw: readonly RawSessionMessage[]): void {
+  pushLive(sessionId: string, raw: readonly RawSessionMessage[], held = false): void {
+    if (raw.length === 0) return;
     const set = this.watchers.get(sessionId);
-    if (!set || raw.length === 0) return;
+    if (!set && !held) return;
     const sink = this.images.sink(sessionId);
     const messages = raw.map((m) => normaliseMessage(m, sink));
+    if (held) {
+      let kept = this.held.get(sessionId);
+      if (!kept) this.held.set(sessionId, (kept = new Map()));
+      for (const m of messages) kept.set(m.uuid, m);
+    }
+    if (!set) return;
     for (const watcher of set) {
       if (watcher.uuids === null) {
         watcher.dirty = true;
@@ -101,6 +114,11 @@ export class TranscriptHub {
     }
   }
 
+  /** The session stopped: what it held back will never reach the file. */
+  dropHeld(sessionId: string): void {
+    this.held.delete(sessionId);
+  }
+
   /** Called when a transcript file changed on disk. Reloads are coalesced per session. */
   changed(sessionId: string): void {
     if (!this.watchers.has(sessionId)) return;
@@ -114,9 +132,9 @@ export class TranscriptHub {
 
   private async push(sessionId: string, targets: Watcher[], initial: boolean): Promise<void> {
     if (targets.length === 0) return;
-    let messages: TranscriptMessage[];
+    let file: TranscriptMessage[];
     try {
-      messages = await this.read(sessionId);
+      file = await this.read(sessionId);
     } catch (error) {
       const message = (error as Error)?.message || String(error);
       this.log('warn', `Reading transcript ${sessionId} failed: ${message}`);
@@ -130,6 +148,12 @@ export class TranscriptHub {
       }
       return;
     }
+    // Held messages follow the file until it has them.
+    const kept = this.held.get(sessionId);
+    for (const m of file) kept?.delete(m.uuid);
+    if (kept?.size === 0) this.held.delete(sessionId);
+    const held = kept ? [...kept.values()] : [];
+    const messages = held.length ? [...file, ...held] : file;
     for (const watcher of targets) {
       if (!initial && watcher.uuids === null) {
         // Its initial load is still in flight; let that finish first, then catch up.
@@ -137,10 +161,13 @@ export class TranscriptHub {
         continue;
       }
       const diff = initial ? { mode: 'replace' as const, messages } : diffTranscript(watcher.uuids!, messages, watcher.live);
-      for (const m of messages) watcher.live.delete(m.uuid);
+      for (const m of file) watcher.live.delete(m.uuid);
+      if (diff) {
+        watcher.uuids = messages.map((m) => m.uuid);
+        if (diff.mode === 'replace') watcher.live.clear();
+      }
+      for (const m of held) watcher.live.add(m.uuid);
       if (!diff) continue;
-      watcher.uuids = messages.map((m) => m.uuid);
-      if (diff.mode === 'replace') watcher.live.clear();
       watcher.emit({ sessionId, ...diff });
       if (initial && watcher.dirty) {
         watcher.dirty = false;
@@ -153,5 +180,6 @@ export class TranscriptHub {
     for (const reload of this.reloads.values()) reload.stop();
     this.reloads.clear();
     this.watchers.clear();
+    this.held.clear();
   }
 }

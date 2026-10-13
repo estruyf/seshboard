@@ -1882,6 +1882,11 @@
       "page": "settings/claude-profiles"
     },
     {
+      "id": "feature:profile-defaults",
+      "name": "Claude profile defaults for new sessions",
+      "page": "settings/claude-profiles"
+    },
+    {
       "id": "feature:project-actions",
       "name": "Project actions",
       "page": "projects/actions"

@@ -38,9 +38,9 @@ With more than one [Claude profile](/settings/claude-profiles/), **Claude profil
 | **Worktree base** | What a new worktree branches from: *Worktree from origin* or *Worktree from HEAD*, or the global default. Shown unless the workspace is the current folder. |
 | **Branch** | For the current folder: *Keep what is checked out*, or *Check out &lt;branch&gt;* first. Only in a git repository, and not for a new worktree. |
 
-A field set to its global default uses the choices you last made in the New session view. See [Models and options](/new-session/models-and-options/) and [Worktrees](/new-session/worktrees/).
+A field you leave unset uses the defaults of the project's [Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), and else the choices you last made in the New session view, and for **Permissions** the mode set in [Settings → General](/settings/#new-sessions) when there is one. When the profile sets that field, the choice says so, for example *Profile default (Opus)* instead of *Global default*. See [Models and options](/new-session/models-and-options/) and [Worktrees](/new-session/worktrees/).
 
-The [Projects view](/projects/projects-view/) shows a summary of these defaults on each project ("Opus · high effort · worktree"), or *Global defaults* when none are set.
+The [Projects view](/projects/projects-view/) shows a summary of these defaults on each project ("Opus · high effort · worktree"), or, when none are set, *Profile defaults* or *Global defaults*, depending on whether the project's profile has any.
 
 ### Name and icon
 
