@@ -177,6 +177,16 @@
       "page": "settings/notifications"
     },
     {
+      "id": "palette:side-question",
+      "name": "Ask a side question…",
+      "page": "sessions/side-questions"
+    },
+    {
+      "id": "palette:side-questions",
+      "name": "Show side questions",
+      "page": "sessions/side-questions"
+    },
+    {
       "id": "palette:sounds-on",
       "name": "Sounds: turn on",
       "page": "settings/notifications"
@@ -2860,6 +2870,11 @@
       "id": "shortcut:usage.back",
       "name": "usage.back",
       "page": "usage"
+    },
+    {
+      "id": "slash:btw",
+      "name": "/btw side questions",
+      "page": "sessions/side-questions"
     }
   ]
 }

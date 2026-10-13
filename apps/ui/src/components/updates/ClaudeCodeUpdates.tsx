@@ -8,7 +8,7 @@ import { Toggle } from '../ui/Toggle.tsx';
 
 
 /** The command to run in a terminal, with a copy button. */
-function CommandToCopy({ command }: { command: string }) {
+export function CommandToCopy({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -56,7 +56,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 /** Settings → About: the Claude Code that Switchboard runs, whether a newer one is out, and updating it. */
 export function ClaudeCodeUpdates({ now }: { now: number }) {
-  const { state, refused, check, update, dismiss, setEnabled } = useClaudeUpdate();
+  const { state, refused, check, update, dismiss, setEnabled, showInstall } = useClaudeUpdate();
   if (!state) return null;
 
   const busy = state.status === 'checking' || state.status === 'updating';
@@ -81,9 +81,15 @@ export function ClaudeCodeUpdates({ now }: { now: number }) {
               {failed ? 'Try again' : `Update to v${state.latestVersion}`}
             </Button>
           )}
-          <Button disabled={busy || state.status === 'missing'} onClick={check} data-claude-update-check>
-            Check for Updates
-          </Button>
+          {state.status === 'missing' ? (
+            <Button variant="primary" onClick={() => showInstall(true)} data-claude-install-show>
+              Install Claude Code…
+            </Button>
+          ) : (
+            <Button disabled={busy} onClick={check} data-claude-update-check>
+              Check for Updates
+            </Button>
+          )}
         </div>
       </div>
 

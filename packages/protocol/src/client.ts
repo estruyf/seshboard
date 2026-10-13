@@ -32,3 +32,5 @@ export type * from './companion.ts';
 export { CONTINUE_EDITORS, MAX_CONTEXT_ITEMS, type ContinueEditor } from './companionConstants.ts';
 export type * from './memory.ts';
 export * from './memoryText.ts';
+export type * from './sideQuestions.ts';
+export * from './sideQuestionConstants.ts';

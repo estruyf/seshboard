@@ -19,6 +19,11 @@ describe('buttonClass', () => {
     expect(c).toEqual(expect.arrayContaining(['bg-error', 'text-white']));
     expect(c).not.toContain('btn-secondary');
   });
+  it('fills the side question button in the link blue, never the accent', () => {
+    const c = classes(buttonClass(look({ variant: 'side', size: 'lg' })));
+    expect(c).toEqual(expect.arrayContaining(['bg-link', 'text-bg', 'font-semibold']));
+    expect(c.some((x) => x.includes('accent'))).toBe(false);
+  });
   it('sizes by height, or as a square when icon-only', () => {
     expect(classes(buttonClass(look({ size: 'sm' })))).toContain('h-6');
     expect(classes(buttonClass(look({ size: 'lg' })))).toContain('h-8');

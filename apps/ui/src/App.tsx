@@ -14,6 +14,7 @@ import { useCompanionSync } from './state/useCompanionSync.ts';
 import { AddContextDialogHost } from './components/composer/AddContextDialog.tsx';
 import { CommandPalette } from './components/palette/CommandPalette.tsx';
 import { PaletteDialogs } from './components/palette/PaletteDialogs.tsx';
+import { ClaudeInstallDialog } from './components/updates/ClaudeInstallDialog.tsx';
 import { SearchDialog } from './components/search/SearchDialog.tsx';
 import { AddProjectDialog } from './components/projects/AddProjectDialog.tsx';
 import { BackupDialogs } from './components/backup/BackupDialogs.tsx';
@@ -31,6 +32,7 @@ import { useReadyReport } from './engine/useReadyReport.ts';
 import { isActiveHost, useHosts } from './state/hostsStore.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
+import { useSideQuestionsSync } from './state/sideQuestionsStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
@@ -177,6 +179,7 @@ export function App() {
   useThemesSync();
   useLaterSync();
   useUpNextSync();
+  useSideQuestionsSync();
   useQueueToasts();
   useSidebarSectionsSync();
   useCompanionSync();
@@ -253,6 +256,7 @@ export function App() {
       <BackupDialogs />
       <ThemeImportDialogs />
       <FocusGateDialog />
+      <ClaudeInstallDialog />
       <SessionHud />
       <ToastLayer />
       <TooltipLayer />

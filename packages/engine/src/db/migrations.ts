@@ -385,4 +385,17 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX up_next_session ON up_next (session_id, position);
   `,
+
+  // v23: Side questions (/btw) and their answers, per session. Claude Code doesn't write them to the transcript, so
+  // this is the only record of them: keep them when rebuilding.
+  `
+  CREATE TABLE side_questions (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    question   TEXT NOT NULL,
+    answer     TEXT NOT NULL,
+    at         INTEGER NOT NULL
+  );
+  CREATE INDEX side_questions_session ON side_questions (session_id, at);
+  `,
 ];

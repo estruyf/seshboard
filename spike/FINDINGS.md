@@ -103,6 +103,15 @@ A turn runs two 8 s foreground Bash calls; a second message B ("end your answer 
 - ⚠️ **`priority: 'now'` doesn't stop a turn that hasn't started answering yet.** Found in the live smoke: a 'now' message sent 0.4 s after a long prompt (Claude still thinking) was folded into that turn, which then answered only the first prompt. `interrupt()` does stop a turn in that window (Claude Code latches it).
 - Mapping for the app: **Queue** = held by the host, pushed when the session goes `idle`; **Steer** = push with no priority, now, no interrupt; **Send now** = `interrupt()`, then push, with the host's queue held until the message's turn has started (so an `idle` from the stopped turn can't send a queued message first).
 
+## 13. Side questions (`/btw`) ✅ (`12-side-question.mjs`, claude 2.1.296, SDK 0.3.288)
+- **The SDK has it, undocumented:** `Query.askSideQuestion(question, { history?, signal? })` exists at runtime but not in `sdk.d.ts`. It sends the `side_question` control request and resolves with `{ response, synthetic, refusalFallback? }` (`response: null` when there is nothing to answer from). Claude Code 2.1.287 to 2.1.296 all handle the request.
+- **Claude Code runs it as a one-shot fork** of the conversation (the same code as the terminal's `/btw`): `maxTurns: 1`, `skipTranscript: true`, `skipCacheWrite: true`, and **no tools** (`canUseTool` always denies, and a system reminder tells the model it has none). A turn in progress gets its open tool calls closed with a placeholder in the fork only.
+- **It runs beside a turn:** asked 0 s into a 10 s Bash call, it answered in 0.8 s; the turn went on and ended with its one `result`. Nothing was queued or steered. The main stream only gets a `system: control_request_progress` (`started`, or `api_retry`) for it.
+- **Nothing lands in the session file:** the question and answer were not in the `.jsonl`, so the transcript reader needs no filter.
+- **No streaming:** the answer comes in one piece with the control response; no `stream_event` belongs to it.
+- **History is the caller's:** the terminal keeps the last 20 exchanges and sends them along (`btwHistory`); for an SDK host the client passes `history: [{ question, response }]`, so Switchboard keeps its own.
+- **A session that isn't running** can answer from a short-lived process: `resume: <id>`, `forkSession: true`, `persistSession: false`. It answered in 2.2 s (start included), and the original file and the projects folder were unchanged.
+
 ---
 
 ## Side effects of running the spike

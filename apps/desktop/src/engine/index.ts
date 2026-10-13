@@ -53,6 +53,7 @@ const engine = createEngine({
   demoUsage: demoUsage(),
   // The smoke test and the screenshots: Auto model picks without calling a model.
   stubRouter: process.env.SWITCHBOARD_STUB_ROUTER === '1',
+  stubSideQuestions: process.env.SWITCHBOARD_STUB_BTW === '1',
 });
 
 // One misbehaving session must never take the whole engine (and every other session) down.

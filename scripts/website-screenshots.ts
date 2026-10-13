@@ -446,6 +446,9 @@ const HERO = 'Add dark mode toggle';
 const WORKING = 'Fix rounding';
 const NEEDS_YOU = 'Upgrade Stripe';
 
+/** The side question for its picture has been asked (in the first colour scheme). */
+let sideAsked = false;
+
 const screens: Screen[] = [
   {
     name: 'home',
@@ -540,6 +543,23 @@ const screens: Screen[] = [
       await t.shot('split');
       await t.click('[data-pane="split"] [data-close-pane]');
       await t.gone('[data-split]', 'the second pane did not close');
+    },
+  },
+  {
+    // A side question (/btw) about the session Claude is working in, answered by the engine's stub (never a model).
+    // The first picture asks it; the second opens it again with a bare /btw, so both show the same panel.
+    name: 'side-question',
+    async take(t) {
+      await t.openSession(WORKING);
+      const pane = '[data-current-session]';
+      await t.q(`${pane} [data-composer]`).fill(sideAsked ? '/btw ' : '/btw Why were the totals off by a cent?');
+      await t.need(`${pane} [data-btw-token]`, '"/btw " did not become the token');
+      await t.click(`${pane} [data-composer-ask]`, 'no Ask button with the token');
+      await t.need(`${pane} [data-btw-panel] [data-btw-answer="done"]`, 'the side answer did not come in', 15_000);
+      sideAsked = true;
+      await t.shot('side-question');
+      await t.click(`${pane} [data-btw-close]`);
+      await t.gone(`${pane} [data-btw-panel]`, 'the side question panel did not close');
     },
   },
   {

@@ -46,6 +46,8 @@ import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from './later.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
+import { SideQuestionEvent, SideQuestionList } from './sideQuestions.ts';
+import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
 import { CompanionTarget } from './companion.ts';
@@ -333,6 +335,17 @@ export const contract = {
     'session.queue.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
     'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
+    /**
+     * Asks a side question (`/btw`): Claude answers from the session's conversation, without tools, and nothing is
+     * added to it. It runs beside a turn in progress, never in Up next. The answer comes through `session.btw` events
+     * with the returned id. A session that isn't running here is answered by a short-lived copy that writes nothing.
+     */
+    'session.btw': {
+      params: z.object({ sessionId: SessionId, question: z.string().trim().min(1).max(MAX_SIDE_QUESTION_LENGTH) }),
+      result: z.object({ id: z.string(), at: z.number() }),
+    },
+    /** The side questions kept for a session, oldest first (answered ones only). */
+    'session.btwList': { params: z.object({ sessionId: SessionId }), result: SideQuestionList },
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Stops one of the session's background tasks (a shell command, subagent or workflow); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string() }), result: z.object({}) },
@@ -946,6 +959,8 @@ export const contract = {
     /** Claude Code reported a new model list (replaces the one from `models.list`). */
     'models.changed': z.object({ models: z.array(ModelOption) }),
     'session.stream': StreamDelta,
+    /** A side question's answer coming in (`session.btw`), and its end. */
+    'session.btw': SideQuestionEvent,
     'session.permission': PermissionRequest,
     'session.permissionResolved': z.object({ requestId: z.string(), sessionId: z.string() }),
     /** Output for an attached terminal (batched). */

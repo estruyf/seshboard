@@ -16,6 +16,8 @@ import { isQuestionsFolder } from '../../lib/questions.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { isActive } from '../../state/sidebarRows.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
+import { browsable, EMPTY_SIDE } from '../../state/sideQuestions.ts';
+import { useSideQuestions } from '../../state/sideQuestionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { activeComposer, useComposerTargets } from '../../state/composerTargets.ts';
@@ -98,6 +100,7 @@ export function usePaletteContext(): PaletteContext {
   const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : selectedId ? 'session' : 'home';
   const id = view === 'session' ? selectedId : null;
 
+  const sides = useSideQuestions((s) => s.sessions);
   const session = useMemo<PaletteSession | null>(() => {
     if (!id) return null;
     const row = toRows(sessions, live, hosts).find((r) => r.id === id);
@@ -123,8 +126,9 @@ export function usePaletteContext(): PaletteContext {
       waiting: waitingOn.length === 0 ? null : waitingOn.some((p) => p.toolName === 'AskUserQuestion') ? 'question' : 'permission',
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
+      sideQuestions: browsable(sides.get(id) ?? EMPTY_SIDE),
     };
-  }, [id, sessions, live, hosts, permissions, models, digest]);
+  }, [id, sessions, live, hosts, permissions, models, digest, sides]);
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);

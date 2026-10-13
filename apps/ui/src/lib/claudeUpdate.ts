@@ -76,3 +76,21 @@ export function claudeUpdateStatusText(state: ClaudeUpdateState): string {
       return state.error ?? 'Something went wrong.';
   }
 }
+
+/** Claude Code's setup guide, for the ways to install it this dialog doesn't list. */
+export const CLAUDE_SETUP_URL = 'https://code.claude.com/docs/en/setup';
+
+export interface ClaudeInstallOption {
+  label: string;
+  command: string;
+}
+
+/** The ways to install Claude Code on this platform, the recommended one first. */
+export function claudeInstallOptions(platform: string): ClaudeInstallOption[] {
+  const npm = { label: 'npm (Node.js 18 or newer)', command: 'npm install -g @anthropic-ai/claude-code' };
+  if (platform === 'win32') {
+    return [{ label: 'Native installer, in PowerShell', command: 'irm https://claude.ai/install.ps1 | iex' }, { label: 'WinGet', command: 'winget install Anthropic.ClaudeCode' }, npm];
+  }
+  const native = { label: 'Native installer', command: 'curl -fsSL https://claude.ai/install.sh | bash' };
+  return platform === 'darwin' ? [native, { label: 'Homebrew', command: 'brew install --cask claude-code' }, npm] : [native, npm];
+}

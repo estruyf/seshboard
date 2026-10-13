@@ -1,6 +1,6 @@
-import { ImagePlus, Paperclip } from 'lucide-react';
+import { ImagePlus, MessageCircleDashed, Paperclip } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { joinPath, type ContextItem, type ImageAttachment, type SlashCommand } from '@switchboard/protocol/client';
+import { joinPath, MAX_SIDE_QUESTION_LENGTH, type ContextItem, type ImageAttachment, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { attachmentsAfterSend, textAfterSend } from './afterSend.ts';
@@ -13,6 +13,7 @@ import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { onFirstLine, onLastLine, textareaRows } from './caretLine.ts';
 import { appendQuote, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
+import { joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
 import { useAttachments } from './useAttachments.ts';
 import { ariaKeysFor, formatKeys, keysFor, localizeKeys, matches, type ShortcutId } from '../../lib/shortcuts.ts';
@@ -95,6 +96,14 @@ export interface ComposerProps {
   onSubmit(text: string, attachments: ImageAttachment[], requested?: boolean, parts?: SentParts): Promise<void | false> | void | false;
   onInterrupt?(): void;
   onCycleMode?(): void;
+  /**
+   * Side questions (/btw): the slash menu offers `/btw`, and `/btw ` at the start of the box becomes a token. While
+   * it is there, Enter asks (`onAsk`) right away, even while Claude works, and never sends or queues a message;
+   * Enter with no question is `onBare`. `request` changing puts the token in the box and focuses it (the palette).
+   */
+  sideQuestions?: { onAsk(question: string): Promise<void>; onBare(): void; request?: number };
+  /** Escape in the box, before it stops Claude: true when something used it (the side question panel closed). */
+  onEscape?(): boolean;
 }
 
 /** What the message was made of: the typed text and the context chips that `promptWithContext` put together. */
@@ -135,7 +144,19 @@ export function Composer(props: ComposerProps) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [saved] = useState(() => (props.draftKey === undefined ? undefined : useDrafts.getState().drafts[props.draftKey]));
-  const [text, setText] = useState(saved?.text ?? '');
+  // A draft kept with the side question token comes back as the token and its question.
+  const [initial] = useState(() => (props.sideQuestions ? splitSideToken(saved?.text ?? '') : { token: false, question: saved?.text ?? '' }));
+  const [text, setText] = useState(initial.question);
+  /** The `/btw` token is at the start of the box: Enter asks a side question. */
+  const [sideToken, setSideToken] = useState(initial.token);
+  const side = props.sideQuestions;
+  /** Text from a draft or a preset: `/btw ` at its start becomes the token. */
+  const loadText = (value: string): string => {
+    const split = side ? splitSideToken(value) : { token: false, question: value };
+    setSideToken(split.token);
+    setText(split.question);
+    return split.question;
+  };
   const [palette, setPalette] = useState<Palette | null>(null);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -199,8 +220,7 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     if (presetSeq === undefined) return;
     presetApplied.current = true;
-    const value = props.preset!.text;
-    setText(value);
+    const value = loadText(props.preset!.text);
     if (props.preset!.attachments) setAttachments(props.preset!.attachments);
     if (props.preset!.context) setLocalChips(addChips([], props.preset!.context));
     history.current!.reset();
@@ -217,7 +237,7 @@ export function Composer(props: ComposerProps) {
   useEffect(() => history.current!.setEntries(props.history ?? []), [props.history]);
 
   const onTextChange = props.onTextChange;
-  useEffect(() => onTextChange?.(text), [text, onTextChange]);
+  useEffect(() => onTextChange?.(joinSideToken(sideToken, text)), [text, sideToken, onTextChange]);
   const onContextChange = props.onContextChange;
   useEffect(() => onContextChange?.(chips.map(({ id: _id, ...item }) => item as ContextItem)), [chips, onContextChange]);
   const onAttachmentsChange = props.onAttachmentsChange;
@@ -236,7 +256,7 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     const store = useDrafts.getState();
     if (draftKey === lastKey.current) {
-      if (draftKey !== undefined) store.setDraft(draftKey, { text, attachments });
+      if (draftKey !== undefined) store.setDraft(draftKey, { text: joinSideToken(sideToken, text), attachments });
       return;
     }
     const previous = lastKey.current;
@@ -247,7 +267,7 @@ export function Composer(props: ComposerProps) {
     if (fromPreset || draftKey === undefined) return;
     const target = store.drafts[draftKey];
     if (target && hasContent(target)) {
-      setText(target.text);
+      loadText(target.text);
       setAttachments(target.attachments);
       history.current!.reset();
       closePalette();
@@ -256,9 +276,10 @@ export function Composer(props: ComposerProps) {
     } else if (props.carryOver && previous !== undefined && store.drafts[previous]) store.moveDraft(previous, draftKey);
     else if (!props.carryOver) {
       setText('');
+      setSideToken(false);
       setAttachments([]);
     }
-  }, [draftKey, text, attachments]);
+  }, [draftKey, text, attachments, sideToken]);
   useEffect(() => {
     presetApplied.current = false;
   });
@@ -311,18 +332,32 @@ export function Composer(props: ComposerProps) {
     el.focus();
   }, [props.focusRequest, props.disabledReason]);
 
-  const updatePalette = (value: string, caret: number) => {
+  // The palette's Ask a side question…: the token goes in front of what is in the box, and the box takes focus.
+  const sideRequest = side?.request;
+  const lastSideRequest = useRef(sideRequest);
+  useEffect(() => {
+    if (sideRequest === lastSideRequest.current) return;
+    lastSideRequest.current = sideRequest;
+    setSideToken(true);
+    closePalette();
+    caretToEnd(true);
+  }, [sideRequest]);
+
+  /** `withToken`: the side question token is in the box, where commands and files don't apply. */
+  const updatePalette = (value: string, caret: number, withToken = sideToken) => {
     // Any edit makes an earlier file search stale, whatever this one turns out to be.
     const seq = ++searchSeq.current;
-    const token = tokenAtCaret(value, caret);
+    const token = withToken ? null : tokenAtCaret(value, caret);
     if (!token) return setPalette(null);
     if (token.kind === 'slash') {
       const q = token.query.toLowerCase();
-      const items = props.commands
+      const listed = props.commands
         .filter((c) => c.name.toLowerCase().includes(q) || (q.length > 2 && c.description.toLowerCase().includes(q)))
         .sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)) || a.name.localeCompare(b.name))
         .slice(0, 60)
         .map((c) => ({ value: `/${c.name}`, label: `/${c.name}`, detail: c.argumentHint ? `${c.argumentHint} · ${c.description}` : c.description }));
+      // /btw only makes a token at the start of the box; Claude Code's own /btw is never listed.
+      const items = !side ? listed : token.start === 0 ? withSideCommand(listed, q, { value: SIDE_TOKEN, label: SIDE_TOKEN, detail: SIDE_DESCRIPTION }) : listed.filter((item) => item.value !== SIDE_TOKEN);
       return setPalette(items.length ? { kind: 'slash', start: token.start, items, active: 0 } : null);
     }
     if (!client || !props.cwd) return setPalette(null);
@@ -351,6 +386,14 @@ export function Composer(props: ComposerProps) {
     const el = ref.current;
     if (!el || !palette) return;
     const caret = el.selectionStart;
+    // /btw becomes the token in front of the question, rather than text.
+    if (palette.kind === 'slash' && item.value === SIDE_TOKEN && palette.start === 0 && side) {
+      setText(text.slice(caret).replace(/^ /, ''));
+      setSideToken(true);
+      closePalette();
+      requestAnimationFrame(() => el.setSelectionRange(0, 0));
+      return;
+    }
     // A file from the @ list becomes a chip; the @ and what was typed after it go.
     if (palette.kind === 'file' && addContext && cwd) {
       const next = `${text.slice(0, palette.start)}${text.slice(caret).replace(/^ /, '')}`;
@@ -403,6 +446,37 @@ export function Composer(props: ComposerProps) {
     }
   };
 
+  /**
+   * Asks what follows the token as a side question: right away, also while Claude works, and never as a message
+   * or into Up next. Without a question it opens the latest side question. Images and context stay in the box.
+   */
+  const ask = async () => {
+    if (!side || sending || props.disabledReason) return;
+    const sentText = text;
+    const question = text.trim();
+    if (!question) {
+      setSideToken(false);
+      setText('');
+      side.onBare();
+      return;
+    }
+    if (question.length > MAX_SIDE_QUESTION_LENGTH) return setNotice(`A side question can be up to ${MAX_SIDE_QUESTION_LENGTH.toLocaleString('en-US')} characters. Shorten it, or send it as a message.`);
+    setSending(true);
+    setNotice(null);
+    closePalette();
+    try {
+      await side.onAsk(question);
+      setSideToken(false);
+      setText((current) => textAfterSend(current, sentText));
+      history.current!.reset();
+    } catch (error) {
+      setNotice(`Not asked: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSending(false);
+      ref.current?.focus();
+    }
+  };
+
   // Start anyway (New session) sends what is in the box from outside it.
   const lastSubmitRequest = useRef(props.submitRequest);
   const submitRef = useRef(submit);
@@ -426,6 +500,12 @@ export function Composer(props: ComposerProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
     const el = event.currentTarget;
+    // Backspace right after the token takes it out: the box is a normal message again.
+    if (sideKey(event, { token: sideToken, selectionStart: el.selectionStart, selectionEnd: el.selectionEnd, sends: false }) === 'untoken') {
+      event.preventDefault();
+      setSideToken(false);
+      return;
+    }
     const route = routeArrow(
       { key: event.key, shiftKey: event.shiftKey, altKey: event.altKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey, isComposing: event.nativeEvent.isComposing },
       palette && { active: palette.active, count: palette.items.length },
@@ -476,11 +556,20 @@ export function Composer(props: ComposerProps) {
         return;
       }
     }
+    // The side question panel closes first; Escape only stops Claude when nothing else took it.
+    if (event.key === 'Escape' && props.onEscape?.()) {
+      event.preventDefault();
+      return;
+    }
     // ⇧↵ on a list item starts the next one; ` on a selection wraps it as code.
     if (editKey(event, setText)) return;
     const other = props.others?.find((o) => matches(event.nativeEvent, o.shortcut));
     const send = other ? null : submitKey(event.nativeEvent, props.secondary?.shortcut);
-    if (other) {
+    if (sideKey(event, { token: sideToken, selectionStart: el.selectionStart, selectionEnd: el.selectionEnd, sends: !!(other || send) }) === 'ask') {
+      // Every way of sending asks instead: a side question never queues, steers or stops Claude.
+      event.preventDefault();
+      void ask();
+    } else if (other) {
       event.preventDefault();
       void submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts));
     } else if (matches(event.nativeEvent, 'composer.add-context') && addContext) {
@@ -586,8 +675,9 @@ export function Composer(props: ComposerProps) {
       <div
         ref={cardRef}
         onAnimationEnd={(e) => e.animationName === 'composer-flash' && e.currentTarget.classList.remove('composer-flash')}
-        className={`rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${props.restored ? 'border-edge' : 'border-border'} ${disabled ? '' : 'focus-within:border-accent-ink/60'}`}
-        style={props.frameColor ? { borderColor: props.frameColor } : undefined}
+        className={`rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${sideToken ? 'border-link' : props.restored ? 'border-edge' : 'border-border'} ${disabled || sideToken ? '' : 'focus-within:border-accent-ink/60'}`}
+        style={props.frameColor && !sideToken ? { borderColor: props.frameColor } : undefined}
+        data-side-question={sideToken || undefined}
       >
         <ContextTray
           chips={chips}
@@ -613,36 +703,55 @@ export function Composer(props: ComposerProps) {
         />
         {/* Grows with the content up to max-h-80, then scrolls. CSS sizes it: collapsing it to measure scrollHeight
             made the conversation above taller for a moment, and the browser clamped its scroll position. */}
-        <textarea
-          data-composer
-          data-history={props.history?.length ?? 0}
-          ref={ref}
-          value={text}
-          rows={1}
-          disabled={disabled}
-          placeholder={props.disabledReason ?? props.placeholder}
-          aria-label="Message to Claude"
-          aria-describedby={`${ids}-hint`}
-          aria-keyshortcuts={props.running && props.onInterrupt ? ariaKeysFor('claude.stop') : undefined}
-          // While the / or @ list is open, ↑ ↓ move through it without leaving the box.
-          aria-autocomplete="list"
-          aria-controls={palette ? `${ids}-palette` : undefined}
-          aria-activedescendant={palette ? `${ids}-option-${palette.active}` : undefined}
-          spellCheck
-          onChange={(e) => {
-            setText(e.target.value);
-            updatePalette(e.target.value, e.target.selectionStart);
-          }}
-          onKeyDown={onKeyDown}
-          {...deadKeyWrap(setText)}
-          onPaste={onPaste}
-          onBlur={() => {
-            // A search still on its way must not reopen the list after focus left; the open list waits a moment so a click on it lands.
-            ++searchSeq.current;
-            setTimeout(() => setPalette(null), 100);
-          }}
-          className={`block field-sizing-content max-h-80 w-full resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large ? 'min-h-24 px-1 pt-1 text-title font-normal' : 'text-body'}`}
-        />
+        <div className="flex items-start gap-2">
+          {sideToken && (
+            <span className="mt-px inline-flex shrink-0 items-center gap-1 rounded-md bg-link/12 px-1.5 py-0.5 font-mono text-ui text-link" data-btw-token data-tooltip="Side question: not added to the conversation. Backspace takes it out.">
+              <MessageCircleDashed size={12} aria-hidden />
+              {SIDE_TOKEN}
+            </span>
+          )}
+          <textarea
+            data-composer
+            data-history={props.history?.length ?? 0}
+            ref={ref}
+            value={text}
+            rows={1}
+            disabled={disabled}
+            placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : props.placeholder)}
+            aria-label={sideToken ? 'Side question for Claude' : 'Message to Claude'}
+            aria-describedby={`${ids}-hint`}
+            aria-keyshortcuts={props.running && props.onInterrupt ? ariaKeysFor('claude.stop') : undefined}
+            // While the / or @ list is open, ↑ ↓ move through it without leaving the box.
+            aria-autocomplete="list"
+            aria-controls={palette ? `${ids}-palette` : undefined}
+            aria-activedescendant={palette ? `${ids}-option-${palette.active}` : undefined}
+            spellCheck
+            onChange={(e) => {
+              const el = e.target;
+              // `/btw ` typed at the start becomes the token.
+              const split = side && !sideToken ? splitSideToken(el.value) : null;
+              if (split?.token) {
+                const caret = Math.max(0, el.selectionStart - SIDE_TOKEN.length - 1);
+                setSideToken(true);
+                setText(split.question);
+                updatePalette(split.question, caret, true);
+                requestAnimationFrame(() => el.setSelectionRange(caret, caret));
+                return;
+              }
+              setText(el.value);
+              updatePalette(el.value, el.selectionStart);
+            }}
+            onKeyDown={onKeyDown}
+            {...deadKeyWrap(setText)}
+            onPaste={onPaste}
+            onBlur={() => {
+              // A search still on its way must not reopen the list after focus left; the open list waits a moment so a click on it lands.
+              ++searchSeq.current;
+              setTimeout(() => setPalette(null), 100);
+            }}
+            className={`block field-sizing-content max-h-80 w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large ? 'min-h-24 px-1 pt-1 text-title font-normal' : 'text-body'}`}
+          />
+        </div>
         {props.controls && notice && (
           <p role="alert" className="mt-1 truncate text-meta text-error" data-tooltip={notice}>
             {notice}
@@ -660,7 +769,7 @@ export function Composer(props: ComposerProps) {
               {props.controls}
               {/* The keys still get read out with the message box; the chips take the hint's place on screen. */}
               <span id={`${ids}-hint`} className="sr-only">
-                {props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
+                {sideToken ? 'Enter asks a side question. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
               </span>
             </div>
           ) : (
@@ -682,37 +791,48 @@ export function Composer(props: ComposerProps) {
             {/* Without chips the hint line holds the left; the attach buttons stay on the right. */}
             {!props.controls && attach}
             {props.meter}
-            {props.running && props.onInterrupt && (
-              <Button size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow onClick={props.onInterrupt} data-tooltip={`Stop Claude (${formatKeys(keysFor('claude.stop'))})`} data-composer-stop>
-                Stop
-              </Button>
-            )}
-            {props.submitControl ? (
-              props.submitControl({
-                blocked: props.disabledReason ?? null,
-                sending,
-                hasMessage,
-                hasText,
-                submit: () => void submit(),
-                submitSecondary: () => void submitSecondary(),
-                submitOther: (shortcut) => void submitOther(shortcut),
-                submitWith: (send) => void submit(false, send),
-              })
-            ) : (
-              // A disabled button gets no hover, so the reason it's unavailable sits on this wrapper.
-              <span className="flex" data-tooltip={!sending ? (props.disabledReason ?? (!hasMessage ? 'Type a message first' : undefined)) : undefined}>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  kbd={props.submitHint && !sending ? props.submitHint : undefined}
-                  data-composer-submit
-                  onClick={() => void submit()}
-                  disabled={disabled || sending || !hasMessage}
-                  className="disabled:pointer-events-none"
-                >
-                  {sending ? 'Sending…' : (props.submitLabel ?? (props.running ? 'Queue' : 'Send'))}
+            {sideToken ? (
+              <>
+                <span className="text-meta text-muted @max-[860px]:hidden">Not added to the conversation</span>
+                <Button variant="side" size="lg" icon={<MessageCircleDashed size={14} aria-hidden />} onClick={() => void ask()} disabled={disabled || sending} data-composer-ask>
+                  {sending ? 'Asking…' : 'Ask'}
                 </Button>
-              </span>
+              </>
+            ) : (
+              <>
+                {props.running && props.onInterrupt && (
+                  <Button size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow onClick={props.onInterrupt} data-tooltip={`Stop Claude (${formatKeys(keysFor('claude.stop'))})`} data-composer-stop>
+                    Stop
+                  </Button>
+                )}
+                {props.submitControl ? (
+                  props.submitControl({
+                    blocked: props.disabledReason ?? null,
+                    sending,
+                    hasMessage,
+                    hasText,
+                    submit: () => void submit(),
+                    submitSecondary: () => void submitSecondary(),
+                    submitOther: (shortcut) => void submitOther(shortcut),
+                    submitWith: (send) => void submit(false, send),
+                  })
+                ) : (
+                  // A disabled button gets no hover, so the reason it's unavailable sits on this wrapper.
+                  <span className="flex" data-tooltip={!sending ? (props.disabledReason ?? (!hasMessage ? 'Type a message first' : undefined)) : undefined}>
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      kbd={props.submitHint && !sending ? props.submitHint : undefined}
+                      data-composer-submit
+                      onClick={() => void submit()}
+                      disabled={disabled || sending || !hasMessage}
+                      className="disabled:pointer-events-none"
+                    >
+                      {sending ? 'Sending…' : (props.submitLabel ?? (props.running ? 'Queue' : 'Send'))}
+                    </Button>
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
