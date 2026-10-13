@@ -94,7 +94,7 @@ import type { PaletteContext } from './paletteContext.ts';
 import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteState.ts';
 
 /** Requests the session view answers, because the dialog or menu they open lives there. */
-export type SessionRequest = 'commit' | 'branch-menu' | 'edit-actions' | 'new-action';
+export type SessionRequest = 'commit' | 'create-pr' | 'branch-menu' | 'edit-actions' | 'new-action';
 /** Requests the New session view answers: they change its own choices. */
 export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up';
 
@@ -160,7 +160,8 @@ export interface PaletteApi {
   stop(): void;
   goToWaiting(): void;
   sessionRequest(kind: SessionRequest): void;
-  createPullRequest(): void;
+  /** A web page, in the browser (a pull request). */
+  openUrl(url: string): void;
   syncWithRemote(): void;
   stageAll(): void;
   revertAll(): void;
@@ -574,7 +575,16 @@ export const COMMANDS: PaletteCommand[] = [
 
   // The folder is a git repository
   { id: 'commit', title: 'Commit…', group: 'git', icon: GitCommitHorizontal, keywords: 'git message', when: (ctx) => inGit(ctx) && ctx.git!.changed > 0, run: (api) => api.sessionRequest('commit') },
-  { id: 'create-pr', title: 'Create pull request…', group: 'git', icon: GitPullRequest, keywords: 'git github pr gh', when: (ctx) => inGit(ctx) && ctx.git!.prBlocked === null, run: (api) => api.createPullRequest() },
+  {
+    id: 'create-pr',
+    // Once the branch has an open pull request, the same command opens it.
+    title: (ctx) => (ctx.git?.pr ? `View pull request #${ctx.git.pr.number}` : 'Create pull request…'),
+    group: 'git',
+    icon: GitPullRequest,
+    keywords: 'git github pr gh open view',
+    when: (ctx) => inGit(ctx) && ctx.git!.github && (ctx.git!.pr !== null || ctx.git!.prBlocked === null),
+    run: (api, ctx) => (ctx.git?.pr ? api.openUrl(ctx.git.pr.url) : api.sessionRequest('create-pr')),
+  },
   { id: 'sync', title: 'Sync with remote', group: 'git', icon: RefreshCw, keywords: 'git pull push fetch', when: (ctx) => inGit(ctx) && ctx.git!.hasRemote, run: (api) => api.syncWithRemote() },
   { id: 'switch-branch', title: 'Switch branch…', group: 'git', icon: GitBranch, keywords: 'git checkout', when: (ctx) => inGit(ctx) && !session(ctx)!.isWorktree && !session(ctx)!.running, run: (api) => api.sessionRequest('branch-menu') },
   { id: 'stage-all', title: 'Stage all', group: 'git', icon: ListChecks, keywords: 'git add', when: (ctx) => inGit(ctx) && ctx.git!.unstaged > 0, run: (api) => api.stageAll() },

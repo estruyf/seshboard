@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { BUILTIN_PROFILE_ID, RpcError, type ClaudeProfile, type ProfileColor, type ProfilesSnapshot } from '@switchboard/protocol';
+import { BUILTIN_PROFILE_ID, RpcError, type ClaudeProfile, type ProfileColor, type ProfileDefaults, type ProfilesSnapshot } from '@switchboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
+import { parseDefaults } from '../projects/projectRegistry.ts';
 
 const DEFAULT_KEY = 'profiles.default';
 
@@ -14,6 +15,7 @@ interface Row {
   color: string;
   config_dir: string | null;
   sort: number;
+  defaults_json: string | null;
 }
 
 /** What the engine needs to read and run a profile. */
@@ -51,6 +53,16 @@ export function readAccount(globalConfigFile: string): ClaudeProfile['account'] 
 /** Where Claude Code keeps the login for a profile: see `readAccount`. */
 const accountFile = (envDir: string | undefined) => (envDir ? join(envDir, '.claude.json') : join(homedir(), '.claude.json'));
 
+/** Reads a profile's defaults leniently, as a project's: a field that no longer validates is unset. */
+export function readProfileDefaults(json: string | null): ProfileDefaults {
+  let raw: unknown = {};
+  try {
+    raw = json ? JSON.parse(json) : {};
+  } catch {}
+  const { branch: _branch, ...defaults } = parseDefaults(raw);
+  return defaults;
+}
+
 const COLORS: readonly ProfileColor[] = ['yellow', 'blue', 'green', 'purple', 'red', 'orange', 'gray'];
 const asColor = (value: string): ProfileColor => (COLORS.includes(value as ProfileColor) ? (value as ProfileColor) : 'gray');
 
@@ -71,15 +83,17 @@ export class ProfileStore {
     private readonly onChange: (snapshot: ProfilesSnapshot) => void = () => {},
   ) {
     this.statements = {
-      all: db.prepare('SELECT id, name, color, config_dir, sort FROM claude_profiles ORDER BY sort, created_at'),
+      all: db.prepare('SELECT id, name, color, config_dir, sort, defaults_json FROM claude_profiles ORDER BY sort, created_at'),
       insert: db.prepare('INSERT INTO claude_profiles (id, name, color, config_dir, sort, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
       rename: db.prepare('UPDATE claude_profiles SET name = ? WHERE id = ?'),
       recolor: db.prepare('UPDATE claude_profiles SET color = ? WHERE id = ?'),
+      setDefaults: db.prepare('UPDATE claude_profiles SET defaults_json = ? WHERE id = ?'),
       remove: db.prepare('DELETE FROM claude_profiles WHERE id = ?'),
       unlinkProjects: db.prepare('UPDATE project_settings SET profile_id = NULL WHERE profile_id = ?'),
       linkProject: db.prepare(
         'INSERT INTO project_settings (root, profile_id) VALUES (?, ?) ON CONFLICT (root) DO UPDATE SET profile_id = excluded.profile_id',
       ),
+      links: db.prepare('SELECT root, profile_id FROM project_settings WHERE profile_id IS NOT NULL'),
       projectProfile: db.prepare('SELECT profile_id FROM project_settings WHERE root = ?'),
     };
     if (!this.rows().some((r) => r.id === BUILTIN_PROFILE_ID)) {
@@ -130,10 +144,28 @@ export class ProfileStore {
         isDefault: row.id === defaultId,
         exists: existsSync(configDir),
         account: readAccount(accountFile(envDir)),
+        defaults: readProfileDefaults(row.defaults_json),
       };
     });
     this.accountsSeen = JSON.stringify(profiles.map((p) => [p.id, p.account]));
     return { profiles, defaultId };
+  }
+
+  /** Every profile as a settings file records it. */
+  exportEntries(): Array<{ id: string; dir: string | null; name: string; color: ProfileColor; defaults: ProfileDefaults }> {
+    return this.rows().map((r) => ({ id: r.id, dir: r.config_dir, name: r.name, color: asColor(r.color), defaults: readProfileDefaults(r.defaults_json) }));
+  }
+
+  /** Every project linked to a profile, with that profile's id. */
+  links(): Array<{ root: string; profileId: string }> {
+    return (this.statements.links.all() as Array<{ root: string; profile_id: string }>).map((r) => ({ root: r.root, profileId: r.profile_id })).filter((l) => this.has(l.profileId));
+  }
+
+  /** The profile that uses this config folder (null: the built-in one), if there is one. */
+  idOfDir(dir: string | null): string | null {
+    if (dir === null) return this.rows().find((r) => r.config_dir === null)?.id ?? null;
+    const wanted = resolve(dir);
+    return this.runtimes().find((p) => p.id !== BUILTIN_PROFILE_ID && resolve(p.configDir) === wanted)?.id ?? null;
   }
 
   /** The `.claude.json` file each profile's login lives in. */
@@ -170,19 +202,32 @@ export class ProfileStore {
     this.changed();
   }
 
+  /** Replaces what new sessions with this profile start with (where their project sets nothing). */
+  setDefaults(id: string, defaults: ProfileDefaults): void {
+    this.require(id);
+    const empty = Object.values(defaults).every((v) => v === null);
+    this.statements.setDefaults.run(empty ? null : JSON.stringify(defaults), id);
+    this.changed();
+  }
+
   /** Forgets a profile. Its folder, login and sessions stay on disk; its projects use the default again. */
   remove(id: string): void {
-    const row = this.require(id);
-    if (row.config_dir === null) throw new RpcError('BUILTIN', 'The built-in profile uses Claude Code’s own folder and can’t be removed');
     this.db.exec('BEGIN');
     try {
-      this.statements.remove.run(id);
-      this.statements.unlinkProjects.run(id);
+      this.removeWithin(id);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  /** `remove` for a caller that already has a transaction open (a settings import). */
+  removeWithin(id: string): void {
+    const row = this.require(id);
+    if (row.config_dir === null) throw new RpcError('BUILTIN', 'The built-in profile uses Claude Code’s own folder and can’t be removed');
+    this.statements.remove.run(id);
+    this.statements.unlinkProjects.run(id);
     if (this.appState.get(DEFAULT_KEY) === id) this.appState.set(DEFAULT_KEY, BUILTIN_PROFILE_ID);
     this.changed();
   }

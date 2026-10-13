@@ -39,10 +39,16 @@ export class TranscriptHub {
   private readonly watchers = new Map<string, Set<Watcher>>();
   private readonly reloads = new Map<string, ReturnType<typeof coalesce>>();
   /**
-   * Messages you sent that Claude Code hasn't written to the file yet (queued behind a running turn),
-   * kept so a window that opens the session later still shows them.
+   * Messages a session holds back from Claude Code (a new session's first message while Auto chooses), by uuid.
+   * They are not in the file yet, and the window usually starts watching after they were sent, so each load adds
+   * them until the file has them.
    */
-  private readonly unwritten = new Map<string, RawSessionMessage[]>();
+  private readonly held = new Map<string, Map<string, TranscriptMessage>>();
+  /**
+   * Messages you sent that Claude Code has but hasn't written yet (steered into a running turn), by uuid. They are
+   * kept with the held ones, so switching away and back still shows them, until the file has them or the turn ends.
+   */
+  private readonly sent = new Map<string, Set<string>>();
   readonly images = new ImageStore();
 
   constructor(
@@ -85,14 +91,27 @@ export class TranscriptHub {
    * carry the same uuids Claude Code writes, so the later file read confirms
    * them instead of duplicating them.
    */
-  pushLive(sessionId: string, raw: readonly RawSessionMessage[]): void {
+  pushLive(sessionId: string, raw: readonly RawSessionMessage[], held = false): void {
     if (raw.length === 0) return;
-    const sent = raw.filter((m) => m.type === 'user');
-    if (sent.length > 0) this.unwritten.set(sessionId, [...(this.unwritten.get(sessionId) ?? []), ...sent]);
     const set = this.watchers.get(sessionId);
-    if (!set) return;
+    const yours = raw.some((m) => m.type === 'user');
+    if (!set && !held && !yours) return;
     const sink = this.images.sink(sessionId);
     const messages = raw.map((m) => normaliseMessage(m, sink));
+    if (held || yours) {
+      let kept = this.held.get(sessionId);
+      if (!kept) this.held.set(sessionId, (kept = new Map()));
+      let sent = this.sent.get(sessionId);
+      raw.forEach((r, i) => {
+        if (!held && r.type !== 'user') return;
+        kept.set(messages[i]!.uuid, messages[i]!);
+        if (!held) {
+          if (!sent) this.sent.set(sessionId, (sent = new Set()));
+          sent.add(messages[i]!.uuid);
+        }
+      });
+    }
+    if (!set) return;
     for (const watcher of set) {
       if (watcher.uuids === null) {
         watcher.dirty = true;
@@ -109,9 +128,20 @@ export class TranscriptHub {
     }
   }
 
-  /** The session has no turn left, so everything sent is in the file. */
+  /** The session stopped: what it held back will never reach the file. */
+  dropHeld(sessionId: string): void {
+    this.held.delete(sessionId);
+    this.sent.delete(sessionId);
+  }
+
+  /** The session's turn ended, so what you sent is in the file; only what Claude Code doesn't have yet stays held. */
   settled(sessionId: string): void {
-    this.unwritten.delete(sessionId);
+    const sent = this.sent.get(sessionId);
+    if (!sent) return;
+    this.sent.delete(sessionId);
+    const kept = this.held.get(sessionId);
+    for (const uuid of sent) kept?.delete(uuid);
+    if (kept?.size === 0) this.held.delete(sessionId);
   }
 
   /** Called when a transcript file changed on disk. Reloads are coalesced per session. */
@@ -127,9 +157,9 @@ export class TranscriptHub {
 
   private async push(sessionId: string, targets: Watcher[], initial: boolean): Promise<void> {
     if (targets.length === 0) return;
-    let messages: TranscriptMessage[];
+    let file: TranscriptMessage[];
     try {
-      messages = await this.read(sessionId);
+      file = await this.read(sessionId);
     } catch (error) {
       const message = (error as Error)?.message || String(error);
       this.log('warn', `Reading transcript ${sessionId} failed: ${message}`);
@@ -143,10 +173,12 @@ export class TranscriptHub {
       }
       return;
     }
-    const inFile = new Set(messages.map((m) => m.uuid));
-    const waiting = (this.unwritten.get(sessionId) ?? []).filter((m) => !inFile.has(m.uuid));
-    if (waiting.length > 0) this.unwritten.set(sessionId, waiting);
-    else this.unwritten.delete(sessionId);
+    // Held messages follow the file until it has them.
+    const kept = this.held.get(sessionId);
+    for (const m of file) kept?.delete(m.uuid);
+    if (kept?.size === 0) this.held.delete(sessionId);
+    const held = kept ? [...kept.values()] : [];
+    const messages = held.length ? [...file, ...held] : file;
     for (const watcher of targets) {
       if (!initial && watcher.uuids === null) {
         // Its initial load is still in flight; let that finish first, then catch up.
@@ -154,20 +186,13 @@ export class TranscriptHub {
         continue;
       }
       const diff = initial ? { mode: 'replace' as const, messages } : diffTranscript(watcher.uuids!, messages, watcher.live);
-      for (const m of messages) watcher.live.delete(m.uuid);
-      if (!diff) continue;
-      watcher.uuids = messages.map((m) => m.uuid);
-      if (diff.mode === 'replace') watcher.live.clear();
-      if (initial && waiting.length > 0) {
-        // Still queued behind a running turn: show them after the file's messages, as they were sent.
-        const sink = this.images.sink(sessionId);
-        const queued = waiting.map((m) => normaliseMessage(m, sink));
-        for (const m of queued) {
-          watcher.uuids.push(m.uuid);
-          watcher.live.add(m.uuid);
-        }
-        diff.messages = [...diff.messages, ...queued];
+      for (const m of file) watcher.live.delete(m.uuid);
+      if (diff) {
+        watcher.uuids = messages.map((m) => m.uuid);
+        if (diff.mode === 'replace') watcher.live.clear();
       }
+      for (const m of held) watcher.live.add(m.uuid);
+      if (!diff) continue;
       watcher.emit({ sessionId, ...diff });
       if (initial && watcher.dirty) {
         watcher.dirty = false;
@@ -180,5 +205,6 @@ export class TranscriptHub {
     for (const reload of this.reloads.values()) reload.stop();
     this.reloads.clear();
     this.watchers.clear();
+    this.held.clear();
   }
 }

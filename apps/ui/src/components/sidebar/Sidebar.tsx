@@ -274,7 +274,7 @@ export const SessionRow = memo(function SessionRow({
   const railTone = profileRail ?? statusRail;
   const rail = railTone && (
     <span
-      className={`absolute inset-y-1.5 left-0 w-[3px] rounded-full ${railTone} ${archived && !selected ? 'opacity-50' : ''}`}
+      className={`absolute inset-0 rounded-[inherit] [clip-path:inset(0_calc(100%-3px)_0_0)] ${railTone} ${archived && !selected ? 'opacity-50' : ''}`}
       data-profile-badge={profileRail && profile ? profile.id : undefined}
       aria-hidden
     />

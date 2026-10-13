@@ -1,6 +1,6 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type ContextItem, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -20,7 +20,8 @@ import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { inScope, rowStatus } from '../../state/sidebarRows.ts';
-import { Composer } from '../composer/Composer.tsx';
+import { Composer, type SentParts } from '../composer/Composer.tsx';
+import { promptWithContext } from '../composer/contextItems.ts';
 import { StartButton } from './StartButton.tsx';
 import { AutoWand } from '../composer/ComposerChips.tsx';
 import { AUTO_OFF_NOTE, effectiveModel, modelChoices, modelLabel } from '../../lib/autoModel.ts';
@@ -50,7 +51,7 @@ import { linkNoticeText } from './linkNotice.ts';
 import { activityByProject, latestBranches, orderProjects, pickUpRows, tileStatus } from './projectTiles.ts';
 import { branchLabel, branchNote, freshBase } from './trayLabels.ts';
 import { checkoutBranchFor, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices, type GlobalChoices } from './choices.ts';
+import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices, type GlobalChoices } from './choices.ts';
 import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
@@ -97,6 +98,8 @@ export function NewSessionView() {
   const [draftPrompt, setDraftPrompt] = useState('');
   /** The images in the message box, which go to the queue with the prompt. */
   const [draftAttachments, setDraftAttachments] = useState<ImageAttachment[]>([]);
+  /** The context chips in the message box (files, folders, pasted text), which go to the queue as chips. */
+  const [draftContext, setDraftContext] = useState<ContextItem[]>([]);
   /** The prompt was left here earlier (in the drafts store, per project): say so above the box, with Discard. */
   const [restored, setRestored] = useState<ComposerDraft | null>(null);
   const [addAsProject, setAddAsProject] = useState(true);
@@ -111,7 +114,7 @@ export function NewSessionView() {
   const folderFromLink = useRef(false);
   const linkRequest = useLinks((s) => s.newSession);
   /** Replaces the prompt: a link's prompt, or clearing it. */
-  const [preset, setPreset] = useState<{ text: string; attachments?: ImageAttachment[]; seq: number } | undefined>(undefined);
+  const [preset, setPreset] = useState<{ text: string; attachments?: ImageAttachment[]; context?: ContextItem[]; seq: number } | undefined>(undefined);
   const presets = useRef(0);
   /** The prompt came from a link and hasn't been sent or cleared: its length, to say so under the message box. */
   const [linkPrompt, setLinkPrompt] = useState<number | null>(null);
@@ -159,12 +162,13 @@ export function NewSessionView() {
   const question = isQuestionsFolder(cwd, questionsDir);
   const options = sessionOptions(question);
   const isProject = project?.added ?? false;
-  const projectDefaults = isProject ? project!.defaults : null;
-  const defaultsKey = JSON.stringify(projectDefaults);
-  /** What a session here starts from: a quick question's own choices, else the project's defaults over the ones last used (and the mode Settings sets). */
-  const firstChoices = (): Choices => (question ? questionStartingChoices(questionChoices) : choicesFor(withNewSessionMode(globals, newSessionMode), projectDefaults));
   const projectProfile = project?.profileId && profiles.some((p) => p.id === project.profileId) ? project.profileId : null;
   const profileId = (profileOverride && profiles.some((p) => p.id === profileOverride) ? profileOverride : null) ?? projectProfile ?? defaultProfile;
+  /** The project's defaults, then the profile's: picking another profile brings its defaults, until the user changes something. */
+  const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
+  const defaultsKey = JSON.stringify(sessionDefaults);
+  /** What a session here starts from: a quick question's own choices, else the project's and profile's defaults over the ones last used (and the mode Settings sets). */
+  const firstChoices = (): Choices => (question ? questionStartingChoices(questionChoices) : choicesFor(withNewSessionMode(globals, newSessionMode), sessionDefaults));
   /** The picked folder's colour: the message box's frame, matching its tile. */
   const projectColor = useProjectColor(project, cwd);
   const lastBranches = useMemo(() => latestBranches(sessions.values()), [sessions]);
@@ -297,8 +301,8 @@ export function NewSessionView() {
     setCwd(item.cwd);
     setD({ model: item.model ?? '', permissionMode: item.permissionMode, effort: item.effort ?? '', workspace: item.workspace, baseRef: item.baseRef, branch: item.branch ?? '' });
     setRestored(null);
-    setPreset({ text: item.prompt, attachments: item.attachments, seq: ++presets.current });
-    setDraftPrompt(item.prompt);
+    setPreset({ text: item.typed ?? item.prompt, attachments: item.attachments, context: item.context, seq: ++presets.current });
+    setDraftPrompt(item.typed ?? item.prompt);
     setFromLater(asNew ? null : item);
     setQueueWait(null);
   }, [laterRequest]);
@@ -360,7 +364,7 @@ export function NewSessionView() {
   }, [draftPrompt, linkPrompt]);
   const clearPrompt = () => {
     setPendingStart(null);
-    setPreset({ text: '', attachments: [], seq: ++presets.current });
+    setPreset({ text: '', attachments: [], context: [], seq: ++presets.current });
     setDraftPrompt('');
     setLinkPrompt(null);
     setRestored(null);
@@ -461,7 +465,7 @@ export function NewSessionView() {
       }
       return;
     }
-    const remembered = globalPatch(patch, projectDefaults);
+    const remembered = globalPatch(patch, sessionDefaults);
     if (Object.keys(remembered).length) {
       setGlobals((current) => {
         const next = { ...current, ...remembered };
@@ -515,7 +519,7 @@ export function NewSessionView() {
   };
 
   // The command palette's commands for this view: what they can do here, and their requests.
-  const canQueue = !!cwd && draftPrompt.trim() !== '' && !!client;
+  const canQueue = !!cwd && (draftPrompt.trim() !== '' || draftContext.length > 0) && !!client;
   const canCatchUp = !!cwd && inspection?.path === cwd && inspection.exists && !!gitStatus?.hasRemote && !!client;
   /** The palette's Update from remote: the git button runs its step. */
   const [catchUpRequest, setCatchUpRequest] = useState(0);
@@ -530,7 +534,7 @@ export function NewSessionView() {
     seenRequest.current = paletteRequest.nonce;
     if (paletteRequest.kind === 'toggle-worktree' && canWorktree) update({ workspace: useWorktree ? 'current' : 'worktree' });
     else if (paletteRequest.kind === 'save-defaults' && unsaved) void saveAsProjectDefault();
-    else if (paletteRequest.kind === 'add-to-queue' && canQueue) void parkInQueue(draftPrompt.trim(), draftAttachments).catch(() => {});
+    else if (paletteRequest.kind === 'add-to-queue' && canQueue) void parkInQueue(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext }).catch(() => {});
     else if (paletteRequest.kind === 'catch-up' && canCatchUp) setCatchUpRequest((n) => n + 1);
   }, [paletteRequest]);
 
@@ -539,12 +543,14 @@ export function NewSessionView() {
   const promptHistory = useMemo(() => (cwd ? projectHistory(sessions.values(), cwd) : []), [sessions, cwd]);
 
   /** The prompt and its images with this folder and these choices, for the queue. */
-  const laterDraft = (text: string, attachments: ImageAttachment[]): LaterDraft | null =>
+  const laterDraft = (text: string, attachments: ImageAttachment[], parts?: SentParts): LaterDraft | null =>
     cwd
       ? {
           cwd,
           prompt: text,
           attachments,
+          typed: parts?.typed ?? null,
+          context: parts?.context ?? [],
           model: d.model || null,
           effort: d.effort || null,
           permissionMode: d.permissionMode,
@@ -561,11 +567,11 @@ export function NewSessionView() {
   const queueLoaded = useLater((s) => s.loaded);
   useEffect(() => {
     if (!fromLater || !queuedNow || inspection?.path !== cwd) return;
-    const draft = laterDraft(draftPrompt.trim(), draftAttachments);
+    const draft = laterDraft(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext });
     forgetUnsavedQueued();
     if (!draft || draft.prompt === '' || sameDraft(queuedNow, draft)) return;
     unsavedQueued.current = { id: fromLater.id, draft, timer: setTimeout(saveQueued, 600) };
-  }, [fromLater, queuedNow, inspection, cwd, draftPrompt, draftAttachments, d, useWorktree, profileOverride]);
+  }, [fromLater, queuedNow, inspection, cwd, draftPrompt, draftAttachments, draftContext, d, useWorktree, profileOverride]);
   // Started or removed somewhere else while open here: back to New session.
   useEffect(() => {
     if (fromLater && queueLoaded && !queuedNow) leaveQueued();
@@ -576,8 +582,8 @@ export function NewSessionView() {
    * goes back in its place, and the box goes back to New session's own prompt. Otherwise the caller empties the box
    * (the message box does it itself after its own button).
    */
-  const queuePrompt = async (text: string, attachments: ImageAttachment[]) => {
-    const draft = laterDraft(text, attachments);
+  const queuePrompt = async (text: string, attachments: ImageAttachment[], parts?: SentParts) => {
+    const draft = laterDraft(text, attachments, parts);
     if (!draft) throw new Error('Choose a folder first');
     const queuedFrom = fromLater && useLater.getState().items.some((i) => i.id === fromLater.id) ? fromLater : null;
     forgetUnsavedQueued();
@@ -587,9 +593,9 @@ export function NewSessionView() {
     setQueueWait(null);
   };
   /** The focus note's, the gate's and the palette's Add to queue: queue it and empty the box. */
-  const parkInQueue = async (text: string, attachments: ImageAttachment[]) => {
+  const parkInQueue = async (text: string, attachments: ImageAttachment[], parts?: SentParts) => {
     const queued = fromLater;
-    await queuePrompt(text, attachments);
+    await queuePrompt(text, attachments, parts);
     if (!queued) clearPrompt();
   };
 
@@ -600,7 +606,7 @@ export function NewSessionView() {
    * `worktree`: Start's menu can start in a new worktree for once, leaving the route (and the project's default) as it is.
    * Returns false when nothing started and the prompt should stay.
    */
-  const create = async (text: string, attachments: ImageAttachment[], { fromLink = false, skipGate = false, worktree = useWorktree } = {}): Promise<void | false> => {
+  const create = async (text: string, attachments: ImageAttachment[], parts: SentParts | undefined, { fromLink = false, skipGate = false, worktree = useWorktree } = {}): Promise<void | false> => {
     if (!client || !cwd) throw new Error('Choose a folder first');
     // The same path as the palette's New session: the focus limit's gate, worktree naming, then the session.
     const outcome = await startNewSession(
@@ -616,7 +622,7 @@ export function NewSessionView() {
         fromLink,
         skipGate,
         addProject: options.addAsProject && !isProject && addAsProject && !!inspection?.exists,
-        saveForLater: () => parkInQueue(text, attachments),
+        saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
       },
       {
@@ -652,7 +658,7 @@ export function NewSessionView() {
     setPendingStart(null);
     // A folder that is gone can't start; the prompt stays filled in to start elsewhere.
     if (!inspection.exists) return;
-    create(text, [], { fromLink: true }).catch((error: Error) => useLinks.getState().fail(`Couldn't start the session: ${error.message}`));
+    create(text, [], undefined, { fromLink: true }).catch((error: Error) => useLinks.getState().fail(`Couldn't start the session: ${error.message}`));
   }, [pendingStart, client, cwd, loaded, projectsLoaded, settled, lookingFor, inspection]);
 
   // Saved as Auto while Auto is off: the default model, and the note under the box says so.
@@ -832,7 +838,7 @@ export function NewSessionView() {
               focus={focus}
               now={now}
               canSave={canQueue}
-              onSaveForLater={() => void parkInQueue(draftPrompt.trim(), draftAttachments).catch(() => {})}
+              onSaveForLater={() => void parkInQueue(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext }).catch(() => {})}
               onStartAnyway={() => setSubmitRequest((n) => n + 1)}
             />
           )}
@@ -1030,16 +1036,18 @@ export function NewSessionView() {
               focusRequest={focusRequest}
               submitRequest={submitRequest}
               preset={preset}
+              localContext
+              onContextChange={setDraftContext}
               controls={controls}
               onCycleMode={() => update({ permissionMode: nextMode(d.permissionMode) })}
               disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? 'That folder no longer exists' : null}
-              onSubmit={(text, attachments, requested) => create(text, attachments, { skipGate: requested === true })}
-              secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments) => queuePrompt(text, attachments) }}
+              onSubmit={(text, attachments, requested, parts) => create(text, attachments, parts, { skipGate: requested === true })}
+              secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <StartButton
                   state={startButtonState({ ...box, startBlocked, canWorktree, worktree: useWorktree, question })}
                   onAction={(action) =>
-                    action === 'queue' ? box.submitSecondary() : action === 'start-worktree' ? box.submitWith((text, attachments) => create(text, attachments, { worktree: true })) : box.submit()
+                    action === 'queue' ? box.submitSecondary() : action === 'start-worktree' ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true })) : box.submit()
                   }
                   data={{ 'data-composer-submit': true }}
                 />

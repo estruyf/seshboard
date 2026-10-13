@@ -791,7 +791,12 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
       await js(`document.querySelector('${view} [data-composer-submit]').click()`);
       const session = '[data-current-session]';
       const opened = `document.querySelector('${session} [data-auto-choosing]')?.innerText.includes('Auto is choosing a model') && [...document.querySelectorAll('${session} [data-item-kind="user"]')].some((el) => el.innerText.includes('[smoke: hold]'))`;
-      if (!(await waitInPage(win, opened, 5_000))) return 'Start on Auto did not open the session with the prompt and Auto is choosing a model…';
+      if (!(await waitInPage(win, opened, 5_000))) {
+        const seen = await js(
+          `JSON.stringify({ newSession: !!document.querySelector('${view}'), session: document.querySelector('${session}')?.dataset.currentSession ?? null, choosing: document.querySelector('${session} [data-auto-choosing]')?.innerText ?? null, streaming: document.querySelector('${session} [data-streaming]')?.innerText ?? null, userItems: [...document.querySelectorAll('${session} [data-item-kind="user"]')].map((el) => el.innerText.slice(0, 60)), toasts: [...document.querySelectorAll('[data-toast]')].map((t) => t.innerText) })`,
+        ).catch(() => 'unknown');
+        return `Start on Auto did not open the session with the prompt and Auto is choosing a model…: ${seen}`;
+      }
       await shot(win, 'auto-model-choosing.png');
       await js(`document.querySelector('${session} [data-more-menu]').click()`);
       if (!(await waitInPage(win, "document.querySelector('[data-stop-session]:not(:disabled)')", 3_000))) return 'no Stop session while Auto was choosing';
@@ -2027,8 +2032,8 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   // The command palette's New session needs a project: this is the one moment the throwaway profile has one.
   await smokeRun.step('command palette, new session', () => runPaletteNewSessionStep(win), { cleanup: false });
   await smokeRun.step('unsent New session prompt', () => runUnsentNewSessionStep(win), { cleanup: false });
-  // Here New session has a folder (the project just added), so Esc while choosing can be checked too.
-  await smokeRun.step('auto model: menu, chip, Esc while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
+  // Here New session has a folder (the project just added), so starting while Auto chooses can be checked too.
+  await smokeRun.step('auto model: menu, chip, Stop while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
 
   await click('[data-open-projects]');
@@ -2407,7 +2412,8 @@ async function checkShareDialog(win: BrowserWindow, root: string, listed: string
 /**
  * Claude profiles: with one, nothing about profiles shows outside Settings. Adding a second (a config
  * folder inside the throwaway app profile, never a real one) marks sessions with their profile and
- * offers a choice in New session; it becomes the default, then is removed again.
+ * offers a choice in New session; its effort default reaches New session once it is the default, then
+ * it is removed again.
  */
 async function runProfilesStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -2433,12 +2439,22 @@ async function runProfilesStep(win: BrowserWindow): Promise<string> {
   const card = `[data-profile=${JSON.stringify(id)}]`;
   if (!(await js(`document.querySelector(${JSON.stringify(card)}).innerText.includes(${JSON.stringify(folder)})`))) return 'the sign-in command does not name the folder';
   await shot(win, 'profiles.png');
+  // Its defaults for new sessions: Max effort, which New session takes where the project sets none.
+  await click(`${card} [data-profile-defaults-toggle]`);
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`${card} [data-default-effort]`)})`, 2_000))) return 'the profile defaults did not open';
+  if (!(await chooseOption(win, `${card} [data-default-effort]`, 'max'))) return 'could not pick an effort default for the profile';
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`${card} [data-profile-defaults-summary]`)})?.innerText.includes('max effort')`, 3_000))) return 'the profile default was not saved';
+  await shot(win, 'profile-defaults.png');
   await click(`[data-profile-default=${JSON.stringify(id)}]`);
   await click('[data-close-settings]');
   if (!(await waitInPage(win, "document.querySelector('[data-session-id] [data-profile-badge]')", 3_000))) return 'sessions do not show their profile with two profiles';
   await click('[data-new-session]');
   if (!(await waitInPage(win, `document.querySelector('[data-profile-select]')?.dataset.value === ${JSON.stringify(id)}`, 5_000))) {
     return 'New session did not offer the profiles with the new default chosen';
+  }
+  // No project is added by now (the projects step removes its own), so nothing sets an effort over the profile's.
+  if (!(await waitInPage(win, "document.querySelector('[data-new-session-view] [data-effort-select]')?.dataset.value === 'max'", 3_000))) {
+    return `New session did not start from the profile's defaults (effort ${String(await js("document.querySelector('[data-new-session-view] [data-effort-select]')?.dataset.value"))})`;
   }
   await click('[data-profile-select]');
   if (!(await waitInPage(win, "document.querySelectorAll('[data-menu=\"profile\"] [role=menuitemradio]').length === 2", 3_000))) return 'the profile menu did not list both profiles';
@@ -2458,7 +2474,7 @@ async function runProfilesStep(win: BrowserWindow): Promise<string> {
   await click('[data-close-settings]');
   if (!(await waitInPage(win, "document.querySelector('[data-session-id]') && !document.querySelector('[data-session-id] [data-profile-badge]')", 3_000))) return 'sessions still show a profile after removing it';
   if (!builtinDefault) return 'the built-in profile did not become the default again';
-  return 'ok: added a second profile, sessions and New session showed it, made it the default, removed it';
+  return "ok: added a second profile, set its effort default, sessions and New session showed it (with the profile's effort), made it the default, removed it";
 }
 
 /**
@@ -2945,12 +2961,101 @@ async function runGitStep(win: BrowserWindow): Promise<string> {
   await shot(win, 'git-menu.png');
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
-  const steps = items.map((i) => i.slice(1));
+  // Create PR…, or View PR #N once the branch has an open pull request.
+  const steps = items.map((i) => i.slice(1)).map((step) => (step === 'view-pr' ? 'pr' : step)).filter((step) => step !== 'pr-ready');
   const expected = ['pull', 'fetch', 'commit-dialog', 'commit', 'push', 'pr'];
   if (steps.slice(0, expected.length).join(',') !== expected.join(',')) return `unexpected items: ${steps.join(', ')}`;
   if (!/behind|No remote|Not pushed/.test(summary)) return `no summary under the branch ("${summary}")`;
   if (!(await waitInPage(win, `!${menu}`, 2_000))) return 'Escape did not close the menu';
   return `ok: shows ${face}, "${summary}", menu ${items.join(' ')}, Escape closed it`;
+}
+
+/**
+ * The Create pull request dialog, read-only on the open session's real checkout: Create PR… in the git menu opens it
+ * with the title filled in and selected, the base branch, the counter and the push line. The base menu filters, the
+ * description switches to Empty, a description over GitHub's limit turns the counter red, disables Create and offers
+ * Use commit titles only; switching the source after an edit asks first; Escape closes it. Create is never pressed,
+ * and on macOS gh is the smoke test's fake (SWITCHBOARD_GH), so nothing reaches GitHub either way.
+ */
+async function runPullRequestStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const key = (keyCode: string) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  };
+  const dialog = "document.querySelector('[data-pr-dialog]')";
+  const inDialog = (selector: string) => `${dialog}?.querySelector(${JSON.stringify(selector)})`;
+  if (!(await waitInPage(win, "document.querySelector('[data-current-session] [data-git-button]')", 3_000))) return 'ok: skipped (session is not on a git checkout)';
+  await js("document.querySelector('[data-current-session] [data-git-menu]').click()");
+  const menu = "document.querySelector('[role=\"menu\"][aria-label=\"Git\"]')";
+  if (!(await waitInPage(win, `${menu}?.querySelector('[data-git-step]')`, 2_000))) return 'the git menu did not open';
+  const item = `${menu}.querySelector('[data-git-step="pr"]')`;
+  if (await js(`!${item}`)) {
+    key('Escape');
+    return (await js(`!!${menu}?.querySelector('[data-git-step="view-pr"]')`)) ? 'ok: skipped (the branch has an open pull request: View PR)' : 'no Create PR… in the git menu';
+  }
+  if (await js(`${item}.disabled`)) {
+    key('Escape');
+    return 'ok: skipped (Create PR… is unavailable on this branch)';
+  }
+  await js(`${item}.click()`);
+  if (!(await waitInPage(win, `${inDialog('[data-pr-title]')} || ${inDialog('[data-pr-load-error]')}`, 15_000))) return 'the dialog did not open, or never read the branch';
+  if (await js(`!!${inDialog('[data-pr-load-error]')}`)) {
+    const reason = (await js(`${inDialog('[data-pr-load-error]')}.innerText`)) as string;
+    key('Escape');
+    return `ok: skipped (${reason})`;
+  }
+  try {
+    const title = (await js(`${inDialog('[data-pr-title]')}.value`)) as string;
+    if (!title.trim()) return 'the title was not filled in';
+    if (!(await waitInPage(win, `document.activeElement?.matches('[data-pr-title]') && document.activeElement.selectionEnd - document.activeElement.selectionStart === ${title.length}`, 2_000))) return 'the title was not focused with its text selected';
+    const base = (await js(`${inDialog('[data-pr-base]')}.dataset.prBase`)) as string;
+    if (!base) return 'no base branch';
+    if (!/^[\d,]+ \/ 65,536$/.test((await js(`${inDialog('[data-pr-counter]')}.innerText`)) as string)) return 'the counter is wrong';
+    if ((await js(`${inDialog('[data-pr-draft]')}.getAttribute('aria-checked')`)) !== 'false') return 'Draft was on when the dialog opened';
+    const pushLine = (await js(`document.querySelector('[data-pr-push-line]')?.innerText ?? ''`)) as string;
+    if (!/^(Pushes \d+ commits? to |Publishes |Already pushed)/.test(pushLine)) return `no push line in the footer ("${pushLine}")`;
+    const notice = (await js(`${inDialog('[data-pr-notice]')}?.dataset.prNotice ?? null`)) as string | null;
+    await shot(win, 'pr-dialog.png');
+
+    // The base menu: a filter that matches nothing, then Escape closes only the menu.
+    await js(`${inDialog('[data-pr-base]')}.click()`);
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-menu=\"pr-base\"] [data-pr-base-filter]')", 2_000))) return 'the base menu did not open with its filter focused';
+    await setFieldValue(win, '[data-pr-base-filter]', 'no-such-branch-from-the-smoke-test');
+    if (!(await waitInPage(win, "!document.querySelector('[data-menu=\"pr-base\"] [data-pr-base-option]') && document.querySelector('[data-menu=\"pr-base\"]').innerText.includes('No matching branch')", 2_000))) return 'the base filter did not filter';
+    key('Escape');
+    if (!(await waitInPage(win, `!document.querySelector('[data-menu="pr-base"]') && !!${dialog}`, 2_000))) return 'Escape in the base menu closed the dialog too, or not the menu';
+
+    // Description from: Empty applies at once while nothing was typed.
+    await js(`${inDialog('[data-pr-source]')}.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-pr-source-option=\"empty\"]') && document.querySelector('[role=menu] [data-pr-source-option=\"commits\"]')", 2_000))) return 'the Description from menu has no Commit list and Empty';
+    await js("document.querySelector('[role=menu] [data-pr-source-option=\"empty\"]').click()");
+    if (!(await waitInPage(win, `${inDialog('[data-pr-body]')}.value === '' && ${inDialog('[data-pr-counter]')}.innerText === '0 / 65,536'`, 2_000))) return 'Empty did not empty the description';
+
+    // Over the limit: red counter, Create disabled, and a way back to the commit titles.
+    await setFieldValue(win, '[data-pr-body]', 'x'.repeat(65_540));
+    if (!(await waitInPage(win, `${inDialog('[data-pr-over]')}?.innerText.startsWith('4 characters over') && ${dialog}.querySelector('[data-pr-submit]').disabled && !!${dialog}.querySelector('[data-pr-trim]')`, 2_000))) return 'a description over the limit did not show as too long, or Create stayed enabled';
+    await js(`${dialog}.querySelector('[data-pr-trim]').click()`);
+    if (!(await waitInPage(win, `!${inDialog('[data-pr-over]')} && ${inDialog('[data-pr-body]')}.value.length < 65_536`, 2_000))) return 'Use commit titles only did not fit the description';
+
+    // Switching the source after an edit asks first; Escape there keeps the edit.
+    await setFieldValue(win, '[data-pr-body]', 'Edited by the smoke test');
+    await js(`${inDialog('[data-pr-source]')}.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-pr-source-option=\"empty\"]')", 2_000))) return 'the Description from menu did not open again';
+    await js("document.querySelector('[role=menu] [data-pr-source-option=\"empty\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-pr-replace]')", 2_000))) return 'switching the source after an edit did not ask first';
+    key('Escape');
+    if (!(await waitInPage(win, `!document.querySelector('[data-pr-replace]') && ${inDialog('[data-pr-body]')}?.value === 'Edited by the smoke test'`, 2_000))) return 'cancelling the question did not keep the edit';
+    const submit = notice === 'GH_MISSING' || notice === 'PR_EXISTS' ? 'Create disabled' : (await js(`${dialog}.querySelector('[data-pr-submit]').disabled`)) ? 'Create disabled' : 'Create enabled (not pressed)';
+    key('Escape');
+    if (!(await waitInPage(win, `!${dialog}`, 2_000))) return 'Escape did not close the dialog';
+    return `ok: "${title}" into ${base}, "${pushLine}"${notice ? `, notice ${notice}` : ''}, ${submit}; base filter, Empty, the limit, Use commit titles only and the question before replacing an edit work; Escape closed it`;
+  } finally {
+    if (await js(`!!${dialog}`)) {
+      key('Escape');
+      key('Escape');
+    }
+  }
 }
 
 /**
@@ -3514,6 +3619,8 @@ async function runNewSessionStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelectorAll('[data-menu=\"mode\"] [role=menuitemradio]').length >= 4", 2_000))) return 'the permission menu did not open';
   await shot(win, 'new-session-view.png');
   escape();
+  // A click while the menu is still closing can land on its way out, and the effort menu never opens.
+  if (!(await waitInPage(win, "!document.querySelector('[data-menu=\"mode\"]')", 2_000))) return 'Escape did not close the permission menu';
   // Put back the effort it had (the default, usually), so the remembered defaults are as they were.
   if (!(await chooseChoice(win, 'effort', effortBefore, '[data-new-session-view]'))) return 'could not put the effort back';
   // ⌘N while already on New session puts the cursor back in the prompt.
@@ -3673,6 +3780,10 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-folder-select]')?.dataset.value === '' && document.querySelector('[data-route-hint]')?.innerText.includes('switchboard-smoke/no-such-repo')", 20_000))) {
     return `a repo without a checkout did not leave the folder empty (${String(await js("document.querySelector('[data-route-hint]')?.innerText"))})`;
   }
+  // Empty the prompt the links left: kept, it would count as an unsent New session prompt 2s later, and put a pen on
+  // the + button that later steps check for.
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  if (!(await waitInPage(win, `${composer}?.value === ''`, 2_000))) return 'could not empty the prompt the links left';
 
   if (!smokeSessionId) return 'ok: filled in folder and prompt, refused a bad link, empty folder for an unknown repo (no session to open)';
   openDeepLink(`switchboard://session/${smokeSessionId}`);
@@ -3772,7 +3883,13 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
       await js(`${tray}?.querySelector('[data-context-chip-remove]')?.click()`);
       if (!(await waitInPage(win, `${chips} === ${left - 1}`, 2_000))) return `removing a chip did not take it away (${String(await js(chips))} left of ${left})`;
     }
-    if (!(await waitInPage(win, `!${tray} && !document.querySelector('[data-new-session-draft]')`, 3_000))) return `removing the chips left ${(await js(`${tray}`)) ? 'the tray' : 'an unsent New session prompt'} behind`;
+    if (!(await waitInPage(win, `!${tray} && !document.querySelector('[data-new-session-draft]')`, 3_000))) {
+      if (await js(`!!${tray}`)) return 'removing the chips left the tray behind';
+      const left = await js(
+        `JSON.stringify({ pen: document.querySelector('[data-new-session-draft]')?.dataset.newSessionDraft ?? null, thisFolder: ${JSON.stringify(folder)}, box: document.querySelector('[data-new-session-view] [data-composer]')?.value ?? null })`,
+      );
+      return `removing the chips left an unsent New session prompt behind: ${left}`;
+    }
 
     // Settings › VS Code counts this step's socket as a connected editor and links to the extension.
     await js("document.querySelector('[data-open-settings]').click()");
@@ -4776,6 +4893,10 @@ async function runHistoryStep(win: BrowserWindow): Promise<string> {
   await js(`${box}.focus()`);
   await win.webContents.insertText(draft);
   await pause();
+  // In your own text ↑ first takes the caret to the start of the box, as in any text field; the next ↑ steps.
+  press('Up');
+  const toStart = await waitInPage(win, `${box}.selectionStart === 0 && ${box}.value === ${JSON.stringify(draft)}`, 2_000);
+  await pause();
   press('Up');
   const recalled = await waitInPage(win, `${box}.value !== ${JSON.stringify(draft)}`, 2_000);
   const afterUp = (await js(`({ value: ${box}.value, said: document.querySelector('[data-current-session] [data-history-announcer]')?.textContent ?? '', total: Number(${box}.dataset.history) })`)) as {
@@ -4795,7 +4916,8 @@ async function runHistoryStep(win: BrowserWindow): Promise<string> {
   const left = (await js(`${box}.value`)) as string;
   if (smokeSessionId) await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
 
-  if (!recalled || !afterUp.value.trim()) return '↑ on the first line did not bring back the last message';
+  if (!toStart) return '↑ at the end of a draft did not take the caret to the start of the box first';
+  if (!recalled || !afterUp.value.trim()) return '↑ at the start of the box did not bring back the last message';
   if (afterUp.said.trim() !== `Earlier message 1 of ${afterUp.total}`) return `↑ announced ${JSON.stringify(afterUp.said)}`;
   if (!restored) return `↓ did not put the draft back (${JSON.stringify(afterDown.value.slice(0, 60))})`;
   if (afterDown.said.trim() !== 'Back to your draft') return `↓ announced ${JSON.stringify(afterDown.said)}`;
@@ -5191,6 +5313,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('open in menu', () => runOpenInStep(win));
   await step('check transcript', () => runCheckTranscriptStep(win));
   await step('git menu', () => runGitStep(win));
+  await step('create pull request dialog', () => runPullRequestStep(win));
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
   await step('long prompts', () => runLongPromptStep(win));

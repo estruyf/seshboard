@@ -48,7 +48,10 @@ export interface HostManagerDeps {
   sessionProfile: (sessionId: string) => string;
   onInfo: (info: SessionHostInfo) => void;
   onStream: (delta: StreamDelta) => void;
-  onMessages: (sessionId: string, messages: RawSessionMessage[]) => void;
+  /** `held`: a message Claude Code doesn't have yet (see `HostEvents.messages`). */
+  onMessages: (sessionId: string, messages: RawSessionMessage[], held?: boolean) => void;
+  /** A session this app ran was stopped: a message it still held back will never be sent. */
+  onClosed?: (sessionId: string) => void;
   onPermission: (request: PermissionRequest) => void;
   onPermissionResolved: (requestId: string, sessionId: string) => void;
   /** A session this app created (for the "Switchboard" origin badge). */
@@ -373,12 +376,16 @@ export class HostManager {
   async setModel(sessionId: string, model: string | null): Promise<void> {
     // Changed while Auto was still choosing: your model stays, and Auto's pick won't replace it.
     this.choosing.delete(sessionId);
-    await this.require(sessionId).setModel(model);
+    const host = this.require(sessionId);
+    await host.setModel(model);
     // Once you pick a model yourself, the session is no longer on Auto's pick: its chip shows the plain model.
     const pick = this.autoPick(sessionId);
     const left = pick && !pick.left ? { ...pick, left: true } : null;
-    if (left) this.picks.set(sessionId, left);
     this.settings.set(sessionId, { model, ...(left ? { autoPick: left } : {}) });
+    if (!left) return;
+    this.picks.set(sessionId, left);
+    // The host already reported the new model, with the pick it had then: report it again so the chip drops "Auto".
+    this.deps.onInfo(this.withPick(host.info));
   }
 
   /** What Auto picked for a session (null: it didn't), also when it isn't running. */
@@ -397,6 +404,7 @@ export class HostManager {
     // Stopped while Auto was choosing: the message never goes, and the session no longer says Auto is choosing.
     this.choosing.delete(sessionId);
     host?.close();
+    this.deps.onClosed?.(sessionId);
     for (const [requestId, pending] of this.pending) {
       if (pending.request.sessionId === sessionId) this.settle(requestId, { behavior: 'deny', message: 'Session closed.' });
     }
@@ -683,7 +691,7 @@ export class HostManager {
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),
-        messages: (id, messages) => this.deps.onMessages(id, messages),
+        messages: (id, messages, held) => this.deps.onMessages(id, messages, held),
         log: this.deps.log,
         usageHint: () => this.deps.onUsageHint?.(config.profileId),
         rateLimit: (sessionId, info) => this.deps.onRateLimit?.(config.profileId, sessionId, info),

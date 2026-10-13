@@ -189,7 +189,7 @@ const RailRow = memo(function RailRow({
       }}
       className={`relative mx-auto flex h-10 w-11 items-center justify-center rounded-lg ${selected ? 'bg-selected' : beside ? 'bg-border/45 ring-1 ring-inset ring-border' : 'hover:bg-border/45'}`}
     >
-      {railTone && <span aria-hidden className={`absolute inset-y-2 left-0 w-[3px] rounded-full ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
+      {railTone && <span aria-hidden className={`absolute inset-0 rounded-[inherit] [clip-path:inset(0_calc(100%-3px)_0_0)] ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
       <ProjectIcon project={project} root={data.projectRoot} size={26} />
       {draft !== null && <PenBadge size={14} className="absolute bottom-0.5 left-0.5" data-rail-pen />}
       {dot && (

@@ -8,7 +8,7 @@ import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-A session in a git repository shows its branch in the header, and a **git button** that offers the next step for the branch: pull, commit, push, open a pull request, or fetch. Its menu has every step, plus switching branch and starting a worktree. Git runs in a [terminal](/terminal-changes-git/terminal/) tab, so you see its output.
+A session in a git repository shows its branch in the header, and a **git button** that offers the next step for the branch: pull, commit, push, create a pull request, or fetch. Its menu has every step, plus switching branch and starting a worktree. Fetch, pull and push run in a [terminal](/terminal-changes-git/terminal/) tab, so you see their output. A pull request is created in a dialog, without a browser.
 
 <Screenshot name="git-menu" alt="A session header with the git button's menu open: the branch with how far it is behind and ahead and how many files changed, then Pull, Fetch, Commit, Ask Claude to commit, Push, Create PR, Switch branch and New worktree" eager />
 
@@ -16,7 +16,7 @@ A session in a git repository shows its branch in the header, and a **git button
 
 - **The branch** is in the session header, under the title. Click it to switch branches, or, in a worktree, to finish the worktree.
 - **The git button** is in the session header, on the right. Its ▾ opens the git menu.
-- **The command palette** (<Kbd shortcut="palette.commands" first />) has *Commit…*, *Create pull request…*, *Sync with remote*, *Switch branch…* and, in a worktree, *Finish worktree…*.
+- **The command palette** (<Kbd shortcut="palette.commands" first />) has *Commit…*, *Create pull request…* (or *View pull request #123* once the branch has one), *Sync with remote*, *Switch branch…* and, in a worktree, *Finish worktree…*.
 - <Kbd shortcut="git.pull" /> pulls while the branch is behind its upstream.
 
 ## The branch in the header
@@ -45,10 +45,11 @@ The button's face runs the step the branch needs next, in the order a branch usu
 | **Pull ↓2** | The branch is behind its upstream. |
 | **Commit 3** | There are changed files. Claude writes the commit. |
 | **Push ↑1** | There are commits to push, or a new branch with commits to publish. |
-| **Create PR** | A branch other than the base branch, or a worktree, has commits ahead of the base branch. |
+| **Create PR** | A branch other than the base branch, or a worktree, has commits ahead of the base branch. It opens [Create pull request](#create-a-pull-request). |
+| **View PR #123** | The branch has an open pull request, and nothing to pull, commit or push. It opens the pull request on GitHub. |
 | **Fetch** | Nothing else to do. Fetching shows whether the upstream moved on. |
 
-The number is how many commits or files the step takes. When there is something to do, the button is yellow. Fetch is a quiet button. Hover the button to see what it will do, or why it can't.
+The number is how many commits or files the step takes. When there is something to do, the button is yellow. Fetch and View PR are quiet buttons; View PR also says whether the pull request is *Open* or a *Draft*. Hover the button to see what it will do, or why it can't.
 
 Fetch, pull and push run `git` in a terminal tab. A branch without an upstream is pushed with `git push -u`, which sets it.
 
@@ -59,7 +60,7 @@ The ▾ next to the button opens the menu. At the top it shows the branch and wh
 - **Pull** (<Kbd shortcut="git.pull" />) and **Fetch**;
 - **Commit…**, with your own message;
 - **Ask Claude to commit**;
-- **Push** and **Create PR**;
+- **Push** and **Create PR…**, or, once the branch has an open pull request, **View PR #123** (and **Mark ready for review** for a draft);
 - **Switch branch…**, or **Merge or remove worktree…** in a worktree;
 - **New worktree…**
 
@@ -76,9 +77,38 @@ Stage files in the [Changes panel](/terminal-changes-git/changes/#stage-and-unst
 
 ### Create a pull request
 
-**Create PR** pushes the branch, then opens GitHub's pull request page with the [GitHub CLI](https://cli.github.com) (`gh pr create --fill --web`). Install `gh` and sign in for this to work. It isn't offered on the base branch, or while the branch is behind its upstream.
+**Create PR…** opens the **Create pull request** dialog. You write the pull request in Switchboard, and it is created without a browser or a terminal.
 
-*Create pull request…* in the command palette does the same.
+<Screenshot name="pr-dialog" alt="The Create pull request dialog over a session: feat/dark-mode into main with 3 commits and 3 files, the title Dark mode, the description from .github/pull_request_template.md, Draft, the counter 138 / 65,536 and Pushes 3 commits to origin first next to Cancel and Create pull request" />
+
+<Steps>
+
+1. Check the branches at the top: your branch, **into** the base branch. Click the base branch to pick another one; type in **Filter branches** to find it. The line on the right says how many commits, files and lines the pull request has.
+2. Write the **Title**. It starts as the commit's message when the branch has one commit, otherwise as the branch name (`feat/sessions-archive` becomes *Sessions archive*).
+3. Write the **Description**. It starts from the repository's pull request template when it has one, otherwise from the list of commits. **From** on the right picks another start: each template, **Commit list** or **Empty**. When you have changed the text, Switchboard asks before it replaces it.
+4. Tick **Draft** to open it as a draft.
+5. Click **Create pull request** or press <Kbd shortcut="pr.create" />.
+
+</Steps>
+
+Switchboard pushes the branch first, as the line at the bottom left says (*Pushes 3 commits to origin first*, or *Already pushed*). A branch without an upstream is published with `git push -u`. Then the [GitHub CLI](https://cli.github.com) creates the pull request. The footer shows each step, and the fields wait until it is done. A message then says **Pull request #123 created**, with **Open** and **Copy link**, and the git button shows **View PR #123**.
+
+Templates are found where GitHub looks for them: `pull_request_template.md` in `.github/`, the top folder or `docs/`, and every file in `.github/PULL_REQUEST_TEMPLATE/`.
+
+GitHub takes a description of up to 65,536 characters. The counter under the description turns red past that, and **Create pull request** waits. **Use commit titles only** replaces the description with the list of commits, shortened to fit.
+
+#### When it doesn't work
+
+Everything you typed stays in the dialog. Close it without creating, and it comes back the next time you open it for the same branch.
+
+<Screenshot name="pr-dialog-error" alt="The Create pull request dialog with the notice Not signed in to GitHub. Sign in once in a terminal; Switchboard picks it up, and a Run gh auth login button" />
+
+- **GitHub CLI isn't installed.** **How to install** opens the GitHub CLI's website. **Open on GitHub instead** pushes the branch and opens GitHub's page for a new pull request, with your title.
+- **Not signed in to GitHub.** **Run gh auth login** opens a terminal tab with the command typed in. Press <Kbd keys="enter" /> there, sign in, and open the dialog again.
+- **Push rejected.** The remote has commits your branch doesn't have, or a rule there turned the push down. **Pull and try again** pulls in a terminal tab, then opens the dialog again. **Show output** shows what git said.
+- **This branch already has a pull request.** **View PR #118** opens it.
+
+Creating a pull request needs the GitHub CLI (`gh`), signed in to the account that can open pull requests on the repository. The *Create PR* [project action](/projects/actions/) still runs `gh pr create --web` in a terminal, if you prefer GitHub's own page.
 
 ### Sync with remote
 
@@ -123,4 +153,4 @@ To see and clean up all of a project's worktrees at once, use the [Worktrees tab
 
 Git has no settings in Switchboard. It uses your own git configuration, credentials and environment (your login shell's on a Mac, the one Windows gives apps on a PC), so ssh keys and credential helpers work as in your terminal.
 
-On Windows, Switchboard needs [Git for Windows](https://gitforwindows.org). It runs git with `core.longpaths` on, so files whose full path is longer than 260 characters, common in deep worktree folders, still show in [Changes](/terminal-changes-git/changes/). Steps that chain commands, such as **Create PR** (push, then `gh pr create`), work in Windows PowerShell 5.1 as well as PowerShell 7. A project's default branch for new sessions is on its [Settings tab](/projects/settings/).
+On Windows, Switchboard needs [Git for Windows](https://gitforwindows.org). It runs git with `core.longpaths` on, so files whose full path is longer than 260 characters, common in deep worktree folders, still show in [Changes](/terminal-changes-git/changes/). **Create PR** runs git and `gh` directly, without a shell, so it works the same with Windows PowerShell 5.1 and PowerShell 7. A project's default branch for new sessions is on its [Settings tab](/projects/settings/).

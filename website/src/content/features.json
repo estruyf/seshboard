@@ -672,6 +672,11 @@
       "page": "terminal-changes-git/git"
     },
     {
+      "id": "shortcut:pr.create",
+      "name": "Create the pull request",
+      "page": "terminal-changes-git/git"
+    },
+    {
       "id": "shortcut:home",
       "name": "home",
       "page": "command-palette"
@@ -1278,7 +1283,12 @@
     },
     {
       "id": "feature:create-pr",
-      "name": "Create a pull request with gh",
+      "name": "Create a pull request in a dialog: template or commits, base branch, draft; pushes and runs gh without a browser",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:view-pr",
+      "name": "View PR #123 on the git button once the branch has an open pull request, and Mark ready for review",
       "page": "terminal-changes-git/git"
     },
     {
@@ -1899,6 +1909,11 @@
     {
       "id": "feature:profile-usage",
       "name": "Usage band per account",
+      "page": "settings/claude-profiles"
+    },
+    {
+      "id": "feature:profile-defaults",
+      "name": "Claude profile defaults for new sessions",
       "page": "settings/claude-profiles"
     },
     {

@@ -22,6 +22,7 @@ import {
 } from './host.ts';
 import {
   LiveSession,
+  ProfileDefaults,
   ProjectDefaults,
   ProjectIconChoice,
   ProjectInfo,
@@ -35,9 +36,9 @@ import {
 import { TerminalInfo, TerminalKind } from './terminal.ts';
 import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
-import { ChangesBase, GitChanges, GitSyncAction, WorktreeStatus } from './git.ts';
+import { ChangesBase, GitChanges, GitSyncAction, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
-import { WorktreeList, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
+import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
 import { ClaudeUpdateState } from './claudeUpdate.ts';
@@ -229,6 +230,8 @@ export const contract = {
     /** Removes a profile from Switchboard (its folder, login and sessions stay). Its projects fall back to the default. */
     'profiles.remove': { params: z.object({ id: ProfileId }), result: z.object({}) },
     'profiles.setDefault': { params: z.object({ id: ProfileId }), result: z.object({}) },
+    /** Replaces a profile's defaults for new sessions (projects' own defaults still come first). */
+    'profiles.setDefaults': { params: z.object({ id: ProfileId, defaults: ProfileDefaults }), result: z.object({}) },
     /** Forces a full rescan of ~/.claude/projects. */
     'sessions.refresh': {
       params: z.object({}),
@@ -505,10 +508,9 @@ export const contract = {
     'git.revert': { params: z.object({ cwd: AbsolutePath, paths: z.array(z.string().max(4096)).min(1).max(5000) }), result: z.object({}) },
 
     /**
-     * Fetches, pulls, pushes, or pushes and opens a pull request (`gh pr create --fill --web`) for the branch
-     * checked out at `cwd`, in a terminal tab of the session so you can see the result. A branch
-     * without an upstream is pushed with `-u`. Pull is refused (SESSION_BUSY) while Claude is working
-     * in this checkout, and a pull request from the base branch is refused (WRONG_BRANCH).
+     * Fetches, pulls or pushes the branch checked out at `cwd`, in a terminal tab of the session so you can see the
+     * result. A branch without an upstream is pushed with `-u`. Pull is refused (SESSION_BUSY) while Claude is working
+     * in this checkout. Pull requests go through `git.prCreate`.
      */
     'git.sync': { params: z.object({ sessionId: SessionId, cwd: AbsolutePath, action: GitSyncAction }), result: z.object({ terminalId: z.string() }) },
     /**
@@ -523,12 +525,45 @@ export const contract = {
      * first. Refused (SESSION_BUSY) while Claude is working in this checkout, and NOTHING_TO_COMMIT on a clean one.
      */
     'git.commit': { params: z.object({ sessionId: SessionId, cwd: AbsolutePath, message: z.string().trim().min(1).max(20_000) }), result: z.object({ terminalId: z.string() }) },
+    /**
+     * What the Create pull request dialog starts with for the branch checked out at `cwd`: its commits and diff against
+     * `base` (else the project's base, `projectBase`, else the remote's default branch), the remote's branches, the
+     * repository's templates, a pull request it may have already, and whether gh is there and signed in.
+     * NOT_A_REPO outside git; DETACHED, NO_REMOTE or WRONG_BRANCH when no pull request can come from here.
+     */
+    'git.prDraft': {
+      params: z.object({ cwd: AbsolutePath, base: z.string().min(1).max(250).optional(), projectBase: z.string().min(1).max(250).nullable().default(null) }),
+      result: PrDraft,
+    },
+    /**
+     * Pushes the branch checked out at `cwd` without a terminal (`-u` to the push remote the first time; nothing can ask
+     * for a password), then creates the pull request with `gh pr create`, the description on its stdin. With `web` it
+     * opens nothing itself: it ends with GitHub's compare page, for when gh isn't there. Returns once it has started;
+     * progress, the pull request or why it stopped arrive through `git.pr` with `jobId`. BUSY while one runs here.
+     */
+    'git.prCreate': {
+      params: z.object({
+        jobId: z.string().min(1).max(100),
+        cwd: AbsolutePath,
+        title: z.string().trim().min(1).max(1_000),
+        // Longer than GitHub takes, so the engine can say BODY_TOO_LONG rather than INVALID_PARAMS.
+        body: z.string().max(2_000_000),
+        base: z.string().min(1).max(250),
+        draft: z.boolean().default(false),
+        web: z.boolean().default(false),
+      }),
+      result: z.object({}),
+    },
+    /** The newest pull request of the branch checked out at `cwd`, from gh (cached for a few minutes; `fresh` asks again). Null without one, or without gh. */
+    'git.prFor': { params: z.object({ cwd: AbsolutePath, fresh: z.boolean().default(false) }), result: z.object({ pr: WorktreePullRequest.nullable() }) },
+    /** Marks a draft pull request ready for review (`gh pr ready`). GH_FAILED with gh's message. */
+    'git.prReady': { params: z.object({ cwd: AbsolutePath, number: z.number().int().positive() }), result: z.object({}) },
 
     /** Where a session's checkout stands: ahead/behind its base and its upstream, uncommitted, pushed. */
     'worktree.status': { params: z.object({ cwd: AbsolutePath }), result: WorktreeStatus },
     /**
      * Finishes a worktree. `merge` merges its branch into the main checkout (which must be on the
-     * base branch and clean), in a terminal tab. Pull requests go through `git.sync`.
+     * base branch and clean), in a terminal tab. Pull requests go through `git.prCreate`.
      * `remove` stops the session here and removes the worktree (refused with uncommitted changes).
      */
     'worktree.finish': {
@@ -920,6 +955,8 @@ export const contract = {
     'claudeUpdate.changed': ClaudeUpdateState,
     /** Worktree sizes measured in the background (`worktrees.size`), as they finish. */
     'worktrees.sizes': z.object({ sizes: z.array(WorktreeSize) }),
+    /** A `git.prCreate` moved on: pushing, creating, done or failed. */
+    'git.pr': PrProgress,
     /** The whole queue, in order, whenever an item is added, moved, changed, started or removed. */
     'later.changed': z.object({ items: z.array(LaterItem), started: z.array(QueueStarted) }),
     /** Skills were reloaded: ask for slash command lists again. */

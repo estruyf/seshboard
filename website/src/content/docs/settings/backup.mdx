@@ -10,7 +10,7 @@ import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Backup saves your Switchboard setup to one `.json` file: preferences, themes, projects and project actions. Use it to move to a new computer, from a Mac to a Windows PC or the other way round, restore your setup after a reset, or share a set of actions with someone. Your sessions stay in Claude Code's folder (`~/.claude`) and are never in the file.
+Backup saves your Switchboard setup to one `.json` file: preferences, themes, Claude profiles, projects and project actions. Use it to move to a new computer, from a Mac to a Windows PC or the other way round, restore your setup after a reset, or share a set of actions with someone. Your sessions stay in Claude Code's folder (`~/.claude`) and are never in the file.
 
 <Screenshot name="settings-backup" alt="Settings on Backup: Export settings with an Export settings… button, and Import settings with an Import settings… button" eager />
 
@@ -27,6 +27,7 @@ Backup saves your Switchboard setup to one `.json` file: preferences, themes, pr
 2. Tick what to include:
    - **Preferences**: appearance and theme choice, sidebar, tool activity, startup and quitting, updates.
    - **Themes**: themes you imported or duplicated. The built-in ones are always there.
+   - **Claude profiles**: your profiles with their folders, colours and defaults for new sessions, the default profile and which projects use which. Logins are never in the file, so sign in again on the new computer.
    - **Projects**: your projects in order, with their names, icons and defaults for new sessions.
    - **Project actions**: global and per-project actions, with their shortcuts and worktree setup.
    - **App choices**: default editor, New session defaults, Claude Code update checks.

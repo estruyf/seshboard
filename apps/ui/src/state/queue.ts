@@ -190,7 +190,9 @@ export function sameDraft(item: LaterItem, draft: LaterDraft): boolean {
     item.baseRef === (draft.baseRef ?? 'fresh') &&
     item.branch === (draft.branch ?? null) &&
     item.profileId === (draft.profileId ?? null) &&
-    sameImages(item.attachments, draft.attachments ?? [])
+    sameImages(item.attachments, draft.attachments ?? []) &&
+    item.typed === (draft.typed ?? null) &&
+    JSON.stringify(item.context) === JSON.stringify(draft.context ?? [])
   );
 }
 

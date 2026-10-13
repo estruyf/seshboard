@@ -238,7 +238,13 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
           )}
         </div>
       ) : !preview ? (
-        <p className="text-ui text-muted">{error ? 'This file could not be read. Check that it is a settings file exported from Switchboard, then try again.' : 'Reading the file…'}</p>
+        error ? (
+          <p role="alert" className="text-ui break-words text-error" data-import-error>
+            {error}
+          </p>
+        ) : (
+          <p className="text-ui text-muted">Reading the file…</p>
+        )
       ) : (
         <div className="grid gap-5">
           <div className="grid gap-2">

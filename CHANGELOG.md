@@ -8,20 +8,28 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Up next.** Messages you send while Claude works now wait in **Up next**, above the message box, until Claude finishes the turn: one goes each time. Edit one (it goes back in the message box), remove it (with Undo), drag it or press ⌥↑ ⌥↓ to reorder, or press **Send now** on it to stop Claude and send just that one. If you stop Claude or a turn fails, the messages wait and Up next shows **Send next**.
 - **Steer.** Settings › Conversation has **While Claude is working**: choose what Enter does, **Queue** (wait in Up next) or **Steer** (Claude reads the message at its next step, without stopping). ⌥↵ does the other one, and ⌘⇧↵ still stops Claude and sends now.
+- **Create pull requests in Switchboard.** **Create PR** now opens a dialog: a title, a description that starts from your repository's pull request template or the list of commits, the base branch and **Draft**. Switchboard pushes the branch and creates the pull request with the GitHub CLI, without opening the browser. Long branches no longer fail with "URL too long", and when something goes wrong the dialog says what to do next: install gh, sign in, pull first, or open the pull request that is already there.
+- **View PR.** Once a branch has an open pull request, the git button shows **View PR #123**, with whether it is open or a draft, and opens it on GitHub. A draft can be marked ready for review from the git menu.
 - **Copy link.** Right-click a link in a message and choose **Copy link** to copy its address.
 - **Add files from anywhere.** The Add context dialog (the paperclip under the message box) has **Choose in Finder…** (**Choose in File Explorer…** on Windows), so you can add files that are not in the project. On macOS you can pick folders too.
 - **Search in Settings.** Type in **Search settings** at the top of the section list (or press ⌘F in Settings) to find a setting in any section. Results show grouped by section with your words marked; choose one to open its section at that setting.
+- **Defaults per Claude profile.** In Settings › Claude profiles, open **New session defaults** on a profile to set the model, effort, permission mode and workspace its new sessions start with. A project's own defaults still come first; fields it leaves unset now use its profile's defaults before the choices you made last in New session. The project's Settings tab shows what an unset field falls back to, such as *Profile default (Opus)*.
 - **Permission mode for new sessions.** Settings › General has **Permission mode**: start every new session in the same mode, such as Auto mode, instead of the one you picked last. A project's own default still comes first.
 - **Pasted text cards.** A long paste (more than 2,000 characters or 25 lines) goes in a **Pasted** card above the message instead of in the box. Click it to read or edit the text; Claude gets it with your message.
 
 ### Fixed
 
+- **Queue keeps added files.** A file, folder or pasted text you added to a new session stays a chip when you add the session to the queue and open it again, instead of turning into an `@` mention in the text.
+- **Export includes Claude profiles.** Export settings has a **Claude profiles** option: your profiles with their folders, colours and defaults for new sessions, the default profile and which projects use which. Import adds them back (signing in again is still needed; logins are never in the file).
 - **Usage**: the profile menu shows the whole profile name; a long email is cut short instead.
 - **Usage**: in % used over time, the labels at the end of the lines no longer overlap when two windows are close, such as Weekly and Session.
 - Sending a very long message no longer fails with "Invalid params for session.create". A message can now hold up to 1,000,000 characters, and the message box says so when it is longer. A paste that is longer than that is not put in the box; drop the file instead.
 - The first message you send in a session you just opened no longer leaves the "Working…" line hidden under the message box.
 - A message you steer into a session while Claude works no longer vanishes when you switch to another session and back before Claude has picked it up.
 - **Queue** used to hand the message to Claude at once, so it was read at the next step instead of after the turn. It now waits for the turn to end, as the button says.
+- **Auto model**: a new session started on Auto shows your message while Auto is choosing a model, not only once it has picked.
+- **Auto model**: when you change the model of a session Auto picked for, its model chip shows the new model at once instead of staying on "Auto · Sonnet".
+- **Worktrees** and **Branches**: a long label such as "PR #2004 merged" is cut short to fit its column instead of running into the size next to it.
 
 ## [0.0.15] - 2026-10-12
 

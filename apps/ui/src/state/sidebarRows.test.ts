@@ -244,6 +244,8 @@ describe('buildListRows', () => {
     cwd,
     prompt,
     attachments: [],
+    typed: null,
+    context: [],
     model: null,
     effort: null,
     permissionMode: 'default',
