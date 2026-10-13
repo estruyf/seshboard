@@ -3623,6 +3623,10 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-folder-select]')?.dataset.value === '' && document.querySelector('[data-route-hint]')?.innerText.includes('switchboard-smoke/no-such-repo')", 20_000))) {
     return `a repo without a checkout did not leave the folder empty (${String(await js("document.querySelector('[data-route-hint]')?.innerText"))})`;
   }
+  // Empty the prompt the links left: kept, it would count as an unsent New session prompt 2s later, and put a pen on
+  // the + button that later steps check for.
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  if (!(await waitInPage(win, `${composer}?.value === ''`, 2_000))) return 'could not empty the prompt the links left';
 
   if (!smokeSessionId) return 'ok: filled in folder and prompt, refused a bad link, empty folder for an unknown repo (no session to open)';
   openDeepLink(`switchboard://session/${smokeSessionId}`);
@@ -3722,7 +3726,13 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
       await js(`${tray}?.querySelector('[data-context-chip-remove]')?.click()`);
       if (!(await waitInPage(win, `${chips} === ${left - 1}`, 2_000))) return `removing a chip did not take it away (${String(await js(chips))} left of ${left})`;
     }
-    if (!(await waitInPage(win, `!${tray} && !document.querySelector('[data-new-session-draft]')`, 3_000))) return `removing the chips left ${(await js(`${tray}`)) ? 'the tray' : 'an unsent New session prompt'} behind`;
+    if (!(await waitInPage(win, `!${tray} && !document.querySelector('[data-new-session-draft]')`, 3_000))) {
+      if (await js(`!!${tray}`)) return 'removing the chips left the tray behind';
+      const left = await js(
+        `JSON.stringify({ pen: document.querySelector('[data-new-session-draft]')?.dataset.newSessionDraft ?? null, thisFolder: ${JSON.stringify(folder)}, box: document.querySelector('[data-new-session-view] [data-composer]')?.value ?? null })`,
+      );
+      return `removing the chips left an unsent New session prompt behind: ${left}`;
+    }
 
     // Settings › VS Code counts this step's socket as a connected editor and links to the extension.
     await js("document.querySelector('[data-open-settings]').click()");
