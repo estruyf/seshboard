@@ -1,7 +1,7 @@
 import type { ShortcutId } from '../../lib/shortcuts.ts';
 
-/** What the message box's Queue button can do while Claude is working. */
-export type QueueAction = 'queue' | 'send-now';
+/** What the message box's send button can do while Claude is working. */
+export type QueueAction = 'queue' | 'steer' | 'send-now';
 
 export interface QueueButtonInput {
   /** Why nothing can be sent (connecting, the folder is unknown). */
@@ -10,6 +10,8 @@ export interface QueueButtonInput {
   sending: boolean;
   /** Something to send: text, images or context. */
   hasMessage: boolean;
+  /** What Enter does (Settings › Conversation): the main part of the button, and the first item of its menu. */
+  whileWorking: 'queue' | 'steer';
 }
 
 export interface QueueMenuItem {
@@ -30,20 +32,25 @@ export interface QueueButtonState {
   items: QueueMenuItem[];
 }
 
+const LABEL: Record<QueueAction, string> = { queue: 'Queue', steer: 'Steer', 'send-now': 'Send now' };
+
 /**
- * The split Queue button while Claude is working: the main part queues the message for after the
- * current turn (↵), the ▾ offers Queue and Send now (⌘⇧↵), which stops Claude so the message runs at once.
+ * The split button while Claude is working. The main part does what Enter does (Queue: hold the message in Up
+ * next until the turn ends, or Steer: give it to Claude now, to read at its next step). The ▾ lists the other way
+ * (⌥↵) and Send now (⌘⇧↵), which stops Claude so the message runs at once.
  */
-export function queueButtonState({ blocked, sending, hasMessage }: QueueButtonInput): QueueButtonState {
+export function queueButtonState({ blocked, sending, hasMessage, whileWorking }: QueueButtonInput): QueueButtonState {
   const disabled = Boolean(blocked) || sending || !hasMessage;
+  const other: QueueAction = whileWorking === 'queue' ? 'steer' : 'queue';
   return {
-    label: sending ? 'Sending…' : 'Queue',
+    label: sending ? 'Sending…' : LABEL[whileWorking],
     sending,
     disabled,
     reason: sending ? null : (blocked ?? (!hasMessage ? 'Type a message first' : null)),
     items: [
-      { action: 'queue', label: 'Queue', shortcut: 'composer.send', disabled },
-      { action: 'send-now', label: 'Send now', shortcut: 'composer.send-now', disabled },
+      { action: whileWorking, label: LABEL[whileWorking], shortcut: 'composer.send', disabled },
+      { action: other, label: LABEL[other], shortcut: 'composer.send-other', disabled },
+      { action: 'send-now', label: LABEL['send-now'], shortcut: 'composer.send-now', disabled },
     ],
   };
 }

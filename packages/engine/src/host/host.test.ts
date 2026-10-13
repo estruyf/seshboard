@@ -1,11 +1,12 @@
 import type { Options, PermissionResult, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelOption, PermissionRequest, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
+import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { HostManager, type SdkRuntime } from './hostManager.ts';
 import { describeSuggestions } from './permissions.ts';
 import { buildOptions, type HostConfig } from './sessionHost.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
+import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** Minimal async channel that can also fail, like a Claude Code process dying. */
 class Channel<T> implements AsyncIterable<T> {
@@ -43,6 +44,8 @@ const SUGGESTION = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent:
 class FakeQuery {
   readonly out = new Channel<unknown>();
   interrupts = 0;
+  /** What reached Claude Code, in order. */
+  received: Array<{ text: string; priority?: string }> = [];
   stoppedTasks: string[] = [];
   closed = false;
   /** The host ended its input (it lets go of the process once it has stopped). */
@@ -67,6 +70,7 @@ class FakeQuery {
       this.out.push({ type: 'assistant', uuid: `a-${text}`, parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: [{ type: 'text', text }] } });
     for await (const message of this.prompt) {
       const text = (message.message.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text')?.text ?? '';
+      this.received.push({ text, ...(message.priority ? { priority: message.priority } : {}) });
       this.out.push({ type: 'system', subtype: 'init', session_id: sessionId, cwd: this.options.cwd, model: this.model, permissionMode: this.mode });
       state('running');
       if (text === 'crash') {
@@ -94,7 +98,7 @@ class FakeQuery {
         }
         assistant('Hello');
       }
-      this.out.push({ type: 'result', subtype: 'success', total_cost_usd: 0.01, session_id: sessionId });
+      this.out.push({ type: 'result', subtype: text === 'fail' ? 'error_during_execution' : 'success', is_error: text === 'fail', total_cost_usd: 0.01, session_id: sessionId });
       state('idle');
     }
     this.inputEnded = true;
@@ -147,8 +151,9 @@ const until = async (check: () => boolean, timeoutMs = 2000) => {
 };
 
 function setup(
-  opts: { openElsewhere?: string[]; cwds?: Record<string, string>; profiles?: Record<string, string>; settings?: SessionSettingsStore; refreshLive?: () => void } = {},
+  opts: { openElsewhere?: string[]; cwds?: Record<string, string>; profiles?: Record<string, string>; settings?: SessionSettingsStore; refreshLive?: () => void; upNext?: ReturnType<typeof memoryUpNext> } = {},
 ) {
+  const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
   const models: ModelOption[][] = [];
   const queries: FakeQuery[] = [];
   const infos: SessionHostInfo[] = [];
@@ -194,11 +199,24 @@ function setup(
     onPermissionResolved: (id) => resolved.push(id),
     onCreated: (id) => created.push(id),
     sessionSettings: opts.settings,
+    upNext: opts.upNext,
+    onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
     ephemeral,
     log: () => {},
   });
-  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral };
+  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral, upNextEvents };
+}
+
+/** Up next kept in memory, as the engine keeps it in SQLite. */
+function memoryUpNext(seed: Record<string, StoredUpNext[]> = {}) {
+  const lists = new Map<string, StoredUpNext[]>(Object.entries(seed));
+  return {
+    lists,
+    list: (sessionId: string) => [...(lists.get(sessionId) ?? [])],
+    all: () => [...lists].map(([sessionId, queue]) => ({ sessionId, queue: queue.map(summarise) })),
+    save: (sessionId: string, messages: readonly StoredUpNext[]) => void (messages.length ? lists.set(sessionId, [...messages]) : lists.delete(sessionId)),
+  };
 }
 
 const base = { attachments: [], model: null, permissionMode: 'default' as const, effort: null, worktree: null, profileId: 'default' };
@@ -257,14 +275,15 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
-  it('sends now by stopping the current turn first', async () => {
+  it('sends now by stopping the current turn: the message goes first and the waiting prompt is denied', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm run build' });
     await until(() => t.permissions.length === 1);
-    await t.manager.send({ sessionId: id, text: 'Look at the tests instead', attachments: [], fork: false, now: true });
+    const sent = await t.manager.send({ sessionId: id, text: 'Look at the tests instead', attachments: [], fork: false, mode: 'now' });
+    expect(sent.queued).toBe(false);
     expect(t.queries[0]!.interrupts).toBe(1);
-    // The waiting prompt is denied with the interrupt, then the new message gets its own turn.
     await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-Hello')));
+    expect(t.queries[0]!.received).toEqual([{ text: 'bash:npm run build' }, { text: 'Look at the tests instead' }]);
     const uuids = t.messages.flatMap((m) => m.messages.map((x) => x.uuid));
     expect(uuids.indexOf('a-deny')).toBeLessThan(uuids.indexOf('a-Hello'));
     t.manager.closeAll();
@@ -276,13 +295,197 @@ describe('HostManager', () => {
     await until(() => t.permissions.length === 1);
     // Queued: it waits for the turn instead of stopping it.
     await t.manager.send({ sessionId: id, text: 'Then the docs', attachments: [], fork: false });
-    expect(t.queries[0]!.interrupts).toBe(0);
+    expect(t.queries[0]!.received).toEqual([{ text: 'bash:npm test' }]);
     t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
-    await until(() => lastState(t.infos, id) === 'idle' && t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-Hello')));
-    // Idle: there is nothing to stop.
-    await t.manager.send({ sessionId: id, text: 'One more', attachments: [], fork: false, now: true });
-    expect(t.queries[0]!.interrupts).toBe(0);
+    await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-Hello')) && lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['bash:npm test', 'Then the docs']);
+    // Idle: there is nothing to stop, so now sends like any message.
+    await t.manager.send({ sessionId: id, text: 'One more', attachments: [], fork: false, mode: 'now' });
+    await until(() => t.queries[0]!.received.length === 3);
+    expect(t.queries[0]!.received.at(-1)).toEqual({ text: 'One more' });
     t.manager.closeAll();
+  });
+
+  describe('the queue', () => {
+    const busy = async (t: ReturnType<typeof setup>) => {
+      const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test' });
+      await until(() => t.permissions.length === 1);
+      return id;
+    };
+    const queue = (t: ReturnType<typeof setup>, id: string) => t.infos.filter((i) => i.sessionId === id).at(-1)!.queue;
+    const send = (t: ReturnType<typeof setup>, id: string, text: string, mode?: 'queue' | 'steer' | 'now') =>
+      t.manager.send({ sessionId: id, text, attachments: [], fork: false, mode });
+    const inTranscript = (t: ReturnType<typeof setup>, text: string) =>
+      t.messages.some((m) => m.messages.some((x) => JSON.stringify(x.message).includes(text)));
+
+    it('holds messages sent while Claude works, out of the transcript, and sends one per turn', async () => {
+      const t = setup();
+      const id = await busy(t);
+      const first = await send(t, id, 'Then the docs');
+      await send(t, id, 'And the changelog');
+      expect(first.queued).toBe(true);
+      expect(queue(t, id).map((m) => m.text)).toEqual(['Then the docs', 'And the changelog']);
+      expect(inTranscript(t, 'Then the docs')).toBe(false);
+      expect(t.queries[0]!.received).toEqual([{ text: 'bash:npm test' }]);
+
+      t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
+      // The first one goes when the turn ends; the second waits for that turn to end too.
+      await until(() => t.queries[0]!.received.length === 3);
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['bash:npm test', 'Then the docs', 'And the changelog']);
+      const lengths = t.infos.filter((i) => i.sessionId === id).map((i) => i.queue.length);
+      // One message leaves the queue per turn: 2, then 1, then 0.
+      expect(lengths.lastIndexOf(2)).toBeLessThan(lengths.lastIndexOf(1));
+      expect(lengths.lastIndexOf(1)).toBeLessThan(lengths.lastIndexOf(0));
+      await until(() => queue(t, id).length === 0 && lastState(t.infos, id) === 'idle');
+      expect(inTranscript(t, 'Then the docs')).toBe(true);
+      t.manager.closeAll();
+    });
+
+    it('steers: Claude gets the message now, without a stop and without queueing it', async () => {
+      const t = setup();
+      const id = await busy(t);
+      const sent = await send(t, id, 'Use tabs', 'steer');
+      expect(sent.queued).toBe(false);
+      expect(queue(t, id)).toEqual([]);
+      expect(inTranscript(t, 'Use tabs')).toBe(true);
+      expect(t.queries[0]!.interrupts).toBe(0);
+      t.manager.closeAll();
+    });
+
+    it('sends one queued message now and leaves the others waiting', async () => {
+      const t = setup();
+      const id = await busy(t);
+      await send(t, id, 'one');
+      const { queueId } = { queueId: queue(t, id)[0]!.id };
+      await send(t, id, 'two');
+      const two = queue(t, id)[1]!.id;
+      void queueId;
+      await t.manager.sendQueuedNow(id, two);
+      expect(queue(t, id).map((m) => m.text)).toEqual(['one']);
+      expect(t.queries[0]!.interrupts).toBe(1);
+      // 'one' still waits for the turn after that one.
+      await until(() => t.queries[0]!.received.some((r) => r.text === 'one'));
+      const order = t.queries[0]!.received.map((r) => r.text);
+      expect(order.indexOf('two')).toBeLessThan(order.indexOf('one'));
+      t.manager.closeAll();
+    });
+
+    it('takes a queued message back, with its images, and reorders the rest', async () => {
+      const t = setup();
+      const id = await busy(t);
+      const image = { type: 'image' as const, mediaType: 'image/png' as const, data: 'AAAA', name: 'shot.png' };
+      await t.manager.send({ sessionId: id, text: 'one', attachments: [image], fork: false });
+      await send(t, id, 'two');
+      await send(t, id, 'three');
+      expect(queue(t, id)[0]).toMatchObject({ text: 'one', attachments: ['shot.png'] });
+      expect(JSON.stringify(queue(t, id))).not.toContain('AAAA');
+
+      t.manager.moveQueued(id, queue(t, id)[2]!.id, 0);
+      expect(queue(t, id).map((m) => m.text)).toEqual(['three', 'one', 'two']);
+      expect(t.manager.dequeue(id, queue(t, id)[1]!.id)).toEqual({ text: 'one', attachments: [image] });
+      expect(queue(t, id).map((m) => m.text)).toEqual(['three', 'two']);
+      expect(t.manager.dequeue(id, 'gone')).toBeNull();
+      t.manager.closeAll();
+    });
+
+    it('keeps the queue when you stop Claude, until you send it', async () => {
+      const t = setup();
+      const id = await busy(t);
+      await send(t, id, 'later');
+      await t.manager.interrupt(id);
+      await until(() => lastState(t.infos, id) === 'idle');
+      expect(t.infos.filter((i) => i.sessionId === id).at(-1)!.queueHold).toBe('stopped');
+      expect(queue(t, id)).toHaveLength(1);
+      expect(t.queries[0]!.received).toEqual([{ text: 'bash:npm test' }]);
+
+      t.manager.resumeQueue(id);
+      await until(() => t.queries[0]!.received.some((r) => r.text === 'later'));
+      expect(t.infos.filter((i) => i.sessionId === id).at(-1)!.queueHold).toBeNull();
+      t.manager.closeAll();
+    });
+
+    it('keeps the queue when a turn fails, and a message you send yourself ends the hold', async () => {
+      const t = setup();
+      const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:go' });
+      await until(() => t.permissions.length === 1);
+      // The fake fails the turn that gets 'fail', so queue it behind a turn that is still going.
+      await send(t, id, 'fail');
+      await send(t, id, 'after');
+      t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
+      await until(() => t.queries[0]!.received.some((r) => r.text === 'fail') && lastState(t.infos, id) === 'idle' && t.infos.at(-1)!.queueHold === 'error');
+      expect(queue(t, id).map((m) => m.text)).toEqual(['after']);
+      expect(t.queries[0]!.received.some((r) => r.text === 'after')).toBe(false);
+
+      await send(t, id, 'my own');
+      await until(() => t.queries[0]!.received.some((r) => r.text === 'after'));
+      expect(t.queries[0]!.received.map((r) => r.text).slice(-2)).toEqual(['my own', 'after']);
+      t.manager.closeAll();
+    });
+
+    it('keeps Up next with its images on every change, so it outlives the process', async () => {
+      const store = memoryUpNext();
+      const t = setup({ upNext: store });
+      const id = await busy(t);
+      const image = { type: 'image' as const, mediaType: 'image/png' as const, data: 'AAAA', name: 'shot.png' };
+      await t.manager.send({ sessionId: id, text: 'later', attachments: [image], fork: false });
+      expect(store.list(id)).toMatchObject([{ text: 'later', attachments: [image] }]);
+      expect(t.upNextEvents.at(-1)).toMatchObject({ sessionId: id, queue: [{ text: 'later', attachments: ['shot.png'] }] });
+      expect(t.manager.upNextLists()).toMatchObject([{ sessionId: id, queue: [{ text: 'later' }] }]);
+      t.manager.close(id);
+      expect(store.list(id)).toHaveLength(1);
+      t.manager.closeAll();
+    });
+
+    const kept = (id: string, text: string): StoredUpNext => ({ id, text, attachments: [], createdAt: 1 });
+
+    it('after a restart, a resumed session gets Up next back, waiting until you send', async () => {
+      const store = memoryUpNext({ old: [kept('k1', 'kept')] });
+      const t = setup({ cwds: { old: '/w' }, upNext: store });
+      await send(t, 'old', 'my own');
+      // Back, and on hold: it doesn't go before your own message.
+      expect(t.infos.find((i) => i.sessionId === 'old')).toMatchObject({ queue: [{ text: 'kept' }], queueHold: 'saved' });
+      // Your message ends the hold: the kept one goes when its turn is done.
+      await until(() => t.queries[0]!.received.length === 2);
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['my own', 'kept']);
+      await until(() => store.list('old').length === 0);
+      t.manager.closeAll();
+    });
+
+    it('Send next resumes a stopped session and sends Up next, one message per turn', async () => {
+      const store = memoryUpNext({ old: [kept('k1', 'first'), kept('k2', 'second')] });
+      const t = setup({ cwds: { old: '/w' }, upNext: store });
+      await t.manager.resumeQueue('old');
+      await until(() => t.queries[0]?.received.length === 2);
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['first', 'second']);
+      t.manager.closeAll();
+    });
+
+    it('edits a stopped session’s Up next without starting it, and Send now on one resumes it', async () => {
+      const image = { type: 'image' as const, mediaType: 'image/png' as const, data: 'AAAA', name: 'shot.png' };
+      const store = memoryUpNext({ old: [kept('a', 'a'), kept('b', 'b'), { ...kept('c', 'c'), attachments: [image] }] });
+      const t = setup({ cwds: { old: '/w' }, upNext: store });
+      t.manager.moveQueued('old', 'b', 0);
+      expect(store.list('old').map((m) => m.id)).toEqual(['b', 'a', 'c']);
+      expect(t.manager.dequeue('old', 'c')).toEqual({ text: 'c', attachments: [image] });
+      expect(store.list('old').map((m) => m.id)).toEqual(['b', 'a']);
+      expect(t.upNextEvents.at(-1)).toMatchObject({ sessionId: 'old', queue: [{ id: 'b' }, { id: 'a' }] });
+      expect(t.queries).toHaveLength(0);
+
+      await t.manager.sendQueuedNow('old', 'a');
+      await until(() => t.queries[0]?.received.length === 2);
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['a', 'b']);
+      t.manager.closeAll();
+    });
+
+    it('sends at once when Claude is idle', async () => {
+      const t = setup();
+      const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hi' });
+      await until(() => lastState(t.infos, id) === 'idle');
+      const sent = await send(t, id, 'next');
+      expect(sent.queued).toBe(false);
+      expect(queue(t, id)).toEqual([]);
+      t.manager.closeAll();
+    });
   });
 
   it('refuses to resume a session open elsewhere, but can fork it', async () => {

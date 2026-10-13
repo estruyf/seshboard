@@ -20,6 +20,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
 import { InputQueue } from './inputQueue.ts';
+import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** Starts the Claude Code process for a host. Real hosts use the SDK's `query()` (or a pre-warmed one). */
 export type StartQuery = (args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query | Promise<Query>;
@@ -41,6 +42,8 @@ export interface HostEvents {
   knownCommands?(): readonly SlashCommand[];
   /** The command list changed while running (a skill was added or removed), so lists cached for the profile are stale. */
   commandsChanged?(): void;
+  /** Up next changed: the whole list with its images, to keep it when the app quits or the session stops. */
+  queue?(sessionId: string, messages: StoredUpNext[]): void;
 }
 
 export interface HostConfig {
@@ -128,6 +131,8 @@ export function toModelOption(m: ModelInfo): ModelOption {
  */
 export class SessionHost {
   private readonly input = new InputQueue<SDKUserMessage>();
+  /** Messages held back until Claude's turn ends, in the order they go. Their images stay here. */
+  private readonly pending: StoredUpNext[] = [];
   private query: Promise<Query | undefined> = Promise.resolve(undefined);
   private closing = false;
   private initResolve!: (sessionId: string) => void;
@@ -166,7 +171,8 @@ export class SessionHost {
       error: null,
       startedAt: Date.now(),
       promptedAt: null,
-      queued: 0,
+      queue: [],
+      queueHold: null,
       profileId: config.profileId,
       backgroundTasks: [],
     };
@@ -201,12 +207,55 @@ export class SessionHost {
     this.events.info(this.info);
   }
 
+  /** Whether Claude is in the middle of a turn (working, or waiting on you). */
+  get busy(): boolean {
+    return this.info.state === 'running' || this.info.state === 'needs-you';
+  }
+
   /**
-   * Queues a user message. It shows up in the transcript immediately, with the uuid Claude Code will store.
+   * Hands a user message to Claude Code. It shows up in the transcript immediately, with the uuid Claude Code will store.
    * `after`: Claude Code only gets it once that has settled (Auto choosing the model of a new session).
+   * While Claude works, Claude reads it at its next step (a steer); `sendNow` stops the turn first instead.
+   * Sending yourself means you are back in charge of the queue, so a hold on it ends.
    */
   send(text: string, attachments: readonly ImageAttachment[] = [], after?: Promise<unknown>): string {
     if (!this.active) throw new Error('This session is not running');
+    if (this.queueHold) {
+      this.queueHold = null;
+      this.publishQueue();
+    }
+    return this.push(text, attachments, after);
+  }
+
+  /**
+   * Stops Claude's turn, then sends the message, so it runs at once. Not `priority: 'now'`: Claude Code folds such a
+   * message into a turn that hasn't started answering yet instead of stopping it (spike 12). Up next waits meanwhile,
+   * so it can't slip in ahead of this message.
+   */
+  async sendNow(text: string, attachments: readonly ImageAttachment[] = []): Promise<string> {
+    if (!this.active) throw new Error('This session is not running');
+    if (!this.busy) return this.send(text, attachments);
+    this.nowPhase = 'stopping';
+    clearTimeout(this.nowTimer);
+    try {
+      await (await this.query)?.interrupt();
+    } finally {
+      this.nowPhase = 'sent';
+      // Claude Code says `running` or answers once it takes the message; if neither comes, the queue mustn't stay stuck.
+      this.nowTimer = setTimeout(() => this.nowStarted(), 5_000);
+    }
+    return this.send(text, attachments);
+  }
+
+  /** The message sent now has its turn: Up next may move on again when that turn ends. */
+  private nowStarted(): void {
+    clearTimeout(this.nowTimer);
+    if (this.nowPhase === null) return;
+    this.nowPhase = null;
+    this.drain();
+  }
+
+  private push(text: string, attachments: readonly ImageAttachment[], after?: Promise<unknown>): string {
     const uuid = randomUUID();
     const content = [
       ...attachments.map((a) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: a.mediaType, data: a.data } })),
@@ -220,9 +269,99 @@ export class SessionHost {
     const commands = this.commands.length ? this.commands : (this.events.knownCommands?.() ?? []);
     const echo = attachments.length === 0 && text ? { role: 'user' as const, content: [{ type: 'text' as const, text: commandEcho(text, commands.map((c) => c.name)) }] } : message.message;
     this.events.messages(this.sessionId, [{ type: 'user', uuid, message: echo, parent_tool_use_id: null, timestamp: new Date().toISOString() }], after !== undefined);
-    const busy = this.info.state === 'running' || this.info.state === 'needs-you';
-    this.update({ promptedAt: this.lastActivity, ...(busy ? { queued: this.info.queued + 1 } : {}) });
+    this.update({ promptedAt: this.lastActivity });
     return uuid;
+  }
+
+  /** Why the queue isn't sending by itself (see `SessionHostInfo.queueHold`). */
+  private queueHold: SessionHostInfo['queueHold'] = null;
+  /**
+   * Send now in progress: `stopping` while the turn is being stopped, `sent` until the message's own turn starts.
+   * The stopped turn's end is no failure and no cue for Up next.
+   */
+  private nowPhase: 'stopping' | 'sent' | null = null;
+  private nowTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * Holds a message until Claude's turn ends, then sends it, one message per turn. The transcript doesn't show
+   * it until then, so it can still be edited, moved or taken back. Returns the queue entry's id.
+   */
+  enqueue(text: string, attachments: readonly ImageAttachment[] = []): string {
+    if (!this.active) throw new Error('This session is not running');
+    const id = randomUUID();
+    this.pending.push({ id, text, attachments: [...attachments], createdAt: Date.now() });
+    this.lastActivity = Date.now();
+    this.publishQueue({ promptedAt: this.lastActivity });
+    // Claude may have finished between the window's check and now.
+    this.drain();
+    return id;
+  }
+
+  /** Takes a queued message out; what it held goes back to the caller for the message box. */
+  dequeue(id: string): { text: string; attachments: ImageAttachment[] } | null {
+    const at = this.pending.findIndex((m) => m.id === id);
+    if (at < 0) return null;
+    const [removed] = this.pending.splice(at, 1);
+    this.publishQueue();
+    return { text: removed!.text, attachments: removed!.attachments };
+  }
+
+  /** Moves a queued message to a place in the queue (0 is next). */
+  moveQueued(id: string, toIndex: number): void {
+    const at = this.pending.findIndex((m) => m.id === id);
+    if (at < 0) return;
+    const [moved] = this.pending.splice(at, 1);
+    this.pending.splice(Math.min(toIndex, this.pending.length), 0, moved!);
+    this.publishQueue();
+  }
+
+  /** Sends one queued message right now, stopping Claude's turn when it is in one; the others keep waiting. */
+  async sendQueuedNow(id: string): Promise<string | null> {
+    const message = this.dequeue(id);
+    return message ? this.sendNow(message.text, message.attachments) : null;
+  }
+
+  /** Sends the next queued message and lets the queue move on by itself again (after a stopped or failed turn). */
+  resumeQueue(): void {
+    this.queueHold = null;
+    this.publishQueue();
+    this.drain();
+  }
+
+  /** Claude was stopped: what is queued stays put until you send it or move on. */
+  holdQueue(reason: 'stopped' | 'error'): void {
+    if (this.pending.length === 0 && reason === 'stopped') {
+      this.queueHold = null;
+      return;
+    }
+    this.queueHold = reason;
+    this.publishQueue();
+  }
+
+  /**
+   * Up next as it was kept from before this process (the app quit, or the session stopped). It waits for you: Send
+   * next, Send now on one of them, or a message of your own lets it move on. Call before `start`.
+   */
+  restoreQueue(messages: readonly StoredUpNext[]): void {
+    if (messages.length === 0) return;
+    this.pending.splice(0, this.pending.length, ...messages);
+    this.queueHold = 'saved';
+    this.info = { ...this.info, queue: this.pending.map(summarise), queueHold: this.queueHold };
+  }
+
+  /** When Claude is ready for the next message: sends the first queued one, unless the queue is on hold. */
+  private drain(): void {
+    if (!this.active || this.busy || this.queueHold || this.nowPhase || this.pending.length === 0) return;
+    const next = this.pending.shift()!;
+    this.push(next.text, next.attachments);
+    this.publishQueue();
+  }
+
+  private publishQueue(extra: Partial<SessionHostInfo> = {}): void {
+    // An empty queue has nothing to hold.
+    if (this.pending.length === 0) this.queueHold = null;
+    this.update({ queue: this.pending.map(summarise), queueHold: this.queueHold, ...extra });
+    this.events.queue?.(this.sessionId, [...this.pending]);
   }
 
   async capabilities(fallbackPlugins: () => PluginInfo[]): Promise<Capabilities> {
@@ -253,6 +392,8 @@ export class SessionHost {
   }
 
   async interrupt(): Promise<void> {
+    // Stopping Claude is not a reason to fire off what is queued, so it waits for you.
+    if (this.busy) this.holdQueue('stopped');
     await (await this.query)?.interrupt();
   }
 
@@ -326,7 +467,7 @@ export class SessionHost {
     const message = error instanceof Error ? error.message : String(error);
     this.events.log('error', `Session ${this.sessionId} failed: ${message}`);
     this.initReject(new Error(message));
-    this.update({ state: 'error', error: message });
+    this.update({ state: 'error', error: message, ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
   }
 
   private async loop(query: Query): Promise<void> {
@@ -367,6 +508,8 @@ export class SessionHost {
       // so only the main conversation is pushed live.
       case 'assistant':
         if (message.parent_tool_use_id !== null) return;
+        // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
+        if (this.nowPhase === 'sent') this.nowStarted();
         this.events.messages(this.sessionId, [toRaw(message)]);
         this.pushStream('clear', '');
         return;
@@ -377,6 +520,8 @@ export class SessionHost {
         this.events.messages(this.sessionId, [toRaw(message)]);
         return;
       case 'result':
+        // A failed turn leaves the queue for you to decide, unless you stopped it yourself (already held) or sent a message now.
+        if ((message.subtype !== 'success' || message.is_error) && !this.nowPhase && !this.queueHold) this.holdQueue('error');
         this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd });
         void this.refreshContext();
         this.events.usageHint?.();
@@ -440,8 +585,12 @@ export class SessionHost {
     if (message.subtype === 'session_state_changed') {
       const state = STATE_FROM_SDK[(message as { state: string }).state];
       if (!state || this.closing) return;
-      this.update(state === 'idle' ? { state, queued: 0 } : { state });
-      if (state === 'idle') this.pushStream('clear', '');
+      this.update({ state });
+      if (state === 'running' && this.nowPhase === 'sent') this.nowStarted();
+      if (state === 'idle') {
+        this.pushStream('clear', '');
+        this.drain();
+      }
     }
   }
 

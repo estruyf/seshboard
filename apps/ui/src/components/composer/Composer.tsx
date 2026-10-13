@@ -83,6 +83,12 @@ export interface ComposerProps {
    * `submitControl`. Like `onSubmit`, returning `false` keeps the prompt; otherwise the box empties.
    */
   secondary?: { shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[], parts: SentParts): Promise<void | false> };
+  /** More ways to send what is in the box while Claude works (Steer or Queue, whichever Enter isn't), each on its own shortcut and in `submitControl`. */
+  others?: Array<{ shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[], parts: SentParts): Promise<void | false> }>;
+  /** ↑ in an empty box asks for the last message waiting in Up next; true when it took one (the box then fills with it). */
+  onRecallQueued?(): boolean;
+  /** What the hint line says about messages while Claude works, in place of the default. */
+  runningHint?: string;
   /** Takes the Send button's place (New session's Start with its menu), with what it needs to send what is in the box. */
   submitControl?(api: SubmitApi): ReactNode;
   /** Returning `false` means nothing was sent (the focus limit asked and you cancelled): the prompt stays as it is. */
@@ -110,6 +116,8 @@ export interface SubmitApi {
   submit(): void;
   /** Sends through `secondary`. */
   submitSecondary(): void;
+  /** Sends through the `others` entry on this shortcut. */
+  submitOther(shortcut: ShortcutId): void;
   /** Sends through another action (New session's Start in a new worktree); returning `false` keeps the prompt. */
   submitWith(send: (text: string, attachments: ImageAttachment[], parts: SentParts) => Promise<void | false>): void;
 }
@@ -429,6 +437,10 @@ export function Composer(props: ComposerProps) {
       requestAnimationFrame(() => listRef.current?.children[route.active]?.scrollIntoView({ block: 'nearest' }));
       return;
     }
+    if (route?.kind === 'history' && route.direction === 'older' && el.value === '' && attachments.length === 0 && !history.current!.browsing && props.onRecallQueued?.()) {
+      event.preventDefault();
+      return;
+    }
     if (route?.kind === 'history') {
       const caret = history.current!.caretFirst(route.direction, el.value, el.selectionStart);
       if (caret !== null) {
@@ -466,8 +478,12 @@ export function Composer(props: ComposerProps) {
     }
     // ⇧↵ on a list item starts the next one; ` on a selection wraps it as code.
     if (editKey(event, setText)) return;
-    const send = submitKey(event.nativeEvent, props.secondary?.shortcut);
-    if (matches(event.nativeEvent, 'composer.add-context') && addContext) {
+    const other = props.others?.find((o) => matches(event.nativeEvent, o.shortcut));
+    const send = other ? null : submitKey(event.nativeEvent, props.secondary?.shortcut);
+    if (other) {
+      event.preventDefault();
+      void submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts));
+    } else if (matches(event.nativeEvent, 'composer.add-context') && addContext) {
       event.preventDefault();
       openPicker();
     } else if (send) {
@@ -486,6 +502,10 @@ export function Composer(props: ComposerProps) {
 
   const disabled = !!props.disabledReason;
   const submitSecondary = () => (props.secondary ? submit(false, (value, sent, parts) => props.secondary!.onSubmit(value, sent, parts)) : Promise.resolve());
+  const submitOther = (shortcut: ShortcutId) => {
+    const other = props.others?.find((o) => o.shortcut === shortcut);
+    return other ? submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts)) : Promise.resolve();
+  };
   const hasText = !!text.trim() || chips.length > 0;
   const hasMessage = hasText || attachments.length > 0;
   const attach = (
@@ -640,7 +660,7 @@ export function Composer(props: ComposerProps) {
               {props.controls}
               {/* The keys still get read out with the message box; the chips take the hint's place on screen. */}
               <span id={`${ids}-hint`} className="sr-only">
-                {props.running ? `Esc stops Claude.${props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
+                {props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
               </span>
             </div>
           ) : (
@@ -650,7 +670,7 @@ export function Composer(props: ComposerProps) {
                   {notice}
                 </span>
               ) : props.running ? (
-                `Esc to stop Claude · messages wait for Claude to finish${props.secondary ? ` · ${formatKeys(keysFor(props.secondary.shortcut))} sends now` : ''}`
+                `Esc to stop Claude · ${props.runningHint ?? `messages wait for Claude to finish${props.secondary ? ` · ${formatKeys(keysFor(props.secondary.shortcut))} sends now` : ''}`}`
               ) : (
                 `/ for commands · @ for files${props.onCycleMode ? ` · ${localizeKeys('⇧Tab')} to change mode` : ''}`
               )}
@@ -675,6 +695,7 @@ export function Composer(props: ComposerProps) {
                 hasText,
                 submit: () => void submit(),
                 submitSecondary: () => void submitSecondary(),
+                submitOther: (shortcut) => void submitOther(shortcut),
                 submitWith: (send) => void submit(false, send),
               })
             ) : (

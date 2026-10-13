@@ -81,6 +81,9 @@ export type ProjectOrder = "recent" | "yours";
  */
 export type NewSessionMode = "last" | "default" | "acceptEdits" | "plan" | "auto";
 export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["last", "default", "acceptEdits", "plan", "auto"];
+/** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
+export type WhileWorking = "queue" | "steer";
+
 /** At the focus limit: ask first and allow going over (`nudge`), or wait until a session is finished (`strict`). */
 export type FocusMode = "nudge" | "strict";
 
@@ -122,6 +125,8 @@ export interface Preferences {
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
   deleteArchived: DeleteArchived;
+  /** What Enter does in the message box while Claude is working (Settings › Conversation). */
+  whileWorking: WhileWorking;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
   githubStar: GithubStar;
@@ -145,6 +150,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   themeId: DEFAULT_THEME_ID,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
+  whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
   githubStar: "ask",
 };
@@ -204,6 +210,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const afterDays = clampDays(deleting?.afterDays, DELETE_AFTER_DAYS);
   if (typeof deleting?.enabled === "boolean" && afterDays !== null)
     out.deleteArchived = { enabled: deleting.enabled, afterDays };
+  if (oneOf(["queue", "steer"] as const, raw.whileWorking))
+    out.whileWorking = raw.whileWorking;
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
