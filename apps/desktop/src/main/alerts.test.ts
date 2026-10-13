@@ -27,8 +27,8 @@ describe('alertFor', () => {
     const on = prefs({ enabled: true, byEvent: { ...ALL, error: 'none' } });
     expect(alertFor('failed', false, on)).toEqual({ notify: true, sound: null });
     expect(alertFor('finished', false, on)).toEqual({ notify: true, sound: 'finished' });
-    // A new install: no sound when a project action ends.
-    expect(alertFor('action-done', false, prefs({ enabled: true }))).toEqual({ notify: true, sound: null });
+    // A new install: every moment has a sound.
+    for (const kind of KINDS) expect(alertFor(kind, false, prefs({ enabled: true })).sound).not.toBeNull();
   });
 
   it('plays nothing with sounds off or at volume 0, and keeps notifying', () => {

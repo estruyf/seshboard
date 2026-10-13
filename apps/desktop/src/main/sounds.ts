@@ -4,15 +4,15 @@ import { join } from 'node:path';
 import { SOUND_EVENTS, type SoundEvent, type SoundList } from '@switchboard/protocol/bridge';
 
 /**
- * Where each platform keeps its system sounds, their file type, and the ones a missing choice falls back to. A
- * project action that ends has no sound on a new install; one picked elsewhere plays like a finished turn.
+ * Where each platform keeps its system sounds, their file type, and the ones a missing choice falls back to: a
+ * different one for each moment, like the defaults.
  */
 const SYSTEM_SOUNDS: Record<string, { dir: () => string; extension: string; fallback: Record<SoundEvent, string> }> = {
-  darwin: { dir: () => '/System/Library/Sounds', extension: '.aiff', fallback: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Glass' } },
+  darwin: { dir: () => '/System/Library/Sounds', extension: '.aiff', fallback: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Pop' } },
   win32: {
     dir: () => join(process.env.SystemRoot ?? process.env.windir ?? 'C:\\Windows', 'Media'),
     extension: '.wav',
-    fallback: { needsYou: 'Windows Notify Messaging', finished: 'Windows Notify System Generic', error: 'Windows Critical Stop', actionEnded: 'Windows Notify System Generic' },
+    fallback: { needsYou: 'Windows Notify Messaging', finished: 'Windows Notify System Generic', error: 'Windows Critical Stop', actionEnded: 'Windows Ding' },
   },
 };
 

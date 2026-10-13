@@ -3,9 +3,9 @@ import { playCommand, soundListFrom } from './sounds.ts';
 
 describe('soundListFrom', () => {
   it('lists the macOS system sounds by name, sorted, with a fallback for each moment', () => {
-    expect(soundListFrom(['Tink.aiff', 'Glass.aiff', 'Ping.aiff', 'Basso.aiff', '.DS_Store'], 'darwin')).toEqual({
-      sounds: ['Basso', 'Glass', 'Ping', 'Tink'],
-      fallback: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Glass' },
+    expect(soundListFrom(['Tink.aiff', 'Glass.aiff', 'Ping.aiff', 'Basso.aiff', 'Pop.aiff', '.DS_Store'], 'darwin')).toEqual({
+      sounds: ['Basso', 'Glass', 'Ping', 'Pop', 'Tink'],
+      fallback: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Pop' },
     });
   });
 
@@ -14,6 +14,13 @@ describe('soundListFrom', () => {
       sounds: ['chimes', 'tada', 'Windows Notify Messaging'],
       fallback: { needsYou: 'Windows Notify Messaging', finished: 'chimes', error: 'chimes', actionEnded: 'chimes' },
     });
+  });
+
+  it('falls back to a different Windows sound for each moment', () => {
+    const files = ['Windows Notify Messaging.wav', 'Windows Notify System Generic.wav', 'Windows Critical Stop.wav', 'Windows Ding.wav'];
+    const { fallback } = soundListFrom(files, 'win32');
+    expect(fallback).toEqual({ needsYou: 'Windows Notify Messaging', finished: 'Windows Notify System Generic', error: 'Windows Critical Stop', actionEnded: 'Windows Ding' });
+    expect(new Set(Object.values(fallback)).size).toBe(4);
   });
 
   it('has nothing to offer elsewhere, or in an empty folder', () => {

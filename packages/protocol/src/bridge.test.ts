@@ -65,10 +65,30 @@ describe('githubStar preference', () => {
 describe('notification and sound preferences', () => {
   const sounds = (extra: Partial<SoundPrefs> = {}): SoundPrefs => ({ ...DEFAULT_SOUNDS, ...extra });
 
-  it('notifies and stays quiet on a fresh install, with a sound picked for each moment', () => {
+  it('notifies and stays quiet on a fresh install, with a different sound for each moment', () => {
     const fresh = { ...DEFAULT_PREFERENCES, ...sanitizePreferences(undefined) };
     expect(fresh.notifications).toEqual({ enabled: true });
-    expect(fresh.sounds).toEqual({ enabled: false, byEvent: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'none' }, volume: 0.5 });
+    expect(fresh.sounds).toEqual({ enabled: false, byEvent: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Pop' }, volume: 0.5, revision: 2 });
+    expect(new Set(Object.values(fresh.sounds.byEvent)).size).toBe(4);
+  });
+
+  describe('sounds saved before the current defaults', () => {
+    const saved = (byEvent: Record<string, string>, extra: Record<string, unknown> = {}) => sanitizePreferences({ sounds: { enabled: true, byEvent, volume: 0.3, ...extra } }).sounds;
+
+    it('take the current defaults when nobody picked them: Glass from Session complete, or the first defaults', () => {
+      expect(saved({ needsYou: 'Ping', finished: 'Glass', error: 'Glass', actionEnded: 'Glass' })).toEqual(sounds({ enabled: true, volume: 0.3 }));
+      expect(saved({ needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'none' })).toEqual(sounds({ enabled: true, volume: 0.3 }));
+    });
+
+    it('keep sounds someone picked', () => {
+      const picked = { needsYou: 'Ping', finished: 'Hero', error: 'Glass', actionEnded: 'Glass' };
+      expect(saved(picked)?.byEvent).toEqual(picked);
+    });
+
+    it('happens once: the same sounds picked after it stay', () => {
+      const glass = { needsYou: 'Ping', finished: 'Glass', error: 'Glass', actionEnded: 'Glass' };
+      expect(saved(glass, { revision: 2 })?.byEvent).toEqual(glass);
+    });
   });
 
   describe('moving the settings from before a sound per moment', () => {
@@ -90,17 +110,14 @@ describe('notification and sound preferences', () => {
       );
     });
 
-    it('keeps the old defaults as they were, not the new ones', () => {
-      expect(old({}).sounds?.byEvent).toEqual({ needsYou: 'Ping', finished: 'Glass', error: 'Glass', actionEnded: 'Glass' });
+    it('gives each moment its own sound when the old ones were never changed', () => {
+      expect(old({}).sounds?.byEvent).toEqual({ needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Pop' });
     });
 
-    it('turns None (null) into none, for either sound', () => {
-      for (const complete of ['Glass', null]) {
-        for (const needsInput of ['Ping', null]) {
-          const c = complete ?? 'none';
-          expect(old({ soundComplete: complete, soundNeedsInput: needsInput }).sounds?.byEvent).toEqual({ needsYou: needsInput ?? 'none', finished: c, error: c, actionEnded: c });
-        }
-      }
+    it('keeps None (null) as none for every moment it played for, in every combination', () => {
+      expect(old({ soundComplete: null, soundNeedsInput: null }).sounds?.byEvent).toEqual({ needsYou: 'none', finished: 'none', error: 'none', actionEnded: 'none' });
+      expect(old({ soundComplete: null }).sounds?.byEvent).toEqual({ needsYou: 'Ping', finished: 'none', error: 'none', actionEnded: 'none' });
+      expect(old({ soundNeedsInput: null }).sounds?.byEvent).toEqual({ ...{ needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Pop' }, needsYou: 'none' });
     });
 
     it('keeps the volume', () => {
@@ -110,8 +127,8 @@ describe('notification and sound preferences', () => {
     });
 
     it('moves a file that has only some of the old settings', () => {
-      expect(sanitizePreferences({ sounds: true }).sounds).toEqual(sounds({ enabled: true, byEvent: { needsYou: 'Ping', finished: 'Glass', error: 'Glass', actionEnded: 'Glass' } }));
-      expect(sanitizePreferences({ soundVolume: 0.8 }).sounds).toEqual(sounds({ byEvent: { needsYou: 'Ping', finished: 'Glass', error: 'Glass', actionEnded: 'Glass' }, volume: 0.8 }));
+      expect(sanitizePreferences({ sounds: true }).sounds).toEqual(sounds({ enabled: true }));
+      expect(sanitizePreferences({ soundVolume: 0.8 }).sounds).toEqual(sounds({ volume: 0.8 }));
     });
   });
 
