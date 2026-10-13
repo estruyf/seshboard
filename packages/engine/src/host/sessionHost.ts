@@ -68,6 +68,17 @@ export interface HostConfig {
   canUseTool: CanUseTool;
 }
 
+/** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
+export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Switchboard can’t find it. Install it, then try again.';
+
+/**
+ * Without a `claude` of the user's, the SDK falls back to a native binary it doesn't ship with Switchboard and fails
+ * with "Native CLI binary for darwin-arm64 not found. Reinstall @anthropic-ai/claude-agent-sdk": say what's really wrong.
+ */
+export function failureMessage(message: string, claudePath: string | undefined): string {
+  return claudePath === undefined && /native cli binary .*not found/i.test(message) ? CLAUDE_MISSING_MESSAGE : message;
+}
+
 const STATE_FROM_SDK: Record<string, HostState> = { running: 'running', requires_action: 'needs-you', idle: 'idle' };
 const STREAM_FLUSH_MS = 30;
 
@@ -475,7 +486,7 @@ export class SessionHost {
   }
 
   private fail(error: unknown): void {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = failureMessage(error instanceof Error ? error.message : String(error), this.config.claudePath);
     this.events.log('error', `Session ${this.sessionId} failed: ${message}`);
     this.initReject(new Error(message));
     this.update({ state: 'error', error: message, ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });

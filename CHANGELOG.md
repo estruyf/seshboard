@@ -23,6 +23,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Claude Code not installed.** When Switchboard can't find Claude Code, it now says so when it opens: **Install Claude Code** shows the commands to install it for your system, how to sign in, and **Check Again** to pick it up without restarting. Starting a session without it says *Claude Code isn't installed, or Switchboard can't find it* instead of "Native CLI binary for darwin-arm64 not found". Settings → About has **Install Claude Code…** while it's missing.
 - **Queue keeps added files.** A file, folder or pasted text you added to a new session stays a chip when you add the session to the queue and open it again, instead of turning into an `@` mention in the text.
 - **Export includes Claude profiles.** Export settings has a **Claude profiles** option: your profiles with their folders, colours and defaults for new sessions, the default profile and which projects use which. Import adds them back (signing in again is still needed; logins are never in the file).
 - **Usage**: the profile menu shows the whole profile name; a long email is cut short instead.

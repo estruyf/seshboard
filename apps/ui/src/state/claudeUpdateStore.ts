@@ -10,6 +10,11 @@ interface ClaudeUpdateStore {
   /** Why the last request was refused (busy, can't update this install); cleared by the next one. */
   refused: string | null;
   client: EngineClient | null;
+  /** The "Install Claude Code" dialog is open: by itself once per launch when `claude` is missing, or from Settings. */
+  installOpen: boolean;
+  /** The dialog already opened by itself in this launch. */
+  installPrompted: boolean;
+  showInstall(open: boolean): void;
   check(): void;
   update(): void;
   dismiss(): void;
@@ -27,12 +32,21 @@ export const useClaudeUpdate = create<ClaudeUpdateStore>()((set, get) => {
     state: null,
     refused: null,
     client: null,
+    installOpen: false,
+    installPrompted: false,
+    showInstall: (installOpen) => set({ installOpen }),
     check: () => send((c) => c.call('claudeUpdate.check', {})),
     update: () => send((c) => c.call('claudeUpdate.update', {})),
     dismiss: () => send((c) => c.call('claudeUpdate.dismiss', {})),
     setEnabled: (enabled) => send((c) => c.call('claudeUpdate.setEnabled', { enabled })),
   };
 });
+
+/** Stores the engine's state, and opens the install dialog the first time it says `claude` is missing. */
+function receive(state: ClaudeUpdateState): void {
+  const prompt = state.status === 'missing' && !useClaudeUpdate.getState().installPrompted;
+  useClaudeUpdate.setState(prompt ? { state, installOpen: true, installPrompted: true } : { state });
+}
 
 /** Follows the engine's Claude Code check (loaded once per connection). */
 export function useClaudeUpdateSync(): void {
@@ -41,8 +55,8 @@ export function useClaudeUpdateSync(): void {
   useEffect(() => {
     useClaudeUpdate.setState({ client });
     if (!client) return;
-    const off = client.on('claudeUpdate.changed', (state) => useClaudeUpdate.setState({ state }));
-    void client.call('claudeUpdate.get', {}).then((state) => useClaudeUpdate.setState({ state }));
+    const off = client.on('claudeUpdate.changed', receive);
+    void client.call('claudeUpdate.get', {}).then(receive);
     return off;
   }, [client]);
 }

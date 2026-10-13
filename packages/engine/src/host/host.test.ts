@@ -4,7 +4,7 @@ import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, St
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { HostManager, type SdkRuntime } from './hostManager.ts';
 import { describeSuggestions } from './permissions.ts';
-import { buildOptions, type HostConfig } from './sessionHost.ts';
+import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, type HostConfig } from './sessionHost.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
@@ -976,5 +976,16 @@ describe('describeSuggestions', () => {
     expect(describeSuggestions(undefined)).toBeNull();
     expect(describeSuggestions([{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }])).toBe('Switch to Accept edits for this session');
     expect(describeSuggestions([{ type: 'addRules', rules: [{ toolName: 'WebFetch' }], behavior: 'allow', destination: 'userSettings' }])).toBe('Allow WebFetch everywhere');
+  });
+});
+
+describe('failureMessage', () => {
+  const sdkError = 'Native CLI binary for darwin-arm64 not found. Reinstall @anthropic-ai/claude-agent-sdk without --omit=optional.';
+  it('says Claude Code is missing when no claude was found and the SDK has no binary of its own', () => {
+    expect(failureMessage(sdkError, undefined)).toBe(CLAUDE_MISSING_MESSAGE);
+  });
+  it('keeps other errors, and this one when a claude was found', () => {
+    expect(failureMessage(sdkError, '/usr/local/bin/claude')).toBe(sdkError);
+    expect(failureMessage('Process exited with code 1', undefined)).toBe('Process exited with code 1');
   });
 });
