@@ -420,6 +420,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const streamingText = useHosts((s) => s.streaming.get(sessionId)?.text.length ?? 0);
   // Rows start at an estimated height and grow once measured, so follow the total size too:
   // otherwise the first jump lands short of the end and the last message sits under the composer.
+  // The "Working…" line sits below the list and joins the scroll height when a turn starts, so follow `working` too.
   const totalSize = virtualizer.getTotalSize();
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -427,7 +428,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
       virtualizer.scrollToIndex(renderItems.length - 1, { align: 'end' });
       requestAnimationFrame(() => (el.scrollTop = el.scrollHeight));
     }
-  }, [renderItems.length, totalSize, streamingText, permissions.length, virtualizer]);
+  }, [renderItems.length, totalSize, streamingText, permissions.length, working, activeGroupKey, virtualizer]);
   // The view shrinks when the message box grows (a long prompt, an attachment, a permission card),
   // and the browser keeps scrollTop without a scroll event, so the last lines slide under the box.
   // Following the end again on every height change keeps them in sight.
