@@ -29,6 +29,8 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     terminal: { open: false, maximized: false, dock: 'bottom', action: null },
     split: false,
     focusLimit: null,
+    notifications: true,
+    sounds: false,
     queue: { count: 0, readyCount: 0, firstReady: null },
     unsent: 0,
     projectCount: 2,
@@ -83,6 +85,13 @@ describe('when(): always', () => {
     expect(ids(context())).not.toContain('focus-off');
     expect(ids(context({ focusLimit: 3 }))).toEqual(expect.arrayContaining(['focus-off', 'focus-set']));
     expect(ids(context({ focusLimit: 3 }))).not.toContain('focus-on');
+  });
+
+  it('turns notifications and sounds on or off', () => {
+    expect(ids(context())).toEqual(expect.arrayContaining(['notifications-off', 'sounds-on']));
+    expect(ids(context())).not.toContain('notifications-on');
+    expect(ids(context())).not.toContain('sounds-off');
+    expect(ids(context({ notifications: false, sounds: true }))).toEqual(expect.arrayContaining(['notifications-on', 'sounds-off']));
   });
 
   it('offers the queue commands without the focus limit: start next only when one is ready, pick only with items', () => {

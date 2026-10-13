@@ -64,6 +64,11 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   deleteArchived: 'Delete archived sessions',
   autoModel: 'Auto model',
   githubStar: 'Star on GitHub',
+  notifications: 'Show notifications',
+  sounds: 'Play sounds',
+  soundComplete: 'Session complete sound',
+  soundNeedsInput: 'Needs input sound',
+  soundVolume: 'Sound volume',
 };
 
 /** What the settings file is read from and written to. */

@@ -70,6 +70,9 @@ export interface PaletteContext {
   split: boolean;
   /** Null while the focus limit is off. */
   focusLimit: number | null;
+  /** Settings › Notifications: notifications and sounds on or off. */
+  notifications: boolean;
+  sounds: boolean;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */
   queue: { count: number; readyCount: number; firstReady: { id: string; prompt: string } | null };
   /** Unsent messages (sessions and New session prompts) that count. */

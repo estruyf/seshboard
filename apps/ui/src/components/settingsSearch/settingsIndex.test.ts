@@ -6,6 +6,7 @@ import autoModelSettings from '../session/AutoModelSettings.tsx?raw';
 import backupSettings from '../backup/BackupSettings.tsx?raw';
 import claudeCodeUpdates from '../updates/ClaudeCodeUpdates.tsx?raw';
 import focusSettings from '../focus/FocusSettings.tsx?raw';
+import notificationsSettings from '../notifications/NotificationsSettings.tsx?raw';
 import sessionsSettings from '../sessions/SessionsSettings.tsx?raw';
 import { settingsIndex } from './settingsIndex.ts';
 
@@ -41,6 +42,7 @@ describe('the settings index', () => {
       ...rowLabels(aboutSettings, ['Toggle']),
       ...rowLabels(claudeCodeUpdates, ['Toggle']),
       ...rowLabels(focusSettings, ['Toggle', 'Row']),
+      ...rowLabels(notificationsSettings, ['Toggle', 'Row']),
       ...rowLabels(sessionsSettings, ['Toggle', 'SettingRow']),
       ...rowLabels(backupSettings, ['Row']),
     ];

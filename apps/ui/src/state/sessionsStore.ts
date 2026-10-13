@@ -5,7 +5,7 @@ import { hostAsLive, isActiveHost } from './hostsStore.ts';
 /** `project` is one project's page (`useProjectPage` says which); `projects` is the list of them. */
 export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage';
 /** The pages of Settings, listed in its own sidebar. */
-export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'conversation' | 'focus' | 'profiles' | 'memory' | 'vscode' | 'backup' | 'diagnostics' | 'about';
+export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'conversation' | 'notifications' | 'focus' | 'profiles' | 'memory' | 'vscode' | 'backup' | 'diagnostics' | 'about';
 export type Pane = 'main' | 'split';
 
 const other = (pane: Pane): Pane => (pane === 'main' ? 'split' : 'main');

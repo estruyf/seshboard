@@ -167,6 +167,26 @@
       "page": "focus-limit"
     },
     {
+      "id": "palette:notifications-off",
+      "name": "Notifications: turn off",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "palette:notifications-on",
+      "name": "Notifications: turn on",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "palette:sounds-on",
+      "name": "Sounds: turn on",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "palette:sounds-off",
+      "name": "Sounds: turn off",
+      "page": "settings/notifications"
+    },
+    {
       "id": "palette:focus-other-pane",
       "name": "Focus other pane",
       "page": "sessions/split-view"
@@ -420,6 +440,11 @@
       "id": "palette:settings-memory",
       "name": "Settings: Memory",
       "page": "settings"
+    },
+    {
+      "id": "palette:settings-notifications",
+      "name": "Settings: Notifications",
+      "page": "settings/notifications"
     },
     {
       "id": "palette:settings-profiles",
@@ -910,6 +935,11 @@
       "id": "settings:memory",
       "name": "Settings › Memory",
       "page": "settings"
+    },
+    {
+      "id": "settings:notifications",
+      "name": "Settings: Notifications",
+      "page": "settings/notifications"
     },
     {
       "id": "settings:profiles",
