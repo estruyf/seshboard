@@ -89,6 +89,11 @@ export const FOCUS_LIMIT_MIN = 1;
 export const FOCUS_LIMIT_MAX = 10;
 /** What the limit starts at when it is turned on. */
 export const FOCUS_LIMIT_DEFAULT = 3;
+/**
+ * The sidebar's Star on GitHub button: shown (`ask`) until Switchboard is starred, its page was opened instead, or
+ * you dismissed it (`done`). It never asks again after that.
+ */
+export type GithubStar = "ask" | "done";
 
 /** App preferences, kept by main in the app's data folder. */
 export interface Preferences {
@@ -119,6 +124,7 @@ export interface Preferences {
   deleteArchived: DeleteArchived;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
+  githubStar: GithubStar;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -140,6 +146,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   autoModel: DEFAULT_AUTO_MODEL,
+  githubStar: "ask",
 };
 
 /** A theme id: lower-case letters, digits and dashes (built-in ids and the file names of imported themes). */
@@ -199,6 +206,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.deleteArchived = { enabled: deleting.enabled, afterDays };
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
+  if (oneOf(["ask", "done"] as const, raw.githubStar))
+    out.githubStar = raw.githubStar;
   return out;
 }
 
@@ -217,6 +226,8 @@ export const releaseUrl = (version: string) =>
   `https://github.com/estruyf/switchboard/releases/tag/v${version}`;
 export const CHANGELOG_URL =
   "https://github.com/estruyf/switchboard/blob/main/CHANGELOG.md";
+/** Switchboard's repository, which Star on GitHub opens when gh can't star it. */
+export const REPO_URL = "https://github.com/estruyf/switchboard";
 
 /** Where the VS Code companion is published: the Marketplace for VS Code, Open VSX for Cursor and Windsurf. */
 export const VSCODE_EXTENSION_URLS = {

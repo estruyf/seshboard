@@ -43,6 +43,7 @@ import { createProjectResolver } from './claude/projectResolver.ts';
 import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts';
 import { findCheckout, githubPage } from './git/remotes.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
+import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
 import { checkoutRoot, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
@@ -1493,6 +1494,18 @@ export function createEngine(options: EngineOptions): Engine {
       if (result.code !== 0) throw new RpcError('GH_FAILED', firstUsefulLine(`${result.stderr}\n${result.stdout}`) || 'gh could not mark it ready.');
       const status = await worktreeStatus(cwd).catch(() => null);
       if (status) void pullRequestsFor(status.root, true);
+      return {};
+    },
+    // Not about any checkout: gh runs in the home folder.
+    'github.starStatus': async () => ({ status: await githubStarStatus(defaultGh(), homedir(), (await shell.ready).env) }),
+    'github.star': async () => {
+      try {
+        await starSwitchboard(defaultGh(), homedir(), (await shell.ready).env);
+      } catch (error) {
+        if (error instanceof StarFailure) throw new RpcError(error.code, error.message);
+        throw error;
+      }
+      log('info', 'github: starred Switchboard');
       return {};
     },
     'worktree.status': async ({ cwd }) => {

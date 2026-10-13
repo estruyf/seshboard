@@ -14,6 +14,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Defaults per Claude profile.** In Settings › Claude profiles, open **New session defaults** on a profile to set the model, effort, permission mode and workspace its new sessions start with. A project's own defaults still come first; fields it leaves unset now use its profile's defaults before the choices you made last in New session. The project's Settings tab shows what an unset field falls back to, such as *Profile default (Opus)*.
 - **Permission mode for new sessions.** Settings › General has **Permission mode**: start every new session in the same mode, such as Auto mode, instead of the one you picked last. A project's own default still comes first.
 - **Pasted text cards.** A long paste (more than 2,000 characters or 25 lines) goes in a **Pasted** card above the message instead of in the box. Click it to read or edit the text; Claude gets it with your message.
+- **Star on GitHub.** Once you have a few sessions, the sidebar shows **Star on GitHub**. With the GitHub CLI signed in, one click stars Switchboard without opening the browser; otherwise it opens the repository. It doesn't show again after a click, and **×** hides it for good.
 
 ### Fixed
 

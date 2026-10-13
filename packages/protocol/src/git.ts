@@ -92,6 +92,10 @@ export const PrDraft = z.object({
 });
 export type PrDraft = z.infer<typeof PrDraft>;
 
+/** Whether gh's account has starred Switchboard; `unavailable` without gh, signed out or offline. */
+export const GithubStarStatus = z.enum(['starred', 'not-starred', 'unavailable']);
+export type GithubStarStatus = z.infer<typeof GithubStarStatus>;
+
 /** Why creating a pull request stopped, with what the dialog needs to say what to do next. */
 export const PrErrorCode = z.enum(['GH_MISSING', 'GH_AUTH', 'PUSH_REJECTED', 'PR_EXISTS', 'BODY_TOO_LONG', 'UNKNOWN']);
 export type PrErrorCode = z.infer<typeof PrErrorCode>;

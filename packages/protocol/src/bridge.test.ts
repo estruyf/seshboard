@@ -52,3 +52,12 @@ describe('archive and delete preferences', () => {
     expect(sanitizePreferences({ deleteArchived: null })).toEqual({});
   });
 });
+
+describe('githubStar preference', () => {
+  it('asks by default, and keeps only ask and done', () => {
+    expect(DEFAULT_PREFERENCES.githubStar).toBe('ask');
+    expect(sanitizePreferences({ githubStar: 'done' })).toEqual({ githubStar: 'done' });
+    expect(sanitizePreferences({ githubStar: 'starred' })).toEqual({});
+    expect(sanitizePreferences({ githubStar: true })).toEqual({});
+  });
+});

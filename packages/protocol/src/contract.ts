@@ -35,7 +35,7 @@ import {
 import { TerminalInfo, TerminalKind } from './terminal.ts';
 import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
-import { ChangesBase, GitChanges, GitSyncAction, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
+import { ChangesBase, GithubStarStatus, GitChanges, GitSyncAction, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
@@ -536,6 +536,11 @@ export const contract = {
     'git.prFor': { params: z.object({ cwd: AbsolutePath, fresh: z.boolean().default(false) }), result: z.object({ pr: WorktreePullRequest.nullable() }) },
     /** Marks a draft pull request ready for review (`gh pr ready`). GH_FAILED with gh's message. */
     'git.prReady': { params: z.object({ cwd: AbsolutePath, number: z.number().int().positive() }), result: z.object({}) },
+
+    /** Whether the account gh is signed in with has starred Switchboard (the sidebar's Star on GitHub button). */
+    'github.starStatus': { params: z.object({}), result: z.object({ status: GithubStarStatus }) },
+    /** Stars Switchboard for the account gh is signed in with. GH_MISSING, GH_AUTH or GH_FAILED when it can't. */
+    'github.star': { params: z.object({}), result: z.object({}) },
 
     /** Where a session's checkout stands: ahead/behind its base and its upstream, uncommitted, pushed. */
     'worktree.status': { params: z.object({ cwd: AbsolutePath }), result: WorktreeStatus },

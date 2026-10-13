@@ -84,8 +84,9 @@ if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'dev.sw
 // SWITCHBOARD_COLOR_SCHEME=light|dark forces a scheme without saving it (to check both in the smoke test).
 const forcedScheme = process.env.SWITCHBOARD_COLOR_SCHEME;
 const preferences = new PreferencesStore(join(app.getPath('userData'), 'preferences.json'), sanitizePreferences({ colorScheme: forcedScheme }).colorScheme);
-// The smoke steps need sessions to click; on the real ~/.claude most were started elsewhere.
-if (scripted) preferences.update({ sessionScope: 'all' });
+// The smoke steps need sessions to click; on the real ~/.claude most were started elsewhere. Star on GitHub stays out
+// of the screenshots (the smoke step that checks it asks for it).
+if (scripted) preferences.update({ sessionScope: 'all', githubStar: 'done' });
 
 /** Built-in and imported themes; a change (an import, an edited file) goes to every window. */
 const themes = new ThemeStore(join(app.getPath('userData'), 'themes'), BUILT_IN_THEMES, (state) => {
@@ -4047,6 +4048,45 @@ async function runSectionsStep(win: BrowserWindow): Promise<string> {
  * same from the keyboard, with focus following the header. Every collapsible header shows its chevron. Sidebar shots
  * of both, in light and dark. Only the throwaway profile's UI state changes.
  */
+/**
+ * Star on GitHub: scripted runs keep it hidden, so this step asks for it, checks it shows (in the open sidebar or the
+ * rail) and that Don't show again hides it for good. It never clicks the star: that would open a browser, or star
+ * the repository with a real gh.
+ */
+async function runStarStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  updatePreferences({ githubStar: 'ask' });
+  try {
+    if (!(await waitInPage(win, "!!document.querySelector('[data-star-prompt]')", 10_000))) {
+      const sessions = (await js("Number.parseInt(document.querySelector('[data-footer-sessions]')?.textContent ?? '', 10)")) as number;
+      // The button waits for five sessions (STAR_AFTER_SESSIONS); a footer count tells whether there are.
+      return Number.isNaN(sessions) || sessions < 5 ? 'ok: skipped, fewer than five sessions' : 'Star on GitHub did not show';
+    }
+    const mode = (await js("document.querySelector('[data-star-prompt]').dataset.starPrompt")) as string;
+    // The smoke test's gh never reaches GitHub, so it can't tell: the button opens the page instead.
+    if (process.env.SWITCHBOARD_GH && mode !== 'open-page') return `Star on GitHub would ${mode} with a gh that can't reach GitHub`;
+    // The bottom of the sidebar (or the rail) with the button, in both schemes, to look at.
+    const scheme = preferences.get().colorScheme;
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await setColorScheme(win, colorScheme);
+      const rect = (await js("(() => { const s = document.querySelector('[data-sidebar-open]') ?? document.querySelector('[data-star-prompt]').closest('nav'), r = s.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.bottom - 160), width: Math.round(r.width), height: 160 }; })()")) as Electron.Rectangle;
+      writeFileSync(join(smokeOutDir!, `star-${colorScheme}.png`), (await win.webContents.capturePage(rect)).toPNG());
+    }
+    updatePreferences({ colorScheme: scheme });
+    if (!(await js("!!document.querySelector('[data-star-dismiss]')"))) {
+      // The rail: Don't show again is in the star's context menu.
+      await js("document.querySelector('[data-star-button]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 400 }))");
+      if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-star-dismiss]')", 2_000))) return "the rail's star has no Don't show again";
+    }
+    await js("document.querySelector('[data-star-dismiss]').click()");
+    if (!(await waitInPage(win, "!document.querySelector('[data-star-prompt]')", 2_000))) return "Don't show again did not hide Star on GitHub";
+    if (preferences.get().githubStar !== 'done') return "Don't show again was not saved";
+    return `ok: shown (${mode}), hidden for good`;
+  } finally {
+    updatePreferences({ githubStar: 'done' });
+  }
+}
+
 async function runArchivedDockStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const list = "document.querySelector('[data-session-list]')";
@@ -5332,6 +5372,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('queue', () => runQueueStep(win));
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
+  await step('star on GitHub', () => runStarStep(win));
   await step('quick question', () => runQuickQuestionStep(win));
   await step('usage band above the composer', async () => {
     if (!(await waitInPage(win, "document.querySelector('[data-usage-band]')", 15_000))) {

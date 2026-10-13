@@ -2262,6 +2262,11 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:star-on-github",
+      "name": "Star on GitHub",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "feature:sidebar-when-collapsed",
       "name": "When collapsed: Minimal rail or Hidden",
       "page": "settings"

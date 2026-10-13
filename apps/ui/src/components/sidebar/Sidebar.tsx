@@ -34,6 +34,7 @@ import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import { ProjectFilter } from './ProjectMenu.tsx';
 import { sessionRowLabel } from './rowLabel.ts';
+import { StarOnGithub } from './StarOnGithub.tsx';
 import { StatusIcon } from './StatusIcon.tsx';
 import { ARCHIVE, useSessionMenu, type FlagChange } from './useSessionMenu.tsx';
 import { formatKeys, keysFor, matches, modKey } from '../../lib/shortcuts.ts';
@@ -1042,6 +1043,8 @@ export function Sidebar() {
           <ArchivedHeader count={archived.length} open={false} onToggle={toggleArchivedSection} onMenu={(at) => setMenu(archivedMenu(at))} />
         </div>
       )}
+
+      <StarOnGithub sessions={all.length} />
 
       <footer className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3 text-meta text-muted">
         {/* The focus limit, while it's on: how many sessions are going, out of how many. */}

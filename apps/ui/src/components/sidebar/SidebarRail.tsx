@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { House, ListEnd, Pin, Plus, Search, Settings } from 'lucide-react';
+import { EyeOff, House, ListEnd, Pin, Plus, Search, Settings } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
@@ -23,6 +23,7 @@ import { newSessionDraftTooltip, PenBadge } from '../drafts/PenBadge.tsx';
 import { openDraft, useNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
 import { STATUS_LABEL } from './rowLabel.ts';
 import { useSessionMenu } from './useSessionMenu.tsx';
+import { RailStarButton } from './StarOnGithub.tsx';
 import { localizeKeys, matches, modKey } from '../../lib/shortcuts.ts';
 
 /**
@@ -401,6 +402,10 @@ export function SidebarRail() {
 
       <footer className="flex shrink-0 flex-col items-center gap-1.5 border-t border-border py-2">
         <FocusCounter compact />
+        <RailStarButton
+          sessions={all.length}
+          onMenu={(at, dismiss) => menus.showMenu({ ...at, label: 'Star on GitHub', entries: [{ label: "Don't show again", icon: <EyeOff size={13} aria-hidden />, onSelect: dismiss, data: { 'data-star-dismiss': true } }] })}
+        />
         <Button
           variant="quiet"
           iconOnly

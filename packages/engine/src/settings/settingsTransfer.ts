@@ -63,6 +63,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   archiveAfterDays: 'Archive finished sessions after',
   deleteArchived: 'Delete archived sessions',
   autoModel: 'Auto model',
+  githubStar: 'Star on GitHub',
 };
 
 /** What the settings file is read from and written to. */
