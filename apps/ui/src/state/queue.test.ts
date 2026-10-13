@@ -17,6 +17,8 @@ const item = (id: string, overrides: Partial<LaterItem> = {}): LaterItem => ({
   branch: null,
   profileId: null,
   attachments: [],
+  typed: null,
+  context: [],
   createdAt: NOW,
   position: 0,
   waitFor: { kind: 'project' },
@@ -234,5 +236,15 @@ describe('queue helpers', () => {
     const entries = [item('a', { prompt: 'Speaker notes' }), item('b', { cwd: '/work/other', prompt: 'Speaker view' }), item('c', { prompt: 'Export' })].map((i) => ({ item: i }));
     expect(queueInList(entries, { search: 'speaker', project: null }).map((e) => e.item.id)).toEqual(['a', 'b']);
     expect(queueInList(entries, { search: '', project: '/work/switchboard' }).map((e) => e.item.id)).toEqual(['a', 'c']);
+  });
+});
+
+describe('queued context', () => {
+  it('treats changed context chips as an edit', () => {
+    const queued = item('a');
+    const draft = { ...queued, attachments: [] };
+    const file = { kind: 'file' as const, path: '/work/switchboard/notes.json', directory: false };
+    expect(sameDraft({ ...queued, typed: 'hi', context: [file] }, { ...draft, typed: 'hi', context: [file] })).toBe(true);
+    expect(sameDraft({ ...queued, typed: 'hi', context: [file] }, { ...draft, typed: 'hi', context: [] })).toBe(false);
   });
 });

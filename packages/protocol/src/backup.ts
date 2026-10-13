@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AbsolutePath, AnyAbsolutePath } from './absolutePath.ts';
 import { BACKUP_SECTIONS, SETTINGS_FILE_FORMAT } from './backupConstants.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
+import { PROFILE_COLORS } from './profileConstants.ts';
 
 export { BACKUP_SECTIONS, SETTINGS_FILE_FORMAT, settingsFileName, type BackupSection } from './backupConstants.ts';
 
@@ -32,6 +33,19 @@ export const ExportedProject = z.object({
 export type ExportedProject = z.infer<typeof ExportedProject>;
 
 /**
+ * One Claude profile. Profiles are told apart by their config folder (`dir`; null: the built-in profile, which
+ * uses Claude Code's own folder wherever that is), since the ids are made up per computer.
+ */
+export const ExportedProfile = z.object({
+  dir: AnyAbsolutePath.nullable().default(null),
+  name: z.string().trim().min(1).max(60),
+  color: z.enum(PROFILE_COLORS).catch('gray'),
+  /** Read field by field on import, like a project's defaults. */
+  defaults: z.record(z.string(), z.unknown()).nullable().default(null),
+});
+export type ExportedProfile = z.infer<typeof ExportedProfile>;
+
+/**
  * A settings file. Every section is optional (the user picks what to export), unknown fields are
  * ignored, and projects and actions are lists of unknowns so one bad entry is skipped, not fatal.
  */
@@ -43,6 +57,17 @@ export const SettingsFile = z.object({
   preferences: z.record(z.string(), z.unknown()).optional(),
   /** Imported themes, each a theme file as in the themes folder; checked one by one on import, like a theme import. */
   themes: z.array(z.unknown()).max(500).optional(),
+  /**
+   * Claude profiles, the default one (`default`: its `dir`, null for the built-in profile; absent: not recorded) and
+   * the projects linked to a profile. A list of unknowns so one bad entry is skipped, not fatal.
+   */
+  profiles: z
+    .object({
+      list: z.array(z.unknown()).max(100).default([]),
+      default: AnyAbsolutePath.nullable().optional(),
+      links: z.array(z.object({ path: AnyAbsolutePath, profile: AnyAbsolutePath.nullable() })).max(5000).default([]),
+    })
+    .optional(),
   projects: z.array(z.unknown()).max(5000).optional(),
   actions: z
     .object({

@@ -15,6 +15,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Queue keeps added files.** A file, folder or pasted text you added to a new session stays a chip when you add the session to the queue and open it again, instead of turning into an `@` mention in the text.
+- **Export includes Claude profiles.** Export settings has a **Claude profiles** option: your profiles with their folders, colours and defaults for new sessions, the default profile and which projects use which. Import adds them back (signing in again is still needed; logins are never in the file).
 - **Usage**: the profile menu shows the whole profile name; a long email is cut short instead.
 - **Usage**: in % used over time, the labels at the end of the lines no longer overlap when two windows are close, such as Weekly and Session.
 - Sending a very long message no longer fails with "Invalid params for session.create". A message can now hold up to 1,000,000 characters, and the message box says so when it is longer. A paste that is longer than that is not put in the box; drop the file instead.

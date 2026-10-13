@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { AbsolutePath } from './absolutePath.ts';
+import { MAX_CONTEXT_ITEMS } from './companionConstants.ts';
+import { ContextItem } from './context.ts';
 import { Effort, ImageAttachment, PermissionMode } from './host.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 
@@ -13,6 +15,12 @@ export const LaterDraft = z.object({
   prompt: z.string().trim().min(1).max(MAX_PROMPT_LENGTH),
   /** Images pasted or dropped into the message box, sent with the prompt when it starts. */
   attachments: z.array(ImageAttachment).max(20).default([]),
+  /**
+   * What was typed and the files and text added as context, kept apart so the box shows them as it did (the
+   * chips stay chips). `prompt` is the two put together, which is what starts. Items without `typed` hold only `prompt`.
+   */
+  typed: z.string().max(MAX_PROMPT_LENGTH).nullable().default(null),
+  context: z.array(ContextItem).max(MAX_CONTEXT_ITEMS).default([]),
   model: z.string().max(200).nullable().default(null),
   effort: Effort.nullable().default(null),
   permissionMode: PermissionMode.default('default'),

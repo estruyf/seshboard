@@ -746,7 +746,7 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   const defaultEditorKey = 'editor.default';
-  const settingsStores: SettingsStores = { db: cache.db, appState, projects, actions };
+  const settingsStores: SettingsStores = { db: cache.db, appState, projects, profiles, actions };
   const editorEnv = () => shell.forLookup();
 
   /** Session count and latest activity per project folder, for the project list. */

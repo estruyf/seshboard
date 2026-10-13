@@ -6,6 +6,7 @@ import { BACKUP_SECTIONS, DEFAULT_PREFERENCES, parseSettingsFile, ProjectAction 
 import { ActionStore } from '../actions/actionStore.ts';
 import { createAppStateStore } from '../db/appState.ts';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
+import { ProfileStore } from '../profiles/profileStore.ts';
 import { ProjectRegistry } from '../projects/projectRegistry.ts';
 import { exportSettings, planImport, readSettingsFile, writeBackup, writeSettingsFile, type SettingsStores } from './settingsTransfer.ts';
 
@@ -26,9 +27,11 @@ function mac() {
   const data = tempDir();
   const cache = openCacheDatabase(join(data, 'cache.sqlite'));
   caches.push(cache);
+  const appState = createAppStateStore(cache.db);
   const stores: SettingsStores = {
     db: cache.db,
-    appState: createAppStateStore(cache.db),
+    appState,
+    profiles: new ProfileStore(cache.db, appState, { configDir: join(data, '.claude'), fromEnv: false }),
     projects: new ProjectRegistry(cache.db, join(data, 'icons')),
     actions: new ActionStore(cache.db),
   };
@@ -138,7 +141,7 @@ describe('settings export and import', () => {
     const full = roundTrip(before.stores);
     const after = mac();
     const plan = planImport(after.stores, full, { ...ALL, sections: ['projects'] });
-    expect(plan.preview.sections).toEqual(['preferences', 'themes', 'projects', 'actions', 'choices', 'sessions']);
+    expect(plan.preview.sections).toEqual(['preferences', 'themes', 'profiles', 'projects', 'actions', 'choices', 'sessions']);
     expect(new Set(plan.preview.changes.map((c) => c.section))).toEqual(new Set(['projects']));
     plan.apply();
     expect(after.stores.actions.all()).toEqual([]);
@@ -310,5 +313,36 @@ describe('settings export and import', () => {
     const replace = planImport(here.stores, file, { ...ALL, sections: ['themes'], mode: 'replace', themes: [mine, paper] });
     expect(replace.preview.unchanged).toBe(1);
     expect(replace.apply().themes).toEqual([{ raw: nord, how: 'replace' }]);
+  });
+  it('carries Claude profiles: folders, looks, defaults, the default profile and which project uses which', () => {
+    const before = mac();
+    const [work, project] = [tempDir(), tempDir()];
+    before.stores.projects.add(project);
+    const id = before.stores.profiles.add('Work', 'blue', work);
+    before.stores.profiles.setDefaults(id, { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null });
+    before.stores.profiles.setDefault(id);
+    before.stores.profiles.linkProject(project, id);
+
+    const file = roundTrip(before.stores);
+    expect(file.profiles?.list).toHaveLength(2);
+    expect(file.profiles?.default).toBe(work);
+
+    const after = mac();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'profiles').map((c) => c.change)).toEqual(['add', 'change', 'add']);
+    plan.apply();
+
+    const snapshot = after.stores.profiles.snapshot();
+    const imported = snapshot.profiles.find((p) => p.configDir === work);
+    expect(imported).toMatchObject({ name: 'Work', color: 'blue', defaults: { model: 'opus' }, isDefault: true });
+    expect(after.stores.profiles.projectProfile(project)).toBe(imported?.id);
+
+    // Importing it again changes nothing; Replace removes a profile the file lacks.
+    expect(planImport(after.stores, file, { ...ALL, sections: ['profiles'] }).preview.changes).toEqual([]);
+    const extra = after.stores.profiles.add('Extra', 'red', tempDir());
+    const replace = planImport(after.stores, file, { ...ALL, sections: ['profiles'], mode: 'replace' });
+    expect(replace.preview.changes.map((c) => [c.label, c.change])).toEqual([['Extra', 'remove']]);
+    replace.apply();
+    expect(after.stores.profiles.has(extra)).toBe(false);
   });
 });

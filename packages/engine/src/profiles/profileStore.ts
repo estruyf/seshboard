@@ -93,6 +93,7 @@ export class ProfileStore {
       linkProject: db.prepare(
         'INSERT INTO project_settings (root, profile_id) VALUES (?, ?) ON CONFLICT (root) DO UPDATE SET profile_id = excluded.profile_id',
       ),
+      links: db.prepare('SELECT root, profile_id FROM project_settings WHERE profile_id IS NOT NULL'),
       projectProfile: db.prepare('SELECT profile_id FROM project_settings WHERE root = ?'),
     };
     if (!this.rows().some((r) => r.id === BUILTIN_PROFILE_ID)) {
@@ -150,6 +151,23 @@ export class ProfileStore {
     return { profiles, defaultId };
   }
 
+  /** Every profile as a settings file records it. */
+  exportEntries(): Array<{ id: string; dir: string | null; name: string; color: ProfileColor; defaults: ProfileDefaults }> {
+    return this.rows().map((r) => ({ id: r.id, dir: r.config_dir, name: r.name, color: asColor(r.color), defaults: readProfileDefaults(r.defaults_json) }));
+  }
+
+  /** Every project linked to a profile, with that profile's id. */
+  links(): Array<{ root: string; profileId: string }> {
+    return (this.statements.links.all() as Array<{ root: string; profile_id: string }>).map((r) => ({ root: r.root, profileId: r.profile_id })).filter((l) => this.has(l.profileId));
+  }
+
+  /** The profile that uses this config folder (null: the built-in one), if there is one. */
+  idOfDir(dir: string | null): string | null {
+    if (dir === null) return this.rows().find((r) => r.config_dir === null)?.id ?? null;
+    const wanted = resolve(dir);
+    return this.runtimes().find((p) => p.id !== BUILTIN_PROFILE_ID && resolve(p.configDir) === wanted)?.id ?? null;
+  }
+
   /** The `.claude.json` file each profile's login lives in. */
   accountFiles(): string[] {
     return this.runtimes().map((r) => accountFile(r.envDir));
@@ -194,17 +212,22 @@ export class ProfileStore {
 
   /** Forgets a profile. Its folder, login and sessions stay on disk; its projects use the default again. */
   remove(id: string): void {
-    const row = this.require(id);
-    if (row.config_dir === null) throw new RpcError('BUILTIN', 'The built-in profile uses Claude Code’s own folder and can’t be removed');
     this.db.exec('BEGIN');
     try {
-      this.statements.remove.run(id);
-      this.statements.unlinkProjects.run(id);
+      this.removeWithin(id);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  /** `remove` for a caller that already has a transaction open (a settings import). */
+  removeWithin(id: string): void {
+    const row = this.require(id);
+    if (row.config_dir === null) throw new RpcError('BUILTIN', 'The built-in profile uses Claude Code’s own folder and can’t be removed');
+    this.statements.remove.run(id);
+    this.statements.unlinkProjects.run(id);
     if (this.appState.get(DEFAULT_KEY) === id) this.appState.set(DEFAULT_KEY, BUILTIN_PROFILE_ID);
     this.changed();
   }

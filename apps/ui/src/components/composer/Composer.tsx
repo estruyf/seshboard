@@ -5,7 +5,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { attachmentsAfterSend, textAfterSend } from './afterSend.ts';
 import { AttachmentThumbs, DropOverlay } from './Attachments.tsx';
-import { isLongPaste, pastedItem, pasteTooLongReason, promptWithContext, tooLongReason, type ContextChip } from './contextItems.ts';
+import { addChips, isLongPaste, pastedItem, pasteTooLongReason, promptWithContext, tooLongReason, type ContextChip } from './contextItems.ts';
 import { ContextTray } from './ContextTray.tsx';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
@@ -34,6 +34,8 @@ export interface ComposerProps {
    * When the key changes, the box shows that key's draft.
    */
   draftKey?: string;
+  /** Without a `draftKey`: still take context (files, folders, long pastes) as chips, kept in the box only (a queued item open in New session). */
+  localContext?: boolean;
   /** New session: when the key changes to one without a draft, what is in the box moves along to it rather than being left behind. */
   carryOver?: boolean;
   /** The box opened with a kept draft (on mount, or when the key changed to one). */
@@ -42,8 +44,8 @@ export interface ComposerProps {
   restored?: boolean;
   /** Earlier messages, newest first, that ↑ at the start of the box brings back. */
   history?: readonly string[];
-  /** Replaces the text whenever `seq` changes (a prompt from a `switchboard://` link, or clearing it), and the images when it has `attachments` (a prompt moved over from the palette). */
-  preset?: { text: string; attachments?: ImageAttachment[]; seq: number };
+  /** Replaces the text whenever `seq` changes (a prompt from a `switchboard://` link, or clearing it), and the images when it has `attachments` and the context chips when it has `context` (a prompt moved over from the palette, or a queued item). */
+  preset?: { text: string; attachments?: ImageAttachment[]; context?: ContextItem[]; seq: number };
   cwd: string | null;
   commands: SlashCommand[];
   placeholder: string;
@@ -72,19 +74,27 @@ export interface ComposerProps {
   dropHint?: boolean;
   /** Called with the prompt's text whenever it changes (typing, completions, presets, sending). */
   onTextChange?(text: string): void;
+  /** Called with the context chips in the box whenever they change. */
+  onContextChange?(context: ContextItem[]): void;
   /** Called with the images in the box whenever they change. */
   onAttachmentsChange?(attachments: ImageAttachment[]): void;
   /**
    * A second way to send what is in the box (New session's Add to queue), on its own shortcut and through
    * `submitControl`. Like `onSubmit`, returning `false` keeps the prompt; otherwise the box empties.
    */
-  secondary?: { shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[]): Promise<void | false> };
+  secondary?: { shortcut: ShortcutId; onSubmit(text: string, attachments: ImageAttachment[], parts: SentParts): Promise<void | false> };
   /** Takes the Send button's place (New session's Start with its menu), with what it needs to send what is in the box. */
   submitControl?(api: SubmitApi): ReactNode;
   /** Returning `false` means nothing was sent (the focus limit asked and you cancelled): the prompt stays as it is. */
-  onSubmit(text: string, attachments: ImageAttachment[], requested?: boolean): Promise<void | false> | void | false;
+  onSubmit(text: string, attachments: ImageAttachment[], requested?: boolean, parts?: SentParts): Promise<void | false> | void | false;
   onInterrupt?(): void;
   onCycleMode?(): void;
+}
+
+/** What the message was made of: the typed text and the context chips that `promptWithContext` put together. */
+export interface SentParts {
+  typed: string;
+  context: ContextItem[];
 }
 
 /** What `submitControl` gets from the message box. */
@@ -101,7 +111,7 @@ export interface SubmitApi {
   /** Sends through `secondary`. */
   submitSecondary(): void;
   /** Sends through another action (New session's Start in a new worktree); returning `false` keeps the prompt. */
-  submitWith(send: (text: string, attachments: ImageAttachment[]) => Promise<void | false>): void;
+  submitWith(send: (text: string, attachments: ImageAttachment[], parts: SentParts) => Promise<void | false>): void;
 }
 
 const NO_CHIPS: ContextChip[] = [];
@@ -128,8 +138,16 @@ export function Composer(props: ComposerProps) {
   const listRef = useRef<HTMLUListElement>(null);
   const draftKey = props.draftKey;
   // The chips live in the drafts store, not here: context from the editor arrives there while the box isn't on screen.
-  const chips = useDrafts((s) => (draftKey !== undefined ? s.drafts[draftKey]?.context : undefined)) ?? NO_CHIPS;
-  const addContext = draftKey !== undefined ? (items: readonly ContextItem[]) => useDrafts.getState().addContext(draftKey, items) : undefined;
+  const storedChips = useDrafts((s) => (draftKey !== undefined ? s.drafts[draftKey]?.context : undefined)) ?? NO_CHIPS;
+  // A queued item has no draft: its chips live here, and go back to the queue with it.
+  const [localChips, setLocalChips] = useState<ContextChip[]>(NO_CHIPS);
+  const chips = draftKey !== undefined ? storedChips : localChips;
+  const addContext =
+    draftKey !== undefined
+      ? (items: readonly ContextItem[]) => useDrafts.getState().addContext(draftKey, items)
+      : props.localContext
+        ? (items: readonly ContextItem[]) => setLocalChips((current) => addChips(current, items))
+        : undefined;
   const { attachments, setAttachments, addFiles, onPaste: pasteImages, drop } = useAttachments({ initial: saved?.attachments, rootRef, textareaRef: ref, cwd: props.cwd, disabledReason: props.disabledReason, setText, onNotice: setNotice, onContext: addContext });
   /** Images are attached; a long text becomes a Pasted text card (where the box keeps chips), so the box stays quick. */
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -176,6 +194,7 @@ export function Composer(props: ComposerProps) {
     const value = props.preset!.text;
     setText(value);
     if (props.preset!.attachments) setAttachments(props.preset!.attachments);
+    if (props.preset!.context) setLocalChips(addChips([], props.preset!.context));
     history.current!.reset();
     closePalette();
     requestAnimationFrame(() => {
@@ -191,6 +210,8 @@ export function Composer(props: ComposerProps) {
 
   const onTextChange = props.onTextChange;
   useEffect(() => onTextChange?.(text), [text, onTextChange]);
+  const onContextChange = props.onContextChange;
+  useEffect(() => onContextChange?.(chips.map(({ id: _id, ...item }) => item as ContextItem)), [chips, onContextChange]);
   const onAttachmentsChange = props.onAttachmentsChange;
   useEffect(() => onAttachmentsChange?.(attachments), [attachments, onAttachmentsChange]);
 
@@ -339,7 +360,7 @@ export function Composer(props: ComposerProps) {
   };
 
   /** `requested`: sent through `submitRequest` rather than Enter or the button. `send`: the secondary action instead of `onSubmit`. */
-  const submit = async (requested = false, send: (value: string, attachments: ImageAttachment[]) => Promise<void | false> | void | false = (value, sent) => props.onSubmit(value, sent, requested)) => {
+  const submit = async (requested = false, send: (value: string, attachments: ImageAttachment[], parts: SentParts) => Promise<void | false> | void | false = (value, sent, parts) => props.onSubmit(value, sent, requested, parts)) => {
     if (sending || props.disabledReason) return;
     const sentText = text;
     const sentChips = chips;
@@ -354,8 +375,12 @@ export function Composer(props: ComposerProps) {
     setNotice(null);
     closePalette();
     try {
-      if ((await send(value, sentAttachments)) === false) return;
-      if (draftKey !== undefined && sentChips.length) useDrafts.getState().removeContext(draftKey, sentChips.map((chip) => chip.id));
+      if ((await send(value, sentAttachments, { typed: sentText, context: sentChips.map(({ id: _id, ...item }) => item as ContextItem) })) === false) return;
+      if (sentChips.length) {
+        const ids = sentChips.map((chip) => chip.id);
+        if (draftKey !== undefined) useDrafts.getState().removeContext(draftKey, ids);
+        else setLocalChips((current) => current.filter((chip) => !ids.includes(chip.id)));
+      }
       // The box stays editable while sending: keep whatever was typed or attached in the meantime.
       setText((current) => textAfterSend(current, sentText));
       history.current!.reset();
@@ -460,7 +485,7 @@ export function Composer(props: ComposerProps) {
   };
 
   const disabled = !!props.disabledReason;
-  const submitSecondary = () => (props.secondary ? submit(false, (value, sent) => props.secondary!.onSubmit(value, sent)) : Promise.resolve());
+  const submitSecondary = () => (props.secondary ? submit(false, (value, sent, parts) => props.secondary!.onSubmit(value, sent, parts)) : Promise.resolve());
   const hasText = !!text.trim() || chips.length > 0;
   const hasMessage = hasText || attachments.length > 0;
   const attach = (
@@ -549,10 +574,14 @@ export function Composer(props: ComposerProps) {
           cwd={cwd}
           className="mb-2"
           onRemove={(id) => {
-            if (draftKey !== undefined) useDrafts.getState().removeContext(draftKey, [id]);
+            if (draftKey === undefined) setLocalChips((current) => current.filter((chip) => chip.id !== id));
+            else useDrafts.getState().removeContext(draftKey, [id]);
             ref.current?.focus();
           }}
-          onEditText={(id, value) => draftKey !== undefined && useDrafts.getState().editContextText(draftKey, id, value)}
+          onEditText={(id, value) => {
+            if (draftKey !== undefined) return useDrafts.getState().editContextText(draftKey, id, value);
+            setLocalChips((current) => current.flatMap((chip) => (chip.id !== id ? [chip] : chip.kind !== 'text' ? [chip] : value.trim() ? [{ ...chip, text: value }] : [])));
+          }}
         />
         <AttachmentThumbs
           attachments={attachments}

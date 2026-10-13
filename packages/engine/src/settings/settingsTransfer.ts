@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   DEFAULT_PREFERENCES,
+  BUILTIN_PROFILE_ID,
+  ExportedProfile,
   ExportedProject,
   ICON_EXTENSIONS,
   ProjectAction,
@@ -25,6 +27,7 @@ import {
 import { parseThemeFile } from '@switchboard/protocol/theme';
 import type { ActionStore } from '../actions/actionStore.ts';
 import type { AppStateStore, JsonValue } from '../db/appState.ts';
+import { readProfileDefaults, type ProfileStore } from '../profiles/profileStore.ts';
 import { parseDefaults, type ProjectRegistry, type StoredIcon } from '../projects/projectRegistry.ts';
 
 /**
@@ -67,6 +70,7 @@ export interface SettingsStores {
   db: DatabaseSync;
   appState: AppStateStore;
   projects: ProjectRegistry;
+  profiles: ProfileStore;
   actions: ActionStore;
 }
 
@@ -132,6 +136,15 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
   };
   if (want.has('preferences')) file.preferences = { ...DEFAULT_PREFERENCES, ...sanitizePreferences(options.preferences) };
   if (want.has('themes')) file.themes = (options.themes ?? []).filter((raw) => !('error' in parseThemeFile(raw)));
+  if (want.has('profiles')) {
+    const entries = stores.profiles.exportEntries();
+    const dirOf = (id: string) => entries.find((e) => e.id === id)?.dir ?? null;
+    file.profiles = {
+      list: entries.map(({ dir, name, color, defaults }) => ({ dir, name, color, defaults: Object.values(defaults).some((v) => v !== null) ? defaults : null })),
+      default: dirOf(stores.profiles.defaultId()),
+      links: stores.profiles.links().map(({ root, profileId }) => ({ path: root, profile: dirOf(profileId) })),
+    };
+  }
   if (want.has('projects')) {
     file.projects = stores.projects.addedEntries().map((entry) => ({
       path: entry.root,
@@ -248,7 +261,7 @@ const THIS_COMPUTER = process.platform === 'darwin' ? 'this Mac' : 'this compute
 export function planImport(stores: SettingsStores, file: SettingsFile, options: ImportOptions): ImportPlan {
   const replace = options.mode === 'replace';
   const want = new Set(options.sections);
-  const present = (['preferences', 'themes', 'projects', 'actions', 'choices', 'sessions'] as const).filter((s) => file[s] !== undefined);
+  const present = (['preferences', 'themes', 'profiles', 'projects', 'actions', 'choices', 'sessions'] as const).filter((s) => file[s] !== undefined);
   const has = (section: BackupSection) => want.has(section) && file[section] !== undefined;
   const relocated = new Map(options.relocate.map((m) => [m.from, m.to]));
   const target = (path: string) => relocated.get(path) ?? path;
@@ -312,6 +325,106 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
         note('themes', name, 'change', 'replaced by the file');
         themes.push({ raw, how: 'replace' });
       } else note('themes', name, 'keep', 'you have a theme with this name');
+    }
+  }
+
+  // --- Claude profiles ----------------------------------------------------------------------
+  // A profile is its config folder; the built-in one (dir null) is always here. Profiles are added with the folder
+  // (made if it's missing: Claude Code fills it in, and you sign in again), and only Replace removes the ones the file lacks.
+  if (has('profiles')) {
+    const incoming = file.profiles!;
+    /** Where a profile's folder is on this computer, or null (then noted as missing): a folder, or one that can be made. */
+    const placeProfile = (dir: string): string | null => {
+      const to = target(dir);
+      if (isLocalAbsolutePath(to, process.platform) && (isFolder(to) || isFolder(dirname(to)))) return to;
+      missing.add(dir);
+      return null;
+    };
+    /** The folder a profile in the file has here, by the file's name for it (null: built-in). */
+    const here = new Map<string | null, string | null>([[null, null]]);
+    const kept = new Set<string>();
+    for (const [index, raw] of incoming.list.entries()) {
+      const parsed = ExportedProfile.safeParse(raw);
+      if (!parsed.success) {
+        note('profiles', `Profile ${index + 1}`, 'skip', 'not readable');
+        continue;
+      }
+      const entry = parsed.data;
+      const dir = entry.dir === null ? null : placeProfile(entry.dir);
+      if (entry.dir !== null && dir === null) {
+        note('profiles', entry.name, 'skip', `folder not found on ${THIS_COMPUTER}`);
+        continue;
+      }
+      here.set(entry.dir, dir);
+      const defaults = entry.defaults ? readProfileDefaults(JSON.stringify(entry.defaults)) : null;
+      const usefulDefaults = defaults && Object.values(defaults).some((v) => v !== null) ? defaults : null;
+      const id = stores.profiles.idOfDir(dir);
+      if (id === null) {
+        note('profiles', entry.name, 'add', dir === null ? null : relocatedNote(entry.dir!, dir));
+        writes.push(() => {
+          const added = stores.profiles.add(entry.name, entry.color, dir!);
+          if (usefulDefaults) stores.profiles.setDefaults(added, usefulDefaults);
+        });
+        continue;
+      }
+      kept.add(id);
+      const existing = stores.profiles.exportEntries().find((e) => e.id === id)!;
+      const existingDefaults = Object.values(existing.defaults).some((v) => v !== null) ? existing.defaults : null;
+      const nameDiffers = existing.name !== entry.name;
+      const colorDiffers = existing.color !== entry.color;
+      const defaultsDiffer = !same(existingDefaults, usefulDefaults);
+      if (!nameDiffers && !colorDiffers && !defaultsDiffer) {
+        unchanged++;
+        continue;
+      }
+      const what = listOf([nameDiffers && 'name', colorDiffers && 'colour', defaultsDiffer && 'defaults for new sessions']);
+      // Merge fills in only what isn't set here: the defaults. A name and colour are always set.
+      const takeDefaults = defaultsDiffer && (replace || existingDefaults === null);
+      const takeLook = replace && (nameDiffers || colorDiffers);
+      if (takeDefaults || takeLook) {
+        note('profiles', existing.name, 'change', what);
+        writes.push(() => {
+          if (takeLook) stores.profiles.update(id, { name: entry.name, color: entry.color });
+          if (takeDefaults) stores.profiles.setDefaults(id, usefulDefaults ?? readProfileDefaults(null));
+        });
+      } else note('profiles', existing.name, 'keep', `your ${what} ${what === 'name' || what === 'colour' ? 'differs' : 'differ'}`);
+    }
+    if (replace) {
+      for (const entry of stores.profiles.exportEntries()) {
+        if (entry.dir === null || kept.has(entry.id)) continue;
+        note('profiles', entry.name, 'remove', 'its folder, login and sessions stay');
+        writes.push(() => stores.profiles.removeWithin(entry.id));
+      }
+    }
+    // The default profile, and which projects use which, by folder. A profile that wasn't imported can't be used.
+    if (incoming.default !== undefined && here.has(incoming.default)) {
+      const wanted = here.get(incoming.default)!;
+      const currentDefault = stores.profiles.defaultId();
+      const currentDir = stores.profiles.exportEntries().find((e) => e.id === currentDefault)?.dir ?? null;
+      if (wanted === currentDir) unchanged++;
+      else if (replace || currentDefault === BUILTIN_PROFILE_ID) {
+        note('profiles', 'Default profile', 'change', `${stores.profiles.exportEntries().find((e) => e.id === currentDefault)?.name} → ${incoming.default === null ? 'built-in' : basename(incoming.default)}`);
+        writes.push(() => {
+          const id = stores.profiles.idOfDir(wanted);
+          if (id) stores.profiles.setDefault(id);
+        });
+      } else note('profiles', 'Default profile', 'keep', 'yours differs');
+    }
+    for (const link of incoming.links) {
+      const root = locate(link.path);
+      if (!root || !here.has(link.profile)) continue;
+      const wantedDir = here.get(link.profile)!;
+      const existing = stores.profiles.projectProfile(root);
+      const label = `${basename(root)} uses ${link.profile === null ? 'the built-in profile' : basename(link.profile)}`;
+      const existingDir = existing === null ? undefined : (stores.profiles.exportEntries().find((e) => e.id === existing)?.dir ?? null);
+      if (existingDir === wantedDir) unchanged++;
+      else if (existing === null || replace) {
+        note('profiles', label, existing === null ? 'add' : 'change');
+        writes.push(() => {
+          const id = stores.profiles.idOfDir(wantedDir);
+          if (id) stores.profiles.linkProject(root, id);
+        });
+      } else note('profiles', label, 'keep', 'yours differs');
     }
   }
 
