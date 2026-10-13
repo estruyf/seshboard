@@ -690,6 +690,8 @@ describe('Claude profiles', () => {
     await run('init', '-q', '-b', 'main');
     await run('config', 'user.email', 'test@example.com');
     await run('config', 'user.name', 'Test');
+    // Windows runners default to autocrlf, which makes the rewritten a.txt look modified to git.
+    await run('config', 'core.autocrlf', 'false');
     writeFileSync(join(repo, 'a.txt'), 'one\n');
     await run('add', '.');
     await run('commit', '-qm', 'initial');

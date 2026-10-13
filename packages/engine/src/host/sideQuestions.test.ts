@@ -127,9 +127,13 @@ describe('SideQuestions', () => {
     expect(old.done(id)?.error).toBeUndefined();
     old.cache.close();
 
-    expect(setup({ version: '2.1.212' }).runner.list('s1').unsupported).toBe(false);
+    const current = setup({ version: '2.1.212' });
+    expect(current.runner.list('s1').unsupported).toBe(false);
+    current.cache.close();
     // A version that isn't known yet isn't held against it.
-    expect(setup({ version: null }).runner.list('s1').unsupported).toBe(false);
+    const unknown = setup({ version: null });
+    expect(unknown.runner.list('s1').unsupported).toBe(false);
+    unknown.cache.close();
   });
 
   it('answers with the stub in pieces, without asking Claude Code', async () => {
