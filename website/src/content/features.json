@@ -1137,6 +1137,11 @@
       "page": "projects/branches"
     },
     {
+      "id": "feature:branch-switch",
+      "name": "Switch to a branch from the Branches tab",
+      "page": "projects/branches"
+    },
+    {
       "id": "feature:build-from-source",
       "name": "Build from source",
       "page": "getting-started/install"

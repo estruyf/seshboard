@@ -60,6 +60,29 @@ export function remoteLock(entry: BranchEntry, base: string | null): string | nu
   return null;
 }
 
+/** A row menu's switch item: the branch the main checkout switches to, its label, and why it can't (null when it can). */
+export interface SwitchAction {
+  branch: string;
+  label: string;
+  blocked: string | null;
+}
+
+/**
+ * What the row menu offers to switch the main checkout (`root`) to. On the branch checked out there, that is the base
+ * branch, so the branch can be deleted next; on any other branch, the branch itself (one only on a remote gets a
+ * local branch that tracks it). Null when there is nothing to switch to: the row is the base and it's checked out.
+ */
+export function switchAction(entry: BranchEntry, entries: readonly BranchEntry[], root: string): SwitchAction | null {
+  const where = entry.local?.checkedOutIn ?? null;
+  if (where === root) {
+    const base = entries.find((e) => e.isBase);
+    if (!base || base === entry) return null;
+    const there = base.local?.checkedOutIn ?? null;
+    return { branch: base.name, label: `Switch to ${base.name}`, blocked: there ? `${base.name} is checked out in ${basename(there)}` : null };
+  }
+  return { branch: entry.name, label: 'Switch to this branch', blocked: where ? `Checked out in ${basename(where)}` : null };
+}
+
 /** Which group a branch belongs in. */
 export function classify(entry: BranchEntry, now: number, inactiveDays = INACTIVE_DAYS): BranchGroup {
   if (entry.isBase || entry.local?.checkedOutIn) return 'in-use';
