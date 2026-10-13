@@ -92,8 +92,19 @@ All three are detailed below.
 ## 11. Storage ✅
 - `node:sqlite` in Node 24 has **FTS5** (SQLite 3.53.4), so global search needs no native module. Latest Electron is **44.5.1**. Phase 1 must confirm that Electron's bundled Node includes `node:sqlite`. Fall back to `better-sqlite3` if it doesn't.
 
+## 12. Messages pushed mid-turn and `priority` ✅ (`11-queue-midturn.mjs`, claude 2.1.287, SDK 0.3.288)
+A turn runs two 8 s foreground Bash calls; a second message B ("end your answer with BRAVO") is pushed 2 s into the first call.
+- **No `priority` (what Switchboard sends today): B is read at the next tool boundary, in the same turn.** One `result`, no second turn, no tool aborted. The final answer followed B. So today's "Queue" is really a **steer**, not "after the turn".
+- **`priority: 'next'`:** same as the default.
+- **`priority: 'later'`: a real queue.** The turn finishes (answer ALPHA, `result` #1), then B runs as its own turn (`result` #2). The SDK did this by itself, with no `session_state_changed: idle` between the two turns.
+- **`priority: 'now'`: an interrupt.** The running tool is aborted (`Command was aborted before completion`), `result` #1 ends the turn, B starts a new turn at once, and Claude carried on with the earlier work. No `idle` between the turns, so a host that flushes its own queue on `idle` isn't tricked by it.
+- The SDK echoes no `user` frame for B in any mode (nothing with `isReplay`), so the host's own echo is the only live copy of the message.
+- A queued message can't be edited, removed or reordered through the public SDK (`cancel_async_message` and `cancel_queued` are control requests with no `Query` method; `interrupt()` takes no arguments and only reports `still_queued`). **To edit, remove or reorder, the host has to hold the message itself** until it is time.
+- ⚠️ **`priority: 'now'` doesn't stop a turn that hasn't started answering yet.** Found in the live smoke: a 'now' message sent 0.4 s after a long prompt (Claude still thinking) was folded into that turn, which then answered only the first prompt. `interrupt()` does stop a turn in that window (Claude Code latches it).
+- Mapping for the app: **Queue** = held by the host, pushed when the session goes `idle`; **Steer** = push with no priority, now, no interrupt; **Send now** = `interrupt()`, then push, with the host's queue held until the message's turn has started (so an `idle` from the stopped turn can't send a queued message first).
+
 ---
 
 ## Side effects of running the spike
-- About 12 short Haiku test sessions now exist in `~/.claude/projects/` under the scratchpad sandbox repo path, with a few cents of usage.
+- About 16 short Haiku test sessions now exist in `~/.claude/projects/` under the scratchpad sandbox repo path, with a few cents of usage.
 - Two locked worktrees (`spike-wt`, `spike-sdk`) exist inside the scratchpad sandbox repo. Nothing touched your real projects.

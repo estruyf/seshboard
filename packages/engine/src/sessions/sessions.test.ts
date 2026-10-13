@@ -290,6 +290,39 @@ describe('TranscriptHub', () => {
     hub.stop();
   });
 
+  it('keeps a queued message for a window that opens the session later', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [msg('1')]);
+    const hub = new TranscriptHub(source, () => {});
+    const first: TranscriptUpdate[] = [];
+    const stop = hub.watch(ID_A, (u) => first.push(u));
+    await until(() => first.length === 1);
+
+    hub.pushLive(ID_A, [msg('2')]);
+    stop();
+
+    // Back in the session: the file doesn't have the queued message yet, the window still shows it.
+    const again: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => again.push(u));
+    await until(() => again.length === 1);
+    expect(uuids(again[0]!.messages)).toEqual(['1', '2']);
+
+    // The file catches up: no duplicate, and nothing is kept once it has the message.
+    messages.set(ID_A, [msg('1'), msg('2')]);
+    hub.changed(ID_A);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(again).toHaveLength(1);
+
+    // Once the turn is over, a message the file never got isn't shown again.
+    hub.pushLive(ID_A, [msg('3')]);
+    hub.settled(ID_A);
+    const last: TranscriptUpdate[] = [];
+    hub.watch(ID_A, (u) => last.push(u));
+    await until(() => last.length === 1);
+    expect(uuids(last[0]!.messages)).toEqual(['1', '2']);
+    hub.stop();
+  });
+
   it('shows live messages at once and lets the file confirm them without duplicates', async () => {
     const { source, messages } = fakeSource([]);
     messages.set(ID_A, [msg('1')]);

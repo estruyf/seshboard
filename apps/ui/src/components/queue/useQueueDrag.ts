@@ -4,6 +4,14 @@ import { dropIndex } from '../../state/queue.ts';
 
 const MIME = 'application/x-switchboard-queue-item';
 
+/** What a list that isn't the sidebar's queue passes: its own order, how it moves an item, and its own drag type. */
+export interface QueueDragSource {
+  ids(): string[];
+  move(id: string, to: number): void | Promise<unknown>;
+  /** Keeps a drag from another list from dropping here. */
+  mime: string;
+}
+
 /** Where a dragged item would land: before or after this item. */
 export type DropMark = { id: string; after: boolean } | null;
 
@@ -11,14 +19,15 @@ export type DropMark = { id: string; after: boolean } | null;
  * Drag to reorder: the item is dragged by its grip (the whole row is the drag source), and dropping on another item
  * puts it before or after that one, by which half of the row the pointer is over. The keyboard does the same with ⌥↑ ⌥↓.
  */
-export function useQueueDrag() {
+export function useQueueDrag(source?: QueueDragSource) {
+  const mime = source?.mime ?? MIME;
   const [mark, setMark] = useState<DropMark>(null);
   const [dragging, setDragging] = useState<string | null>(null);
 
   const props = (id: string) => ({
     draggable: true,
     onDragStart: (event: DragEvent<HTMLElement>) => {
-      event.dataTransfer.setData(MIME, id);
+      event.dataTransfer.setData(mime, id);
       event.dataTransfer.effectAllowed = 'move';
       setDragging(id);
     },
@@ -27,7 +36,7 @@ export function useQueueDrag() {
       setMark(null);
     },
     onDragOver: (event: DragEvent<HTMLElement>) => {
-      if (!event.dataTransfer.types.includes(MIME)) return;
+      if (!event.dataTransfer.types.includes(mime)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
       const rect = event.currentTarget.getBoundingClientRect();
@@ -38,19 +47,16 @@ export function useQueueDrag() {
       if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMark((current) => (current?.id === id ? null : current));
     },
     onDrop: (event: DragEvent<HTMLElement>) => {
-      const source = event.dataTransfer.getData(MIME);
-      if (!source) return;
+      const dragged = event.dataTransfer.getData(mime);
+      if (!dragged) return;
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect();
-      const to = dropIndex(
-        useLater.getState().items.map((i) => i.id),
-        source,
-        id,
-        event.clientY > rect.top + rect.height / 2,
-      );
+      const to = dropIndex(source ? source.ids() : useLater.getState().items.map((i) => i.id), dragged, id, event.clientY > rect.top + rect.height / 2);
       setMark(null);
       setDragging(null);
-      if (to !== null) void reorderQueue(source, to).catch(() => {});
+      if (to === null) return;
+      if (source) void Promise.resolve(source.move(dragged, to)).catch(() => {});
+      else void reorderQueue(dragged, to).catch(() => {});
     },
   });
 

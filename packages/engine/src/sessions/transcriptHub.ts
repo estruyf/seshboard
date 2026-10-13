@@ -44,6 +44,11 @@ export class TranscriptHub {
    * them until the file has them.
    */
   private readonly held = new Map<string, Map<string, TranscriptMessage>>();
+  /**
+   * Messages you sent that Claude Code has but hasn't written yet (steered into a running turn), by uuid. They are
+   * kept with the held ones, so switching away and back still shows them, until the file has them or the turn ends.
+   */
+  private readonly sent = new Map<string, Set<string>>();
   readonly images = new ImageStore();
 
   constructor(
@@ -89,13 +94,22 @@ export class TranscriptHub {
   pushLive(sessionId: string, raw: readonly RawSessionMessage[], held = false): void {
     if (raw.length === 0) return;
     const set = this.watchers.get(sessionId);
-    if (!set && !held) return;
+    const yours = raw.some((m) => m.type === 'user');
+    if (!set && !held && !yours) return;
     const sink = this.images.sink(sessionId);
     const messages = raw.map((m) => normaliseMessage(m, sink));
-    if (held) {
+    if (held || yours) {
       let kept = this.held.get(sessionId);
       if (!kept) this.held.set(sessionId, (kept = new Map()));
-      for (const m of messages) kept.set(m.uuid, m);
+      let sent = this.sent.get(sessionId);
+      raw.forEach((r, i) => {
+        if (!held && r.type !== 'user') return;
+        kept.set(messages[i]!.uuid, messages[i]!);
+        if (!held) {
+          if (!sent) this.sent.set(sessionId, (sent = new Set()));
+          sent.add(messages[i]!.uuid);
+        }
+      });
     }
     if (!set) return;
     for (const watcher of set) {
@@ -117,6 +131,17 @@ export class TranscriptHub {
   /** The session stopped: what it held back will never reach the file. */
   dropHeld(sessionId: string): void {
     this.held.delete(sessionId);
+    this.sent.delete(sessionId);
+  }
+
+  /** The session's turn ended, so what you sent is in the file; only what Claude Code doesn't have yet stays held. */
+  settled(sessionId: string): void {
+    const sent = this.sent.get(sessionId);
+    if (!sent) return;
+    this.sent.delete(sessionId);
+    const kept = this.held.get(sessionId);
+    for (const uuid of sent) kept?.delete(uuid);
+    if (kept?.size === 0) this.held.delete(sessionId);
   }
 
   /** Called when a transcript file changed on disk. Reloads are coalesced per session. */

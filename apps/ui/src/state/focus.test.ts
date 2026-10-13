@@ -20,7 +20,7 @@ const host = (sessionId: string, state: HostState, startedAt = NOW - HOUR): Sess
   error: null,
   startedAt,
   promptedAt: null,
-  queued: 0,
+  queue: [], queueHold: null,
   profileId: 'default',
   backgroundTasks: [],
 });

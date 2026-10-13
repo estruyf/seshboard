@@ -1036,17 +1036,26 @@ async function runLiveSessionStep(win: BrowserWindow, cwd: string): Promise<stri
 }
 
 /**
- * The live part of Send now (in the sandbox session): a long reply starts, the message box offers Queue ▾
- * with Send now, and ⌘⇧↩ stops the reply and gets the new message answered before the long one could finish.
+ * The live part of Send now and Up next (in the sandbox session): a long reply starts, a message sent meanwhile
+ * waits in Up next (not in the conversation), the message box offers Queue ▾ with Send now, and ⌘⇧↩ stops the reply
+ * and gets the new message answered before the long one could finish. The queued message then goes after it.
  */
 async function runSendNowLive(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const texts = "[...document.querySelectorAll('[data-item-kind=\"text\"]')].map((el) => el.innerText)";
+  // A reply's text starts with its "Claude" label: what Claude wrote is the last line.
+  const texts = "[...document.querySelectorAll('[data-item-kind=\"text\"]')].map((el) => el.innerText.trim().split('\\n').at(-1).trim())";
   await setFieldValue(win, '[data-composer]', 'Count from 1 to 1000, one number per line, with no other text.');
   await js("document.querySelector('[data-composer-submit]').click()");
   if (!(await waitInPage(win, "document.querySelector('[data-current-session] [data-send-menu]')", 30_000))) return 'no Queue ▾ while Claude was working';
   const label = ((await js("document.querySelector('[data-current-session] [data-composer-submit]').innerText")) as string).trim();
   if (label !== 'Queue') return `the main button said ${JSON.stringify(label)} while Claude was working, not Queue`;
+  // Queued: it waits in Up next, outside the conversation, until the turn ends.
+  await setFieldValue(win, '[data-composer]', 'Reply with exactly: QUEUED ONE');
+  await js("document.querySelector('[data-current-session] [data-composer-submit]').click()");
+  if (!(await waitInPage(win, "[...document.querySelectorAll('[data-current-session] [data-queue] [data-queue-item]')].some((b) => b.getAttribute('aria-label').includes('QUEUED ONE'))", 5_000))) return 'a message sent while Claude works did not show in Up next';
+  if (!(await waitInPage(win, "document.querySelector('[data-composer]').value === ''", 3_000))) return 'the queued message stayed in the message box';
+  if ((await js(`${texts}.some((t) => t.includes('QUEUED ONE'))`)) as boolean) return 'a queued message was in the conversation before its turn';
+  await shot(win, 'up-next.png');
   await setFieldValue(win, '[data-composer]', 'Reply with exactly: SENT NOW');
   await js("document.querySelector('[data-current-session] [data-send-menu]').click()");
   if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-send-now]:not(:disabled)') && document.querySelector('[role=menu] [data-queue-message]')", 3_000))) return 'the ▾ menu did not offer Queue and Send now';
@@ -1060,13 +1069,16 @@ async function runSendNowLive(win: BrowserWindow): Promise<string> {
   const sentAt = performance.now();
   pressKey(win, 'Return', ['meta', 'shift']);
   if (!(await waitInPage(win, "document.querySelector('[data-composer]').value === ''", 5_000))) return '⌘⇧↩ did not send the message';
-  if (!(await waitInPage(win, `${texts}.some((t) => t.trim() === 'SENT NOW')`, 60_000))) return 'no answer to the message sent now';
+  if (!(await waitInPage(win, `${texts}.some((t) => t === 'SENT NOW')`, 60_000))) return `no answer to the message sent now (last replies: ${JSON.stringify(((await js(`${texts}.slice(-3)`)) as string[]).map((t) => t.slice(0, 60)))})`;
   const seconds = ((performance.now() - sentAt) / 1000).toFixed(1);
   // Stopped: the count never got to 1000.
-  if ((await js(`${texts}.some((t) => /(^|\\n)1000\\s*$/.test(t.trim()))`)) as boolean) return 'the long reply ran to the end: Send now did not stop it';
+  if ((await js(`${texts}.some((t) => t === '1000')`)) as boolean) return 'the long reply ran to the end: Send now did not stop it';
+  // The message that waited goes once the one sent now is answered, and leaves Up next.
+  if (!(await waitInPage(win, `${texts}.some((t) => t === 'QUEUED ONE')`, 60_000))) return 'the message in Up next was never sent after the turn ended';
+  if (!(await waitInPage(win, "!document.querySelector('[data-current-session] [data-queue]')", 5_000))) return 'Up next stayed after its message was sent';
   if (!(await waitInPage(win, "!document.querySelector('[data-current-session] [data-send-menu]')", 15_000))) return 'Queue ▾ stayed after Claude finished';
   await shot(win, 'send-now.png');
-  return `ok: Send now (${hint}) stopped the count and was answered in ${seconds}s`;
+  return `ok: Send now (${hint}) stopped the count and was answered in ${seconds}s, then the message in Up next went`;
 }
 
 /** When the smoke run killed the engine, to time the restart. */

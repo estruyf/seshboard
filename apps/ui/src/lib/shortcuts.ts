@@ -260,7 +260,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext";
 
 export interface ShortcutDef {
   id: string;
@@ -506,6 +506,35 @@ export const SHORTCUTS = [
     where: "sidebar",
   },
   {
+    id: "upnext.edit",
+    keys: ["enter"],
+    action: "Edit a message in Up next",
+    section: "session",
+    context: "On a message in Up next, above the message box",
+    note: "↑ in an empty message box edits the last one",
+    when: (ctx) => inSession(ctx) && ctx.running,
+    where: "upnext",
+  },
+  {
+    id: "upnext.move",
+    keys: ["alt+arrowup", "alt+arrowdown"],
+    action: "Move a message in Up next up or down",
+    section: "session",
+    context: "On a message in Up next, above the message box",
+    when: (ctx) => inSession(ctx) && ctx.running,
+    where: "upnext",
+  },
+  {
+    id: "upnext.remove",
+    keys: ["backspace"],
+    action: "Remove a message from Up next",
+    section: "session",
+    context: "On a message in Up next, above the message box",
+    note: "Undo puts it back",
+    when: (ctx) => inSession(ctx) && ctx.running,
+    where: "upnext",
+  },
+  {
     id: "context-menu",
     keys: ["shift+f10"],
     action: "Open the context menu",
@@ -642,6 +671,16 @@ export const SHORTCUTS = [
     section: "session",
     context: "While Claude is working",
     note: "Stops what Claude is doing so your message runs right away",
+    when: (ctx) => inSession(ctx) && ctx.running,
+    where: "composer",
+  },
+  {
+    id: "composer.send-other",
+    keys: ["alt+enter"],
+    action: "Queue or steer, the other way",
+    section: "session",
+    context: "While Claude is working",
+    note: "Does what Enter doesn't: steers when Enter queues, queues when Enter steers",
     when: (ctx) => inSession(ctx) && ctx.running,
     where: "composer",
   },

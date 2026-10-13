@@ -62,6 +62,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   themeId: 'Theme',
   archiveAfterDays: 'Archive finished sessions after',
   deleteArchived: 'Delete archived sessions',
+  whileWorking: 'Enter while Claude is working',
   autoModel: 'Auto model',
   githubStar: 'Star on GitHub',
   notifications: 'Show notifications',
