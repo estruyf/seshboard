@@ -19,6 +19,8 @@ import {
   type RpcServer,
   type SlashCommand,
   type SystemInfo,
+  type PrError,
+  type PrProgress,
   type WorktreePullRequest,
   type WorktreeSize,
   type Transport,
@@ -40,6 +42,7 @@ import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
 import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts';
 import { findCheckout, githubPage } from './git/remotes.ts';
+import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { checkoutRoot, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
@@ -650,6 +653,8 @@ export function createEngine(options: EngineOptions): Engine {
         .map((l) => ({ sessionId: l.sessionId, cwd: l.cwd, busy: l.status !== 'idle', hosted: false })),
     ];
   };
+  /** Checkouts a pull request is being created for, so a second click can't push and create twice. */
+  const prJobs = new Set<string>();
   /** Pull requests by branch from `gh`, per repository, kept for a few minutes (it's a network call). */
   const pullRequestCache = new Map<string, { at: number; prs: Promise<Map<string, WorktreePullRequest> | null> }>();
   const pullRequestsFor = (root: string, fresh: boolean) => {
@@ -1400,11 +1405,10 @@ export function createEngine(options: EngineOptions): Engine {
       const status = await worktreeStatus(cwd).catch((error: Error) => {
         throw new RpcError('GIT_FAILED', error.message);
       });
-      const shell = await terminals.shell();
-      const sync = syncCommand(status, action, shell.quote, shell.sequence);
+      const sync = syncCommand(status, action, (await terminals.shell()).quote);
       if ('code' in sync) throw new RpcError(sync.code, sync.message);
       if (action === 'pull') await assertCheckoutIdle(cwd);
-      const title = action === 'fetch' ? 'Fetch' : action === 'pull' ? 'Pull' : action === 'push' ? 'Push' : 'Pull request';
+      const title = action === 'fetch' ? 'Fetch' : action === 'pull' ? 'Pull' : 'Push';
       return { terminalId: await runShellAction(sessionId, status.path, title, sync.command) };
     },
     'git.update': async ({ cwd, action }) => {
@@ -1431,6 +1435,65 @@ export function createEngine(options: EngineOptions): Engine {
       if (files === 0) throw new RpcError('NOTHING_TO_COMMIT', 'There is nothing to commit.');
       // In a terminal tab: commit hooks can take a while, and their output is worth seeing.
       return { terminalId: await runShellAction(sessionId, cwd, 'Commit', `git commit -m ${(await terminals.shell()).quote(message)}`) };
+    },
+    'git.prDraft': async ({ cwd, base, projectBase }) => {
+      if (!resolver.resolve(cwd).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');
+      const status = await worktreeStatus(cwd).catch((error: Error) => {
+        throw new RpcError('GIT_FAILED', error.message);
+      });
+      const refused = draftRefusal(status);
+      if (refused) throw new RpcError(refused.code, refused.message);
+      const { env } = await shell.ready;
+      // gh (the pull request list and the sign-in check) at the same time as git.
+      const prs = pullRequestsFor(status.root, false);
+      const draft = await readPrDraft(status, { base, projectBase }).catch((error: Error) => {
+        throw new RpcError('GIT_FAILED', error.message);
+      });
+      const host = parseRemoteUrl((await git(status.path, ['remote', 'get-url', draft.remote]).catch(() => '')).trim())?.host ?? 'github.com';
+      const [gh, existing] = await Promise.all([ghStatus(defaultGh(), status.path, env, host), prs]);
+      return { ...draft, existingPr: prOf(existing, status.branch), gh };
+    },
+    'git.prCreate': async ({ jobId, cwd, title, body, base, draft, web }) => {
+      if (!resolver.resolve(cwd).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');
+      const status = await worktreeStatus(cwd).catch((error: Error) => {
+        throw new RpcError('GIT_FAILED', error.message);
+      });
+      if (prJobs.has(status.path)) throw new RpcError('BUSY', 'A pull request is being created here already.');
+      prJobs.add(status.path);
+      const progress = (step: PrProgress['step'], rest: Partial<Pick<PrProgress, 'pr' | 'compareUrl' | 'error'>> = {}) =>
+        broadcast('git.pr', { jobId, cwd, step, pr: null, compareUrl: null, error: null, ...rest });
+      // Pushing can take minutes (pre-push hooks): the call returns now, and the job reports through `git.pr`.
+      void (async () => {
+        try {
+          const result = await createPullRequest(status, { title, body, base, draft, web }, { env: (await shell.ready).env, gh: defaultGh(), onStep: (step) => progress(step) });
+          if ('pr' in result) {
+            log('info', `git: created pull request #${result.pr.number} for ${status.branch}`);
+            progress('done', { pr: result.pr });
+            // The button and the overviews show it from now on.
+            void pullRequestsFor(status.root, true);
+          } else progress('done', { compareUrl: result.compareUrl });
+        } catch (error) {
+          const prError: PrError = error instanceof PrFailure ? error.error : { code: 'UNKNOWN', message: error instanceof Error ? error.message : String(error), output: null, pr: null };
+          progress('failed', { error: prError });
+        } finally {
+          prJobs.delete(status.path);
+        }
+      })();
+      return {};
+    },
+    'git.prFor': async ({ cwd, fresh }) => {
+      if (!resolver.resolve(cwd).gitDir) return { pr: null };
+      const status = await worktreeStatus(cwd).catch(() => null);
+      if (!status?.branch) return { pr: null };
+      return { pr: prOf(await pullRequestsFor(status.root, fresh), status.branch) };
+    },
+    'git.prReady': async ({ cwd, number }) => {
+      const result = await runGh(defaultGh(), ['pr', 'ready', String(number)], { cwd, env: (await shell.ready).env, timeout: 60_000 });
+      if (result.missing) throw new RpcError('GH_MISSING', "GitHub CLI isn't installed.");
+      if (result.code !== 0) throw new RpcError('GH_FAILED', firstUsefulLine(`${result.stderr}\n${result.stdout}`) || 'gh could not mark it ready.');
+      const status = await worktreeStatus(cwd).catch(() => null);
+      if (status) void pullRequestsFor(status.root, true);
+      return {};
     },
     'worktree.status': async ({ cwd }) => {
       try {

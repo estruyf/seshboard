@@ -6,6 +6,8 @@ export const WorktreePullRequest = z.object({
   number: z.number(),
   state: z.enum(['open', 'merged', 'closed']),
   url: z.string(),
+  /** An open pull request that is still a draft. */
+  draft: z.boolean().optional(),
 });
 export type WorktreePullRequest = z.infer<typeof WorktreePullRequest>;
 

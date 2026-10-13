@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorktreeStatus } from '@switchboard/protocol/client';
-import { catchUpStep, gitSummary, planGit, stepCount, syncStep } from './gitPlan.ts';
+import { catchUpStep, gitSummary, planGit, stepCount, syncStep, showsViewPr } from './gitPlan.ts';
 
 const base: WorktreeStatus = {
   path: '/repo',
@@ -115,5 +115,16 @@ describe('catchUpStep', () => {
     expect(catchUpStep(status({ unpushed: 2, uncommitted: 2 }))).toBe('fetch');
     expect(catchUpStep(status({ upstream: null, unpushed: null, behindUpstream: null }))).toBe('fetch');
     expect(catchUpStep(status({ branch: null, behindUpstream: 3 }))).toBe('fetch');
+  });
+});
+
+describe('showsViewPr', () => {
+  const open = { number: 123, state: 'open', url: 'u' };
+  it('shows the open pull request instead of Create PR or Fetch, never instead of pull, commit or push', () => {
+    expect(showsViewPr('pr', open)).toBe(open);
+    expect(showsViewPr('fetch', open)).toBe(open);
+    for (const step of ['pull', 'commit', 'push'] as const) expect(showsViewPr(step, open)).toBeNull();
+    expect(showsViewPr('pr', { ...open, state: 'merged' })).toBeNull();
+    expect(showsViewPr('pr', null)).toBeNull();
   });
 });

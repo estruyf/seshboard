@@ -6,6 +6,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### New
 
+- **Create pull requests in Switchboard.** **Create PR** now opens a dialog: a title, a description that starts from your repository's pull request template or the list of commits, the base branch and **Draft**. Switchboard pushes the branch and creates the pull request with the GitHub CLI, without opening the browser. Long branches no longer fail with "URL too long", and when something goes wrong the dialog says what to do next: install gh, sign in, pull first, or open the pull request that is already there.
+- **View PR.** Once a branch has an open pull request, the git button shows **View PR #123**, with whether it is open or a draft, and opens it on GitHub. A draft can be marked ready for review from the git menu.
 - **Copy link.** Right-click a link in a message and choose **Copy link** to copy its address.
 - **Add files from anywhere.** The Add context dialog (the paperclip under the message box) has **Choose in Finder…** (**Choose in File Explorer…** on Windows), so you can add files that are not in the project. On macOS you can pick folders too.
 - **Search in Settings.** Type in **Search settings** at the top of the section list (or press ⌘F in Settings) to find a setting in any section. Results show grouped by section with your words marked; choose one to open its section at that setting.
@@ -22,6 +24,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - Sending a very long message no longer fails with "Invalid params for session.create". A message can now hold up to 1,000,000 characters, and the message box says so when it is longer. A paste that is longer than that is not put in the box; drop the file instead.
 - The first message you send in a session you just opened no longer leaves the "Working…" line hidden under the message box.
 - **Auto model**: a new session started on Auto shows your message while Auto is choosing a model, not only once it has picked.
+- **Auto model**: when you change the model of a session Auto picked for, its model chip shows the new model at once instead of staying on "Auto · Sonnet".
 - **Worktrees** and **Branches**: a long label such as "PR #2004 merged" is cut short to fit its column instead of running into the size next to it.
 
 ## [0.0.15] - 2026-10-12

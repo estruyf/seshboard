@@ -13,7 +13,7 @@
  * Usage: npm run website:screenshots [-- --only home,palette]   (--only takes the setup, then just those)
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
@@ -48,6 +48,41 @@ function commitFile(cwd: string, path: string, content: string, message: string,
   writeFileSync(join(cwd, path), content);
   git(cwd, ['add', path], date);
   git(cwd, ['commit', '-q', '-m', message], date);
+}
+
+/**
+ * The tour's gh (SWITCHBOARD_GH): signed in, unless the file `.fake-gh-signed-out` is in the demo home, and nothing
+ * else works, so pull request lists stay empty and nothing ever reaches GitHub.
+ */
+function fakeGh(home: string): string {
+  const path = join(home, '.local', 'bin', 'fake-gh');
+  mkdirSync(join(path, '..'), { recursive: true });
+  const signedOut = join(home, '.fake-gh-signed-out');
+  writeFileSync(
+    path,
+    `#!/bin/sh\nif [ "$1 $2" = "auth status" ]; then\n  if [ -f '${signedOut}' ]; then echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1; fi\n  exit 0\nfi\necho "the screenshot tour's gh never reaches GitHub" >&2\nexit 1\n`,
+  );
+  chmodSync(path, 0o755);
+  return path;
+}
+
+/**
+ * For the Create pull request pictures: acme-store's origin reads as a GitHub repository (the dialog shows
+ * `owner/name`) until the returned function puts the demo remote back. Nothing is pushed or fetched meanwhile.
+ */
+function githubOrigin(world: DemoWorld): () => void {
+  const acme = join(world.home, 'Developer', 'acme-store');
+  const remote = git(acme, ['remote', 'get-url', 'origin']).trim();
+  git(acme, ['remote', 'set-url', 'origin', 'git@github.com:acme/acme-store.git']);
+  return () => void git(acme, ['remote', 'set-url', 'origin', remote]);
+}
+
+/** Opens Create PR… from the hero session's git menu and waits for the dialog to have read the branch. */
+async function openPullRequestDialog(t: Tour): Promise<void> {
+  await t.openSession(HERO);
+  await t.click('[data-git-button] [data-git-menu]');
+  await t.click('[role="menu"] [data-git-step="pr"]', 'no Create PR… in the git menu');
+  await t.need('[data-pr-dialog] [data-pr-title]', 'the Create pull request dialog did not read the branch', 15_000);
 }
 
 /**
@@ -105,8 +140,11 @@ function extendWorld(world: DemoWorld): void {
   // An old one, last touched weeks ago.
   const old = new Date(Date.now() - 30 * DAY);
   for (const dir of [join(worktrees, 'brave-humming-otter')]) utimesSync(dir, old, old);
-  // Keep Claude Code's worktree folder out of the demo project's own changes.
-  writeFileSync(join(acme, '.git', 'info', 'exclude'), '.claude/worktrees/\n.switchboard.json\n');
+  // Keep Claude Code's worktree folder (and the pull request template below) out of the demo project's own changes.
+  writeFileSync(join(acme, '.git', 'info', 'exclude'), '.claude/worktrees/\n.switchboard.json\n.github/\n');
+  // What Create pull request fills the description in with.
+  mkdirSync(join(acme, '.github'), { recursive: true });
+  writeFileSync(join(acme, '.github', 'pull_request_template.md'), '## What changed\n\n\n## How to test\n\n- [ ] npm test\n- [ ] Switch the theme in Settings and reload\n\n## Screenshots\n\n<!-- drag images here -->\n');
 
   // Instructions the team shares, committed with the project: CLAUDE.md and a rule for test files.
   commitFile(acme, 'src/lib/payments.ts', 'export const providers = { cards: "stripe", local: "adyen" } as const;\n', 'Add payment providers');
@@ -541,6 +579,38 @@ const screens: Screen[] = [
       await t.need('[role="menu"][aria-label="Git"], [role="menu"]', 'the git menu did not open');
       await t.shot('git-menu', { keepFocus: true });
       await t.escape();
+    },
+  },
+  {
+    name: 'pr-dialog',
+    async take(t) {
+      const restore = githubOrigin(t.world);
+      try {
+        await openPullRequestDialog(t);
+        await t.shot('pr-dialog');
+        await t.escape();
+        await t.gone('[data-pr-dialog]', 'Escape did not close Create pull request');
+      } finally {
+        restore();
+      }
+    },
+  },
+  {
+    name: 'pr-dialog-error',
+    async take(t) {
+      const restore = githubOrigin(t.world);
+      const signedOut = join(t.world.home, '.fake-gh-signed-out');
+      writeFileSync(signedOut, '');
+      try {
+        await openPullRequestDialog(t);
+        await t.need('[data-pr-dialog] [data-pr-notice="GH_AUTH"]', 'the dialog did not say gh is signed out');
+        await t.shot('pr-dialog-error');
+        await t.escape();
+        await t.gone('[data-pr-dialog]', 'Escape did not close Create pull request');
+      } finally {
+        rmSync(signedOut, { force: true });
+        restore();
+      }
     },
   },
   {
@@ -1152,6 +1222,7 @@ const app = await _electron.launch({
     HOME: world.home,
     CLAUDE_CONFIG_DIR: join(world.home, '.claude'),
     SWITCHBOARD_DRIVEN: '1',
+    SWITCHBOARD_GH: fakeGh(world.home),
     SWITCHBOARD_DEMO_USAGE: demoUsage(world),
     // No "Claude Code vX is available" in the pictures: the registry offers nothing newer.
     SWITCHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: claudeVersion, stable: claudeVersion }))}`,

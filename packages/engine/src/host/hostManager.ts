@@ -342,12 +342,16 @@ export class HostManager {
   async setModel(sessionId: string, model: string | null): Promise<void> {
     // Changed while Auto was still choosing: your model stays, and Auto's pick won't replace it.
     this.choosing.delete(sessionId);
-    await this.require(sessionId).setModel(model);
+    const host = this.require(sessionId);
+    await host.setModel(model);
     // Once you pick a model yourself, the session is no longer on Auto's pick: its chip shows the plain model.
     const pick = this.autoPick(sessionId);
     const left = pick && !pick.left ? { ...pick, left: true } : null;
-    if (left) this.picks.set(sessionId, left);
     this.settings.set(sessionId, { model, ...(left ? { autoPick: left } : {}) });
+    if (!left) return;
+    this.picks.set(sessionId, left);
+    // The host already reported the new model, with the pick it had then: report it again so the chip drops "Auto".
+    this.deps.onInfo(this.withPick(host.info));
   }
 
   /** What Auto picked for a session (null: it didn't), also when it isn't running. */

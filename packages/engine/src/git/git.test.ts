@@ -238,13 +238,12 @@ describe('sync', () => {
       const quote = (v: string) => `'${v}'`;
       expect(syncCommand(status, 'pull', quote)).toEqual({ command: 'git pull' });
       expect(syncCommand(status, 'push', quote)).toEqual({ command: 'git push' });
-      expect(syncCommand(status, 'pr', quote)).toMatchObject({ code: 'WRONG_BRANCH' });
 
       await run('switch', '-q', '-c', 'feature');
       const feature = await worktreeStatus(repo);
       expect(feature).toMatchObject({ upstream: null, unpushed: null, behindUpstream: null });
       expect(syncCommand(feature, 'pull', quote)).toMatchObject({ code: 'NO_UPSTREAM' });
-      expect(syncCommand(feature, 'pr', quote)).toEqual({ command: "git push -u 'origin' 'feature' && gh pr create --fill --web" });
+      expect(syncCommand(feature, 'push', quote)).toEqual({ command: "git push -u 'origin' 'feature'" });
     } finally {
       rmSync(remote, { recursive: true, force: true });
     }
