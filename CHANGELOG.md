@@ -23,6 +23,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Scroll up while Claude writes.** Scrolling up during a reply now keeps your place, instead of every new word pulling the view back to the end. **New output below** takes you back down and follows the reply again, as does scrolling to the very end.
 - **Run** on a command in the conversation runs it the first time too. When the session had no terminal yet, the command was typed into the new shell before your shell config (prompt theme, plugins) had loaded, and was dropped. Switchboard now waits until the shell is ready, a few seconds at most. **Run gh auth login** in the pull request dialog waits the same way.
 - **Claude Code not installed.** When Switchboard can't find Claude Code, it now says so when it opens: **Install Claude Code** shows the commands to install it for your system, how to sign in, and **Check Again** to pick it up without restarting. Starting a session without it says *Claude Code isn't installed, or Switchboard can't find it* instead of "Native CLI binary for darwin-arm64 not found". Settings → About has **Install Claude Code…** while it's missing.
 - **Queue keeps added files.** A file, folder or pasted text you added to a new session stays a chip when you add the session to the queue and open it again, instead of turning into an `@` mention in the text.

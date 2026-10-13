@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Blocks, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
+import { ArrowDown, Blocks, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -80,6 +80,12 @@ const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', s
  * pink when it needs you, green only while background tasks run. Idle is quiet, like the rest of the line.
  */
 const STATUS_TONE = { running: 'text-accent-ink', 'needs-you': 'text-warn', idle: 'text-muted' } as const;
+
+/** Within this many pixels of the end counts as at the end (rounding), so the conversation follows new output again. */
+const AT_END_PX = 4;
+/** Further up than this, Jump to latest shows. */
+const AWAY_PX = 24;
+const distanceFromEnd = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight;
 
 
 /** The dot between the parts of the header's meta line (a narrow pane shows only the status dot and the branch, no separators). */
@@ -406,33 +412,67 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   });
 
   // Start at the bottom, and keep following new output while the user is at the bottom.
-  // Following the end stops only when *you* scroll away (wheel, trackpad, keys, scrollbar): the
-  // list also moves itself while rows are measured, and that must never count as leaving.
-  // Getting back near the end, by any means, follows again.
+  // Following the end stops as soon as *you* scroll up (wheel, trackpad, keys, scrollbar), even by a
+  // few pixels: new output must not pull you back down. The list also moves itself while rows are
+  // measured, and that must never count as leaving. Getting back to the very end, by any means
+  // (or with Jump to latest), follows again.
   const stickToBottom = useRef(true);
+  // Away from the end while not following: shows Jump to latest.
+  const [away, setAway] = useState(false);
+  const syncAway = () => {
+    const el = scrollRef.current;
+    setAway(Boolean(el) && !stickToBottom.current && distanceFromEnd(el!) > AWAY_PX);
+  };
+  const follow = (on: boolean) => {
+    stickToBottom.current = on;
+    syncAway();
+  };
   const userScrollAt = useRef(0);
+  const lastScrollTop = useRef(0);
   const markUserScroll = () => (userScrollAt.current = Date.now());
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 160) stickToBottom.current = true;
-    else if (Date.now() - userScrollAt.current < 1_000) stickToBottom.current = false;
+    const movedUp = el.scrollTop < lastScrollTop.current;
+    lastScrollTop.current = el.scrollTop;
+    if (distanceFromEnd(el) <= AT_END_PX) stickToBottom.current = true;
+    else if (movedUp && Date.now() - userScrollAt.current < 1_000) stickToBottom.current = false;
+    syncAway();
     // Rows mount and unmount while scrolling; their matches need highlighting again.
     if (findQuery !== null) schedulePaint();
   };
-  const onScrollKey = (event: { key: string }) => {
+  // Scrolling up stops following at once, before the scroll lands: the next token would pull it back.
+  const leaveEnd = () => {
+    const el = scrollRef.current;
+    if (el && el.scrollTop > 0) follow(false);
+  };
+  const onWheel = (event: { deltaY: number }) => {
+    markUserScroll();
+    if (event.deltaY < 0) leaveEnd();
+  };
+  const onScrollKey = (event: { key: string; shiftKey: boolean }) => {
     if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) markUserScroll();
+    if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)) leaveEnd();
+  };
+  const jumpToLatest = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    follow(true);
+    el.scrollTop = el.scrollHeight;
   };
   const streamingText = useHosts((s) => s.streaming.get(sessionId)?.text.length ?? 0);
   // Rows start at an estimated height and grow once measured, so follow the total size too:
   // otherwise the first jump lands short of the end and the last message sits under the composer.
+  // This sets scrollTop itself: the virtualizer's scrollToIndex keeps chasing its target for seconds,
+  // and would pull the view back down after you scroll up.
   const totalSize = virtualizer.getTotalSize();
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && stickToBottom.current && renderItems.length > 0) {
-      virtualizer.scrollToIndex(renderItems.length - 1, { align: 'end' });
-      requestAnimationFrame(() => (el.scrollTop = el.scrollHeight));
-    }
+    if (!el) return;
+    if (stickToBottom.current && renderItems.length > 0) {
+      el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(() => stickToBottom.current && (el.scrollTop = el.scrollHeight));
+    } else syncAway();
   }, [renderItems.length, totalSize, streamingText, permissions.length, virtualizer]);
   // The view shrinks when the message box grows (a long prompt, an attachment, a permission card),
   // and the browser keeps scrollTop without a scroll event, so the last lines slide under the box.
@@ -465,7 +505,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
       item.kind === 'activity' ? item.items.some((i) => messageUuid(i.key) === focusMessage) : messageUuid(item.key) === focusMessage,
     );
     if (index === -1) return;
-    stickToBottom.current = false;
+    follow(false);
     virtualizer.scrollToIndex(index, { align: 'center' });
     // Rows are measured as they render; settle on the exact spot a frame later.
     requestAnimationFrame(() => virtualizer.scrollToIndex(index, { align: 'center' }));
@@ -553,7 +593,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   useEffect(() => {
     const match = matches[findCurrent];
     if (match && revealCurrent.current) {
-      stickToBottom.current = false;
+      follow(false);
       virtualizer.scrollToIndex(match.index, { align: 'center' });
       // Rows are measured as they render: settle a frame later, then find the match in the row.
       requestAnimationFrame(() => {
@@ -690,11 +730,13 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const send = async (text: string, attachments: ImageAttachment[], fork = false, ungated = false, mode?: SendMode): Promise<void | false> => {
     if (!client) throw new Error('Not connected to the engine');
     if (!ungated && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return false;
+    const sentAt = Date.now();
     const result = await client.call('session.send', { sessionId, text, attachments, fork, ...(mode ? { mode } : {}) });
     // A new message moves on from the last side answer: its chip goes.
     dropSideChip(sessionId);
-    // A queued message waits in Up next, so the conversation has nothing new to scroll to.
-    if (!result.queued) stickToBottom.current = true;
+    // A queued message waits in Up next, so the conversation has nothing new to scroll to. The answer
+    // can be well under way by now: if you scrolled up to read it, stay there.
+    if (!result.queued && userScrollAt.current < sentAt) follow(true);
     if (result.sessionId !== sessionId) select(result.sessionId);
   };
 
@@ -954,7 +996,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
               ref={scrollRef}
               onScroll={() => (onScroll(), remember.handlers.onScroll())}
               onContextMenu={remember.handlers.onContextMenu}
-              onWheel={markUserScroll}
+              onWheel={onWheel}
               onTouchMove={markUserScroll}
               onPointerDown={markUserScroll}
               onKeyDown={onScrollKey}
@@ -1028,6 +1070,18 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
               <div ref={tailRef}>
                 <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} />
               </div>
+              {/* Sticks to the bottom of the view while you read further up; takes no room at the end. */}
+              {away && (
+                <div className="pointer-events-none sticky bottom-3 z-10 h-0">
+                  <div className="absolute inset-x-0 bottom-0 flex justify-center">
+                    <span className="overlay pointer-events-auto rounded-md">
+                      <Button variant="quiet" size="sm" icon={<ArrowDown size={13} aria-hidden />} onClick={jumpToLatest} data-jump-to-latest>
+                        {working ? 'New output below' : 'Jump to latest'}
+                      </Button>
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </FileLinksProvider>
           </PromptExpansionContext.Provider>
