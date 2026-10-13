@@ -5,6 +5,7 @@ description: What you see when you open Switchboard for the first time, and how 
 
 import Kbd from '../../../components/Kbd.astro';
 import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -15,6 +16,20 @@ When Switchboard opens, you see the sidebar on the left and Home in the rest of 
 ## Open it
 
 Switchboard opens on Home. You can always go back there with <Kbd shortcut="home" />, the house button at the top of the sidebar, or *Home* in the command palette.
+
+## If Claude Code isn't installed
+
+Switchboard runs sessions with your own Claude Code. When it can't find `claude` on your <Os mac="Mac" windows="PC" />, it opens **Install Claude Code** right away, with the commands to install it (each with a copy button) and a link to the setup guide.
+
+<Steps>
+
+1. Run one of the commands in a terminal.
+2. Run `claude` once in a new terminal and sign in.
+3. Back in Switchboard, choose **Check Again**. When it finds Claude Code, the dialog shows its version and path.
+
+</Steps>
+
+Choose **Not Now** to look around first. Starting a session then fails with *Claude Code isn't installed, or Switchboard can't find it*. To open the dialog again, choose **Install Claude Code…** in Settings → About.
 
 ## What you see
 

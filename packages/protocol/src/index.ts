@@ -26,3 +26,5 @@ export * from './lineTransport.ts';
 export * from './paths.ts';
 export * from './memory.ts';
 export * from './memoryText.ts';
+export * from './sideQuestions.ts';
+export * from './sideQuestionConstants.ts';

@@ -57,6 +57,8 @@ if (scripted) {
   process.env.SWITCHBOARD_NO_CLAUDE_UPDATE = '1';
   // Auto model never calls a real model here: the engine picks from the prompt's words instead.
   process.env.SWITCHBOARD_STUB_ROUTER = '1';
+  // Side questions (/btw) get a made-up answer, so nothing here asks a model.
+  process.env.SWITCHBOARD_STUB_BTW = '1';
 }
 
 // The single-instance lock belongs to the data folder. Development builds keep their own ("Switchboard Dev"), so
@@ -5067,6 +5069,114 @@ async function runSendNowStep(win: BrowserWindow): Promise<string> {
   return `ok: plain ${JSON.stringify(label)} button, no Queue ▾ while Claude isn't working`;
 }
 
+/**
+ * Side questions (/btw) in the smoke session, answered by the engine's stub (SWITCHBOARD_STUB_BTW), so no model is
+ * called and nothing reaches the session: the transcript and Up next must not change. It asks with the Ask button,
+ * never Enter, so a broken token could never send the question as a message.
+ */
+async function runSideQuestionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const pause = () => settle(win);
+  const pane = '[data-current-session]';
+  const box = `document.querySelector('${pane} [data-composer]')`;
+  const has = (selector: string) => `!!document.querySelector('${pane} ${selector}')`;
+  const press = (keyCode: string) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  };
+  const running = await runningSessions();
+  if (!running) return 'could not ask the engine which sessions are running, so none is safe to type in';
+  if (!smokeSessionId || running.ids.has(smokeSessionId)) return 'ok: skipped, no idle smoke session to ask in';
+  await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  if (!(await waitInPage(win, `${box} && !${box}.disabled && ${box}.value === ''`, 5_000))) return 'the smoke session has no empty message box';
+  const transcript = `document.querySelectorAll('${pane} [data-transcript-item]').length`;
+  const before = (await js(transcript)) as number;
+  const typeToken = async (question: string) => {
+    await js(`${box}.focus()`);
+    await win.webContents.insertText(`/btw ${question}`);
+    return waitInPage(win, `${has('[data-btw-token]')} && ${box}.value === ${JSON.stringify(question)} && ${has('[data-composer-ask]')} && !${has('[data-composer-submit]')}`, 2_000);
+  };
+  const ask = async () => {
+    // Only with the token in place: Ask is the only button then, and it never sends a message.
+    if (!(await js(`${has('[data-btw-token]')} && ${has('[data-composer-ask]')}`))) return false;
+    await js(`document.querySelector('${pane} [data-composer-ask]').click()`);
+    return true;
+  };
+  const position = () => js(`document.querySelector('${pane} [data-btw-position]')?.textContent?.trim() ?? ''`) as Promise<string>;
+  const fail = async (why: string) => {
+    await js(`document.querySelector('${pane} [data-btw-close]')?.click()`);
+    return why;
+  };
+
+  // The slash menu offers /btw first for /b.
+  await js(`${box}.focus()`);
+  await win.webContents.insertText('/b');
+  if (!(await waitInPage(win, `document.querySelector('${pane} [data-palette] [role=option]')?.textContent?.startsWith('/btw')`, 3_000))) return 'the slash menu did not offer /btw first for /b';
+  press('Escape');
+  press('Backspace');
+  press('Backspace');
+  if (!(await waitInPage(win, `${box}.value === ''`, 1_000))) return 'could not empty the message box after /b';
+
+  // The token, and Backspace taking it out.
+  if (!(await typeToken(''))) return '"/btw " did not become the token with Ask in place of Send';
+  const blue = (await js(`!!document.querySelector('${pane} [data-side-question]')`)) as boolean;
+  press('Backspace');
+  if (!(await waitInPage(win, `!${has('[data-btw-token]')} && ${has('[data-composer-submit]')}`, 1_000))) return 'Backspace on an empty question did not take the token out';
+  if (!blue) return 'the message box did not get the side question frame';
+
+  // A bare /btw before any was asked: how to ask one.
+  await typeToken('');
+  await ask();
+  if (!(await waitInPage(win, `document.querySelector('${pane} [data-btw-panel]')?.dataset.btwPanel === 'usage'`, 2_000))) return 'a bare /btw did not show how to ask one';
+  if (await js(has('[data-btw-copy], [data-btw-prev]'))) return await fail('the usage panel has Copy or the arrows');
+  await js(`document.querySelector('${pane} [data-btw-close]').click()`);
+
+  // Ask, and the stubbed answer shows in the panel.
+  if (!(await typeToken('Which flag did we use for the beta publish?'))) return 'could not type a side question';
+  await ask();
+  if (!(await waitInPage(win, `document.querySelector('${pane} [data-btw-answer="done"]')?.textContent?.includes('--cleanStart')`, 10_000))) return await fail('the side answer did not come in');
+  if (((await js(`${box}.value`)) as string) !== '' || (await js(has('[data-btw-token]')))) return await fail('the message box kept the question or the token after asking');
+  await pause();
+
+  // A second one, hidden with Esc while it answers: the chip says so, and brings it back once it is ready.
+  await typeToken('What changed since the last commit?');
+  await ask();
+  if (!(await waitInPage(win, has('[data-btw-answering]'), 3_000))) return await fail('no Answering while the second answer came in');
+  await js(`${box}.focus()`);
+  press('Escape');
+  if (!(await waitInPage(win, `!${has('[data-btw-panel]')} && document.querySelector('${pane} [data-btw-chip]')?.dataset.btwChip === 'answering'`, 2_000)))
+    return await fail('Esc did not hide the panel and leave an Answering chip');
+  if (!(await waitInPage(win, `document.querySelector('${pane} [data-btw-chip]')?.dataset.btwChip === 'done'`, 10_000))) return 'the chip did not say the side answer was ready';
+  await js(`document.querySelector('${pane} [data-btw-chip]').click()`);
+  if (!(await waitInPage(win, `document.querySelector('${pane} [data-btw-answer="done"]')?.textContent?.includes('scheduler') && !${has('[data-btw-chip]')}`, 2_000))) return await fail('the chip did not bring the answer back');
+
+  // ‹ › move through them, Copy copies.
+  const last = await position();
+  await js(`document.querySelector('${pane} [data-btw-prev]').click()`);
+  await pause();
+  const first = await position();
+  await js(`document.querySelector('${pane} [data-btw-next]').click()`);
+  await pause();
+  const back = await position();
+  await js(`document.querySelector('${pane} [data-btw-copy]').click()`);
+  const copied = await waitInPage(win, `document.querySelector('${pane} [data-btw-copy]')?.dataset.btwCopy === 'copied'`, 2_000);
+  await js(`document.querySelector('${pane} [data-btw-close]').click()`);
+  if (last !== '2 of 2' || first !== '1 of 2' || back !== '2 of 2') return `‹ › went ${last} → ${first} → ${back}`;
+  if (!copied) return 'Copy did not say Copied';
+
+  // A bare /btw now opens the latest one.
+  await typeToken('');
+  await ask();
+  const latest = (await waitInPage(win, `document.querySelector('${pane} [data-btw-panel]')?.dataset.btwPanel === 'item'`, 2_000)) && (await position()) === '2 of 2';
+  await js(`document.querySelector('${pane} [data-btw-close]')?.click()`);
+  if (!latest) return 'a bare /btw did not open the latest side question';
+
+  const after = (await js(transcript)) as number;
+  if (after !== before) return `the transcript changed: ${before} items, then ${after}`;
+  if (await js(has('[data-queue-item]'))) return 'a side question went into Up next';
+  return `ok: /btw first for /b, token and Backspace, usage, two answers (one hidden with Esc, back from the chip), ‹ › and Copy; transcript unchanged at ${before} items`;
+}
+
 async function runHistoryStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const pause = () => settle(win);
@@ -5539,6 +5649,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('drop target', () => runDropStep(win));
   await step('prompt history', () => runHistoryStep(win));
   await step('send now only while Claude works', () => runSendNowStep(win));
+  await step('side questions with /btw, nothing added to the conversation', () => runSideQuestionStep(win));
   await step('controls', () => runControlsStep(win));
   await step('sidebar states', () => runSidebarStatesStep(win));
   await step('new session view', () => runNewSessionStep(win));

@@ -15,6 +15,7 @@ export const sidebar = [
       'sessions/sidebar',
       'sessions/states',
       'sessions/conversation',
+      'sessions/side-questions',
       'sessions/home',
       'sessions/search',
       'sessions/split-view',

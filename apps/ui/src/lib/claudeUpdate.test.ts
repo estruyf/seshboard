@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClaudeUpdateState } from '@switchboard/protocol/client';
-import { claudeUpdateStatusText, claudeUpdateToast } from './claudeUpdate.ts';
+import { claudeInstallOptions, claudeUpdateStatusText, claudeUpdateToast } from './claudeUpdate.ts';
 
 const base: ClaudeUpdateState = {
   status: 'available',
@@ -51,5 +51,14 @@ describe('claudeUpdateStatusText', () => {
     expect(claudeUpdateStatusText({ ...base, status: 'updated', updatedTo: '2.2.0' })).toContain('New sessions use it');
     expect(claudeUpdateStatusText({ ...base, channel: 'stable' })).toBe('Version 2.2.0 is available on the stable channel.');
     expect(claudeUpdateStatusText({ ...base, status: 'error', error: 'offline' })).toBe('offline');
+  });
+});
+
+describe('claudeInstallOptions', () => {
+  it('offers the native installer first, with the platform’s own package manager', () => {
+    expect(claudeInstallOptions('darwin').map((o) => o.label)).toEqual(['Native installer', 'Homebrew', 'npm (Node.js 18 or newer)']);
+    expect(claudeInstallOptions('win32')[0]!.command).toBe('irm https://claude.ai/install.ps1 | iex');
+    expect(claudeInstallOptions('win32').map((o) => o.label)).toContain('WinGet');
+    expect(claudeInstallOptions('linux').map((o) => o.label)).toEqual(['Native installer', 'npm (Node.js 18 or newer)']);
   });
 });

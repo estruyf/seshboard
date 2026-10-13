@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type TranscriptUpdate } from '@switchboard/protocol';
+import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type SideQuestionEvent, type TranscriptUpdate } from '@switchboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine } from './engine.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
@@ -38,6 +38,7 @@ function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?:
     setModel: async () => {},
     supportedCommands: async () => [],
     supportedModels: async () => [],
+    askSideQuestion: async (question: string) => ({ response: `It was --cleanStart (${question})`, synthetic: false }),
   });
   return {
     query: ({ options }) => {
@@ -250,6 +251,33 @@ describe('engine over a MessagePort', () => {
       { type: 'text', text: 'Done.' },
     ]);
     await client.call('transcript.unwatch', { sessionId: SESSION_ID });
+  });
+
+  it('answers a side question and keeps it, with nothing added to the transcript or the session file', async () => {
+    const created: Array<{ cwd?: string }> = [];
+    const { client, projectDir } = connect({ sdk: fakeSdk(created) });
+    await new Promise((resolve) => client.on('sessions.changed', resolve));
+    const file = join(projectDir, `${SESSION_ID}.jsonl`);
+    const before = readFileSync(file, 'utf8');
+    const events: SideQuestionEvent[] = [];
+    client.on('session.btw', (event) => events.push(event));
+
+    const { id } = await client.call('session.btw', { sessionId: SESSION_ID, question: 'Which flag?' });
+    await expect.poll(() => events.some((e) => e.id === id && e.done)).toBe(true);
+    expect(events).toEqual([
+      { sessionId: SESSION_ID, id, delta: 'It was --cleanStart (Which flag?)' },
+      { sessionId: SESSION_ID, id, done: true },
+    ]);
+    // Answered by a short-lived copy in the session's folder; the session itself wasn't started.
+    expect(created).toEqual([{ cwd: PARSER, model: undefined, permissionMode: undefined }]);
+    expect((await client.call('hosts.list', {})).hosts).toEqual([]);
+    const list = await client.call('session.btwList', { sessionId: SESSION_ID });
+    expect(list).toMatchObject({ unsupported: false, items: [{ id, question: 'Which flag?', answer: 'It was --cleanStart (Which flag?)' }] });
+
+    const { messages } = await client.call('transcript.get', { sessionId: SESSION_ID });
+    expect(messages.map((m) => m.uuid)).toEqual(['u1', 'a1']);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+    await expect(client.call('session.btw', { sessionId: SESSION_ID, question: '   ' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
   });
 
   it('renames a session through Claude Code and sends the new title at once', async () => {

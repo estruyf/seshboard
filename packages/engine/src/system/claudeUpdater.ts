@@ -115,10 +115,11 @@ export class ClaudeUpdater {
     return this.current;
   }
 
-  /** Schedules the automatic checks. */
+  /** Looks for `claude` right away (so a missing install shows at launch, also with checks off), then schedules the automatic checks. */
   start(): void {
     void this.options.ready.then(() => {
       if (this.closed) return;
+      if (!reduce.isBusy(this.current)) void this.refreshInstall();
       const first = setTimeout(() => this.automatic(), FIRST_CHECK_DELAY_MS);
       const every = setInterval(() => this.automatic(), CHECK_INTERVAL_MS);
       first.unref?.();

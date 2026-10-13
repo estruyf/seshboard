@@ -20,6 +20,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
 import { InputQueue } from './inputQueue.ts';
+import { askSideQuestion, type SideAnswer, type SideExchange } from './sideQuestions.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** Starts the Claude Code process for a host. Real hosts use the SDK's `query()` (or a pre-warmed one). */
@@ -65,6 +66,17 @@ export interface HostConfig {
   env: Record<string, string>;
   claudePath: string | undefined;
   canUseTool: CanUseTool;
+}
+
+/** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
+export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Switchboard can’t find it. Install it, then try again.';
+
+/**
+ * Without a `claude` of the user's, the SDK falls back to a native binary it doesn't ship with Switchboard and fails
+ * with "Native CLI binary for darwin-arm64 not found. Reinstall @anthropic-ai/claude-agent-sdk": say what's really wrong.
+ */
+export function failureMessage(message: string, claudePath: string | undefined): string {
+  return claudePath === undefined && /native cli binary .*not found/i.test(message) ? CLAUDE_MISSING_MESSAGE : message;
 }
 
 const STATE_FROM_SDK: Record<string, HostState> = { running: 'running', requires_action: 'needs-you', idle: 'idle' };
@@ -391,6 +403,16 @@ export class SessionHost {
     };
   }
 
+  /**
+   * A side question on this process: Claude Code answers it beside the turn (if one runs), without tools, and writes
+   * nothing to the session. It isn't a message, so it never goes through the input, Up next or the status.
+   */
+  async askSideQuestion(question: string, history: SideExchange[]): Promise<SideAnswer> {
+    const query = await this.query;
+    if (!query) throw new Error('This session is not running');
+    return askSideQuestion(query, question, history);
+  }
+
   async interrupt(): Promise<void> {
     // Stopping Claude is not a reason to fire off what is queued, so it waits for you.
     if (this.busy) this.holdQueue('stopped');
@@ -464,7 +486,7 @@ export class SessionHost {
   }
 
   private fail(error: unknown): void {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = failureMessage(error instanceof Error ? error.message : String(error), this.config.claudePath);
     this.events.log('error', `Session ${this.sessionId} failed: ${message}`);
     this.initReject(new Error(message));
     this.update({ state: 'error', error: message, ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
