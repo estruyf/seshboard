@@ -791,7 +791,12 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
       await js(`document.querySelector('${view} [data-composer-submit]').click()`);
       const session = '[data-current-session]';
       const opened = `document.querySelector('${session} [data-auto-choosing]')?.innerText.includes('Auto is choosing a model') && [...document.querySelectorAll('${session} [data-item-kind="user"]')].some((el) => el.innerText.includes('[smoke: hold]'))`;
-      if (!(await waitInPage(win, opened, 5_000))) return 'Start on Auto did not open the session with the prompt and Auto is choosing a model…';
+      if (!(await waitInPage(win, opened, 5_000))) {
+        const seen = await js(
+          `JSON.stringify({ newSession: !!document.querySelector('${view}'), session: document.querySelector('${session}')?.dataset.currentSession ?? null, choosing: document.querySelector('${session} [data-auto-choosing]')?.innerText ?? null, streaming: document.querySelector('${session} [data-streaming]')?.innerText ?? null, userItems: [...document.querySelectorAll('${session} [data-item-kind="user"]')].map((el) => el.innerText.slice(0, 60)), toasts: [...document.querySelectorAll('[data-toast]')].map((t) => t.innerText) })`,
+        ).catch(() => 'unknown');
+        return `Start on Auto did not open the session with the prompt and Auto is choosing a model…: ${seen}`;
+      }
       await shot(win, 'auto-model-choosing.png');
       await js(`document.querySelector('${session} [data-more-menu]').click()`);
       if (!(await waitInPage(win, "document.querySelector('[data-stop-session]:not(:disabled)')", 3_000))) return 'no Stop session while Auto was choosing';
@@ -2015,8 +2020,8 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   // The command palette's New session needs a project: this is the one moment the throwaway profile has one.
   await smokeRun.step('command palette, new session', () => runPaletteNewSessionStep(win), { cleanup: false });
   await smokeRun.step('unsent New session prompt', () => runUnsentNewSessionStep(win), { cleanup: false });
-  // Here New session has a folder (the project just added), so Esc while choosing can be checked too.
-  await smokeRun.step('auto model: menu, chip, Esc while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
+  // Here New session has a folder (the project just added), so starting while Auto chooses can be checked too.
+  await smokeRun.step('auto model: menu, chip, Stop while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
 
   await click('[data-open-projects]');
@@ -3502,6 +3507,8 @@ async function runNewSessionStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelectorAll('[data-menu=\"mode\"] [role=menuitemradio]').length >= 4", 2_000))) return 'the permission menu did not open';
   await shot(win, 'new-session-view.png');
   escape();
+  // A click while the menu is still closing can land on its way out, and the effort menu never opens.
+  if (!(await waitInPage(win, "!document.querySelector('[data-menu=\"mode\"]')", 2_000))) return 'Escape did not close the permission menu';
   // Put back the effort it had (the default, usually), so the remembered defaults are as they were.
   if (!(await chooseChoice(win, 'effort', effortBefore, '[data-new-session-view]'))) return 'could not put the effort back';
   // ⌘N while already on New session puts the cursor back in the prompt.
@@ -3661,6 +3668,10 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-folder-select]')?.dataset.value === '' && document.querySelector('[data-route-hint]')?.innerText.includes('switchboard-smoke/no-such-repo')", 20_000))) {
     return `a repo without a checkout did not leave the folder empty (${String(await js("document.querySelector('[data-route-hint]')?.innerText"))})`;
   }
+  // Empty the prompt the links left: kept, it would count as an unsent New session prompt 2s later, and put a pen on
+  // the + button that later steps check for.
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  if (!(await waitInPage(win, `${composer}?.value === ''`, 2_000))) return 'could not empty the prompt the links left';
 
   if (!smokeSessionId) return 'ok: filled in folder and prompt, refused a bad link, empty folder for an unknown repo (no session to open)';
   openDeepLink(`switchboard://session/${smokeSessionId}`);
@@ -3760,7 +3771,13 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
       await js(`${tray}?.querySelector('[data-context-chip-remove]')?.click()`);
       if (!(await waitInPage(win, `${chips} === ${left - 1}`, 2_000))) return `removing a chip did not take it away (${String(await js(chips))} left of ${left})`;
     }
-    if (!(await waitInPage(win, `!${tray} && !document.querySelector('[data-new-session-draft]')`, 3_000))) return `removing the chips left ${(await js(`${tray}`)) ? 'the tray' : 'an unsent New session prompt'} behind`;
+    if (!(await waitInPage(win, `!${tray} && !document.querySelector('[data-new-session-draft]')`, 3_000))) {
+      if (await js(`!!${tray}`)) return 'removing the chips left the tray behind';
+      const left = await js(
+        `JSON.stringify({ pen: document.querySelector('[data-new-session-draft]')?.dataset.newSessionDraft ?? null, thisFolder: ${JSON.stringify(folder)}, box: document.querySelector('[data-new-session-view] [data-composer]')?.value ?? null })`,
+      );
+      return `removing the chips left an unsent New session prompt behind: ${left}`;
+    }
 
     // Settings › VS Code counts this step's socket as a connected editor and links to the extension.
     await js("document.querySelector('[data-open-settings]').click()");
@@ -4764,6 +4781,10 @@ async function runHistoryStep(win: BrowserWindow): Promise<string> {
   await js(`${box}.focus()`);
   await win.webContents.insertText(draft);
   await pause();
+  // In your own text ↑ first takes the caret to the start of the box, as in any text field; the next ↑ steps.
+  press('Up');
+  const toStart = await waitInPage(win, `${box}.selectionStart === 0 && ${box}.value === ${JSON.stringify(draft)}`, 2_000);
+  await pause();
   press('Up');
   const recalled = await waitInPage(win, `${box}.value !== ${JSON.stringify(draft)}`, 2_000);
   const afterUp = (await js(`({ value: ${box}.value, said: document.querySelector('[data-current-session] [data-history-announcer]')?.textContent ?? '', total: Number(${box}.dataset.history) })`)) as {
@@ -4783,7 +4804,8 @@ async function runHistoryStep(win: BrowserWindow): Promise<string> {
   const left = (await js(`${box}.value`)) as string;
   if (smokeSessionId) await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
 
-  if (!recalled || !afterUp.value.trim()) return '↑ on the first line did not bring back the last message';
+  if (!toStart) return '↑ at the end of a draft did not take the caret to the start of the box first';
+  if (!recalled || !afterUp.value.trim()) return '↑ at the start of the box did not bring back the last message';
   if (afterUp.said.trim() !== `Earlier message 1 of ${afterUp.total}`) return `↑ announced ${JSON.stringify(afterUp.said)}`;
   if (!restored) return `↓ did not put the draft back (${JSON.stringify(afterDown.value.slice(0, 60))})`;
   if (afterDown.said.trim() !== 'Back to your draft') return `↓ announced ${JSON.stringify(afterDown.said)}`;
