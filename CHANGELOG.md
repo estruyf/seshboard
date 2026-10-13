@@ -18,6 +18,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Usage**: in % used over time, the labels at the end of the lines no longer overlap when two windows are close, such as Weekly and Session.
 - Sending a very long message no longer fails with "Invalid params for session.create". A message can now hold up to 1,000,000 characters, and the message box says so when it is longer. A paste that is longer than that is not put in the box; drop the file instead.
 - The first message you send in a session you just opened no longer leaves the "Working…" line hidden under the message box.
+- **Worktrees** and **Branches**: a long label such as "PR #2004 merged" is cut short to fit its column instead of running into the size next to it.
 
 ## [0.0.15] - 2026-10-12
 
