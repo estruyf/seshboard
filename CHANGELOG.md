@@ -23,6 +23,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Run** on a command in the conversation runs it the first time too. When the session had no terminal yet, the command was typed into the new shell before your shell config (prompt theme, plugins) had loaded, and was dropped. Switchboard now waits until the shell is ready, a few seconds at most. **Run gh auth login** in the pull request dialog waits the same way.
 - **Claude Code not installed.** When Switchboard can't find Claude Code, it now says so when it opens: **Install Claude Code** shows the commands to install it for your system, how to sign in, and **Check Again** to pick it up without restarting. Starting a session without it says *Claude Code isn't installed, or Switchboard can't find it* instead of "Native CLI binary for darwin-arm64 not found". Settings → About has **Install Claude Code…** while it's missing.
 - **Queue keeps added files.** A file, folder or pasted text you added to a new session stays a chip when you add the session to the queue and open it again, instead of turning into an `@` mention in the text.
 - **Export includes Claude profiles.** Export settings has a **Claude profiles** option: your profiles with their folders, colours and defaults for new sessions, the default profile and which projects use which. Import adds them back (signing in again is still needed; logins are never in the file).
@@ -56,7 +57,6 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Unarchive** now brings back a session that was archived because it was quiet for a while. It stays in the main list until it has new activity.
 - Menus and dropdowns now open over toasts, so a toast no longer covers their bottom items.
-- **Run** on a command in the conversation runs it the first time too. When the session had no terminal yet, the command was typed into the new shell before your shell config (prompt theme, plugins) had loaded, and was dropped. Switchboard now waits until the shell is ready, a few seconds at most. **Run gh auth login** in the pull request dialog waits the same way.
 - ↑ in the message box first takes the caret to the start of your text, and only the next ↑ brings back an earlier message. ↓ goes to the end first in the same way. Before, ↑ anywhere on the first line jumped straight to the earlier message.
 
 ## [0.0.14] - 2026-10-11
