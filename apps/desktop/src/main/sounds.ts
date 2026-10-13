@@ -1,31 +1,36 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SoundList } from '@switchboard/protocol/bridge';
+import { SOUND_EVENTS, type SoundEvent, type SoundList } from '@switchboard/protocol/bridge';
 
-/** Where each platform keeps its system sounds, their file type, and the ones a missing choice falls back to. */
-const SYSTEM_SOUNDS: Record<string, { dir: () => string; extension: string; fallback: SoundList['fallback'] }> = {
-  darwin: { dir: () => '/System/Library/Sounds', extension: '.aiff', fallback: { complete: 'Glass', needsInput: 'Ping' } },
+/**
+ * Where each platform keeps its system sounds, their file type, and the ones a missing choice falls back to. A
+ * project action that ends has no sound on a new install; one picked elsewhere plays like a finished turn.
+ */
+const SYSTEM_SOUNDS: Record<string, { dir: () => string; extension: string; fallback: Record<SoundEvent, string> }> = {
+  darwin: { dir: () => '/System/Library/Sounds', extension: '.aiff', fallback: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Glass' } },
   win32: {
     dir: () => join(process.env.SystemRoot ?? process.env.windir ?? 'C:\\Windows', 'Media'),
     extension: '.wav',
-    fallback: { complete: 'Windows Notify System Generic', needsInput: 'Windows Notify Messaging' },
+    fallback: { needsYou: 'Windows Notify Messaging', finished: 'Windows Notify System Generic', error: 'Windows Critical Stop', actionEnded: 'Windows Notify System Generic' },
   },
 };
 
+const NO_FALLBACK: SoundList['fallback'] = { needsYou: null, finished: null, error: null, actionEnded: null };
+
 /**
  * The sounds in a system sounds folder (its file names), by name and sorted. A fallback this computer lacks
- * becomes its first sound, so a kind always plays something while there are any.
+ * becomes its first sound, so a moment always plays something while there are any.
  */
 export function soundListFrom(files: string[], platform: string): SoundList {
   const system = SYSTEM_SOUNDS[platform];
-  if (!system) return { sounds: [], fallback: { complete: null, needsInput: null } };
+  if (!system) return { sounds: [], fallback: NO_FALLBACK };
   const sounds = files
     .filter((file) => file.toLowerCase().endsWith(system.extension))
     .map((file) => file.slice(0, -system.extension.length))
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   const pick = (name: string | null) => (name && sounds.includes(name) ? name : (sounds[0] ?? null));
-  return { sounds, fallback: { complete: pick(system.fallback.complete), needsInput: pick(system.fallback.needsInput) } };
+  return { sounds, fallback: Object.fromEntries(SOUND_EVENTS.map((event) => [event, pick(system.fallback[event])])) as SoundList['fallback'] };
 }
 
 /**

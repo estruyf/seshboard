@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import type { HTMLAttributes, ReactNode, Ref } from 'react';
 import { Button } from './Button.tsx';
 
-export type NoticeTone = 'neutral' | 'info' | 'accent' | 'warn' | 'error' | 'success';
+export type NoticeTone = 'neutral' | 'info' | 'accent' | 'caution' | 'warn' | 'error' | 'success';
 
 const BOX: Record<NoticeTone, string> = {
   // The edge colour, so the quiet box stays visible on dialogs as well as on the app's background.
@@ -11,16 +11,19 @@ const BOX: Record<NoticeTone, string> = {
   info: 'border-link/40 bg-link/8 text-text',
   // A limit reached (the focus limit in New session): the readable yellow frame, not a warning.
   accent: 'border-accent-ink/45 bg-accent/6 text-text',
+  // Something outside Switchboard stops a feature (notifications turned off in the system's settings).
+  caution: 'border-caution/40 bg-caution/8 text-text',
   warn: 'border-warn/40 bg-warn/10 text-text',
   error: 'border-error/40 bg-error/10 text-error',
   success: 'border-ok/40 bg-ok/10 text-text',
 };
-const ICON: Record<NoticeTone, string> = { neutral: 'text-muted', info: 'text-link', accent: 'text-accent-ink', warn: 'text-warn', error: 'text-error', success: 'text-ok' };
+const ICON: Record<NoticeTone, string> = { neutral: 'text-muted', info: 'text-link', accent: 'text-accent-ink', caution: 'text-caution', warn: 'text-warn', error: 'text-error', success: 'text-ok' };
 
 interface NoticeProps extends Omit<HTMLAttributes<HTMLDivElement>, 'role'> {
   /**
    * `neutral` (the default) for a quiet note or an empty state; `info` for something worth reading you
-   * didn't ask about; `accent` for a limit you reached (the focus limit); `warn` for something that needs you.
+   * didn't ask about; `accent` for a limit you reached (the focus limit); `caution` for something turned off
+   * outside Switchboard that stops a feature; `warn` for something that needs you.
    */
   tone?: NoticeTone;
   /** Before the message, in the tone's colour (a class on the icon itself wins). */

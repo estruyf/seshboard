@@ -59,6 +59,9 @@ export const IpcChannel = {
   focusWindow: "switchboard:focus-window",
   listSounds: "switchboard:list-sounds",
   playSound: "switchboard:play-sound",
+  notificationPermission: "switchboard:notification-permission",
+  openNotificationSettings: "switchboard:open-notification-settings",
+  testNotification: "switchboard:test-notification",
 } as const;
 
 /** Appearance: follow macOS, or always light or dark. */
@@ -100,6 +103,39 @@ export const FOCUS_LIMIT_DEFAULT = 3;
  */
 export type GithubStar = "ask" | "done";
 
+/**
+ * The moments that can play a sound: Claude needs you (a permission, a question or a plan), finished a turn,
+ * stopped with an error, and a project action that ended.
+ */
+export type SoundEvent = "needsYou" | "finished" | "error" | "actionEnded";
+export const SOUND_EVENTS: readonly SoundEvent[] = ["needsYou", "finished", "error", "actionEnded"];
+/** What a moment set to no sound saves. */
+export const NO_SOUND = "none";
+/** A system sound's name, or `none`. */
+export type SoundChoice = string;
+
+/** A system notification when Claude needs you, finishes or stops with an error, and when a project action ends. The badge shows either way. */
+export interface NotificationPrefs {
+  enabled: boolean;
+}
+
+export interface SoundPrefs {
+  /** Off keeps the choices below, so turning sounds on again brings them back. */
+  enabled: boolean;
+  /** Each moment's sound: a system sound's name, or `none`. */
+  byEvent: Record<SoundEvent, SoundChoice>;
+  /** 0 to 1, for every sound. */
+  volume: number;
+}
+
+export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { enabled: true };
+export const DEFAULT_SOUNDS: SoundPrefs = {
+  enabled: false,
+  // macOS names; another computer that lacks them plays its own fallback (`resolveSound`).
+  byEvent: { needsYou: "Ping", finished: "Glass", error: "Basso", actionEnded: NO_SOUND },
+  volume: 0.5,
+};
+
 /** App preferences, kept by main in the app's data folder. */
 export interface Preferences {
   colorScheme: ColorScheme;
@@ -132,16 +168,10 @@ export interface Preferences {
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
   githubStar: GithubStar;
-  /** A system notification when a session needs you, finishes or fails, or a project action ends. The badge shows either way. */
-  notifications: boolean;
-  /** Play a sound for the same events, with or without the notification. */
-  sounds: boolean;
-  /** When Claude finishes a turn or stops with an error, or a project action ends: a system sound's name, or null for none. */
-  soundComplete: string | null;
-  /** When Claude asks for a permission, has a question or a plan: a system sound's name, or null for none. */
-  soundNeedsInput: string | null;
-  /** 0 to 1, for both sounds. */
-  soundVolume: number;
+  /** Settings › Notifications: system notifications, separate from the sounds. */
+  notifications: NotificationPrefs;
+  /** Settings › Notifications: a sound per moment, with or without the notification. */
+  sounds: SoundPrefs;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -165,21 +195,14 @@ export const DEFAULT_PREFERENCES: Preferences = {
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
   githubStar: "ask",
-  notifications: true,
-  sounds: false,
-  // macOS names; another computer that lacks them plays its own fallback (`resolveSound`).
-  soundComplete: "Glass",
-  soundNeedsInput: "Ping",
-  soundVolume: 0.5,
+  notifications: DEFAULT_NOTIFICATIONS,
+  sounds: DEFAULT_SOUNDS,
 };
 
-/** Which of the two sounds an event plays. */
-export type SoundKind = "complete" | "needsInput";
-
-/** The sounds this computer has to pick from (its system sounds), and what each kind plays when the saved one is missing. */
+/** The sounds this computer has to pick from (its system sounds), and what each moment plays when the saved one is missing. */
 export interface SoundList {
   sounds: string[];
-  fallback: Record<SoundKind, string | null>;
+  fallback: Record<SoundEvent, string | null>;
 }
 
 /** A sound's name: a system sound's file name without its extension ("Glass", "Windows Notify Messaging"). */
@@ -187,12 +210,65 @@ export const isSoundId = (value: unknown): value is string =>
   typeof value === "string" && /^[A-Za-z0-9][\w .()'-]{0,63}$/.test(value);
 
 /**
- * The sound a saved choice plays here: itself when this computer has it, otherwise the kind's fallback (a
+ * The sound a saved choice plays here: itself when this computer has it, otherwise the moment's fallback (a
  * Mac's "Glass" on Windows, after an import). None stays none.
  */
-export function resolveSound(id: string | null, list: SoundList, kind: SoundKind): string | null {
-  if (id === null) return null;
-  return list.sounds.includes(id) ? id : list.fallback[kind];
+export function resolveSound(id: SoundChoice | null, list: SoundList, event: SoundEvent): string | null {
+  if (id === null || id === NO_SOUND) return null;
+  return list.sounds.includes(id) ? id : list.fallback[event];
+}
+
+const clampVolume = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, Math.round(value * 100) / 100)) : null;
+/** A saved sound: a name, or `none` (null before, in the settings from before a sound per moment). */
+const soundChoice = (value: unknown): SoundChoice | undefined =>
+  value === null || value === NO_SOUND ? NO_SOUND : isSoundId(value) ? value : undefined;
+
+/**
+ * The sounds, from what is saved. The settings from before a sound per moment (`sounds: true`, `soundComplete`,
+ * `soundNeedsInput`, `soundVolume`) become the same sounds: Needs input is Needs you, and Session complete is
+ * Finished, Stopped with an error and Project action ended, which all played it. Undefined when nothing is saved.
+ */
+function sanitizeSounds(raw: Record<string, unknown>): SoundPrefs | undefined {
+  const legacy = typeof raw.sounds === "boolean" || "soundComplete" in raw || "soundNeedsInput" in raw || "soundVolume" in raw;
+  if (legacy && (raw.sounds === undefined || typeof raw.sounds === "boolean")) {
+    const complete = soundChoice(raw.soundComplete) ?? "Glass";
+    return {
+      enabled: typeof raw.sounds === "boolean" ? raw.sounds : DEFAULT_SOUNDS.enabled,
+      byEvent: { needsYou: soundChoice(raw.soundNeedsInput) ?? "Ping", finished: complete, error: complete, actionEnded: complete },
+      volume: clampVolume(raw.soundVolume) ?? DEFAULT_SOUNDS.volume,
+    };
+  }
+  const sounds = raw.sounds as Record<string, unknown> | null | undefined;
+  if (typeof sounds !== "object" || sounds === null) return undefined;
+  const byEvent = (typeof sounds.byEvent === "object" && sounds.byEvent !== null ? sounds.byEvent : {}) as Record<string, unknown>;
+  // A field that is missing or wrong keeps its default; the rest stay as saved.
+  return {
+    enabled: typeof sounds.enabled === "boolean" ? sounds.enabled : DEFAULT_SOUNDS.enabled,
+    byEvent: Object.fromEntries(SOUND_EVENTS.map((event) => [event, soundChoice(byEvent[event]) ?? DEFAULT_SOUNDS.byEvent[event]])) as SoundPrefs["byEvent"],
+    volume: clampVolume(sounds.volume) ?? DEFAULT_SOUNDS.volume,
+  };
+}
+
+/** A change to the preferences: like the preferences, but the notification and sound settings may name only some fields. */
+export type PreferencesPatch = Partial<Omit<Preferences, "notifications" | "sounds">> & {
+  notifications?: Partial<NotificationPrefs>;
+  sounds?: Partial<Omit<SoundPrefs, "byEvent">> & { byEvent?: Partial<SoundPrefs["byEvent"]> };
+};
+
+/**
+ * Applies a change to the preferences (unvalidated; sanitize the result). The notification and sound settings
+ * merge field by field, so `{ sounds: { enabled: false } }` keeps every sound.
+ */
+export function mergePreferences(current: Preferences, patch: unknown): Record<string, unknown> {
+  const raw = (patch ?? {}) as Record<string, unknown>;
+  const object = (value: unknown) => (typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null);
+  const merged: Record<string, unknown> = { ...current, ...raw };
+  const notifications = object(raw.notifications);
+  if (notifications) merged.notifications = { ...current.notifications, ...notifications };
+  const sounds = object(raw.sounds);
+  if (sounds) merged.sounds = { ...current.sounds, ...sounds, byEvent: { ...current.sounds.byEvent, ...object(sounds.byEvent) } };
+  return merged;
 }
 
 /** A theme id: lower-case letters, digits and dashes (built-in ids and the file names of imported themes). */
@@ -256,12 +332,12 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (autoModel) out.autoModel = autoModel;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
     out.githubStar = raw.githubStar;
-  if (typeof raw.notifications === "boolean") out.notifications = raw.notifications;
-  if (typeof raw.sounds === "boolean") out.sounds = raw.sounds;
-  if (raw.soundComplete === null || isSoundId(raw.soundComplete)) out.soundComplete = raw.soundComplete;
-  if (raw.soundNeedsInput === null || isSoundId(raw.soundNeedsInput)) out.soundNeedsInput = raw.soundNeedsInput;
-  if (typeof raw.soundVolume === "number" && Number.isFinite(raw.soundVolume))
-    out.soundVolume = Math.min(1, Math.max(0, Math.round(raw.soundVolume * 100) / 100));
+  // Before notifications and sounds had a card each, Show notifications was a plain switch.
+  if (typeof raw.notifications === "boolean") out.notifications = { enabled: raw.notifications };
+  else if (typeof (raw.notifications as NotificationPrefs | null)?.enabled === "boolean")
+    out.notifications = { enabled: (raw.notifications as NotificationPrefs).enabled };
+  const sounds = sanitizeSounds(raw);
+  if (sounds) out.sounds = sounds;
   return out;
 }
 
@@ -443,7 +519,7 @@ export interface SwitchboardBridge {
   /** Read once when the page loads, so the first paint already uses them. */
   readonly preferences: Preferences;
   /** Applies at once (the colour scheme flips prefers-color-scheme) and is remembered. */
-  setPreferences(patch: Partial<Preferences>): void;
+  setPreferences(patch: PreferencesPatch): void;
   /** Fires in every window after any change, including from the menu bar. */
   onPreferencesChanged(
     listener: (preferences: Preferences) => void,
@@ -494,4 +570,13 @@ export interface SwitchboardBridge {
   listSounds(): Promise<SoundList>;
   /** Plays a sound once at a volume (0 to 1), to try it. Only sounds from `listSounds`. */
   playSound(id: string, volume: number): void;
+  /** Whether the system lets Switchboard show notifications (System Settings, or Windows settings). */
+  notificationPermission(): Promise<NotificationPermission>;
+  /** Opens the system's notification settings, at Switchboard where the system allows. */
+  openNotificationSettings(): void;
+  /** Shows one notification like a Needs you one, with its sound when sounds are on. */
+  testNotification(): void;
 }
+
+/** `blocked`: notifications are turned off for Switchboard (or for every app) in the system's settings. `unknown` when it can't be told. */
+export type NotificationPermission = "allowed" | "blocked" | "unknown";

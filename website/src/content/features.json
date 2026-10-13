@@ -1802,6 +1802,21 @@
       "page": "sessions/states"
     },
     {
+      "id": "feature:notifications-blocked",
+      "name": "Notice when the system turns notifications off",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "feature:sound-per-moment",
+      "name": "A sound per moment, with preview",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "feature:test-notification",
+      "name": "Send a test notification",
+      "page": "settings/notifications"
+    },
+    {
       "id": "feature:open-in",
       "name": "Open in",
       "page": "sessions/conversation"

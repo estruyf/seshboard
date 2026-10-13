@@ -29,6 +29,8 @@ export interface SelectProps<T extends string> {
   placeholder?: string;
   /** Extra attributes for the button, e.g. `{ 'data-model-select': true }` for the smoke test. */
   dataAttrs?: Record<`data-${string}`, string | boolean | undefined>;
+  /** An option was highlighted in the open list, by the pointer or the keys (not when the list opens): to preview it, such as playing a sound. */
+  onHighlight?(value: T): void;
 }
 
 /**
@@ -36,7 +38,7 @@ export interface SelectProps<T extends string> {
  * popover. Arrow keys, Home/End, type-ahead, Enter/Space choose, Escape and Tab close. The button
  * carries `data-value` so the smoke test can read the current choice.
  */
-export function Select<T extends string>({ value, options, onChange, disabled, label, tooltip, className = '', menuWidth = 180, placeholder, dataAttrs }: SelectProps<T>) {
+export function Select<T extends string>({ value, options, onChange, disabled, label, tooltip, className = '', menuWidth = 180, placeholder, dataAttrs, onHighlight }: SelectProps<T>) {
   const id = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -81,6 +83,13 @@ export function Select<T extends string>({ value, options, onChange, disabled, l
     if (option.value !== value) onChange(option.value);
   };
 
+  const highlight = (index: number) => {
+    if (index === active) return;
+    setActive(index);
+    const option = options[index];
+    if (option && !option.disabled) onHighlight?.(option.value);
+  };
+
   const move = (from: number, step: number) => {
     for (let i = 1; i <= options.length; i++) {
       const next = (from + step * i + options.length * i) % options.length;
@@ -94,16 +103,16 @@ export function Select<T extends string>({ value, options, onChange, disabled, l
     event.stopPropagation();
     if (event.key === 'Escape') return (event.preventDefault(), close());
     if (event.key === 'Tab') return close();
-    if (event.key === 'ArrowDown') return (event.preventDefault(), setActive((a) => move(a, 1)));
-    if (event.key === 'ArrowUp') return (event.preventDefault(), setActive((a) => move(a, -1)));
-    if (event.key === 'Home') return (event.preventDefault(), setActive(move(-1, 1)));
-    if (event.key === 'End') return (event.preventDefault(), setActive(move(options.length, -1)));
+    if (event.key === 'ArrowDown') return (event.preventDefault(), highlight(move(active, 1)));
+    if (event.key === 'ArrowUp') return (event.preventDefault(), highlight(move(active, -1)));
+    if (event.key === 'Home') return (event.preventDefault(), highlight(move(-1, 1)));
+    if (event.key === 'End') return (event.preventDefault(), highlight(move(options.length, -1)));
     if (event.key === 'Enter' || event.key === ' ') return (event.preventDefault(), choose(active));
     if (event.key.length === 1 && !event.metaKey && !event.ctrlKey) {
       const now = Date.now();
       typed.current = { text: (now - typed.current.at > 700 ? '' : typed.current.text) + event.key, at: now };
       const next = nextTypeaheadIndex(options, typed.current.text, active);
-      if (next !== -1) setActive(next);
+      if (next !== -1) highlight(next);
     }
   };
 
@@ -158,7 +167,7 @@ export function Select<T extends string>({ value, options, onChange, disabled, l
                 aria-disabled={option.disabled || undefined}
                 data-index={i}
                 data-option-value={option.value}
-                onMouseEnter={() => !option.disabled && setActive(i)}
+                onMouseEnter={() => !option.disabled && highlight(i)}
                 onClick={() => choose(i)}
                 className={`flex items-center gap-2 px-3 py-1 text-ui ${option.disabled ? 'opacity-40' : ''} ${i === active ? 'bg-accent/15 text-text' : 'text-text'}`}
               >

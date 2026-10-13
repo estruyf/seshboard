@@ -950,6 +950,21 @@ const screens: Screen[] = [
       await t.home();
     },
   },
+  {
+    // Sounds turned on for the picture, so the moments and their sounds read at full strength; put back after.
+    name: 'settings-notifications',
+    async take(t) {
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="notifications"]');
+      await t.need('[data-sound-event="finished"]', 'Settings › Notifications has no sound per moment');
+      await t.click('[data-sounds-toggle]');
+      await t.until(`!document.querySelector('[data-sound-picker="finished"]')?.disabled`, 'turning sounds on did not enable the rows');
+      await t.settle();
+      await t.shot('settings-notifications');
+      await t.click('[data-sounds-toggle]');
+      await t.click('[data-close-settings]');
+    },
+  },
   ...(['general', 'theme', 'sidebar', 'conversation', 'focus', 'profiles', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
     (section): Screen => ({
       name: `settings-${section}`,

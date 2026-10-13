@@ -23,6 +23,11 @@ import {
   type SettingsFile,
   tierLabel,
   type AutoModelPrefs,
+  NO_SOUND,
+  SOUND_EVENTS,
+  type NotificationPrefs,
+  type SoundEvent,
+  type SoundPrefs,
 } from '@switchboard/protocol';
 import { parseThemeFile } from '@switchboard/protocol/theme';
 import type { ActionStore } from '../actions/actionStore.ts';
@@ -65,12 +70,12 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   whileWorking: 'Enter while Claude is working',
   autoModel: 'Auto model',
   githubStar: 'Star on GitHub',
-  notifications: 'Show notifications',
-  sounds: 'Play sounds',
-  soundComplete: 'Session complete sound',
-  soundNeedsInput: 'Needs input sound',
-  soundVolume: 'Sound volume',
+  notifications: 'Notifications',
+  sounds: 'Sounds',
 };
+
+/** The sounds' moments as Settings › Notifications names them. */
+const SOUND_LABELS: Record<SoundEvent, string> = { needsYou: 'Needs you', finished: 'Finished', error: 'Stopped with an error', actionEnded: 'Project action ended' };
 
 /** What the settings file is read from and written to. */
 export interface SettingsStores {
@@ -99,6 +104,12 @@ const listOf = (parts: Array<string | false>) => {
 };
 /** Deleting archived sessions: "off", or "after 30 days". */
 const isDeleting = (value: unknown): value is { enabled: boolean; afterDays: number } => typeof value === 'object' && value !== null && 'enabled' in value && 'afterDays' in value;
+/** Notifications: only the switch. */
+const isNotifications = (value: unknown): value is NotificationPrefs => typeof value === 'object' && value !== null && Object.keys(value).length === 1 && 'enabled' in value;
+/** Sounds: "off, Needs you Ping, Finished Glass, …, 50%" (off keeps the sounds, so they show either way). */
+const isSounds = (value: unknown): value is SoundPrefs => typeof value === 'object' && value !== null && 'byEvent' in value && 'volume' in value;
+const showSounds = (sounds: SoundPrefs) =>
+  `${sounds.enabled ? 'on' : 'off'}, ${SOUND_EVENTS.map((event) => `${SOUND_LABELS[event]} ${sounds.byEvent[event] === NO_SOUND ? 'None' : sounds.byEvent[event]}`).join(', ')}, ${Math.round(sounds.volume * 100)}%`;
 /** Auto model: "off", or "on, picks Haiku, Sonnet and Opus, balanced". */
 const isAutoModel = (value: unknown): value is AutoModelPrefs => typeof value === 'object' && value !== null && 'allowed' in value && 'lean' in value;
 // A focus limit of null is the limit turned off.
@@ -109,6 +120,12 @@ const showValue = (value: unknown) =>
       : 'off'
     : value === null
       ? 'off'
+      : isNotifications(value)
+        ? value.enabled
+          ? 'on'
+          : 'off'
+      : isSounds(value)
+        ? showSounds(value)
       : isDeleting(value)
         ? value.enabled
           ? `after ${value.afterDays} days`

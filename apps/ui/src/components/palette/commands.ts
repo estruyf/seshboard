@@ -87,7 +87,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import type { ColorScheme, Preferences, SidebarStyle } from '@switchboard/protocol/bridge';
+import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/protocol/bridge';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
@@ -117,7 +117,7 @@ export interface PaletteApi {
   openSettings(section?: SettingsSection): void;
   /** Settings › Sessions: every session, or with the delete switch focused. */
   manageSessions(options?: { focus?: 'archive' | 'delete' }): void;
-  setPreferences(patch: Partial<Preferences>): void;
+  setPreferences(patch: PreferencesPatch): void;
   setSidebar(state: SidebarState): void;
   /** ⌘B: open, or collapsed as Settings says. */
   toggleSidebar(): void;
@@ -448,10 +448,10 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'shortcuts', title: 'Keyboard shortcuts', group: 'general', shortcut: keysFor('shortcuts'), icon: Keyboard, keywords: 'help keys hotkeys cheat sheet', when: always, run: (api) => api.showShortcuts() },
   { id: 'focus-on', title: 'Focus limit: turn on', group: 'general', icon: Target, keywords: 'limit sessions', when: (ctx) => ctx.focusLimit === null, run: (api) => api.setFocusLimit(true) },
   { id: 'focus-off', title: 'Focus limit: turn off', group: 'general', icon: Target, keywords: 'limit sessions', when: (ctx) => ctx.focusLimit !== null, run: (api) => api.setFocusLimit(false) },
-  { id: 'notifications-off', title: 'Notifications: turn off', group: 'general', icon: BellOff, keywords: 'alerts quiet do not disturb', when: (ctx) => ctx.notifications, run: (api) => api.setPreferences({ notifications: false }) },
-  { id: 'notifications-on', title: 'Notifications: turn on', group: 'general', icon: Bell, keywords: 'alerts', when: (ctx) => !ctx.notifications, run: (api) => api.setPreferences({ notifications: true }) },
-  { id: 'sounds-on', title: 'Sounds: turn on', group: 'general', icon: Volume2, keywords: 'sound audio chime alert notifications', when: (ctx) => !ctx.sounds, run: (api) => api.setPreferences({ sounds: true }) },
-  { id: 'sounds-off', title: 'Sounds: turn off', group: 'general', icon: VolumeX, keywords: 'sound audio mute quiet notifications', when: (ctx) => ctx.sounds, run: (api) => api.setPreferences({ sounds: false }) },
+  { id: 'notifications-off', title: 'Notifications: turn off', group: 'general', icon: BellOff, keywords: 'alerts quiet do not disturb', when: (ctx) => ctx.notifications, run: (api) => api.setPreferences({ notifications: { enabled: false } }) },
+  { id: 'notifications-on', title: 'Notifications: turn on', group: 'general', icon: Bell, keywords: 'alerts', when: (ctx) => !ctx.notifications, run: (api) => api.setPreferences({ notifications: { enabled: true } }) },
+  { id: 'sounds-on', title: 'Sounds: turn on', group: 'general', icon: Volume2, keywords: 'sound audio chime alert notifications', when: (ctx) => !ctx.sounds, run: (api) => api.setPreferences({ sounds: { enabled: true } }) },
+  { id: 'sounds-off', title: 'Sounds: turn off', group: 'general', icon: VolumeX, keywords: 'sound audio mute quiet notifications', when: (ctx) => ctx.sounds, run: (api) => api.setPreferences({ sounds: { enabled: false } }) },
   { id: 'focus-set', title: 'Focus limit: set limit…', group: 'general', icon: Target, keywords: 'limit sessions number', when: always, next: () => ({ kind: 'pick', list: 'focus-limit', chip: 'Focus limit' }) },
   {
     id: 'unsent',

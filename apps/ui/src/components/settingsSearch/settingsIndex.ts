@@ -1,5 +1,5 @@
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
-import { currentPlatform, trashName } from '../../lib/platform.ts';
+import { trashName } from '../../lib/platform.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -11,7 +11,6 @@ import type { SettingEntry } from './searchSettings.ts';
 export function settingsIndex(): SettingEntry[] {
   const quit = formatKeys(keysFor('quit'));
   const trash = trashName();
-  const badge = currentPlatform() === 'win32' ? 'The dot on the taskbar button' : 'The Dock badge';
   return [
     // General
     { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
@@ -108,27 +107,22 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'auto-model-lean', page: 'conversation', label: 'When in doubt', detail: 'Which way to lean on a close call: Cheaper, Balanced or Stronger.', keywords: 'auto model cost', target: '[data-auto-model-lean]' },
     { id: 'auto-model-suggest', page: 'conversation', label: 'Suggest a stronger model later', detail: 'When a session grows past its first prompt. Never switches by itself.', keywords: 'auto model upgrade', target: '[data-auto-model-suggest]' },
 
-    // Notifications
+    // Notifications and sounds
     {
       id: 'notifications',
       page: 'notifications',
-      label: 'Show notifications',
-      detail: `When Claude needs you, finishes or stops with an error, and when a project action ends. ${badge} shows either way.`,
-      keywords: 'alerts banner notification centre center do not disturb badge',
-      target: '[data-notifications]',
+      label: 'Notifications',
+      detail: 'A system notification when Claude needs you, finishes or stops with an error, and when a project action ends.',
+      keywords: 'notification alerts banner notification centre center do not disturb needs you finished error action blocked permission system settings',
+      target: '[data-notifications-toggle]',
     },
-    { id: 'sounds', page: 'notifications', label: 'Play sounds', detail: 'A sound for the same moments, also with notifications off.', keywords: 'sound audio chime alert mute', target: '[data-sounds]' },
-    {
-      id: 'sound-complete',
-      page: 'notifications',
-      label: 'Session complete',
-      detail: 'When Claude finishes a turn or stops with an error, and when a project action ends.',
-      keywords: 'sound finished done chime',
-      target: '[data-sound-complete]',
-      fallback: '[data-sounds]',
-    },
-    { id: 'sound-needs-input', page: 'notifications', label: 'Needs input', detail: 'When Claude asks for a permission, has a question or a plan.', keywords: 'sound permission question waiting', target: '[data-sound-needs-input]', fallback: '[data-sounds]' },
-    { id: 'sound-volume', page: 'notifications', label: 'Volume', detail: 'For both sounds.', keywords: 'sound loud quiet', target: '[data-sound-volume]', fallback: '[data-sounds]' },
+    { id: 'notifications-test', page: 'notifications', label: 'Check that they come through.', detail: 'Send a test notification', keywords: 'notification test try', target: '[data-notifications-test]' },
+    { id: 'sounds', page: 'notifications', label: 'Sounds', detail: 'A sound per moment. Works with notifications on or off.', keywords: 'sound audio chime alert mute notification', target: '[data-sounds-toggle]' },
+    { id: 'sound-needs-you', page: 'notifications', label: 'Needs you', detail: 'Claude asks for a permission, has a question or a plan.', keywords: 'sound needs you permission question plan waiting', target: '[data-sound-event="needsYou"]' },
+    { id: 'sound-finished', page: 'notifications', label: 'Finished', detail: 'Claude finished a turn.', keywords: 'sound finished done complete chime', target: '[data-sound-event="finished"]' },
+    { id: 'sound-error', page: 'notifications', label: 'Stopped with an error', detail: 'Claude stopped because something failed.', keywords: 'sound error failed', target: '[data-sound-event="error"]' },
+    { id: 'sound-action-ended', page: 'notifications', label: 'Project action ended', detail: 'A project action like Dev or Test stopped.', keywords: 'sound action dev test script', target: '[data-sound-event="actionEnded"]' },
+    { id: 'sound-volume', page: 'notifications', label: 'Volume', detail: 'For every sound.', keywords: 'sound volume loud quiet', target: '[data-sound-volume]' },
 
     // Focus
     { id: 'focus-limit', page: 'focus', label: 'Focus limit', detail: 'Ask before going over a set number of sessions.', keywords: 'at once concurrent maximum', target: '[data-focus-limit-switch]' },
