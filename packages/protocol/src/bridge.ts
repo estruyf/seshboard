@@ -126,15 +126,31 @@ export interface SoundPrefs {
   byEvent: Record<SoundEvent, SoundChoice>;
   /** 0 to 1, for every sound. */
   volume: number;
+  /** The defaults these sounds were last brought up to (`SOUNDS_REVISION`). Not shown in Settings. */
+  revision: number;
 }
 
 export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { enabled: true };
+/** Bumped when the default sounds change, so sounds nobody picked move to the new defaults once (`sanitizeSounds`). */
+export const SOUNDS_REVISION = 2;
 export const DEFAULT_SOUNDS: SoundPrefs = {
   enabled: false,
-  // macOS names; another computer that lacks them plays its own fallback (`resolveSound`).
-  byEvent: { needsYou: "Ping", finished: "Glass", error: "Basso", actionEnded: NO_SOUND },
+  // A different sound per moment: Ping calls you over, Glass says done, Basso is a low thud for a failure and Pop
+  // a short, light one for an action that ended. macOS names; another computer that lacks them plays its own
+  // fallback (`resolveSound`).
+  byEvent: { needsYou: "Ping", finished: "Glass", error: "Basso", actionEnded: "Pop" },
   volume: 0.5,
+  revision: SOUNDS_REVISION,
 };
+
+/**
+ * Sounds that were never picked, as earlier versions saved them: the move from one Session complete sound (Glass for
+ * Finished, Stopped with an error and Project action ended), and the first defaults (no sound for an action).
+ */
+const UNPICKED_SOUNDS: ReadonlyArray<SoundPrefs["byEvent"]> = [
+  { needsYou: "Ping", finished: "Glass", error: "Glass", actionEnded: "Glass" },
+  { needsYou: "Ping", finished: "Glass", error: "Basso", actionEnded: NO_SOUND },
+];
 
 /** App preferences, kept by main in the app's data folder. */
 export interface Preferences {
@@ -226,34 +242,47 @@ const soundChoice = (value: unknown): SoundChoice | undefined =>
 
 /**
  * The sounds, from what is saved. The settings from before a sound per moment (`sounds: true`, `soundComplete`,
- * `soundNeedsInput`, `soundVolume`) become the same sounds: Needs input is Needs you, and Session complete is
- * Finished, Stopped with an error and Project action ended, which all played it. Undefined when nothing is saved.
+ * `soundNeedsInput`, `soundVolume`) move over: a sound you picked (or None) stays on every moment it played for (Needs
+ * input is Needs you; Session complete is Finished, Stopped with an error and Project action ended), and one still at
+ * its old default takes each moment's own default. Sounds saved before the current defaults, still as they were set
+ * then, take the current defaults once. Undefined when nothing is saved.
  */
 function sanitizeSounds(raw: Record<string, unknown>): SoundPrefs | undefined {
   const legacy = typeof raw.sounds === "boolean" || "soundComplete" in raw || "soundNeedsInput" in raw || "soundVolume" in raw;
   if (legacy && (raw.sounds === undefined || typeof raw.sounds === "boolean")) {
     const complete = soundChoice(raw.soundComplete) ?? "Glass";
+    const needsInput = soundChoice(raw.soundNeedsInput) ?? "Ping";
+    const picked = (sound: SoundChoice, oldDefault: string, event: SoundEvent) => (sound === oldDefault ? DEFAULT_SOUNDS.byEvent[event] : sound);
     return {
       enabled: typeof raw.sounds === "boolean" ? raw.sounds : DEFAULT_SOUNDS.enabled,
-      byEvent: { needsYou: soundChoice(raw.soundNeedsInput) ?? "Ping", finished: complete, error: complete, actionEnded: complete },
+      byEvent: {
+        needsYou: picked(needsInput, "Ping", "needsYou"),
+        finished: picked(complete, "Glass", "finished"),
+        error: picked(complete, "Glass", "error"),
+        actionEnded: picked(complete, "Glass", "actionEnded"),
+      },
       volume: clampVolume(raw.soundVolume) ?? DEFAULT_SOUNDS.volume,
+      revision: SOUNDS_REVISION,
     };
   }
   const sounds = raw.sounds as Record<string, unknown> | null | undefined;
   if (typeof sounds !== "object" || sounds === null) return undefined;
-  const byEvent = (typeof sounds.byEvent === "object" && sounds.byEvent !== null ? sounds.byEvent : {}) as Record<string, unknown>;
+  const saved = (typeof sounds.byEvent === "object" && sounds.byEvent !== null ? sounds.byEvent : {}) as Record<string, unknown>;
   // A field that is missing or wrong keeps its default; the rest stay as saved.
+  const byEvent = Object.fromEntries(SOUND_EVENTS.map((event) => [event, soundChoice(saved[event]) ?? DEFAULT_SOUNDS.byEvent[event]])) as SoundPrefs["byEvent"];
+  const outdated = sounds.revision !== SOUNDS_REVISION && UNPICKED_SOUNDS.some((old) => SOUND_EVENTS.every((event) => old[event] === byEvent[event]));
   return {
     enabled: typeof sounds.enabled === "boolean" ? sounds.enabled : DEFAULT_SOUNDS.enabled,
-    byEvent: Object.fromEntries(SOUND_EVENTS.map((event) => [event, soundChoice(byEvent[event]) ?? DEFAULT_SOUNDS.byEvent[event]])) as SoundPrefs["byEvent"],
+    byEvent: outdated ? { ...DEFAULT_SOUNDS.byEvent } : byEvent,
     volume: clampVolume(sounds.volume) ?? DEFAULT_SOUNDS.volume,
+    revision: SOUNDS_REVISION,
   };
 }
 
 /** A change to the preferences: like the preferences, but the notification and sound settings may name only some fields. */
 export type PreferencesPatch = Partial<Omit<Preferences, "notifications" | "sounds">> & {
   notifications?: Partial<NotificationPrefs>;
-  sounds?: Partial<Omit<SoundPrefs, "byEvent">> & { byEvent?: Partial<SoundPrefs["byEvent"]> };
+  sounds?: Partial<Omit<SoundPrefs, "byEvent" | "revision">> & { byEvent?: Partial<SoundPrefs["byEvent"]> };
 };
 
 /**
