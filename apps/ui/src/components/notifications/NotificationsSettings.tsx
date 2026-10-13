@@ -1,127 +1,193 @@
-import { Volume2 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
-import { resolveSound, type Preferences, type SoundKind, type SoundList } from '@switchboard/protocol/bridge';
+import { Bell, BellOff, Play, Volume2 } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { NO_SOUND, resolveSound, type NotificationPermission, type SoundEvent, type SoundList } from '@switchboard/protocol/bridge';
 import { currentPlatform } from '../../lib/platform.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Select } from '../ui/Select.tsx';
 import { Slider } from '../ui/Slider.tsx';
-import { Switch, Toggle } from '../ui/Toggle.tsx';
+import { Switch } from '../ui/Toggle.tsx';
 
-/** The preference each sound is saved in. */
-const SOUND_PREF = { complete: 'soundComplete', needsInput: 'soundNeedsInput' } as const satisfies Record<SoundKind, keyof Preferences>;
-/** The value None stands for in the dropdown (a sound's name is never empty). */
-const NONE = '';
+/** The moments that play a sound, in the order the page lists them, with the sidebar's colour for each. */
+const MOMENTS: Array<{ event: SoundEvent; label: string; detail: string; dot: string }> = [
+  { event: 'needsYou', label: 'Needs you', detail: 'Claude asks for a permission, has a question or a plan.', dot: 'bg-warn' },
+  { event: 'finished', label: 'Finished', detail: 'Claude finished a turn.', dot: 'bg-unread' },
+  { event: 'error', label: 'Stopped with an error', detail: 'Claude stopped because something failed.', dot: 'bg-error' },
+  { event: 'actionEnded', label: 'Project action ended', detail: 'A project action like Dev or Test stopped.', dot: 'bg-muted' },
+];
 
 const percent = (volume: number) => `${Math.round(volume)}%`;
+/** Hovering down the list plays only the sound the pointer rests on. */
+const HOVER_DELAY_MS = 120;
 
-function Row({ label, detail, children }: { label: string; detail: string; children: ReactNode }) {
+/** A card's first row: its icon, name and what it does, and the switch that turns it on. */
+function CardHeader({ label, detail, icon, children }: { label: string; detail: string; icon: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-t border-border py-3 first:border-t-0 first:pt-0" data-setting-row>
-      <span className="min-w-0">
-        <span className="block text-ui text-text">{label}</span>
+    <label className="flex cursor-pointer items-center gap-3 px-4 py-3.5" data-setting-row>
+      <span className="flex shrink-0 text-muted">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-ui font-semibold text-text">{label}</span>
         <span className="block text-meta text-muted">{detail}</span>
+      </span>
+      {children}
+    </label>
+  );
+}
+
+/** A row under a card's header; `off` dims it while the card's switch is off. */
+function Row({ label, detail, off, className = '', children, ...data }: { label: string; detail?: string; off: boolean; className?: string; children: ReactNode } & Record<`data-${string}`, string | boolean>) {
+  return (
+    <div className={`flex items-center gap-3 border-t border-border px-4 py-2.5 ${off ? 'opacity-50' : ''} ${className}`} aria-disabled={off || undefined} data-setting-row {...data}>
+      <span className="min-w-0 flex-1">
+        <span className="block text-ui text-text">{label}</span>
+        {detail && <span className="block text-meta text-muted">{detail}</span>}
       </span>
       {children}
     </div>
   );
 }
 
-/** A sound's dropdown, with None first, and a button that plays it. Choosing a sound plays it too. */
-function SoundPicker({ kind, label, list, play }: { kind: SoundKind; label: string; list: SoundList; play(id: string): void }) {
-  const prefs = usePreferences((s) => s.prefs);
-  const update = usePreferences((s) => s.update);
-  // A sound this computer lacks (chosen on a Mac, imported on Windows) shows as the one that plays instead.
-  const current = resolveSound(prefs[SOUND_PREF[kind]], list, kind);
-  const hook = kind === 'complete' ? 'complete' : 'needs-input';
-  return (
-    <span className="flex shrink-0 items-center gap-1.5">
-      <Select<string>
-        label={`${label} sound`}
-        value={current ?? NONE}
-        onChange={(value) => {
-          update({ [SOUND_PREF[kind]]: value === NONE ? null : value });
-          if (value !== NONE) play(value);
-        }}
-        options={[{ value: NONE, label: 'None' }, ...list.sounds.map((sound) => ({ value: sound, label: sound }))]}
-        menuWidth={220}
-        className="h-7 w-44 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
-        dataAttrs={{ [`data-sound-${hook}`]: true }}
-      />
-      <Button variant="quiet" iconOnly icon={<Volume2 size={14} aria-hidden />} aria-label={`Play ${label} sound`} disabled={!current} onClick={() => current && play(current)} data-sound-preview={hook} />
-    </span>
-  );
+/** Asks main whether the system lets Switchboard notify: when the page opens, and each time the window is focused again. */
+function useNotificationPermission(): NotificationPermission {
+  const [permission, setPermission] = useState<NotificationPermission>('unknown');
+  useEffect(() => {
+    let live = true;
+    const check = () => void window.switchboard?.notificationPermission().then((value) => live && setPermission(value), () => {});
+    check();
+    window.addEventListener('focus', check);
+    return () => {
+      live = false;
+      window.removeEventListener('focus', check);
+    };
+  }, []);
+  return permission;
 }
 
-/** Settings › Notifications: system notifications on or off, and the sounds for a session that needs you or finishes. */
+/**
+ * Settings › Notifications: a card for the system notifications and one for the sounds, each with its own switch.
+ * Each moment has its own sound. Sounds off keeps the sounds picked, dimmed, for when they are turned on again.
+ */
 export function NotificationsSettings() {
   const prefs = usePreferences((s) => s.prefs);
   const update = usePreferences((s) => s.update);
   const [list, setList] = useState<SoundList | null>(null);
+  const permission = useNotificationPermission();
+  const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     let live = true;
     void window.switchboard?.listSounds().then((sounds) => live && setList(sounds));
     return () => {
       live = false;
+      clearTimeout(hover.current);
     };
   }, []);
-  const play = (id: string, volume = prefs.soundVolume) => window.switchboard?.playSound(id, volume);
-  const badge = currentPlatform() === 'win32' ? 'The dot on the taskbar button' : 'The Dock badge';
+
+  const { notifications, sounds } = prefs;
+  const soundsOff = !sounds.enabled;
+  const play = (id: string, volume = sounds.volume) => {
+    clearTimeout(hover.current);
+    window.switchboard?.playSound(id, volume);
+  };
+  const preview = (id: string) => {
+    clearTimeout(hover.current);
+    if (id !== NO_SOUND) hover.current = setTimeout(() => window.switchboard?.playSound(id, sounds.volume), HOVER_DELAY_MS);
+  };
+  // A sound this computer lacks (chosen on a Mac, imported on Windows) shows as the one that plays instead.
+  const current = (event: SoundEvent) => (list ? resolveSound(sounds.byEvent[event], list, event) : null);
+  const windows = currentPlatform() === 'win32';
 
   return (
-    <div className="grid gap-5" data-notification-settings>
-      <Toggle
-        label="Show notifications"
-        detail={`When Claude needs you, finishes or stops with an error, and when a project action ends. ${badge} shows either way.`}
-        checked={prefs.notifications}
-        attr="data-notifications"
-        onChange={(notifications) => update({ notifications })}
-      />
-      <div className="rounded-xl border border-border bg-card px-4 py-3.5">
-        <label className="flex cursor-pointer items-center justify-between gap-6" data-setting-row>
-          <span className="min-w-0">
-            <span className="block text-ui text-text">Play sounds</span>
-            <span className="block text-meta text-muted">A sound for the same moments, also with notifications off.</span>
-          </span>
-          <Switch checked={prefs.sounds} onChange={(sounds) => update({ sounds })} dataAttrs={{ 'data-sounds': true }} />
-        </label>
-        {/* Only what the switch turns on: hidden while sounds are off. */}
-        {prefs.sounds && list && (
-          <div className="mt-3 border-t border-border pt-3" data-sound-options>
-            {list.sounds.length === 0 ? (
-              <Notice inline>This computer has no system sounds to play.</Notice>
-            ) : (
-              <>
-                <Row label="Session complete" detail="When Claude finishes a turn or stops with an error, and when a project action ends.">
-                  <SoundPicker kind="complete" label="Session complete" list={list} play={play} />
-                </Row>
-                <Row label="Needs input" detail="When Claude asks for a permission, has a question or a plan.">
-                  <SoundPicker kind="needsInput" label="Needs input" list={list} play={play} />
-                </Row>
-                <Row label="Volume" detail="For both sounds.">
-                  <Slider
-                    label="Volume"
-                    value={Math.round(prefs.soundVolume * 100)}
-                    min={0}
-                    max={100}
-                    step={5}
-                    format={percent}
-                    onChange={(value) => {
-                      const soundVolume = value / 100;
-                      update({ soundVolume });
-                      // Let go at a new volume: hear it, with the sound that plays most.
-                      const sound = resolveSound(prefs.soundComplete, list, 'complete') ?? resolveSound(prefs.soundNeedsInput, list, 'needsInput');
-                      if (sound) play(sound, soundVolume);
-                    }}
-                    dataAttrs={{ 'data-sound-volume': true }}
-                  />
-                </Row>
-              </>
-            )}
+    <div className="grid gap-4" data-notification-settings>
+      {permission === 'blocked' && (
+        <Notice
+          tone="caution"
+          icon={<BellOff size={14} aria-hidden />}
+          actions={
+            <Button size="sm" onClick={() => window.switchboard?.openNotificationSettings()} data-open-notification-settings>
+              {windows ? 'Open Windows settings' : 'Open System Settings'}
+            </Button>
+          }
+          data-notifications-blocked
+        >
+          Notifications are off for Switchboard in {windows ? 'Windows settings' : 'System Settings'}. Sounds and the {windows ? 'taskbar dot' : 'Dock badge'} still work.
+        </Notice>
+      )}
+
+      <section className="overflow-hidden rounded-xl border border-border bg-card" aria-label="Notifications" data-notifications-card>
+        <CardHeader label="Notifications" detail="A system notification when Claude needs you, finishes or stops with an error, and when a project action ends." icon={<Bell size={16} aria-hidden />}>
+          <Switch checked={notifications.enabled} onChange={(enabled) => update({ notifications: { enabled } })} dataAttrs={{ 'data-notifications-toggle': true }} />
+        </CardHeader>
+        <Row label="Check that they come through." off={!notifications.enabled}>
+          <Button variant="quiet" size="sm" disabled={!notifications.enabled} onClick={() => window.switchboard?.testNotification()} data-notifications-test>
+            Send a test notification
+          </Button>
+        </Row>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-border bg-card" aria-label="Sounds" data-sounds-card>
+        <CardHeader label="Sounds" detail="A sound per moment. Works with notifications on or off." icon={<Volume2 size={16} aria-hidden />}>
+          <Switch checked={sounds.enabled} onChange={(enabled) => update({ sounds: { enabled } })} dataAttrs={{ 'data-sounds-toggle': true }} />
+        </CardHeader>
+        {list && list.sounds.length === 0 ? (
+          <div className="border-t border-border px-4 py-2.5 text-ui text-muted">
+            <Notice inline>This computer has no system sounds to play.</Notice>
           </div>
+        ) : (
+          MOMENTS.map(({ event, label, detail, dot }) => {
+            const sound = current(event);
+            return (
+              <div key={event} className={`flex items-center gap-3 border-t border-border px-4 py-2.5 ${soundsOff ? 'opacity-50' : ''}`} aria-disabled={soundsOff || undefined} data-setting-row data-sound-event={event}>
+                <span aria-hidden className={`size-2 shrink-0 rounded-full ${dot}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-ui text-text">{label}</span>
+                  <span className="block text-meta text-muted">{detail}</span>
+                </span>
+                <Select<string>
+                  label={`${label} sound`}
+                  value={list ? (sound ?? NO_SOUND) : sounds.byEvent[event]}
+                  disabled={soundsOff || !list}
+                  onChange={(value) => update({ sounds: { byEvent: { [event]: value } } })}
+                  onHighlight={preview}
+                  options={[{ value: NO_SOUND, label: 'None' }, ...(list?.sounds ?? []).map((id) => ({ value: id, label: id }))]}
+                  menuWidth={200}
+                  className="h-7 w-30 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+                  dataAttrs={{ 'data-sound-picker': event }}
+                />
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  iconOnly
+                  icon={<Play size={12} aria-hidden />}
+                  aria-label={sound ? `Play ${sound}` : `No sound for ${label}`}
+                  disabled={soundsOff || !sound}
+                  onClick={() => sound && play(sound)}
+                  data-sound-preview={event}
+                />
+              </div>
+            );
+          })
         )}
-      </div>
+        <Row label="Volume" off={soundsOff} className="bg-border/20">
+          <Slider
+            label="Volume"
+            value={Math.round(sounds.volume * 100)}
+            min={0}
+            max={100}
+            step={5}
+            format={percent}
+            disabled={soundsOff}
+            onChange={(value) => {
+              const volume = value / 100;
+              update({ sounds: { volume } });
+              // Let go at a new volume: hear it, with the first moment that has a sound.
+              const sound = MOMENTS.map(({ event }) => current(event)).find((id) => id !== null);
+              if (sound) play(sound, volume);
+            }}
+            dataAttrs={{ 'data-sound-volume': true }}
+          />
+        </Row>
+      </section>
     </div>
   );
 }

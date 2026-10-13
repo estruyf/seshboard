@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
@@ -19,6 +19,7 @@ import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
 import { SoundPlayer } from './sounds.ts';
+import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
@@ -79,7 +80,8 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 
 // Windows shows an app's notifications only under an AppUserModelID: the installer's (the appId) once installed,
 // Electron's own path in development, where no Start menu entry carries one.
-if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'dev.switchboard.app' : process.execPath);
+const appUserModelId = app.isPackaged ? 'dev.switchboard.app' : process.execPath;
+if (process.platform === 'win32') app.setAppUserModelId(appUserModelId);
 
 // SWITCHBOARD_COLOR_SCHEME=light|dark forces a scheme without saving it (to check both in the smoke test).
 const forcedScheme = process.env.SWITCHBOARD_COLOR_SCHEME;
@@ -251,6 +253,18 @@ ipcMain.handle(IpcChannel.listSounds, () => sounds.list());
 ipcMain.on(IpcChannel.playSound, (_event, id: unknown, volume: unknown) => {
   if (isSoundId(id) && typeof volume === 'number' && Number.isFinite(volume)) sounds.play(id, volume);
 });
+/** What the smoke step makes the system say about notifications; scripted runs never read the real setting. */
+let forcedNotificationPermission: NotificationPermission | null = null;
+ipcMain.handle(IpcChannel.notificationPermission, () =>
+  forcedNotificationPermission ?? (scripted ? 'allowed' : notificationPermission(appUserModelId)),
+);
+ipcMain.on(IpcChannel.openNotificationSettings, () => {
+  if (scripted) return;
+  void notificationSettingsUrl().then((url) => {
+    if (url) void shell.openExternal(url);
+  });
+});
+ipcMain.on(IpcChannel.testNotification, () => notifier?.test());
 
 /**
  * Where the traffic lights sit: the default, or inside the 80px minimal sidebar. They are 54px wide, and
@@ -1670,74 +1684,132 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Settings › Notifications, read-only: notifications on and sounds off to start with, and the attention events
- * recorded so far (the project action that finished) say so. Turning notifications off and sounds on shows the
- * sound controls; choosing a sound, its play button and the volume each "play" a sound (recorded, never heard),
- * and are saved. The recorded event then would play Session complete without a notification. Everything is put back.
+ * Settings › Notifications, read-only: notifications on and sounds off to start with, with the sound rows dimmed and
+ * disabled, and the attention events recorded so far (the project action that finished) say so. The blocked notice
+ * shows when the system says notifications are off, checked again when the window is focused. The test button
+ * sends a Needs you notification (recorded, never shown). With sounds on, changing the Finished sound saves only
+ * that one; hovering a sound in the list, ▶ and the volume each "play" one (recorded, never heard). Sounds off
+ * keeps the choices. Everything is put back.
  */
 async function runNotificationsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
   const checked = (selector: string) => `document.querySelector(${JSON.stringify(selector)})?.getAttribute('aria-checked')`;
+  const rowsDisabled = "[...document.querySelectorAll('[data-sound-event] button')].every((b) => b.disabled) && document.querySelector('[data-sound-volume]').disabled";
+  const rowsEnabled = "document.querySelectorAll('[data-sound-event]').length === 4 && [...document.querySelectorAll('[data-sound-picker]')].every((b) => !b.disabled) && !document.querySelector('[data-sound-volume]').disabled";
   const lastSound = () => recordedSounds.at(-1);
+  const restore = async () => {
+    forcedNotificationPermission = null;
+    updatePreferences({ notifications: DEFAULT_PREFERENCES.notifications, sounds: DEFAULT_PREFERENCES.sounds });
+    await click('[data-close-settings]').catch(() => {});
+  };
 
   await click('[data-open-settings]');
   await click('[data-settings-section="notifications"]');
-  if (!(await waitInPage(win, `document.querySelector('[data-settings-page="notifications"]') && ${checked('[data-notifications]')} === 'true' && ${checked('[data-sounds]')} === 'false' && !document.querySelector('[data-sound-options]')`, 3_000))) {
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-page="notifications"]') && ${checked('[data-notifications-toggle]')} === 'true' && ${checked('[data-sounds-toggle]')} === 'false' && document.querySelector('[data-sound-event]')`, 3_000))) {
+    await restore();
     return 'Notifications did not open with notifications on and sounds off';
   }
+  if (!(await waitInPage(win, rowsDisabled, 2_000))) return (await restore(), 'with sounds off, the sound rows could still be used');
+  if (await js("!!document.querySelector('[data-notifications-blocked]')")) return (await restore(), 'the blocked notice showed while notifications are allowed');
   // What the events recorded so far did with those defaults: a notification (unless it was for the session on screen), no sound.
   const recorded = recordedNotifications.findLast((n) => n.kind === 'action-done') ?? recordedNotifications.at(-1);
-  if (recorded && (recorded.notify !== !recorded.suppressed || recorded.sound !== null)) return `a recorded ${recorded.kind} event did ${JSON.stringify({ notify: recorded.notify, sound: recorded.sound })} with the defaults`;
+  if (recorded && (recorded.notify !== !recorded.suppressed || recorded.sound !== null)) return (await restore(), `a recorded ${recorded.kind} event did ${JSON.stringify({ notify: recorded.notify, sound: recorded.sound })} with the defaults`);
 
-  await click('[data-notifications]');
-  await click('[data-sounds]');
-  if (!(await until(() => !preferences.get().notifications && preferences.get().sounds))) return 'turning notifications off and sounds on was not saved';
+  // Blocked in the system's settings: the notice, checked again when the window is focused.
+  forcedNotificationPermission = 'blocked';
+  await js("window.dispatchEvent(new Event('focus'))");
+  if (!(await waitInPage(win, "document.querySelector('[data-notifications-blocked] [data-open-notification-settings]')", 2_000))) return (await restore(), 'the blocked notice did not show when the window was focused');
+  forcedNotificationPermission = null;
+  await js("window.dispatchEvent(new Event('focus'))");
+  if (!(await waitInPage(win, "!document.querySelector('[data-notifications-blocked]')", 2_000))) return (await restore(), 'the blocked notice stayed once notifications were allowed');
+
+  // The notifications switch, and the test notification it allows.
+  await click('[data-notifications-toggle]');
+  if (!(await until(() => !preferences.get().notifications.enabled)) || !(await waitInPage(win, "document.querySelector('[data-notifications-test]').disabled", 2_000))) return (await restore(), 'turning notifications off was not saved, or left the test button on');
+  await click('[data-notifications-toggle]');
+  if (!(await waitInPage(win, "!document.querySelector('[data-notifications-test]').disabled", 2_000))) return (await restore(), 'turning notifications on again did not allow the test button');
+  const notified = recordedNotifications.length;
+  await click('[data-notifications-test]');
+  if (!(await until(() => recordedNotifications.slice(notified).some((n) => n.kind === 'needs-you' && n.title === 'Claude needs you' && n.notify && !n.suppressed)))) return (await restore(), 'Send a test notification did not send a Needs you notification');
+
+  // Sounds on: the rows can be used.
+  await click('[data-sounds-toggle]');
+  if (!(await until(() => preferences.get().sounds.enabled))) return (await restore(), 'turning sounds on was not saved');
   const list = sounds.list();
   if (list.sounds.length === 0) {
-    const said = await waitInPage(win, "document.querySelector('[data-sound-options]')?.innerText.includes('no system sounds')", 2_000);
-    await click('[data-sounds]');
-    await click('[data-notifications]');
+    const said = await waitInPage(win, "document.querySelector('[data-sounds-card]')?.innerText.includes('no system sounds')", 2_000);
+    await restore();
     return said ? 'ok: no system sounds on this computer, and Settings says so' : 'with no system sounds, Settings did not say so';
   }
-  if (!(await waitInPage(win, "document.querySelector('[data-sound-options] [data-sound-complete]') && document.querySelector('[data-sound-volume]')", 2_000))) return 'turning sounds on did not show the sound controls';
+  if (!(await waitInPage(win, rowsEnabled, 2_000))) return (await restore(), 'turning sounds on did not enable the sound rows');
   await shot(win, 'settings-notifications.png');
 
-  // Choosing a sound plays it once and saves it.
-  const complete = list.sounds.find((id) => id !== resolveSound(preferences.get().soundComplete, list, 'complete'))!;
-  if (!(await chooseOption(win, '[data-sound-complete]', complete))) return 'could not choose a Session complete sound';
-  if (!(await until(() => preferences.get().soundComplete === complete && lastSound()?.id === complete))) return `choosing ${complete} did not save and play it`;
-  // The play button plays the sound shown, at the volume set.
-  const needsInput = resolveSound(preferences.get().soundNeedsInput, list, 'needsInput');
-  const before = recordedSounds.length;
-  await click('[data-sound-preview="needs-input"]');
-  if (!(await until(() => recordedSounds.length > before && lastSound()?.id === needsInput && lastSound()?.volume === preferences.get().soundVolume))) return 'the Needs input play button did not play its sound';
-  // None: no sound, nothing to play.
-  if (!(await chooseOption(win, '[data-sound-needs-input]', ''))) return 'could not choose None for Needs input';
-  if (!(await waitInPage(win, "document.querySelector('[data-sound-preview=\"needs-input\"]')?.disabled === true", 2_000)) || preferences.get().soundNeedsInput !== null) return 'None was not saved, or its play button stayed on';
+  // Changing the Finished sound saves that one only.
+  const before = preferences.get().sounds.byEvent;
+  const finished = list.sounds.find((id) => id !== resolveSound(before.finished, list, 'finished'))!;
+  if (!(await chooseOption(win, '[data-sound-picker="finished"]', finished))) return (await restore(), 'could not choose a Finished sound');
+  if (!(await until(() => preferences.get().sounds.byEvent.finished === finished))) return (await restore(), `choosing ${finished} for Finished was not saved`);
+  const after = preferences.get().sounds.byEvent;
+  if (after.needsYou !== before.needsYou || after.error !== before.error || after.actionEnded !== before.actionEnded) return (await restore(), `changing Finished changed another moment: ${JSON.stringify(after)}`);
+  // ▶ plays the sound shown, at the volume set; a moment set to None has nothing to play.
+  const played = recordedSounds.length;
+  await click('[data-sound-preview="finished"]');
+  if (!(await until(() => recordedSounds.length > played && lastSound()?.id === finished && lastSound()?.volume === preferences.get().sounds.volume))) return (await restore(), 'the Finished ▶ did not play its sound');
+  if (preferences.get().sounds.byEvent.actionEnded === 'none' && !(await js("document.querySelector('[data-sound-preview=\"actionEnded\"]').disabled"))) return (await restore(), '▶ was on for a moment set to None');
+  // Hovering a sound in the open list plays it.
+  await click('[data-sound-picker="needsYou"]');
+  const other = list.sounds.find((id) => id !== resolveSound(after.needsYou, list, 'needsYou'))!;
+  const option = `[data-select-list] [data-option-value=${JSON.stringify(other)}]`;
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(option)})`, 2_000))) {
+    const seen = await js("JSON.stringify({ list: !!document.querySelector('[data-select-list]'), values: [...document.querySelectorAll('[data-select-list] [data-option-value]')].slice(0, 4).map((o) => o.dataset.optionValue), focus: document.hasFocus() })");
+    return (await restore(), `the Needs you sound list did not open with ${other}: ${seen}`);
+  }
+  const hovered = recordedSounds.length;
+  await js(`document.querySelector(${JSON.stringify(option)}).scrollIntoView({ block: 'nearest' })`);
+  const at = (await js(`(() => { const r = document.querySelector(${JSON.stringify(option)}).getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: at.x, y: at.y });
+  const heard = await until(() => recordedSounds.slice(hovered).some((sound) => sound.id === other), 2_000);
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  if (!(await waitInPage(win, "!document.querySelector('[data-select-list]')", 2_000))) return (await restore(), 'Escape did not close the sound list');
+  if (!heard) return (await restore(), `hovering ${other} in the list did not play it`);
+  if (preferences.get().sounds.byEvent.needsYou !== after.needsYou) return (await restore(), 'hovering a sound saved it');
   // The volume moves with the arrow keys, is saved when let go, and plays at the new volume.
   await js("document.querySelector('[data-sound-volume]').focus()");
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Left' });
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Left' });
-  if (!(await until(() => preferences.get().soundVolume === 0.45 && lastSound()?.volume === 0.45 && lastSound()?.id === complete))) return `the volume did not go to 45% and play (${preferences.get().soundVolume})`;
-  const saved = JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8')) as Record<string, unknown>;
+  if (!(await until(() => preferences.get().sounds.volume === 0.45 && lastSound()?.volume === 0.45))) return (await restore(), `the volume did not go to 45% and play (${preferences.get().sounds.volume})`);
 
-  // A recorded event, with these settings: the sound, without a notification; needing you now plays nothing (None).
+  // What events do now: each moment its own sound, and None nothing. Notifications off still plays them.
   const sample = recorded ?? { kind: 'finished' as const, sessionId: 'smoke', title: 'Claude finished', body: 'smoke' };
-  const finishing = notifier.alertFor({ ...sample, kind: 'finished' });
-  const needing = notifier.alertFor({ ...sample, kind: 'needs-you' });
-  const looking = notifier.alertFor({ ...sample, kind: 'finished' }, true);
+  const alerts = () => ({
+    finished: notifier.alertFor({ ...sample, kind: 'finished' }),
+    failed: notifier.alertFor({ ...sample, kind: 'failed' }),
+    action: notifier.alertFor({ ...sample, kind: 'action-done' }),
+    looking: notifier.alertFor({ ...sample, kind: 'finished' }, true),
+  });
+  const on = alerts();
+  await click('[data-notifications-toggle]');
+  await until(() => !preferences.get().notifications.enabled);
+  const quiet = alerts();
+  const saved = JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8')) as Preferences;
 
-  await click('[data-sounds]');
-  await click('[data-notifications]');
-  updatePreferences({ soundComplete: DEFAULT_PREFERENCES.soundComplete, soundNeedsInput: DEFAULT_PREFERENCES.soundNeedsInput, soundVolume: DEFAULT_PREFERENCES.soundVolume });
-  const restored = await until(() => preferences.get().notifications && !preferences.get().sounds);
-  await click('[data-close-settings]');
+  // Sounds off dims the rows and keeps the sounds; on again brings them back.
+  await click('[data-sounds-toggle]');
+  const offKept = (await until(() => !preferences.get().sounds.enabled)) && (await waitInPage(win, rowsDisabled, 2_000)) && preferences.get().sounds.byEvent.finished === finished;
+  await click('[data-sounds-toggle]');
+  const backOn = await waitInPage(win, `${rowsEnabled} && document.querySelector('[data-sound-picker="finished"]').dataset.value === ${JSON.stringify(finished)}`, 2_000);
 
-  if (saved.notifications !== false || saved.sounds !== true || saved.soundComplete !== complete || saved.soundNeedsInput !== null || saved.soundVolume !== 0.45) return `not saved: ${JSON.stringify(saved)}`;
-  if (finishing.notify || finishing.sound !== 'complete') return `a finished turn would ${JSON.stringify(finishing)}, not only the Session complete sound`;
-  if (needing.notify || needing.sound !== null) return `needing you would ${JSON.stringify(needing)} with its sound set to None`;
-  if (looking.notify || looking.sound !== null) return 'the session on screen would still get a sound';
+  await restore();
+  const restored = await until(() => preferences.get().notifications.enabled && !preferences.get().sounds.enabled && preferences.get().sounds.byEvent.finished === DEFAULT_PREFERENCES.sounds.byEvent.finished);
+
+  if (saved.notifications?.enabled !== false || saved.sounds?.enabled !== true || saved.sounds.byEvent.finished !== finished || saved.sounds.volume !== 0.45) return `not saved: ${JSON.stringify({ notifications: saved.notifications, sounds: saved.sounds })}`;
+  if (!on.finished.notify || on.finished.sound !== 'finished' || on.failed.sound !== (saved.sounds.byEvent.error === 'none' ? null : 'error')) return `with both on, events would ${JSON.stringify(on)}`;
+  if (on.action.sound !== (saved.sounds.byEvent.actionEnded === 'none' ? null : 'actionEnded')) return `a project action that ended would play ${on.action.sound} with its sound set to ${saved.sounds.byEvent.actionEnded}`;
+  if (quiet.finished.notify || quiet.finished.sound !== 'finished') return `with notifications off, a finished turn would ${JSON.stringify(quiet.finished)}, not only its sound`;
+  if (on.looking.notify || on.looking.sound !== null) return 'the session on screen would still get a sound';
+  if (!offKept) return 'turning sounds off did not disable the rows, or lost the sounds';
+  if (!backOn) return 'turning sounds on again did not bring back the Finished sound';
   if (!restored) return 'could not put the defaults back';
   return `ok: ${recorded ? `checked against a recorded ${recorded.kind} event` : 'no event recorded yet'}, ${list.sounds.length} sounds`;
 }
@@ -5498,7 +5570,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('project action added through the editor and run in a terminal tab', () => runActionStep(win));
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));
-  await step('settings › notifications: notifications off, sounds on, picking, playing and the volume (recorded, never heard)', () => runNotificationsStep(win));
+  await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
   await step('about', () => runAboutStep(win));

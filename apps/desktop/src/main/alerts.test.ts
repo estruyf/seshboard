@@ -1,47 +1,66 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFERENCES } from '@switchboard/protocol/bridge';
-import { alertFor, louder, soundKindOf, type AlertPrefs } from './alerts.ts';
+import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, type SoundPrefs } from '@switchboard/protocol/bridge';
+import { alertFor, louder, soundEventOf, type AlertPrefs } from './alerts.ts';
 
-const prefs = (extra: Partial<AlertPrefs> = {}): AlertPrefs => ({ ...DEFAULT_PREFERENCES, ...extra });
+const KINDS = ['needs-you', 'finished', 'failed', 'action-done'] as const;
+const prefs = ({ notifications = true, ...sounds }: Partial<SoundPrefs> & { notifications?: boolean } = {}): AlertPrefs => ({
+  notifications: { enabled: notifications },
+  sounds: { ...DEFAULT_SOUNDS, ...sounds },
+});
+/** Every moment has a sound, so each one plays. */
+const ALL = { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Pop' };
 
 describe('alertFor', () => {
-  it('notifies without a sound by default, as before', () => {
-    for (const kind of ['needs-you', 'finished', 'failed', 'action-done'] as const) expect(alertFor(kind, false, prefs())).toEqual({ notify: true, sound: null });
+  it('notifies without a sound by default', () => {
+    for (const kind of KINDS) expect(alertFor(kind, false, DEFAULT_PREFERENCES)).toEqual({ notify: true, sound: null });
   });
 
-  it('plays the needs input sound for a prompt, and session complete for the rest', () => {
-    const on = prefs({ sounds: true });
-    expect(alertFor('needs-you', false, on)).toEqual({ notify: true, sound: 'needsInput' });
-    expect(alertFor('finished', false, on)).toEqual({ notify: true, sound: 'complete' });
-    expect(alertFor('failed', false, on)).toEqual({ notify: true, sound: 'complete' });
-    expect(alertFor('action-done', false, on)).toEqual({ notify: true, sound: 'complete' });
+  it('plays each moment its own sound', () => {
+    const on = prefs({ enabled: true, byEvent: ALL });
+    expect(alertFor('needs-you', false, on)).toEqual({ notify: true, sound: 'needsYou' });
+    expect(alertFor('finished', false, on)).toEqual({ notify: true, sound: 'finished' });
+    expect(alertFor('failed', false, on)).toEqual({ notify: true, sound: 'error' });
+    expect(alertFor('action-done', false, on)).toEqual({ notify: true, sound: 'actionEnded' });
   });
 
-  it('plays sounds with notifications off', () => {
-    expect(alertFor('needs-you', false, prefs({ notifications: false, sounds: true }))).toEqual({ notify: false, sound: 'needsInput' });
+  it('plays nothing for a moment set to none, and the others still play', () => {
+    const on = prefs({ enabled: true, byEvent: { ...ALL, error: 'none' } });
+    expect(alertFor('failed', false, on)).toEqual({ notify: true, sound: null });
+    expect(alertFor('finished', false, on)).toEqual({ notify: true, sound: 'finished' });
+    // A new install: no sound when a project action ends.
+    expect(alertFor('action-done', false, prefs({ enabled: true }))).toEqual({ notify: true, sound: null });
   });
 
-  it('plays nothing for a sound set to none, or at volume 0', () => {
-    expect(alertFor('finished', false, prefs({ sounds: true, soundComplete: null }))).toEqual({ notify: true, sound: null });
-    expect(alertFor('needs-you', false, prefs({ sounds: true, soundComplete: null }))).toEqual({ notify: true, sound: 'needsInput' });
-    expect(alertFor('needs-you', false, prefs({ sounds: true, soundVolume: 0 }))).toEqual({ notify: true, sound: null });
+  it('plays nothing with sounds off or at volume 0, and keeps notifying', () => {
+    for (const kind of KINDS) {
+      expect(alertFor(kind, false, prefs({ enabled: false, byEvent: ALL }))).toEqual({ notify: true, sound: null });
+      expect(alertFor(kind, false, prefs({ enabled: true, byEvent: ALL, volume: 0 }))).toEqual({ notify: true, sound: null });
+    }
+  });
+
+  it('plays sounds with notifications off, and notifies with sounds off', () => {
+    expect(alertFor('needs-you', false, prefs({ notifications: false, enabled: true, byEvent: ALL }))).toEqual({ notify: false, sound: 'needsYou' });
+    expect(alertFor('failed', false, prefs({ notifications: false, enabled: true, byEvent: ALL }))).toEqual({ notify: false, sound: 'error' });
+    expect(alertFor('needs-you', false, prefs({ notifications: true, enabled: false, byEvent: ALL }))).toEqual({ notify: true, sound: null });
+    expect(alertFor('needs-you', false, prefs({ notifications: false, enabled: false, byEvent: ALL }))).toEqual({ notify: false, sound: null });
   });
 
   it('does nothing for the session you are looking at', () => {
-    expect(alertFor('needs-you', true, prefs({ sounds: true }))).toEqual({ notify: false, sound: null });
+    expect(alertFor('needs-you', true, prefs({ enabled: true, byEvent: ALL }))).toEqual({ notify: false, sound: null });
   });
 });
 
 describe('sounds for events that arrive together', () => {
-  it('maps kinds to sounds', () => {
-    expect(soundKindOf('needs-you')).toBe('needsInput');
-    expect(soundKindOf('action-done')).toBe('complete');
+  it('maps kinds to moments', () => {
+    expect(KINDS.map(soundEventOf)).toEqual(['needsYou', 'finished', 'error', 'actionEnded']);
   });
 
-  it('plays one, needing you first', () => {
+  it('plays one: needing you, then an error, a finished turn, an action', () => {
     expect(louder(null, null)).toBeNull();
-    expect(louder(null, 'complete')).toBe('complete');
-    expect(louder('complete', 'needsInput')).toBe('needsInput');
-    expect(louder('needsInput', 'complete')).toBe('needsInput');
+    expect(louder(null, 'finished')).toBe('finished');
+    expect(louder('finished', 'needsYou')).toBe('needsYou');
+    expect(louder('needsYou', 'error')).toBe('needsYou');
+    expect(louder('finished', 'error')).toBe('error');
+    expect(louder('actionEnded', 'finished')).toBe('finished');
   });
 });

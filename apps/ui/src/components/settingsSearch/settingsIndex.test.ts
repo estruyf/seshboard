@@ -42,7 +42,7 @@ describe('the settings index', () => {
       ...rowLabels(aboutSettings, ['Toggle']),
       ...rowLabels(claudeCodeUpdates, ['Toggle']),
       ...rowLabels(focusSettings, ['Toggle', 'Row']),
-      ...rowLabels(notificationsSettings, ['Toggle', 'Row']),
+      ...rowLabels(notificationsSettings, ['CardHeader', 'Row']),
       ...rowLabels(sessionsSettings, ['Toggle', 'SettingRow']),
       ...rowLabels(backupSettings, ['Row']),
     ];
