@@ -1644,6 +1644,77 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Settings' search: ⌘F puts the keyboard in the field, results show for every page with the words marked, ↓ and
+ * Enter open one at its setting, Escape empties the field and then closes Settings. Then every setting the
+ * search knows (found page by page, by the page's name) is opened from its result and has to land on its row.
+ * Read-only: choosing a result only scrolls to a setting and focuses it.
+ */
+async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const key = (keyCode: string, modifiers: Array<'shift' | 'meta' | 'control'> = []) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
+  };
+  const field = '[data-settings-search]';
+  const search = (query: string) => setFieldValue(win, field, query);
+
+  await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]').click()");
+  if (!(await waitInPage(win, `document.querySelector('${field}')`, 3_000))) return 'no search field in Settings';
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: [MOD_MODIFIER] });
+  if (!(await waitInPage(win, `document.activeElement === document.querySelector('${field}')`, 2_000))) return '⌘F did not put the keyboard in the search field';
+
+  await search('dark mode');
+  if (!(await waitInPage(win, "document.querySelector('[data-setting-result]')?.dataset.settingResult === 'appearance'", 2_000))) return '"dark mode" did not find Appearance first';
+  if (await js("Boolean(document.querySelector('[data-settings-page]'))")) return 'the page stayed on screen next to the results';
+  if (!(await js("document.querySelector('[data-settings-section=\"theme\"] [data-settings-section-count]')?.textContent.startsWith('1')"))) return 'Theme in the list did not say it has 1 result';
+  await search('zzzqx');
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-search-empty]')", 2_000))) return 'no "No settings match" for a query that matches nothing';
+  await shot(win, 'settings-search-empty.png');
+
+  // The keyboard: the first result is active; ↓ moves, Enter opens it at its setting.
+  await search('quit');
+  if (!(await waitInPage(win, "document.querySelector('[data-setting-result][aria-selected=true]')?.dataset.settingResult === 'confirm-quit'", 2_000))) return '"quit" did not make Ask before quitting the active result';
+  await shot(win, 'settings-search.png');
+  key('Return');
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-page=\"general\"] [data-setting-flash=\"confirm-quit\"]') && document.activeElement?.matches('[data-confirm-quit]')", 3_000))) return 'Enter did not open General at Ask before quitting, with the keyboard on its switch';
+  if (await js(`document.querySelector('${field}').value !== ''`)) return 'the field kept the query after choosing a result';
+
+  // Escape empties the field first, and closes Settings from an empty one.
+  await js(`document.querySelector('${field}').focus()`);
+  await search('theme');
+  await waitInPage(win, "document.querySelector('[data-setting-result]')", 2_000);
+  key('Escape');
+  if (!(await waitInPage(win, `document.querySelector('${field}').value === '' && document.querySelector('[data-settings-page]')`, 2_000))) return 'Escape did not empty the field and bring the page back';
+
+  // Every setting: find it by its page's name, click its result, and check it lands on its row.
+  const pages = (await js("[...document.querySelectorAll('[data-settings-section]')].map((b) => [b.dataset.settingsSection, b.innerText.trim()])")) as Array<[string, string]>;
+  const missed: string[] = [];
+  let landed = 0;
+  for (const [page, label] of pages) {
+    await search(label);
+    await waitInPage(win, `document.querySelector('[data-settings-results-page="${page}"]')`, 2_000);
+    const ids = (await js(`[...document.querySelectorAll('[data-settings-results-page="${page}"] [data-setting-result]')].map((r) => r.dataset.settingResult)`)) as string[];
+    if (!ids.length) missed.push(`${page}: no results for "${label}"`);
+    for (const id of ids) {
+      await search(label);
+      if (!(await waitInPage(win, `document.querySelector('[data-setting-result="${id}"]')`, 2_000))) {
+        missed.push(`${id}: not found again`);
+        continue;
+      }
+      await js(`document.querySelector('[data-setting-result="${id}"]').click()`);
+      if (await waitInPage(win, `document.querySelector('[data-settings-page="${page}"] [data-setting-flash="${id}"]')`, 3_000)) landed += 1;
+      else missed.push(`${id}: did not land on ${page}`);
+    }
+  }
+  if (missed.length) return `failed: ${missed.join('; ')}`;
+
+  await js(`document.querySelector('${field}').focus()`);
+  key('Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 2_000))) return 'Escape in the empty field did not close Settings';
+  return `ok: ${landed} settings on ${pages.length} pages each opened at their row; ⌘F, ↓ Enter and Escape work`;
+}
+
+/**
  * The focus limit: turning it on in Settings › Focus shows the counter in the sidebar footer, in both
  * themes, with its list of the sessions that count; turning it off hides it again. Only preferences in
  * the throwaway profile change: no session is started and nothing is saved for later.
@@ -5104,6 +5175,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
   await step('settings: theme, sidebar style, session scope, tool activity, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
+  await step('settings search: ⌘F, results per page, Enter and Escape, and every setting opens at its row', () => runSettingsSearchStep(win), { timeoutMs: 90_000 });
   await step('focus limit', () => runFocusStep(win));
   await step('settings › sessions: archive days, deleting asks first, overview picks a month (nothing deleted)', () => runSessionsSettingsStep(win));
   await step('terminal panel opened a shell', () => runTerminalStep(win));

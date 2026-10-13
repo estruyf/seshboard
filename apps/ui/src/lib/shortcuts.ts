@@ -791,6 +791,13 @@ export const SHORTCUTS = [
 
   // Settings
   {
+    id: "settings.search",
+    keys: ["mod+f"],
+    action: "Search settings",
+    section: "settings",
+    when: (ctx) => ctx.view === "settings",
+  },
+  {
     id: "settings.close",
     keys: ["escape"],
     action: "Close Settings",

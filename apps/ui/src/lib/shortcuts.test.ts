@@ -224,6 +224,7 @@ describe('the shortcut registry', () => {
       'new-session.start': [at({ view: 'new-session' }), SESSION],
       'new-session.queue': [at({ view: 'new-session' }), SESSION],
       'settings.close': [at({ view: 'settings' }), SESSION],
+      'settings.search': [at({ view: 'settings' }), SESSION],
       'usage.limits': [at({ view: 'usage' }), SESSION],
       'usage.tokens': [at({ view: 'usage' }), at({ view: 'new-session' })],
       'usage.period': [at({ view: 'usage' }), HOME],

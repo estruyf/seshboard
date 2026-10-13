@@ -4,7 +4,7 @@ import { Button } from '../ui/Button.tsx';
 
 function Row({ label, detail, button, icon: Icon, onClick, attr }: { label: string; detail: string; button: string; icon: LucideIcon; onClick(): void; attr: `data-${string}` }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex items-center justify-between gap-4" data-setting-row>
       <span>
         <span className="block text-[12.5px]">{label}</span>
         <span className="block text-ui text-muted">{detail}</span>

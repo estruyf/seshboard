@@ -95,7 +95,7 @@ function Heading({ title, children, action }: { title: string; children?: ReactN
 
 function SettingRow({ label, detail, children }: { label: string; detail: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-t border-border py-3 first:border-t-0 first:pt-0">
+    <div className="flex items-center justify-between gap-6 border-t border-border py-3 first:border-t-0 first:pt-0" data-setting-row>
       <span className="min-w-0">
         <span className="block text-ui text-text">{label}</span>
         <span className="block text-meta text-muted">{detail}</span>
