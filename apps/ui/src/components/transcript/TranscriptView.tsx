@@ -430,18 +430,23 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   }, [renderItems.length, totalSize, streamingText, permissions.length, virtualizer]);
   // The view shrinks when the message box grows (a long prompt, an attachment, a permission card),
   // and the browser keeps scrollTop without a scroll event, so the last lines slide under the box.
+  // The "Working…" line below the list grows the end the same way: on a session's first message it
+  // appears only once Claude Code has started, after everything above has settled.
   // Following the end again on every height change keeps them in sight.
+  const tailRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     let lastHeight = el.clientHeight;
-    const observer = new ResizeObserver(() => {
+    const observer = new ResizeObserver((entries) => {
       const height = el.clientHeight;
-      if (height === lastHeight) return;
+      const tailChanged = entries.some((entry) => entry.target === tailRef.current);
+      if (height === lastHeight && !tailChanged) return;
       lastHeight = height;
       if (stickToBottom.current && height > 0) el.scrollTop = el.scrollHeight;
     });
     observer.observe(el);
+    if (tailRef.current) observer.observe(tailRef.current);
     return () => observer.disconnect();
   }, []);
 
@@ -943,7 +948,9 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                   <AutoPickLine sessionId={sessionId} pick={autoPick} />
                 </div>
               )}
-              <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} />
+              <div ref={tailRef}>
+                <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} />
+              </div>
             </div>
           </FileLinksProvider>
           </PromptExpansionContext.Provider>
