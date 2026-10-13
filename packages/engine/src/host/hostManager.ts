@@ -14,6 +14,7 @@ import {
   type PluginInfo,
   type RewindResult,
   type AutoPick,
+  type SendMode,
   type SessionHostInfo,
   type SlashCommand,
   type StreamDelta,
@@ -251,13 +252,22 @@ export class HostManager {
   }
 
   /**
-   * Sends a message. `now`: while Claude is busy, its current turn is stopped first, so this message (and
-   * any sent before it that still wait, which survive an interrupt) runs right away instead of after it.
+   * Sends a message. While Claude is busy, `mode` decides: `queue` holds it until the turn ends, `steer` hands it to
+   * Claude to read at its next step, `now` stops the turn first (and any message waiting in the queue stays queued).
+   * A fork, or an idle session, just sends.
    */
-  async send(params: { sessionId: string; text: string; attachments: ImageAttachment[]; fork: boolean; now?: boolean }): Promise<{ sessionId: string; messageUuid: string }> {
+  async send(params: { sessionId: string; text: string; attachments: ImageAttachment[]; fork: boolean; mode?: SendMode }): Promise<{ sessionId: string; messageUuid: string; queued: boolean }> {
     const host = await this.ensureHost(params.sessionId, params.fork, 'This session is open in another Claude Code window. Fork it to continue here.');
-    if (params.now && !params.fork && (host.info.state === 'running' || host.info.state === 'needs-you')) await this.interrupt(host.sessionId);
-    const messageUuid = host.send(params.text, params.attachments);
+    const mode = params.mode ?? 'queue';
+    let messageUuid: string;
+    let queued = false;
+    if (!params.fork && host.busy && mode === 'queue') {
+      messageUuid = host.enqueue(params.text, params.attachments);
+      queued = true;
+    } else if (!params.fork && host.busy && mode === 'now') {
+      this.denyPending(host.sessionId, 'Interrupted by the user.');
+      messageUuid = await host.sendNow(params.text, params.attachments);
+    } else messageUuid = host.send(params.text, params.attachments);
     // Wait for a fork to start, so a fork that fails says so, and in case Claude Code settled on another id than the one we gave it.
     const sessionId = params.fork ? await host.initialized : host.sessionId;
     if (params.fork) {
@@ -266,7 +276,27 @@ export class HostManager {
       const saved = this.settings.get(params.sessionId);
       if (saved?.model || saved?.effort) this.settings.set(sessionId, { model: saved.model, effort: saved.effort });
     } else this.deps.onContinued?.(sessionId);
-    return { sessionId, messageUuid };
+    return { sessionId, messageUuid, queued };
+  }
+
+  /** Takes a message out of a session's queue (null when it was already sent). */
+  dequeue(sessionId: string, id: string): { text: string; attachments: ImageAttachment[] } | null {
+    return this.require(sessionId).dequeue(id);
+  }
+
+  moveQueued(sessionId: string, id: string, toIndex: number): void {
+    this.require(sessionId).moveQueued(id, toIndex);
+  }
+
+  /** Sends one queued message now, stopping the turn it waits behind. */
+  async sendQueuedNow(sessionId: string, id: string): Promise<void> {
+    const host = this.require(sessionId);
+    if (host.busy) this.denyPending(sessionId, 'Interrupted by the user.');
+    await host.sendQueuedNow(id);
+  }
+
+  resumeQueue(sessionId: string): void {
+    this.require(sessionId).resumeQueue();
   }
 
   /**
@@ -286,11 +316,15 @@ export class HostManager {
   }
 
   async interrupt(sessionId: string): Promise<void> {
-    // Pending prompts would otherwise keep the turn alive after the interrupt.
-    for (const [requestId, pending] of this.pending) {
-      if (pending.request.sessionId === sessionId) this.settle(requestId, { behavior: 'deny', message: 'Interrupted by the user.', interrupt: true });
-    }
+    this.denyPending(sessionId, 'Interrupted by the user.');
     await this.require(sessionId).interrupt();
+  }
+
+  /** Pending prompts would otherwise keep the turn alive after it is stopped. */
+  private denyPending(sessionId: string, message: string): void {
+    for (const [requestId, pending] of this.pending) {
+      if (pending.request.sessionId === sessionId) this.settle(requestId, { behavior: 'deny', message, interrupt: true });
+    }
   }
 
   stopTask(sessionId: string, taskId: string): Promise<void> {

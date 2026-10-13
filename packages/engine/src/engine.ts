@@ -476,7 +476,10 @@ export function createEngine(options: EngineOptions): Engine {
     refreshLive: scanLive,
     sessionCwd: (id) => sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null,
     sessionProfile,
-    onInfo: (info) => broadcast('session.host', info),
+    onInfo: (info) => {
+      if (info.state === 'idle') transcripts.settled(info.sessionId);
+      broadcast('session.host', info);
+    },
     onStream: (delta) => broadcast('session.stream', delta),
     onMessages: (id, messages) => transcripts.pushLive(id, messages),
     onPermission: (request) => broadcast('session.permission', request),
@@ -1142,6 +1145,19 @@ export function createEngine(options: EngineOptions): Engine {
       const sent = await hosts.send(params);
       if (sent.sessionId === params.sessionId) sessions.wake(params.sessionId);
       return sent;
+    },
+    'session.queue.remove': ({ sessionId, id }) => ({ message: hosts.dequeue(sessionId, id) }),
+    'session.queue.move': ({ sessionId, id, toIndex }) => {
+      hosts.moveQueued(sessionId, id, toIndex);
+      return {};
+    },
+    'session.queue.sendNow': async ({ sessionId, id }) => {
+      await hosts.sendQueuedNow(sessionId, id);
+      return {};
+    },
+    'session.queue.resume': ({ sessionId }) => {
+      hosts.resumeQueue(sessionId);
+      return {};
     },
     'session.forkAt': async ({ sessionId, messageUuid }) => {
       if (!source.fork) throw new RpcError('UNSUPPORTED', 'Forking is not available');

@@ -14,6 +14,7 @@ import {
   ProjectInspection,
   RewindResult,
   ContextUsage,
+  SendMode,
   SessionHostInfo,
   SlashCommand,
   StreamDelta,
@@ -300,11 +301,32 @@ export const contract = {
         text: Prompt,
         attachments: z.array(ImageAttachment).max(20).default([]),
         fork: z.boolean().default(false),
-        /** While Claude is working, stop its current turn so this message runs now instead of waiting for it. */
-        now: z.boolean().default(false),
+        /**
+         * While Claude is working: `queue` holds the message until the turn ends (it shows in the queue meanwhile),
+         * `steer` hands it to Claude now so it reads it at its next step, `now` stops the turn and runs it at once.
+         * Nothing differs while Claude is idle.
+         */
+        mode: SendMode.default('queue'),
       }),
-      result: z.object({ sessionId: z.string(), messageUuid: z.string() }),
+      result: z.object({
+        sessionId: z.string(),
+        /** The message's uuid in the transcript, or the queue entry's id when `queued`. */
+        messageUuid: z.string(),
+        /** Held in the queue instead of sent. */
+        queued: z.boolean().default(false),
+      }),
     },
+    /** Takes a message out of a session's queue; the result is what it held, to put back in the message box. */
+    'session.queue.remove': {
+      params: z.object({ sessionId: SessionId, id: z.string() }),
+      result: z.object({ message: z.object({ text: z.string(), attachments: z.array(ImageAttachment) }).nullable() }),
+    },
+    /** Moves a queued message to another place in the queue (0 is next). */
+    'session.queue.move': { params: z.object({ sessionId: SessionId, id: z.string(), toIndex: z.number().int().min(0) }), result: z.object({}) },
+    /** Sends one queued message now, stopping Claude's turn; the rest keep waiting. */
+    'session.queue.sendNow': { params: z.object({ sessionId: SessionId, id: z.string() }), result: z.object({}) },
+    /** After a stopped or failed turn: sends the next queued message and lets the queue move on by itself again. */
+    'session.queue.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Stops one of the session's background tasks (a shell command, subagent or workflow); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string() }), result: z.object({}) },

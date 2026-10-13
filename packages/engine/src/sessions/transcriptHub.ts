@@ -38,6 +38,11 @@ export function diffTranscript(
 export class TranscriptHub {
   private readonly watchers = new Map<string, Set<Watcher>>();
   private readonly reloads = new Map<string, ReturnType<typeof coalesce>>();
+  /**
+   * Messages you sent that Claude Code hasn't written to the file yet (queued behind a running turn),
+   * kept so a window that opens the session later still shows them.
+   */
+  private readonly unwritten = new Map<string, RawSessionMessage[]>();
   readonly images = new ImageStore();
 
   constructor(
@@ -81,8 +86,11 @@ export class TranscriptHub {
    * them instead of duplicating them.
    */
   pushLive(sessionId: string, raw: readonly RawSessionMessage[]): void {
+    if (raw.length === 0) return;
+    const sent = raw.filter((m) => m.type === 'user');
+    if (sent.length > 0) this.unwritten.set(sessionId, [...(this.unwritten.get(sessionId) ?? []), ...sent]);
     const set = this.watchers.get(sessionId);
-    if (!set || raw.length === 0) return;
+    if (!set) return;
     const sink = this.images.sink(sessionId);
     const messages = raw.map((m) => normaliseMessage(m, sink));
     for (const watcher of set) {
@@ -99,6 +107,11 @@ export class TranscriptHub {
       }
       watcher.emit({ sessionId, mode: 'append', messages: fresh });
     }
+  }
+
+  /** The session has no turn left, so everything sent is in the file. */
+  settled(sessionId: string): void {
+    this.unwritten.delete(sessionId);
   }
 
   /** Called when a transcript file changed on disk. Reloads are coalesced per session. */
@@ -130,6 +143,10 @@ export class TranscriptHub {
       }
       return;
     }
+    const inFile = new Set(messages.map((m) => m.uuid));
+    const waiting = (this.unwritten.get(sessionId) ?? []).filter((m) => !inFile.has(m.uuid));
+    if (waiting.length > 0) this.unwritten.set(sessionId, waiting);
+    else this.unwritten.delete(sessionId);
     for (const watcher of targets) {
       if (!initial && watcher.uuids === null) {
         // Its initial load is still in flight; let that finish first, then catch up.
@@ -141,6 +158,16 @@ export class TranscriptHub {
       if (!diff) continue;
       watcher.uuids = messages.map((m) => m.uuid);
       if (diff.mode === 'replace') watcher.live.clear();
+      if (initial && waiting.length > 0) {
+        // Still queued behind a running turn: show them after the file's messages, as they were sent.
+        const sink = this.images.sink(sessionId);
+        const queued = waiting.map((m) => normaliseMessage(m, sink));
+        for (const m of queued) {
+          watcher.uuids.push(m.uuid);
+          watcher.live.add(m.uuid);
+        }
+        diff.messages = [...diff.messages, ...queued];
+      }
       watcher.emit({ sessionId, ...diff });
       if (initial && watcher.dirty) {
         watcher.dirty = false;
