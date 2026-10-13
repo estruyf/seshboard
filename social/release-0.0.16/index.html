@@ -1,0 +1,149 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  .copy { width: 470px; }
+
+  /* The Create pull request dialog, at the back. */
+  .pr {
+    position: absolute; right: 0; top: 0; width: 430px;
+    background: var(--popover); border-radius: 12px; overflow: hidden;
+    box-shadow: 0 0 0 1px var(--edge), 0 24px 60px -12px rgba(0,0,0,0.75);
+  }
+  .pr .hd { display: flex; align-items: center; gap: 9px; padding: 12px 15px; border-bottom: 1px solid var(--border); }
+  .pr .hd svg { width: 15px; height: 15px; color: var(--muted); }
+  .pr .hd h2 { font-size: 14.5px; font-weight: 650; color: var(--text); }
+  .pr .hd .repo { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .pr .bd { padding: 12px 15px; display: grid; gap: 9px; }
+  .pr .branches { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted); }
+  .pr .br { height: 24px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; color: var(--text); box-shadow: inset 0 0 0 1px var(--edge); }
+  .pr .stat { margin-left: auto; font-size: 11px; }
+  .pr .stat .add { color: var(--ok); } .pr .stat .del { color: var(--error); }
+  .pr label { font-size: 11px; color: var(--muted); }
+  .pr .field { height: 30px; padding: 0 10px; border-radius: 7px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--edge); display: flex; align-items: center; font-size: 13px; color: var(--text); }
+  .pr .ft { display: flex; align-items: center; gap: 8px; padding: 10px 15px; border-top: 1px solid var(--border); }
+  .pr .ft .note { font-size: 11px; color: var(--muted); }
+  .pr .ft .go { margin-left: auto; height: 28px; padding: 0 11px; border-radius: 7px; background: var(--accent); color: var(--on-accent); font-weight: 650; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .pr .ft .go svg { width: 12px; height: 12px; }
+
+  /* The session: side question, Up next and the message box, in front. */
+  .session { position: absolute; left: 0; bottom: 0; width: 486px; display: grid; gap: 10px; }
+
+  .side {
+    background: var(--card); border-radius: 12px; padding: 12px 15px 14px;
+    box-shadow: 0 0 0 1px rgba(116,192,252,0.7), 0 4px 10px rgba(0,0,0,0.35), 0 28px 60px -10px rgba(0,0,0,0.85);
+  }
+  .side .top { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .side .lbl { display: flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: 0.9px; text-transform: uppercase; color: var(--link); }
+  .side .lbl svg, .side .not svg { width: 13px; height: 13px; }
+  .side .not { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+  .side .nav { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--muted); }
+  .side .nav svg { width: 13px; height: 13px; }
+  .side h3 { margin-top: 9px; font-size: 15px; font-weight: 650; color: #f3f4f7; }
+  .side p { margin-top: 6px; font-size: 13px; line-height: 1.5; color: var(--text); }
+  .side code { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; padding: 1px 4px; border-radius: 4px; background: rgba(255,255,255,0.06); }
+
+  .upnext { background: var(--card); border-radius: 12px; padding: 10px 10px 8px; box-shadow: 0 0 0 1px var(--edge), 0 20px 50px -14px rgba(0,0,0,0.8); }
+  .upnext .section { color: var(--muted); padding: 0 4px 6px; }
+  .upnext .row { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 8px; border-radius: 8px; font-size: 13px; color: var(--text); }
+  .upnext .row.hover { background: rgba(45,49,66,0.7); }
+  .upnext .row .grip { width: 10px; height: 12px; color: var(--faint); }
+  .upnext .row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .upnext .row .now { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); }
+  .upnext .row .now svg { width: 11px; height: 11px; }
+
+  .sb { position: relative; width: auto; }
+  .work { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--accent); }
+  .work .dots3 { display: flex; gap: 3px; }
+  .work .dots3 i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); opacity: 0.5; }
+  .work .dots3 i:first-child { opacity: 1; }
+  .split { margin-left: auto; display: flex; height: 30px; border-radius: 8px; overflow: hidden; background: var(--accent); color: var(--on-accent); font-weight: 650; font-size: 12px; }
+  .split span { display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+  .split .caret2 { padding: 0 8px; border-left: 1px solid rgba(21,24,31,0.25); }
+  .split svg { width: 11px; height: 11px; }
+  .alt { font-size: 11px; color: var(--faint); }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard 0.0.16</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Out now</div>
+    <h1>Keep talking <span class="hl">while Claude works</span></h1>
+    <p class="sub">Ask a <b>side question</b> with /btw, line up messages in <b>Up next</b> or <b>steer</b> Claude mid-turn. Then <b>create the pull request</b> without a browser.</p>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Download for free</span>
+    <span class="where">switchboard.struyfconsulting.com</span>
+  </div>
+
+  <div class="stage">
+    <div class="pr">
+      <div class="hd">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="4" cy="3.5" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><path d="M4 5.3v5.4M12 10.7V6.5a2 2 0 0 0-2-2H7.5M9 3l-1.5 1.5L9 6"/></svg>
+        <h2>Create pull request</h2>
+        <span class="repo mono">acme/acme-store</span>
+      </div>
+      <div class="bd">
+        <div class="branches">
+          <span class="br mono">feat/dark-mode</span>into<span class="br mono">main ▾</span>
+          <span class="stat">3 commits · 3 files · <span class="add">+23</span> <span class="del">−0</span></span>
+        </div>
+        <label>Title</label>
+        <div class="field">Dark mode</div>
+      </div>
+      <div class="ft">
+        <span class="note">Pushes 3 commits to origin first</span>
+        <span class="go"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="4" cy="3.5" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><path d="M4 5.3v5.4M12 10.7V6.5a2 2 0 0 0-2-2H7.5"/></svg>Create pull request</span>
+      </div>
+    </div>
+
+    <div class="session">
+      <div class="side">
+        <div class="top">
+          <span class="lbl"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="2.2 2.2"><circle cx="8" cy="8" r="6"/></svg>Side question</span>
+          <span class="not"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4z"/><path d="M2.5 2.5l11 11"/></svg>not in the conversation</span>
+          <span class="nav"><span>‹</span><span>2 of 2</span><span>›</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M3 10.5V3.5A1 1 0 0 1 4 2.5h6.5"/></svg><span>✕</span></span>
+        </div>
+        <h3>Where do the theme colours live?</h3>
+        <p>In <code>src/theme.ts</code>. Claude is adding a <code>dark</code> palette next to <code>light</code>, and the toggle reads it with <code>useTheme()</code>.</p>
+      </div>
+
+      <div class="upnext">
+        <div class="section">Up next <span class="count">2</span></div>
+        <div class="row hover">
+          <svg class="grip" viewBox="0 0 10 12" fill="currentColor"><circle cx="3" cy="2" r="1"/><circle cx="7" cy="2" r="1"/><circle cx="3" cy="6" r="1"/><circle cx="7" cy="6" r="1"/><circle cx="3" cy="10" r="1"/><circle cx="7" cy="10" r="1"/></svg>
+          <span class="t">Remember the choice in localStorage</span>
+          <span class="now"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M9 1.5L3 9h4.5L7 14.5 13 7H8.5z"/></svg>Send now</span>
+        </div>
+        <div class="row">
+          <svg class="grip" viewBox="0 0 10 12"></svg>
+          <span class="t">Add a test for the toggle</span>
+          <span class="now"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M9 1.5L3 9h4.5L7 14.5 13 7H8.5z"/></svg>Send now</span>
+        </div>
+      </div>
+
+      <div class="sb">
+        <div class="head">
+          <img src="../../apps/desktop/build/icon.png" alt="">
+          <span class="title">Add dark mode toggle to settings</span>
+          <span class="meta">acme-store</span>
+        </div>
+        <div class="msg">Use the system setting as the default<span class="caret"></span></div>
+        <div class="foot">
+          <span class="work"><span class="dots3"><i></i><i></i><i></i></span>Claude is working</span>
+          <span class="alt"><span class="mono">⌥↵</span> Steer</span>
+          <span class="split"><span>Queue <span class="kbd">↵</span></span><span class="caret2"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 4.5l3 3 3-3"/></svg></span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
