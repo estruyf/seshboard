@@ -42,6 +42,11 @@ const STRIP_ENV = ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SSE_PORT
 /** How long Stop waits after ^C before it terminates, then kills, the process. */
 export const STOP_GRACE_MS = 3000;
 
+/** A new shell counts as started once its output has been quiet this long (its prompt is drawn, the rc files have run). */
+export const READY_QUIET_MS = 400;
+/** After this long from the start, a shell that is still busy or silent counts as started anyway. */
+export const READY_MAX_MS = 6000;
+
 interface Terminal {
   info: TerminalInfo;
   pty: Pty;
@@ -53,6 +58,9 @@ interface Terminal {
   pending: string;
   timer: ReturnType<typeof setTimeout> | undefined;
   exited: Promise<number>;
+  /** When the current process was spawned, and when it last printed anything (for `whenReady`). */
+  spawnedAt: number;
+  lastOutputAt: number | undefined;
 }
 
 /**
@@ -242,8 +250,12 @@ export class TerminalManager {
     terminal.exited = new Promise<number>((resolve) => (resolveExit = resolve));
     terminal.pty = pty;
     terminal.info = { ...terminal.info, pid: pty.pid };
+    terminal.spawnedAt = Date.now();
+    terminal.lastOutputAt = undefined;
     pty.onData((data) => {
-      if (terminal.pty === pty) this.buffer(terminal, data);
+      if (terminal.pty !== pty) return;
+      terminal.lastOutputAt = Date.now();
+      this.buffer(terminal, data);
     });
     pty.onExit(({ exitCode, signal }) => {
       if (terminal.pty !== pty) return;
@@ -272,6 +284,29 @@ export class TerminalManager {
     const terminal = this.require(id);
     this.flush(terminal);
     return { info: terminal.info, replay: terminal.replay.join('') };
+  }
+
+  /**
+   * Resolves once a shell that just started is ready for typed input: it has printed something and then gone quiet for
+   * `quietMs` (the prompt is up), or `maxMs` after it started, or once it exits or is closed. Typing into a shell while
+   * its rc files still run isn't safe: zsh plugins and prompt themes can throw away what was typed by then.
+   */
+  whenReady(id: string, quietMs = READY_QUIET_MS, maxMs = READY_MAX_MS): Promise<void> {
+    const terminal = this.terminals.get(id);
+    if (!terminal) return Promise.resolve();
+    const pty = terminal.pty;
+    const deadline = terminal.spawnedAt + maxMs;
+    return new Promise((resolve) => {
+      const check = () => {
+        const now = Date.now();
+        const gone = this.terminals.get(id) !== terminal || terminal.pty !== pty || terminal.info.exitCode !== null;
+        const quietAt = terminal.lastOutputAt === undefined ? undefined : terminal.lastOutputAt + quietMs;
+        if (gone || now >= deadline || (quietAt !== undefined && now >= quietAt)) return resolve();
+        // Nothing printed yet: look again after a quiet period, and when it has printed, once that output is quiet long enough.
+        setTimeout(check, Math.min(deadline, quietAt ?? now + quietMs) - now);
+      };
+      check();
+    });
   }
 
   /** Keystrokes for a terminal that just closed are dropped, not errors (a closing tab can still send one). */

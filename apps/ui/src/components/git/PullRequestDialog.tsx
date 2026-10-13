@@ -216,8 +216,8 @@ export function PullRequestDialog({
     keep();
     onClose();
     const id = await openTerminal(client, sessionId, cwd, 'shell');
-    // Typed, not run: you press Return when you're ready.
-    if (id) await client.call('terminal.write', { id, data: 'gh auth login' });
+    // Typed, not run: you press Return when you're ready. Only once the new shell has started, or its config can drop it.
+    if (id) await client.call('terminal.write', { id, data: 'gh auth login', whenReady: true });
   };
   const pullFirst = () => {
     keep();

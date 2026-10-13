@@ -1,12 +1,12 @@
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TerminalInfo } from '@switchboard/protocol';
 import { userShell } from '../system/shell.ts';
 import { withUpperCasePath } from '../system/shellEnv.ts';
 import { removeDir } from '../util/removeDir.ts';
-import { REPLAY_LIMIT, TerminalManager, type Pty, type SpawnPty } from './terminalManager.ts';
+import { READY_MAX_MS, READY_QUIET_MS, REPLAY_LIMIT, TerminalManager, type Pty, type SpawnPty } from './terminalManager.ts';
 
 const dirs: string[] = [];
 const managers: TerminalManager[] = [];
@@ -146,6 +146,57 @@ describe('TerminalManager', () => {
     expect(fake.calls[0]!.env).toMatchObject({ PATH: '/bin', CLAUDE_CODE_USE_BEDROCK: '1', TERM_PROGRAM: 'Switchboard' });
     expect(fake.calls[0]!.env).not.toHaveProperty('CLAUDECODE');
     expect(fake.calls[0]!.env).not.toHaveProperty('CLAUDE_CODE_ENTRYPOINT');
+  });
+
+  it('waits for a new shell to print and go quiet before it counts as ready, a few seconds at most', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const fake = fakeSpawn();
+      const { manager } = setup(fake.spawn);
+      const watch = (id: string) => {
+        const state = { ready: false };
+        void manager.whenReady(id).then(() => (state.ready = true));
+        return state;
+      };
+      const open = () => manager.open({ sessionId: 's1', cwd: tempDir(), kind: 'shell', cols: 80, rows: 24, fork: false });
+
+      // A slow rc file: nothing for a while, then a line, more loading, and the prompt.
+      const slow = await open();
+      const shell = watch(slow.id);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(shell.ready).toBe(false);
+      fake.emit('Loading plugins…\r\n');
+      await vi.advanceTimersByTimeAsync(READY_QUIET_MS - 100);
+      fake.emit('~/project % ');
+      await vi.advanceTimersByTimeAsync(READY_QUIET_MS - 1);
+      expect(shell.ready).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(shell.ready).toBe(true);
+      // Once it is up, it is ready right away.
+      const again = watch(slow.id);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(again.ready).toBe(true);
+
+      // A shell that never goes quiet (or never prints) gets the input at the limit anyway.
+      const busy = await open();
+      const noisy = watch(busy.id);
+      for (let t = 0; t < READY_MAX_MS - 100; t += 100) {
+        fake.emit('.');
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      expect(noisy.ready).toBe(false);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(noisy.ready).toBe(true);
+
+      // Closing it ends the wait too.
+      const closed = await open();
+      const gone = watch(closed.id);
+      manager.close(closed.id);
+      await vi.advanceTimersByTimeAsync(READY_QUIET_MS);
+      expect(gone.ready).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('batches output, caps the replay buffer, skips no-op resizes and kills on close', async () => {
