@@ -20,6 +20,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - Sending a very long message no longer fails with "Invalid params for session.create". A message can now hold up to 1,000,000 characters, and the message box says so when it is longer. A paste that is longer than that is not put in the box; drop the file instead.
 - The first message you send in a session you just opened no longer leaves the "Working…" line hidden under the message box.
 - **Auto model**: a new session started on Auto shows your message while Auto is choosing a model, not only once it has picked.
+- **Auto model**: when you change the model of a session Auto picked for, its model chip shows the new model at once instead of staying on "Auto · Sonnet".
 - **Worktrees** and **Branches**: a long label such as "PR #2004 merged" is cut short to fit its column instead of running into the size next to it.
 
 ## [0.0.15] - 2026-10-12

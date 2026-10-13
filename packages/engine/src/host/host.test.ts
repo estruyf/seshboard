@@ -498,6 +498,17 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('reports that the session left Auto when you change the model after the pick', async () => {
+    const t = setup();
+    const autoPick = { model: 'sonnet' as const, reason: 'A small change.', at: 1, tokens: 900, allowed: ['sonnet' as const] };
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', pickModel: async () => ({ model: 'sonnet', autoPick }) });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)).toMatchObject({ model: 'sonnet', autoPick });
+    await t.manager.setModel(id, 'opus');
+    expect(t.infos.at(-1)).toMatchObject({ model: 'opus', autoPick: { ...autoPick, left: true } });
+    t.manager.closeAll();
+  });
+
   it('lists commands for a folder without starting a session, once', async () => {
     const t = setup();
     const first = await t.manager.commands(undefined, '/projects/web', 'default');
