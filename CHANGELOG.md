@@ -4,6 +4,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+## [0.0.16] - 2026-10-13
+
 ### New
 
 - **Side questions with /btw.** Type `/btw` and a question to ask Claude about the session without adding anything to the conversation. It works while Claude is busy: the question never waits in Up next, and Claude isn't stopped. The answer shows in a panel above the message box, with ‹ › to go through your earlier side questions, **Copy**, and **Show all** for a long answer. Esc hides the panel while the answer keeps coming, and a chip brings it back. `/btw` without a question opens the latest one. Switchboard keeps the last 50 per session, also after you quit. The command palette has *Ask a side question…* and *Show side questions*.
