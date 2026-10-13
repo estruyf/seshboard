@@ -75,6 +75,12 @@ export type StartupView = "home" | "last" | "new";
 export type UpdateChannel = "stable" | "nightly";
 /** How New session, Home and the palette list your projects: most recently used first, or in the order you set. */
 export type ProjectOrder = "recent" | "yours";
+/**
+ * The permission mode a new session starts in: the one you picked last (`last`), or always the same one. Bypass
+ * permissions is never offered, as in the mode menus.
+ */
+export type NewSessionMode = "last" | "default" | "acceptEdits" | "plan" | "auto";
+export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["last", "default", "acceptEdits", "plan", "auto"];
 /** At the focus limit: ask first and allow going over (`nudge`), or wait until a session is finished (`strict`). */
 export type FocusMode = "nudge" | "strict";
 
@@ -95,6 +101,8 @@ export interface Preferences {
   sessionScope: SessionScope;
   startupView: StartupView;
   projectOrder: ProjectOrder;
+  /** What New session and the palette's prompt start in, unless the project has its own default. */
+  newSessionMode: NewSessionMode;
   /** Check GitHub for a newer release shortly after launch and every few hours. */
   autoUpdate: boolean;
   updateChannel: UpdateChannel;
@@ -122,6 +130,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sessionScope: "switchboard",
   startupView: "home",
   projectOrder: "recent",
+  newSessionMode: "last",
   autoUpdate: true,
   updateChannel: "stable",
   focusLimit: null,
@@ -161,6 +170,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.startupView = raw.startupView;
   if (oneOf(["recent", "yours"] as const, raw.projectOrder))
     out.projectOrder = raw.projectOrder;
+  if (oneOf(NEW_SESSION_MODES, raw.newSessionMode))
+    out.newSessionMode = raw.newSessionMode;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "nightly"] as const, raw.updateChannel))
     out.updateChannel = raw.updateChannel;

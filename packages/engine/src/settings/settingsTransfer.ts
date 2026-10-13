@@ -50,6 +50,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   sessionScope: 'Sessions in the sidebar',
   startupView: 'On startup',
   projectOrder: 'Project order',
+  newSessionMode: 'Permission mode for new sessions',
   autoUpdate: 'Automatic updates',
   updateChannel: 'Update channel',
   focusLimit: 'Focus limit',

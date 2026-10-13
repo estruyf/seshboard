@@ -50,7 +50,7 @@ import { linkNoticeText } from './linkNotice.ts';
 import { activityByProject, latestBranches, orderProjects, pickUpRows, tileStatus } from './projectTiles.ts';
 import { branchLabel, branchNote, freshBase } from './trayLabels.ts';
 import { checkoutBranchFor, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, type Choices, type GlobalChoices } from './choices.ts';
+import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices, type GlobalChoices } from './choices.ts';
 import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
@@ -76,12 +76,14 @@ export function NewSessionView() {
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const autoModel = usePreferences((s) => s.prefs.autoModel);
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
+  const newSessionMode = usePreferences((s) => s.prefs.newSessionMode);
   const view = useSessions((s) => s.view);
   const [cwd, setCwd] = useState<string | null>(null);
   const [globals, setGlobals] = useState<GlobalChoices>(INITIAL_CHOICES);
   /** The choices last made for a quick question, kept apart from those for projects. */
   const [questionChoices, setQuestionChoices] = useState<QuestionChoices>(INITIAL_QUESTION_CHOICES);
-  const [d, setD] = useState<Choices>({ ...INITIAL_CHOICES, branch: '' });
+  // Before a folder is picked, the mode is already the one Settings sets.
+  const [d, setD] = useState<Choices>(() => ({ ...withNewSessionMode(INITIAL_CHOICES, newSessionMode), branch: '' }));
   const [loaded, setLoaded] = useState(false);
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
   const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[] }>({ current: null, branches: [] });
@@ -159,8 +161,8 @@ export function NewSessionView() {
   const isProject = project?.added ?? false;
   const projectDefaults = isProject ? project!.defaults : null;
   const defaultsKey = JSON.stringify(projectDefaults);
-  /** What a session here starts from: a quick question's own choices, else the project's defaults over the ones last used. */
-  const firstChoices = (): Choices => (question ? questionStartingChoices(questionChoices) : choicesFor(globals, projectDefaults));
+  /** What a session here starts from: a quick question's own choices, else the project's defaults over the ones last used (and the mode Settings sets). */
+  const firstChoices = (): Choices => (question ? questionStartingChoices(questionChoices) : choicesFor(withNewSessionMode(globals, newSessionMode), projectDefaults));
   const projectProfile = project?.profileId && profiles.some((p) => p.id === project.profileId) ? project.profileId : null;
   const profileId = (profileOverride && profiles.some((p) => p.id === profileOverride) ? profileOverride : null) ?? projectProfile ?? defaultProfile;
   /** The picked folder's colour: the message box's frame, matching its tile. */
@@ -389,7 +391,7 @@ export function NewSessionView() {
     if (!loaded || touchedFor.current === cwd) return;
     const choices = firstChoices();
     setD(worktreeFor.current === cwd && !question ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, cwd, defaultsKey, globals, autostarting, question, questionChoices]);
+  }, [loaded, cwd, defaultsKey, globals, newSessionMode, autostarting, question, questionChoices]);
 
   // Inspect the folder (git? branch?), load its branches, and pre-warm Claude Code there.
   useEffect(() => {
