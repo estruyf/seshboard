@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Blocks, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SlashCommand } from '@switchboard/protocol/client';
+import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename, guessHome, shortAge, tildify } from '../../lib/format.ts';
@@ -17,6 +17,7 @@ import { realBranch, useSessions, type Pane } from '../../state/sessionsStore.ts
 import { runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
+import { toast } from '../../state/toastStore.ts';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
@@ -24,6 +25,8 @@ import { Composer } from '../composer/Composer.tsx';
 import { AutoWand } from '../composer/ComposerChips.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
+import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
+import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
 import { ActionPills } from '../actions/ActionPills.tsx';
 import { useActionsMenu } from '../actions/useActionsMenu.tsx';
@@ -572,8 +575,10 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
 
   // A draft kept from before (switching sessions, or a restart): a quiet line above the box until it is edited or sent.
   const [restored, setRestored] = useState<ComposerDraft | null>(null);
-  /** Discard empties the box: each one is a new preset. */
-  const [discards, setDiscards] = useState(0);
+  /** Something put in the message box from outside (Discard empties it, Edit in Up next brings a message back): each one is a new preset. */
+  const [boxPreset, setBoxPreset] = useState<{ text: string; attachments: ImageAttachment[]; seq: number } | null>(null);
+  const presetSeq = useRef(0);
+  const presetBox = useCallback((text: string, attachments: ImageAttachment[]) => setBoxPreset({ text, attachments, seq: ++presetSeq.current }), []);
   const onDraftLoaded = (draft: ComposerDraft) => setRestored(draft.seeded ? null : draft);
   const onDraftText = useCallback((text: string) => setRestored((current) => (current && current.text !== text ? null : current)), []);
 
@@ -662,13 +667,51 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
    * Sends a message (resuming the session when it isn't running here). A message that brings a session
    * back, or a fork, goes through the focus limit's gate; answering a session that already counts never
    * does. `ungated`: finishing work (commit, compact), which the limit never stands in the way of.
+   * `mode`: what the message does while Claude is working (queue it, steer, or stop and send now).
    */
-  const send = async (text: string, attachments: ImageAttachment[], fork = false, ungated = false, now = false): Promise<void | false> => {
+  const send = async (text: string, attachments: ImageAttachment[], fork = false, ungated = false, mode?: SendMode): Promise<void | false> => {
     if (!client) throw new Error('Not connected to the engine');
     if (!ungated && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return false;
-    stickToBottom.current = true;
-    const result = await client.call('session.send', { sessionId, text, attachments, fork, now });
+    const result = await client.call('session.send', { sessionId, text, attachments, fork, ...(mode ? { mode } : {}) });
+    // A queued message waits in Up next, so the conversation has nothing new to scroll to.
+    if (!result.queued) stickToBottom.current = true;
     if (result.sessionId !== sessionId) select(result.sessionId);
+  };
+
+  // Up next: the messages queued while Claude works. Edit brings one back into the message box.
+  const upNext = activeHost?.queue ?? [];
+  const takeBack = async (id: string): Promise<boolean> => {
+    if (!client) return false;
+    const { message } = await client.call('session.queue.remove', { sessionId, id });
+    if (!message) return false;
+    const draft = useDrafts.getState().drafts[sessionId];
+    const merged = mergeIntoBox({ text: draft?.text ?? '', attachments: draft?.attachments ?? [] }, message);
+    presetBox(merged.text, merged.attachments);
+    return true;
+  };
+  const upNextActions: UpNextActions = {
+    edit: (message) => void takeBack(message.id).catch((e: Error) => setActionError(`Could not take the message back: ${e.message}`)),
+    remove: (message) =>
+      void client
+        ?.call('session.queue.remove', { sessionId, id: message.id })
+        .then(({ message: removed }) => {
+          if (!removed) return;
+          const at = upNext.findIndex((m) => m.id === message.id);
+          toast('Removed from Up next', {
+            undo: () => {
+              // Still working: back in its place. Otherwise it would go at once, so it returns to the message box instead.
+              if (!running) return presetBox(removed.text, removed.attachments);
+              void client
+                .call('session.send', { sessionId, text: removed.text, attachments: removed.attachments, fork: false, mode: 'queue' })
+                .then((r) => (r.queued && at > 0 ? client.call('session.queue.move', { sessionId, id: r.messageUuid, toIndex: at }) : undefined))
+                .catch(() => {});
+            },
+          });
+        })
+        .catch((e: Error) => setActionError(`Could not remove the message: ${e.message}`)),
+    sendNow: (message) => void client?.call('session.queue.sendNow', { sessionId, id: message.id }).catch((e: Error) => setActionError(`Could not send the message: ${e.message}`)),
+    move: (id, toIndex) => void client?.call('session.queue.move', { sessionId, id, toIndex }).catch(() => {}),
+    resume: () => void client?.call('session.queue.resume', { sessionId }).catch((e: Error) => setActionError(`Could not send the next message: ${e.message}`)),
   };
 
   const isWorktree = Boolean(summary?.worktree || (cwd && inWorktree(cwd)));
@@ -698,8 +741,10 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
       ? { tokens: activeHost.contextTokens, max: activeHost.contextMax, percent: activeHost.contextPercent ?? (activeHost.contextTokens / activeHost.contextMax) * 100 }
       : null;
   const checkTranscript = () => usePaletteBus.getState().showDialog({ kind: 'transcript-diagnosis', sessionId, title: summary ? title : null });
-  // While Claude works here, a message can skip the wait: Send now stops the current turn first.
+  // While Claude works here, Enter queues or steers (Settings › Conversation); Send now stops the current turn first.
   const canSendNow = running && Boolean(activeHost);
+  const whileWorking = usePreferences((p) => p.prefs.whileWorking);
+  const otherMode: SendMode = whileWorking === 'queue' ? 'steer' : 'queue';
   const compact = activeHost ?() => void send('/compact', [], false, true).catch((e: Error) => setActionError(e.message)) : undefined;
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
@@ -1095,29 +1140,47 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                   onDiscard={() => {
                     useDrafts.getState().removeDraft(sessionId);
                     setRestored(null);
-                    setDiscards((n) => n + 1);
+                    presetBox('', []);
                   }}
                 />
               )}
+              <UpNext queue={upNext} hold={activeHost?.queueHold ?? null} actions={upNextActions} />
               <Composer
                 draftKey={sessionId}
                 onDraftLoaded={onDraftLoaded}
                 onTextChange={onDraftText}
                 restored={restored !== null}
-                preset={discards ? { text: '', attachments: [], seq: discards } : undefined}
+                preset={boxPreset ?? undefined}
                 history={promptHistory}
                 cwd={cwd}
                 commands={commands}
                 running={running}
-                placeholder={running ? `Message Claude. It waits until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : activeHost ? 'Message Claude' : 'Message Claude to resume this session'}
+                placeholder={running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : 'Message Claude to resume this session'}
                 submitLabel={openElsewhere ? 'Fork and send' : undefined}
                 dropHint={status === 'ready' && messages.length === 0}
                 disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
-                onSubmit={(text, attachments) => send(text, attachments, openElsewhere)}
-                secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(text, attachments, false, false, true) } : undefined}
+                runningHint={
+                  canSendNow
+                    ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : 'Messages go to Claude now'} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
+                    : undefined
+                }
+                onSubmit={(text, attachments) => send(text, attachments, openElsewhere, false, whileWorking)}
+                secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(text, attachments, false, false, 'now') } : undefined}
+                others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(text, attachments, false, false, otherMode) }] : undefined}
+                onRecallQueued={() => {
+                  const last = lastQueued(upNext);
+                  if (!last) return false;
+                  upNextActions.edit(last);
+                  return true;
+                }}
                 submitControl={
                   canSendNow
-                    ? (box) => <QueueButton state={queueButtonState(box)} onAction={(action) => (action === 'send-now' ? box.submitSecondary() : box.submit())} />
+                    ? (box) => (
+                        <QueueButton
+                          state={queueButtonState({ ...box, whileWorking })}
+                          onAction={(action) => (action === 'send-now' ? box.submitSecondary() : action === whileWorking ? box.submit() : box.submitOther('composer.send-other'))}
+                        />
+                      )
                     : undefined
                 }
                 onInterrupt={() => void client?.call('session.interrupt', { sessionId })}

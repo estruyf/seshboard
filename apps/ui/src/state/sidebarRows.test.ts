@@ -406,7 +406,7 @@ describe('toRows', () => {
   });
 
   it('prefers the state of sessions running in this app and flags failed runs', () => {
-    const host: SessionHostInfo = { sessionId: 'mine', cwd: '/p/a/.claude/worktrees/wt', state: 'needs-you', model: null, permissionMode: 'default', effort: null, costUsd: 0, contextPercent: null, contextTokens: null, contextMax: null, error: null, startedAt: 5, promptedAt: null, queued: 0, profileId: 'default', backgroundTasks: [] };
+    const host: SessionHostInfo = { sessionId: 'mine', cwd: '/p/a/.claude/worktrees/wt', state: 'needs-you', model: null, permissionMode: 'default', effort: null, costUsd: 0, contextPercent: null, contextTokens: null, contextMax: null, error: null, startedAt: 5, promptedAt: null, queue: [], queueHold: null, profileId: 'default', backgroundTasks: [] };
     const closed: SessionHostInfo = { ...host, sessionId: 'old', state: 'closed' };
     const rows = toRows(new Map(), new Map(), new Map([['mine', host], ['old', closed]]));
     expect(rows).toHaveLength(1);
@@ -415,14 +415,14 @@ describe('toRows', () => {
 
   it('puts a session started in this app above one already working', () => {
     const summary = { id: 'busy', title: 'busy', firstPrompt: null, customTitle: null, cwd: '/p/a', projectRoot: '/p/a', gitBranch: null, worktree: null, origin: 'cli', createdAt: null, updatedAt: NOW - HOUR, fileSize: null, tag: null, pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, unread: false, inApp: true, profileId: 'default' } as const;
-    const busy: SessionHostInfo = { sessionId: 'busy', cwd: '/p/a', state: 'running', model: null, permissionMode: 'default', effort: null, costUsd: 0, contextPercent: null, contextTokens: null, contextMax: null, error: null, startedAt: NOW - 2 * HOUR, promptedAt: null, queued: 0, profileId: 'default', backgroundTasks: [] };
+    const busy: SessionHostInfo = { sessionId: 'busy', cwd: '/p/a', state: 'running', model: null, permissionMode: 'default', effort: null, costUsd: 0, contextPercent: null, contextTokens: null, contextMax: null, error: null, startedAt: NOW - 2 * HOUR, promptedAt: null, queue: [], queueHold: null, profileId: 'default', backgroundTasks: [] };
     const fresh: SessionHostInfo = { ...busy, sessionId: 'fresh', state: 'starting', startedAt: NOW };
     const rows = toRows(new Map([['busy', summary]]), new Map(), new Map([['busy', busy], ['fresh', fresh]]));
     expect(ids(buildSessionList(rows, { search: '', project: null, now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['fresh', 'busy']);
   });
 
   it('dates a session from this app by the last message you sent it', () => {
-    const host: SessionHostInfo = { sessionId: 'mine', cwd: '/p/a', state: 'running', model: null, permissionMode: 'default', effort: null, costUsd: 0, contextPercent: null, contextTokens: null, contextMax: null, error: null, startedAt: 5, promptedAt: 50, queued: 0, profileId: 'default', backgroundTasks: [] };
+    const host: SessionHostInfo = { sessionId: 'mine', cwd: '/p/a', state: 'running', model: null, permissionMode: 'default', effort: null, costUsd: 0, contextPercent: null, contextTokens: null, contextMax: null, error: null, startedAt: 5, promptedAt: 50, queue: [], queueHold: null, profileId: 'default', backgroundTasks: [] };
     expect(toRows(new Map(), new Map(), new Map([['mine', host]]))[0]!.live).toMatchObject({ startedAt: 5, updatedAt: 50 });
   });
 });
