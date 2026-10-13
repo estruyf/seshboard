@@ -24,7 +24,9 @@ export function upNextTitle(count: number): string {
 export function holdNote(hold: SessionHostInfo['queueHold'], count: number): string | null {
   if (!hold || count === 0) return null;
   const waiting = count === 1 ? '1 message is waiting' : `${count} messages are waiting`;
-  return hold === 'stopped' ? `You stopped Claude. ${waiting}.` : `The last turn failed. ${waiting}.`;
+  if (hold === 'stopped') return `You stopped Claude. ${waiting}.`;
+  if (hold === 'error') return `The last turn failed. ${waiting}.`;
+  return `Kept from before the session stopped. ${waiting}.`;
 }
 
 /** What the message box holds, to merge a message taken back from Up next into. */

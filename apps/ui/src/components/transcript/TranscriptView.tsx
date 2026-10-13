@@ -18,6 +18,7 @@ import { runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
+import { useUpNext } from '../../state/upNextStore.ts';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
@@ -678,8 +679,13 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     if (result.sessionId !== sessionId) select(result.sessionId);
   };
 
-  // Up next: the messages queued while Claude works. Edit brings one back into the message box.
-  const upNext = activeHost?.queue ?? [];
+  // Up next: the messages queued while Claude works. Edit brings one back into the message box. A session that isn't
+  // running here (stopped, or from before the app quit) shows what the engine kept, waiting for you.
+  const keptUpNext = useUpNext((s) => s.queues.get(sessionId));
+  const upNext = activeHost ? activeHost.queue : (keptUpNext ?? []);
+  const upNextHold = activeHost ? activeHost.queueHold : upNext.length ? 'saved' : null;
+  /** Sending from Up next brings a session that isn't running back, which the focus limit has a say in. */
+  const resumeAllowed = async () => Boolean(activeHost) || (await passFocusGate({ target: sessionId })) === 'start';
   const takeBack = async (id: string): Promise<boolean> => {
     if (!client) return false;
     const { message } = await client.call('session.queue.remove', { sessionId, id });
@@ -709,9 +715,15 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           });
         })
         .catch((e: Error) => setActionError(`Could not remove the message: ${e.message}`)),
-    sendNow: (message) => void client?.call('session.queue.sendNow', { sessionId, id: message.id }).catch((e: Error) => setActionError(`Could not send the message: ${e.message}`)),
+    sendNow: (message) =>
+      void resumeAllowed()
+        .then((go) => (go ? client?.call('session.queue.sendNow', { sessionId, id: message.id }) : undefined))
+        .catch((e: Error) => setActionError(`Could not send the message: ${e.message}`)),
     move: (id, toIndex) => void client?.call('session.queue.move', { sessionId, id, toIndex }).catch(() => {}),
-    resume: () => void client?.call('session.queue.resume', { sessionId }).catch((e: Error) => setActionError(`Could not send the next message: ${e.message}`)),
+    resume: () =>
+      void resumeAllowed()
+        .then((go) => (go ? client?.call('session.queue.resume', { sessionId }) : undefined))
+        .catch((e: Error) => setActionError(`Could not send the next message: ${e.message}`)),
   };
 
   const isWorktree = Boolean(summary?.worktree || (cwd && inWorktree(cwd)));
@@ -1145,7 +1157,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                   }}
                 />
               )}
-              <UpNext queue={upNext} hold={activeHost?.queueHold ?? null} actions={upNextActions} />
+              <UpNext queue={upNext} hold={upNextHold} actions={upNextActions} />
               <Composer
                 draftKey={sessionId}
                 onDraftLoaded={onDraftLoaded}

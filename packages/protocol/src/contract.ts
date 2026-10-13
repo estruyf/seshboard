@@ -14,6 +14,7 @@ import {
   ProjectInspection,
   RewindResult,
   ContextUsage,
+  QueuedMessage,
   SendMode,
   SessionHostInfo,
   SlashCommand,
@@ -330,6 +331,8 @@ export const contract = {
     'session.queue.sendNow': { params: z.object({ sessionId: SessionId, id: z.string() }), result: z.object({}) },
     /** After a stopped or failed turn: sends the next queued message and lets the queue move on by itself again. */
     'session.queue.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
+    'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Stops one of the session's background tasks (a shell command, subagent or workflow); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string() }), result: z.object({}) },
@@ -959,6 +962,8 @@ export const contract = {
     'git.pr': PrProgress,
     /** The whole queue, in order, whenever an item is added, moved, changed, started or removed. */
     'later.changed': z.object({ items: z.array(LaterItem), started: z.array(QueueStarted) }),
+    /** A session's Up next changed; an empty `queue` means nothing is waiting. */
+    'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
     /** Skills were reloaded: ask for slash command lists again. */
     'commands.changed': z.object({}),
     /** Settings were imported: reload projects and actions. */

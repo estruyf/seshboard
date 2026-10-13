@@ -1,11 +1,12 @@
 import type { Options, PermissionResult, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelOption, PermissionRequest, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
+import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { HostManager, type SdkRuntime } from './hostManager.ts';
 import { describeSuggestions } from './permissions.ts';
 import { buildOptions, type HostConfig } from './sessionHost.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
+import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** Minimal async channel that can also fail, like a Claude Code process dying. */
 class Channel<T> implements AsyncIterable<T> {
@@ -150,8 +151,9 @@ const until = async (check: () => boolean, timeoutMs = 2000) => {
 };
 
 function setup(
-  opts: { openElsewhere?: string[]; cwds?: Record<string, string>; profiles?: Record<string, string>; settings?: SessionSettingsStore; refreshLive?: () => void } = {},
+  opts: { openElsewhere?: string[]; cwds?: Record<string, string>; profiles?: Record<string, string>; settings?: SessionSettingsStore; refreshLive?: () => void; upNext?: ReturnType<typeof memoryUpNext> } = {},
 ) {
+  const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
   const models: ModelOption[][] = [];
   const queries: FakeQuery[] = [];
   const infos: SessionHostInfo[] = [];
@@ -197,11 +199,24 @@ function setup(
     onPermissionResolved: (id) => resolved.push(id),
     onCreated: (id) => created.push(id),
     sessionSettings: opts.settings,
+    upNext: opts.upNext,
+    onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
     ephemeral,
     log: () => {},
   });
-  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral };
+  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral, upNextEvents };
+}
+
+/** Up next kept in memory, as the engine keeps it in SQLite. */
+function memoryUpNext(seed: Record<string, StoredUpNext[]> = {}) {
+  const lists = new Map<string, StoredUpNext[]>(Object.entries(seed));
+  return {
+    lists,
+    list: (sessionId: string) => [...(lists.get(sessionId) ?? [])],
+    all: () => [...lists].map(([sessionId, queue]) => ({ sessionId, queue: queue.map(summarise) })),
+    save: (sessionId: string, messages: readonly StoredUpNext[]) => void (messages.length ? lists.set(sessionId, [...messages]) : lists.delete(sessionId)),
+  };
 }
 
 const base = { attachments: [], model: null, permissionMode: 'default' as const, effort: null, worktree: null, profileId: 'default' };
@@ -404,6 +419,61 @@ describe('HostManager', () => {
       await send(t, id, 'my own');
       await until(() => t.queries[0]!.received.some((r) => r.text === 'after'));
       expect(t.queries[0]!.received.map((r) => r.text).slice(-2)).toEqual(['my own', 'after']);
+      t.manager.closeAll();
+    });
+
+    it('keeps Up next with its images on every change, so it outlives the process', async () => {
+      const store = memoryUpNext();
+      const t = setup({ upNext: store });
+      const id = await busy(t);
+      const image = { type: 'image' as const, mediaType: 'image/png' as const, data: 'AAAA', name: 'shot.png' };
+      await t.manager.send({ sessionId: id, text: 'later', attachments: [image], fork: false });
+      expect(store.list(id)).toMatchObject([{ text: 'later', attachments: [image] }]);
+      expect(t.upNextEvents.at(-1)).toMatchObject({ sessionId: id, queue: [{ text: 'later', attachments: ['shot.png'] }] });
+      expect(t.manager.upNextLists()).toMatchObject([{ sessionId: id, queue: [{ text: 'later' }] }]);
+      t.manager.close(id);
+      expect(store.list(id)).toHaveLength(1);
+      t.manager.closeAll();
+    });
+
+    const kept = (id: string, text: string): StoredUpNext => ({ id, text, attachments: [], createdAt: 1 });
+
+    it('after a restart, a resumed session gets Up next back, waiting until you send', async () => {
+      const store = memoryUpNext({ old: [kept('k1', 'kept')] });
+      const t = setup({ cwds: { old: '/w' }, upNext: store });
+      await send(t, 'old', 'my own');
+      // Back, and on hold: it doesn't go before your own message.
+      expect(t.infos.find((i) => i.sessionId === 'old')).toMatchObject({ queue: [{ text: 'kept' }], queueHold: 'saved' });
+      // Your message ends the hold: the kept one goes when its turn is done.
+      await until(() => t.queries[0]!.received.length === 2);
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['my own', 'kept']);
+      await until(() => store.list('old').length === 0);
+      t.manager.closeAll();
+    });
+
+    it('Send next resumes a stopped session and sends Up next, one message per turn', async () => {
+      const store = memoryUpNext({ old: [kept('k1', 'first'), kept('k2', 'second')] });
+      const t = setup({ cwds: { old: '/w' }, upNext: store });
+      await t.manager.resumeQueue('old');
+      await until(() => t.queries[0]?.received.length === 2);
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['first', 'second']);
+      t.manager.closeAll();
+    });
+
+    it('edits a stopped session’s Up next without starting it, and Send now on one resumes it', async () => {
+      const image = { type: 'image' as const, mediaType: 'image/png' as const, data: 'AAAA', name: 'shot.png' };
+      const store = memoryUpNext({ old: [kept('a', 'a'), kept('b', 'b'), { ...kept('c', 'c'), attachments: [image] }] });
+      const t = setup({ cwds: { old: '/w' }, upNext: store });
+      t.manager.moveQueued('old', 'b', 0);
+      expect(store.list('old').map((m) => m.id)).toEqual(['b', 'a', 'c']);
+      expect(t.manager.dequeue('old', 'c')).toEqual({ text: 'c', attachments: [image] });
+      expect(store.list('old').map((m) => m.id)).toEqual(['b', 'a']);
+      expect(t.upNextEvents.at(-1)).toMatchObject({ sessionId: 'old', queue: [{ id: 'b' }, { id: 'a' }] });
+      expect(t.queries).toHaveLength(0);
+
+      await t.manager.sendQueuedNow('old', 'a');
+      await until(() => t.queries[0]?.received.length === 2);
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['a', 'b']);
       t.manager.closeAll();
     });
 

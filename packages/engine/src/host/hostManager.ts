@@ -12,6 +12,7 @@ import {
   type PermissionMode,
   type PermissionRequest,
   type PluginInfo,
+  type QueuedMessage,
   type RewindResult,
   type AutoPick,
   type SendMode,
@@ -26,6 +27,7 @@ import { describeSuggestions } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery } from './sessionHost.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
+import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** The two SDK entry points the manager needs; injected so tests can fake Claude Code. */
 export interface SdkRuntime {
@@ -82,6 +84,10 @@ export interface HostManagerDeps {
    * `forget` drops every list of a profile (a skill was added or removed).
    */
   commandCache?: { get(key: CommandKey): SlashCommand[] | null; set(key: CommandKey, commands: SlashCommand[]): void; forget(profileId: string): void };
+  /** Where Up next is kept, so it outlives the session's process and the app; without it, it lives as long as the process. */
+  upNext?: { list(sessionId: string): StoredUpNext[]; all(): Array<{ sessionId: string; queue: QueuedMessage[] }>; save(sessionId: string, messages: readonly StoredUpNext[]): void };
+  /** A session's Up next changed (running or not), for windows showing it. */
+  onUpNext?: (sessionId: string, queue: QueuedMessage[]) => void;
 }
 
 /** Command lists differ per folder (project commands) and per profile (user commands, skills, plugins). */
@@ -282,24 +288,56 @@ export class HostManager {
     return { sessionId, messageUuid, queued };
   }
 
-  /** Takes a message out of a session's queue (null when it was already sent). */
+  /** Takes a message out of a session's queue (null when it was already sent). Works while the session isn't running too. */
   dequeue(sessionId: string, id: string): { text: string; attachments: ImageAttachment[] } | null {
-    return this.require(sessionId).dequeue(id);
+    const host = this.running(sessionId);
+    if (host) return host.dequeue(id);
+    const stored = this.deps.upNext?.list(sessionId) ?? [];
+    const taken = stored.find((m) => m.id === id);
+    if (!taken) return null;
+    this.saveQueue(sessionId, stored.filter((m) => m !== taken));
+    return { text: taken.text, attachments: taken.attachments };
   }
 
   moveQueued(sessionId: string, id: string, toIndex: number): void {
-    this.require(sessionId).moveQueued(id, toIndex);
+    const host = this.running(sessionId);
+    if (host) return host.moveQueued(id, toIndex);
+    const stored = this.deps.upNext?.list(sessionId) ?? [];
+    const at = stored.findIndex((m) => m.id === id);
+    if (at < 0) return;
+    const [moved] = stored.splice(at, 1);
+    stored.splice(Math.min(toIndex, stored.length), 0, moved!);
+    this.saveQueue(sessionId, stored);
   }
 
-  /** Sends one queued message now, stopping the turn it waits behind. */
+  /** Sends one queued message now, stopping the turn it waits behind, or resuming the session that kept it. */
   async sendQueuedNow(sessionId: string, id: string): Promise<void> {
-    const host = this.require(sessionId);
+    const host = await this.ensureHost(sessionId, false, 'This session is open in another Claude Code window. Close it there to send from Up next.');
     if (host.busy) this.denyPending(sessionId, 'Interrupted by the user.');
     await host.sendQueuedNow(id);
+    this.deps.onContinued?.(sessionId);
   }
 
-  resumeQueue(sessionId: string): void {
-    this.require(sessionId).resumeQueue();
+  /** Sends the next queued message and lets the queue move on again, resuming the session when it isn't running. */
+  async resumeQueue(sessionId: string): Promise<void> {
+    const host = await this.ensureHost(sessionId, false, 'This session is open in another Claude Code window. Close it there to send from Up next.');
+    host.resumeQueue();
+    this.deps.onContinued?.(sessionId);
+  }
+
+  /** Every session's Up next as it is kept, running here or not; `onUpNext` reports each change after this. */
+  upNextLists(): Array<{ sessionId: string; queue: QueuedMessage[] }> {
+    return this.deps.upNext?.all() ?? [];
+  }
+
+  private running(sessionId: string): SessionHost | null {
+    const host = this.hosts.get(sessionId);
+    return host?.active ? host : null;
+  }
+
+  private saveQueue(sessionId: string, messages: readonly StoredUpNext[]): void {
+    this.deps.upNext?.save(sessionId, messages);
+    this.deps.onUpNext?.(sessionId, messages.map(summarise));
   }
 
   /**
@@ -698,9 +736,12 @@ export class HostManager {
         knownCommands: () => this.commandsByCwd.get(keyOf({ profileId: config.profileId, cwd: config.cwd })) ?? [],
         // onInfo stores this session's new list right after.
         commandsChanged: () => this.forgetCommands(config.profileId),
+        queue: (sessionId, messages) => this.saveQueue(sessionId, messages),
       },
       startQuery,
     );
+    // A resumed session gets back what was waiting in Up next when it stopped.
+    if (config.mode === 'resume') host.restoreQueue(this.deps.upNext?.list(config.sessionId) ?? []);
     hostRef = host;
     this.hosts.set(config.sessionId, host);
     host.start();

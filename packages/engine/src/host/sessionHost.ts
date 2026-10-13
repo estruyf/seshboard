@@ -5,7 +5,6 @@ import type {
   HostState,
   ImageAttachment,
   LogLevel,
-  QueuedMessage,
   ModelOption,
   PermissionMode,
   Capabilities,
@@ -21,6 +20,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
 import { InputQueue } from './inputQueue.ts';
+import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** Starts the Claude Code process for a host. Real hosts use the SDK's `query()` (or a pre-warmed one). */
 export type StartQuery = (args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query | Promise<Query>;
@@ -42,6 +42,8 @@ export interface HostEvents {
   knownCommands?(): readonly SlashCommand[];
   /** The command list changed while running (a skill was added or removed), so lists cached for the profile are stale. */
   commandsChanged?(): void;
+  /** Up next changed: the whole list with its images, to keep it when the app quits or the session stops. */
+  queue?(sessionId: string, messages: StoredUpNext[]): void;
 }
 
 export interface HostConfig {
@@ -130,7 +132,7 @@ export function toModelOption(m: ModelInfo): ModelOption {
 export class SessionHost {
   private readonly input = new InputQueue<SDKUserMessage>();
   /** Messages held back until Claude's turn ends, in the order they go. Their images stay here. */
-  private readonly pending: Array<QueuedMessage & { images: ImageAttachment[] }> = [];
+  private readonly pending: StoredUpNext[] = [];
   private query: Promise<Query | undefined> = Promise.resolve(undefined);
   private closing = false;
   private initResolve!: (sessionId: string) => void;
@@ -287,7 +289,7 @@ export class SessionHost {
   enqueue(text: string, attachments: readonly ImageAttachment[] = []): string {
     if (!this.active) throw new Error('This session is not running');
     const id = randomUUID();
-    this.pending.push({ id, text, attachments: attachments.map((a, i) => a.name ?? `Image ${i + 1}`), createdAt: Date.now(), images: [...attachments] });
+    this.pending.push({ id, text, attachments: [...attachments], createdAt: Date.now() });
     this.lastActivity = Date.now();
     this.publishQueue({ promptedAt: this.lastActivity });
     // Claude may have finished between the window's check and now.
@@ -301,7 +303,7 @@ export class SessionHost {
     if (at < 0) return null;
     const [removed] = this.pending.splice(at, 1);
     this.publishQueue();
-    return { text: removed!.text, attachments: removed!.images };
+    return { text: removed!.text, attachments: removed!.attachments };
   }
 
   /** Moves a queued message to a place in the queue (0 is next). */
@@ -336,18 +338,30 @@ export class SessionHost {
     this.publishQueue();
   }
 
+  /**
+   * Up next as it was kept from before this process (the app quit, or the session stopped). It waits for you: Send
+   * next, Send now on one of them, or a message of your own lets it move on. Call before `start`.
+   */
+  restoreQueue(messages: readonly StoredUpNext[]): void {
+    if (messages.length === 0) return;
+    this.pending.splice(0, this.pending.length, ...messages);
+    this.queueHold = 'saved';
+    this.info = { ...this.info, queue: this.pending.map(summarise), queueHold: this.queueHold };
+  }
+
   /** When Claude is ready for the next message: sends the first queued one, unless the queue is on hold. */
   private drain(): void {
-    if (!this.active || this.info.state !== 'idle' || this.queueHold || this.nowPhase || this.pending.length === 0) return;
+    if (!this.active || this.busy || this.queueHold || this.nowPhase || this.pending.length === 0) return;
     const next = this.pending.shift()!;
-    this.push(next.text, next.images);
+    this.push(next.text, next.attachments);
     this.publishQueue();
   }
 
   private publishQueue(extra: Partial<SessionHostInfo> = {}): void {
     // An empty queue has nothing to hold.
     if (this.pending.length === 0) this.queueHold = null;
-    this.update({ queue: this.pending.map(({ images: _images, ...message }) => message), queueHold: this.queueHold, ...extra });
+    this.update({ queue: this.pending.map(summarise), queueHold: this.queueHold, ...extra });
+    this.events.queue?.(this.sessionId, [...this.pending]);
   }
 
   async capabilities(fallbackPlugins: () => PluginInfo[]): Promise<Capabilities> {

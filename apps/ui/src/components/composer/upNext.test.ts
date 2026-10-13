@@ -37,6 +37,7 @@ describe('holdNote', () => {
   it('says why the queue waits, and only when something is waiting', () => {
     expect(holdNote('stopped', 2)).toBe('You stopped Claude. 2 messages are waiting.');
     expect(holdNote('error', 1)).toBe('The last turn failed. 1 message is waiting.');
+    expect(holdNote('saved', 2)).toBe('Kept from before the session stopped. 2 messages are waiting.');
     expect(holdNote(null, 2)).toBeNull();
     expect(holdNote('stopped', 0)).toBeNull();
   });

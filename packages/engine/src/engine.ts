@@ -50,6 +50,7 @@ import { SearchIndex } from './sessions/searchIndex.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
 import { LaterStore } from './later/laterStore.ts';
+import { UpNextStore } from './host/upNextStore.ts';
 import { MemoryService, type MemoryTrashScope } from './memory/memoryService.ts';
 import { MemoryWatcher } from './memory/watcher.ts';
 import { MemorySearch, type IndexedFolder } from './memory/memorySearch.ts';
@@ -468,6 +469,8 @@ export function createEngine(options: EngineOptions): Engine {
     at: Date.now(),
   });
 
+  // Up next is kept per session, so it outlives the process (Stop, the idle timeout) and the app.
+  const upNext = new UpNextStore(cache.db);
   const hosts = new HostManager({
     sdk,
     ephemeral,
@@ -500,6 +503,8 @@ export function createEngine(options: EngineOptions): Engine {
     },
     installedPlugins: (profileId) => installedPlugins(profiles.runtime(profileId).configDir),
     sessionSettings: createSessionSettingsStore(cache.db),
+    upNext,
+    onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -843,7 +848,8 @@ export function createEngine(options: EngineOptions): Engine {
       live: liveList(),
       ...hosts.list(),
       drafts: sessionsWithDrafts(appState.get(DRAFTS_KEY)),
-      queued: sessionsWithQueuedPrompts(later.list()),
+      // Messages waiting in Up next keep their session, like a queued prompt does.
+      queued: new Set([...sessionsWithQueuedPrompts(later.list()), ...upNext.all().map((q) => q.sessionId)]),
     });
   /** Moves one session's transcript and subagent transcripts to the Trash and forgets it. */
   const deleteSession = async (sessionId: string) => {
@@ -859,6 +865,7 @@ export function createEngine(options: EngineOptions): Engine {
     await toTrash(paths, { configDir: profiles.runtime(sessionProfile(sessionId)).configDir });
     sessions.forget(sessionId);
     hosts.forget(sessionId);
+    upNext.save(sessionId, []);
     owned.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);
@@ -1163,12 +1170,15 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.queue.sendNow': async ({ sessionId, id }) => {
       await hosts.sendQueuedNow(sessionId, id);
+      sessions.wake(sessionId);
       return {};
     },
-    'session.queue.resume': ({ sessionId }) => {
-      hosts.resumeQueue(sessionId);
+    'session.queue.resume': async ({ sessionId }) => {
+      await hosts.resumeQueue(sessionId);
+      sessions.wake(sessionId);
       return {};
     },
+    'upNext.list': () => ({ queues: hosts.upNextLists() }),
     'session.forkAt': async ({ sessionId, messageUuid }) => {
       if (!source.fork) throw new RpcError('UNSUPPORTED', 'Forking is not available');
       let forked: string;

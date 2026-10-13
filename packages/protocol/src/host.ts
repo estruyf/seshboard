@@ -95,8 +95,11 @@ export const SessionHostInfo = z.object({
    * in the transcript until they are sent.
    */
   queue: z.array(QueuedMessage),
-  /** Why the queue isn't sending by itself: you stopped Claude, or its turn failed. Null while it moves on its own. */
-  queueHold: z.enum(['stopped', 'error']).nullable(),
+  /**
+   * Why the queue isn't sending by itself: you stopped Claude, its turn failed, or the messages were kept from before
+   * the session stopped or the app quit (`saved`). Null while it moves on its own.
+   */
+  queueHold: z.enum(['stopped', 'error', 'saved']).nullable(),
   /** The Claude profile (login) this process runs with. */
   profileId: z.string(),
   /** Background tasks still running; the session can be idle (ready for a message) while these work. */

@@ -371,4 +371,18 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE claude_profiles ADD COLUMN defaults_json TEXT;
   `,
+
+  // v22: Up next, the messages you sent while Claude was working that wait for their turn, with their images. Your
+  // own messages, not derived from ~/.claude: keep them when rebuilding.
+  `
+  CREATE TABLE up_next (
+    id               TEXT PRIMARY KEY,
+    session_id       TEXT NOT NULL,
+    position         INTEGER NOT NULL,
+    text             TEXT NOT NULL,
+    attachments_json TEXT NOT NULL,
+    created_at       INTEGER NOT NULL
+  );
+  CREATE INDEX up_next_session ON up_next (session_id, position);
+  `,
 ];
