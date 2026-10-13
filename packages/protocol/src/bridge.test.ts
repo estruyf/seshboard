@@ -14,6 +14,19 @@ describe('sidebarCollapsed preference', () => {
   });
 });
 
+describe('newSessionMode preference', () => {
+  it('starts new sessions in the mode picked last by default', () => {
+    expect(DEFAULT_PREFERENCES.newSessionMode).toBe('last');
+  });
+
+  it('keeps the offered modes, and drops bypass and anything else', () => {
+    for (const mode of ['last', 'default', 'acceptEdits', 'plan', 'auto']) expect(sanitizePreferences({ newSessionMode: mode })).toEqual({ newSessionMode: mode });
+    expect(sanitizePreferences({ newSessionMode: 'bypassPermissions' })).toEqual({});
+    expect(sanitizePreferences({ newSessionMode: 'dontAsk' })).toEqual({});
+    expect(sanitizePreferences({ newSessionMode: null })).toEqual({});
+  });
+});
+
 describe('archive and delete preferences', () => {
   it('archives after 3 days and leaves deleting off by default', () => {
     expect(DEFAULT_PREFERENCES.archiveAfterDays).toBe(3);

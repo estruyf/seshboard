@@ -1,7 +1,8 @@
 import { currentPlatform } from '../lib/platform.ts';
 import { Activity, Archive, ArchiveRestore, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity } from '@switchboard/protocol/bridge';
+import type { NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity } from '@switchboard/protocol/bridge';
+import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
@@ -19,6 +20,7 @@ import { Button } from './ui/Button.tsx';
 import { Choice } from './ui/Choice.tsx';
 import { Radio, RadioGroup } from './ui/Radio.tsx';
 import { SegmentedControl } from './ui/SegmentedControl.tsx';
+import { Select } from './ui/Select.tsx';
 import { Toggle } from './ui/Toggle.tsx';
 import { formatKeys, keysFor, matches } from '../lib/shortcuts.ts';
 import { groupByPage, searchSettings, type SettingEntry } from './settingsSearch/searchSettings.ts';
@@ -122,6 +124,9 @@ const STARTUP: Array<{ value: StartupView; label: string; detail: string }> = [
   { value: 'last', label: 'The last session', detail: 'Opens the session you had open, if the sidebar lists it. Otherwise New session.' },
   { value: 'new', label: 'New session', detail: 'Starts ready for a new prompt.' },
 ];
+
+/** The permission mode new sessions start in: the one picked last, or one of the modes the menus offer. */
+const NEW_SESSION_MODE_OPTIONS: Array<{ value: NewSessionMode; label: string }> = [{ value: 'last', label: 'The last one you picked' }, ...MODE_CHOICES.map((mode) => ({ value: mode as NewSessionMode, label: MODE_LABEL[mode] }))];
 
 const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
@@ -266,6 +271,23 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 </Radio>
               ))}
             </RadioGroup>
+          </Section>
+          <Section title="New sessions">
+            <div className="flex items-center justify-between gap-4" data-setting-row>
+              <span>
+                <span className="block text-ui">Permission mode</span>
+                <span className="block text-meta text-muted">What New session starts in. A project’s own default comes first, and a link never starts in Auto mode.</span>
+              </span>
+              <Select<NewSessionMode>
+                label="Permission mode for new sessions"
+                value={prefs.newSessionMode}
+                onChange={(newSessionMode) => update({ newSessionMode })}
+                options={NEW_SESSION_MODE_OPTIONS}
+                menuWidth={200}
+                className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+                dataAttrs={{ 'data-new-session-mode': true }}
+              />
+            </div>
           </Section>
           <Section title="Projects">
             <div className="flex items-center justify-between gap-4" data-setting-row>

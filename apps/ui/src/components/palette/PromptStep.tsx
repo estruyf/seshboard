@@ -27,7 +27,7 @@ import { useAttachments } from '../composer/useAttachments.ts';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { StartButton } from '../newSession/StartButton.tsx';
 import { focusStartBlock, startButtonState } from '../newSession/startMenu.ts';
-import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, readGlobals, startingChoices, type Choices, type GlobalChoices } from '../newSession/choices.ts';
+import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, readGlobals, startingChoices, withNewSessionMode, type Choices, type GlobalChoices } from '../newSession/choices.ts';
 import { checkoutBranchFor, shouldPrewarm, startNewSession } from '../newSession/startSession.ts';
 import { branchLabel, branchNote, freshBase } from '../newSession/trayLabels.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -66,7 +66,8 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const [loaded, setLoaded] = useState(false);
   /** Changed here: the project's defaults arriving late must not undo it. */
   const touched = useRef(false);
-  const [d, setD] = useState<Choices>(() => ({ ...startingChoices(INITIAL_CHOICES, projectDefaults), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
+  const newSessionMode = usePreferences((s) => s.prefs.newSessionMode);
+  const [d, setD] = useState<Choices>(() => ({ ...startingChoices(withNewSessionMode(INITIAL_CHOICES, newSessionMode), projectDefaults), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
   const [profileOverride, setProfileOverride] = useState<string | null>(null);
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
   const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[] }>({ current: null, branches: [] });
@@ -115,9 +116,9 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
       setD(questionStartingChoices(questionChoices));
       return;
     }
-    const choices = startingChoices(globals, projectDefaults);
+    const choices = startingChoices(withNewSessionMode(globals, newSessionMode), projectDefaults);
     setD(worktree ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, globals, defaultsKey, worktree, question, questionChoices]);
+  }, [loaded, globals, newSessionMode, defaultsKey, worktree, question, questionChoices]);
 
   // Is it a git repository, on which branch, and where would a worktree branch from.
   useEffect(() => {
