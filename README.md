@@ -276,6 +276,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 
 | Shortcut | What it does |
 |---|---|
+| ⌘F | Search settings |
 | Esc | Close Settings |
 
 <!-- shortcuts:end -->

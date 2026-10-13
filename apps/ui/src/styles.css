@@ -447,6 +447,12 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
   }
 }
 
+/* A setting Settings' search jumped to: the same glow, on its row. */
+.setting-flash {
+  animation: search-highlight 2.5s ease-out;
+  border-radius: 0.5rem;
+}
+
 /* Find in session (⌘F): every match, and the one you're on. */
 ::highlight(find) {
   background-color: color-mix(in srgb, var(--sb-accent) 35%, transparent);

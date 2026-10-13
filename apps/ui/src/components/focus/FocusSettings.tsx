@@ -12,7 +12,7 @@ export const FOCUS_ARTICLE_URL = 'https://www.eliostruyf.com/ai-chaos-beast-head
 
 function Row({ label, detail, children, labelId }: { label: string; detail: string; children: ReactNode; labelId?: string }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-t border-border py-3 first:border-t-0 first:pt-0">
+    <div className="flex items-center justify-between gap-6 border-t border-border py-3 first:border-t-0 first:pt-0" data-setting-row>
       <span className="min-w-0">
         <span id={labelId} className="block text-ui text-text">
           {label}

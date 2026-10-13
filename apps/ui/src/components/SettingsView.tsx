@@ -1,6 +1,6 @@
 import { currentPlatform } from '../lib/platform.ts';
 import { Activity, Archive, ArchiveRestore, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
-import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity } from '@switchboard/protocol/bridge';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -21,6 +21,9 @@ import { Radio, RadioGroup } from './ui/Radio.tsx';
 import { SegmentedControl } from './ui/SegmentedControl.tsx';
 import { Toggle } from './ui/Toggle.tsx';
 import { formatKeys, keysFor, matches } from '../lib/shortcuts.ts';
+import { groupByPage, searchSettings, type SettingEntry } from './settingsSearch/searchSettings.ts';
+import { jumpToSetting, resultId, SettingsSearchField, SettingsSearchResults } from './settingsSearch/SettingsSearch.tsx';
+import { settingsIndex } from './settingsSearch/settingsIndex.ts';
 
 /** A session row in miniature, drawn with the live theme tokens. */
 function RowPreview({ style }: { style: SidebarStyle }) {
@@ -148,7 +151,8 @@ function useEscapeToClose(sheet: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!matches(event, 'settings.close') || event.defaultPrevented) return;
-      const overlays = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')];
+      // Search's results are a listbox too, but part of the page rather than a dropdown over it.
+      const overlays = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].filter((el) => !el.closest('[data-settings-results]'));
       if (overlays.some((el) => el !== sheet.current)) return;
       if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable=true]')) return;
       // The session behind keeps its own Escape (deny a permission, stop Claude): this press is ours.
@@ -178,7 +182,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               </Choice>
             ))}
           </RadioGroup>
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center justify-between gap-4" data-setting-row>
             <span>
               <span className="block text-ui">When collapsed</span>
               <span className="block text-meta text-muted">What {formatKeys(keysFor('sidebar.toggle'))} and the sidebar button do: a narrow rail of project icons, or hide the sidebar.</span>
@@ -264,7 +268,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
             </RadioGroup>
           </Section>
           <Section title="Projects">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
                 <span className="block text-ui">Project order</span>
                 <span className="block text-meta text-muted">How New session, Home and the command palette list your projects: the ones you used last first, or the order you set in Projects.</span>
@@ -326,10 +330,20 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
   }
 }
 
-/** Settings' sections, on the left of the Settings sheet. */
-export function SettingsNav() {
+/** Settings' search, as the list and the page share it: the query, what it found and the result the keyboard is on. */
+interface SearchState {
+  query: string;
+  setQuery(query: string): void;
+  /** Results per page, for the counts in the list; empty while there is no query. */
+  counts: Map<SettingsSection, number>;
+  field: ReactNode;
+}
+
+/** Settings' sections, on the left of the Settings sheet, under the search field. */
+export function SettingsNav({ search }: { search: SearchState }) {
   const section = useSessions((s) => s.settingsSection);
   const openSettings = useSessions((s) => s.openSettings);
+  const searching = search.query.trim() !== '';
   // With the sidebar closed, the traffic lights sit above this list (macOS; elsewhere they're in the title bar).
   const sidebarClosed = useSidebar((s) => s.state === 'closed') && currentPlatform() === 'darwin';
   return (
@@ -337,19 +351,34 @@ export function SettingsNav() {
       <h2 id="settings-title" className="px-2.5 pt-2 pb-3 text-title font-semibold">
         Settings
       </h2>
-      {SECTIONS.map(({ id, label, icon: Icon }) => (
-        <button
-          key={id}
-          type="button"
-          onClick={() => openSettings(id)}
-          aria-current={section === id ? 'page' : undefined}
-          data-settings-section={id}
-          className={`flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-left text-ui ${section === id ? 'bg-selected font-semibold text-text' : 'text-muted hover:bg-border/45 hover:text-text'}`}
-        >
-          <Icon size={15} aria-hidden className={`shrink-0 ${section === id ? 'text-accent-ink' : ''}`} />
-          <span className="truncate">{label}</span>
-        </button>
-      ))}
+      {search.field}
+      {SECTIONS.map(({ id, label, icon: Icon }) => {
+        // While searching, no page is the one on screen: each says how many results it has.
+        const current = !searching && section === id;
+        const count = search.counts.get(id) ?? 0;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => {
+              search.setQuery('');
+              openSettings(id);
+            }}
+            aria-current={current ? 'page' : undefined}
+            data-settings-section={id}
+            className={`flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-left text-ui ${current ? 'bg-selected font-semibold text-text' : 'text-muted hover:bg-border/45 hover:text-text'} ${searching && count === 0 ? 'opacity-50' : ''}`}
+          >
+            <Icon size={15} aria-hidden className={`shrink-0 ${current ? 'text-accent-ink' : ''}`} />
+            <span className="truncate">{label}</span>
+            {searching && count > 0 && (
+              <span className="ml-auto text-meta text-faint tabular-nums" data-settings-section-count>
+                {count}
+                <span className="sr-only"> found</span>
+              </span>
+            )}
+          </button>
+        );
+      })}
       <div className="mt-auto">
         <SettingsVersion />
       </div>
@@ -363,6 +392,7 @@ export function SettingsNav() {
  */
 export function SettingsView() {
   const section = useSessions((s) => s.settingsSection);
+  const openSettings = useSessions((s) => s.openSettings);
   const sheet = useRef<HTMLDivElement>(null);
   /** The page's scroll area: long pages (all sessions) virtualise their lists against it. */
   const scroller = useRef<HTMLDivElement>(null);
@@ -371,6 +401,74 @@ export function SettingsView() {
     if (!sheet.current?.contains(document.activeElement)) sheet.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
   }, []);
   useEscapeToClose(sheet);
+
+  // Search: while there is a query, the page shows what it found in every page instead.
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const field = useRef<HTMLInputElement>(null);
+  const listId = useId();
+  const entries = useMemo(settingsIndex, []);
+  const found = useMemo(() => searchSettings(query, entries, settingsSectionLabel, currentPlatform()), [query, entries]);
+  const groups = useMemo(() => groupByPage(found), [found]);
+  /** The results in the order they show, for ↑ ↓. */
+  const ordered = useMemo(() => groups.flatMap((group) => group.matches), [groups]);
+  const counts = useMemo(() => new Map(groups.map((group) => [group.page, group.matches.length])), [groups]);
+  const searching = query.trim() !== '';
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    setActive(0);
+  };
+  const [jump, setJump] = useState<{ entry: SettingEntry; nonce: number } | null>(null);
+  const choose = (entry: SettingEntry) => {
+    changeQuery('');
+    openSettings(entry.page);
+    setJump((j) => ({ entry, nonce: (j?.nonce ?? 0) + 1 }));
+  };
+  // Once its page is on screen, bring the setting into view, once per choice.
+  const jumped = useRef(0);
+  useEffect(() => {
+    if (!jump || jump.nonce === jumped.current || jump.entry.page !== section || searching) return;
+    jumped.current = jump.nonce;
+    jumpToSetting(jump.entry);
+  }, [jump, section, searching]);
+  // The result the keyboard is on stays in view.
+  useEffect(() => {
+    if (searching) document.getElementById(resultId(listId, active))?.scrollIntoView({ block: 'nearest' });
+  }, [active, listId, searching]);
+  // ⌘F puts the keyboard in the search field.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !matches(event, 'settings.search')) return;
+      const overlays = [...document.querySelectorAll('[role=dialog], [role=alertdialog]')];
+      if (overlays.some((el) => el !== sheet.current)) return;
+      event.preventDefault();
+      field.current?.focus();
+      field.current?.select();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const onFieldKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const last = ordered.length - 1;
+      setActive((a) => (event.key === 'ArrowDown' ? Math.min(a + 1, last) : Math.max(a - 1, 0)));
+    } else if (event.key === 'Enter' && ordered[active]) {
+      event.preventDefault();
+      choose(ordered[active].entry);
+    } else if (event.key === 'Escape') {
+      // Escape empties the field first; in an empty field it closes Settings, as it does elsewhere.
+      event.preventDefault();
+      if (query) changeQuery('');
+      else close();
+    }
+  };
+  const search: SearchState = {
+    query,
+    setQuery: changeQuery,
+    counts,
+    field: <SettingsSearchField query={query} onQuery={changeQuery} onKeyDown={onFieldKey} inputRef={field} listId={listId} activeIndex={active} count={ordered.length} />,
+  };
 
   // Settings takes the whole main area (the sidebar keeps its session list next to it). The view it
   // was opened from stays mounted, inert, underneath, so closing returns to it as it was.
@@ -383,7 +481,7 @@ export function SettingsView() {
       data-settings
     >
       <div className="flex min-h-0 flex-1">
-        <SettingsNav />
+        <SettingsNav search={search} />
         <div className="relative flex min-w-0 flex-1 flex-col">
           {/* The top strip keeps the window draggable, like every other view's header. */}
           {/* Same padding as the session header, so the close button stays put when Settings opens over it. */}
@@ -391,9 +489,15 @@ export function SettingsView() {
             <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} shortcut="settings.close" onClick={close} data-close-settings data-tooltip={`Close (${formatKeys(keysFor('settings.close'))})`} aria-label="Close settings" className="no-drag" />
           </div>
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-            <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
-              <SectionPage section={section} scrollRef={scroller} />
-            </div>
+            {searching ? (
+              <div className="mx-auto min-w-0 max-w-2xl px-8">
+                <SettingsSearchResults query={query} groups={groups} pages={SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />
+              </div>
+            ) : (
+              <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
+                <SectionPage section={section} scrollRef={scroller} />
+              </div>
+            )}
           </div>
         </div>
       </div>

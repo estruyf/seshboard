@@ -782,6 +782,11 @@
       "page": "settings"
     },
     {
+      "id": "shortcut:settings.search",
+      "name": "settings.search",
+      "page": "settings"
+    },
+    {
       "id": "shortcut:shortcuts",
       "name": "shortcuts",
       "page": "command-palette"

@@ -23,7 +23,7 @@ export function AutoModelSettings() {
         onChange={(enabled) => update({ enabled })}
       />
       <div className={`grid gap-4 ${off ? 'opacity-50' : ''}`} aria-disabled={off || undefined}>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4" data-setting-row>
           <span>
             <span className="block text-ui">Models it can pick</span>
             <span className="block text-meta text-muted">At least one.</span>
@@ -47,7 +47,7 @@ export function AutoModelSettings() {
             })}
           </div>
         </div>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4" data-setting-row>
           <span>
             <span className="block text-ui">When in doubt</span>
             <span className="block text-meta text-muted">Which way to lean on a close call.</span>

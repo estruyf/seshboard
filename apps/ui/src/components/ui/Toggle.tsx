@@ -24,7 +24,7 @@ export function Switch({ checked, onChange, disabled, label, dataAttrs }: { chec
 /** A labelled on/off switch, as in Settings. `attr` is the data- hook the smoke test clicks. */
 export function Toggle({ label, detail, checked, attr, onChange }: { label: string; detail: string; checked: boolean; attr: string; onChange(checked: boolean): void }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-4">
+    <label className="flex cursor-pointer items-center justify-between gap-4" data-setting-row>
       <span>
         <span className="block text-ui">{label}</span>
         <span className="block text-meta text-muted">{detail}</span>

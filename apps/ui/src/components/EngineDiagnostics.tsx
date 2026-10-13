@@ -32,7 +32,7 @@ function Dot({ tone }: { tone: Tone }) {
 
 function Card({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
   return (
-    <section className="rounded-lg border border-border bg-card">
+    <section className="rounded-lg border border-border bg-card" data-diagnostics-card={title}>
       <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <h3 className="text-ui font-medium text-muted">{title}</h3>
         {aside}
