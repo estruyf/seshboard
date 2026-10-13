@@ -245,7 +245,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return (
         <Section
           title="Claude profiles"
-          description="Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login. Link a project to a profile from its menu or the Projects view; other projects use the default."
+          description="Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login. Link a project to a profile from its menu or the Projects view; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
         >
           <ProfilesSettings />
         </Section>
@@ -276,7 +276,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
                 <span className="block text-ui">Permission mode</span>
-                <span className="block text-meta text-muted">What New session starts in. A project’s own default comes first, and a link never starts in Auto mode.</span>
+                <span className="block text-meta text-muted">What New session starts in. A project’s or profile’s own default comes first, and a link never starts in Auto mode.</span>
               </span>
               <Select<NewSessionMode>
                 label="Permission mode for new sessions"

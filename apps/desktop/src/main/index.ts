@@ -2400,7 +2400,8 @@ async function checkShareDialog(win: BrowserWindow, root: string, listed: string
 /**
  * Claude profiles: with one, nothing about profiles shows outside Settings. Adding a second (a config
  * folder inside the throwaway app profile, never a real one) marks sessions with their profile and
- * offers a choice in New session; it becomes the default, then is removed again.
+ * offers a choice in New session; its effort default reaches New session once it is the default, then
+ * it is removed again.
  */
 async function runProfilesStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -2426,12 +2427,22 @@ async function runProfilesStep(win: BrowserWindow): Promise<string> {
   const card = `[data-profile=${JSON.stringify(id)}]`;
   if (!(await js(`document.querySelector(${JSON.stringify(card)}).innerText.includes(${JSON.stringify(folder)})`))) return 'the sign-in command does not name the folder';
   await shot(win, 'profiles.png');
+  // Its defaults for new sessions: Max effort, which New session takes where the project sets none.
+  await click(`${card} [data-profile-defaults-toggle]`);
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`${card} [data-default-effort]`)})`, 2_000))) return 'the profile defaults did not open';
+  if (!(await chooseOption(win, `${card} [data-default-effort]`, 'max'))) return 'could not pick an effort default for the profile';
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`${card} [data-profile-defaults-summary]`)})?.innerText.includes('max effort')`, 3_000))) return 'the profile default was not saved';
+  await shot(win, 'profile-defaults.png');
   await click(`[data-profile-default=${JSON.stringify(id)}]`);
   await click('[data-close-settings]');
   if (!(await waitInPage(win, "document.querySelector('[data-session-id] [data-profile-badge]')", 3_000))) return 'sessions do not show their profile with two profiles';
   await click('[data-new-session]');
   if (!(await waitInPage(win, `document.querySelector('[data-profile-select]')?.dataset.value === ${JSON.stringify(id)}`, 5_000))) {
     return 'New session did not offer the profiles with the new default chosen';
+  }
+  // No project is added by now (the projects step removes its own), so nothing sets an effort over the profile's.
+  if (!(await waitInPage(win, "document.querySelector('[data-new-session-view] [data-effort-select]')?.dataset.value === 'max'", 3_000))) {
+    return `New session did not start from the profile's defaults (effort ${String(await js("document.querySelector('[data-new-session-view] [data-effort-select]')?.dataset.value"))})`;
   }
   await click('[data-profile-select]');
   if (!(await waitInPage(win, "document.querySelectorAll('[data-menu=\"profile\"] [role=menuitemradio]').length === 2", 3_000))) return 'the profile menu did not list both profiles';
@@ -2451,7 +2462,7 @@ async function runProfilesStep(win: BrowserWindow): Promise<string> {
   await click('[data-close-settings]');
   if (!(await waitInPage(win, "document.querySelector('[data-session-id]') && !document.querySelector('[data-session-id] [data-profile-badge]')", 3_000))) return 'sessions still show a profile after removing it';
   if (!builtinDefault) return 'the built-in profile did not become the default again';
-  return 'ok: added a second profile, sessions and New session showed it, made it the default, removed it';
+  return "ok: added a second profile, set its effort default, sessions and New session showed it (with the profile's effort), made it the default, removed it";
 }
 
 /**

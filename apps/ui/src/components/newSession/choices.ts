@@ -1,4 +1,4 @@
-import type { Effort, NewSessionMode, PermissionMode, ProjectDefaults } from '@switchboard/protocol/client';
+import type { Effort, NewSessionMode, PermissionMode, ProfileDefaults, ProjectDefaults } from '@switchboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {
@@ -10,7 +10,7 @@ export interface Choices {
   branch: string;
 }
 
-/** The global defaults: the choices last used for a field no project decides. Branches belong to a repository, so they never become global. */
+/** The global defaults: the choices last used for a field no project or profile decides. Branches belong to a repository, so they never become global. */
 export type GlobalChoices = Omit<Choices, 'branch'>;
 
 /** Where the global choices (and the last folder) are kept in the engine's app state. */
@@ -28,7 +28,26 @@ export function withNewSessionMode(globals: GlobalChoices, mode: NewSessionMode)
   return mode === 'last' ? globals : { ...globals, permissionMode: mode };
 }
 
-/** The choices a new session in a project starts from: the project's defaults, and the global ones where it sets none. */
+/**
+ * The defaults a new session starts from: the project's own, and its profile's where the project sets
+ * nothing. Null when neither has any, so every field follows the global defaults.
+ */
+export function layeredDefaults(project: ProjectDefaults | null | undefined, profile: ProfileDefaults | null | undefined): ProjectDefaults | null {
+  if (!profile || Object.values(profile).every((v) => v === null)) return project ?? null;
+  return {
+    model: project?.model ?? profile.model,
+    effort: project?.effort ?? profile.effort,
+    permissionMode: project?.permissionMode ?? profile.permissionMode,
+    workspace: project?.workspace ?? profile.workspace,
+    baseRef: project?.baseRef ?? profile.baseRef,
+    branch: project?.branch ?? null,
+  };
+}
+
+/**
+ * The choices a new session starts from: `project` (the project's and profile's defaults, see `layeredDefaults`),
+ * and the global ones where it sets none.
+ */
 export function startingChoices(globals: GlobalChoices, project: ProjectDefaults | null | undefined): Choices {
   return {
     model: project?.model ?? globals.model,
@@ -46,14 +65,14 @@ export function startingChoices(globals: GlobalChoices, project: ProjectDefaults
  */
 const NEVER_ASKS: readonly PermissionMode[] = ['bypassPermissions', 'auto', 'dontAsk'];
 
-/** The permission mode a session started by an `autostart` link runs in: `mode` (the project's default), unless it never asks. */
+/** The permission mode a session started by an `autostart` link runs in: `mode` (the project's or profile's default), unless it never asks. */
 export function linkPermissionMode(mode: PermissionMode | null | undefined): PermissionMode {
   return mode && !NEVER_ASKS.includes(mode) ? mode : 'default';
 }
 
 /**
  * The choices for a session an `autostart` link starts: as `startingChoices`, but the permission
- * mode comes only from the project's own default (never from the mode you last picked), and is
+ * mode comes only from the project's or profile's default (never from the mode you last picked), and is
  * never one that skips permission prompts.
  */
 export function linkStartingChoices(globals: GlobalChoices, project: ProjectDefaults | null | undefined): Choices {
@@ -61,8 +80,8 @@ export function linkStartingChoices(globals: GlobalChoices, project: ProjectDefa
 }
 
 /**
- * The part of a change that updates the global defaults: fields the project decides apply to this
- * session only (until saved as the project's default).
+ * The part of a change that updates the global defaults: fields the project (or the profile) decides
+ * apply to this session only (until saved as the project's default).
  */
 export function globalPatch(patch: Partial<Choices>, project: ProjectDefaults | null | undefined): Partial<GlobalChoices> {
   const out: Partial<GlobalChoices> = {};
