@@ -57,6 +57,8 @@ export const IpcChannel = {
   themeCommand: "switchboard:theme-command",
   windowButtons: "switchboard:window-buttons",
   focusWindow: "switchboard:focus-window",
+  listSounds: "switchboard:list-sounds",
+  playSound: "switchboard:play-sound",
 } as const;
 
 /** Appearance: follow macOS, or always light or dark. */
@@ -130,6 +132,16 @@ export interface Preferences {
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
   githubStar: GithubStar;
+  /** A system notification when a session needs you, finishes or fails, or a project action ends. The badge shows either way. */
+  notifications: boolean;
+  /** Play a sound for the same events, with or without the notification. */
+  sounds: boolean;
+  /** When Claude finishes a turn or stops with an error, or a project action ends: a system sound's name, or null for none. */
+  soundComplete: string | null;
+  /** When Claude asks for a permission, has a question or a plan: a system sound's name, or null for none. */
+  soundNeedsInput: string | null;
+  /** 0 to 1, for both sounds. */
+  soundVolume: number;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -153,7 +165,35 @@ export const DEFAULT_PREFERENCES: Preferences = {
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
   githubStar: "ask",
+  notifications: true,
+  sounds: false,
+  // macOS names; another computer that lacks them plays its own fallback (`resolveSound`).
+  soundComplete: "Glass",
+  soundNeedsInput: "Ping",
+  soundVolume: 0.5,
 };
+
+/** Which of the two sounds an event plays. */
+export type SoundKind = "complete" | "needsInput";
+
+/** The sounds this computer has to pick from (its system sounds), and what each kind plays when the saved one is missing. */
+export interface SoundList {
+  sounds: string[];
+  fallback: Record<SoundKind, string | null>;
+}
+
+/** A sound's name: a system sound's file name without its extension ("Glass", "Windows Notify Messaging"). */
+export const isSoundId = (value: unknown): value is string =>
+  typeof value === "string" && /^[A-Za-z0-9][\w .()'-]{0,63}$/.test(value);
+
+/**
+ * The sound a saved choice plays here: itself when this computer has it, otherwise the kind's fallback (a
+ * Mac's "Glass" on Windows, after an import). None stays none.
+ */
+export function resolveSound(id: string | null, list: SoundList, kind: SoundKind): string | null {
+  if (id === null) return null;
+  return list.sounds.includes(id) ? id : list.fallback[kind];
+}
 
 /** A theme id: lower-case letters, digits and dashes (built-in ids and the file names of imported themes). */
 export const isThemeId = (value: unknown): value is string =>
@@ -216,6 +256,12 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (autoModel) out.autoModel = autoModel;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
     out.githubStar = raw.githubStar;
+  if (typeof raw.notifications === "boolean") out.notifications = raw.notifications;
+  if (typeof raw.sounds === "boolean") out.sounds = raw.sounds;
+  if (raw.soundComplete === null || isSoundId(raw.soundComplete)) out.soundComplete = raw.soundComplete;
+  if (raw.soundNeedsInput === null || isSoundId(raw.soundNeedsInput)) out.soundNeedsInput = raw.soundNeedsInput;
+  if (typeof raw.soundVolume === "number" && Number.isFinite(raw.soundVolume))
+    out.soundVolume = Math.min(1, Math.max(0, Math.round(raw.soundVolume * 100) / 100));
   return out;
 }
 
@@ -444,4 +490,8 @@ export interface SwitchboardBridge {
   openThemesFolder(): void;
   /** Shows an imported theme's file in Finder. */
   showThemeFile(id: string): void;
+  /** The system sounds to pick from in Settings › Notifications. */
+  listSounds(): Promise<SoundList>;
+  /** Plays a sound once at a volume (0 to 1), to try it. Only sounds from `listSounds`. */
+  playSound(id: string, volume: number): void;
 }

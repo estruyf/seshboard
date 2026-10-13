@@ -279,6 +279,35 @@
   box-shadow: -10px 0 24px -14px var(--sb-terminal-shadow);
 }
 
+/*
+ * A range slider (`Slider`): a thin grey track, filled in yellow up to the value (`--fill`, set by the component),
+ * and a round knob like the one on a switch. The native look ignores the theme.
+ */
+@utility slider {
+  appearance: none;
+  height: 1.25rem;
+  background: transparent;
+  cursor: pointer;
+  &::-webkit-slider-runnable-track {
+    height: 0.25rem;
+    border-radius: 9999px;
+    background: linear-gradient(to right, var(--sb-accent) var(--fill, 0%), color-mix(in srgb, var(--sb-faint) 40%, transparent) var(--fill, 0%));
+  }
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 0.875rem;
+    height: 0.875rem;
+    margin-top: -0.3125rem;
+    border-radius: 9999px;
+    background: white;
+    box-shadow: 0 0 0 1px var(--sb-overlay-border), 0 1px 2px rgb(0 0 0 / 0.25);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
 /* Frameless-window drag regions (macOS hiddenInset title bar). */
 @utility drag {
   -webkit-app-region: drag;

@@ -65,6 +65,11 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   whileWorking: 'Enter while Claude is working',
   autoModel: 'Auto model',
   githubStar: 'Star on GitHub',
+  notifications: 'Show notifications',
+  sounds: 'Play sounds',
+  soundComplete: 'Session complete sound',
+  soundNeedsInput: 'Needs input sound',
+  soundVolume: 'Sound volume',
 };
 
 /** What the settings file is read from and written to. */

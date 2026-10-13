@@ -1,10 +1,11 @@
 import { currentPlatform } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
+import { NotificationsSettings } from './notifications/NotificationsSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
 import { useSidebar } from '../state/sidebarStore.ts';
@@ -134,6 +135,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
   { id: 'sessions', label: 'Sessions', icon: Archive },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
   { id: 'memory', label: 'Memory', icon: Brain },
@@ -255,6 +257,12 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
             <AutoModelSettings />
           </Section>
         </>
+      );
+    case 'notifications':
+      return (
+        <Section title="Notifications" description="How Switchboard gets your attention while you work in another session or app. Nothing for the session you are looking at.">
+          <NotificationsSettings />
+        </Section>
       );
     case 'focus':
       return (

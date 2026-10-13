@@ -4,14 +4,13 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { IMAGE_EXTENSIONS, IpcChannel, isThemeId, sanitizePreferences, type AppInfo, type DeepLinkMessage, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { EngineProcess } from './engineProcess.ts';
-import type { AttentionEvent } from './attention.ts';
 import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
-import { Notifier } from './notifier.ts';
+import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
@@ -19,6 +18,7 @@ import { ReloadLimiter } from './reloadLimiter.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
+import { SoundPlayer } from './sounds.ts';
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
@@ -242,7 +242,15 @@ ipcMain.handle(IpcChannel.themeCommand, async (event, command: ThemeCommand) => 
 let engine: EngineProcess;
 let notifier: Notifier;
 let focusedSession: string | null = null;
-const recordedNotifications: Array<AttentionEvent & { suppressed: boolean }> = [];
+const recordedNotifications: RecordedAlert[] = [];
+/** Sounds the smoke run would have played (it never makes a sound). */
+const recordedSounds: Array<{ id: string; volume: number }> = [];
+const sounds = new SoundPlayer(smokeOutDir ? { record: (sound) => void recordedSounds.push(sound) } : {});
+
+ipcMain.handle(IpcChannel.listSounds, () => sounds.list());
+ipcMain.on(IpcChannel.playSound, (_event, id: unknown, volume: unknown) => {
+  if (isSoundId(id) && typeof volume === 'number' && Number.isFinite(volume)) sounds.play(id, volume);
+});
 
 /**
  * Where the traffic lights sit: the default, or inside the 80px minimal sidebar. They are 54px wide, and
@@ -1659,6 +1667,79 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
   if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 2_000))) return 'Escape did not close Settings';
   return 'ok';
+}
+
+/**
+ * Settings › Notifications, read-only: notifications on and sounds off to start with, and the attention events
+ * recorded so far (the project action that finished) say so. Turning notifications off and sounds on shows the
+ * sound controls; choosing a sound, its play button and the volume each "play" a sound (recorded, never heard),
+ * and are saved. The recorded event then would play Session complete without a notification. Everything is put back.
+ */
+async function runNotificationsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  const checked = (selector: string) => `document.querySelector(${JSON.stringify(selector)})?.getAttribute('aria-checked')`;
+  const lastSound = () => recordedSounds.at(-1);
+
+  await click('[data-open-settings]');
+  await click('[data-settings-section="notifications"]');
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-page="notifications"]') && ${checked('[data-notifications]')} === 'true' && ${checked('[data-sounds]')} === 'false' && !document.querySelector('[data-sound-options]')`, 3_000))) {
+    return 'Notifications did not open with notifications on and sounds off';
+  }
+  // What the events recorded so far did with those defaults: a notification (unless it was for the session on screen), no sound.
+  const recorded = recordedNotifications.findLast((n) => n.kind === 'action-done') ?? recordedNotifications.at(-1);
+  if (recorded && (recorded.notify !== !recorded.suppressed || recorded.sound !== null)) return `a recorded ${recorded.kind} event did ${JSON.stringify({ notify: recorded.notify, sound: recorded.sound })} with the defaults`;
+
+  await click('[data-notifications]');
+  await click('[data-sounds]');
+  if (!(await until(() => !preferences.get().notifications && preferences.get().sounds))) return 'turning notifications off and sounds on was not saved';
+  const list = sounds.list();
+  if (list.sounds.length === 0) {
+    const said = await waitInPage(win, "document.querySelector('[data-sound-options]')?.innerText.includes('no system sounds')", 2_000);
+    await click('[data-sounds]');
+    await click('[data-notifications]');
+    return said ? 'ok: no system sounds on this computer, and Settings says so' : 'with no system sounds, Settings did not say so';
+  }
+  if (!(await waitInPage(win, "document.querySelector('[data-sound-options] [data-sound-complete]') && document.querySelector('[data-sound-volume]')", 2_000))) return 'turning sounds on did not show the sound controls';
+  await shot(win, 'settings-notifications.png');
+
+  // Choosing a sound plays it once and saves it.
+  const complete = list.sounds.find((id) => id !== resolveSound(preferences.get().soundComplete, list, 'complete'))!;
+  if (!(await chooseOption(win, '[data-sound-complete]', complete))) return 'could not choose a Session complete sound';
+  if (!(await until(() => preferences.get().soundComplete === complete && lastSound()?.id === complete))) return `choosing ${complete} did not save and play it`;
+  // The play button plays the sound shown, at the volume set.
+  const needsInput = resolveSound(preferences.get().soundNeedsInput, list, 'needsInput');
+  const before = recordedSounds.length;
+  await click('[data-sound-preview="needs-input"]');
+  if (!(await until(() => recordedSounds.length > before && lastSound()?.id === needsInput && lastSound()?.volume === preferences.get().soundVolume))) return 'the Needs input play button did not play its sound';
+  // None: no sound, nothing to play.
+  if (!(await chooseOption(win, '[data-sound-needs-input]', ''))) return 'could not choose None for Needs input';
+  if (!(await waitInPage(win, "document.querySelector('[data-sound-preview=\"needs-input\"]')?.disabled === true", 2_000)) || preferences.get().soundNeedsInput !== null) return 'None was not saved, or its play button stayed on';
+  // The volume moves with the arrow keys, is saved when let go, and plays at the new volume.
+  await js("document.querySelector('[data-sound-volume]').focus()");
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Left' });
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Left' });
+  if (!(await until(() => preferences.get().soundVolume === 0.45 && lastSound()?.volume === 0.45 && lastSound()?.id === complete))) return `the volume did not go to 45% and play (${preferences.get().soundVolume})`;
+  const saved = JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8')) as Record<string, unknown>;
+
+  // A recorded event, with these settings: the sound, without a notification; needing you now plays nothing (None).
+  const sample = recorded ?? { kind: 'finished' as const, sessionId: 'smoke', title: 'Claude finished', body: 'smoke' };
+  const finishing = notifier.alertFor({ ...sample, kind: 'finished' });
+  const needing = notifier.alertFor({ ...sample, kind: 'needs-you' });
+  const looking = notifier.alertFor({ ...sample, kind: 'finished' }, true);
+
+  await click('[data-sounds]');
+  await click('[data-notifications]');
+  updatePreferences({ soundComplete: DEFAULT_PREFERENCES.soundComplete, soundNeedsInput: DEFAULT_PREFERENCES.soundNeedsInput, soundVolume: DEFAULT_PREFERENCES.soundVolume });
+  const restored = await until(() => preferences.get().notifications && !preferences.get().sounds);
+  await click('[data-close-settings]');
+
+  if (saved.notifications !== false || saved.sounds !== true || saved.soundComplete !== complete || saved.soundNeedsInput !== null || saved.soundVolume !== 0.45) return `not saved: ${JSON.stringify(saved)}`;
+  if (finishing.notify || finishing.sound !== 'complete') return `a finished turn would ${JSON.stringify(finishing)}, not only the Session complete sound`;
+  if (needing.notify || needing.sound !== null) return `needing you would ${JSON.stringify(needing)} with its sound set to None`;
+  if (looking.notify || looking.sound !== null) return 'the session on screen would still get a sound';
+  if (!restored) return 'could not put the defaults back';
+  return `ok: ${recorded ? `checked against a recorded ${recorded.kind} event` : 'no event recorded yet'}, ${list.sounds.length} sounds`;
 }
 
 /**
@@ -5417,6 +5498,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('project action added through the editor and run in a terminal tab', () => runActionStep(win));
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));
+  await step('settings › notifications: notifications off, sounds on, picking, playing and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
   await step('about', () => runAboutStep(win));
@@ -5470,7 +5552,9 @@ app.whenReady().then(() => {
     focusedSession: () => focusedSession,
     openSession,
     showAllSessions: () => preferences.get().sessionScope === 'all',
-    ...(smokeOutDir ? { record: (event: AttentionEvent & { suppressed: boolean }) => void recordedNotifications.push(event) } : {}),
+    alerts: () => preferences.get(),
+    sounds,
+    ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event) } : {}),
   });
   notifier.connect();
   createWindow();
