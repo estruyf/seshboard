@@ -1715,6 +1715,51 @@ async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Settings › General › Permission mode: a fixed mode is what New session's mode chip starts on, and The last one
+ * you picked brings back the remembered one. Runs before any step types in New session, since an unsent prompt there
+ * keeps the choices it was written with. Starts no session; only the throwaway profile's preference changes, and it
+ * is put back, with the session that was open.
+ */
+async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const chip = "document.querySelector('[data-new-session-view] [data-mode-select]')";
+  const open = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
+  /** New session opened afresh (from Home, so it mounts again): the mode its chip starts on. */
+  const freshMode = async () => {
+    await js("document.querySelector('[data-go-home]')?.click()");
+    await waitInPage(win, `!${chip}`, 2_000);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+    return (await waitInPage(win, `${chip}?.dataset.value`, 5_000)) ? ((await js(`${chip}.dataset.value`)) as string) : null;
+  };
+  const setMode = async (mode: string) => {
+    await js("document.querySelector('[data-open-settings]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"general\"]')", 3_000))) return false;
+    await js("document.querySelector('[data-settings-section=\"general\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-new-session-mode]')", 2_000))) return false;
+    const picked = await chooseOption(win, '[data-new-session-mode]', mode);
+    if (mode !== 'last') await shot(win, 'settings-new-session-mode.png');
+    await js("document.querySelector('[data-close-settings]').click()");
+    return picked && (await until(() => preferences.get().newSessionMode === mode));
+  };
+
+  if (preferences.get().newSessionMode !== 'last') return `the preference started as ${preferences.get().newSessionMode}, not The last one you picked`;
+  const remembered = await freshMode();
+  if (!remembered) return 'New session has no mode chip';
+  const fixed = remembered === 'plan' ? 'acceptEdits' : 'plan';
+  if (!(await setMode(fixed))) return `could not set Permission mode to ${fixed} in Settings › General`;
+  const withFixed = await freshMode();
+  if (withFixed !== fixed) return `with ${fixed} set, New session's mode chip starts on ${withFixed}`;
+  if (!(await setMode('last'))) return 'could not set Permission mode back to The last one you picked';
+  const again = await freshMode();
+  if (again !== remembered) return `back on The last one you picked, the chip starts on ${again}, not ${remembered}`;
+  if (open) {
+    openSession(open);
+    if (!(await waitInPage(win, `document.querySelector('[data-current-session="${open}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session that was open';
+  }
+  return `ok: ${fixed} from Settings, then ${remembered} again as the one picked last`;
+}
+
+/**
  * The focus limit: turning it on in Settings › Focus shows the counter in the sidebar footer, in both
  * themes, with its list of the sessions that count; turning it off hides it again. Only preferences in
  * the throwaway profile change: no session is started and nothing is saved for later.
@@ -5122,6 +5167,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   });
   await step('newest session with messages rendered', () => openSmokeSession(win));
   await step('transcript opens at the end', () => checkTranscriptEnd(win));
+  await step('permission mode for new sessions: a fixed mode starts New session in it, the last one picked comes back', () => runNewSessionModeStep(win));
   await step('tool calls summarised', async () => {
     const activity = await runActivityStep(win);
     if (!activity) return 'failed: no groups';

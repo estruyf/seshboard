@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
-import { globalPatch, INITIAL_CHOICES, linkPermissionMode, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults } from './choices.ts';
+import { globalPatch, INITIAL_CHOICES, linkPermissionMode, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode } from './choices.ts';
 
 const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
 
@@ -67,6 +67,26 @@ const project = (root: string, extra: Partial<ProjectInfo>): ProjectInfo => ({
   sessionCount: 0,
   lastActivity: null,
   ...extra,
+});
+
+describe('the permission mode for new sessions', () => {
+  const globals = { ...INITIAL_CHOICES, permissionMode: 'plan' as const };
+  const project = (permissionMode: ProjectDefaults['permissionMode']): ProjectDefaults => ({ model: null, effort: null, permissionMode, workspace: null, baseRef: null, branch: null });
+
+  it('starts in the mode picked last, unless Settings sets one', () => {
+    expect(startingChoices(withNewSessionMode(globals, 'last'), null).permissionMode).toBe('plan');
+    expect(startingChoices(withNewSessionMode(globals, 'auto'), null).permissionMode).toBe('auto');
+    expect(startingChoices(withNewSessionMode(globals, 'default'), null).permissionMode).toBe('default');
+  });
+
+  it("gives way to a project's own default", () => {
+    expect(startingChoices(withNewSessionMode(globals, 'auto'), project('acceptEdits')).permissionMode).toBe('acceptEdits');
+    expect(startingChoices(withNewSessionMode(globals, 'auto'), project(null)).permissionMode).toBe('auto');
+  });
+
+  it('never reaches a session a link starts', () => {
+    expect(linkStartingChoices(withNewSessionMode(globals, 'auto'), null).permissionMode).toBe('default');
+  });
 });
 
 describe('project lists', () => {

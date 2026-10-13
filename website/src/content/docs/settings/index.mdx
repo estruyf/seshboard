@@ -39,6 +39,15 @@ What Switchboard shows when it opens:
 - **The last session**: the session you had open, if the sidebar lists it. Otherwise New session.
 - **New session**: ready for a new prompt.
 
+### New sessions
+
+**Permission mode** sets the mode a new session starts in, in New session and in the command palette's New session step:
+
+- **The last one you picked** (the default): the mode you chose for the last new session.
+- **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**: always that one. Picking another mode for one session doesn't change it.
+
+A project's own default mode comes first (its [Settings tab](/projects/settings/)). A session started by a link never starts in Auto mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
+
 ### Projects
 
 **Project order** sets how New session, Home and the command palette list your projects:

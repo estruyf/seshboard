@@ -1,4 +1,4 @@
-import type { Effort, PermissionMode, ProjectDefaults } from '@switchboard/protocol/client';
+import type { Effort, NewSessionMode, PermissionMode, ProjectDefaults } from '@switchboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {
@@ -19,6 +19,14 @@ export const DEFAULTS_KEY = 'newSession.defaults';
 export const INITIAL_CHOICES: GlobalChoices = { model: '', permissionMode: 'default', effort: '', workspace: 'current', baseRef: 'fresh' };
 
 const FIELDS = ['model', 'permissionMode', 'effort', 'workspace', 'baseRef', 'branch'] as const;
+
+/**
+ * The global defaults with the permission mode Settings sets for new sessions (Settings › General), unless it is
+ * the one you picked last. The mode you pick is still remembered, for when the setting goes back to that.
+ */
+export function withNewSessionMode(globals: GlobalChoices, mode: NewSessionMode): GlobalChoices {
+  return mode === 'last' ? globals : { ...globals, permissionMode: mode };
+}
 
 /** The choices a new session in a project starts from: the project's defaults, and the global ones where it sets none. */
 export function startingChoices(globals: GlobalChoices, project: ProjectDefaults | null | undefined): Choices {
