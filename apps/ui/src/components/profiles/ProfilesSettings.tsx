@@ -1,10 +1,11 @@
 import { Check, ChevronRight, Copy, FolderOpen, Plus, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { expandHome, isAbsolutePath, PROFILE_COLORS, separatorOf, type ClaudeProfile, type ProfileColor } from '@switchboard/protocol/client';
+import { useEffect, useMemo, useState } from 'react';
+import { expandHome, isAbsolutePath, PROFILE_COLORS, separatorOf, type ClaudeProfile, type ProfileColor, type ProjectDefaults } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { guessHome, tildify } from '../../lib/format.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
+import { describeDefaults, ProjectDefaultsEditor } from '../projects/ProjectDefaultsEditor.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Radio, RadioGroup } from '../ui/Radio.tsx';
 import { PROFILE_DOT } from './ProfileBadge.tsx';
@@ -75,6 +76,42 @@ function CopyCommand({ command, block = false }: { command: string; block?: bool
         {copied ? <Check size={12} /> : <Copy size={12} />}
       </button>
     </span>
+  );
+}
+
+/**
+ * What new sessions with this profile start with, where their project sets nothing. Folded away under a
+ * one-line summary, since most people set them once.
+ */
+function ProfileDefaultsSection({ profile, onError }: { profile: ClaudeProfile; onError(message: string): void }) {
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const [open, setOpen] = useState(false);
+  // The editor works on a project's shape; a profile has no branch. Kept stable so quick changes build on each other.
+  const defaults = useMemo<ProjectDefaults>(() => ({ ...profile.defaults, branch: null }), [profile.defaults]);
+  const save = ({ branch: _branch, ...next }: ProjectDefaults) => void client?.call('profiles.setDefaults', { id: profile.id, defaults: next }).catch((e: Error) => onError(e.message));
+  return (
+    <div className="grid min-w-0 gap-2.5 border-t border-border pt-2" data-profile-defaults={profile.id}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex min-w-0 items-center gap-1.5 text-left text-ui text-muted hover:text-text"
+        data-profile-defaults-toggle
+      >
+        <ChevronRight size={13} aria-hidden className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+        <span className="shrink-0">New session defaults</span>
+        <span className="min-w-0 truncate text-faint" data-profile-defaults-summary>
+          · {describeDefaults(profile.defaults)}
+        </span>
+      </button>
+      {open && (
+        <div className="grid min-w-0 gap-2.5 pl-5">
+          <p className="text-ui text-muted">New sessions with {profile.name} start with these, unless their project sets its own. The New session view can still change them for one session.</p>
+          <ProjectDefaultsEditor root={null} defaults={defaults} isGitRepo profile={null} onSave={save} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -152,6 +189,7 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
           <CopyCommand command={loginCommand(profile)} block />
         </div>
       )}
+      <ProfileDefaultsSection profile={profile} onError={setError} />
       {error && (
         <p role="alert" className="text-ui text-error">
           {error}

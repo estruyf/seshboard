@@ -82,6 +82,24 @@ With more than one profile, you can link a project to the account its sessions s
 
 New sessions in that project use the linked profile. Other projects use the default.
 
+## Defaults for new sessions
+
+Each profile can have its own defaults for new sessions, such as Opus and *Plan mode* for a work account. Open **New session defaults** on the profile; the closed line shows a summary ("Opus · high effort"), or *Global defaults* when none are set.
+
+| Row | Choices |
+|---|---|
+| **Model** | A model, **Auto**, or *Global default*. Next to it, an effort level, or *Global effort*. |
+| **Permissions** | A permission mode, or *Global default*. |
+| **Workspace** | *Current folder*, *New worktree*, or *Global default*. Next to it, what a new worktree branches from. |
+
+Every change saves at once. A new session takes each field from the first place that sets it:
+
+1. The project's own defaults, on its [Settings tab](/projects/settings/).
+2. The defaults of the session's profile.
+3. The choices you made last in [New session](/new-session/form/).
+
+A branch to check out is only a project default, since branches belong to a repository. When you pick another profile for one session in New session, its defaults apply, unless you already changed something there.
+
 ## Pick a profile for one session
 
 In [New session](/new-session/form/), the profile chip under the message box shows the profile the folder uses. Click it to pick another account for this one session. A running session keeps its profile; to use another account, start a new session.
@@ -105,4 +123,4 @@ A profile whose folder is gone says **folder not found**.
 
 ## Settings
 
-Profiles are managed in [Settings → Claude profiles](/settings/#claude-profiles). The link between a project and a profile is part of the project, in its [Settings tab](/projects/settings/).
+Profiles and their defaults for new sessions are managed in [Settings → Claude profiles](/settings/#claude-profiles). The link between a project and a profile is part of the project, in its [Settings tab](/projects/settings/).

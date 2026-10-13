@@ -9,6 +9,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Copy link.** Right-click a link in a message and choose **Copy link** to copy its address.
 - **Add files from anywhere.** The Add context dialog (the paperclip under the message box) has **Choose in Finder…** (**Choose in File Explorer…** on Windows), so you can add files that are not in the project. On macOS you can pick folders too.
 - **Search in Settings.** Type in **Search settings** at the top of the section list (or press ⌘F in Settings) to find a setting in any section. Results show grouped by section with your words marked; choose one to open its section at that setting.
+- **Defaults per Claude profile.** In Settings › Claude profiles, open **New session defaults** on a profile to set the model, effort, permission mode and workspace its new sessions start with. A project's own defaults still come first; fields it leaves unset now use its profile's defaults before the choices you made last in New session. The project's Settings tab shows what an unset field falls back to, such as *Profile default (Opus)*.
 - **Pasted text cards.** A long paste (more than 2,000 characters or 25 lines) goes in a **Pasted** card above the message instead of in the box. Click it to read or edit the text; Claude gets it with your message.
 
 ### Fixed

@@ -366,4 +366,9 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX auto_routing_scope_at ON auto_routing (scope, at);
   `,
+
+  // v21: Claude profiles have defaults for new sessions too, under the project's own (user choices: keep them).
+  `
+  ALTER TABLE claude_profiles ADD COLUMN defaults_json TEXT;
+  `,
 ];

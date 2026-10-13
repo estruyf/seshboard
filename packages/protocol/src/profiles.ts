@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PROFILE_COLORS } from './profileConstants.ts';
+import { ProfileDefaults } from './sessions.ts';
 
 export { BUILTIN_PROFILE_ID, PROFILE_COLORS } from './profileConstants.ts';
 
@@ -23,6 +24,8 @@ export const ClaudeProfile = z.object({
   exists: z.boolean(),
   /** The claude.ai account Claude Code last signed in with here (null: not signed in yet, or an API key). */
   account: z.object({ email: z.string().nullable(), organization: z.string().nullable() }).nullable(),
+  /** What new sessions with this profile start with, where their project sets nothing. */
+  defaults: ProfileDefaults,
 });
 export type ClaudeProfile = z.infer<typeof ClaudeProfile>;
 

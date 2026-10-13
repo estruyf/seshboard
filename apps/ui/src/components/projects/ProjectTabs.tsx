@@ -6,7 +6,7 @@ import { formatShortcut } from '../../lib/shortcuts.ts';
 import { useBranchRows } from '../../state/branchesStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { openProject, type ProjectTab } from '../../state/projectPageStore.ts';
-import { useProfiles } from '../../state/profilesStore.ts';
+import { useProfile, useProfiles } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { projectOf } from '../../state/queue.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -378,6 +378,8 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const projectActions = useProjectActions();
+  // Fields the project leaves unset come from its profile's defaults.
+  const profile = useProfile(project.profileId);
   const save = async (defaults: ProjectDefaults) => {
     if (!client) return;
     try {
@@ -392,7 +394,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
     <div className="grid max-w-2xl gap-3" data-project-defaults-tab>
       <p className="text-ui text-muted">New sessions in {project.name} start with these. The New session view can still change them for one session.</p>
       <ProfilePicker project={project} />
-      <ProjectDefaultsEditor root={project.root} defaults={project.defaults} isGitRepo={isGitRepo} onSave={(d) => void save(d)} />
+      <ProjectDefaultsEditor root={project.root} defaults={project.defaults} isGitRepo={isGitRepo} profile={profile?.defaults} onSave={(d) => void save(d)} />
       {error && (
         <p role="alert" className="text-ui text-error">
           Couldn't save the defaults: {error}

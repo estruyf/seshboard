@@ -1074,6 +1074,10 @@ export function createEngine(options: EngineOptions): Engine {
       profiles.setDefault(id);
       return {};
     },
+    'profiles.setDefaults': ({ id, defaults }) => {
+      profiles.setDefaults(id, defaults);
+      return {};
+    },
     'projects.setDefaults': ({ root, defaults }) => {
       questions.assertNotProject(root);
       projects.setDefaults(root, defaults);

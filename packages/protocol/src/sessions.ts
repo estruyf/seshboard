@@ -67,8 +67,8 @@ export const ProjectIconChoice = z.discriminatedUnion('kind', [
 export type ProjectIconChoice = z.infer<typeof ProjectIconChoice>;
 
 /**
- * What a new session in a project starts with. Null fields fall back to the global
- * defaults (the choices last used in the New session view).
+ * What a new session in a project starts with. Null fields fall back to the profile's defaults,
+ * then to the global ones (the choices last used in the New session view).
  */
 export const ProjectDefaults = z.object({
   model: z.string().max(200).nullable().default(null),
@@ -81,6 +81,13 @@ export const ProjectDefaults = z.object({
   branch: z.string().min(1).max(250).nullable().default(null),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
+
+/**
+ * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
+ * fall back to the global defaults. No branch: branches belong to a repository.
+ */
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true });
+export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({
   root: z.string(),

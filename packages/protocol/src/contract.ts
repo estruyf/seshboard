@@ -21,6 +21,7 @@ import {
 } from './host.ts';
 import {
   LiveSession,
+  ProfileDefaults,
   ProjectDefaults,
   ProjectIconChoice,
   ProjectInfo,
@@ -228,6 +229,8 @@ export const contract = {
     /** Removes a profile from Switchboard (its folder, login and sessions stay). Its projects fall back to the default. */
     'profiles.remove': { params: z.object({ id: ProfileId }), result: z.object({}) },
     'profiles.setDefault': { params: z.object({ id: ProfileId }), result: z.object({}) },
+    /** Replaces a profile's defaults for new sessions (projects' own defaults still come first). */
+    'profiles.setDefaults': { params: z.object({ id: ProfileId, defaults: ProfileDefaults }), result: z.object({}) },
     /** Forces a full rescan of ~/.claude/projects. */
     'sessions.refresh': {
       params: z.object({}),

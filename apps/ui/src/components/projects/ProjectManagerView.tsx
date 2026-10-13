@@ -1,10 +1,11 @@
 import { AlertTriangle, ArrowDown, ArrowUp, Ellipsis, FolderPlus, SquarePen } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { AUTO_MODEL, type ProjectDefaults, type ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { agoText, guessHome, tildify } from '../../lib/format.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { addedProjects, baseOrder, moveRoot } from '../../state/projectList.ts';
+import { useProfile } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -14,18 +15,7 @@ import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { useProjectIconEntries } from '../sidebar/ProjectMenu.tsx';
 import { Button } from '../ui/Button.tsx';
 import { WorktreePill } from '../worktrees/WorktreePill.tsx';
-
-/** Shows a summary of the defaults a project sets, e.g. "Opus · high effort · worktree". */
-function describeDefaults(d: ProjectDefaults): string {
-  const parts = [
-    d.model === AUTO_MODEL ? 'Auto' : d.model,
-    d.effort && `${d.effort} effort`,
-    d.permissionMode && d.permissionMode !== 'default' && d.permissionMode,
-    d.workspace === 'worktree' ? `worktree${d.baseRef === 'head' ? ' from HEAD' : ''}` : d.workspace === 'current' && 'current folder',
-    d.branch && `on ${d.branch}`,
-  ].filter(Boolean);
-  return parts.length ? parts.join(' · ') : 'Global defaults';
-}
+import { describeDefaults, hasDefaults } from './ProjectDefaultsEditor.tsx';
 
 /** Where a menu opened from the keyboard goes (no pointer position): under the button. */
 export const menuPoint = (event: MouseEvent<HTMLElement>) => {
@@ -50,6 +40,7 @@ function ProjectRow({
   onIconMenu(event: MouseEvent<HTMLElement>): void;
   onMore(event: MouseEvent<HTMLElement>): void;
 }) {
+  const profile = useProfile(project.profileId);
   const startHere = () => {
     useProjects.getState().startIn(project.root);
     useSessions.getState().openNewSession();
@@ -71,7 +62,7 @@ function ProjectRow({
             )}
             <ProfileBadge profileId={project.profileId} />
             <span className="min-w-0 truncate">
-              <span data-defaults-summary>{describeDefaults(project.defaults)}</span>
+              <span data-defaults-summary>{describeDefaults(project.defaults, hasDefaults(profile?.defaults) ? 'Profile defaults' : 'Global defaults')}</span>
               {project.sessionCount > 0 && ` · ${project.sessionCount} ${project.sessionCount === 1 ? 'session' : 'sessions'}`}
               {project.lastActivity !== null && `, active ${agoText(project.lastActivity)}`}
             </span>

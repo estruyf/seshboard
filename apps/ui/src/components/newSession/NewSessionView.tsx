@@ -50,7 +50,7 @@ import { linkNoticeText } from './linkNotice.ts';
 import { activityByProject, latestBranches, orderProjects, pickUpRows, tileStatus } from './projectTiles.ts';
 import { branchLabel, branchNote, freshBase } from './trayLabels.ts';
 import { checkoutBranchFor, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, type Choices, type GlobalChoices } from './choices.ts';
+import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, type Choices, type GlobalChoices } from './choices.ts';
 import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
@@ -157,12 +157,13 @@ export function NewSessionView() {
   const question = isQuestionsFolder(cwd, questionsDir);
   const options = sessionOptions(question);
   const isProject = project?.added ?? false;
-  const projectDefaults = isProject ? project!.defaults : null;
-  const defaultsKey = JSON.stringify(projectDefaults);
-  /** What a session here starts from: a quick question's own choices, else the project's defaults over the ones last used. */
-  const firstChoices = (): Choices => (question ? questionStartingChoices(questionChoices) : choicesFor(globals, projectDefaults));
   const projectProfile = project?.profileId && profiles.some((p) => p.id === project.profileId) ? project.profileId : null;
   const profileId = (profileOverride && profiles.some((p) => p.id === profileOverride) ? profileOverride : null) ?? projectProfile ?? defaultProfile;
+  /** The project's defaults, then the profile's: picking another profile brings its defaults, until the user changes something. */
+  const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
+  const defaultsKey = JSON.stringify(sessionDefaults);
+  /** What a session here starts from: a quick question's own choices, else the project's and profile's defaults over the ones last used. */
+  const firstChoices = (): Choices => (question ? questionStartingChoices(questionChoices) : choicesFor(globals, sessionDefaults));
   /** The picked folder's colour: the message box's frame, matching its tile. */
   const projectColor = useProjectColor(project, cwd);
   const lastBranches = useMemo(() => latestBranches(sessions.values()), [sessions]);
@@ -459,7 +460,7 @@ export function NewSessionView() {
       }
       return;
     }
-    const remembered = globalPatch(patch, projectDefaults);
+    const remembered = globalPatch(patch, sessionDefaults);
     if (Object.keys(remembered).length) {
       setGlobals((current) => {
         const next = { ...current, ...remembered };

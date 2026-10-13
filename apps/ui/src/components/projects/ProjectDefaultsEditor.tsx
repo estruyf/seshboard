@@ -1,16 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
-import { AUTO_MODEL, type Effort, type PermissionMode, type ProjectDefaults } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type Effort, type PermissionMode, type ProfileDefaults, type ProjectDefaults } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { MODE_CHOICES, MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
-import { AUTO_OFF_NOTE } from '../../lib/autoModel.ts';
+import { AUTO_OFF_NOTE, modelLabel } from '../../lib/autoModel.ts';
 import { EFFORT_LABEL, EFFORTS } from '../newSession/route.ts';
 import { Select } from '../ui/Select.tsx';
 
 const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60 disabled:opacity-50';
-/** The value an unset field shows; unset fields use the choices last made in the New session view. */
+/** The value an unset field shows; unset fields use the profile's defaults, else the choices last made in the New session view. */
 const UNSET = '';
+
+/** Shows a summary of the defaults a project or profile sets, e.g. "Opus · high effort · worktree"; `fallback` when it sets none. */
+export function describeDefaults(d: ProfileDefaults & { branch?: string | null }, fallback = 'Global defaults'): string {
+  const parts = [
+    d.model === AUTO_MODEL ? 'Auto' : d.model,
+    d.effort && `${d.effort} effort`,
+    d.permissionMode && d.permissionMode !== 'default' && d.permissionMode,
+    d.workspace === 'worktree' ? `worktree${d.baseRef === 'head' ? ' from HEAD' : ''}` : d.workspace === 'current' && 'current folder',
+    d.branch && `on ${d.branch}`,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : fallback;
+}
+
+/** Whether any field is set. */
+export const hasDefaults = (d: ProfileDefaults | null | undefined) => !!d && Object.values(d).some((v) => v !== null);
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -22,10 +37,25 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /**
- * A project's defaults for new sessions. "Global default" leaves a field to the choices last
- * made in the New session view. Every change saves at once.
+ * A project's or a profile's defaults for new sessions. An unset field leaves it to the level under it: a
+ * project's to its profile's (`profile`, named in the option when it sets that field), and both to the
+ * choices last made in the New session view. Without a `root` (a profile) there is no branch to pick.
+ * Every change saves at once.
  */
-export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { root: string; defaults: ProjectDefaults; isGitRepo: boolean; onSave(defaults: ProjectDefaults): void }) {
+export function ProjectDefaultsEditor({
+  root,
+  defaults,
+  isGitRepo,
+  profile,
+  onSave,
+}: {
+  root: string | null;
+  defaults: ProjectDefaults;
+  isGitRepo: boolean;
+  /** The defaults of the project's profile, which its unset fields fall back to. */
+  profile?: ProfileDefaults | null;
+  onSave(defaults: ProjectDefaults): void;
+}) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const models = useHosts((s) => s.models);
@@ -33,7 +63,7 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
   const [branches, setBranches] = useState<{ current: string | null; branches: string[] }>({ current: null, branches: [] });
 
   useEffect(() => {
-    if (!client || !isGitRepo) return;
+    if (!client || !root || !isGitRepo) return;
     let cancelled = false;
     client.call('git.branches', { cwd: root }).then(
       (r) => !cancelled && setBranches(r),
@@ -57,10 +87,13 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
     onSave(latest.current);
   };
   const nullable = <T extends string>(value: string) => (value === UNSET ? null : (value as T));
+  // What an unset field falls back to: "Profile default (Opus)" when the profile sets it, else the global default.
+  const inherit = (label: string, value: string | null | undefined, shown?: string) => (value ? `Profile ${label} (${shown ?? value})` : `Global ${label}`);
+  const baseLabel = { fresh: 'from origin', head: 'from HEAD' } as const;
   const branchOptions = defaults.branch && !branches.branches.includes(defaults.branch) ? [defaults.branch, ...branches.branches] : branches.branches;
 
   return (
-    <div className="grid gap-2.5" data-project-defaults={root}>
+    <div className="grid gap-2.5" data-project-defaults={root ?? undefined}>
       <Row label="Model">
         <Select
           label="Model"
@@ -68,7 +101,7 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
           value={defaults.model ?? UNSET}
           onChange={(value) => set({ model: nullable(value) })}
           options={[
-            { value: UNSET, label: 'Global default' },
+            { value: UNSET, label: inherit('default', profile?.model, profile?.model ? modelLabel(models, profile.model) : undefined) },
             // Auto stays listed while it is the saved choice, also with Auto off (the note says what happens then).
             ...(autoEnabled || defaults.model === AUTO_MODEL ? [{ value: AUTO_MODEL, label: autoEnabled ? 'Auto' : 'Auto (off)' }] : []),
             ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })),
@@ -81,7 +114,7 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
           className={field}
           value={defaults.effort ?? UNSET}
           onChange={(value) => set({ effort: nullable<Effort>(value) })}
-          options={[{ value: UNSET, label: 'Global effort' }, ...EFFORTS.map((e) => ({ value: e, label: `${EFFORT_LABEL[e]} effort` }))]}
+          options={[{ value: UNSET, label: inherit('effort', profile?.effort, profile?.effort ? EFFORT_LABEL[profile.effort] : undefined) }, ...EFFORTS.map((e) => ({ value: e, label: `${EFFORT_LABEL[e]} effort` }))]}
           dataAttrs={{ 'data-default-effort': true }}
         />
       </Row>
@@ -96,7 +129,7 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
           className={field}
           value={defaults.permissionMode ?? UNSET}
           onChange={(value) => set({ permissionMode: nullable<PermissionMode>(value) })}
-          options={[{ value: UNSET, label: 'Global default' }, ...MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m] }))]}
+          options={[{ value: UNSET, label: inherit('default', profile?.permissionMode, profile?.permissionMode ? MODE_LABEL[profile.permissionMode] : undefined) }, ...MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m] }))]}
           dataAttrs={{ 'data-default-mode': true }}
         />
       </Row>
@@ -108,7 +141,7 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
           disabled={!isGitRepo && defaults.workspace !== 'worktree'}
           onChange={(value) => set({ workspace: nullable<'current' | 'worktree'>(value), ...(value === 'worktree' ? { branch: null } : {}) })}
           options={[
-            { value: UNSET, label: 'Global default' },
+            { value: UNSET, label: inherit('default', profile?.workspace, profile?.workspace === 'worktree' ? 'New worktree' : 'Current folder') },
             { value: 'current', label: 'Current folder' },
             { value: 'worktree', label: 'New worktree' },
           ]}
@@ -123,7 +156,7 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
             disabled={!isGitRepo}
             onChange={(value) => set({ baseRef: nullable<'fresh' | 'head'>(value) })}
             options={[
-              { value: UNSET, label: 'Worktree base: global default' },
+              { value: UNSET, label: `Worktree base: ${inherit('default', profile?.baseRef, profile?.baseRef ? baseLabel[profile.baseRef] : undefined).toLowerCase()}` },
               { value: 'fresh', label: 'Worktree from origin' },
               { value: 'head', label: 'Worktree from HEAD' },
             ]}
@@ -132,7 +165,7 @@ export function ProjectDefaultsEditor({ root, defaults, isGitRepo, onSave }: { r
           />
         )}
       </Row>
-      {isGitRepo && defaults.workspace !== 'worktree' && (
+      {root && isGitRepo && defaults.workspace !== 'worktree' && (
         <Row label="Branch">
           <Select
             label="Branch"

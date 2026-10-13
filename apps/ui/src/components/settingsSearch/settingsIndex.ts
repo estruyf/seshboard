@@ -122,6 +122,15 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'accounts login work personal config folder',
       target: '[data-profiles]',
     },
+    {
+      id: 'profile-defaults',
+      page: 'profiles',
+      label: 'New session defaults',
+      detail: 'The model, effort, permission mode and workspace new sessions with a profile start with, unless their project sets its own.',
+      keywords: 'account model effort permissions mode worktree default',
+      target: '[data-profile-defaults-toggle]',
+      fallback: '[data-profiles]',
+    },
     { id: 'add-profile', page: 'profiles', label: 'Add profile', detail: 'A Claude Code config folder with its own login.', keywords: 'account new', target: '[data-add-profile]', fallback: '[data-profiles]' },
     { id: 'profile-guide', page: 'profiles', label: 'How to set up another profile', detail: 'Create a config folder and sign in, add it here, and link your projects.', keywords: 'account help', target: '[data-profile-guide-toggle]' },
 
