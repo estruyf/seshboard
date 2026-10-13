@@ -69,6 +69,14 @@ export function gitSummary(status: WorktreeStatus): string {
   return `${sync} · ${plural(status.uncommitted, 'changed file', 'changed files')}`;
 }
 
+/**
+ * The open pull request the button's face shows instead of its step: once the branch has one, when the next step
+ * would be to create it, or there is nothing to do. Pull, commit and push still come first (pushing updates it).
+ */
+export function showsViewPr<T extends { state: string }>(primary: GitStep, pr: T | null): T | null {
+  return pr && pr.state === 'open' && (primary === 'pr' || primary === 'fetch') ? pr : null;
+}
+
 export const STEP_LABEL: Record<GitStep, string> = { fetch: 'Fetch', commit: 'Commit', pull: 'Pull', push: 'Push', pr: 'Create PR' };
 
 /**

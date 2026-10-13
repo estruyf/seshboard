@@ -8,7 +8,7 @@
  * (npm run smoke:demo), since a runner's home folder has no ~/.claude.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { createDemoWorld, linkClaude, type DemoWorld } from './screenshot-demo.ts';
@@ -44,6 +44,17 @@ if (process.argv.includes('--demo')) {
   // Claude Code sees the real one.
   Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), SWITCHBOARD_SMOKE_DEMO: '1' });
   console.log(`demo home: ${world.home}`);
+}
+
+// A fake gh, so the Create pull request step never reaches GitHub: it says it is signed in, and refuses everything
+// else (so the pull request lists are empty, as without gh). Windows can't start a script without a shell; there the
+// step stays read-only with the real gh.
+if (process.platform !== 'win32') {
+  mkdirSync(outDir, { recursive: true });
+  const fakeGh = join(outDir, 'gh');
+  writeFileSync(fakeGh, '#!/bin/sh\nif [ "$1 $2" = "auth status" ]; then exit 0; fi\necho "the smoke test\'s gh never reaches GitHub" >&2\nexit 1\n');
+  chmodSync(fakeGh, 0o755);
+  childEnv.SWITCHBOARD_GH = fakeGh;
 }
 
 const child = spawn(command, packaged ? [] : [appDir], {

@@ -207,6 +207,7 @@ describe('the shortcut registry', () => {
       'terminal.clear': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }, SESSION],
       'terminal.stop-action': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: true } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],
       'git.pull': [{ ...SESSION, behind: true }, SESSION],
+      'pr.create': [SESSION, HOME],
       'editor.open': [SESSION, at({ view: 'new-session' })],
       'claude.stop': [{ ...SESSION, running: true }, SESSION],
       'composer.send-now': [{ ...SESSION, running: true }, SESSION],
@@ -245,7 +246,7 @@ describe('the shortcut registry', () => {
 /** Keys that are meant to do different things at the same time and place, and how they're told apart. */
 const INTENDED_OVERLAPS: Record<string, string> = {
   escape: 'Esc closes or cancels what is nearest: a menu or dialog first, then a waiting card, then the message box stops Claude.',
-  'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session).',
+  'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session). Create pull request is a dialog: while it is open, ⌘↩ is its own.',
   'cmd+k': 'In the terminal ⌘K clears it, as in Terminal; the palette is ⌘⇧P there.',
 };
 

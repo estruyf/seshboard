@@ -186,7 +186,7 @@ describe('when(): a session is open', () => {
 });
 
 describe('when(): git, actions, terminal, panes', () => {
-  const git = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, pullable: false };
+  const git = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false };
 
   it('offers git commands in a repository, the ones for changes only with changes', () => {
     expect(groupIds(inSession(), 'git')).toEqual([]);
@@ -195,6 +195,19 @@ describe('when(): git, actions, terminal, panes', () => {
     expect(dirty).toEqual(expect.arrayContaining(['commit', 'stage-all', 'revert-all']));
     expect(groupIds(inSession({}, { git: { ...git, changed: 2, unstaged: 0 } }), 'git')).not.toContain('stage-all');
     expect(groupIds(inSession({}, { git: { ...git, hasRemote: false, prBlocked: 'No remote' } }), 'git')).toEqual(['switch-branch']);
+  });
+
+  it('creates a pull request only on GitHub, and views the open one instead', () => {
+    expect(groupIds(inSession({}, { git: { ...git, github: false } }), 'git')).not.toContain('create-pr');
+    const ctx = inSession({}, { git: { ...git, prBlocked: 'No commits ahead of main', pr: { number: 123, url: 'https://github.com/o/r/pull/123' } } });
+    const command = COMMANDS.find((c) => c.id === 'create-pr')!;
+    expect(command.when!(ctx)).toBe(true);
+    expect(titleOf(command, ctx)).toBe('View pull request #123');
+    const api = { openUrl: vi.fn(), sessionRequest: vi.fn() } as unknown as PaletteApi;
+    command.run!(api, ctx);
+    expect(api.openUrl).toHaveBeenCalledWith('https://github.com/o/r/pull/123');
+    command.run!(api, inSession({}, { git }));
+    expect(api.sessionRequest).toHaveBeenCalledWith('create-pr');
   });
 
   it('finishes a worktree instead of switching branch in one', () => {
@@ -247,7 +260,7 @@ describe('when(): New session and Settings', () => {
 
 describe('arrangeCommands', () => {
   it('puts where you are first, then recently used, then the rest', () => {
-    const ctx = inSession({}, { git: { changed: 1, unstaged: 1, hasRemote: true, prBlocked: null, pullable: false } });
+    const ctx = inSession({}, { git: { changed: 1, unstaged: 1, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false } });
     const sections = arrangeCommands(visibleCommands(ctx), ctx, ['theme-dark', 'rename-session', 'unknown'], '');
     expect(sections.map((s) => s.label)).toEqual(['This session', 'Git', 'Recently used', 'Commands']);
     // A recent command already shown for where you are isn't listed twice.

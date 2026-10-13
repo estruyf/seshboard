@@ -2949,12 +2949,101 @@ async function runGitStep(win: BrowserWindow): Promise<string> {
   await shot(win, 'git-menu.png');
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
-  const steps = items.map((i) => i.slice(1));
+  // Create PR…, or View PR #N once the branch has an open pull request.
+  const steps = items.map((i) => i.slice(1)).map((step) => (step === 'view-pr' ? 'pr' : step)).filter((step) => step !== 'pr-ready');
   const expected = ['pull', 'fetch', 'commit-dialog', 'commit', 'push', 'pr'];
   if (steps.slice(0, expected.length).join(',') !== expected.join(',')) return `unexpected items: ${steps.join(', ')}`;
   if (!/behind|No remote|Not pushed/.test(summary)) return `no summary under the branch ("${summary}")`;
   if (!(await waitInPage(win, `!${menu}`, 2_000))) return 'Escape did not close the menu';
   return `ok: shows ${face}, "${summary}", menu ${items.join(' ')}, Escape closed it`;
+}
+
+/**
+ * The Create pull request dialog, read-only on the open session's real checkout: Create PR… in the git menu opens it
+ * with the title filled in and selected, the base branch, the counter and the push line. The base menu filters, the
+ * description switches to Empty, a description over GitHub's limit turns the counter red, disables Create and offers
+ * Use commit titles only; switching the source after an edit asks first; Escape closes it. Create is never pressed,
+ * and on macOS gh is the smoke test's fake (SWITCHBOARD_GH), so nothing reaches GitHub either way.
+ */
+async function runPullRequestStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const key = (keyCode: string) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  };
+  const dialog = "document.querySelector('[data-pr-dialog]')";
+  const inDialog = (selector: string) => `${dialog}?.querySelector(${JSON.stringify(selector)})`;
+  if (!(await waitInPage(win, "document.querySelector('[data-current-session] [data-git-button]')", 3_000))) return 'ok: skipped (session is not on a git checkout)';
+  await js("document.querySelector('[data-current-session] [data-git-menu]').click()");
+  const menu = "document.querySelector('[role=\"menu\"][aria-label=\"Git\"]')";
+  if (!(await waitInPage(win, `${menu}?.querySelector('[data-git-step]')`, 2_000))) return 'the git menu did not open';
+  const item = `${menu}.querySelector('[data-git-step="pr"]')`;
+  if (await js(`!${item}`)) {
+    key('Escape');
+    return (await js(`!!${menu}?.querySelector('[data-git-step="view-pr"]')`)) ? 'ok: skipped (the branch has an open pull request: View PR)' : 'no Create PR… in the git menu';
+  }
+  if (await js(`${item}.disabled`)) {
+    key('Escape');
+    return 'ok: skipped (Create PR… is unavailable on this branch)';
+  }
+  await js(`${item}.click()`);
+  if (!(await waitInPage(win, `${inDialog('[data-pr-title]')} || ${inDialog('[data-pr-load-error]')}`, 15_000))) return 'the dialog did not open, or never read the branch';
+  if (await js(`!!${inDialog('[data-pr-load-error]')}`)) {
+    const reason = (await js(`${inDialog('[data-pr-load-error]')}.innerText`)) as string;
+    key('Escape');
+    return `ok: skipped (${reason})`;
+  }
+  try {
+    const title = (await js(`${inDialog('[data-pr-title]')}.value`)) as string;
+    if (!title.trim()) return 'the title was not filled in';
+    if (!(await waitInPage(win, `document.activeElement?.matches('[data-pr-title]') && document.activeElement.selectionEnd - document.activeElement.selectionStart === ${title.length}`, 2_000))) return 'the title was not focused with its text selected';
+    const base = (await js(`${inDialog('[data-pr-base]')}.dataset.prBase`)) as string;
+    if (!base) return 'no base branch';
+    if (!/^[\d,]+ \/ 65,536$/.test((await js(`${inDialog('[data-pr-counter]')}.innerText`)) as string)) return 'the counter is wrong';
+    if ((await js(`${inDialog('[data-pr-draft]')}.getAttribute('aria-checked')`)) !== 'false') return 'Draft was on when the dialog opened';
+    const pushLine = (await js(`document.querySelector('[data-pr-push-line]')?.innerText ?? ''`)) as string;
+    if (!/^(Pushes \d+ commits? to |Publishes |Already pushed)/.test(pushLine)) return `no push line in the footer ("${pushLine}")`;
+    const notice = (await js(`${inDialog('[data-pr-notice]')}?.dataset.prNotice ?? null`)) as string | null;
+    await shot(win, 'pr-dialog.png');
+
+    // The base menu: a filter that matches nothing, then Escape closes only the menu.
+    await js(`${inDialog('[data-pr-base]')}.click()`);
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-menu=\"pr-base\"] [data-pr-base-filter]')", 2_000))) return 'the base menu did not open with its filter focused';
+    await setFieldValue(win, '[data-pr-base-filter]', 'no-such-branch-from-the-smoke-test');
+    if (!(await waitInPage(win, "!document.querySelector('[data-menu=\"pr-base\"] [data-pr-base-option]') && document.querySelector('[data-menu=\"pr-base\"]').innerText.includes('No matching branch')", 2_000))) return 'the base filter did not filter';
+    key('Escape');
+    if (!(await waitInPage(win, `!document.querySelector('[data-menu="pr-base"]') && !!${dialog}`, 2_000))) return 'Escape in the base menu closed the dialog too, or not the menu';
+
+    // Description from: Empty applies at once while nothing was typed.
+    await js(`${inDialog('[data-pr-source]')}.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-pr-source-option=\"empty\"]') && document.querySelector('[role=menu] [data-pr-source-option=\"commits\"]')", 2_000))) return 'the Description from menu has no Commit list and Empty';
+    await js("document.querySelector('[role=menu] [data-pr-source-option=\"empty\"]').click()");
+    if (!(await waitInPage(win, `${inDialog('[data-pr-body]')}.value === '' && ${inDialog('[data-pr-counter]')}.innerText === '0 / 65,536'`, 2_000))) return 'Empty did not empty the description';
+
+    // Over the limit: red counter, Create disabled, and a way back to the commit titles.
+    await setFieldValue(win, '[data-pr-body]', 'x'.repeat(65_540));
+    if (!(await waitInPage(win, `${inDialog('[data-pr-over]')}?.innerText.startsWith('4 characters over') && ${dialog}.querySelector('[data-pr-submit]').disabled && !!${dialog}.querySelector('[data-pr-trim]')`, 2_000))) return 'a description over the limit did not show as too long, or Create stayed enabled';
+    await js(`${dialog}.querySelector('[data-pr-trim]').click()`);
+    if (!(await waitInPage(win, `!${inDialog('[data-pr-over]')} && ${inDialog('[data-pr-body]')}.value.length < 65_536`, 2_000))) return 'Use commit titles only did not fit the description';
+
+    // Switching the source after an edit asks first; Escape there keeps the edit.
+    await setFieldValue(win, '[data-pr-body]', 'Edited by the smoke test');
+    await js(`${inDialog('[data-pr-source]')}.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-pr-source-option=\"empty\"]')", 2_000))) return 'the Description from menu did not open again';
+    await js("document.querySelector('[role=menu] [data-pr-source-option=\"empty\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-pr-replace]')", 2_000))) return 'switching the source after an edit did not ask first';
+    key('Escape');
+    if (!(await waitInPage(win, `!document.querySelector('[data-pr-replace]') && ${inDialog('[data-pr-body]')}?.value === 'Edited by the smoke test'`, 2_000))) return 'cancelling the question did not keep the edit';
+    const submit = notice === 'GH_MISSING' || notice === 'PR_EXISTS' ? 'Create disabled' : (await js(`${dialog}.querySelector('[data-pr-submit]').disabled`)) ? 'Create disabled' : 'Create enabled (not pressed)';
+    key('Escape');
+    if (!(await waitInPage(win, `!${dialog}`, 2_000))) return 'Escape did not close the dialog';
+    return `ok: "${title}" into ${base}, "${pushLine}"${notice ? `, notice ${notice}` : ''}, ${submit}; base filter, Empty, the limit, Use commit titles only and the question before replacing an edit work; Escape closed it`;
+  } finally {
+    if (await js(`!!${dialog}`)) {
+      key('Escape');
+      key('Escape');
+    }
+  }
 }
 
 /**
@@ -5212,6 +5301,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('open in menu', () => runOpenInStep(win));
   await step('check transcript', () => runCheckTranscriptStep(win));
   await step('git menu', () => runGitStep(win));
+  await step('create pull request dialog', () => runPullRequestStep(win));
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
   await step('long prompts', () => runLongPromptStep(win));

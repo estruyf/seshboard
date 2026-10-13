@@ -41,6 +41,10 @@ export interface PaletteGit {
   hasRemote: boolean;
   /** Why a pull request can't be opened now, or null when it can. */
   prBlocked: string | null;
+  /** A remote is on GitHub, so gh can open a pull request there. */
+  github: boolean;
+  /** The branch's open pull request, from gh. */
+  pr: { number: number; url: string } | null;
   /** The branch is behind its upstream and can be pulled now (⌘⇧L). */
   pullable: boolean;
 }

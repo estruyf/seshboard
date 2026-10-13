@@ -162,8 +162,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       }, 50);
     },
     sessionRequest: (kind) => usePaletteBus.getState().requestSession(kind),
-    createPullRequest: () =>
-      cwd && call('create the pull request', async (c) => showTerminal(sessionId, (await c.call('git.sync', { sessionId, cwd, action: 'pr' })).terminalId)),
+    openUrl: (url) => void window.open(url, '_blank'),
     syncWithRemote: () =>
       cwd &&
       call('sync with the remote', async (c) => {

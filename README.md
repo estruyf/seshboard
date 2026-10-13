@@ -74,7 +74,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 **Review and finish the work**
 - A **Changes** panel (⌘⇧D) with the session's git diff: what's uncommitted, or the whole branch compared with `main`. Stage, unstage or revert files, and open any diff inline. Reverted new files go to the Trash.
 - The **branch** a session's folder has checked out shows in its header, read live from git (so it's right after you or Claude switch in a terminal). Click it (or **Switch branch…** in the git menu) to switch to another local branch. Switching uses `git switch`: uncommitted changes that don't conflict come along, and when they would be overwritten git refuses and you stay where you are. Nothing is ever stashed or thrown away. It waits while Claude is working in this folder, and asks first when other sessions work in the same folder.
-- A **git button** in the session header offers the next step for the branch: **Pull ↓2** when it's behind its upstream, **Commit 3** when there are changes (Claude writes the commit), **Push ↑1**, **Create PR** once a branch or worktree is pushed, otherwise **Fetch**. Its menu shows where the branch stands (behind, ahead, changed files) and has every step: Pull (⌘⇧L), Fetch, **Commit…** with your own message, Ask Claude to commit, Push and Create PR, plus **Switch branch…** and **New worktree…**. It says when you need to pull before you push. Git runs in a terminal tab so you see its output; pull requests open GitHub's page with the GitHub CLI (`gh`). Pull and commit wait while Claude is working in the folder.
+- A **git button** in the session header offers the next step for the branch: **Pull ↓2** when it's behind its upstream, **Commit 3** when there are changes (Claude writes the commit), **Push ↑1**, **Create PR** once a branch or worktree has commits, **View PR #123** once it has an open pull request, otherwise **Fetch**. Its menu shows where the branch stands (behind, ahead, changed files) and has every step: Pull (⌘⇧L), Fetch, **Commit…** with your own message, Ask Claude to commit, Push and Create PR…, plus **Switch branch…** and **New worktree…**. It says when you need to pull before you push. Git runs in a terminal tab so you see its output. **Create PR…** opens a dialog for the title, the description (from your pull request template or the commits), the base branch and Draft, then pushes and creates the pull request with the GitHub CLI (`gh`), without a browser. Pull and commit wait while Claude is working in the folder.
 - **Finish a worktree** from its **Worktree** menu: merge into the base branch, or remove the worktree, optionally with its branch. Switchboard warns you before you lose commits that aren't merged or pushed.
 
 **Everything in one place**
@@ -240,6 +240,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘K | Clear the terminal (in the terminal) |
 | ⌃C | Stop the action (in the terminal, while an action runs) |
 | ⌘⇧L | Pull (when the branch is behind) |
+| ⌘↩ | Create the pull request (in Create pull request) |
 | ⌘O | Open the folder in your editor |
 | Esc | Stop Claude (while Claude is working) |
 | ⌘⇧↩ | Send now (while Claude is working; Stops what Claude is doing so your message runs right away) |

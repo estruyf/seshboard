@@ -604,6 +604,14 @@ export const SHORTCUTS = [
     when: (ctx) => inSession(ctx) && ctx.behind,
   },
   {
+    id: "pr.create",
+    keys: ["mod+enter"],
+    action: "Create the pull request",
+    section: "session",
+    context: "In Create pull request",
+    when: inSession,
+  },
+  {
     id: "editor.open",
     keys: ["mod+o"],
     action: "Open the folder in your editor",
