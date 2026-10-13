@@ -33,8 +33,14 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
     setGit(null);
     if (!client || !cwd) return;
     let cancelled = false;
-    Promise.all([client.call('worktree.status', { cwd }), client.call('git.changes', { cwd, base: 'uncommitted' })]).then(
-      ([status, changes]) => {
+    Promise.all([
+      client.call('worktree.status', { cwd }),
+      client.call('git.changes', { cwd, base: 'uncommitted' }),
+      client.call('git.github', { cwd }).catch(() => null),
+      // gh's list is cached in the engine, so this is quick after the first time.
+      client.call('git.prFor', { cwd }).catch(() => ({ pr: null })),
+    ]).then(
+      ([status, changes, github, { pr }]) => {
         if (cancelled) return;
         const plan = planGit(status, busy);
         setGit({
@@ -42,6 +48,8 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
           unstaged: changes.files.filter((file) => !file.staged).length,
           hasRemote: status.hasRemote,
           prBlocked: plan.blocked.pr,
+          github: github !== null,
+          pr: pr?.state === 'open' ? { number: pr.number, url: pr.url } : null,
           pullable: plan.blocked.pull === null,
         });
       },

@@ -811,6 +811,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
             active={active}
             activity={gitActivity}
             isWorktree={isWorktree}
+            projectBase={project?.defaults.branch ?? null}
             onCommit={() => void send('Commit the current changes with a clear, conventional commit message.', [], openElsewhere, true).catch((e: Error) => setActionError(e.message))}
             onBranchMenu={() => setBranchMenuRequest((n) => n + 1)}
             onNewWorktree={() => {

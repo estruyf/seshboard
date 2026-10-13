@@ -24,6 +24,7 @@ export { BACKUP_SECTIONS, SETTINGS_FILE_FORMAT, settingsFileName, type BackupSec
 export { BUILTIN_PROFILE_ID, PROFILE_COLORS } from './profileConstants.ts';
 export { PROJECT_NAME_MAX } from './projectConstants.ts';
 export { MAX_PROMPT_LENGTH } from './promptConstants.ts';
+export { PR_BODY_LIMIT } from './pullRequestConstants.ts';
 export { randomWorktreeName } from './worktreeName.ts';
 export { expandHome, isAbsolutePath, isLocalAbsolutePath, isSameOrInside, joinPath, pathInside, separatorOf, trimTrailingSeparators } from './paths.ts';
 export type * from './context.ts';

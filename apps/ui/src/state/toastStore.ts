@@ -18,8 +18,8 @@ export interface Toast {
   id: number;
   /** The line, or the card's title. */
   message: string;
-  /** A small icon before the message (added to the queue). */
-  icon?: 'queue';
+  /** A small icon before the message: added to the queue, a pull request created. */
+  icon?: 'queue' | 'pull-request';
   /** A coloured dot before the message instead (a theme's accent); a validated colour value. */
   dot?: string;
   /** A status dot in a theme colour: `ok` for something that became free. */
