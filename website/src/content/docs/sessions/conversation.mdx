@@ -54,11 +54,27 @@ A message holds up to 1,000,000 characters. For a larger file, drop the file on 
 
 ### While Claude works
 
-Replies stream in as Claude writes them. You can keep typing while it works:
+Replies stream in as Claude writes them. You can keep typing while it works. What <Kbd keys="enter" /> does is your choice in [Settings, Conversation](/settings/#conversation), under **While Claude is working**:
 
-- **Queue:** a message you send waits until Claude finishes, then goes. The send button says **Queue** while Claude is busy.
-- **Send now:** <Kbd shortcut="composer.send-now" />, or **Send now** in the ▾ next to **Queue**, stops what Claude is doing and sends your message right away.
+- **Queue** (the default): your message waits in **Up next**, above the message box, and goes when Claude finishes the turn.
+- **Steer:** Claude gets the message now and reads it at its next step. Claude isn't stopped.
+
+The send button says **Queue** or **Steer** to match. Its ▾ menu has both, plus **Send now**. <Kbd shortcut="composer.send-other" /> does the one Enter doesn't.
+
+- **Send now:** <Kbd shortcut="composer.send-now" />, or **Send now** in the ▾ menu, stops what Claude is doing and sends your message right away.
 - **Stop:** press <Kbd shortcut="claude.stop" /> or click **Stop** to stop Claude. Esc doesn't stop Claude while a dialog, menu or list is open.
+
+### Up next
+
+Messages you queue stay above the message box, under the conversation, until their turn comes. They aren't in the conversation yet, so Claude hasn't seen them. One message goes each time Claude finishes.
+
+- **Send now** on a message stops Claude and sends that message. The others keep waiting.
+- Click a message, or press <Kbd shortcut="upnext.edit" /> on it, to edit it: it goes back in the message box. <Kbd keys="arrowup" /> in an empty message box does this for the last one.
+- Drag a message, or press <Kbd shortcut="upnext.move" /> on it, to change the order.
+- **Remove** (×, or <Kbd shortcut="upnext.remove" />) takes a message out. **Undo** in the toast puts it back.
+- If you stop Claude, or a turn fails, nothing goes by itself. Up next says so and shows **Send next**. Sending a message yourself ends the pause.
+
+Messages in Up next are kept while you look at other sessions. They are lost if you quit Switchboard.
 
 ## Follow what Claude does
 

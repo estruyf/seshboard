@@ -622,6 +622,26 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "shortcut:composer.send-other",
+      "name": "composer.send-other",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:upnext.edit",
+      "name": "upnext.edit",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:upnext.move",
+      "name": "upnext.move",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:upnext.remove",
+      "name": "upnext.remove",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "shortcut:context-menu",
       "name": "context-menu",
       "page": "new-session/queue"
@@ -2134,6 +2154,16 @@
     {
       "id": "feature:send-now",
       "name": "Send now",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:up-next",
+      "name": "Up next: queued messages",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:steer",
+      "name": "Steer Claude while it works",
       "page": "sessions/conversation"
     },
     {

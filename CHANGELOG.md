@@ -6,6 +6,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### New
 
+- **Up next.** Messages you send while Claude works now wait in **Up next**, above the message box, until Claude finishes the turn: one goes each time. Edit one (it goes back in the message box), remove it (with Undo), drag it or press ⌥↑ ⌥↓ to reorder, or press **Send now** on it to stop Claude and send just that one. If you stop Claude or a turn fails, the messages wait and Up next shows **Send next**.
+- **Steer.** Settings › Conversation has **While Claude is working**: choose what Enter does, **Queue** (wait in Up next) or **Steer** (Claude reads the message at its next step, without stopping). ⌥↵ does the other one, and ⌘⇧↵ still stops Claude and sends now.
 - **Copy link.** Right-click a link in a message and choose **Copy link** to copy its address.
 - **Add files from anywhere.** The Add context dialog (the paperclip under the message box) has **Choose in Finder…** (**Choose in File Explorer…** on Windows), so you can add files that are not in the project. On macOS you can pick folders too.
 - **Search in Settings.** Type in **Search settings** at the top of the section list (or press ⌘F in Settings) to find a setting in any section. Results show grouped by section with your words marked; choose one to open its section at that setting.
@@ -18,6 +20,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Usage**: in % used over time, the labels at the end of the lines no longer overlap when two windows are close, such as Weekly and Session.
 - Sending a very long message no longer fails with "Invalid params for session.create". A message can now hold up to 1,000,000 characters, and the message box says so when it is longer. A paste that is longer than that is not put in the box; drop the file instead.
 - The first message you send in a session you just opened no longer leaves the "Working…" line hidden under the message box.
+- A message you steer into a session while Claude works no longer vanishes when you switch to another session and back before Claude has picked it up.
+- **Queue** used to hand the message to Claude at once, so it was read at the next step instead of after the turn. It now waits for the turn to end, as the button says.
 
 ## [0.0.15] - 2026-10-12
 
