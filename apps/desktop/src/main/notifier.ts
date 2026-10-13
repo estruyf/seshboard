@@ -2,7 +2,7 @@ import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow,
 import { resolveSound } from '@switchboard/protocol/bridge';
 import { createRpcClient, type Contract, type LaterItem, type QueueStarted, type RpcClient } from '@switchboard/protocol/client';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
-import { alertFor, louder, soundFor, type Alert, type AlertPrefs } from './alerts.ts';
+import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
 import type { EngineProcess } from './engineProcess.ts';
 import { queueHint } from './queueHint.ts';
@@ -98,14 +98,22 @@ export class Notifier {
     return alertFor(event.kind, suppressed, this.options.alerts());
   }
 
-  private handle(events: AttentionEvent[]): void {
+  /**
+   * Settings › Notifications' "Send a test notification": one like a Needs you notification, with its sound when
+   * sounds are on. It is never for the session on screen, so it always shows.
+   */
+  test(): void {
+    this.handle([{ kind: 'needs-you', sessionId: '', title: 'Claude needs you', body: 'A test notification from Switchboard.' }], { test: true });
+  }
+
+  private handle(events: AttentionEvent[], { test = false } = {}): void {
     const win = this.options.window();
     const focused = !!win && win.isFocused() && !win.isMinimized();
     const prefs = this.options.alerts();
     let sound: Alert['sound'] = null;
     for (const event of events) {
       // Already looking at it: no need to interrupt, with a notification or a sound.
-      const suppressed = focused && this.options.focusedSession() === event.sessionId;
+      const suppressed = !test && focused && this.options.focusedSession() === event.sessionId;
       const alert = alertFor(event.kind, suppressed, prefs);
       if (this.options.record) {
         this.options.record({ ...event, suppressed, ...alert });
@@ -117,23 +125,24 @@ export class Notifier {
         const hint = event.kind === 'finished' ? queueHint(this.queue.items, this.queue.started, { sessionId: event.sessionId, cwd: event.cwd ?? null }) : null;
         // With sounds on, the sound is ours (its volume applies, and it plays with notifications off too), so the
         // system's own notification sound (Windows plays one) would be a second one.
-        const notification = new Notification({ title: event.title, body: hint ? `${event.body}\n${hint}` : event.body, silent: prefs.sounds });
-        notification.on('click', () => this.options.openSession(event.sessionId));
+        const notification = new Notification({ title: event.title, body: hint ? `${event.body}\n${hint}` : event.body, silent: prefs.sounds.enabled });
+        // The test has no session to open.
+        notification.on('click', () => (test ? this.options.window()?.show() : this.options.openSession(event.sessionId)));
         notification.on('close', () => this.shown.delete(notification));
         this.shown.add(notification);
         notification.show();
       }
       sound = louder(sound, alert.sound);
       // The Dock and the taskbar stay independent of the notification setting, like the badge.
-      if (event.kind === 'needs-you' && !focused) {
+      if (event.kind === 'needs-you' && !focused && !test) {
         app.dock?.bounce('informational');
         // Windows and Linux have no Dock: the taskbar button flashes until the window is focused.
         if (process.platform !== 'darwin' && win && !win.isDestroyed()) win.flashFrame(true);
       }
     }
     if (sound) {
-      const id = resolveSound(soundFor(sound, prefs), this.options.sounds.list(), sound);
-      if (id) this.options.sounds.play(id, prefs.soundVolume);
+      const id = resolveSound(prefs.sounds.byEvent[sound], this.options.sounds.list(), sound);
+      if (id) this.options.sounds.play(id, prefs.sounds.volume);
     }
     this.updateBadge();
   }

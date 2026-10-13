@@ -1,38 +1,53 @@
 ---
-title: Notifications
-description: Turn notifications off, and play a sound when a session needs you or finishes.
+title: Notifications and sounds
+description: Turn notifications and sounds on or off, each on its own, and pick a sound for each moment.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import OnlyOn from '../../../components/OnlyOn.astro';
+import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-**Settings › Notifications** sets how Switchboard gets your attention while you work in another session or app: with a <Os mac="macOS" windows="Windows" /> notification, a sound, or both. You never get either for the session you are looking at in a focused window.
+**Settings › Notifications** sets how Switchboard gets your attention while you work in another session or app: with a <Os mac="macOS" windows="Windows" /> notification, a sound, or both. Notifications and sounds each have their own card and switch, so you can have one without the other. You never get either for the session you are looking at in a focused window.
+
+<Screenshot name="settings-notifications" alt="Settings on Notifications and sounds: the Notifications card with its switch and Send a test notification, and the Sounds card with a row for Needs you, Finished, Stopped with an error and Project action ended, each with a sound and a play button, and Volume at the bottom" />
 
 ## Open it
 
 - In Settings, choose **Notifications** in the list on the left.
 - Run *Settings: Notifications* in the command palette (<Kbd shortcut="palette.commands" />) while Settings is open.
 
-## Show notifications
+## Notifications
 
 On by default. A notification shows when Claude needs you (a permission, a question or a plan), when Claude finishes a turn or stops with an error, and when a [project action](/projects/actions/) ends. Click it to open the session. See [Session states](/sessions/states/#notifications-and-the-badge) for what each one says.
 
-Turn it off to stop the notifications. <Os mac="The Dock badge still counts the sessions that wait for you, and the Dock icon still bounces." windows="The dot on the taskbar button still says sessions wait for you, and the button still flashes." />
+Turn the switch off to stop the notifications. <Os mac="The Dock badge still counts the sessions that wait for you, and the Dock icon still bounces." windows="The dot on the taskbar button still says sessions wait for you, and the button still flashes." />
+
+**Send a test notification** shows one notification like the ones for a session that needs you, so you can check that they come through. It is off while notifications are off.
 
 The command palette has *Notifications: turn off* and *Notifications: turn on*.
 
-## Play sounds
+### When the system turns them off
 
-Off by default. With **Play sounds** on, Switchboard plays a sound at the same moments, also with notifications off. There are two sounds:
+<Os mac="macOS" windows="Windows" /> can turn off notifications for an app on its own. When it has, Settings › Notifications says so at the top of the page, with **<Os mac="Open System Settings" windows="Open Windows settings" />** to go and turn them on. Sounds and <Os mac="the Dock badge" windows="the taskbar dot" /> still work. Switchboard checks again when you come back to its window.
 
-- **Session complete**: when Claude finishes a turn or stops with an error, and when a project action ends.
-- **Needs input**: when Claude asks for a permission, has a question or a plan.
+## Sounds
 
-Pick each from the system sounds of your computer, or **None** for no sound. Choosing a sound plays it once; the speaker button next to it plays it again. When several sessions change at the same moment, you hear one sound, and Needs input wins.
+Off by default. With **Sounds** on, Switchboard plays a sound for each of these moments, with notifications on or off:
 
-**Volume** sets how loud both sounds play. Let go of the slider to hear the new volume.
+| Moment | When | Sound on a new install |
+|---|---|---|
+| **Needs you** | Claude asks for a permission, has a question or a plan. | <Os mac="Ping" windows="Windows Notify Messaging" /> |
+| **Finished** | Claude finished a turn. | <Os mac="Glass" windows="Windows Notify System Generic" /> |
+| **Stopped with an error** | Claude stopped because something failed. | <Os mac="Basso" windows="Windows Critical Stop" /> |
+| **Project action ended** | A project action like Dev or Test stopped. | None |
+
+Pick each moment's sound from the system sounds of your computer, or **None** for no sound. Move over a sound in the list to hear it. The play button next to it plays the sound you picked. When several sessions change at the same moment, you hear one sound: Needs you first, then Stopped with an error, Finished and Project action ended.
+
+**Volume** sets how loud every sound plays. Let go of the slider to hear the new volume.
+
+Turning **Sounds** off keeps the sounds you picked: they show dimmed, and come back when you turn it on again.
 
 The command palette has *Sounds: turn on* and *Sounds: turn off*.
 
@@ -44,10 +59,10 @@ The sounds are the classic macOS alert sounds, such as Glass, Ping and Tink.
 
 <OnlyOn os="windows">
 
-The sounds are the ones in Windows' Media folder, such as Windows Notify Messaging. With **Play sounds** on, the Windows notification itself is silent, so you don't hear two sounds.
+The sounds are the ones in Windows' Media folder, such as Windows Notify Messaging. With **Sounds** on, the Windows notification itself is silent, so you don't hear two sounds.
 
 </OnlyOn>
 
 <Aside type="tip">
-Sounds you pick on one computer move with an [exported backup](/settings/backup/). A sound the other computer doesn't have plays its own default sound instead.
+Sounds you pick on one computer move with an [exported backup](/settings/backup/). A sound the other computer doesn't have plays its own default sound for that moment instead.
 </Aside>

@@ -260,7 +260,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       );
     case 'notifications':
       return (
-        <Section title="Notifications" description="How Switchboard gets your attention while you work in another session or app. Nothing for the session you are looking at.">
+        <Section title="Notifications and sounds" description="How Switchboard gets your attention while you work in another session or app. Nothing for the session you are looking at.">
           <NotificationsSettings />
         </Section>
       );

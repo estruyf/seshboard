@@ -1,5 +1,5 @@
 import { nativeTheme } from 'electron';
-import { DEFAULT_PREFERENCES, sanitizePreferences, type ColorScheme, type Preferences } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, mergePreferences, sanitizePreferences, type ColorScheme, type Preferences } from '@switchboard/protocol/bridge';
 import { readJsonFile, writeFileAtomic } from './jsonFile.ts';
 
 /**
@@ -23,9 +23,9 @@ export class PreferencesStore {
     return this.forcedScheme ? { ...this.#prefs, colorScheme: this.forcedScheme } : { ...this.#prefs };
   }
 
-  /** Applies a (validated) change; returns the new preferences. */
+  /** Applies a (validated) change; returns the new preferences. The notification and sound settings may name only some fields. */
   update(patch: unknown): Preferences {
-    this.#prefs = { ...this.#prefs, ...sanitizePreferences(patch) };
+    this.#prefs = { ...this.#prefs, ...sanitizePreferences(mergePreferences(this.#prefs, patch)) };
     nativeTheme.themeSource = this.#prefs.colorScheme;
     try {
       // Written in one step, so a crash mid-write can't reset every preference.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFERENCES, resolveSound, sanitizePreferences, type SoundList } from './bridge.ts';
+import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, mergePreferences, resolveSound, sanitizePreferences, type SoundList, type SoundPrefs } from './bridge.ts';
 
 describe('sidebarCollapsed preference', () => {
   it('collapses to the minimal rail by default', () => {
@@ -63,34 +63,99 @@ describe('githubStar preference', () => {
 });
 
 describe('notification and sound preferences', () => {
-  it('notifies and stays quiet by default', () => {
-    expect(DEFAULT_PREFERENCES.notifications).toBe(true);
-    expect(DEFAULT_PREFERENCES.sounds).toBe(false);
+  const sounds = (extra: Partial<SoundPrefs> = {}): SoundPrefs => ({ ...DEFAULT_SOUNDS, ...extra });
+
+  it('notifies and stays quiet on a fresh install, with a sound picked for each moment', () => {
+    const fresh = { ...DEFAULT_PREFERENCES, ...sanitizePreferences(undefined) };
+    expect(fresh.notifications).toEqual({ enabled: true });
+    expect(fresh.sounds).toEqual({ enabled: false, byEvent: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'none' }, volume: 0.5 });
+  });
+
+  describe('moving the settings from before a sound per moment', () => {
+    const old = (extra: Record<string, unknown>) => sanitizePreferences({ notifications: true, sounds: false, soundComplete: 'Glass', soundNeedsInput: 'Ping', soundVolume: 0.5, ...extra });
+
+    it('keeps both switches, in every combination', () => {
+      for (const notifications of [true, false]) {
+        for (const on of [true, false]) {
+          const moved = old({ notifications, sounds: on });
+          expect(moved.notifications).toEqual({ enabled: notifications });
+          expect(moved.sounds?.enabled).toBe(on);
+        }
+      }
+    });
+
+    it('plays Needs input for Needs you, and Session complete for the three other moments', () => {
+      expect(old({ sounds: true, soundComplete: 'Hero', soundNeedsInput: 'Tink' }).sounds).toEqual(
+        sounds({ enabled: true, byEvent: { needsYou: 'Tink', finished: 'Hero', error: 'Hero', actionEnded: 'Hero' } }),
+      );
+    });
+
+    it('keeps the old defaults as they were, not the new ones', () => {
+      expect(old({}).sounds?.byEvent).toEqual({ needsYou: 'Ping', finished: 'Glass', error: 'Glass', actionEnded: 'Glass' });
+    });
+
+    it('turns None (null) into none, for either sound', () => {
+      for (const complete of ['Glass', null]) {
+        for (const needsInput of ['Ping', null]) {
+          const c = complete ?? 'none';
+          expect(old({ soundComplete: complete, soundNeedsInput: needsInput }).sounds?.byEvent).toEqual({ needsYou: needsInput ?? 'none', finished: c, error: c, actionEnded: c });
+        }
+      }
+    });
+
+    it('keeps the volume', () => {
+      expect(old({ soundVolume: 0.25 }).sounds?.volume).toBe(0.25);
+      expect(old({ soundVolume: 4 }).sounds?.volume).toBe(1);
+      expect(old({ soundVolume: 'loud' }).sounds?.volume).toBe(0.5);
+    });
+
+    it('moves a file that has only some of the old settings', () => {
+      expect(sanitizePreferences({ sounds: true }).sounds).toEqual(sounds({ enabled: true, byEvent: { needsYou: 'Ping', finished: 'Glass', error: 'Glass', actionEnded: 'Glass' } }));
+      expect(sanitizePreferences({ soundVolume: 0.8 }).sounds).toEqual(sounds({ byEvent: { needsYou: 'Ping', finished: 'Glass', error: 'Glass', actionEnded: 'Glass' }, volume: 0.8 }));
+    });
   });
 
   it('keeps sound names and none, and drops paths and anything else', () => {
-    expect(sanitizePreferences({ soundComplete: 'Glass', soundNeedsInput: null })).toEqual({ soundComplete: 'Glass', soundNeedsInput: null });
-    expect(sanitizePreferences({ soundNeedsInput: 'Windows Notify Messaging' })).toEqual({ soundNeedsInput: 'Windows Notify Messaging' });
-    expect(sanitizePreferences({ soundComplete: '../../etc/passwd' })).toEqual({});
-    expect(sanitizePreferences({ soundComplete: 'C:\\Windows\\Media\\ding' })).toEqual({});
-    expect(sanitizePreferences({ soundComplete: '' })).toEqual({});
-    expect(sanitizePreferences({ soundComplete: 3 })).toEqual({});
+    const byEvent = (value: unknown) => sanitizePreferences({ sounds: { ...DEFAULT_SOUNDS, byEvent: { ...DEFAULT_SOUNDS.byEvent, finished: value } } }).sounds?.byEvent.finished;
+    expect(byEvent('Hero')).toBe('Hero');
+    expect(byEvent('Windows Notify Messaging')).toBe('Windows Notify Messaging');
+    expect(byEvent('none')).toBe('none');
+    expect(byEvent(null)).toBe('none');
+    for (const bad of ['../../etc/passwd', 'C:\\Windows\\Media\\ding', '', 3]) expect(byEvent(bad)).toBe('Glass');
   });
 
   it('keeps the volume between 0 and 1', () => {
-    expect(sanitizePreferences({ soundVolume: 0.25 })).toEqual({ soundVolume: 0.25 });
-    expect(sanitizePreferences({ soundVolume: 4 })).toEqual({ soundVolume: 1 });
-    expect(sanitizePreferences({ soundVolume: -1 })).toEqual({ soundVolume: 0 });
-    expect(sanitizePreferences({ soundVolume: '1' })).toEqual({});
-    expect(sanitizePreferences({ soundVolume: Number.NaN })).toEqual({});
+    const volume = (value: unknown) => sanitizePreferences({ sounds: { ...DEFAULT_SOUNDS, volume: value } }).sounds?.volume;
+    expect(volume(0.25)).toBe(0.25);
+    expect(volume(4)).toBe(1);
+    expect(volume(-1)).toBe(0);
+    expect(volume('1')).toBe(0.5);
+    expect(volume(Number.NaN)).toBe(0.5);
+  });
+
+  it('drops switches that are not on or off', () => {
+    expect(sanitizePreferences({ notifications: 'yes' })).toEqual({});
+    expect(sanitizePreferences({ notifications: { enabled: 1 } })).toEqual({});
+    expect(sanitizePreferences({ sounds: 'on' })).toEqual({});
+  });
+
+  it('merges a change field by field, so turning sounds off keeps every sound', () => {
+    const current = { ...DEFAULT_PREFERENCES, sounds: sounds({ enabled: true, byEvent: { ...DEFAULT_SOUNDS.byEvent, finished: 'Hero' } }) };
+    const off = { ...current, ...sanitizePreferences(mergePreferences(current, { sounds: { enabled: false } })) };
+    expect(off.sounds).toEqual({ ...current.sounds, enabled: false });
+    const on = { ...off, ...sanitizePreferences(mergePreferences(off, { sounds: { enabled: true } })) };
+    expect(on.sounds).toEqual(current.sounds);
+    const picked = sanitizePreferences(mergePreferences(current, { sounds: { byEvent: { error: 'none' } } }));
+    expect(picked.sounds?.byEvent).toEqual({ ...current.sounds.byEvent, error: 'none' });
+    expect(sanitizePreferences(mergePreferences(current, { notifications: { enabled: false } })).notifications).toEqual({ enabled: false });
   });
 
   it('plays a missing sound as the fallback, and none as none', () => {
-    const list: SoundList = { sounds: ['chimes', 'Windows Ding'], fallback: { complete: 'chimes', needsInput: 'Windows Ding' } };
-    expect(resolveSound('Windows Ding', list, 'complete')).toBe('Windows Ding');
-    expect(resolveSound('Glass', list, 'complete')).toBe('chimes');
-    expect(resolveSound('Ping', list, 'needsInput')).toBe('Windows Ding');
-    expect(resolveSound(null, list, 'complete')).toBeNull();
-    expect(resolveSound('Glass', { sounds: [], fallback: { complete: null, needsInput: null } }, 'complete')).toBeNull();
+    const list: SoundList = { sounds: ['chimes', 'Windows Ding'], fallback: { needsYou: 'Windows Ding', finished: 'chimes', error: 'chimes', actionEnded: 'chimes' } };
+    expect(resolveSound('Windows Ding', list, 'finished')).toBe('Windows Ding');
+    expect(resolveSound('Glass', list, 'finished')).toBe('chimes');
+    expect(resolveSound('Ping', list, 'needsYou')).toBe('Windows Ding');
+    expect(resolveSound('none', list, 'finished')).toBeNull();
+    expect(resolveSound('Glass', { sounds: [], fallback: { needsYou: null, finished: null, error: null, actionEnded: null } }, 'finished')).toBeNull();
   });
 });

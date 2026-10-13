@@ -1,30 +1,34 @@
-import type { Preferences, SoundKind } from '@switchboard/protocol/bridge';
+import { NO_SOUND, type Preferences, type SoundEvent } from '@switchboard/protocol/bridge';
 import type { AttentionEvent } from './attention.ts';
 
 /** Settings › Notifications. */
-export type AlertPrefs = Pick<Preferences, 'notifications' | 'sounds' | 'soundComplete' | 'soundNeedsInput' | 'soundVolume'>;
+export type AlertPrefs = Pick<Preferences, 'notifications' | 'sounds'>;
 
-/** What one attention event does: show a notification, and which of the two sounds it plays (null: none). */
+/** What one attention event does: show a notification, and which moment's sound it plays (null: none). */
 export interface Alert {
   notify: boolean;
-  sound: SoundKind | null;
+  sound: SoundEvent | null;
 }
 
-/** Needing you has its own sound; a finished turn, an error and a project action that ends share Session complete. */
-export const soundKindOf = (kind: AttentionEvent['kind']): SoundKind => (kind === 'needs-you' ? 'needsInput' : 'complete');
+const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = { 'needs-you': 'needsYou', finished: 'finished', failed: 'error', 'action-done': 'actionEnded' };
 
-/** The sound a kind is set to, or null for none. */
-export const soundFor = (kind: SoundKind, prefs: AlertPrefs): string | null => (kind === 'needsInput' ? prefs.soundNeedsInput : prefs.soundComplete);
+/** Each kind of event has its own moment, and so its own sound. */
+export const soundEventOf = (kind: AttentionEvent['kind']): SoundEvent => EVENT_SOUND[kind];
 
 /**
  * What an event does with these settings. Nothing at all for the session you are looking at (`suppressed`);
- * the badge and the Dock bounce don't depend on it.
+ * the badge and the Dock bounce don't depend on it. Notifications and sounds don't depend on each other.
  */
 export function alertFor(kind: AttentionEvent['kind'], suppressed: boolean, prefs: AlertPrefs): Alert {
   if (suppressed) return { notify: false, sound: null };
-  const sound = soundKindOf(kind);
-  return { notify: prefs.notifications, sound: prefs.sounds && prefs.soundVolume > 0 && soundFor(sound, prefs) !== null ? sound : null };
+  const event = soundEventOf(kind);
+  const { enabled, volume, byEvent } = prefs.sounds;
+  return { notify: prefs.notifications.enabled, sound: enabled && volume > 0 && byEvent[event] !== NO_SOUND ? event : null };
 }
 
-/** Events that arrive together play one sound, not one each: needing you comes first. */
-export const louder = (a: SoundKind | null, b: SoundKind | null): SoundKind | null => (a === 'needsInput' || b === 'needsInput' ? 'needsInput' : (a ?? b));
+/** Events that arrive together play one sound, not one each: needing you first, then an error, a finished turn, an action. */
+const LOUDEST_FIRST: readonly SoundEvent[] = ['needsYou', 'error', 'finished', 'actionEnded'];
+export const louder = (a: SoundEvent | null, b: SoundEvent | null): SoundEvent | null => {
+  if (a === null || b === null) return a ?? b;
+  return LOUDEST_FIRST.indexOf(a) <= LOUDEST_FIRST.indexOf(b) ? a : b;
+};
