@@ -167,6 +167,26 @@
       "page": "focus-limit"
     },
     {
+      "id": "palette:notifications-off",
+      "name": "Notifications: turn off",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "palette:notifications-on",
+      "name": "Notifications: turn on",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "palette:sounds-on",
+      "name": "Sounds: turn on",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "palette:sounds-off",
+      "name": "Sounds: turn off",
+      "page": "settings/notifications"
+    },
+    {
       "id": "palette:focus-other-pane",
       "name": "Focus other pane",
       "page": "sessions/split-view"
@@ -422,6 +442,11 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-notifications",
+      "name": "Settings: Notifications",
+      "page": "settings/notifications"
+    },
+    {
       "id": "palette:settings-profiles",
       "name": "settings-profiles",
       "page": "settings"
@@ -619,6 +644,26 @@
     {
       "id": "shortcut:composer.send-now",
       "name": "composer.send-now",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:composer.send-other",
+      "name": "composer.send-other",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:upnext.edit",
+      "name": "upnext.edit",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:upnext.move",
+      "name": "upnext.move",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:upnext.remove",
+      "name": "upnext.remove",
       "page": "sessions/conversation"
     },
     {
@@ -910,6 +955,11 @@
       "id": "settings:memory",
       "name": "Settings › Memory",
       "page": "settings"
+    },
+    {
+      "id": "settings:notifications",
+      "name": "Settings: Notifications",
+      "page": "settings/notifications"
     },
     {
       "id": "settings:profiles",
@@ -2154,6 +2204,16 @@
     {
       "id": "feature:send-now",
       "name": "Send now",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:up-next",
+      "name": "Up next: queued messages",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:steer",
+      "name": "Steer Claude while it works",
       "page": "sessions/conversation"
     },
     {

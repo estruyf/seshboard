@@ -2,15 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { submitKey } from '../newSession/startMenu.ts';
 import { queueButtonState } from './queueButton.ts';
 
-const ready = { blocked: null, sending: false, hasMessage: true };
+const ready = { blocked: null, sending: false, hasMessage: true, whileWorking: 'queue' as const };
 
 describe('queueButtonState', () => {
-  it('queues by default and offers Send now in the menu', () => {
+  it('queues by default, and offers Steer and Send now in the menu', () => {
     const state = queueButtonState(ready);
     expect(state).toMatchObject({ label: 'Queue', disabled: false, reason: null });
     expect(state.items.map((item) => [item.action, item.label, item.shortcut, item.disabled])).toEqual([
       ['queue', 'Queue', 'composer.send', false],
+      ['steer', 'Steer', 'composer.send-other', false],
       ['send-now', 'Send now', 'composer.send-now', false],
+    ]);
+  });
+
+  it('puts Steer first when Enter steers', () => {
+    const state = queueButtonState({ ...ready, whileWorking: 'steer' });
+    expect(state.label).toBe('Steer');
+    expect(state.items.map((item) => [item.action, item.shortcut])).toEqual([
+      ['steer', 'composer.send'],
+      ['queue', 'composer.send-other'],
+      ['send-now', 'composer.send-now'],
     ]);
   });
 

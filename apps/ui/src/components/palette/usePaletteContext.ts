@@ -149,6 +149,8 @@ export function usePaletteContext(): PaletteContext {
     },
     split: splitId !== null,
     focusLimit: prefs.focusLimit,
+    notifications: prefs.notifications,
+    sounds: prefs.sounds,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },
     unsent,
     projectCount: added.length,

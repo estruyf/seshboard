@@ -1,10 +1,16 @@
 import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow, type NativeImage } from 'electron';
+import { resolveSound } from '@switchboard/protocol/bridge';
 import { createRpcClient, type Contract, type LaterItem, type QueueStarted, type RpcClient } from '@switchboard/protocol/client';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
+import { alertFor, louder, soundFor, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
 import type { EngineProcess } from './engineProcess.ts';
 import { queueHint } from './queueHint.ts';
+import type { SoundPlayer } from './sounds.ts';
 import { badgeDescription, badgeDotBitmap } from './taskbarBadge.ts';
+
+/** A recorded event: whether it was for the session on screen, and what it did with the settings at the time. */
+export type RecordedAlert = AttentionEvent & { suppressed: boolean } & Alert;
 
 export interface NotifierOptions {
   engine: EngineProcess;
@@ -14,8 +20,11 @@ export interface NotifierOptions {
   openSession: (sessionId: string) => void;
   /** Settings → Show sessions from other apps. */
   showAllSessions: () => boolean;
-  /** Smoke tests record events (and whether they'd be suppressed) instead of showing notifications. */
-  record?: (event: AttentionEvent & { suppressed: boolean }) => void;
+  /** Settings › Notifications: notifications on or off, and the sounds. */
+  alerts: () => AlertPrefs;
+  sounds: SoundPlayer;
+  /** Smoke tests record events (whether they'd be suppressed, and what they'd do) instead of showing notifications. */
+  record?: (event: RecordedAlert) => void;
 }
 
 /**
@@ -84,31 +93,47 @@ export class Notifier {
     };
   }
 
+  /** What an event would do now, for the session on screen or not. The smoke test checks recorded events with it. */
+  alertFor(event: AttentionEvent, suppressed = false): Alert {
+    return alertFor(event.kind, suppressed, this.options.alerts());
+  }
+
   private handle(events: AttentionEvent[]): void {
     const win = this.options.window();
     const focused = !!win && win.isFocused() && !win.isMinimized();
+    const prefs = this.options.alerts();
+    let sound: Alert['sound'] = null;
     for (const event of events) {
-      // Already looking at it: no need to interrupt.
+      // Already looking at it: no need to interrupt, with a notification or a sound.
       const suppressed = focused && this.options.focusedSession() === event.sessionId;
+      const alert = alertFor(event.kind, suppressed, prefs);
       if (this.options.record) {
-        this.options.record({ ...event, suppressed });
+        this.options.record({ ...event, suppressed, ...alert });
         continue;
       }
       if (suppressed) continue;
-      if (Notification.isSupported()) {
+      if (alert.notify && Notification.isSupported()) {
         // A finished turn says what is next in the queue there, rather than a second notification.
         const hint = event.kind === 'finished' ? queueHint(this.queue.items, this.queue.started, { sessionId: event.sessionId, cwd: event.cwd ?? null }) : null;
-        const notification = new Notification({ title: event.title, body: hint ? `${event.body}\n${hint}` : event.body });
+        // With sounds on, the sound is ours (its volume applies, and it plays with notifications off too), so the
+        // system's own notification sound (Windows plays one) would be a second one.
+        const notification = new Notification({ title: event.title, body: hint ? `${event.body}\n${hint}` : event.body, silent: prefs.sounds });
         notification.on('click', () => this.options.openSession(event.sessionId));
         notification.on('close', () => this.shown.delete(notification));
         this.shown.add(notification);
         notification.show();
       }
+      sound = louder(sound, alert.sound);
+      // The Dock and the taskbar stay independent of the notification setting, like the badge.
       if (event.kind === 'needs-you' && !focused) {
         app.dock?.bounce('informational');
         // Windows and Linux have no Dock: the taskbar button flashes until the window is focused.
         if (process.platform !== 'darwin' && win && !win.isDestroyed()) win.flashFrame(true);
       }
+    }
+    if (sound) {
+      const id = resolveSound(soundFor(sound, prefs), this.options.sounds.list(), sound);
+      if (id) this.options.sounds.play(id, prefs.soundVolume);
     }
     this.updateBadge();
   }

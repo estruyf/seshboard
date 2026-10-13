@@ -1,10 +1,11 @@
 import { currentPlatform } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity } from '@switchboard/protocol/bridge';
+import type { NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
+import { NotificationsSettings } from './notifications/NotificationsSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
 import { useSidebar } from '../state/sidebarStore.ts';
@@ -134,6 +135,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
   { id: 'sessions', label: 'Sessions', icon: Archive },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
   { id: 'memory', label: 'Memory', icon: Brain },
@@ -230,10 +232,37 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               ))}
             </RadioGroup>
           </Section>
+          <Section title="While Claude is working">
+            <div className="flex items-center justify-between gap-4" data-setting-row>
+              <span>
+                <span className="block text-ui">Enter</span>
+                <span className="block text-meta text-muted">
+                  Queue holds your message in Up next until Claude finishes the turn. Steer gives it to Claude now, and Claude reads it at its next step. {formatKeys(keysFor('composer.send-now'))} always stops Claude and sends at once.
+                </span>
+              </span>
+              <SegmentedControl<WhileWorking>
+                mode="radio"
+                label="What Enter does while Claude is working"
+                value={prefs.whileWorking}
+                onChange={(whileWorking) => update({ whileWorking })}
+                segments={[
+                  { value: 'queue', label: 'Queue', data: { 'data-while-working': 'queue' } },
+                  { value: 'steer', label: 'Steer', data: { 'data-while-working': 'steer' } },
+                ]}
+                className="shrink-0"
+              />
+            </div>
+          </Section>
           <Section title="Auto model" description="Haiku reads the first prompt of a new session and picks the model it starts on. Picked once; after that, Auto only suggests.">
             <AutoModelSettings />
           </Section>
         </>
+      );
+    case 'notifications':
+      return (
+        <Section title="Notifications" description="How Switchboard gets your attention while you work in another session or app. Nothing for the session you are looking at.">
+          <NotificationsSettings />
+        </Section>
       );
     case 'focus':
       return (

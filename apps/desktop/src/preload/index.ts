@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, type AppInfo, type DeepLinkMessage, type PickedPath, type Preferences, type RendererReadyReport, type SaveImageRequest, type SwitchboardBridge, type ThemeCommand, type UpdateState } from '@switchboard/protocol/bridge';
+import { ENGINE_PORT_MESSAGE, IpcChannel, type AppInfo, type DeepLinkMessage, type PickedPath, type Preferences, type RendererReadyReport, type SaveImageRequest, type SoundList, type SwitchboardBridge, type ThemeCommand, type UpdateState } from '@switchboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@switchboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -90,6 +90,8 @@ const bridge: SwitchboardBridge = {
   exportTheme: (fileName, content) => theme({ kind: 'export', fileName, content }) as Promise<string | null>,
   openThemesFolder: () => void theme({ kind: 'open-folder' }),
   showThemeFile: (id) => void theme({ kind: 'show-file', id }),
+  listSounds: () => ipcRenderer.invoke(IpcChannel.listSounds) as Promise<SoundList>,
+  playSound: (id, volume) => ipcRenderer.send(IpcChannel.playSound, id, volume),
 };
 
 contextBridge.exposeInMainWorld('switchboard', bridge);

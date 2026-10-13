@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFERENCES, sanitizePreferences } from './bridge.ts';
+import { DEFAULT_PREFERENCES, resolveSound, sanitizePreferences, type SoundList } from './bridge.ts';
 
 describe('sidebarCollapsed preference', () => {
   it('collapses to the minimal rail by default', () => {
@@ -59,5 +59,38 @@ describe('githubStar preference', () => {
     expect(sanitizePreferences({ githubStar: 'done' })).toEqual({ githubStar: 'done' });
     expect(sanitizePreferences({ githubStar: 'starred' })).toEqual({});
     expect(sanitizePreferences({ githubStar: true })).toEqual({});
+  });
+});
+
+describe('notification and sound preferences', () => {
+  it('notifies and stays quiet by default', () => {
+    expect(DEFAULT_PREFERENCES.notifications).toBe(true);
+    expect(DEFAULT_PREFERENCES.sounds).toBe(false);
+  });
+
+  it('keeps sound names and none, and drops paths and anything else', () => {
+    expect(sanitizePreferences({ soundComplete: 'Glass', soundNeedsInput: null })).toEqual({ soundComplete: 'Glass', soundNeedsInput: null });
+    expect(sanitizePreferences({ soundNeedsInput: 'Windows Notify Messaging' })).toEqual({ soundNeedsInput: 'Windows Notify Messaging' });
+    expect(sanitizePreferences({ soundComplete: '../../etc/passwd' })).toEqual({});
+    expect(sanitizePreferences({ soundComplete: 'C:\\Windows\\Media\\ding' })).toEqual({});
+    expect(sanitizePreferences({ soundComplete: '' })).toEqual({});
+    expect(sanitizePreferences({ soundComplete: 3 })).toEqual({});
+  });
+
+  it('keeps the volume between 0 and 1', () => {
+    expect(sanitizePreferences({ soundVolume: 0.25 })).toEqual({ soundVolume: 0.25 });
+    expect(sanitizePreferences({ soundVolume: 4 })).toEqual({ soundVolume: 1 });
+    expect(sanitizePreferences({ soundVolume: -1 })).toEqual({ soundVolume: 0 });
+    expect(sanitizePreferences({ soundVolume: '1' })).toEqual({});
+    expect(sanitizePreferences({ soundVolume: Number.NaN })).toEqual({});
+  });
+
+  it('plays a missing sound as the fallback, and none as none', () => {
+    const list: SoundList = { sounds: ['chimes', 'Windows Ding'], fallback: { complete: 'chimes', needsInput: 'Windows Ding' } };
+    expect(resolveSound('Windows Ding', list, 'complete')).toBe('Windows Ding');
+    expect(resolveSound('Glass', list, 'complete')).toBe('chimes');
+    expect(resolveSound('Ping', list, 'needsInput')).toBe('Windows Ding');
+    expect(resolveSound(null, list, 'complete')).toBeNull();
+    expect(resolveSound('Glass', { sounds: [], fallback: { complete: null, needsInput: null } }, 'complete')).toBeNull();
   });
 });

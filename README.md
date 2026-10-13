@@ -54,7 +54,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - Approve or deny permission requests, answer Claude's questions and review plans in the conversation.
 - Follow what Claude does without the noise: each run of tool calls is one line ("Reading src/app.ts…", then "Ran 3 commands and edited 2 files"), and a click shows every step, with diffs, command output, to-do lists and subagent runs.
 - Images Claude reads or you attach are shown in the conversation.
-- Press **Esc** (or **Stop**) to stop Claude, **⇧Tab** to switch permission mode, and keep typing while it works (messages queue up). **Stop session** under **⋯** in the header ends the Claude Code process; sending a message picks it up again.
+- Press **Esc** (or **Stop**) to stop Claude, **⇧Tab** to switch permission mode, and keep typing while it works: messages wait in **Up next** above the message box (edit, remove, reorder or **Send now** each one), or **Steer** Claude at its next step (Settings › Conversation picks what Enter does). **Stop session** under **⋯** in the header ends the Claude Code process; sending a message picks it up again.
 - Change the model, permission mode and **effort** while a session runs, from the chips in the message box, and see how full the **context window** is under it. Click it for what fills it, like `/context`, and to compact the conversation.
 - **Agents** Claude starts, background ones included, are under **⋯** in the session header ("2 running"; a dot on **⋯** says some are); pick **Agents** to watch what each one is doing.
 - Continue any past session. If it's still open in a terminal, Switchboard offers to **fork** it instead, leaving the original untouched.
@@ -230,6 +230,9 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 
 | Shortcut | What it does |
 |---|---|
+| ↩ | Edit a message in Up next (on a message in Up next, above the message box; ↑ in an empty message box edits the last one) |
+| ⌥↑ or ⌥↓ | Move a message in Up next up or down (on a message in Up next, above the message box) |
+| ⌫ | Remove a message from Up next (on a message in Up next, above the message box; Undo puts it back) |
 | ⌘F | Find in the conversation |
 | ↩ or ⌘G | Next match (in Find) |
 | ⇧↩ or ⌘⇧G | Previous match (in Find) |
@@ -244,6 +247,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘O | Open the folder in your editor |
 | Esc | Stop Claude (while Claude is working) |
 | ⌘⇧↩ | Send now (while Claude is working; Stops what Claude is doing so your message runs right away) |
+| ⌥↩ | Queue or steer, the other way (while Claude is working; Does what Enter doesn't: steers when Enter queues, queues when Enter steers) |
 | ⇧⇥ | Switch permission mode (in the message box) |
 
 **Message box**
@@ -297,6 +301,7 @@ Open Settings with ⌘, or the gear at the bottom of the sidebar. While it is op
 - **Theme:** *Appearance* is Match System, Light or Dark. Under it, pick a [theme](#themes): Demo Time (the default), Catppuccin, Claude, Nord (dark only), Solarized, The unnamed (dark only), or one you imported.
 - **Sidebar:** *Large icons* (easy to spot each project), *Standard*, or *Compact* (one line per session). *When collapsed* picks what ⌘B does: a *Minimal rail* of project icons, or *Hidden*. *Show sessions from other apps* also lists sessions from the terminal, Claude desktop and your editor (off by default), and notifies you when a terminal session is waiting.
 - **Conversation:** *Summarised* (the default) shows each run of tool calls as one line, like Claude Code: what Claude is doing right now, or what it did, with how long it took. Click it to see the steps, and a step to see its details. *Every step* shows each tool call as its own card.
+- **Notifications:** *Show notifications* (on by default) turns the notifications for sessions that need you or finish on or off; the Dock badge stays either way. *Play sounds* (off by default) plays a sound at the same moments, also with notifications off: pick the *Session complete* and *Needs input* sounds from the system sounds (or *None*), try each with its play button, and set the *Volume* for both. Neither shows for the session you're looking at.
 - **Focus:** the [focus limit](#focus-limit): on or off, how many sessions at the same time (1 to 10, 3 to start with), *Nudge* or *Strict*, and whether sessions from the terminal and your editor count.
 - **Claude profiles:** use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login, settings, plugins and sessions (`~/.claude` is the first). Add one, sign in there once in a terminal with the command Settings shows (`CLAUDE_CONFIG_DIR=~/.claude-work claude`, then `/login`), and pick the default. *How to set up another profile* under the list walks through it step by step. Link a project to a profile from its menu or the Settings tab of its page; New session shows the profile a folder uses and lets you pick another for one session. With more than one profile, sessions show which account they use, and the usage band shows that account's limits.
 - **VS Code:** what the [VS Code companion](#vs-code-companion) sends, links to install it (Visual Studio Marketplace, or Open VSX for Cursor and Windsurf), and whether an editor is connected right now. *VS Code extension* in the command palette opens it.

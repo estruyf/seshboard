@@ -12,8 +12,10 @@ import {
   type PermissionMode,
   type PermissionRequest,
   type PluginInfo,
+  type QueuedMessage,
   type RewindResult,
   type AutoPick,
+  type SendMode,
   type SessionHostInfo,
   type SlashCommand,
   type StreamDelta,
@@ -25,6 +27,7 @@ import { describeSuggestions } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery } from './sessionHost.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
+import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** The two SDK entry points the manager needs; injected so tests can fake Claude Code. */
 export interface SdkRuntime {
@@ -81,6 +84,10 @@ export interface HostManagerDeps {
    * `forget` drops every list of a profile (a skill was added or removed).
    */
   commandCache?: { get(key: CommandKey): SlashCommand[] | null; set(key: CommandKey, commands: SlashCommand[]): void; forget(profileId: string): void };
+  /** Where Up next is kept, so it outlives the session's process and the app; without it, it lives as long as the process. */
+  upNext?: { list(sessionId: string): StoredUpNext[]; all(): Array<{ sessionId: string; queue: QueuedMessage[] }>; save(sessionId: string, messages: readonly StoredUpNext[]): void };
+  /** A session's Up next changed (running or not), for windows showing it. */
+  onUpNext?: (sessionId: string, queue: QueuedMessage[]) => void;
 }
 
 /** Command lists differ per folder (project commands) and per profile (user commands, skills, plugins). */
@@ -254,13 +261,22 @@ export class HostManager {
   }
 
   /**
-   * Sends a message. `now`: while Claude is busy, its current turn is stopped first, so this message (and
-   * any sent before it that still wait, which survive an interrupt) runs right away instead of after it.
+   * Sends a message. While Claude is busy, `mode` decides: `queue` holds it until the turn ends, `steer` hands it to
+   * Claude to read at its next step, `now` stops the turn first (and any message waiting in the queue stays queued).
+   * A fork, or an idle session, just sends.
    */
-  async send(params: { sessionId: string; text: string; attachments: ImageAttachment[]; fork: boolean; now?: boolean }): Promise<{ sessionId: string; messageUuid: string }> {
+  async send(params: { sessionId: string; text: string; attachments: ImageAttachment[]; fork: boolean; mode?: SendMode }): Promise<{ sessionId: string; messageUuid: string; queued: boolean }> {
     const host = await this.ensureHost(params.sessionId, params.fork, 'This session is open in another Claude Code window. Fork it to continue here.');
-    if (params.now && !params.fork && (host.info.state === 'running' || host.info.state === 'needs-you')) await this.interrupt(host.sessionId);
-    const messageUuid = host.send(params.text, params.attachments);
+    const mode = params.mode ?? 'queue';
+    let messageUuid: string;
+    let queued = false;
+    if (!params.fork && host.busy && mode === 'queue') {
+      messageUuid = host.enqueue(params.text, params.attachments);
+      queued = true;
+    } else if (!params.fork && host.busy && mode === 'now') {
+      this.denyPending(host.sessionId, 'Interrupted by the user.');
+      messageUuid = await host.sendNow(params.text, params.attachments);
+    } else messageUuid = host.send(params.text, params.attachments);
     // Wait for a fork to start, so a fork that fails says so, and in case Claude Code settled on another id than the one we gave it.
     const sessionId = params.fork ? await host.initialized : host.sessionId;
     if (params.fork) {
@@ -269,7 +285,59 @@ export class HostManager {
       const saved = this.settings.get(params.sessionId);
       if (saved?.model || saved?.effort) this.settings.set(sessionId, { model: saved.model, effort: saved.effort });
     } else this.deps.onContinued?.(sessionId);
-    return { sessionId, messageUuid };
+    return { sessionId, messageUuid, queued };
+  }
+
+  /** Takes a message out of a session's queue (null when it was already sent). Works while the session isn't running too. */
+  dequeue(sessionId: string, id: string): { text: string; attachments: ImageAttachment[] } | null {
+    const host = this.running(sessionId);
+    if (host) return host.dequeue(id);
+    const stored = this.deps.upNext?.list(sessionId) ?? [];
+    const taken = stored.find((m) => m.id === id);
+    if (!taken) return null;
+    this.saveQueue(sessionId, stored.filter((m) => m !== taken));
+    return { text: taken.text, attachments: taken.attachments };
+  }
+
+  moveQueued(sessionId: string, id: string, toIndex: number): void {
+    const host = this.running(sessionId);
+    if (host) return host.moveQueued(id, toIndex);
+    const stored = this.deps.upNext?.list(sessionId) ?? [];
+    const at = stored.findIndex((m) => m.id === id);
+    if (at < 0) return;
+    const [moved] = stored.splice(at, 1);
+    stored.splice(Math.min(toIndex, stored.length), 0, moved!);
+    this.saveQueue(sessionId, stored);
+  }
+
+  /** Sends one queued message now, stopping the turn it waits behind, or resuming the session that kept it. */
+  async sendQueuedNow(sessionId: string, id: string): Promise<void> {
+    const host = await this.ensureHost(sessionId, false, 'This session is open in another Claude Code window. Close it there to send from Up next.');
+    if (host.busy) this.denyPending(sessionId, 'Interrupted by the user.');
+    await host.sendQueuedNow(id);
+    this.deps.onContinued?.(sessionId);
+  }
+
+  /** Sends the next queued message and lets the queue move on again, resuming the session when it isn't running. */
+  async resumeQueue(sessionId: string): Promise<void> {
+    const host = await this.ensureHost(sessionId, false, 'This session is open in another Claude Code window. Close it there to send from Up next.');
+    host.resumeQueue();
+    this.deps.onContinued?.(sessionId);
+  }
+
+  /** Every session's Up next as it is kept, running here or not; `onUpNext` reports each change after this. */
+  upNextLists(): Array<{ sessionId: string; queue: QueuedMessage[] }> {
+    return this.deps.upNext?.all() ?? [];
+  }
+
+  private running(sessionId: string): SessionHost | null {
+    const host = this.hosts.get(sessionId);
+    return host?.active ? host : null;
+  }
+
+  private saveQueue(sessionId: string, messages: readonly StoredUpNext[]): void {
+    this.deps.upNext?.save(sessionId, messages);
+    this.deps.onUpNext?.(sessionId, messages.map(summarise));
   }
 
   /**
@@ -289,11 +357,15 @@ export class HostManager {
   }
 
   async interrupt(sessionId: string): Promise<void> {
-    // Pending prompts would otherwise keep the turn alive after the interrupt.
-    for (const [requestId, pending] of this.pending) {
-      if (pending.request.sessionId === sessionId) this.settle(requestId, { behavior: 'deny', message: 'Interrupted by the user.', interrupt: true });
-    }
+    this.denyPending(sessionId, 'Interrupted by the user.');
     await this.require(sessionId).interrupt();
+  }
+
+  /** Pending prompts would otherwise keep the turn alive after it is stopped. */
+  private denyPending(sessionId: string, message: string): void {
+    for (const [requestId, pending] of this.pending) {
+      if (pending.request.sessionId === sessionId) this.settle(requestId, { behavior: 'deny', message, interrupt: true });
+    }
   }
 
   stopTask(sessionId: string, taskId: string): Promise<void> {
@@ -664,9 +736,12 @@ export class HostManager {
         knownCommands: () => this.commandsByCwd.get(keyOf({ profileId: config.profileId, cwd: config.cwd })) ?? [],
         // onInfo stores this session's new list right after.
         commandsChanged: () => this.forgetCommands(config.profileId),
+        queue: (sessionId, messages) => this.saveQueue(sessionId, messages),
       },
       startQuery,
     );
+    // A resumed session gets back what was waiting in Up next when it stopped.
+    if (config.mode === 'resume') host.restoreQueue(this.deps.upNext?.list(config.sessionId) ?? []);
     hostRef = host;
     this.hosts.set(config.sessionId, host);
     host.start();

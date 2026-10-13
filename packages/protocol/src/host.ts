@@ -58,6 +58,20 @@ export const BackgroundTask = z.object({
 });
 export type BackgroundTask = z.infer<typeof BackgroundTask>;
 
+/** A message waiting for Claude's turn to end. Images stay in the engine; the window only sees their names. */
+export const QueuedMessage = z.object({
+  id: z.string(),
+  text: z.string(),
+  /** Names of the attached images (a generic name when one has none). */
+  attachments: z.array(z.string()),
+  createdAt: z.number(),
+});
+export type QueuedMessage = z.infer<typeof QueuedMessage>;
+
+/** What a message does while Claude is working: wait for the turn to end, join the turn at its next step, or stop it. */
+export const SendMode = z.enum(['queue', 'steer', 'now']);
+export type SendMode = z.infer<typeof SendMode>;
+
 export const SessionHostInfo = z.object({
   sessionId: z.string(),
   /** The session's working directory (the worktree path for worktree sessions, once known). */
@@ -76,8 +90,16 @@ export const SessionHostInfo = z.object({
   startedAt: z.number(),
   /** When you last sent a message (null before the first). The Working list orders by it, so sessions don't trade places as they write. */
   promptedAt: z.number().nullable(),
-  /** User messages accepted but not answered yet (sent while Claude was busy). */
-  queued: z.number(),
+  /**
+   * Messages you queued while Claude was busy, in the order they will be sent: one when each turn ends. They are not
+   * in the transcript until they are sent.
+   */
+  queue: z.array(QueuedMessage),
+  /**
+   * Why the queue isn't sending by itself: you stopped Claude, its turn failed, or the messages were kept from before
+   * the session stopped or the app quit (`saved`). Null while it moves on its own.
+   */
+  queueHold: z.enum(['stopped', 'error', 'saved']).nullable(),
   /** The Claude profile (login) this process runs with. */
   profileId: z.string(),
   /** Background tasks still running; the session can be idle (ready for a message) while these work. */

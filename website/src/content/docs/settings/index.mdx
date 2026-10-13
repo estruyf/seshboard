@@ -8,7 +8,7 @@ import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, your Claude profiles, memory, backups and updates. Changes apply at once; there is nothing to save.
+Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, notifications and sounds, your Claude profiles, memory, backups and updates. Changes apply at once; there is nothing to save.
 
 ## Open it
 
@@ -105,6 +105,13 @@ See [Sessions](/settings/sessions/) for the details.
 See [Conversation](/sessions/conversation/).
 
 **Auto model** turns Auto on or off in the model menus, and sets the models it can pick, which way it leans when in doubt, and whether it suggests a stronger model later. See [Auto model](/new-session/auto-model/).
+
+## Notifications
+
+- **Show notifications** (on by default): a notification when Claude needs you, finishes or stops with an error, and when a project action ends. <Os mac="The Dock badge" windows="The dot on the taskbar button" /> shows either way.
+- **Play sounds** (off by default): a sound at the same moments, also with notifications off. Under it, pick the **Session complete** and **Needs input** sounds (or **None**), with a button to play each, and the **Volume** for both.
+
+See [Notifications](/settings/notifications/).
 
 ## Focus
 
