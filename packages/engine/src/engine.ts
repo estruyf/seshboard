@@ -1712,7 +1712,8 @@ export function createEngine(options: EngineOptions): Engine {
       viewTerminal(id, context, false);
       return {};
     },
-    'terminal.write': ({ id, data }) => {
+    'terminal.write': async ({ id, data, whenReady }) => {
+      if (whenReady) await terminals.whenReady(id);
       terminals.write(id, data);
       return {};
     },

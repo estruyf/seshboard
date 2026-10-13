@@ -139,6 +139,7 @@ export async function runInTerminal(client: EngineClient, sessionId: string, cwd
   const state = useTerminals.getState();
   const reused = runTabs.get(sessionId);
   let id = reused && state.terminals.get(reused)?.exitCode === null ? reused : null;
+  const fresh = !id;
   if (id) {
     state.setNotice(sessionId, null);
     state.togglePanel(sessionId, true);
@@ -148,8 +149,9 @@ export async function runInTerminal(client: EngineClient, sessionId: string, cwd
     if (!id) return;
     runTabs.set(sessionId, id);
   }
-  // A new shell reads this once it has started: the terminal holds what was typed until then.
-  await client.call('terminal.write', { id, data: `${command}\r` });
+  // A new shell gets the command once it has started: typed while its config still loads (zsh plugins, prompt
+  // themes), it shows up but can be thrown away before the prompt reads it.
+  await client.call('terminal.write', { id, data: `${command}\r`, whenReady: fresh });
 }
 
 /**

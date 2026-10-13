@@ -655,7 +655,11 @@ export const contract = {
     /** Streams this terminal's output to the caller; returns recent output to replay first. */
     'terminal.attach': { params: z.object({ id: z.string() }), result: z.object({ info: TerminalInfo, replay: z.string() }) },
     'terminal.detach': { params: z.object({ id: z.string() }), result: z.object({}) },
-    'terminal.write': { params: z.object({ id: z.string(), data: z.string().max(1_000_000) }), result: z.object({}) },
+    /**
+     * Types into a terminal. `whenReady` is for a shell that was just opened: it waits until the shell has started (its
+     * startup output has gone quiet, a few seconds at most), since a shell config that is still loading can drop typed input.
+     */
+    'terminal.write': { params: z.object({ id: z.string(), data: z.string().max(1_000_000), whenReady: z.boolean().optional() }), result: z.object({}) },
     'terminal.resize': {
       params: z.object({ id: z.string(), cols: z.number().int().min(2).max(1000), rows: z.number().int().min(1).max(500) }),
       result: z.object({}),
