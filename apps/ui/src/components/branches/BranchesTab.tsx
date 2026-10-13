@@ -230,7 +230,7 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
             </span>
           )}
         </span>
-        <span role="cell" className="min-w-0">
+        <span role="cell" className="flex min-w-0">
           {here ? (
             <Pill tone={here.tone === 'default' ? 'default' : here.tone} shrink data-tooltip={entry.local?.checkedOutIn ?? (row.localLock || undefined)}>
               <span className="truncate">{here.text}</span>
@@ -256,7 +256,7 @@ export function BranchesTab({ root, name, scrollRef }: { root: string; name: str
         <span role="cell" className={`truncate text-ui ${vsBase?.tone === 'ok' ? 'text-ok' : vsBase?.tone === 'muted' ? 'text-muted' : ''}`}>
           {vsBase ? vsBase.text : dash}
         </span>
-        <span role="cell" className={`min-w-0 ${NARROW_HIDDEN}`}>
+        <span role="cell" className={`flex min-w-0 ${NARROW_HIDDEN}`}>
           {pr ? (
             <Pill tone={pr.tone} shrink onClick={() => void window.open(entry.pr!.url, '_blank')} data-tooltip={entry.pr!.url}>
               <span className="truncate">{pr.text}</span>

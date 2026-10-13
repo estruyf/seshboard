@@ -27,7 +27,7 @@ import { useAttachments } from '../composer/useAttachments.ts';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { StartButton } from '../newSession/StartButton.tsx';
 import { focusStartBlock, startButtonState } from '../newSession/startMenu.ts';
-import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, readGlobals, startingChoices, type Choices, type GlobalChoices } from '../newSession/choices.ts';
+import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, readGlobals, startingChoices, withNewSessionMode, type Choices, type GlobalChoices } from '../newSession/choices.ts';
 import { checkoutBranchFor, shouldPrewarm, startNewSession } from '../newSession/startSession.ts';
 import { branchLabel, branchNote, freshBase } from '../newSession/trayLabels.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -65,12 +65,13 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const [loaded, setLoaded] = useState(false);
   /** Changed here: the project's defaults arriving late must not undo it. */
   const touched = useRef(false);
+  const newSessionMode = usePreferences((s) => s.prefs.newSessionMode);
   const [profileOverride, setProfileOverride] = useState<string | null>(null);
   const projectProfile = project?.profileId && profiles.some((p) => p.id === project.profileId) ? project.profileId : null;
   const profileId = (profileOverride && profiles.some((p) => p.id === profileOverride) ? profileOverride : null) ?? projectProfile ?? defaultProfile;
   /** The project's defaults, then the profile's. */
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
-  const [d, setD] = useState<Choices>(() => ({ ...startingChoices(INITIAL_CHOICES, sessionDefaults), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
+  const [d, setD] = useState<Choices>(() => ({ ...startingChoices(withNewSessionMode(INITIAL_CHOICES, newSessionMode), sessionDefaults), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
   const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[] }>({ current: null, branches: [] });
   const [gitStatus, setGitStatus] = useState<{ remote: string | null; baseBranch: string | null; behindUpstream: number | null } | null>(null);
@@ -116,9 +117,9 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
       setD(questionStartingChoices(questionChoices));
       return;
     }
-    const choices = startingChoices(globals, sessionDefaults);
+    const choices = startingChoices(withNewSessionMode(globals, newSessionMode), sessionDefaults);
     setD(worktree ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, globals, defaultsKey, worktree, question, questionChoices]);
+  }, [loaded, globals, newSessionMode, defaultsKey, worktree, question, questionChoices]);
 
   // Is it a git repository, on which branch, and where would a worktree branch from.
   useEffect(() => {

@@ -226,7 +226,7 @@ export class ModelRouter {
   }
 }
 
-/** A prompt with this in it keeps the stubbed router choosing for good (the smoke test presses Esc). */
+/** A prompt with this in it keeps the stubbed router choosing for good (the smoke test stops the session). */
 export const SMOKE_HOLD = '[smoke: hold]';
 
 /**

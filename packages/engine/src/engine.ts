@@ -478,7 +478,8 @@ export function createEngine(options: EngineOptions): Engine {
     sessionProfile,
     onInfo: (info) => broadcast('session.host', info),
     onStream: (delta) => broadcast('session.stream', delta),
-    onMessages: (id, messages) => transcripts.pushLive(id, messages),
+    onMessages: (id, messages, held) => transcripts.pushLive(id, messages, held),
+    onClosed: (id) => transcripts.dropHeld(id),
     onPermission: (request) => broadcast('session.permission', request),
     onPermissionResolved: (requestId, sessionId) => broadcast('session.permissionResolved', { requestId, sessionId }),
     onCreated: (id) => {

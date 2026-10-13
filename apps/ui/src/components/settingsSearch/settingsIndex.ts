@@ -22,6 +22,14 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'sort recent your order',
       target: '[data-project-order]',
     },
+    {
+      id: 'new-session-mode',
+      page: 'general',
+      label: 'Permission mode',
+      detail: 'What New session starts in. A project’s or profile’s own default comes first, and a link never starts in Auto mode.',
+      keywords: 'new session default ask first accept edits plan auto mode permissions',
+      target: '[data-new-session-mode]',
+    },
     { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
 
     // Theme
