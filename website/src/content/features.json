@@ -72,6 +72,21 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "palette:swap-panes",
+      "name": "Swap panes",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:stack-panes",
+      "name": "Stack panes",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:panes-side-by-side",
+      "name": "Show panes side by side",
+      "page": "sessions/split-view"
+    },
+    {
       "id": "palette:close-session",
       "name": "Close session",
       "page": "sessions/home"
@@ -764,6 +779,16 @@
     {
       "id": "shortcut:pane.close-other",
       "name": "pane.close-other",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.swap",
+      "name": "pane.swap",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.orientation",
+      "name": "pane.orientation",
       "page": "sessions/split-view"
     },
     {
@@ -2379,6 +2404,16 @@
     {
       "id": "feature:split-view",
       "name": "Split view",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:swap-panes-drag",
+      "name": "Swap panes by dragging a header",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:stacked-panes",
+      "name": "Stacked split view",
       "page": "sessions/split-view"
     },
     {

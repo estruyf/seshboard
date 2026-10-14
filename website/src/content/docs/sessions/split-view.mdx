@@ -1,13 +1,13 @@
 ---
 title: Split view
-description: Open two sessions side by side.
+description: Open two sessions side by side or one above the other, and swap them.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Split view shows two sessions next to each other, so you can follow one while you work in the other, or compare what two sessions did. Each pane is a full session view, with its own message box, Changes and terminal.
+Split view shows two sessions next to each other, or one above the other, so you can follow one while you work in the other, or compare what two sessions did. Each pane is a full session view, with its own message box, Changes and terminal.
 
 <Screenshot name="split" alt="Two sessions side by side: one finished on the personal profile on the left, one still working on the work profile on the right" eager />
 
@@ -24,14 +24,29 @@ With a session open, open a second one beside it:
 - **The active pane** has a yellow line along the top of its header; the other one is a little faded. Click in a pane to make it active. Keyboard shortcuts, such as <Kbd shortcut="terminal.toggle" first /> or <Kbd shortcut="find" />, work on the active pane.
 - **Picking a session** in the sidebar opens it in the active pane. Opening another session beside replaces the pane that isn't active.
 - **In the sidebar**, the session in the other pane has a light outline, and the active one the usual selection.
-- Only the left pane has the sidebar button in its header.
+- Only the first pane, the left one or the top one, has the sidebar button in its header.
 - In a narrow pane, headers and bars get more compact: the message box chips show fewer words, and project actions show only their icon.
+
+## Swap the panes
+
+Two ways to trade places, in either layout:
+
+- **Drag** a pane by its title in the header (the project and session name, which shows a hand when you point at it) onto the other pane. A frame and *Swap panes* show where it lands. Release to swap, or press <Kbd keys="escape" /> to cancel. The buttons in the header keep working as usual.
+- <Kbd shortcut="pane.swap" /> swaps them from the keyboard, and the command palette has *Swap panes*.
+
+The active pane stays with the same session, and nothing reloads: the message you were typing, the scroll position and Find are where you left them.
+
+## Stack the panes
+
+Panes sit side by side by default. To put one above the other, click **Stack panes** in the second pane's header (next to the ×), press <Kbd shortcut="pane.orientation" />, or run *Stack panes* in the command palette. The button then says **Show panes side by side**, as does the same key and the command palette. In a narrow pane the button is hidden to leave room for the title; the key and the palette still work.
+
+Stacked panes are wide but short, so each pane needs some height. In a window too short for that, the panes stay side by side, and the button's tooltip says so. Switchboard remembers your choice, also after a restart, and uses it again when the window is taller. A terminal docked below a stacked pane stays short enough to leave the message box and a few lines of the conversation.
 
 ## Close a pane
 
 - The **×** in a pane's header (*Close this pane*) closes that pane. The other session then takes the full width.
 - <Kbd shortcut="pane.close-other" /> closes the pane that isn't active.
-- The command palette has *Close this pane* and *Focus other pane*.
+- The command palette has *Close this pane*, *Focus other pane*, *Swap panes*, *Stack panes* and *Show panes side by side*.
 
 Closing a pane only closes the view: a session that is working keeps running. Archiving a session that is open in a pane closes that pane too.
 

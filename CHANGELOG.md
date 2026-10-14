@@ -8,6 +8,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **A terminal anywhere.** Press ⌘J (Ctrl+J on Windows) on Home, a project's page, Projects, Usage, New session or Settings to open a terminal there too, without opening a session first. On a project's page it starts in the project's folder, in New session in the folder the session would start in, and elsewhere in your home folder. These views share one terminal, so its tabs stay with you as you move between them; a session still has its own.
 
+- **Swap and stack the panes in split view.** Drag a pane by its title onto the other pane to trade places (Esc cancels), or press ⌘⇧X (Ctrl+Shift+X on Windows) or run *Swap panes*. Nothing reloads, so your unsent message and scroll position stay. Two sessions can also sit one above the other: use the new layout button next to the second pane's ×, ⌘⇧O (Ctrl+Shift+O) or *Stack panes*. Switchboard remembers the layout. In a window too short for stacked panes they stay side by side.
+
 ### Fixed
 
 - **Edit in Up next keeps your files.** A queued message you edit comes back with its files as chips again, not as `@` mentions in the text.
