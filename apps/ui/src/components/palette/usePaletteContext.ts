@@ -16,7 +16,8 @@ import { isQuestionsFolder } from '../../lib/questions.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { isActive } from '../../state/sidebarRows.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
-import { useSplitLayout } from '../../state/splitLayoutStore.ts';
+import { parentSplit } from '../../state/tiling.ts';
+import { neighbour, type Way } from '../../state/tilingGeometry.ts';
 import { browsable, EMPTY_SIDE } from '../../state/sideQuestions.ts';
 import { useSideQuestions } from '../../state/sideQuestionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
@@ -67,6 +68,8 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
 }
 
 /** Where you are, from the stores: what every command's `when()` reads. */
+const WAYS: readonly Way[] = ['left', 'right', 'up', 'down'];
+
 export function usePaletteContext(): PaletteContext {
   const connection = useEngineConnection();
   const connected = connection.status === 'connected';
@@ -74,8 +77,8 @@ export function usePaletteContext(): PaletteContext {
   const selectedId = useSessions((s) => s.selectedId);
   const sessions = useSessions((s) => s.sessions);
   const live = useSessions((s) => s.live);
-  const splitId = useSessions((s) => s.splitId);
-  const splitOrientation = useSplitLayout((s) => s.orientation);
+  const layout = useSessions((s) => s.layout);
+  const paneCount = useSessions((s) => s.paneIds.length);
   const settingsSection = useSessions((s) => s.settingsSection);
   const hosts = useHosts((s) => s.hosts);
   const permissions = useHosts((s) => s.permissions);
@@ -159,8 +162,9 @@ export function usePaletteContext(): PaletteContext {
       dock,
       action: owner && activeTerminal?.kind === 'action' && activeTerminal.sessionId === ownerSession(owner) ? { running: activeTerminal.exitCode === null } : null,
     },
-    split: splitId !== null,
-    splitOrientation,
+    split: paneCount > 1,
+    splitDirection: paneCount > 1 && selectedId ? (parentSplit(layout, selectedId)?.split.direction ?? null) : null,
+    paneWays: paneCount > 1 && selectedId ? WAYS.filter((way) => neighbour(layout, selectedId, way) !== null) : [],
     focusLimit: prefs.focusLimit,
     notifications: prefs.notifications.enabled,
     sounds: prefs.sounds.enabled,

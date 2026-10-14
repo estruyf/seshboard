@@ -35,7 +35,6 @@ import { useLaterSync } from './state/laterStore.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useSideQuestionsSync } from './state/sideQuestionsStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
-import { useSplitLayout, useSplitLayoutSync } from './state/splitLayoutStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
 import { useNavHistorySync } from './state/navHistoryStore.ts';
@@ -55,7 +54,7 @@ import { useUpdatesSync } from './state/updatesStore.ts';
 import { useClaudeUpdateSync } from './state/claudeUpdateStore.ts';
 import { useHostsSync } from './state/useHostsSync.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
-import { matches } from './lib/shortcuts.ts';
+import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 
 /** What the main area shows, as the terminal sees it: Home is the session view without a session. */
@@ -81,10 +80,22 @@ const OWN_OVERLAYS = '[data-command-palette], [data-search], [data-shortcuts-she
  */
 const otherModalOpen = () => Array.from(document.querySelectorAll('[aria-modal="true"]')).some((el) => !el.matches(OWN_OVERLAYS));
 
+/** What each key of the panes does (keys in `lib/shortcuts.ts`). */
+const PANE_KEYS: ReadonlyArray<readonly [ShortcutId, (sessions: ReturnType<typeof useSessions.getState>) => void]> = [
+  ['pane.close', (s) => s.closePane()],
+  ['pane.close-other', (s) => s.closeOtherPanes()],
+  ['pane.focus-left', (s) => s.focusWay('left')],
+  ['pane.focus-right', (s) => s.focusWay('right')],
+  ['pane.focus-up', (s) => s.focusWay('up')],
+  ['pane.focus-down', (s) => s.focusWay('down')],
+  ['pane.swap', (s) => s.swapPanes()],
+  ['pane.orientation', (s) => s.flipSplit()],
+];
+
 /**
  * The window's own shortcuts (keys in `lib/shortcuts.ts`): new session, open in editor, the terminal, the
- * command palette and go-to, search, Home, the sidebar, moving between sessions, closing the other pane
- * and the shortcuts sheet. The terminal passes ⌘ keys and ⌃⇥ on to the window (XTerm.tsx), so these work
+ * command palette and go-to, search, Home, the sidebar, moving between sessions, the panes (close, focus,
+ * swap, turn) and the shortcuts sheet. The terminal passes ⌘ keys and ⌃⇥ on to the window (XTerm.tsx), so these work
  * there too.
  */
 function useShortcuts() {
@@ -143,19 +154,12 @@ function useShortcuts() {
         if (!owner) return;
         event.preventDefault();
         useTerminals.getState().togglePanel(owner);
-      } else if (matches(event, 'pane.close-other')) {
-        const { splitId, activePane, closePane } = useSessions.getState();
-        if (!splitId) return;
+      } else if (PANE_KEYS.some(([id]) => matches(event, id))) {
+        // The panes' keys work with more than one pane open, and in the session view (Settings sits over it, inert).
+        const sessions = useSessions.getState();
+        if (sessions.view !== 'session' || sessions.paneIds.length < 2) return;
         event.preventDefault();
-        closePane(activePane === 'main' ? 'split' : 'main');
-      } else if (matches(event, 'pane.swap')) {
-        if (!useSessions.getState().splitId) return;
-        event.preventDefault();
-        useSessions.getState().swapPanes();
-      } else if (matches(event, 'pane.orientation')) {
-        if (!useSessions.getState().splitId) return;
-        event.preventDefault();
-        useSplitLayout.getState().toggle();
+        PANE_KEYS.find(([id]) => matches(event, id))![1](sessions);
       } else if (matches(event, 'session.new')) {
         event.preventDefault();
         // On a project's page, the new session starts in that project (its New session button says ⌘N).
@@ -218,7 +222,6 @@ export function App() {
   useSideQuestionsSync();
   useQueueToasts();
   useSidebarSectionsSync();
-  useSplitLayoutSync();
   useCompanionSync();
   useWorktreesSync();
   useNavHistorySync();
@@ -230,9 +233,10 @@ export function App() {
   const view = useSessions((s) => s.view);
   const settingsFrom = useSessions((s) => s.settingsFrom);
   const behind = view === 'settings' ? settingsFrom : view;
-  const mainId = useSessions((s) => s.mainId);
+  const hasPanes = useSessions((s) => s.layout !== null);
+  const selectedId = useSessions((s) => s.selectedId);
   // Settings covers the view it opened from, a session too: there the window's terminal is the one ⌘J shows.
-  const shownView = view === 'settings' ? 'settings' : terminalView(behind, mainId);
+  const shownView = view === 'settings' ? 'settings' : terminalView(behind, selectedId);
   const overlay = useOverlay((s) => s.open);
   const adding = useProjects((s) => s.adding);
 
@@ -252,7 +256,7 @@ export function App() {
           <ProjectPage />
         ) : behind === 'new' ? (
           <NewSessionView />
-        ) : mainId ? (
+        ) : hasPanes ? (
           <SplitPanes />
         ) : (
           <HomeView />

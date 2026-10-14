@@ -135,9 +135,8 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
             for (const target of deleting) {
               await client.call('session.delete', { sessionId: target.id });
               useDrafts.getState().removeDraft(target.id);
-              const panes = useSessions.getState();
-              // Two panes: the other one takes the full width.
-              if (panes.splitId && (target.id === panes.mainId || target.id === panes.splitId)) panes.closePane(target.id === panes.mainId ? 'main' : 'split');
+              // Its pane closes and the others take the space.
+              useSessions.getState().closeSessions([target.id]);
             }
             onDeleted?.();
             const current = useSessions.getState().selectedId;

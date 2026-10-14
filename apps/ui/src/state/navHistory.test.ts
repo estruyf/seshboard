@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { emptyHistory, HISTORY_LIMIT, PASSING_MS, record, settingsOrigin, step, type NavHistory, type NavPlace } from './navHistory.ts';
 
-const session = (mainId: string | null, splitId: string | null = null, activePane: 'main' | 'split' = 'main'): NavPlace => ({ view: 'session', mainId, splitId, activePane });
+/** A session place: no pane (Home), one, or two side by side; `active` is the first unless said. */
+const session = (first: string | null, second: string | null = null, active: 'first' | 'second' = 'first'): NavPlace => ({
+  view: 'session',
+  layout: first === null ? null : second === null ? { id: first } : { direction: 'row', children: [{ id: first }, { id: second }], sizes: [0.5, 0.5] },
+  active: active === 'second' ? second : first,
+});
 const project = (root: string, tab: 'overview' | 'memory' = 'overview'): NavPlace => ({ view: 'project', root, tab });
 const settings = (section: 'general' | 'memory'): NavPlace => ({ view: 'settings', section, from: 'session' });
 
@@ -23,11 +28,21 @@ describe('record', () => {
   it('changes the entry for another tab, Settings page or active pane', () => {
     expect(record(visit(project('/p')), project('/p', 'memory'), 9000).entries).toEqual([project('/p', 'memory')]);
     expect(record(visit(settings('general')), settings('memory'), 9000).entries).toEqual([settings('memory')]);
-    expect(record(visit(session('a', 'b')), session('a', 'b', 'split'), 9000).entries).toEqual([session('a', 'b', 'split')]);
+    expect(record(visit(session('a', 'b')), session('a', 'b', 'second'), 9000).entries).toEqual([session('a', 'b', 'second')]);
   });
 
   it('changes the entry when the two panes swap places', () => {
-    expect(record(visit(session('a', 'b')), session('b', 'a', 'split'), 9000).entries).toEqual([session('b', 'a', 'split')]);
+    expect(record(visit(session('a', 'b')), session('b', 'a', 'second'), 9000).entries).toEqual([session('b', 'a', 'second')]);
+  });
+
+  it('changes the entry when panes are resized or moved, and adds one when a pane opens or closes', () => {
+    const three: NavPlace = { view: 'session', layout: { direction: 'row', children: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], sizes: [0.2, 0.3, 0.5] }, active: 'c' };
+    const resized: NavPlace = { view: 'session', layout: { direction: 'row', children: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], sizes: [0.3, 0.3, 0.4] }, active: 'c' };
+    const stacked: NavPlace = { view: 'session', layout: { direction: 'column', children: [{ id: 'c' }, { id: 'a' }, { id: 'b' }], sizes: [0.3, 0.3, 0.4] }, active: 'a' };
+    expect(record(visit(three), resized, 9000).entries).toEqual([resized]);
+    expect(record(visit(resized), stacked, 9000).entries).toEqual([stacked]);
+    expect(record(visit(session('a', 'b')), three, 9000).entries).toEqual([session('a', 'b'), three]);
+    expect(record(visit(three), session('a', 'b'), 9000).entries).toEqual([three, session('a', 'b')]);
   });
 
   it('lets a place only passed through give its entry to the next', () => {

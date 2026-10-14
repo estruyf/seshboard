@@ -30,7 +30,8 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     git: null,
     terminal: { owner: null, cwd: null, open: false, maximized: false, dock: 'bottom', action: null },
     split: false,
-    splitOrientation: 'side',
+    splitDirection: null,
+    paneWays: [],
     focusLimit: null,
     notifications: true,
     sounds: false,
@@ -268,15 +269,22 @@ describe('when(): git, actions, terminal, panes', () => {
     expect(groupIds(open, 'terminal')).toEqual(['hide-terminal', 'maximize-terminal', 'dock-right']);
   });
 
-  it('offers the pane commands with two sessions open', () => {
+  it('offers the pane commands with more than one pane open', () => {
     expect(groupIds(inSession(), 'panes')).toEqual([]);
-    expect(groupIds(inSession({}, { split: true }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'stack-panes', 'close-pane']);
+    expect(groupIds(inSession({}, { split: true, splitDirection: 'row' }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'stack-panes', 'close-pane', 'close-other-panes']);
   });
 
-  it('offers the other layout of the two panes, never the one they have', () => {
-    expect(groupIds(inSession({}, { split: true, splitOrientation: 'stacked' }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'panes-side-by-side', 'close-pane']);
-    expect(ids(inSession({}, { splitOrientation: 'stacked' }))).not.toContain('panes-side-by-side');
-    expect(ids(context({ view: 'settings', split: true }))).not.toContain('swap-panes');
+  it('offers the other direction of the split the active pane is in, never the one it has', () => {
+    expect(groupIds(inSession({}, { split: true, splitDirection: 'column' }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'panes-side-by-side', 'close-pane', 'close-other-panes']);
+    expect(ids(inSession({}, { splitDirection: 'column' }))).not.toContain('panes-side-by-side');
+    expect(ids(context({ view: 'settings', split: true, splitDirection: 'row' }))).not.toContain('swap-panes');
+  });
+
+  it('offers to go only where the active pane has a neighbour', () => {
+    const open = (paneWays: PaletteContext['paneWays']) => groupIds(inSession({}, { split: true, splitDirection: 'row', paneWays }), 'panes').filter((id) => id.startsWith('focus-pane-'));
+    expect(open([])).toEqual([]);
+    expect(open(['right'])).toEqual(['focus-pane-right']);
+    expect(open(['left', 'right', 'up', 'down'])).toEqual(['focus-pane-left', 'focus-pane-right', 'focus-pane-up', 'focus-pane-down']);
   });
 });
 
@@ -356,10 +364,10 @@ describe('sidebar and session navigation', () => {
     expect(ids(context({ sidebar: 'closed' }))).not.toContain('sidebar-close');
   });
 
-  it('puts ⌘B on Toggle sidebar and keeps ⌘\\ for closing the other pane', () => {
+  it('puts ⌘B on Toggle sidebar and ⌘\\ on closing the other panes', () => {
     const byShortcut = (keys: string) => COMMANDS.filter((c) => c.shortcut && shortcutGlyphs(c.shortcut) === keys).map((c) => c.id);
     expect(byShortcut('⌘B')).toEqual(['toggle-sidebar']);
-    expect(byShortcut('⌘\\')).toEqual([]);
+    expect(byShortcut('⌘\\')).toEqual(['close-other-panes']);
   });
 
   it('steps through sessions with their shortcuts', () => {

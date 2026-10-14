@@ -2,18 +2,34 @@ import { create } from 'zustand';
 import type { LiveSession, SessionHostInfo, SessionsChanged, SessionsSnapshot, SessionSummary } from '@switchboard/protocol/client';
 import { hostAsLive, isActiveHost } from './hostsStore.ts';
 import { mergeSessionChanges } from './sessionChanges.ts';
-import { swapSlots } from './splitLayout.ts';
+import * as panes from './paneState.ts';
+import { leafIds, type Tile, type Zone } from './tiling.ts';
+import { useTilingArea } from './tilingArea.ts';
+import type { Way } from './tilingGeometry.ts';
+import { toast } from './toastStore.ts';
 
 /** `project` is one project's page (`useProjectPage` says which); `projects` is the list of them. */
 export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage';
 /** The pages of Settings, listed in its own sidebar. */
 export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'conversation' | 'notifications' | 'focus' | 'profiles' | 'memory' | 'vscode' | 'backup' | 'diagnostics' | 'about';
-export type Pane = 'main' | 'split';
 
-const other = (pane: Pane): Pane => (pane === 'main' ? 'split' : 'main');
-type PaneState = { mainId: string | null; splitId: string | null; activePane: Pane };
-/** The pane fields plus `selectedId`, which always follows the active pane. */
-const panes = (next: PaneState) => ({ ...next, selectedId: next.activePane === 'split' ? next.splitId : next.mainId });
+/** Shown when there is no room for another pane (a session opened beside, or a pane dropped where it doesn't fit). */
+const NO_ROOM = 'There is no room for that. Make the window larger or close a pane first.';
+
+/** The panes as the pure functions in `paneState.ts` take them: the layout and the active pane's session. */
+const now = (s: { layout: Tile | null; selectedId: string | null }): panes.PaneState => ({ layout: s.layout, active: s.selectedId });
+
+/**
+ * What a change of the panes sets: the layout, the sessions in it (the same array while they don't change, so
+ * the sidebar doesn't redraw for a divider moving) and `selectedId`, which always follows the active pane.
+ * Nothing at all when the panes didn't change.
+ */
+function apply(s: { layout: Tile | null; selectedId: string | null; paneIds: readonly string[] }, next: panes.PaneState) {
+  if (next.layout === s.layout && next.active === s.selectedId) return {};
+  const ids = leafIds(next.layout);
+  const same = ids.length === s.paneIds.length && ids.every((id, k) => id === s.paneIds[k]);
+  return { layout: next.layout, paneIds: same ? s.paneIds : ids, selectedId: next.active };
+}
 
 interface SessionsState {
   sessions: Map<string, SessionSummary>;
@@ -22,12 +38,12 @@ interface SessionsState {
   /** True once the engine finished its first scan of ~/.claude (until then the list is from cache). */
   complete: boolean;
   loaded: boolean;
-  /** The session in the active pane (what ⌘O, the palette and notifications act on). */
+  /** The session in the active pane (what ⌘O, the palette and notifications act on). Null: Home, no pane is open. */
   selectedId: string | null;
-  /** Two sessions side by side: the left (main) pane, the optional right (split) pane, and which is active. */
-  mainId: string | null;
-  splitId: string | null;
-  activePane: Pane;
+  /** The panes as a tree of splits (`tiling.ts`); a lone pane is a single leaf, null is Home. Every pane shows one session. */
+  layout: Tile | null;
+  /** The sessions open in the panes, in reading order (left to right, top to bottom). The same array until they change. */
+  paneIds: readonly string[];
   view: MainView;
   /** The Settings page shown when Settings opens; kept while the app runs, so ⌘, returns to it. */
   settingsSection: SettingsSection;
@@ -43,19 +59,32 @@ interface SessionsState {
   setLive(live: LiveSession[]): void;
   /** Shows a session in the active pane (or focuses the pane already showing it). */
   select(id: string | null): void;
-  /** Shows a session in the other pane, opening the split if needed. */
+  /** Opens a session in a new pane next to the active one (`planOpen`); with no room, says so in a toast instead. */
   openBeside(id: string): void;
-  /** Closes one pane (default: the right one); the other takes the full width. */
-  closePane(pane?: Pane): void;
+  /** Drops a session on a part of a pane (`drop`): a pane already open moves there, a new one docks beside the pane or replaces it. With no room, says so. */
+  dropOn(id: string, targetId: string, zone: Zone): void;
+  /** Closes the pane showing a session (the active one by default); its neighbours take the space. A lone pane stays. */
+  closePane(id?: string): void;
+  /** Closes every pane but the active one. */
+  closeOtherPanes(): void;
   /** Closes the open session(s) and shows Home. A working session keeps running. */
   closeSession(): void;
-  /** Closes the panes showing any of these sessions (after archiving them); the other pane takes the full width, and with none left, Home shows. */
+  /** Closes the panes showing any of these sessions (after archiving them); the others take the space, and with none left, Home shows. */
   closeSessions(ids: readonly string[]): void;
   /** Shows Home: what needs you, what is working, and your projects. */
   goHome(): void;
-  focusPane(pane: Pane): void;
-  /** The two panes trade places; the active pane stays with its session. Nothing happens with one pane. */
+  /** Makes the pane showing a session the active one. */
+  focusPane(id: string): void;
+  /** Makes the pane next door in a direction active. */
+  focusWay(way: Way): void;
+  /** Makes the next pane (or with -1 the one before) in reading order active. */
+  focusNext(step?: 1 | -1): void;
+  /** The active pane trades sessions with the next one; the active pane stays with its session. */
   swapPanes(): void;
+  /** The split that holds the active pane turns the other way: side by side becomes stacked, and back. With no room for the result, says so in a toast. */
+  flipSplit(): void;
+  /** Replaces the layout with one of the same sessions in other sizes (a divider moved). */
+  resizePanes(layout: Tile): void;
   setView(view: MainView): void;
   /** Opens Settings, on a given page or the last one shown. */
   openSettings(section?: SettingsSection): void;
@@ -75,9 +104,8 @@ export const useSessions = create<SessionsState>()((set) => ({
   complete: false,
   loaded: false,
   selectedId: null,
-  mainId: null,
-  splitId: null,
-  activePane: 'main',
+  layout: null,
+  paneIds: [],
   view: 'session',
   settingsSection: 'general',
   settingsFrom: 'session',
@@ -95,43 +123,32 @@ export const useSessions = create<SessionsState>()((set) => ({
     if (changes.length > 0) set((state) => mergeSessionChanges(state, changes));
   },
   setLive: (live) => set({ live: new Map(live.map((l) => [l.sessionId, l])) }),
-  select: (id) =>
-    set((s) => {
-      if (id && s.splitId) {
-        if (id === s.mainId) return { ...panes({ ...s, activePane: 'main' }), view: 'session' };
-        if (id === s.splitId) return { ...panes({ ...s, activePane: 'split' }), view: 'session' };
-      }
-      const next = { mainId: s.mainId, splitId: s.splitId, activePane: s.splitId ? s.activePane : ('main' as Pane) };
-      if (next.activePane === 'split') next.splitId = id;
-      else next.mainId = id;
-      return { ...panes(next), view: 'session' };
-    }),
-  openBeside: (id) =>
-    set((s) => {
-      if (!s.mainId) return { ...panes({ mainId: id, splitId: null, activePane: 'main' }), view: 'session' };
-      if (id === s.mainId || id === s.splitId) return { ...panes({ ...s, activePane: id === s.mainId ? 'main' : 'split' }), view: 'session' };
-      const target = s.splitId ? other(s.activePane) : 'split';
-      const next = { mainId: s.mainId, splitId: s.splitId, activePane: target };
-      if (target === 'split') next.splitId = id;
-      else next.mainId = id;
-      return { ...panes(next), view: 'session' };
-    }),
-  closePane: (pane = 'split') =>
-    set((s) => {
-      if (!s.splitId) return {};
-      return panes({ mainId: pane === 'main' ? s.splitId : s.mainId, splitId: null, activePane: 'main' });
-    }),
-  closeSession: () => set({ ...panes({ mainId: null, splitId: null, activePane: 'main' }), view: 'session' }),
-  closeSessions: (ids) =>
-    set((s) => {
-      const keepMain = s.mainId !== null && !ids.includes(s.mainId);
-      const keepSplit = s.splitId !== null && !ids.includes(s.splitId);
-      if (keepMain === (s.mainId !== null) && keepSplit === (s.splitId !== null)) return {};
-      return panes({ mainId: keepMain ? s.mainId : keepSplit ? s.splitId : null, splitId: keepMain && keepSplit ? s.splitId : null, activePane: keepMain && keepSplit ? s.activePane : 'main' });
-    }),
-  goHome: () => set({ ...panes({ mainId: null, splitId: null, activePane: 'main' }), view: 'session' }),
-  focusPane: (pane) => set((s) => (s.activePane === pane || (pane === 'split' && !s.splitId) ? {} : panes({ ...s, activePane: pane }))),
-  swapPanes: () => set((s) => (s.splitId ? panes(swapSlots(s)) : {})),
+  select: (id) => set((s) => ({ ...apply(s, panes.showSession(now(s), id)), view: 'session' })),
+  openBeside: (id) => {
+    const out = panes.openBeside(now(useSessions.getState()), id, useTilingArea.getState().size);
+    if (!out.opened) return toast(NO_ROOM);
+    set((s) => ({ ...apply(s, out.state), view: 'session' }));
+  },
+  dropOn: (id, targetId, zone) => {
+    const out = panes.drop(now(useSessions.getState()), id, targetId, zone, useTilingArea.getState().size);
+    if (!out.ok) return toast(NO_ROOM);
+    set((s) => ({ ...apply(s, out.state), view: 'session' }));
+  },
+  closePane: (id) => set((s) => apply(s, panes.closePane(now(s), id))),
+  closeOtherPanes: () => set((s) => apply(s, panes.closeOthers(now(s)))),
+  closeSession: () => set((s) => ({ ...apply(s, panes.NO_PANES), view: 'session' })),
+  closeSessions: (ids) => set((s) => apply(s, panes.closeSessions(now(s), ids))),
+  goHome: () => set((s) => ({ ...apply(s, panes.NO_PANES), view: 'session' })),
+  focusPane: (id) => set((s) => apply(s, panes.focusPane(now(s), id))),
+  focusWay: (way) => set((s) => apply(s, panes.focusWay(now(s), way))),
+  focusNext: (step = 1) => set((s) => apply(s, panes.focusNext(now(s), step))),
+  swapPanes: () => set((s) => apply(s, panes.swapWithNext(now(s)))),
+  flipSplit: () => {
+    const out = panes.flipActive(now(useSessions.getState()), useTilingArea.getState().size);
+    if (!out.ok) return toast(NO_ROOM);
+    set((s) => apply(s, out.state));
+  },
+  resizePanes: (layout) => set((s) => apply(s, panes.commitLayout(now(s), layout))),
   setView: (view) => set({ view }),
   openSettings: (section) =>
     set((s) => ({ view: 'settings', settingsSection: section ?? s.settingsSection, settingsFrom: s.view === 'settings' ? s.settingsFrom : s.view })),

@@ -13,7 +13,7 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { realBranch, useSessions, type Pane } from '../../state/sessionsStore.ts';
+import { realBranch, useSessions } from '../../state/sessionsStore.ts';
 import { runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
@@ -50,7 +50,7 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
-import { SplitOrientationControl } from '../split/SplitOrientationControl.tsx';
+import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
 import { SessionControls } from '../session/StatusBar.tsx';
@@ -258,8 +258,12 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
   return { changes, isRepo, refresh };
 }
 
-/** A session: live transcript, plus composer and controls when it can run here. */
-export function TranscriptView({ sessionId, pane = null, active = true }: { sessionId: string; pane?: Pane | null; active?: boolean }) {
+/**
+ * A session: live transcript, plus composer and controls when it can run here. `tiled`: it is one of several
+ * panes, so its header has the handle to drag it by and a close for the pane, and an inactive one dims.
+ * `leading`: it is the pane at the window's top left, which carries the sidebar toggle.
+ */
+export function TranscriptView({ sessionId, tiled = false, active = true, leading = true }: { sessionId: string; tiled?: boolean; active?: boolean; leading?: boolean }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const summary = useSessions((s) => s.sessions.get(sessionId) ?? null);
@@ -893,15 +897,15 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     <div className="@container flex h-full min-h-0 flex-col" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-cwd={cwd ?? undefined} data-drop-zone>
       {/* With two panes, the active one has an accent line along the top. */}
       <header
-        className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 @max-[860px]:gap-2 @max-[860px]:px-4 ${pane && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
-        data-pane={pane ?? undefined}
-        data-pane-active={pane ? active : undefined}
+        className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 @max-[860px]:gap-2 @max-[860px]:px-4 ${tiled && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
+        data-pane={tiled ? sessionId : undefined}
+        data-pane-active={tiled ? active : undefined}
       >
-        {/* The sidebar toggle belongs to the window's left edge: in split view, only the left pane has it. */}
-        {pane !== 'split' && <SidebarToggle />}
+        {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
+        {leading && <SidebarToggle />}
         {projectRoot && <ProjectIcon project={project} root={projectRoot} size={22} />}
-        {/* In split view this is the handle to drag the pane by (SplitPanes); it can't be part of the window's drag region, which takes the mouse. */}
-        <div className={`min-w-24 flex-1 ${pane ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={pane ? true : undefined}>
+        {/* With several panes this is the handle to drag the pane by (useTileDrag); it can't be part of the window's drag region, which takes the mouse. */}
+        <div className={`min-w-24 flex-1 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
           <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
             {title}
           </h1>
@@ -1011,7 +1015,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           title={summary ? title : null}
           onStop={activeHost ? () => void client?.call('session.close', { sessionId }) : null}
         />
-        {!pane && (
+        {!tiled && (
           <Button
             variant="quiet"
             iconOnly
@@ -1023,17 +1027,16 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
             className="no-drag shrink-0"
           />
         )}
-        {pane === 'split' && <SplitOrientationControl />}
-        {pane && (
+        {tiled && <SplitDirectionControl sessionId={sessionId} />}
+        {tiled && (
           <Button
             variant="quiet"
             iconOnly
             icon={<X size={15} />}
             data-close-pane
-            onClick={() => useSessions.getState().closePane(pane)}
-            // Braces, because a plain JSX attribute string keeps both backslashes of `\\`.
-            data-tooltip={`Close this pane (${formatKeys(keysFor('pane.close-other'))} closes the other one)`}
+            onClick={() => useSessions.getState().closePane(sessionId)}
             aria-label="Close this pane"
+            shortcut="pane.close"
             className="no-drag shrink-0"
           />
         )}

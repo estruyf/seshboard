@@ -5,6 +5,7 @@ import { emptyHistory, record, step, type NavHistory, type NavPlace } from './na
 import { useProjectPage } from './projectPageStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
+import { leafIds, removeLeaves } from './tiling.ts';
 import { openUsage, useUsageView } from './usageViewStore.ts';
 
 export const useNavHistory = create<{ history: NavHistory }>()(() => ({ history: emptyHistory }));
@@ -14,7 +15,7 @@ function currentPlace(): NavPlace {
   const s = useSessions.getState();
   switch (s.view) {
     case 'session':
-      return { view: 'session', mainId: s.mainId, splitId: s.splitId, activePane: s.activePane };
+      return { view: 'session', layout: s.layout, active: s.selectedId };
     case 'settings':
       return { view: 'settings', section: s.settingsSection, from: s.settingsFrom };
     case 'project': {
@@ -31,7 +32,7 @@ function currentPlace(): NavPlace {
 const sessionExists = (id: string) => useSessions.getState().sessions.has(id) || useSessions.getState().live.has(id);
 
 function usable(place: NavPlace): boolean {
-  if (place.view === 'session') return place.mainId === null || sessionExists(place.mainId);
+  if (place.view === 'session') return place.layout === null || leafIds(place.layout).some(sessionExists);
   if (place.view === 'project') return useProjects.getState().projects.has(place.root);
   return true;
 }
@@ -42,10 +43,10 @@ let restoring = false;
 function show(place: NavPlace) {
   switch (place.view) {
     case 'session': {
-      // A split whose right session is gone comes back as the left one alone.
-      const splitId = place.splitId && sessionExists(place.splitId) ? place.splitId : null;
-      const activePane = splitId ? place.activePane : 'main';
-      useSessions.setState({ view: 'session', mainId: place.mainId, splitId, activePane, selectedId: activePane === 'split' ? splitId : place.mainId });
+      // Panes whose sessions are gone are left out; the others keep their places.
+      const layout = removeLeaves(place.layout, leafIds(place.layout).filter((id) => !sessionExists(id)));
+      const active = place.active && layout && leafIds(layout).includes(place.active) ? place.active : (leafIds(layout)[0] ?? null);
+      useSessions.setState({ view: 'session', layout, paneIds: leafIds(layout), selectedId: active });
       break;
     }
     case 'settings':

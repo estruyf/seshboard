@@ -226,7 +226,7 @@ export interface ShortcutContext {
   pending: "permission" | "question" | null;
   /** Sessions picked in the sidebar. */
   selection: number;
-  /** Two sessions side by side. */
+  /** More than one pane open (sessions side by side or stacked). */
   split: boolean;
   /** The session's branch is behind its upstream, so it can be pulled. */
   behind: boolean;
@@ -441,6 +441,7 @@ export const SHORTCUTS = [
     action: "Open beside the current session",
     section: "sessions",
     context: "In the sidebar",
+    note: "Dragging the session onto a pane opens it there",
     where: "sidebar",
   },
   {
@@ -545,28 +546,71 @@ export const SHORTCUTS = [
     context: "On a session, project or file; or right-click",
   },
   {
+    id: "pane.close",
+    keys: ["mod+alt+w"],
+    action: "Close this pane",
+    section: "sessions",
+    context: "With more than one pane open",
+    note: "The panes next to it take its space",
+    when: (ctx) => ctx.split,
+  },
+  {
     id: "pane.close-other",
     keys: ["mod+\\"],
-    action: "Close the other pane",
+    action: "Close the other panes",
     section: "sessions",
-    context: "With two panes open",
+    context: "With more than one pane open",
+    note: "Keeps the pane you are in",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.focus-left",
+    keys: ["mod+alt+arrowleft"],
+    action: "Go to the pane on the left",
+    section: "sessions",
+    context: "With more than one pane open",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.focus-right",
+    keys: ["mod+alt+arrowright"],
+    action: "Go to the pane on the right",
+    section: "sessions",
+    context: "With more than one pane open",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.focus-up",
+    keys: ["mod+alt+arrowup"],
+    action: "Go to the pane above",
+    section: "sessions",
+    context: "With more than one pane open",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.focus-down",
+    keys: ["mod+alt+arrowdown"],
+    action: "Go to the pane below",
+    section: "sessions",
+    context: "With more than one pane open",
     when: (ctx) => ctx.split,
   },
   {
     id: "pane.swap",
     keys: ["mod+shift+x"],
-    action: "Swap the two panes",
+    action: "Swap this pane with the next one",
     section: "sessions",
-    context: "With two panes open",
-    note: "Dragging a pane's header onto the other one does the same",
+    context: "With more than one pane open",
+    note: "Dragging a pane's header onto the middle of another one does the same",
     when: (ctx) => ctx.split,
   },
   {
     id: "pane.orientation",
     keys: ["mod+shift+o"],
-    action: "Stack the panes, or put them side by side",
+    action: "Stack this pane's split, or put it side by side",
     section: "sessions",
-    context: "With two panes open",
+    context: "With more than one pane open",
+    note: "Turns the panes this one sits in the other way",
     when: (ctx) => ctx.split,
   },
 
