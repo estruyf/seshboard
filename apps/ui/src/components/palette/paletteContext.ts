@@ -52,7 +52,11 @@ export interface PaletteGit {
 }
 
 export interface PaletteTerminal {
-  /** The panel shows in the session view. */
+  /** Whose panel ⌘J works on: the session's id, `APP_TERMINAL` for the window's own outside a session, null in Settings. */
+  owner: string | null;
+  /** Where a new tab starts: the session's folder, or for the window's terminal the project on screen (null: the home folder). */
+  cwd: string | null;
+  /** The panel shows. */
   open: boolean;
   maximized: boolean;
   dock: TerminalDock;

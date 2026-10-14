@@ -2,12 +2,13 @@ import { ChevronDown, ChevronRight, Folder, Maximize2, Minimize2, PanelBottom, P
 import { useEffect, useId, useMemo, type KeyboardEvent, type PointerEvent } from 'react';
 import type { TerminalInfo, TerminalKind } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { tildify } from '../../lib/format.ts';
+import { basename, tildify } from '../../lib/format.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { useTicker } from '../transcript/ActivityGroup.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
+import { APP_TERMINAL } from './appTerminal.ts';
 import { maxRightWidth, PANEL_MIN_HEIGHT, PANEL_MIN_WIDTH, PANEL_MAX_HEIGHT_SHARE, PANEL_MAX_WIDTH_SHARE, panelSizeForKey, type RightBlocked, type TerminalDock } from './terminalLayout.ts';
 import { actionCommand, elapsedLabel, runStatus, tabStatus, type RunTimes } from './terminalStatus.ts';
 import { XTerm } from './XTerm.tsx';
@@ -18,6 +19,9 @@ import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
  * (opened from the ⋯ menu). Toggle with ⌘J, maximize with ⌘⇧J; opening it on a session without
  * terminals starts a shell. Docked below the conversation, or on the right (`dock`, already resolved
  * against the Changes panel by the caller).
+ *
+ * Without a session it is the window's own terminal, the one ⌘J opens on Home, a project's page and the
+ * other views: shells only, each tab named after its folder since they can start in different ones.
  */
 export function TerminalPanel({
   sessionId,
@@ -28,7 +32,9 @@ export function TerminalPanel({
   rightBlocked,
   viewWidth,
 }: {
-  sessionId: string;
+  /** Null: the window's own terminal. */
+  sessionId: string | null;
+  /** Where a new tab starts. For the window's terminal, null is the home folder. */
   cwd: string | null;
   projectRoot: string | null;
   home: string | null;
@@ -40,6 +46,10 @@ export function TerminalPanel({
 }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
+  // The store keeps each panel under its owner: the session, or the window.
+  const app = sessionId === null;
+  const owner = sessionId ?? APP_TERMINAL;
+  const canOpen = app || cwd !== null;
   const all = useTerminals((s) => s.terminals);
   const runs = useTerminals((s) => s.runs);
   const height = useTerminals((s) => s.panelHeight);
@@ -50,16 +60,16 @@ export function TerminalPanel({
   const storeWidth = useTerminals((s) => s.setPanelWidth);
   const setWidth = (next: number) => storeWidth(Math.min(next, maxWidth));
   const setDock = useTerminals((s) => s.setDock);
-  const maximized = useTerminals((s) => s.maximizedFor.has(sessionId));
-  const setMaximized = (next?: boolean) => useTerminals.getState().setMaximized(sessionId, next);
-  const activeId = useTerminals((s) => s.active.get(sessionId));
+  const maximized = useTerminals((s) => s.maximizedFor.has(owner));
+  const setMaximized = (next?: boolean) => useTerminals.getState().setMaximized(owner, next);
+  const activeId = useTerminals((s) => s.active.get(owner));
   const setActive = useTerminals((s) => s.setActive);
-  const togglePanel = (open?: boolean) => useTerminals.getState().togglePanel(sessionId, open);
+  const togglePanel = (open?: boolean) => useTerminals.getState().togglePanel(owner, open);
   const loaded = useTerminals((s) => s.loaded);
-  const shellWanted = useTerminals((s) => s.shellWanted === sessionId);
-  const notice = useTerminals((s) => s.notices.get(sessionId) ?? null);
+  const shellWanted = useTerminals((s) => s.shellWanted === owner);
+  const notice = useTerminals((s) => s.notices.get(owner) ?? null);
   const setNotice = useTerminals((s) => s.setNotice);
-  const setError = (message: string) => setNotice(sessionId, { code: null, message });
+  const setError = (message: string) => setNotice(owner, { code: null, message });
   const blocked = notice?.code === 'SESSION_RUNNING_HERE' || notice?.code === 'SESSION_BUSY_ELSEWHERE' ? notice : null;
   const idPrefix = useId();
   const tabId = (t: TerminalInfo) => `${idPrefix}-tab-${t.id}`;
@@ -77,7 +87,7 @@ export function TerminalPanel({
   }, [activeAction, reloadActions]);
 
   const open = async (kind: TerminalKind, extra: { fork?: boolean } = {}) => {
-    if (client && cwd) await openTerminal(client, sessionId, cwd, kind, extra.fork ?? false);
+    if (client && canOpen) await openTerminal(client, owner, cwd, kind, extra.fork ?? false);
   };
 
   // Opening the panel (Terminal button, ⌘J) on a session without terminals starts a shell right away.
@@ -85,13 +95,13 @@ export function TerminalPanel({
   useEffect(() => {
     if (!shellWanted || !loaded || !client) return;
     const store = useTerminals.getState();
-    if (store.shellWanted !== sessionId) return;
+    if (store.shellWanted !== owner) return;
     store.clearShellWanted();
-    if (terminals.length === 0 && cwd) void openTerminal(client, sessionId, cwd, 'shell');
-  }, [shellWanted, loaded, client, terminals.length, cwd, sessionId]);
+    if (terminals.length === 0 && canOpen) void openTerminal(client, owner, cwd, 'shell');
+  }, [shellWanted, loaded, client, terminals.length, cwd, canOpen, owner]);
 
   const stopAndOpen = async () => {
-    if (!client) return;
+    if (!client || !sessionId) return;
     await client.call('session.close', { sessionId });
     // Let the process leave before Claude Code opens the session again.
     await new Promise((resolve) => setTimeout(resolve, 600));
@@ -109,7 +119,7 @@ export function TerminalPanel({
   /** Runs an action again in its own tab (the engine checks it is still approved). A running one is stopped first. */
   const restart = async (terminal: TerminalInfo) => {
     if (!client) return;
-    setNotice(sessionId, null);
+    setNotice(owner, null);
     try {
       await restartTerminal(client, terminal);
     } catch (e) {
@@ -150,7 +160,7 @@ export function TerminalPanel({
     if (next === null) return;
     event.preventDefault();
     const target = terminals[next]!;
-    setActive(sessionId, target.id);
+    setActive(owner, target.id);
     document.getElementById(tabId(target))?.focus();
   };
 
@@ -173,6 +183,7 @@ export function TerminalPanel({
       }`}
       style={size}
       data-terminal-panel
+      data-terminal-owner={app ? 'app' : 'session'}
       data-terminal-dock-side={dock}
       data-terminal-maximized={maximized || undefined}
     >
@@ -207,6 +218,7 @@ export function TerminalPanel({
               {terminals.map((t) => {
                 const selected = t.id === active?.id;
                 const status = tabStatus(t);
+                const label = app ? folderLabel(t.cwd, home) : t.title;
                 return (
                   <div
                     key={t.id}
@@ -220,12 +232,12 @@ export function TerminalPanel({
                       aria-selected={selected}
                       aria-controls={panelId(t)}
                       tabIndex={selected ? 0 : -1}
-                      onClick={() => setActive(sessionId, t.id)}
+                      onClick={() => setActive(owner, t.id)}
                       className="flex max-w-56 min-w-0 items-center gap-1.5 outline-none"
-                      data-tooltip={t.exitCode !== null ? `Exited with code ${t.exitCode}. Esc in the terminal closes it.` : undefined}
+                      data-tooltip={t.exitCode !== null ? `Exited with code ${t.exitCode}. Esc in the terminal closes it.` : app ? tildify(t.cwd, home) : undefined}
                     >
                       {t.kind === 'claude' ? <Sparkles size={12} className="shrink-0 text-accent-ink" aria-hidden /> : <SquareTerminal size={12} className="shrink-0" aria-hidden />}
-                      <span className="truncate">{t.title}</span>
+                      <span className="truncate">{label}</span>
                       {status.dot && <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${status.dot === 'running' ? 'bg-accent-ink' : 'bg-error'}`} data-terminal-tab-dot={status.dot} />}
                       {status.note && (
                         <span className={`shrink-0 text-meta ${status.dot === 'failed' ? 'text-error' : 'text-faint'}`}>
@@ -241,8 +253,8 @@ export function TerminalPanel({
                       onClick={() => closeTab(t)}
                       tabIndex={selected ? 0 : -1}
                       className={`flex size-5 items-center justify-center rounded text-muted hover:bg-border/50 hover:text-text focus-visible:opacity-100 group-hover:opacity-100 ${selected ? '' : 'opacity-0'}`}
-                      aria-label={`Close ${t.title}`}
-                      data-tooltip={`Close ${t.title}`}
+                      aria-label={`Close ${label}`}
+                      data-tooltip={`Close ${label}`}
                       data-terminal-tab-close
                     >
                       <X size={11} aria-hidden />
@@ -252,7 +264,7 @@ export function TerminalPanel({
               })}
             </div>
           )}
-          <Button variant="quiet" size="sm" iconOnly icon={<Plus size={13} />} data-new-terminal onClick={() => void open('shell')} disabled={!cwd} aria-label="New terminal tab" className="shrink-0" />
+          <Button variant="quiet" size="sm" iconOnly icon={<Plus size={13} />} data-new-terminal onClick={() => void open('shell')} disabled={!canOpen} aria-label="New terminal tab" className="shrink-0" />
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           <Button
@@ -303,7 +315,7 @@ export function TerminalPanel({
           role="alert"
           className="mx-2 mb-1"
           data-terminal-notice
-          onDismiss={() => setNotice(sessionId, null)}
+          onDismiss={() => setNotice(owner, null)}
           actions={
             <>
               {blocked?.code === 'SESSION_RUNNING_HERE' && (
@@ -339,7 +351,7 @@ export function TerminalPanel({
         {terminals.length === 0 ? (
           // Opening the panel starts a shell, so this shows only for a session switched to with the panel open, or without a folder.
           <div className="flex h-full items-center justify-center text-ui text-muted">
-            {cwd ? <Button onClick={() => void open('shell')}>New terminal</Button> : <p>This session has no folder to open a terminal in.</p>}
+            {canOpen ? <Button onClick={() => void open('shell')}>New terminal</Button> : <p>This session has no folder to open a terminal in.</p>}
           </div>
         ) : (
           terminals.map((t) => (
@@ -351,6 +363,11 @@ export function TerminalPanel({
       </div>
     </section>
   );
+}
+
+/** A tab of the window's terminal: its folder's name, `~` for the home folder. */
+function folderLabel(cwd: string, home: string | null): string {
+  return home !== null && cwd === home ? '~' : basename(cwd);
 }
 
 /**

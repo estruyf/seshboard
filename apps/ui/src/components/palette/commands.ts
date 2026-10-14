@@ -95,6 +95,7 @@ import type { SettingsSection } from '../../state/sessionsStore.ts';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import { ACTION_ICON } from '../actions/actionIcon.ts';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
+import { APP_TERMINAL } from '../terminal/appTerminal.ts';
 import type { PaletteContext } from './paletteContext.ts';
 import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteState.ts';
 
@@ -240,7 +241,10 @@ const indexed = (ctx: PaletteContext) => session(ctx)?.indexed === true;
 const withCwd = (ctx: PaletteContext) => !!session(ctx)?.cwd;
 const hosted = (ctx: PaletteContext) => !!session(ctx)?.host && ctx.connected;
 const inGit = (ctx: PaletteContext) => withCwd(ctx) && ctx.git !== null && ctx.connected;
-const terminalOpen = (ctx: PaletteContext) => hasSession(ctx) && ctx.terminal.open;
+/** The panel ⌘J works on is open: the session's, or outside a session the window's own. */
+const terminalOpen = (ctx: PaletteContext) => ctx.terminal.owner !== null && ctx.terminal.open;
+/** Outside a session, where the window's own terminal is. */
+const appTerminal = (ctx: PaletteContext) => ctx.terminal.owner === APP_TERMINAL;
 
 const THEMES: Array<{ value: ColorScheme; label: string; icon: LucideIcon }> = [
   { value: 'system', label: 'Match System', icon: Monitor },
@@ -303,6 +307,9 @@ export const COMMANDS: PaletteCommand[] = [
     when: always,
     next: () => ({ kind: 'projects', purpose: 'new-session', worktree: true, chip: 'New session in a worktree' }),
   },
+  // The window's own terminal, outside a session (a session's are under This session).
+  { id: 'toggle-app-terminal', title: 'Toggle terminal', group: 'general', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: appTerminal, run: (api) => api.toggleTerminal() },
+  { id: 'new-app-terminal-tab', title: 'New terminal tab', group: 'general', icon: Plus, keywords: 'shell', when: (ctx) => appTerminal(ctx) && ctx.connected, run: (api) => api.newTerminalTab() },
   { id: 'go-to-session', title: 'Go to session…', group: 'general', shortcut: keysFor('palette.goto'), icon: MessagesSquare, keywords: 'open switch find project quick', when: always, mode: 'goto' },
   { id: 'next-session', title: 'Next session', group: 'general', shortcut: keysFor('session.next'), icon: ChevronsDown, keywords: 'switch cycle down sidebar order', when: always, run: (api) => api.goToSession(1) },
   { id: 'previous-session', title: 'Previous session', group: 'general', shortcut: keysFor('session.previous'), icon: ChevronsUp, keywords: 'switch cycle up sidebar order back', when: always, run: (api) => api.goToSession(-1) },

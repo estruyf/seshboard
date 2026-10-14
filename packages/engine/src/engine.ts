@@ -1690,10 +1690,11 @@ export function createEngine(options: EngineOptions): Engine {
           throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first, or open a fork.');
         }
       }
-      const profileId = params.sessionId ? sessionProfile(params.sessionId) : folderProfile(params.cwd);
-      if (questions.contains(params.cwd)) questions.ensure();
+      const cwd = params.cwd ?? homedir();
+      const profileId = params.sessionId ? sessionProfile(params.sessionId) : folderProfile(cwd);
+      if (questions.contains(cwd)) questions.ensure();
       try {
-        return await terminals.open({ ...params, env: profileEnv(profileId) });
+        return await terminals.open({ ...params, cwd, env: profileEnv(profileId) });
       } catch (error) {
         throw new RpcError('TERMINAL_FAILED', (error as Error).message);
       }
