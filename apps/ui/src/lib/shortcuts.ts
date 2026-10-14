@@ -552,6 +552,23 @@ export const SHORTCUTS = [
     context: "With two panes open",
     when: (ctx) => ctx.split,
   },
+  {
+    id: "pane.swap",
+    keys: ["mod+shift+x"],
+    action: "Swap the two panes",
+    section: "sessions",
+    context: "With two panes open",
+    note: "Dragging a pane's header onto the other one does the same",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.orientation",
+    keys: ["mod+shift+o"],
+    action: "Stack the panes, or put them side by side",
+    section: "sessions",
+    context: "With two panes open",
+    when: (ctx) => ctx.split,
+  },
 
   // In a session
   {

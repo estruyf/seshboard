@@ -326,6 +326,13 @@
   -webkit-app-region: no-drag;
 }
 
+/* While a pane is dragged by its header (split view): the grab cursor everywhere, and no text selected on the way. */
+[data-pane-dragging],
+[data-pane-dragging] * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 html,
 body,
 #root {

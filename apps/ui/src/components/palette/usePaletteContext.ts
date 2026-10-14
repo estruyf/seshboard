@@ -16,6 +16,7 @@ import { isQuestionsFolder } from '../../lib/questions.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { isActive } from '../../state/sidebarRows.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
+import { useSplitLayout } from '../../state/splitLayoutStore.ts';
 import { browsable, EMPTY_SIDE } from '../../state/sideQuestions.ts';
 import { useSideQuestions } from '../../state/sideQuestionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
@@ -74,6 +75,7 @@ export function usePaletteContext(): PaletteContext {
   const sessions = useSessions((s) => s.sessions);
   const live = useSessions((s) => s.live);
   const splitId = useSessions((s) => s.splitId);
+  const splitOrientation = useSplitLayout((s) => s.orientation);
   const settingsSection = useSessions((s) => s.settingsSection);
   const hosts = useHosts((s) => s.hosts);
   const permissions = useHosts((s) => s.permissions);
@@ -158,6 +160,7 @@ export function usePaletteContext(): PaletteContext {
       action: owner && activeTerminal?.kind === 'action' && activeTerminal.sessionId === ownerSession(owner) ? { running: activeTerminal.exitCode === null } : null,
     },
     split: splitId !== null,
+    splitOrientation,
     focusLimit: prefs.focusLimit,
     notifications: prefs.notifications.enabled,
     sounds: prefs.sounds.enabled,

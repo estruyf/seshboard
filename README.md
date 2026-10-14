@@ -228,6 +228,8 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌫ | Remove a queued item (on a queued item, in the sidebar or Home; Undo puts it back) |
 | ⇧F10 | Open the context menu (on a session, project or file; or right-click) |
 | ⌘\\ | Close the other pane (with two panes open) |
+| ⌘⇧X | Swap the two panes (with two panes open; Dragging a pane's header onto the other one does the same) |
+| ⌘⇧O | Stack the panes, or put them side by side (with two panes open) |
 
 **In a session**
 

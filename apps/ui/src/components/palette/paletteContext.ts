@@ -3,6 +3,7 @@ import type { SidebarState } from '../../state/sidebarWidth.ts';
 import type { ActionIcon, HostState } from '@switchboard/protocol/client';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import type { SplitOrientation } from '../../state/splitLayout.ts';
 
 /** Where you are: what the main area shows. */
 /** `projects` is the list of projects; `project` one project's page. */
@@ -74,6 +75,8 @@ export interface PaletteContext {
   terminal: PaletteTerminal;
   /** Two sessions side by side. */
   split: boolean;
+  /** How two sessions are laid out when they are open: side by side, or one above the other. */
+  splitOrientation: SplitOrientation;
   /** Null while the focus limit is off. */
   focusLimit: number | null;
   /** Settings › Notifications: notifications and sounds on or off. */

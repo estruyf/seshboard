@@ -30,6 +30,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     git: null,
     terminal: { owner: null, cwd: null, open: false, maximized: false, dock: 'bottom', action: null },
     split: false,
+    splitOrientation: 'side',
     focusLimit: null,
     notifications: true,
     sounds: false,
@@ -267,9 +268,15 @@ describe('when(): git, actions, terminal, panes', () => {
     expect(groupIds(open, 'terminal')).toEqual(['hide-terminal', 'maximize-terminal', 'dock-right']);
   });
 
-  it('offers the pane commands with two sessions side by side', () => {
+  it('offers the pane commands with two sessions open', () => {
     expect(groupIds(inSession(), 'panes')).toEqual([]);
-    expect(groupIds(inSession({}, { split: true }), 'panes')).toEqual(['focus-other-pane', 'close-pane']);
+    expect(groupIds(inSession({}, { split: true }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'stack-panes', 'close-pane']);
+  });
+
+  it('offers the other layout of the two panes, never the one they have', () => {
+    expect(groupIds(inSession({}, { split: true, splitOrientation: 'stacked' }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'panes-side-by-side', 'close-pane']);
+    expect(ids(inSession({}, { splitOrientation: 'stacked' }))).not.toContain('panes-side-by-side');
+    expect(ids(context({ view: 'settings', split: true }))).not.toContain('swap-panes');
   });
 });
 

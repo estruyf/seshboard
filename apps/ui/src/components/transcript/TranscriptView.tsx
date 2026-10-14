@@ -36,6 +36,7 @@ import { CapabilitiesDialog } from '../capabilities/CapabilitiesDialog.tsx';
 import { ChangesPanel, useChangesLayout } from '../changes/ChangesPanel.tsx';
 import { ContextMeter } from '../session/ContextMeter.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
+import { useHeight } from '../ui/useHeight.ts';
 import { useWidth } from '../ui/useWidth.ts';
 import { BranchMenu } from '../worktree/BranchMenu.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
@@ -49,6 +50,7 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { SplitOrientationControl } from '../split/SplitOrientationControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
 import { SessionControls } from '../session/StatusBar.tsx';
@@ -378,6 +380,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const terminalShown = panelOpen;
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyWidth = useWidth(bodyRef);
+  const bodyHeight = useHeight(bodyRef);
   const terminalBlocked = rightBlocked(showChanges, bodyWidth);
   const terminalDock = effectiveDock(useTerminals((s) => s.dock), terminalBlocked);
   const terminalMaximized = useTerminals((s) => s.maximizedFor.has(sessionId)) && terminalShown;
@@ -881,7 +884,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
     <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${terminalDock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
-      <TerminalPanel sessionId={sessionId} cwd={cwd} projectRoot={options.projectActions ? projectRoot : null} home={home} dock={terminalDock} rightBlocked={terminalBlocked} viewWidth={bodyWidth} />
+      <TerminalPanel sessionId={sessionId} cwd={cwd} projectRoot={options.projectActions ? projectRoot : null} home={home} dock={terminalDock} rightBlocked={terminalBlocked} viewWidth={bodyWidth} viewHeight={bodyHeight} />
     </Suspense>
   );
 
@@ -897,7 +900,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
         {/* The sidebar toggle belongs to the window's left edge: in split view, only the left pane has it. */}
         {pane !== 'split' && <SidebarToggle />}
         {projectRoot && <ProjectIcon project={project} root={projectRoot} size={22} />}
-        <div className="min-w-24 flex-1">
+        {/* In split view this is the handle to drag the pane by (SplitPanes); it can't be part of the window's drag region, which takes the mouse. */}
+        <div className={`min-w-24 flex-1 ${pane ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={pane ? true : undefined}>
           <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
             {title}
           </h1>
@@ -1019,6 +1023,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
             className="no-drag shrink-0"
           />
         )}
+        {pane === 'split' && <SplitOrientationControl />}
         {pane && (
           <Button
             variant="quiet"

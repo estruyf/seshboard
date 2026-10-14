@@ -28,17 +28,18 @@ import { UsageView } from './components/usage/UsageView.tsx';
 import { SessionHud } from './components/sidebar/SessionHud.tsx';
 import { EngineStalledNotice } from './components/EngineStalledNotice.tsx';
 import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
-import { TranscriptView } from './components/transcript/TranscriptView.tsx';
+import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { isActiveHost, useHosts } from './state/hostsStore.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useSideQuestionsSync } from './state/sideQuestionsStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
+import { useSplitLayout, useSplitLayoutSync } from './state/splitLayoutStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
 import { useNavHistorySync } from './state/navHistoryStore.ts';
-import { useSessions, type MainView, type Pane } from './state/sessionsStore.ts';
+import { useSessions, type MainView } from './state/sessionsStore.ts';
 import { useOverlay } from './state/overlayStore.ts';
 import { usePreferencesSync } from './state/preferencesStore.ts';
 import { useThemesSync } from './state/themeStore.ts';
@@ -147,6 +148,14 @@ function useShortcuts() {
         if (!splitId) return;
         event.preventDefault();
         closePane(activePane === 'main' ? 'split' : 'main');
+      } else if (matches(event, 'pane.swap')) {
+        if (!useSessions.getState().splitId) return;
+        event.preventDefault();
+        useSessions.getState().swapPanes();
+      } else if (matches(event, 'pane.orientation')) {
+        if (!useSessions.getState().splitId) return;
+        event.preventDefault();
+        useSplitLayout.getState().toggle();
       } else if (matches(event, 'session.new')) {
         event.preventDefault();
         // On a project's page, the new session starts in that project (its New session button says ⌘N).
@@ -209,6 +218,7 @@ export function App() {
   useSideQuestionsSync();
   useQueueToasts();
   useSidebarSectionsSync();
+  useSplitLayoutSync();
   useCompanionSync();
   useWorktreesSync();
   useNavHistorySync();
@@ -223,18 +233,8 @@ export function App() {
   const mainId = useSessions((s) => s.mainId);
   // Settings covers the view it opened from, a session too: there the window's terminal is the one ⌘J shows.
   const shownView = view === 'settings' ? 'settings' : terminalView(behind, mainId);
-  const splitId = useSessions((s) => s.splitId);
-  const activePane = useSessions((s) => s.activePane);
   const overlay = useOverlay((s) => s.open);
   const adding = useProjects((s) => s.adding);
-  const panes: { id: string; pane: Pane | null }[] = !mainId
-    ? []
-    : splitId && splitId !== mainId
-      ? [
-          { id: mainId, pane: 'main' },
-          { id: splitId, pane: 'split' },
-        ]
-      : [{ id: mainId, pane: null }];
 
   return (
     <div className="flex h-full">
@@ -253,21 +253,7 @@ export function App() {
         ) : behind === 'new' ? (
           <NewSessionView />
         ) : mainId ? (
-          // One session, or two side by side. Both cases share this tree and each pane is keyed by its
-          // session, so opening or closing a split never remounts the session that stays (its unsent
-          // message, scroll and Find). Clicking in a pane makes it the active one.
-          <div className="flex min-h-0 flex-1" data-split={splitId ? true : undefined}>
-            {panes.map(({ id, pane }) => (
-              // The inactive pane dims as a whole, and brightens a little on hover to say a click makes it active.
-              <div
-                key={id}
-                className={`flex min-w-0 flex-1 flex-col transition-opacity duration-150 ${pane === 'split' ? 'border-l border-border' : ''} ${pane && activePane !== pane ? 'opacity-60 hover:opacity-85' : ''}`}
-                onMouseDownCapture={pane ? () => useSessions.getState().focusPane(pane) : undefined}
-              >
-                <TranscriptView sessionId={id} pane={pane} active={pane ? activePane === pane : true} />
-              </div>
-            ))}
-          </div>
+          <SplitPanes />
         ) : (
           <HomeView />
         )}

@@ -5,6 +5,7 @@ import {
   ArchiveRestore,
   ArrowDownCircle,
   ArrowLeftRight,
+  ArrowRightLeft,
   Bell,
   BellOff,
   BellRing,
@@ -62,6 +63,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Rows2,
   Save,
   Settings,
   Settings2,
@@ -92,6 +94,7 @@ import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/p
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import type { SplitOrientation } from '../../state/splitLayout.ts';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import { ACTION_ICON } from '../actions/actionIcon.ts';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
@@ -178,6 +181,8 @@ export interface PaletteApi {
   stopAction(): void;
   restartAction(): void;
   focusOtherPane(): void;
+  swapPanes(): void;
+  setSplitOrientation(orientation: SplitOrientation): void;
   closePane(): void;
   newSessionRequest(kind: NewSessionRequest): void;
   /** Opens the New session view (Add to queue… outside it). */
@@ -650,6 +655,9 @@ export const COMMANDS: PaletteCommand[] = [
 
   // Split view
   { id: 'focus-other-pane', title: 'Focus other pane', group: 'panes', icon: ArrowLeftRight, keywords: 'split switch', when: (ctx) => ctx.split && ctx.view === 'session', run: (api) => api.focusOtherPane() },
+  { id: 'swap-panes', title: 'Swap panes', group: 'panes', shortcut: keysFor('pane.swap'), icon: ArrowRightLeft, keywords: 'split exchange switch move left right top bottom', when: (ctx) => ctx.split && ctx.view === 'session', run: (api) => api.swapPanes() },
+  { id: 'stack-panes', title: 'Stack panes', group: 'panes', shortcut: keysFor('pane.orientation'), icon: Rows2, keywords: 'split layout orientation vertical rows above below', when: (ctx) => ctx.split && ctx.view === 'session' && ctx.splitOrientation === 'side', run: (api) => api.setSplitOrientation('stacked') },
+  { id: 'panes-side-by-side', title: 'Show panes side by side', group: 'panes', shortcut: keysFor('pane.orientation'), icon: Columns2, keywords: 'split layout orientation horizontal columns left right', when: (ctx) => ctx.split && ctx.view === 'session' && ctx.splitOrientation === 'stacked', run: (api) => api.setSplitOrientation('side') },
   { id: 'close-pane', title: 'Close this pane', group: 'panes', icon: Columns2, keywords: 'split', when: (ctx) => ctx.split && ctx.view === 'session', run: (api) => api.closePane() },
 
   // New session is on screen

@@ -14,6 +14,7 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from '../../state/sessionNav.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { useSplitLayout } from '../../state/splitLayoutStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
@@ -207,6 +208,8 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       const { activePane, focusPane } = useSessions.getState();
       focusPane(activePane === 'main' ? 'split' : 'main');
     },
+    swapPanes: () => useSessions.getState().swapPanes(),
+    setSplitOrientation: (orientation) => useSplitLayout.getState().choose(orientation),
     closePane: () => {
       const { activePane, closePane } = useSessions.getState();
       closePane(activePane);

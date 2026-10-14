@@ -170,6 +170,8 @@ describe('the shortcut registry', () => {
     expect(matches(press('0'), 'permission.pick')).toBe(false);
     expect(matches(press('3', { metaKey: true }), 'new-session.pick')).toBe(true);
     expect(matches(press('\\', { metaKey: true }), 'pane.close-other')).toBe(true);
+    expect(matches(press('X', { metaKey: true, shiftKey: true }), 'pane.swap')).toBe(true);
+    expect(matches(press('O', { metaKey: true, shiftKey: true }), 'pane.orientation')).toBe(true);
     expect(matches(press('F2'), 'sidebar.rename')).toBe(true);
     expect(matches(press('Backspace', { metaKey: true }), 'sidebar.delete')).toBe(true);
     expect(matches(press('F10', { shiftKey: true }), 'context-menu')).toBe(true);
@@ -197,6 +199,8 @@ describe('the shortcut registry', () => {
     const cases: Partial<Record<ShortcutId, [works: ShortcutContext, doesnt: ShortcutContext]>> = {
       'sidebar.clear-selection': [at({ selection: 2 }), HOME],
       'pane.close-other': [at({ split: true }), HOME],
+      'pane.swap': [at({ split: true }), HOME],
+      'pane.orientation': [at({ split: true }), HOME],
       find: [SESSION, { ...SESSION, focus: 'terminal' }],
       'find.next': [SESSION, HOME],
       'find.previous': [SESSION, HOME],
