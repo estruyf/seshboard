@@ -1,10 +1,11 @@
 import { Code, Copy, Folder } from 'lucide-react';
-import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { useContext, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { fileManagerName } from '../../lib/platform.ts';
 import { clickKeysFor, formatKeys } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
+import { MessageMenuContext } from '../memory/RememberLayer.tsx';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { clickAction, fileLinkError, fileLinkMenu, fileLinkTarget, fileLinkTooltip, type FileLinkAction, type FileLinkMenuItem } from './fileLinkAction.ts';
@@ -32,7 +33,8 @@ export interface FileLinkActions {
 
 /**
  * Shows the file in the file manager or opens it in the editor, as the Clicking a file link setting says (Shift-click
- * does the other), and lists both, with Copy path, in a context menu. A file that is gone fails like any other open: the
+ * does the other), and lists both, with Copy path, in a context menu: the message's own menu (with Quote and Remember this…)
+ * for a link in a reply, a menu of its own elsewhere. A file that is gone fails like any other open: the
  * engine says so, and the link shows it. `path` is absolute and exists as far as the engine told us.
  */
 export function useFileLinkActions(path: string, line?: number): FileLinkActions {
@@ -40,6 +42,7 @@ export function useFileLinkActions(path: string, line?: number): FileLinkActions
   const editors = useHosts((s) => s.editors);
   const defaultId = useHosts((s) => s.defaultEditorId);
   const openIn = useOpenIn();
+  const openMessageMenu = useContext(MessageMenuContext);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [menu, setMenu] = useState<ContextMenuPoint | null>(null);
@@ -66,20 +69,21 @@ export function useFileLinkActions(path: string, line?: number): FileLinkActions
       () => setError("Couldn't copy the path"),
     );
 
-  const openMenu = (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    // A context menu opened from the keyboard reports no pointer position: open it at the link.
-    const pointer = 'clientX' in event && (event.clientX || event.clientY) ? { x: event.clientX, y: event.clientY } : null;
-    setMenu(contextMenuPoint(pointer, event.currentTarget.getBoundingClientRect(), window.innerHeight));
-  };
-
   const entries: MenuEntry[] = fileLinkMenu(names, fileManagerAvailable).map((item) => ({
     label: item.label,
     icon: MENU_ICON[item.id],
     onSelect: () => (item.id === 'copy' ? copy() : run(item.id)),
     data: { 'data-file-link-menu-item': item.id },
   }));
+
+  const openMenu = (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    // A context menu opened from the keyboard reports no pointer position: open it at the link.
+    const pointer = 'clientX' in event && (event.clientX || event.clientY) ? { x: event.clientX, y: event.clientY } : null;
+    if (openMessageMenu?.(event.currentTarget, pointer, entries)) return;
+    setMenu(contextMenuPoint(pointer, event.currentTarget.getBoundingClientRect(), window.innerHeight));
+  };
 
   const extras = (
     <>

@@ -3294,8 +3294,8 @@ async function runPullRequestStep(win: BrowserWindow): Promise<string> {
 /**
  * Read-only: file paths in Claude's replies that exist became links, and the chips beside file tools do the same. What a
  * click does is the setting Clicking a file link (the file manager by default): the label and tooltip say it and what
- * Shift-click does instead, and the right-click and Shift+F10 menus list both ways and Copy path. Switching the setting in
- * Settings › Conversation flips them. Nothing is ever clicked: that would open Explorer, Finder or the user's editor. The
+ * Shift-click does instead, and the right-click and Shift+F10 menus list both ways and Copy path above the message's Quote and
+ * Remember this…. Switching the setting in Settings › Conversation flips them. Nothing is ever clicked: that would open Explorer, Finder or the user's editor. The
  * menus are only opened and closed with Escape, and the setting is put back at the end.
  */
 async function runFileLinksStep(win: BrowserWindow): Promise<string> {
@@ -3350,6 +3350,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-file-link-menu-item]')", 2_000))) return `the ${how} menu did not open`;
     const items = (await js("[...document.querySelectorAll('[role=menu] [data-file-link-menu-item]')].map((b) => ({ id: b.dataset.fileLinkMenuItem, label: b.textContent.trim() }))")) as Array<{ id: string; label: string }>;
     const inside = (await js("!!document.activeElement?.closest('[role=menu]')")) as boolean;
+    const message = (await js("!!document.querySelector('[role=menu] [data-quote-menu]') && !!document.querySelector('[role=menu] [data-remember-menu]')")) as boolean;
     if (how === 'right-click') await shot(win, 'file-link-menu.png');
     // Only close it when it is open: Escape on its own would stop a working session.
     pressKey(win, 'Escape');
@@ -3358,6 +3359,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     if (ids !== 'show,editor,copy') return `the ${how} menu lists ${ids}, not show,editor,copy`;
     if (items[0]!.label !== `Show in ${fileManager}` || !items[1]!.label.startsWith('Open in ') || items[2]!.label !== 'Copy path') return `the ${how} menu reads ${JSON.stringify(items.map((item) => item.label))}`;
     if (!inside) return `focus did not move into the ${how} menu`;
+    if (!message) return `the ${how} menu on a link in a reply has no Quote or Remember this…`;
     return items;
   };
 
@@ -3387,7 +3389,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
         const items = await menuOf(how);
         if (typeof items === 'string') return items;
       }
-      menus = 'right-click and Shift+F10 list Show, Open and Copy path';
+      menus = 'right-click and Shift+F10 list Show, Open and Copy path, then Quote and Remember this…';
     }
 
     const failed = await setInSettings('editor');

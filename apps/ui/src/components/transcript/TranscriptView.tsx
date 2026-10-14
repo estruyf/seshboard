@@ -65,7 +65,7 @@ import { PromptExpansionContext, type PromptExpansion } from './ClampedPrompt.ts
 import { buildDisplayItems, groupActivity, type RenderItem } from './displayItems.ts';
 import { memoryWriteOf } from './memoryWrites.ts';
 import { useKnownMemoryFolders, useMemoryFoldersSync } from '../memory/useMemoryFolders.ts';
-import { useRememberLayer } from '../memory/RememberLayer.tsx';
+import { MessageMenuContext, useRememberLayer } from '../memory/RememberLayer.tsx';
 import { FindBar } from './FindBar.tsx';
 import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
@@ -1072,6 +1072,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           )}
           <MessageActionsContext.Provider value={messageActions}>
           <PromptExpansionContext.Provider value={promptExpansion}>
+          <MessageMenuContext.Provider value={remember.openMenu}>
           <FileLinksProvider cwd={cwd}>
             <div
               ref={scrollRef}
@@ -1165,6 +1166,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               )}
             </div>
           </FileLinksProvider>
+          </MessageMenuContext.Provider>
           </PromptExpansionContext.Provider>
           </MessageActionsContext.Provider>
           {remember.overlay}
