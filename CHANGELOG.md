@@ -10,6 +10,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Menus under the message box stay open.** The profile, model, effort and permission menus no longer close on their own when a new message arrives in the session.
 - **Edit in Up next keeps your files.** A queued message you edit comes back with its files as chips again, not as `@` mentions in the text.
 
 ## [0.0.16] - 2026-10-13
