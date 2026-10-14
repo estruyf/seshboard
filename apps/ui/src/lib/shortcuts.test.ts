@@ -170,6 +170,14 @@ describe('the shortcut registry', () => {
     expect(matches(press('0'), 'permission.pick')).toBe(false);
     expect(matches(press('3', { metaKey: true }), 'new-session.pick')).toBe(true);
     expect(matches(press('\\', { metaKey: true }), 'pane.close-other')).toBe(true);
+    expect(matches(press('X', { metaKey: true, shiftKey: true }), 'pane.swap')).toBe(true);
+    expect(matches(press('O', { metaKey: true, shiftKey: true }), 'pane.orientation')).toBe(true);
+    // Option changes the letter on a Mac (⌥W is ∑): the physical key counts.
+    expect(matches({ ...press('∑', { metaKey: true, altKey: true }), code: 'KeyW' }, 'pane.close')).toBe(true);
+    expect(matches(press('ArrowLeft', { metaKey: true, altKey: true }), 'pane.focus-left')).toBe(true);
+    expect(matches(press('ArrowDown', { metaKey: true, altKey: true }), 'pane.focus-down')).toBe(true);
+    // ⌥ with the arrows alone belongs to the queue and Up next.
+    expect(matches(press('ArrowUp', { altKey: true }), 'pane.focus-up')).toBe(false);
     expect(matches(press('F2'), 'sidebar.rename')).toBe(true);
     expect(matches(press('Backspace', { metaKey: true }), 'sidebar.delete')).toBe(true);
     expect(matches(press('F10', { shiftKey: true }), 'context-menu')).toBe(true);
@@ -196,7 +204,14 @@ describe('the shortcut registry', () => {
     // For every shortcut with a condition: a place it works, and one it doesn't.
     const cases: Partial<Record<ShortcutId, [works: ShortcutContext, doesnt: ShortcutContext]>> = {
       'sidebar.clear-selection': [at({ selection: 2 }), HOME],
+      'pane.close': [at({ split: true }), HOME],
       'pane.close-other': [at({ split: true }), HOME],
+      'pane.focus-left': [at({ split: true }), HOME],
+      'pane.focus-right': [at({ split: true }), HOME],
+      'pane.focus-up': [at({ split: true }), HOME],
+      'pane.focus-down': [at({ split: true }), HOME],
+      'pane.swap': [at({ split: true }), HOME],
+      'pane.orientation': [at({ split: true }), HOME],
       find: [SESSION, { ...SESSION, focus: 'terminal' }],
       'find.next': [SESSION, HOME],
       'find.previous': [SESSION, HOME],

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LaterItem, LiveSession, SessionHostInfo } from '@switchboard/protocol/client';
 import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
+import { useTilingArea } from './tilingArea.ts';
 import type { QueueEntry } from './queue.ts';
 import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startOfDay, startupSession, waitingLabel } from './sidebarRows.ts';
 import { closedSections, DEFAULT_SECTIONS, parseSections, toggleAllSections } from './sidebarSections.ts';
@@ -430,28 +431,47 @@ describe('toRows', () => {
 });
 
 describe('panes', () => {
-  const reset = () => useSessions.setState({ selectedId: null, mainId: null, splitId: null, activePane: 'main', view: 'session' });
+  const reset = () => useSessions.setState({ selectedId: null, layout: null, paneIds: [], view: 'session' });
   const state = () => {
     const s = useSessions.getState();
-    return { main: s.mainId, split: s.splitId, active: s.activePane, selected: s.selectedId };
+    return { panes: s.paneIds, selected: s.selectedId };
   };
 
-  it('opens a session beside, selects into the active pane, and closes back to one', () => {
+  it('opens sessions beside, selects into the active pane, and closes back to one', () => {
     reset();
     const s = useSessions.getState();
     s.select('a');
-    expect(state()).toEqual({ main: 'a', split: null, active: 'main', selected: 'a' });
+    expect(state()).toEqual({ panes: ['a'], selected: 'a' });
     s.openBeside('b');
-    expect(state()).toEqual({ main: 'a', split: 'b', active: 'split', selected: 'b' });
+    expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
     s.select('c');
-    expect(state()).toEqual({ main: 'a', split: 'c', active: 'split', selected: 'c' });
-    // Selecting what the other pane shows just focuses it.
+    expect(state()).toEqual({ panes: ['a', 'c'], selected: 'c' });
+    // Selecting what another pane shows just focuses it.
     s.select('a');
-    expect(state()).toEqual({ main: 'a', split: 'c', active: 'main', selected: 'a' });
+    expect(state()).toEqual({ panes: ['a', 'c'], selected: 'a' });
     s.openBeside('d');
-    expect(state()).toEqual({ main: 'a', split: 'd', active: 'split', selected: 'd' });
-    s.closePane('main');
-    expect(state()).toEqual({ main: 'd', split: null, active: 'main', selected: 'd' });
+    expect(state()).toEqual({ panes: ['a', 'd', 'c'], selected: 'd' });
+    s.closePane('a');
+    expect(state()).toEqual({ panes: ['d', 'c'], selected: 'd' });
+    s.closeOtherPanes();
+    expect(state()).toEqual({ panes: ['d'], selected: 'd' });
+  });
+
+  it('keeps the selected session in the active pane through every change', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.openBeside('c');
+    s.focusPane('a');
+    expect(useSessions.getState().selectedId).toBe('a');
+    s.swapPanes();
+    expect(useSessions.getState().selectedId).toBe('a');
+    s.flipSplit();
+    expect(useSessions.getState().selectedId).toBe('a');
+    s.focusNext();
+    expect(useSessions.getState().selectedId).not.toBe('a');
+    expect(useSessions.getState().paneIds).toContain(useSessions.getState().selectedId);
   });
 
   it('closes the panes showing archived sessions', () => {
@@ -460,18 +480,90 @@ describe('panes', () => {
     s.select('a');
     s.openBeside('b');
     s.closeSessions(['x']);
-    expect(state()).toEqual({ main: 'a', split: 'b', active: 'split', selected: 'b' });
+    expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
     s.closeSessions(['a']);
-    expect(state()).toEqual({ main: 'b', split: null, active: 'main', selected: 'b' });
+    expect(state()).toEqual({ panes: ['b'], selected: 'b' });
     s.openBeside('c');
     s.closeSessions(['c']);
-    expect(state()).toEqual({ main: 'b', split: null, active: 'main', selected: 'b' });
+    expect(state()).toEqual({ panes: ['b'], selected: 'b' });
     s.openBeside('c');
     s.closeSessions(['b', 'c']);
-    expect(state()).toEqual({ main: null, split: null, active: 'main', selected: null });
+    expect(state()).toEqual({ panes: [], selected: null });
     s.select('d');
     s.closeSessions(['d']);
-    expect(state()).toEqual({ main: null, split: null, active: 'main', selected: null });
+    expect(state()).toEqual({ panes: [], selected: null });
+  });
+
+  it('keeps the same sessions array while only sizes change, so the sidebar does not redraw', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    const before = useSessions.getState().paneIds;
+    s.resizePanes({ direction: 'row', children: [{ id: 'a' }, { id: 'b' }], sizes: [0.3, 0.7] });
+    expect(useSessions.getState().paneIds).toBe(before);
+    expect(useSessions.getState().layout).toMatchObject({ sizes: [0.3, 0.7] });
+  });
+
+  it('says so, and opens nothing, when the window has no room for another pane', () => {
+    reset();
+    useTilingArea.getState().set({ width: 700, height: 360 });
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.openBeside('c');
+    expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
+    s.dropOn('c', { kind: 'pane', id: 'a', zone: 'top' });
+    expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
+    useTilingArea.getState().set(null);
+    s.openBeside('c');
+    expect(state()).toEqual({ panes: ['a', 'b', 'c'], selected: 'c' });
+  });
+
+  it('turns a split only when the result fits the window', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.openBeside('c');
+    const before = useSessions.getState().layout;
+    useTilingArea.getState().set({ width: 1100, height: 700 });
+    s.flipSplit();
+    expect(useSessions.getState().layout).toBe(before);
+    useTilingArea.getState().set(null);
+    s.flipSplit();
+    expect(useSessions.getState().layout).not.toBe(before);
+  });
+
+  it('drops a pane or a new session onto a part of a pane', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.dropOn('a', { kind: 'pane', id: 'b', zone: 'right' });
+    expect(state()).toEqual({ panes: ['b', 'a'], selected: 'a' });
+    s.dropOn('n', { kind: 'pane', id: 'b', zone: 'bottom' });
+    expect(state()).toEqual({ panes: ['b', 'n', 'a'], selected: 'n' });
+    s.dropOn('x', { kind: 'pane', id: 'n', zone: 'center' });
+    expect(state()).toEqual({ panes: ['b', 'x', 'a'], selected: 'x' });
+  });
+
+  it('docks along a window edge, and a session already open moves instead of opening twice', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.openBeside('c');
+    useTilingArea.getState().set({ width: 2400, height: 1200 });
+    s.dropOn('c', { kind: 'edge', side: 'right' });
+    expect(state().panes).toHaveLength(3);
+    expect(useSessions.getState().layout).toMatchObject({ direction: 'row' });
+    s.dropOn('n', { kind: 'edge', side: 'left' });
+    expect(state()).toEqual({ panes: ['n', 'a', 'b', 'c'], selected: 'n' });
+    // The sidebar row of a session that is open moves its pane: still four panes, none duplicated.
+    s.dropOn('a', { kind: 'edge', side: 'bottom' });
+    expect([...useSessions.getState().paneIds].sort()).toEqual(['a', 'b', 'c', 'n']);
+    useTilingArea.getState().set(null);
   });
 });
 

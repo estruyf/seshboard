@@ -3,8 +3,13 @@ import {
   Activity,
   Archive,
   ArchiveRestore,
+  ArrowDown,
   ArrowDownCircle,
+  ArrowLeft,
   ArrowLeftRight,
+  ArrowRight,
+  ArrowRightLeft,
+  ArrowUp,
   Bell,
   BellOff,
   BellRing,
@@ -55,6 +60,7 @@ import {
   PanelLeftDashed,
   PanelLeftOpen,
   PanelRight,
+  PanelsTopLeft,
   Pencil,
   Pin,
   PinOff,
@@ -62,6 +68,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Rows2,
   Save,
   Settings,
   Settings2,
@@ -92,6 +99,7 @@ import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/p
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import type { Way } from '../../state/tilingGeometry.ts';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import { ACTION_ICON } from '../actions/actionIcon.ts';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
@@ -177,8 +185,14 @@ export interface PaletteApi {
   dockTerminal(dock: TerminalDock): void;
   stopAction(): void;
   restartAction(): void;
-  focusOtherPane(): void;
+  focusNextPane(): void;
+  /** Goes to the pane next door in a direction. */
+  focusPane(way: Way): void;
+  swapPanes(): void;
+  /** Turns the split holding the active pane the other way. */
+  flipSplit(): void;
   closePane(): void;
+  closeOtherPanes(): void;
   newSessionRequest(kind: NewSessionRequest): void;
   /** Opens the New session view (Add to queue… outside it). */
   openNewSession(): void;
@@ -243,6 +257,8 @@ const hosted = (ctx: PaletteContext) => !!session(ctx)?.host && ctx.connected;
 const inGit = (ctx: PaletteContext) => withCwd(ctx) && ctx.git !== null && ctx.connected;
 /** The panel ⌘J works on is open: the session's, or outside a session the window's own. */
 const terminalOpen = (ctx: PaletteContext) => ctx.terminal.owner !== null && ctx.terminal.open;
+/** More than one pane is open, in the session view: the commands that arrange them. */
+const panes = (ctx: PaletteContext) => ctx.split && ctx.view === 'session';
 /** Outside a session, where the window's own terminal is. */
 const appTerminal = (ctx: PaletteContext) => ctx.terminal.owner === APP_TERMINAL;
 
@@ -649,8 +665,16 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'restart-action', title: 'Restart action', group: 'terminal', icon: RotateCcw, keywords: 'run again', when: (ctx) => terminalOpen(ctx) && ctx.terminal.action !== null && ctx.connected, run: (api) => api.restartAction() },
 
   // Split view
-  { id: 'focus-other-pane', title: 'Focus other pane', group: 'panes', icon: ArrowLeftRight, keywords: 'split switch', when: (ctx) => ctx.split && ctx.view === 'session', run: (api) => api.focusOtherPane() },
-  { id: 'close-pane', title: 'Close this pane', group: 'panes', icon: Columns2, keywords: 'split', when: (ctx) => ctx.split && ctx.view === 'session', run: (api) => api.closePane() },
+  { id: 'focus-other-pane', title: 'Focus next pane', group: 'panes', icon: ArrowLeftRight, keywords: 'split switch other tile', when: panes, run: (api) => api.focusNextPane() },
+  { id: 'focus-pane-left', title: 'Focus pane on the left', group: 'panes', shortcut: keysFor('pane.focus-left'), icon: ArrowLeft, keywords: 'split tile go', when: (ctx) => panes(ctx) && ctx.paneWays.includes('left'), run: (api) => api.focusPane('left') },
+  { id: 'focus-pane-right', title: 'Focus pane on the right', group: 'panes', shortcut: keysFor('pane.focus-right'), icon: ArrowRight, keywords: 'split tile go', when: (ctx) => panes(ctx) && ctx.paneWays.includes('right'), run: (api) => api.focusPane('right') },
+  { id: 'focus-pane-up', title: 'Focus pane above', group: 'panes', shortcut: keysFor('pane.focus-up'), icon: ArrowUp, keywords: 'split tile go top', when: (ctx) => panes(ctx) && ctx.paneWays.includes('up'), run: (api) => api.focusPane('up') },
+  { id: 'focus-pane-down', title: 'Focus pane below', group: 'panes', shortcut: keysFor('pane.focus-down'), icon: ArrowDown, keywords: 'split tile go bottom', when: (ctx) => panes(ctx) && ctx.paneWays.includes('down'), run: (api) => api.focusPane('down') },
+  { id: 'swap-panes', title: 'Swap panes', group: 'panes', shortcut: keysFor('pane.swap'), icon: ArrowRightLeft, keywords: 'split exchange switch move left right top bottom next tile', when: panes, run: (api) => api.swapPanes() },
+  { id: 'stack-panes', title: 'Stack panes', group: 'panes', shortcut: keysFor('pane.orientation'), icon: Rows2, keywords: 'split layout orientation direction flip vertical rows above below tile', when: (ctx) => panes(ctx) && ctx.splitDirection === 'row', run: (api) => api.flipSplit() },
+  { id: 'panes-side-by-side', title: 'Show panes side by side', group: 'panes', shortcut: keysFor('pane.orientation'), icon: Columns2, keywords: 'split layout orientation direction flip horizontal columns left right tile', when: (ctx) => panes(ctx) && ctx.splitDirection === 'column', run: (api) => api.flipSplit() },
+  { id: 'close-pane', title: 'Close this pane', group: 'panes', shortcut: keysFor('pane.close'), icon: X, keywords: 'split tile', when: panes, run: (api) => api.closePane() },
+  { id: 'close-other-panes', title: 'Close other panes', group: 'panes', shortcut: keysFor('pane.close-other'), icon: PanelsTopLeft, keywords: 'split tile only keep', when: panes, run: (api) => api.closeOtherPanes() },
 
   // New session is on screen
   { id: 'toggle-worktree', title: 'Toggle worktree', group: 'new-session', icon: FolderGit2, keywords: 'isolated checkout', when: (ctx) => !!ctx.newSession?.canWorktree, run: (api) => api.newSessionRequest('toggle-worktree') },

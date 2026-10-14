@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo, SessionSummary } from '@switchboard/protocol/client';
 import { emptyHistory } from './navHistory.ts';
 import { goInHistory, startRecording, useNavHistory } from './navHistoryStore.ts';
 import { openProject, useProjectPage } from './projectPageStore.ts';
@@ -11,7 +11,7 @@ import { openUsage, useUsageView } from './usageViewStore.ts';
 vi.mock('../engine/useEngine.ts', () => ({ useEngineConnection: () => ({ status: 'connecting' }) }));
 
 describe('goInHistory', () => {
-  beforeEach(() => useSessions.setState({ view: 'session', mainId: null, splitId: null, activePane: 'main', selectedId: null }));
+  beforeEach(() => useSessions.setState({ view: 'session', layout: null, paneIds: [], selectedId: null }));
   afterEach(() => {
     vi.useRealTimers();
     useNavHistory.setState({ history: emptyHistory });
@@ -50,6 +50,31 @@ describe('goInHistory', () => {
     expect(useSessions.getState().view).toBe('usage');
     expect(useUsageView.getState().profileId).toBe('work');
     stop();
+  });
+
+  it('brings back the panes that were open, leaving out sessions that are gone', () => {
+    vi.useFakeTimers();
+    const summary = (id: string) => [id, { id } as SessionSummary] as const;
+    useSessions.setState({ sessions: new Map([summary('a'), summary('b'), summary('c')]), live: new Map() });
+    const stop = startRecording();
+    vi.advanceTimersByTime(1000);
+    useSessions.getState().select('a');
+    useSessions.getState().openBeside('b');
+    useSessions.getState().openBeside('c');
+    useSessions.getState().focusPane('b');
+    vi.advanceTimersByTime(1000);
+    openUsage(null);
+    vi.advanceTimersByTime(1000);
+    useSessions.setState({ sessions: new Map([summary('a'), summary('c')]) });
+
+    goInHistory(-1);
+    const state = useSessions.getState();
+    expect(state.view).toBe('session');
+    expect(state.paneIds).toEqual(['a', 'c']);
+    // The active pane's session is gone, so another pane is.
+    expect(state.selectedId).toBe('a');
+    stop();
+    useSessions.setState({ sessions: new Map() });
   });
 
   it('skips a project that is gone', () => {
