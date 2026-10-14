@@ -10,6 +10,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Menus under the message box stay open.** The profile, model, effort and permission menus no longer close on their own when a new message arrives in the session.
 - **Edit in Up next keeps your files.** A queued message you edit comes back with its files as chips again, not as `@` mentions in the text.
 - **Starting a session when Claude Code can't run.** Start now says why, for example that you are not logged in, instead of "This session is not running". A Claude Code process that already failed is no longer handed to the next new session.
 - **A new session that fails at once** keeps its message box, instead of saying "The folder for this session is unknown". Send again to start it in the same folder.
