@@ -197,6 +197,9 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
 
   if (!path) return null;
   const exported = preview?.exportedAt ? new Date(preview.exportedAt) : null;
+  // Without a preview the body already says why the file couldn't be read; the footer only reports
+  // what goes wrong after that (an import that failed).
+  const footerError = preview ? error : null;
 
   return (
     <Dialog
@@ -205,7 +208,9 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
       subtitle={
         preview
           ? `From ${basename(path)}${exported && !Number.isNaN(exported.getTime()) ? `, exported ${exported.toLocaleDateString()}` : ''}${preview.appVersion !== 'unknown' ? ` by Switchboard ${preview.appVersion}` : ''}.`
-          : `Reading ${basename(path)}…`
+          : error
+            ? `From ${basename(path)}.`
+            : `Reading ${basename(path)}…`
       }
       onClose={onClose}
       data-import-dialog
@@ -216,8 +221,8 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
           </Button>
         ) : (
           <>
-            <span role={error ? 'alert' : 'status'} className={`min-w-0 flex-1 truncate text-ui ${error ? 'text-error' : 'text-muted'}`} data-tooltip={error ?? undefined} data-import-summary>
-              {error ?? (preview ? summarizeChanges(preview.changes, preview.unchanged) : '')}
+            <span role={footerError ? 'alert' : 'status'} className={`min-w-0 flex-1 truncate text-ui ${footerError ? 'text-error' : 'text-muted'}`} data-tooltip={footerError ?? undefined} data-import-summary>
+              {footerError ?? (preview ? summarizeChanges(preview.changes, preview.unchanged) : '')}
             </span>
             <Button onClick={onClose}>Cancel</Button>
             <Button variant="primary" onClick={() => void apply()} disabled={busy || !effect || !client} data-import-settings>

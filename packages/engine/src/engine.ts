@@ -184,6 +184,15 @@ export interface Engine {
 const commandCacheKey = ({ profileId, cwd }: { profileId: string; cwd: string }) =>
   profileId === BUILTIN_PROFILE_ID ? `commands:${cwd}` : `commands:${profileId}:${cwd}`;
 
+/** The path's stat, or undefined when it is missing, also when a folder on the way became a file (ENOTDIR). */
+const statSafe = (path: string) => {
+  try {
+    return statSync(path, { throwIfNoEntry: false });
+  } catch {
+    return undefined;
+  }
+};
+
 export function createEngine(options: EngineOptions): Engine {
   const startedAt = Date.now();
   const claudeConfigDir = options.claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
@@ -789,7 +798,10 @@ export function createEngine(options: EngineOptions): Engine {
       if (params.worktree || params.checkoutBranch) throw new RpcError('INVALID', 'Quick questions have no git options');
       questions.ensure();
     }
-    if (!existsSync(params.cwd)) throw new RpcError('NOT_FOUND', `Folder not found: ${params.cwd}`);
+    const folder = statSafe(params.cwd);
+    if (!folder) throw new RpcError('NOT_FOUND', `Folder not found: ${params.cwd}`);
+    // Claude Code can't start in a file (spawn ENOTDIR), and the session would only say it isn't running.
+    if (!folder.isDirectory()) throw new RpcError('NOT_A_FOLDER', `That is a file, not a folder: ${params.cwd}`);
     if (params.worktree && !resolver.resolve(params.cwd).gitDir) {
       throw new RpcError('NOT_A_REPO', 'Worktrees need a git repository');
     }
@@ -1272,7 +1284,7 @@ export function createEngine(options: EngineOptions): Engine {
     'session.prewarm': ({ cwd, profileId }) => {
       if (questions.contains(cwd)) questions.ensure();
       const profile = profileId && profiles.has(profileId) ? profileId : folderProfile(cwd);
-      if (existsSync(cwd)) void hosts.prewarm(cwd, profile).catch((error: Error) => log('debug', `Pre-warm failed: ${error.message}`));
+      if (statSafe(cwd)?.isDirectory()) void hosts.prewarm(cwd, profile).catch((error: Error) => log('debug', `Pre-warm failed: ${error.message}`));
       return {};
     },
     'models.list': () => ({ models: hosts.listModels() }),
@@ -1282,9 +1294,11 @@ export function createEngine(options: EngineOptions): Engine {
 
     'questions.folder': () => ({ path: questions.ensure() }),
     'projects.inspect': ({ path }) => {
-      const exists = existsSync(path);
+      // A file is not a folder to work in: it reports as missing, with `isFile` so the message can say why.
+      const stat = statSafe(path);
+      const exists = stat?.isDirectory() ?? false;
       const location = resolver.resolve(path);
-      return { path, exists, isGitRepo: exists && location.gitDir !== null, root: location.root, branch: resolver.branch(location) };
+      return { path, exists, ...(stat && !exists ? { isFile: true } : {}), isGitRepo: exists && location.gitDir !== null, root: location.root, branch: resolver.branch(location) };
     },
     'files.search': async ({ cwd, query, limit }) => ({ files: await files.search(cwd, query, limit) }),
     'files.resolve': async ({ cwd, paths }) => ({ paths: await files.resolve(cwd, paths) }),

@@ -191,7 +191,10 @@ export type WorktreeRequest = z.infer<typeof WorktreeRequest>;
 
 export const ProjectInspection = z.object({
   path: z.string(),
+  /** True only for a folder. */
   exists: z.boolean(),
+  /** The path is a file, so `exists` is false; New session says so instead of "no longer exists". */
+  isFile: z.boolean().optional(),
   isGitRepo: z.boolean(),
   root: z.string(),
   branch: z.string().nullable(),

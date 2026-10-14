@@ -4,6 +4,30 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Starting a session when Claude Code can't run.** Start now says why, for example that you are not logged in, instead of "This session is not running". A Claude Code process that already failed is no longer handed to the next new session.
+- **A new session that fails at once** keeps its message box, instead of saying "The folder for this session is unknown". Send again to start it in the same folder.
+- **Many sessions at once.** Adding a Claude profile with a long history, or syncing many sessions, no longer freezes the window or shows an error.
+- **When Switchboard's engine stops answering**, the window now says so and waits for it, instead of showing old information without a word.
+- **Terminals after an engine restart.** The terminal panel now says its terminals were closed, instead of going empty.
+- **Changed files stay up to date.** The count in the session header and the Changes panel now update by themselves every few seconds, and when you open the panel, also for changes made in the terminal.
+- **A file is no longer taken as a project folder.** New session and links that point at a file say "That is a file, not a folder."
+- The branch menu shows branches that are checked out in another worktree as unavailable, with the reason, instead of failing when you pick one.
+- Changes, branches and worktree status in a folder that was moved away say "Folder not found" instead of "spawn git ENOENT".
+- The Memory tab no longer shows an error when a project's folder was replaced by a file.
+- A broken startup message from Claude Code no longer breaks the Worktrees tab until you restart.
+- The shortcuts for the command palette, Search and the shortcuts list no longer open behind another dialog, where what you typed went into a palette you couldn't see.
+- A menu closes when a dialog opens over it, so Esc closes only the dialog.
+- Closing a dialog you opened from the command palette, or closing Settings, puts focus back where it was, such as the message box.
+- Search takes up to 500 characters and says when a search fails, instead of showing the results of the previous search.
+- In a small or zoomed-in window, the sidebar narrows, or shows as the rail, so the session view stays in full view.
+- A double click on a file's checkbox or **Stage all** in Changes stages once, instead of failing with a git lock error. Clicking **Start** on a queued item more than once starts it once.
+- Clicking **Restart** on a terminal tab more than once restarts its command once, instead of starting it twice.
+- Opening and closing the terminal many times no longer runs out of graphics contexts, which could switch an open terminal to slower drawing.
+- **Undo file changes** no longer shows "Checking what changed…" as an error while it loads.
+- **Import settings** no longer keeps saying "Reading…" after it fails to read a file, and shows the error once.
+
 ## [0.0.16] - 2026-10-13
 
 ### New

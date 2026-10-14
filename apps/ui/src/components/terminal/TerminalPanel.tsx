@@ -3,7 +3,7 @@ import { useEffect, useId, useMemo, type KeyboardEvent, type PointerEvent } from
 import type { TerminalInfo, TerminalKind } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { tildify } from '../../lib/format.ts';
-import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
+import { ENGINE_RESTARTED, openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { useTicker } from '../transcript/ActivityGroup.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -298,11 +298,12 @@ export function TerminalPanel({
       </div>
 
       {notice && (
+        // An engine restart closing the terminals is news, not something that needs you.
         <Notice
-          tone="warn"
-          role="alert"
+          tone={notice.code === ENGINE_RESTARTED ? 'info' : 'warn'}
+          role={notice.code === ENGINE_RESTARTED ? 'status' : 'alert'}
           className="mx-2 mb-1"
-          data-terminal-notice
+          data-terminal-notice={notice.code ?? true}
           onDismiss={() => setNotice(sessionId, null)}
           actions={
             <>

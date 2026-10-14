@@ -21,7 +21,7 @@ export const uiCases: Record<string, Case> = {
         // Ask for something, as clicking around would.
         await c.page.keyboard.press('Meta+Shift+D');
         await sleep(10_000);
-        const said = await c.page.evaluate(() => /not responding|isn.t responding|is busy|waiting for the engine|reconnect/i.exec(document.body.innerText)?.[0] ?? null);
+        const said = await c.page.evaluate(() => /not responding|isn.t responding|isn.t answering|is busy|waiting for the engine|reconnect/i.exec(document.body.innerText)?.[0] ?? null);
         return { ok: said !== null, saw: said ?? 'nothing on screen' };
       } finally {
         process.kill(pid, 'SIGCONT');

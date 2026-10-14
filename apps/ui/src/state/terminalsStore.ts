@@ -5,11 +5,19 @@ import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { clampPanelHeight, clampPanelWidth, PANEL_DEFAULT_HEIGHT, PANEL_DEFAULT_WIDTH, parseDock, type TerminalDock } from '../components/terminal/terminalLayout.ts';
 import { trackRuns, type RunTimes } from '../components/terminal/terminalStatus.ts';
+import { ENGINE_RESTARTED_MESSAGE, sessionsWithLostTerminals } from '../components/terminal/lostTerminals.ts';
+import { runOnce } from '../lib/inFlight.ts';
 import { passFocusGate } from './focusGate.ts';
 
 const PANEL_KEY = 'ui.terminalPanel';
 
-/** Why a terminal didn't open, shown in the panel. `code` is the engine's (e.g. SESSION_RUNNING_HERE), so the panel can offer a way out. */
+/** The code of the notice that says an engine restart closed a session's terminals (not one of the engine's). */
+export const ENGINE_RESTARTED = 'ENGINE_RESTARTED';
+
+/**
+ * Why a terminal didn't open (or went away), shown in the panel. `code` is the engine's (e.g. SESSION_RUNNING_HERE), so
+ * the panel can offer a way out, or `ENGINE_RESTARTED`.
+ */
 export interface TerminalNotice {
   code: string | null;
   message: string;
@@ -181,13 +189,23 @@ export function waitForExit(id: string, timeoutMs: number): Promise<boolean> {
 /** Stop waits this long after ⌃C before it terminates, then kills (the engine's STOP_GRACE_MS, twice), plus a little. */
 const STOP_TIMEOUT_MS = 7_000;
 
-/** Runs a terminal's command again (an action's tab): a running one is stopped first, since the engine only restarts one that has exited. */
+/** Terminals being restarted (stopped, then run again), so quick clicks on Restart send one restart. */
+const restarting = new Set<string>();
+
+/**
+ * Runs a terminal's command again (an action's tab): a running one is stopped first, since the engine only restarts one
+ * that has exited. A second call while the first is still going is ignored.
+ */
 export async function restartTerminal(client: EngineClient, terminal: TerminalInfo): Promise<void> {
-  if (terminal.exitCode === null) {
-    await client.call('terminal.stop', { id: terminal.id });
-    if (!(await waitForExit(terminal.id, STOP_TIMEOUT_MS))) throw new Error('it did not stop');
-  }
-  await client.call('terminal.restart', { id: terminal.id });
+  await runOnce(restarting, terminal.id, async () => {
+    // The store's copy, not the one the click rendered: it may have exited, or started again, since.
+    const current = useTerminals.getState().terminals.get(terminal.id) ?? terminal;
+    if (current.exitCode === null) {
+      await client.call('terminal.stop', { id: terminal.id });
+      if (!(await waitForExit(terminal.id, STOP_TIMEOUT_MS))) throw new Error('it did not stop');
+    }
+    await client.call('terminal.restart', { id: terminal.id });
+  });
 }
 
 /** How many sessions' open panels are remembered across launches. */
@@ -204,8 +222,21 @@ export function useTerminalsSync(): void {
 
   useEffect(() => {
     if (!client) return;
-    const off = client.on('terminals.changed', ({ terminals }) => useTerminals.getState().setTerminals(terminals));
-    void client.call('terminal.list', {}).then(({ terminals }) => useTerminals.getState().setTerminals(terminals));
+    // A new client after one that had loaded means the engine restarted, and its terminals went with it. The first
+    // list from the new one says which sessions lost theirs; their panels say so instead of just showing New terminal.
+    const store = useTerminals.getState();
+    let before: TerminalInfo[] | null = store.loaded ? [...store.terminals.values()] : null;
+    const apply = (terminals: TerminalInfo[]) => {
+      if (before) {
+        for (const sessionId of sessionsWithLostTerminals(before, terminals)) {
+          useTerminals.getState().setNotice(sessionId, { code: ENGINE_RESTARTED, message: ENGINE_RESTARTED_MESSAGE });
+        }
+        before = null;
+      }
+      useTerminals.getState().setTerminals(terminals);
+    };
+    const off = client.on('terminals.changed', ({ terminals }) => apply(terminals));
+    void client.call('terminal.list', {}).then(({ terminals }) => apply(terminals));
     void client.call('appState.get', { key: PANEL_KEY }).then(({ value }) => {
       const stored = value as { open?: unknown; height?: unknown; width?: unknown; dock?: unknown } | null;
       if (typeof stored?.height === 'number') useTerminals.getState().setPanelHeight(stored.height);

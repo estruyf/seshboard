@@ -50,7 +50,13 @@ export const sessionCases: Record<string, Case> = {
       await c.page.keyboard.press('Enter');
       await sleep(1_000);
       await c.calls(true);
-      await composer(c).fill('typed a file path');
+      // New session can refuse the file before a prompt is typed: a disabled message box doesn't start it.
+      const box = composer(c);
+      if (await box.isDisabled()) {
+        const reason = await c.page.evaluate(() => /a file, not a folder|no longer exists/i.exec((document.querySelector('[data-new-session-view]') as HTMLElement | null)?.innerText ?? '')?.[0] ?? null);
+        return { ok: true, saw: { refused: reason ?? 'message box disabled' } };
+      }
+      await box.fill('typed a file path');
       await c.page.keyboard.press('Meta+Enter');
       await sleep(3_000);
       const sent = (await c.calls()).filter((x) => x.method === 'session.create').map((x) => x.params.cwd);

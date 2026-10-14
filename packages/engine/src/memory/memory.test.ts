@@ -102,6 +102,16 @@ describe('memory folders', () => {
     ]);
   });
 
+  it('lists no instruction files when the project folder became a file (ENOTDIR), keeping the memories', async () => {
+    memoryFile('sidebar-order', 'Needs you first.');
+    rmSync(root, { recursive: true, force: true });
+    writeFileSync(root, 'not a folder\n');
+    const list = await service.list(root);
+    expect(list.instructions).toEqual([]);
+    expect(list.memories.map((m) => m.name)).toEqual(['sidebar-order']);
+    expect(await service.health(root)).toBeInstanceOf(Array);
+  });
+
   it('reads only inside the project and its memory folder', () => {
     const path = memoryFile('sidebar-order', 'x');
     expect(service.read(root, path)).toContain('name: sidebar-order');

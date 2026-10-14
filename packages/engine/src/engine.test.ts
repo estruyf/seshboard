@@ -206,6 +206,25 @@ describe('engine over a MessagePort', () => {
     expect((await client.call('later.list', {})).items.map((i) => i.id)).toEqual([next.id, missing.id]);
   });
 
+  it('takes a file as neither a project folder nor a session folder', async () => {
+    const created: Array<{ cwd?: string }> = [];
+    const { client, dataDir } = connect({ sdk: fakeSdk(created) });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-file-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    const file = join(repo, 'package.json');
+    writeFileSync(file, '{}\n');
+    expect(await client.call('projects.inspect', { path: file })).toMatchObject({ path: file, exists: false, isFile: true, isGitRepo: false });
+    expect(await client.call('projects.inspect', { path: repo })).toMatchObject({ exists: true, isGitRepo: true });
+    expect(await client.call('projects.inspect', { path: repo })).not.toHaveProperty('isFile');
+    // A path under a file (ENOTDIR) is just missing.
+    expect(await client.call('projects.inspect', { path: join(file, 'src') })).toMatchObject({ exists: false, isGitRepo: false });
+    await expect(client.call('session.create', { cwd: file, prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_A_FOLDER', message: `That is a file, not a folder: ${file}` });
+    await expect(client.call('session.create', { cwd: join(file, 'src'), prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(client.call('session.create', { cwd: join(dataDir, 'gone'), prompt: 'hi' })).rejects.toThrow(/Folder not found/);
+    expect(created).toEqual([]);
+  });
+
   it('pushes log events to attached clients', async () => {
     const { client, engine } = connect();
     const seen: LogEntry[] = [];

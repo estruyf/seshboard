@@ -39,7 +39,7 @@ export const gitCases: Record<string, Case> = {
 
   branchInWorktree: {
     finding: 'CG2',
-    expect: 'The branch menu does not offer branches that are checked out in another worktree (git refuses to switch to them).',
+    expect: 'The branch menu does not offer branches that are checked out in another worktree (git refuses to switch to them): they are left out or shown unavailable.',
     async run(c) {
       await openSessionByTitle(c, HERO);
       const inWorktrees = git(c, c.world.acme, 'worktree', 'list', '--porcelain')
@@ -48,7 +48,8 @@ export const gitCases: Record<string, Case> = {
         .map((l) => l.slice('branch refs/heads/'.length));
       await c.page.locator('[data-current-session] [data-branch-menu]').first().click();
       await sleep(800);
-      const offered = await c.page.evaluate(() => [...document.querySelectorAll('[data-branch-option]')].map((e) => e.getAttribute('data-branch-option')!));
+      // A branch shown as unavailable (with the reason) isn't offered.
+      const offered = await c.page.evaluate(() => [...document.querySelectorAll('[data-branch-option]:not([aria-disabled="true"])')].map((e) => e.getAttribute('data-branch-option')!));
       await c.page.keyboard.press('Escape');
       const current = git(c, c.world.acme, 'branch', '--show-current').trim();
       const wrong = offered.filter((b) => b !== current && inWorktrees.includes(b));
@@ -168,11 +169,14 @@ export const gitCases: Record<string, Case> = {
     mutates: true,
     expect: 'Quitting right after confirming Revert all leaves the repository whole: every change reverted or none.',
     async run(c) {
+      // Earlier cases revert files here too: give Revert all something to do whatever they left.
+      c.assertInSandbox(c.world.acme);
+      for (const name of ['quit-mid-revert-1.txt', 'quit-mid-revert-2.txt']) writeFileSync(join(c.world.acme, name), 'left behind\n');
       const before = gitStatus(c, c.world.acme).length;
       await openSessionByTitle(c, HERO);
       // ⌘⇧D toggles: open the panel only if an earlier case left it closed.
       if (!(await c.page.locator('[data-changes-panel]').count())) await c.page.keyboard.press('Meta+Shift+D');
-      await c.page.locator('[data-changes-panel] button:has-text("Revert all")').first().click();
+      await c.page.locator('[data-changes-panel] button:has-text("Revert all")').first().click({ timeout: 15_000 });
       await c.page.locator('[role="alertdialog"] [data-confirm]').first().click();
       c.log('restart', 'right after Revert all');
       await c.restart();

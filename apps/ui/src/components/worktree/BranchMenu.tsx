@@ -19,6 +19,8 @@ export function BranchMenu({ sessionId, cwd, root, busy, onSwitched, openRequest
   const current = useCheckoutBranches((s) => s.byCwd.get(cwd));
   const switches = useCheckoutBranches((s) => s.switches);
   const [branches, setBranches] = useState<string[] | null>(null);
+  // Branches checked out in another worktree (Claude Code's, say): git won't switch to them here.
+  const [elsewhere, setElsewhere] = useState<ReadonlySet<string>>(() => new Set());
   const [open, setOpen] = useState<{ x: number; y: number } | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +33,7 @@ export function BranchMenu({ sessionId, cwd, root, busy, onSwitched, openRequest
     client?.call('git.branches', { cwd }).then(
       (result) => {
         setBranches(result.current === null && result.branches.length === 0 ? [] : result.branches);
+        setElsewhere(new Set(result.checkedOutElsewhere ?? []));
         useCheckoutBranches.getState().set([cwd], result.current);
       },
       () => setBranches([]),
@@ -80,6 +83,7 @@ export function BranchMenu({ sessionId, cwd, root, busy, onSwitched, openRequest
 
   const pick = (branch: string) => {
     if (branch === current) return close(true);
+    if (elsewhere.has(branch)) return;
     setError(null);
     if (others.ids.length > 0) {
       close(false);
@@ -167,21 +171,28 @@ export function BranchMenu({ sessionId, cwd, root, busy, onSwitched, openRequest
                 className="mx-2 mb-1 w-[calc(100%-1rem)] rounded-md border border-border bg-bg px-2 py-1 font-mono text-[11.5px] text-text outline-none placeholder:text-faint focus:border-accent-ink"
               />
             )}
-            {listed.map((branch) => (
-              <button
-                key={branch}
-                type="button"
-                role="menuitemradio"
-                aria-checked={branch === current}
-                data-branch-option={branch}
-                disabled={switching}
-                onClick={() => pick(branch)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none hover:bg-accent/15 focus-visible:bg-accent/15 disabled:opacity-50"
-              >
-                <span className="min-w-0 flex-1 truncate font-mono text-ui text-text">{branch}</span>
-                <Check size={13} className={`shrink-0 text-accent-ink ${branch === current ? '' : 'invisible'}`} />
-              </button>
-            ))}
+            {listed.map((branch) => {
+              // Still focusable (not `disabled`), so the tooltip says why on hover and from the keyboard.
+              const taken = elsewhere.has(branch);
+              return (
+                <button
+                  key={branch}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={branch === current}
+                  aria-disabled={taken || undefined}
+                  data-branch-option={branch}
+                  data-branch-elsewhere={taken || undefined}
+                  data-tooltip={taken ? 'Checked out in another worktree' : undefined}
+                  disabled={switching}
+                  onClick={() => pick(branch)}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none focus-visible:bg-accent/15 disabled:opacity-50 ${taken ? 'cursor-default opacity-50' : 'hover:bg-accent/15'}`}
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-ui text-text">{branch}</span>
+                  <Check size={13} className={`shrink-0 text-accent-ink ${branch === current ? '' : 'invisible'}`} />
+                </button>
+              );
+            })}
             {listed.length === 0 && <p className="px-3 py-1.5 text-ui text-muted">{query ? 'No matching branch' : 'No local branches'}</p>}
             {switching && (
               <p role="status" className="border-t border-border px-3 pt-1.5 pb-1 text-meta text-muted">

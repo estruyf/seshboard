@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
+import { addReturnTarget, focusableIn, MODAL_OPENED_EVENT } from './useModalFocus.ts';
 
 export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, 'style'> {
   x: number;
@@ -17,7 +18,8 @@ export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, 'styl
 
 /**
  * A floating panel at a screen position, kept on screen. Closes on an outside click, when the window
- * loses focus and (optionally) on Escape. The shared base for `Menu` and `Select`. Rendered in `body`, so a parent
+ * loses focus, when a modal opens over it (a shortcut such as ⌘K while a menu is open) and (optionally)
+ * on Escape. The shared base for `Menu` and `Select`. Rendered in `body`, so a parent
  * that stacks its own layer (Settings, a dialog) can't keep it under the toasts.
  */
 export function Popover({ x, y, width, above = false, onClose, closeOnEscape = true, anchor, className = '', children, ...rest }: PopoverProps) {
@@ -49,14 +51,39 @@ export function Popover({ x, y, width, above = false, onClose, closeOnEscape = t
       if (ref.current?.contains(target) || anchor?.current?.contains(target)) return;
       close();
     };
-    const onKey = (event: KeyboardEvent) => latest.current.closeOnEscape && event.key === 'Escape' && close();
+    const onKey = (event: KeyboardEvent) => {
+      if (!latest.current.closeOnEscape || event.key !== 'Escape' || event.defaultPrevented) return;
+      // This Escape was the menu's: a dialog under it (or over it) leaves a handled key alone.
+      event.preventDefault();
+      close();
+    };
+    // A modal opened over the popover: the popover closes, so it isn't left open behind the modal and
+    // the modal's first Escape is its own. Not for a modal the popover holds, or one its button sits in
+    // (a dropdown inside a dialog that opened in the same render).
+    let closedFor: { modal: HTMLElement; focus: Element | null } | null = null;
+    const onModal = (event: Event) => {
+      const modal = (event as CustomEvent<HTMLElement>).detail;
+      if (!modal || ref.current?.contains(modal) || (anchor?.current && modal.contains(anchor.current))) return;
+      closedFor = { modal, focus: document.activeElement };
+      // Focus was likely on one of the popover's items, which go with it: the modal gives it back to the button instead.
+      addReturnTarget(modal, anchor?.current);
+      close();
+    };
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
     window.addEventListener('blur', close);
+    window.addEventListener(MODAL_OPENED_EVENT, onModal);
     return () => {
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('blur', close);
+      window.removeEventListener(MODAL_OPENED_EVENT, onModal);
+      // Whoever owned the popover may have handed focus back to its button as it closed (Unsent
+      // messages does); it belongs in the modal, which is now on top.
+      if (closedFor?.modal.isConnected && !closedFor.modal.contains(document.activeElement)) {
+        const { modal, focus } = closedFor;
+        (focus instanceof HTMLElement && focus.isConnected && modal.contains(focus) ? focus : (focusableIn(modal)[0] ?? modal)).focus();
+      }
     };
   }, [anchor]);
 

@@ -4512,6 +4512,8 @@ async function runPaletteStep(win: BrowserWindow): Promise<string> {
 
   const panelOpen = () => has('[data-changes-panel]');
   const before = await panelOpen();
+  // Outside git the session has no Changes panel to show: the command still runs, but only its ranking is checked.
+  const onGit = await has('[data-current-session] [data-toggle-changes]');
   const runCommand = async (text: string) => {
     if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return null;
     await setFieldValue(win, '[data-palette-input]', text);
@@ -4523,9 +4525,9 @@ async function runPaletteStep(win: BrowserWindow): Promise<string> {
   };
   const first = await runCommand('tog chan');
   if (first !== 'toggle-changes') return `"tog chan" ranked ${String(first)} first`;
-  if (!(await waitInPage(win, before ? "!document.querySelector('[data-changes-panel]')" : "!!document.querySelector('[data-changes-panel]')", 2_000))) return 'Toggle changes did nothing';
+  if (onGit && !(await waitInPage(win, before ? "!document.querySelector('[data-changes-panel]')" : "!!document.querySelector('[data-changes-panel]')", 2_000))) return 'Toggle changes did nothing';
   await runCommand('tog chan');
-  if ((await panelOpen()) !== before) return 'could not toggle the panel back';
+  if (onGit && (await panelOpen()) !== before) return 'could not toggle the panel back';
 
   // Home: nothing for a session.
   pressKey(win, 'H', ['meta', 'shift']);

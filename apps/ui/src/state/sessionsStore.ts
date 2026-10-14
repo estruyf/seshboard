@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { LiveSession, SessionHostInfo, SessionsChanged, SessionsSnapshot, SessionSummary } from '@switchboard/protocol/client';
 import { hostAsLive, isActiveHost } from './hostsStore.ts';
+import { mergeSessionChanges } from './sessionChanges.ts';
 
 /** `project` is one project's page (`useProjectPage` says which); `projects` is the list of them. */
 export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage';
@@ -36,7 +37,8 @@ interface SessionsState {
   filter: string;
 
   applySnapshot(snapshot: SessionsSnapshot): void;
-  applyChanged(change: SessionsChanged): void;
+  /** Applies `sessions.changed` events, oldest first, in one update (a burst of them arrives batched). */
+  applyChanged(changes: readonly SessionsChanged[]): void;
   setLive(live: LiveSession[]): void;
   /** Shows a session in the active pane (or focuses the pane already showing it). */
   select(id: string | null): void;
@@ -86,13 +88,9 @@ export const useSessions = create<SessionsState>()((set) => ({
       complete: snapshot.complete,
       loaded: true,
     }),
-  applyChanged: (change) =>
-    set((state) => {
-      const sessions = new Map(state.sessions);
-      for (const s of change.upserted) sessions.set(s.id, s);
-      for (const id of change.removed) sessions.delete(id);
-      return { sessions, complete: change.complete };
-    }),
+  applyChanged: (changes) => {
+    if (changes.length > 0) set((state) => mergeSessionChanges(state, changes));
+  },
   setLive: (live) => set({ live: new Map(live.map((l) => [l.sessionId, l])) }),
   select: (id) =>
     set((s) => {

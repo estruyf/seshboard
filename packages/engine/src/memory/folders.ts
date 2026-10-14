@@ -1,9 +1,22 @@
-import { lstatSync, readdirSync, readFileSync, statSync, type Dirent } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, statSync, type Dirent, type Stats } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { memoryMeta, rulePaths, splitFrontmatter, type InstructionFile, type MemoryFile } from '@switchboard/protocol';
 import { git } from '../git/gitChanges.ts';
 import { conflictBase } from './personal.ts';
+
+/**
+ * `lstat` (or `stat`, with `follow`) that answers undefined for a missing path, also when a folder on the way is a
+ * file (ENOTDIR: a project folder replaced by a file), which `throwIfNoEntry: false` alone still throws for.
+ */
+export function statQuiet(path: string, follow = false): Stats | undefined {
+  try {
+    return (follow ? statSync : lstatSync)(path, { throwIfNoEntry: false });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined;
+    throw error;
+  }
+}
 
 /** How Claude Code names a project's folder under `projects/`: every character but letters and digits becomes `-`. */
 export const encodeProjectPath = (path: string) => path.replace(/[^A-Za-z0-9]/g, '-');
@@ -175,7 +188,7 @@ export async function listInstructionFiles(root: string): Promise<InstructionFil
     ...ruleFiles(join(root, '.claude', 'agent-memory')).map((path) => ({ path, kind: 'agent-memory' as const })),
   ];
   const found = candidates.flatMap((c) => {
-    const stat = lstatSync(c.path, { throwIfNoEntry: false });
+    const stat = statQuiet(c.path);
     return stat?.isFile() ? [{ ...c, bytes: stat.size }] : [];
   });
   const ignored = await ignoredPaths(root, found.map((f) => f.path));
