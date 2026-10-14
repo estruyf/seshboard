@@ -4864,6 +4864,199 @@ async function runSplitStep(win: BrowserWindow): Promise<string> {
   return 'ok: ⌥-click opened a second pane, focus follows clicks, closing returns to one, closing that lands on New session';
 }
 
+type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+
+/**
+ * Split view's layout. Two panes swap places by dragging a header onto the other (Esc cancels, a click doesn't
+ * swap), by ⌘⇧X and from the palette, and no pane is remounted or moved in the DOM (each keeps its mark and
+ * scroll). They stack one above the other and back (the layout buttons, ⌘⇧O), with nothing sticking out of a
+ * pane, a terminal docked below a stacked pane leaving the message box room, and a window too short to stack
+ * them shows them side by side again. Only the layout (kept in the throwaway profile) changes, and it is put back.
+ */
+async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const sessionIn = (pane: string) => js(`document.querySelector('[data-pane-slot="${pane}"] [data-current-session]')?.dataset.currentSession ?? null`) as Promise<string | null>;
+  const box = (selector: string) =>
+    js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) }; })()`) as Promise<Box | null>;
+  const activePane = () => js("document.querySelector('[data-pane-active=\"true\"]')?.dataset.pane ?? null") as Promise<string | null>;
+  const orientation = () => js("document.querySelector('[data-split]')?.dataset.splitOrientation ?? null") as Promise<string | null>;
+  const domOrder = () => js("[...document.querySelectorAll('[data-current-session]')].map((el) => el.dataset.currentSession).join()") as Promise<string>;
+  const shows = (value: string) => `document.querySelector('[data-split-orientation-toggle]')?.dataset.splitShown === '${value}'`;
+  // Tags each pane's view and notes its scroll position: a remounted or moved view loses both.
+  const mark = async () => {
+    // Scrolled up a little, then left alone until the conversations stop moving (they open at their end).
+    await js("for (const t of document.querySelectorAll('[data-current-session] [data-transcript]')) t.scrollTop = 30");
+    await waitInPage(
+      win,
+      "(() => { const now = [...document.querySelectorAll('[data-current-session] [data-transcript]')].map((t) => t.scrollTop + '/' + t.scrollHeight).join(); const at = performance.now(); if (window.__smokeScroll?.now !== now) { window.__smokeScroll = { now, at }; return false; } return at - window.__smokeScroll.at > 500; })()",
+      6_000,
+    );
+    await js("for (const view of document.querySelectorAll('[data-current-session]')) { view.dataset.smokeMark = view.dataset.currentSession; const t = view.querySelector('[data-transcript]'); if (t) view.dataset.smokeScroll = String(t.scrollHeight - t.scrollTop - t.clientHeight); }");
+  };
+  /** What changed in a pane since `mark()` (remounted, or how far its conversation is from the end), or an empty string when nothing did. */
+  const changed = () =>
+    js("[...document.querySelectorAll('[data-current-session]')].map((view) => { const t = view.querySelector('[data-transcript]'); return (view.dataset.smokeMark !== view.dataset.currentSession ? 'remounted' : '') + (String(t ? t.scrollHeight - t.scrollTop - t.clientHeight : '') !== (view.dataset.smokeScroll ?? '') ? 'scrolled, ' + view.dataset.smokeScroll + 'px from the end to ' + (t.scrollHeight - t.scrollTop - t.clientHeight) : ''); }).filter(Boolean).join('; ')") as Promise<string>;
+  /** What sticks out of its pane, or overlaps: the header, the message box with its chips and Send, and the conversation above it. */
+  const stickingOut = () =>
+    js(`[...document.querySelectorAll('[data-current-session]')].flatMap((view) => {
+      const pane = view.getBoundingClientRect(), header = view.querySelector('header').getBoundingClientRect(), found = [];
+      const inside = (name, el) => { const b = el.getBoundingClientRect(); if (b.right > pane.right + 1 || b.bottom > pane.bottom + 1 || b.left < pane.left - 1 || b.top < pane.top - 1) found.push(name); return b; };
+      for (const [name, selector] of [['header', 'header'], ['message box', '[data-composer]'], ['chips', '[data-composer-chips]'], ['Send', '[data-composer-submit]'], ['more menu', '[data-more-menu]']]) {
+        const el = view.querySelector(selector);
+        if (!el) continue;
+        const b = inside(name, el);
+        if (name !== 'header' && name !== 'more menu' && b.top < header.bottom - 1) found.push(name + ' under the header');
+      }
+      return found.map((what) => view.dataset.currentSession.slice(0, 8) + ': ' + what);
+    })`) as Promise<string[]>;
+
+  /** Presses on `from`'s title, drags to the middle of `to` and lets go ('drop'), presses Esc first ('escape'), or lets go in place ('click'). */
+  const drag = async (from: 'main' | 'split', to: 'main' | 'split', finish: 'drop' | 'escape' | 'click', picture?: string): Promise<string | null> => {
+    const handle = await box(`[data-pane-slot="${from}"] [data-pane-handle] h1`);
+    const target = await box(`[data-pane-slot="${to}"]`);
+    if (!handle || !target) return 'there is no header to drag or no pane to drop on';
+    const start = { x: handle.left + 12, y: Math.round(handle.top + handle.height / 2) };
+    const end = { x: Math.round(target.left + target.width / 2), y: Math.round(target.top + target.height / 2) };
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: start.x, y: start.y });
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: start.x, y: start.y, button: 'left', clickCount: 1 });
+    let problem: string | null = null;
+    if (finish !== 'click') {
+      for (let i = 1; i <= 6; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: start.x + Math.round(((end.x - start.x) * i) / 6), y: start.y + Math.round(((end.y - start.y) * i) / 6), button: 'left' });
+      if (!(await waitInPage(win, `document.querySelector('[data-pane-drop-target="${to}"]')`, 2_000))) problem = 'no drop indicator showed over the other pane while dragging';
+      else {
+        const frame = (await js(`(() => { const el = document.querySelector('[data-pane-drop-target="${to}"]'); return { ring: getComputedStyle(el).boxShadow !== 'none', label: el.innerText.trim(), cursor: getComputedStyle(document.body).cursor }; })()`)) as { ring: boolean; label: string; cursor: string };
+        if (!frame.ring || frame.label !== 'Swap panes') problem = `the drop indicator is wrong: ${JSON.stringify(frame)}`;
+        if (picture) await shot(win, picture);
+      }
+    }
+    if (finish === 'escape') pressKey(win, 'Escape');
+    const up = finish === 'click' ? start : end;
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: up.x, y: up.y, button: 'left', clickCount: 1 });
+    await settle(win);
+    return problem;
+  };
+  const ended = "!document.querySelector('[data-pane-drop-target]') && !document.documentElement.hasAttribute('data-pane-dragging')";
+
+  const firstView = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
+  if (!firstView || !smokeSessionId) return 'failed: no session open to split';
+  await js(
+    `[...document.querySelectorAll('[data-session-id]')].find((row) => row.dataset.sessionId !== '${smokeSessionId}').dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }))`,
+  );
+  if (!(await waitInPage(win, "document.querySelectorAll('[data-pane]').length === 2", 5_000))) return 'failed: ⌥-click did not open a second pane';
+  await waitInPage(win, "document.querySelectorAll('[data-transcript-item]').length > 0", 5_000);
+  const bounds = win.getBounds();
+  let left = await sessionIn('main');
+  let right = await sessionIn('split');
+  if (!left || !right || left === right) return `failed: the panes show ${left} and ${right}`;
+  const extra = left === smokeSessionId ? right : left;
+  try {
+    if ((await orientation()) !== 'side') return `failed: split view did not open side by side (${await orientation()})`;
+    const region = (await js("getComputedStyle(document.querySelector('[data-pane-handle]')).getPropertyValue('-webkit-app-region')")) as string;
+    if (region && region !== 'no-drag') return `failed: the header's handle is part of the window's drag region (${region}), which takes the mouse`;
+
+    // Drag the left pane's header onto the right pane: they trade places, and the active pane stays with its session.
+    await mark();
+    const order = await domOrder();
+    const dragged = await drag('main', 'split', 'drop', 'split-drag.png');
+    if (dragged) return `failed: ${dragged}`;
+    if (!(await waitInPage(win, `document.querySelector('[data-pane-slot="main"] [data-current-session="${right}"]') && document.querySelector('[data-pane-slot="split"] [data-current-session="${left}"]')`, 3_000))) {
+      return 'failed: dragging a header onto the other pane did not swap them';
+    }
+    [left, right] = [right, left];
+    const lost = await changed();
+    if (lost || (await domOrder()) !== order) return `failed: the swap remounted or moved a pane (${lost || 'its place in the DOM changed'})`;
+    const [one, two] = [await box('[data-pane-slot="main"]'), await box('[data-pane-slot="split"]')];
+    if (!one || !two || one.left >= two.left) return 'failed: after the swap the first pane is not on the left';
+    if ((await activePane()) !== 'split' || (await sessionIn('split')) !== right) return 'failed: the active pane did not stay with its session';
+    if (!(await waitInPage(win, ended, 2_000))) return 'failed: the drag indicator stayed after the drop';
+
+    // Esc cancels a drag; a click on the header, without moving, swaps nothing.
+    const cancelled = await drag('main', 'split', 'escape');
+    if (cancelled) return `failed: ${cancelled}`;
+    if (!(await waitInPage(win, ended, 2_000)) || (await sessionIn('main')) !== left) return 'failed: Esc did not cancel the drag';
+    const clicked = await drag('main', 'split', 'click');
+    if (clicked || (await sessionIn('main')) !== left) return 'failed: a click on a header swapped the panes';
+
+    // The keyboard and the palette do the same.
+    pressKey(win, 'X', ['meta', 'shift']);
+    if (!(await waitInPage(win, `document.querySelector('[data-pane-slot="main"] [data-current-session="${right}"]')`, 3_000))) return 'failed: ⌘⇧X did not swap the panes';
+    [left, right] = [right, left];
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return 'failed: ⌘K did not open the palette';
+    await setFieldValue(win, '[data-palette-input]', 'swap panes');
+    if (!(await waitInPage(win, "document.querySelector('[data-command-palette] [data-palette-command]')?.dataset.paletteCommand === 'swap-panes'", 3_000))) return 'failed: the palette does not put Swap panes first for "swap panes"';
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `!document.querySelector('[data-command-palette]') && document.querySelector('[data-pane-slot="main"] [data-current-session="${right}"]')`, 3_000))) return 'failed: Swap panes in the palette did not swap';
+    [left, right] = [right, left];
+    if (await changed()) return 'failed: swapping from the keyboard remounted a pane';
+
+    // Stacked: one pane above the other, filling the area.
+    const area = await box('[data-split]');
+    let stacked = '';
+    if (area && area.height >= 700) {
+      const click = await clickLikeAUser(win, '[data-split-orientation-toggle]');
+      if (!(await waitInPage(win, `document.querySelector('[data-split]')?.dataset.splitOrientation === 'stacked' && ${shows('stacked')}`, 3_000))) return `failed: Stacked did not stack the panes (the click landed on ${click.at})`;
+      await settle(win);
+      const [top, bottom] = [await box('[data-pane-slot="main"]'), await box('[data-pane-slot="split"]')];
+      if (!top || !bottom || bottom.top < top.bottom - 1 || Math.abs(top.width - bottom.width) > 1 || top.height < 300 || bottom.height < 300) return `failed: the stacked panes are not one above the other (${JSON.stringify({ top, bottom })})`;
+      const sticking = await stickingOut();
+      if (sticking.length) return `failed: stacked, these stick out of their pane: ${sticking.join(', ')}`;
+      await shot(win, 'split-stacked.png');
+      // Drag works in rows too.
+      await mark();
+      const dragged2 = await drag('main', 'split', 'drop');
+      if (dragged2) return `failed: stacked, ${dragged2}`;
+      if (!(await waitInPage(win, `document.querySelector('[data-pane-slot="main"] [data-current-session="${right}"]') && document.querySelector('[data-pane-slot="split"] [data-current-session="${left}"]')`, 3_000))) return 'failed: stacked, dragging a header did not swap the panes';
+      [left, right] = [right, left];
+      const [first, second] = [await box('[data-pane-slot="main"]'), await box('[data-pane-slot="split"]')];
+      if ((await changed()) || !first || !second || first.top >= second.top) return 'failed: stacked, the swap remounted a pane or left the first one below';
+      // A terminal docked below a short pane leaves the conversation its room: the smoke session's panel, in its folder.
+      const view = `[data-current-session="${smokeSessionId}"]`;
+      await js(`document.querySelector('${view} [data-toggle-terminal]')?.click()`);
+      if (!(await waitInPage(win, `document.querySelector('${view} [data-terminal-panel]')`, 3_000))) return 'failed: the terminal did not open in the stacked pane';
+      await settle(win);
+      const panel = await box(`${view} [data-terminal-panel]`);
+      const pane = await box(view);
+      const send = await box(`${view} [data-composer-submit]`);
+      const transcript = await box(`${view} [data-transcript]`);
+      if (!panel || !pane || !send || !transcript) return 'failed: no panel, message box or conversation in the stacked pane';
+      if (panel.bottom > pane.bottom + 1 || send.bottom > panel.top + 1 || transcript.height < 40) return `failed: in a stacked pane the terminal pushes the message box out (${JSON.stringify({ pane, panel, send, transcript })})`;
+      await shot(win, 'split-stacked-terminal.png');
+      const stuck = await stickingOut();
+      if (stuck.length) return `failed: stacked with a terminal, these stick out of their pane: ${stuck.join(', ')}`;
+      await js(`document.querySelector('${view} [data-terminal-panel] [data-terminal-tab-close]')?.click()`);
+      if (!(await waitInPage(win, `!document.querySelector('${view} [data-terminal-panel]')`, 3_000))) return 'failed: closing the terminal tab did not hide the panel';
+
+      // ⌘⇧O flips it back, and a window too short to stack them shows them side by side (the choice is kept).
+      pressKey(win, 'O', ['meta', 'shift']);
+      if (!(await waitInPage(win, `document.querySelector('[data-split]')?.dataset.splitOrientation === 'side' && ${shows('side')}`, 3_000))) return 'failed: ⌘⇧O did not put the panes side by side';
+      pressKey(win, 'O', ['meta', 'shift']);
+      if (!(await waitInPage(win, "document.querySelector('[data-split]')?.dataset.splitOrientation === 'stacked'", 3_000))) return 'failed: ⌘⇧O did not stack the panes';
+      win.setContentSize(1280, 600);
+      if (!(await waitInPage(win, `document.querySelector('[data-split]')?.dataset.splitOrientation === 'side' && ${shows('side')} && document.querySelector('[data-split-orientation-toggle]').dataset.tooltip.includes('taller')`, 3_000))) {
+        return 'failed: in a window too short to stack, the panes did not go side by side with a reason';
+      }
+      await settle(win);
+      const short = await stickingOut();
+      if (short.length) return `failed: in the small window these stick out of their pane: ${short.join(', ')}`;
+      win.setBounds(bounds);
+      if (!(await waitInPage(win, "document.querySelector('[data-split]')?.dataset.splitOrientation === 'stacked'", 3_000))) return 'failed: the stacked layout did not come back in the taller window';
+      pressKey(win, 'O', ['meta', 'shift']);
+      if (!(await waitInPage(win, `document.querySelector('[data-split]')?.dataset.splitOrientation === 'side'`, 3_000))) return 'failed: ⌘⇧O did not put the panes side by side again';
+      stacked = ', stacked them (also with a terminal and in a window too short for it)';
+    } else {
+      stacked = `; the window is too short here (${area?.height}px) to check stacking`;
+    }
+    return `ok: dragged a header to swap the panes (Esc cancels, a click does not), swapped with ⌘⇧X and the palette without remounting${stacked}`;
+  } finally {
+    win.setBounds(bounds);
+    // Put things back: side by side, one pane (the smoke session), a settled window.
+    if ((await orientation()) === 'stacked') await js(`document.querySelector('[data-split-orientation-toggle]')?.click()`);
+    await js(`document.querySelector('[data-current-session="${extra}"]')?.closest('[data-pane-slot]')?.querySelector('[data-close-pane]')?.click()`);
+    await waitInPage(win, "!document.querySelector('[data-split]')", 2_000);
+    await settle(win);
+  }
+}
+
 /**
  * The app's own controls: drag the sidebar edge (clamped at both ends, double-click resets), a themed
  * tooltip on hover, and the pointer cursor on buttons. Only the throwaway profile's state changes, and
@@ -5711,6 +5904,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('shortcuts sheet', () => runShortcutsStep(win));
   await step('tools', () => runToolsStep(win));
   await step('split panes', () => runSplitStep(win));
+  await step('split layout: swap and stack', () => runSplitLayoutStep(win));
   await step('archive', () => runArchiveStep(win));
   await step('rename', () => runRenameStep(win));
   await step('multi-select and archive', () => runArchiveManyStep(win));
