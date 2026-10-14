@@ -1,7 +1,7 @@
-import { currentPlatform } from '../lib/platform.ts';
+import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
+import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -23,7 +23,7 @@ import { Radio, RadioGroup } from './ui/Radio.tsx';
 import { SegmentedControl } from './ui/SegmentedControl.tsx';
 import { Select } from './ui/Select.tsx';
 import { Toggle } from './ui/Toggle.tsx';
-import { formatKeys, keysFor, matches } from '../lib/shortcuts.ts';
+import { clickKeysFor, formatKeys, keysFor, matches } from '../lib/shortcuts.ts';
 import { groupByPage, searchSettings, type SettingEntry } from './settingsSearch/searchSettings.ts';
 import { jumpToSetting, resultId, SettingsSearchField, SettingsSearchResults } from './settingsSearch/SettingsSearch.tsx';
 import { settingsIndex } from './settingsSearch/settingsIndex.ts';
@@ -232,6 +232,28 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 </Choice>
               ))}
             </RadioGroup>
+          </Section>
+          <Section title="File links">
+            <div className="flex items-center justify-between gap-4" data-setting-row>
+              <span>
+                <span className="block text-ui">Clicking a file link</span>
+                <span className="block text-meta text-muted">
+                  What a click does on a file in Claude’s replies. {formatKeys(clickKeysFor('transcript.file-link-other'))} does the other, and right-click lists both.
+                </span>
+              </span>
+              <Select<FileLinkClick>
+                label="What clicking a file link does"
+                value={prefs.fileLinkClick}
+                onChange={(fileLinkClick) => update({ fileLinkClick })}
+                options={[
+                  { value: 'file-manager', label: `Show in ${fileManagerName()}` },
+                  { value: 'editor', label: 'Open in editor' },
+                ]}
+                menuWidth={200}
+                className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+                dataAttrs={{ 'data-file-link-click': true }}
+              />
+            </div>
           </Section>
           <Section title="While Claude is working">
             <div className="flex items-center justify-between gap-4" data-setting-row>

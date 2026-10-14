@@ -72,6 +72,8 @@ export type SidebarStyle = "large" | "standard" | "compact";
 export type SidebarCollapsed = "minimal" | "closed";
 /** Tool calls in a conversation: one summary line per run (click for the steps), or every step. */
 export type ToolActivity = "summary" | "steps";
+/** What a click on a file link in the conversation does: show the file in the file manager, or open it in the editor. */
+export type FileLinkClick = "file-manager" | "editor";
 /** Sessions in the sidebar: only those started or continued in Switchboard, or every Claude Code session. */
 export type SessionScope = "switchboard" | "all";
 /** What a new window shows: Home, the session open last time, or New session. */
@@ -158,6 +160,8 @@ export interface Preferences {
   sidebarStyle: SidebarStyle;
   sidebarCollapsed: SidebarCollapsed;
   toolActivity: ToolActivity;
+  /** What a click on a file link in the conversation does (Settings › Conversation); Shift-click does the other. */
+  fileLinkClick: FileLinkClick;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
   sessionScope: SessionScope;
@@ -195,6 +199,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarStyle: "standard",
   sidebarCollapsed: "minimal",
   toolActivity: "summary",
+  fileLinkClick: "file-manager",
   confirmQuit: true,
   sessionScope: "switchboard",
   startupView: "home",
@@ -321,6 +326,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.sidebarCollapsed = raw.sidebarCollapsed;
   if (oneOf(["summary", "steps"] as const, raw.toolActivity))
     out.toolActivity = raw.toolActivity;
+  // An unknown value (a newer version's choice) is left out, so the default or the last good one stays.
+  if (oneOf(["file-manager", "editor"] as const, raw.fileLinkClick))
+    out.fileLinkClick = raw.fileLinkClick;
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))
     out.sessionScope = raw.sessionScope;

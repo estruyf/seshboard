@@ -641,6 +641,15 @@ export const SHORTCUTS = [
     where: "find",
   },
   {
+    id: "transcript.file-link-other",
+    keys: ["shift+click"],
+    action: "Open a file link the other way",
+    section: "session",
+    context: "On a file in the conversation",
+    note: "A click does what Settings › Conversation sets; this does the other",
+    when: inSession,
+  },
+  {
     id: "changes.toggle",
     keys: ["mod+shift+d"],
     action: "Show or hide Changes",
@@ -974,6 +983,13 @@ export function matches(
 /** A shortcut's main keys in the stored form (`cmd+j`), for a button's `kbd` or a palette row. */
 export const keysFor = (id: ShortcutId) =>
   comboPresses(shortcutById(id).keys[0]!)[0]!;
+
+/**
+ * The click that does `id`, in the stored form (`shift+click`), for text such as a tooltip: `formatKeys(clickKeysFor(id))`.
+ * `keysFor` is for key presses and skips clicks.
+ */
+export const clickKeysFor = (id: ShortcutId) =>
+  shortcutById(id).keys.find((combo) => combo.endsWith("click")) ?? "";
 
 /** Every key that runs `id`, as `aria-keyshortcuts` lists them (space-separated). */
 export const ariaKeysFor = (id: ShortcutId) =>

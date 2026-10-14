@@ -1017,6 +1017,11 @@
       "page": "command-palette"
     },
     {
+      "id": "shortcut:transcript.file-link-other",
+      "name": "transcript.file-link-other",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "settings:about",
       "name": "Settings: About",
       "page": "settings"
@@ -1538,8 +1543,13 @@
     },
     {
       "id": "feature:file-links",
-      "name": "Open files from replies",
+      "name": "Show or open files from replies",
       "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:file-link-click",
+      "name": "Clicking a file link: show or open (Settings, Conversation)",
+      "page": "settings"
     },
     {
       "id": "feature:file-mentions",

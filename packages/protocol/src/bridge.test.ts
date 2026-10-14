@@ -14,6 +14,26 @@ describe('sidebarCollapsed preference', () => {
   });
 });
 
+describe('fileLinkClick preference', () => {
+  it('shows the file in the file manager by default', () => {
+    expect(DEFAULT_PREFERENCES.fileLinkClick).toBe('file-manager');
+  });
+
+  it('keeps the two choices, and drops anything else', () => {
+    expect(sanitizePreferences({ fileLinkClick: 'editor' })).toEqual({ fileLinkClick: 'editor' });
+    expect(sanitizePreferences({ fileLinkClick: 'file-manager' })).toEqual({ fileLinkClick: 'file-manager' });
+    expect(sanitizePreferences({ fileLinkClick: 'finder' })).toEqual({});
+    expect(sanitizePreferences({ fileLinkClick: true })).toEqual({});
+    expect(sanitizePreferences({ fileLinkClick: null })).toEqual({});
+  });
+
+  it('falls back to the default for an unknown saved value, and to the last good one for an unknown change', () => {
+    expect({ ...DEFAULT_PREFERENCES, ...sanitizePreferences({ fileLinkClick: 'reveal' }) }.fileLinkClick).toBe('file-manager');
+    const editor = { ...DEFAULT_PREFERENCES, fileLinkClick: 'editor' as const };
+    expect({ ...editor, ...sanitizePreferences(mergePreferences(editor, { fileLinkClick: 'reveal' })) }.fileLinkClick).toBe('editor');
+  });
+});
+
 describe('newSessionMode preference', () => {
   it('starts new sessions in the mode picked last by default', () => {
     expect(DEFAULT_PREFERENCES.newSessionMode).toBe('last');

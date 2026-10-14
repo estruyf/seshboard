@@ -3,6 +3,7 @@ import {
   ariaKeysFor,
   ariaShortcut,
   available,
+  clickKeysFor,
   comboPresses,
   formatKeys,
   formatShortcut,
@@ -146,6 +147,8 @@ describe('the shortcut registry', () => {
     expect(comboPresses('mod+q mod+q')).toEqual(['cmd+q']);
     expect(comboPresses('alt+click')).toEqual([]);
     expect(comboPresses('middleclick')).toEqual([]);
+    expect(clickKeysFor('transcript.file-link-other')).toBe('shift+click');
+    expect(formatKeys(clickKeysFor('transcript.file-link-other'))).toBe('⇧-click');
   });
 
   it('matches key presses to a shortcut and its alternatives', () => {
@@ -216,6 +219,7 @@ describe('the shortcut registry', () => {
       'find.next': [SESSION, HOME],
       'find.previous': [SESSION, HOME],
       'changes.toggle': [SESSION, at({ view: 'session' })],
+      'transcript.file-link-other': [SESSION, HOME],
       'terminal.toggle': [at({ view: 'settings' }), at({ view: 'session', session: false })],
       'terminal.maximize': [at({ view: 'settings' }), at({ view: 'session', session: false })],
       'terminal.restore': [{ ...SESSION, terminal: { open: true, maximized: true, actionRunning: false } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],
@@ -339,6 +343,7 @@ describe('shortcuts on Windows', () => {
     expect(formatKeys('mod+q mod+q')).toBe('Ctrl+Q then Ctrl+Q');
     expect(formatKeys('mod+1..9')).toBe('Ctrl+1 to Ctrl+9');
     expect(formatKeys('alt+click')).toBe('Alt+click');
+    expect(formatKeys(clickKeysFor('transcript.file-link-other'))).toBe('Shift+click');
     expect(formatKeys('mod+enter')).toBe('Ctrl+Enter');
     expect(spokenKeys('mod+enter')).toBe('Control, Enter');
     expect(ariaShortcut('mod+k')).toBe('Control+K');
