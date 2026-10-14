@@ -47,6 +47,7 @@ import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from '.
 import { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from './later.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { SideQuestionEvent, SideQuestionList } from './sideQuestions.ts';
+import { CatchUp } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
@@ -949,6 +950,17 @@ export const contract = {
       result: SectionCopy,
     },
 
+    // --- Catch-up ------------------------------------------------------------------------------
+    /** A session's catch-up: the briefing on its last turn (null when it has none, or a new turn started since). */
+    'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
+    /** Every session's catch-up, for the sidebar's review times (a window that just connected); `catchup.changed` follows each change. */
+    'catchup.list': { params: z.object({}), result: z.object({ catchUps: z.array(CatchUp) }) },
+    /**
+     * Makes the catch-up for a session's last finished turn now, from its transcript (also for a session that ran in a
+     * terminal), and sends it with `catchup.changed`. NOT_FOUND without a finished turn; SESSION_BUSY while Claude works.
+     */
+    'catchup.build': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp }) },
+
     // --- Claude Code updates -----------------------------------------------------------------
     'claudeUpdate.get': { params: z.object({}), result: ClaudeUpdateState },
     /** Compares the installed Claude Code with the newest on its channel now. The result arrives through `claudeUpdate.changed`. */
@@ -1009,6 +1021,8 @@ export const contract = {
     'companion.context': z.object({ deliveryId: z.string(), target: CompanionTarget, items: ContextItems, reveal: z.boolean() }),
     /** The companion asked to show a session (its status bar item): select it and bring the window forward. */
     'companion.reveal': z.object({ sessionId: z.string() }),
+    /** A session's catch-up was made, refreshed or cleared (null: a new message or turn started). */
+    'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
     /** A project's memory or instruction files changed (`root` null: the personal folder): list them again. */
     'memory.changed': z.object({ root: z.string().nullable() }),
   },

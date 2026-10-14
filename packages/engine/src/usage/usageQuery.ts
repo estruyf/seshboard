@@ -7,6 +7,8 @@ const HOUR = 3_600_000;
 
 /** The key of the Auto routing row: Haiku's calls that picked a model for new sessions. */
 export const AUTO_ROUTING_KEY = 'auto-routing';
+/** The key of the Catch-up summaries row: Haiku's calls that wrote the briefings on finished turns. */
+export const CATCHUP_KEY = 'catch-up-summaries';
 
 /** `YYYY-MM-DD` of a moment in a time zone (UTC when the zone is unknown). */
 export function dayKeyFormatter(timeZone: string): (at: number) => string {
@@ -101,7 +103,7 @@ interface Group {
   sessions: Set<string>;
   /** Weight per model, for a session's main model. */
   models: Map<string, number>;
-  /** Auto routing calls folded in. */
+  /** Helper calls folded in (Auto routing picks, catch-up summaries). */
   picks: number;
 }
 
@@ -179,15 +181,23 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     }
   }
 
-  // Auto model's routing calls leave no transcript, so the scanner never sees them: they are kept apart and shown
-  // as their own row (in Day, inside their day), so their tokens are never hidden.
-  const routed = db
-    .prepare(`SELECT at, model, input, output, cache_read, cache_write FROM auto_routing WHERE scope = ? AND at >= ? AND at <= ? ${model ? 'AND model = ?' : ''}`)
-    .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Routed[];
+  // Auto model's routing calls and the catch-up summaries leave no transcript, so the scanner never sees them: they
+  // are kept apart and shown as a row each (in Day, inside their day), so their tokens are never hidden.
+  const helpers = [
+    { table: 'auto_routing', key: AUTO_ROUTING_KEY },
+    { table: 'catchup_usage', key: CATCHUP_KEY },
+  ] as const;
+  const routed = helpers.flatMap(({ table, key }) =>
+    (
+      db
+        .prepare(`SELECT at, model, input, output, cache_read, cache_write FROM ${table} WHERE scope = ? AND at >= ? AND at <= ? ${model ? 'AND model = ?' : ''}`)
+        .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Routed[]
+    ).map((row) => ({ ...row, helper: key })),
+  );
   for (const route of routed) {
     const tokens: TokenCounts = { input: route.input, output: route.output, cacheRead: route.cache_read, cacheWrite: route.cache_write };
     const hour = hourOf(route.at);
-    const key = groupBy === 'day' ? dayOf(hour) : AUTO_ROUTING_KEY;
+    const key = groupBy === 'day' ? dayOf(hour) : route.helper;
     let group = groups.get(key);
     if (!group) groups.set(key, (group = newGroup(key)));
     addTo(group.tokens, tokens);
@@ -231,6 +241,9 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     const mainModel = [...g.models].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     if (g.key === AUTO_ROUTING_KEY && groupBy !== 'day') {
       return { key: g.key, label: 'Auto routing', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, largestContext: 0, share: share.share, measured: false, autoRouting: { picks: g.picks } };
+    }
+    if (g.key === CATCHUP_KEY && groupBy !== 'day') {
+      return { key: g.key, label: 'Catch-up summaries', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, largestContext: 0, share: share.share, measured: false, catchUpSummaries: { calls: g.picks } };
     }
     const base = { key: g.key, sessions: g.sessions.size, turns: g.turns, fastTurns: g.fastTurns, tokens: g.tokens, largestContext: g.largestContext, share: share.share, measured: share.measured };
     if (groupBy === 'session') {

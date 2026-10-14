@@ -1,0 +1,121 @@
+---
+title: Catch-up
+description: A short briefing at the top of a session when it finishes or needs you, so you can decide what to do next in a few seconds.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+When a session finishes a turn or waits for you, Switchboard puts a short briefing at the top of it: what you asked, what Claude did, what it skipped, and the one thing it needs from you next. It comes with the signals you would otherwise look up yourself: did the tests pass, how much changed, and did Claude stay inside what you asked for.
+
+<Screenshot name="catch-up-card" alt="A finished session showing the catch-up card: Finished, 4m ago, about 3 minutes to review; Your ask; What it did and Skipped or not finished; What it needs from you, Commit the changes, in green; the chips 14 tests passed, +120 −40 · 6 files and Followed the plan; then Commit, Review changes, Reply, Archive and Expand conversation" eager />
+
+## When it shows
+
+A session gets a catch-up when:
+
+- Claude finishes a turn, or stops with an error.
+- Claude waits for you: a permission, a question or a plan to approve.
+
+Your next message clears it, and so does Claude going back to work. A session that is working has no catch-up.
+
+The card shows in full when there is something to decide: the session finished and you haven't read it, it stopped with an error, or it waits for you. Once you've read a session, the catch-up folds into one line at the top, so it is one key away and never in the way.
+
+<Screenshot name="catch-up-strip" alt="The folded catch-up: Finished, Commit the changes, about 3 minutes to review, a Commit button and Show catch-up with Space" width={760} />
+
+Opening a session with a catch-up doesn't mark it as read by itself. **Mark as read**, or anything that ends what it needs (Allow, Deny, an answer), does. A catch-up made while you were looking at the session (you watched it finish) is no news, so that session is read as usual.
+
+## What the card says
+
+- **The state:** **Finished** in blue, **Finished with errors** in red, or **Needs you · permission** and **Needs you · question** in pink. Then how long ago, and on the right how long it takes to look it over ("~2 min to review").
+- **Your ask:** the prompt that started this piece of work. When your last message only answered Claude ("yes, go on"), it is the one before.
+- **What it did** and **Skipped or not finished:** a few plain lines each.
+- **What it needs from you:** one next step, in its colour: commit (green), reply (red), review (orange), a permission or question (pink), or nothing.
+- **The chips:** the tests (**14 tests passed**, **2 of 9 tests fail** or **No tests run**), the changes (**+120 −40 · 6 files**), files outside what you asked for, and whether Claude followed its plan.
+
+### What it needs from you
+
+| It needs | When | Main action |
+|---|---|---|
+| **Commit** | It finished cleanly and changed files. | **Commit** (<Kbd shortcut="catchup.commit" />) |
+| **Reply** | Tests fail, it stopped with an error, or it asked you something. | **Reply** (<Kbd shortcut="catchup.reply" />) |
+| **Review** | It changed files outside the plan, or outside what you asked for. | **Review changes** (<Kbd shortcut="catchup.review" />) |
+| **A permission** | Claude wants to run something. | **Allow**, and **Deny** |
+| **A question** | Claude asks you to choose. | **Send answer** |
+| **Nothing** | It finished cleanly without changing files. | **Archive** (<Kbd shortcut="catchup.archive" />) |
+
+<Kbd shortcut="catchup.primary" /> always runs the main action.
+
+### The signals
+
+The signals come from what Claude ran and from git, never from a model:
+
+- **Tests:** the last test command of the turn (`npm test`, `npm run check`, `vitest`, `jest`, `pytest`, `go test`, `cargo test`, `dotnet test` and the like), and whether it passed. The counts show when the output has them.
+- **Changes:** what changed in the session's checkout (or worktree) against the last commit, plus the new files Claude made.
+- **Outside the plan:** with a plan, the files and folders it names; without one, the paths your prompt names. A file Claude changed outside those shows here. A file outside the project or worktree always does. When neither the plan nor your prompt names any paths, the chip doesn't show.
+- **The plan:** **Followed the plan**, or **Deviated from the plan**, only when the session had one.
+
+The review time adds up the lines and files that changed, failing tests and files outside the plan. A permission or a question is always about a minute.
+
+## The actions
+
+Each button shows its key. The keys work while the catch-up is on screen and you're not typing in the message box or another field.
+
+| Action | Key | What it does |
+|---|---|---|
+| **Review changes** | <Kbd shortcut="catchup.review" /> | Opens the [Changes panel](/terminal-changes-git/changes/), or closes it (**Hide changes**). |
+| **Commit** | <Kbd shortcut="catchup.commit" /> | Opens the Commit dialog. Once it went through, the card says **Committed** and offers **Archive**. |
+| **Reply** | <Kbd shortcut="catchup.reply" /> | Puts you in the message box, which says "Reply to Claude about …". |
+| **Mark as read** | <Kbd shortcut="catchup.read" /> | Marks the session read. The [focus limit](/focus-limit/)'s count drops right away. |
+| **Archive** | <Kbd shortcut="catchup.archive" /> | Archives the session and opens the next one in the sidebar's order. |
+| **Expand conversation** | <Kbd shortcut="catchup.expand" /> | Folds the card, so the conversation shows. In the folded line, **Show catch-up** opens it again. |
+
+<Kbd shortcut="catchup.close" /> closes one thing at a time: the message box you went to reply in, then the Changes panel, then the card.
+
+### Permissions and questions
+
+When the session waits for you, the card shows the same permission or question card as the one above the message box, with the same buttons, and that one hides while the catch-up is open. **Allow** (<Kbd shortcut="catchup.primary" />) and **Deny** answer it. For a question, <Kbd shortcut="catchup.option" /> move between the options, <Kbd shortcut="catchup.pick" /> pick one, and <Kbd shortcut="catchup.primary" /> sends your answer.
+
+## Banner
+
+The banner keeps the conversation in view: the same briefing in two lines over it. The first line has the state, your ask, the review time and the main action; the second what it needs from you and the chips. A command to allow shows on its own line, and a question's options as small numbered buttons.
+
+<Screenshot name="catch-up-banner" alt="The catch-up as a banner above the conversation: Finished, the ask, about 3 minutes to review, Commit and Details; under it Commit the changes in green, why, and the chips" />
+
+**Details** (<Kbd shortcut="catchup.expand" />) opens the rest: what it did, what it skipped, and the other actions. <Kbd shortcut="catchup.close" /> closes Details first, then folds the banner.
+
+<Screenshot name="catch-up-banner-details" alt="The banner with Details open: What it did and Skipped or not finished, then Review changes, Reply, Archive and Expand conversation" width={760} />
+
+## Quickest to unblock
+
+The sidebar can sort sessions by what takes least to unblock. Choose **Quickest to unblock** at the top of the sidebar, next to **Recent**. Switchboard remembers your choice.
+
+<Screenshot name="sidebar-quickest" alt="The sidebar sorted by Quickest to unblock: Needs review · quickest first, then Read, with review times and a warning on a session that changed a file outside the plan, then Still working" width={360} />
+
+- **Needs review · quickest first:** sessions that wait for you, then finished ones you haven't read, each by how long they take to review. Failing tests come last among equal times.
+- **Read:** sessions you've looked at.
+- **Still working:** sessions Claude is working on.
+
+The Queue and Pinned only show in **Recent**. In both orders, a session with a catch-up says how long it takes on its second line ("acme-store · ~2 min to review", or "needs you · ~1 min"), and a warning shows when Claude changed files outside the plan. In the [minimal rail](/sessions/sidebar/), the warning is a small badge on the icon.
+
+<Kbd shortcut="session.next-needs-you" /> goes to the next session that needs you in this order, whichever order the sidebar shows, and wraps around.
+
+## Settings
+
+In [Settings](/settings/), under **Conversation**, **Catch-up**:
+
+| Setting | What it does |
+|---|---|
+| **Layout** | **Card** (the default) shows the briefing in place of the conversation until you expand it. **Banner** shows it over the conversation. **Off** shows none. |
+| **Write catch-up summaries with Haiku** | On by default. Off, the lines come from the tool calls ("Edited 6 files", "Ran npm run check"). |
+
+### What Haiku sees
+
+With summaries on, Haiku gets your prompt, Claude's last reply, a list of the tool calls (the tool, the file or command, and how it ended), the signals and the plan. It never sees what is in your files, a diff or your memory. Haiku has a few seconds; if it doesn't answer in time, the card is written from the tool calls instead. What a session waits for always comes from the request itself.
+
+Each summary uses a few thousand Haiku tokens on the session's Claude profile, so it counts toward that plan. In [Usage](/usage/), they show as their own row, **Catch-up summaries**.
+
+<Aside>
+Sessions that run in a terminal or another app get no catch-up by themselves. For one of those, run **Catch up on this session** from the [command palette](/command-palette/) once it has finished.
+</Aside>

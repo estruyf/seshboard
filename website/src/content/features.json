@@ -2977,6 +2977,16 @@
       "page": "usage"
     },
     {
+      "id": "palette:build-catch-up",
+      "name": "Catch up on this session",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "palette:show-catch-up",
+      "name": "Show catch-up",
+      "page": "sessions/catch-up"
+    },
+    {
       "id": "shortcut:usage.open",
       "name": "usage.open",
       "page": "usage"
@@ -3000,6 +3010,56 @@
       "id": "shortcut:usage.back",
       "name": "usage.back",
       "page": "usage"
+    },
+    {
+      "id": "shortcut:catchup.primary",
+      "name": "catchup.primary",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.close",
+      "name": "catchup.close",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.review",
+      "name": "catchup.review",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.commit",
+      "name": "catchup.commit",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.reply",
+      "name": "catchup.reply",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.read",
+      "name": "catchup.read",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.archive",
+      "name": "catchup.archive",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.expand",
+      "name": "catchup.expand",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.option",
+      "name": "catchup.option",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.pick",
+      "name": "catchup.pick",
+      "page": "sessions/catch-up"
     },
     {
       "id": "slash:btw",

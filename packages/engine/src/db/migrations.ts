@@ -398,4 +398,27 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX side_questions_session ON side_questions (session_id, at);
   `,
+
+  // v24: Catch-up, the briefing on each session's latest turn (one per session, replaced by the next turn), and the
+  // tokens its Haiku summaries used. Summaries run with `persistSession: false`, so no transcript holds those tokens and
+  // the Usage scanner never sees them; this is their only record.
+  `
+  CREATE TABLE catchup (
+    session_id TEXT PRIMARY KEY,
+    turn_id    TEXT NOT NULL,
+    json       TEXT NOT NULL
+  );
+  CREATE TABLE catchup_usage (
+    id          TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    at          INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    session_id  TEXT,
+    input       INTEGER NOT NULL,
+    output      INTEGER NOT NULL,
+    cache_read  INTEGER NOT NULL,
+    cache_write INTEGER NOT NULL
+  );
+  CREATE INDEX catchup_usage_scope_at ON catchup_usage (scope, at);
+  `,
 ];

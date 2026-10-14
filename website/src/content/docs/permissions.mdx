@@ -21,7 +21,8 @@ A session that needs you shows up in several places at once:
 
 - The sidebar puts it in the **Needs you** group at the top, with a pink rail and a pulsing dot. Home lists it first too.
 - A notification and <Os mac="the Dock badge" windows="a dot on the taskbar button" /> tell you, also while Switchboard is in the background. In the background, <Os mac="the Dock icon bounces" windows="the taskbar button also flashes until you switch to Switchboard" />. The notification says what Claude wants: "Claude wants to use Bash", "Claude has a question" or "Claude has a plan for you". Click it to open the session.
-- Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that needs you, or run *Go to next session that needs you* in the command palette.
+- Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that needs you, or run *Go to next session that needs you* in the command palette. It goes to sessions that wait for you first, then finished ones you haven't read, the quickest to review first (see [Catch-up](/sessions/catch-up/#quickest-to-unblock)).
+- A waiting session's [catch-up](/sessions/catch-up/) shows the same card at the top of the session, with what Claude did so far.
 - With the session open, *Go to the permission* or *Go to the question* in the palette scrolls to the card.
 
 The card itself has a pink frame. After a minute it says how long it has been waiting ("Waiting 2m"). A card from a subagent says "From a subagent".

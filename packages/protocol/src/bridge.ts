@@ -90,6 +90,10 @@ export type NewSessionMode = "last" | "default" | "acceptEdits" | "plan" | "auto
 export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["last", "default", "acceptEdits", "plan", "auto"];
 /** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
 export type WhileWorking = "queue" | "steer";
+/** The catch-up at the top of a finished or waiting session: a full card, a compact banner over the conversation, or none. */
+export type CatchUpLayout = "card" | "banner" | "off";
+/** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
+export type SidebarSort = "recent" | "quickest";
 
 /** At the focus limit: ask first and allow going over (`nudge`), or wait until a session is finished (`strict`). */
 export type FocusMode = "nudge" | "strict";
@@ -187,6 +191,12 @@ export interface Preferences {
   whileWorking: WhileWorking;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
+  /** Settings › Conversation › Catch-up: how the briefing on a finished or waiting session shows. */
+  catchUpLayout: CatchUpLayout;
+  /** Settings › Conversation › Catch-up: Haiku writes the briefing's lines; off, they come from the tool calls. */
+  catchUpSummaries: boolean;
+  /** The sidebar's order (its Recent | Quickest to unblock control). */
+  sidebarSort: SidebarSort;
   githubStar: GithubStar;
   /** Settings › Notifications: system notifications, separate from the sounds. */
   notifications: NotificationPrefs;
@@ -215,6 +225,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
+  catchUpLayout: "card",
+  catchUpSummaries: true,
+  sidebarSort: "recent",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
   sounds: DEFAULT_SOUNDS,
@@ -367,6 +380,11 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.whileWorking = raw.whileWorking;
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
+  if (oneOf(["card", "banner", "off"] as const, raw.catchUpLayout))
+    out.catchUpLayout = raw.catchUpLayout;
+  if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
+  if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
+    out.sidebarSort = raw.sidebarSort;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
     out.githubStar = raw.githubStar;
   // Before notifications and sounds had a card each, Show notifications was a plain switch.

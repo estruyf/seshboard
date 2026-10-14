@@ -4,6 +4,11 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **Catch-up: a short briefing when a session finishes or needs you.** At the top of the session: what you asked, what Claude did and skipped, the one thing it needs from you next (commit, reply, review, a permission or a question), and the signals you'd otherwise look up yourself: whether the tests passed, how much changed, files changed outside the plan, and whether Claude followed its plan. Every action has a key: ↩ for the main one, D to review changes, C to commit, R to reply, U to mark as read, E to archive and go to the next session, Space to expand the conversation, Esc to fold it. A permission or question is answered right in the card. Once you've read a session, the briefing folds into one line. Choose **Card**, **Banner** (over the conversation) or **Off** in Settings › Conversation. Haiku writes the lines from your prompt, Claude's last reply and the list of tool calls, never your files or memory; its tokens show in Usage as **Catch-up summaries**, and you can turn it off. For a session that ran in a terminal, run **Catch up on this session** from the command palette.
+- **Sort the sidebar by Quickest to unblock.** Next to **Recent** at the top of the sidebar: sessions that wait for you, then finished ones you haven't read, each by how long they take to review, then the ones you've read, then the ones still working. Rows say how long a review takes ("~2 min to review"), and a warning shows when Claude changed files outside the plan. ⌘⇧U (Ctrl+Shift+U on Windows) now goes through what needs you in this order: sessions waiting for you first, then finished ones you haven't read, the quickest first.
+
 ## [0.0.17] - 2026-10-14
 
 ### New

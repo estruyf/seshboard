@@ -4,6 +4,8 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { findModelOption } from '../../lib/models.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
+import { useCatchUp } from '../../state/catchUpStore.ts';
+import { showOf } from '../../state/catchUpShow.ts';
 import { promptLabel } from '../../state/queue.ts';
 import { useUnsent } from '../drafts/useUnsent.ts';
 import { useQueue } from '../../state/useQueue.ts';
@@ -107,6 +109,8 @@ export function usePaletteContext(): PaletteContext {
   const id = view === 'session' ? selectedId : null;
 
   const sides = useSideQuestions((s) => s.sessions);
+  const catchUps = useCatchUp((s) => s.cards);
+  const collapsedCatchUps = useCatchUp((s) => s.collapsed);
   const session = useMemo<PaletteSession | null>(() => {
     if (!id) return null;
     const row = toRows(sessions, live, hosts).find((r) => r.id === id);
@@ -130,11 +134,12 @@ export function usePaletteContext(): PaletteContext {
         : null,
       running: active?.state === 'running' || active?.state === 'needs-you',
       waiting: waitingOn.length === 0 ? null : waitingOn.some((p) => p.toolName === 'AskUserQuestion') ? 'question' : 'permission',
+      catchUp: showOf({ card: catchUps.get(id) ?? null, layout: prefs.catchUpLayout, summary, host, live: live.get(id) ?? null, permissions: waitingOn, collapsed: collapsedCatchUps }),
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
       sideQuestions: browsable(sides.get(id) ?? EMPTY_SIDE),
     };
-  }, [id, sessions, live, hosts, permissions, models, digest, sides]);
+  }, [id, sessions, live, hosts, permissions, models, digest, sides, catchUps, collapsedCatchUps, prefs.catchUpLayout]);
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);

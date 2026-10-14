@@ -54,6 +54,7 @@ const engine = createEngine({
   // The smoke test and the screenshots: Auto model picks without calling a model.
   stubRouter: process.env.SWITCHBOARD_STUB_ROUTER === '1',
   stubSideQuestions: process.env.SWITCHBOARD_STUB_BTW === '1',
+  stubCatchUp: process.env.SWITCHBOARD_STUB_CATCHUP === '1',
 });
 
 // One misbehaving session must never take the whole engine (and every other session) down.
@@ -67,6 +68,11 @@ process.parentPort.on('message', (event) => {
   // Settings › Conversation › Auto model, from main's preferences.
   if (data?.type === 'autoModel') {
     engine.setAutoModel(sanitizeAutoModel(data.prefs) ?? DEFAULT_AUTO_MODEL);
+    return;
+  }
+  // Settings › Conversation › Catch-up's "Write catch-up summaries with Haiku".
+  if (data?.type === 'catchUp') {
+    engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
     return;
   }
   // Settings › Sessions, from main's preferences (sent at start and after each change).

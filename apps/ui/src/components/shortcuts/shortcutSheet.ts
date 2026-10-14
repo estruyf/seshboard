@@ -58,7 +58,7 @@ export interface SheetAction {
 }
 
 /** Sections in reading order. In All mode the first two (and New session and Settings, when shown) are the left column. */
-const ORDER: ShortcutSection[] = ['general', 'sessions', 'session', 'composer', 'permissions', 'actions', 'new-session', 'settings', 'usage'];
+const ORDER: ShortcutSection[] = ['general', 'sessions', 'session', 'composer', 'permissions', 'catch-up', 'actions', 'new-session', 'settings', 'usage'];
 const LEFT = new Set<ShortcutSection>(['general', 'sessions', 'new-session', 'settings', 'usage']);
 /** Shown in All mode only when a filter matches them; Here mode shows them where they apply. */
 const ON_DEMAND = new Set<ShortcutSection>(['new-session', 'settings', 'usage']);
@@ -75,6 +75,7 @@ export function shortcutContext(p: PaletteContext, extra: { focus: ShortcutConte
     session: p.session !== null,
     running: p.session?.running ?? false,
     pending: p.session?.waiting ?? null,
+    catchUp: p.session?.catchUp ?? null,
     selection: extra.selection,
     split: p.split,
     behind: p.git?.pullable ?? false,

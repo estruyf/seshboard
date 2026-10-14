@@ -1,9 +1,10 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { EyeOff, House, ListEnd, Pin, Plus, Search, Settings } from 'lucide-react';
+import { EyeOff, House, ListEnd, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
@@ -122,6 +123,7 @@ const RailRow = memo(function RailRow({
   now,
   request,
   draft,
+  outside,
   onClick,
   onMenu,
   onMiddleClick,
@@ -136,6 +138,8 @@ const RailRow = memo(function RailRow({
   request: WaitingRequest | null;
   /** The start of an unsent message typed here, or null. */
   draft: string | null;
+  /** Its last turn changed files outside the plan: a warning badge. */
+  outside: boolean;
   onClick(event: MouseEvent, data: SessionRowData): void;
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
   onMiddleClick(data: SessionRowData): void;
@@ -163,9 +167,9 @@ const RailRow = memo(function RailRow({
       data-session-status={status ?? undefined}
       tabIndex={tabbable ? 0 : -1}
       aria-current={selected ? 'true' : undefined}
-      aria-label={[data.title || 'Untitled session', projectName, status ? STATUS_LABEL[status].toLowerCase() : null, beside ? 'open in another pane' : null, draft !== null ? 'unsent message' : null].filter(Boolean).join(', ')}
+      aria-label={[data.title || 'Untitled session', projectName, status ? STATUS_LABEL[status].toLowerCase() : null, beside ? 'open in another pane' : null, draft !== null ? 'unsent message' : null, outside ? 'files outside the plan' : null].filter(Boolean).join(', ')}
       data-has-draft={draft !== null || undefined}
-      data-tooltip={[data.title, meta, line?.text ?? (draft !== null ? `Draft: ${draft}` : null), hint].filter(Boolean).join('\n')}
+      data-tooltip={[data.title, meta, line?.text ?? (draft !== null ? `Draft: ${draft}` : null), outside ? 'Files outside the plan' : null, hint].filter(Boolean).join('\n')}
       data-tooltip-placement="right"
       data-tooltip-title={data.title || 'Untitled session'}
       data-tooltip-meta={meta}
@@ -193,6 +197,11 @@ const RailRow = memo(function RailRow({
       {railTone && <span aria-hidden className={`${railShape(selected || beside)} ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
       <ProjectIcon project={project} root={data.projectRoot} size={26} />
       {draft !== null && <PenBadge size={14} className="absolute bottom-0.5 left-0.5" data-rail-pen />}
+      {outside && (
+        <span aria-hidden className="absolute right-0.5 bottom-0.5 flex size-3.5 items-center justify-center rounded-full bg-sidebar text-caution" data-rail-outside>
+          <TriangleAlert size={10} />
+        </span>
+      )}
       {dot && (
         <span aria-hidden className={`absolute top-1 right-1 size-[9px] rounded-full ring-2 ring-sidebar ${dot} ${status === 'needs-you' ? 'animate-pulse' : ''}`} data-rail-dot={status} />
       )}
@@ -224,13 +233,17 @@ export function SidebarRail() {
   const newDraft = useNewSessionDraft();
 
   const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
-  const groups = useMemo(() => sidebarGroups(all, { now, archiveAfterDays }), [all, now, archiveAfterDays]);
+  const sort = usePreferences((s) => s.prefs.sidebarSort);
+  const catchUps = useCatchUp((s) => s.cards);
+  const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
+  const groups = useMemo(() => sidebarGroups(all, { now, archiveAfterDays, sort, quick }), [all, now, archiveAfterDays, sort, quick]);
   const sectionsOpen = useSidebarSections((s) => s.open);
   const queue = useQueue(all);
   const items = useMemo<RailItem[]>(() => {
     // Blocks in the open sidebar's order (the queue under Working), a thin line between them.
     const blocks: { key: string; items: RailItem[] }[] = [];
-    const queueBlock = queue.entries.length ? [{ key: 'queue', items: [{ kind: 'queue' as const, count: queue.entries.length, ready: queue.readyCount }] }] : [];
+    // The queue only shows in Recent, as in the sidebar.
+    const queueBlock = queue.entries.length && sort === 'recent' ? [{ key: 'queue', items: [{ kind: 'queue' as const, count: queue.entries.length, ready: queue.readyCount }] }] : [];
     let queued = false;
     for (const { group, rows } of groups) {
       if (!queued && group !== 'needs-you' && group !== 'working') {
@@ -250,7 +263,7 @@ export function SidebarRail() {
     }
     if (!queued) blocks.push(...queueBlock);
     return blocks.flatMap((block, i) => [...(i > 0 ? [{ kind: 'divider' as const, key: `divider-${block.key}` }] : []), ...block.items]);
-  }, [groups, sectionsOpen, queue.entries.length, queue.readyCount, selectedId]);
+  }, [groups, sectionsOpen, queue.entries.length, queue.readyCount, selectedId, sort]);
   const order = useMemo(() => items.flatMap((item) => (item.kind === 'session' ? [item.data.id] : [])), [items]);
   // The oldest open request of each waiting session: what its tooltip says it waits for.
   const requests = useMemo(() => {
@@ -390,6 +403,7 @@ export function SidebarRail() {
                     now={now}
                     request={requests.get(item.data.id) ?? null}
                     draft={draftPreviews.get(item.data.id) ?? null}
+                    outside={(catchUps.get(item.data.id)?.signals.outOfScope.length ?? 0) > 0}
                     onClick={rowClick}
                     onMenu={menus.openSessionMenu}
                     onMiddleClick={menus.middleClick}

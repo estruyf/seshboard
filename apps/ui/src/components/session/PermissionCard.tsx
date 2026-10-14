@@ -8,11 +8,31 @@ import { CheckMark } from '../ui/Checkbox.tsx';
 import { RadioGroup } from '../ui/Radio.tsx';
 import { toolSummary } from '../transcript/toolSummary.ts';
 import { cardKeyAction, OVERLAY_SELECTOR, waitingLabel, type CardKind, type KeyTarget } from './permissionKeys.ts';
+import { permissionDecisions } from './permissionDecisions.ts';
 
 /** Sends the answer; resolves to whether the engine took it (a failure shows under the card). */
 type Respond = (decision: PermissionDecision) => Promise<boolean>;
 
-const DECLINED = 'The user declined this action.';
+/**
+ * Answers a request: Allow, Deny (with what to do instead) or a question's answers. The card above the message box and the
+ * catch-up both answer through this, so a click in either does exactly the same.
+ */
+export function usePermissionAnswer(request: PermissionRequest) {
+  const { respond, busy, error } = useRespond(request);
+  return {
+    allow: () => respond(permissionDecisions.allow()),
+    deny: (feedback?: string) => respond(permissionDecisions.deny(feedback)),
+    answer: (answers: Record<string, string>) => respond(permissionDecisions.answer(request, answers)),
+    respond,
+    busy,
+    error,
+  };
+}
+
+/** A question's questions, as AskUserQuestion sends them. */
+export function questionsOf(request: PermissionRequest): Question[] {
+  return (request.input as { questions?: Question[] }).questions ?? [];
+}
 
 function useRespond(request: PermissionRequest): { respond: Respond; busy: boolean; error: string | null } {
   const connection = useEngineConnection();
@@ -73,7 +93,7 @@ interface Shortcuts {
  * the window in the capture phase so it runs before the message box, whose Escape would otherwise
  * stop Claude instead of answering the card.
  */
-function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind, optionCount: number, busy: boolean, shortcuts: Shortcuts) {
+function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind, optionCount: number, busy: boolean, shortcuts: Shortcuts, embedded = false) {
   const latest = useRef({ shortcuts, optionCount, busy });
   useEffect(() => {
     latest.current = { shortcuts, optionCount, busy };
@@ -87,6 +107,8 @@ function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind
       if (!action) return;
       const s = latest.current.shortcuts;
       if (action.type === 'pick' && !s.pick) return;
+      // Inside the catch-up, Esc folds the card rather than saying no.
+      if (action.type === 'deny' && embedded) return;
       if (action.type === 'enter' && !s.enter) return;
       event.preventDefault();
       event.stopPropagation();
@@ -148,9 +170,9 @@ function FeedbackField({ value, onChange, onSubmit, busy }: { value: string; onC
   );
 }
 
-function DenyButton({ label, busy, onClick }: { label: string; busy: boolean; onClick(): void }) {
+function DenyButton({ label, busy, onClick, embedded = false }: { label: string; busy: boolean; onClick(): void; embedded?: boolean }) {
   return (
-    <Button variant="quiet" size="lg" disabled={busy} onClick={onClick} shortcut="permission.deny" data-permission-deny className="ml-auto">
+    <Button variant="quiet" size="lg" disabled={busy} onClick={onClick} shortcut={embedded ? undefined : 'permission.deny'} data-permission-deny className="ml-auto">
       {label}
     </Button>
   );
@@ -194,9 +216,11 @@ interface CardProps {
   request: PermissionRequest;
   titleId: string;
   cardRef: RefObject<HTMLElement | null>;
+  /** Inside the catch-up card: Esc is the catch-up's. */
+  embedded: boolean;
 }
 
-function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: string | null }) {
+function ToolPermission({ request, cwd, titleId, cardRef, embedded }: CardProps & { cwd: string | null }) {
   const { respond, busy, error } = useRespond(request);
   const [showInput, setShowInput] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -204,9 +228,9 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
   const inputId = useId();
   const { detail } = toolSummary(request.toolName, request.input, cwd);
   const command = request.toolName === 'Bash' ? (request.input as { command?: string }).command : undefined;
-  const allow = () => void respond({ behavior: 'allow' });
-  const deny = () => void respond({ behavior: 'deny', message: feedback.trim() || DECLINED });
-  useCardShortcuts(cardRef, 'tool', 0, busy, { allow, deny });
+  const allow = () => void respond(permissionDecisions.allow());
+  const deny = () => void respond(permissionDecisions.deny(feedback));
+  useCardShortcuts(cardRef, 'tool', 0, busy, { allow, deny }, embedded);
   return (
     <div className="grid gap-2.5">
       <Header
@@ -253,7 +277,7 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
             <span className="truncate">{alwaysText(request.alwaysLabel)}</span>
           </Button>
         )}
-        <DenyButton label="Deny" busy={busy} onClick={deny} />
+        <DenyButton label="Deny" busy={busy} onClick={deny} embedded={embedded} />
       </div>
       <FeedbackField value={feedback} onChange={setFeedback} onSubmit={deny} busy={busy} />
       <ErrorLine error={error} />
@@ -261,7 +285,7 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
   );
 }
 
-interface Question {
+export interface Question {
   question: string;
   header?: string;
   multiSelect?: boolean;
@@ -312,10 +336,9 @@ function OptionRow({
   );
 }
 
-function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
+function AskUserQuestion({ request, titleId, cardRef, embedded }: CardProps) {
   const { respond, busy, error } = useRespond(request);
-  const input = request.input as { questions?: Question[] };
-  const questions = input.questions ?? [];
+  const questions = questionsOf(request);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState<Record<string, string>>({});
   // The question the number keys answer; it moves on as you pick and with Enter.
@@ -335,9 +358,9 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
   const submit = () => {
     if (!complete) return;
     const result = Object.fromEntries(questions.map((q) => [q.question, final(q).join(', ')]));
-    void respond({ behavior: 'allow', updatedInput: { ...(request.input as Record<string, never>), answers: result } });
+    void respond(permissionDecisions.answer(request, result));
   };
-  const skip = () => void respond({ behavior: 'deny', message: DECLINED });
+  const skip = () => void respond(permissionDecisions.deny());
 
   useCardShortcuts(cardRef, 'question', current?.options.length ?? 0, busy, {
     allow: submit,
@@ -350,7 +373,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
       if (!current.multiSelect && step < last) setStep(step + 1);
     },
     enter: () => (step < last ? setStep(step + 1) : submit()),
-  });
+  }, embedded);
 
   return (
     <form
@@ -405,7 +428,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
         );
       })}
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button type="submit" variant="primary" size="lg" shortcut="permission.allow" disabled={busy || !complete}>
+        <Button type="submit" variant="primary" size="lg" shortcut="permission.allow" disabled={busy || !complete} data-question-submit>
           Answer
         </Button>
         {current && current.options.length > 0 && !busy && (
@@ -413,7 +436,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
             {`Press 1${current.options.length > 1 ? ` to ${Math.min(9, current.options.length)}` : ''} to pick, Enter for ${step < last ? 'the next question' : 'send'}`}
           </span>
         )}
-        <DenyButton label="Skip" busy={busy} onClick={skip} />
+        <DenyButton label="Skip" busy={busy} onClick={skip} embedded={embedded} />
       </div>
       {!complete && !busy && step >= last && <p className="text-meta text-muted">{questions.length > 1 ? 'Answer every question to send.' : 'Pick an answer to send.'}</p>}
       <ErrorLine error={error} />
@@ -421,20 +444,20 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
   );
 }
 
-function PlanApproval({ request, titleId, cardRef }: CardProps) {
+function PlanApproval({ request, titleId, cardRef, embedded }: CardProps) {
   const { respond, busy, error } = useRespond(request);
   const connection = useEngineConnection();
   const [feedback, setFeedback] = useState('');
   const plan = (request.input as { plan?: string }).plan ?? '';
   const approveWithEdits = async () => {
     // Only switch modes once the plan is really approved: a failed answer leaves the card up.
-    if (!(await respond({ behavior: 'allow' }))) return;
+    if (!(await respond(permissionDecisions.allow()))) return;
     if (connection.status === 'connected') {
       await connection.client.call('session.setPermissionMode', { sessionId: request.sessionId, mode: 'acceptEdits' }).catch(() => {});
     }
   };
-  const keepPlanning = () => void respond({ behavior: 'deny', message: feedback.trim() || DECLINED });
-  useCardShortcuts(cardRef, 'plan', 0, busy, { allow: () => void approveWithEdits(), deny: keepPlanning });
+  const keepPlanning = () => void respond(permissionDecisions.deny(feedback));
+  useCardShortcuts(cardRef, 'plan', 0, busy, { allow: () => void approveWithEdits(), deny: keepPlanning }, embedded);
   return (
     <div className="grid gap-2.5">
       <Header icon={<ClipboardList size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
@@ -442,13 +465,13 @@ function PlanApproval({ request, titleId, cardRef }: CardProps) {
         <Markdown text={plan} />
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button variant="primary" size="lg" shortcut="permission.allow" disabled={busy} onClick={() => void approveWithEdits()} data-tooltip="Start, and let Claude edit files without asking each time">
+        <Button variant="primary" size="lg" shortcut="permission.allow" disabled={busy} onClick={() => void approveWithEdits()} data-permission-allow data-tooltip="Start, and let Claude edit files without asking each time">
           Approve and accept edits
         </Button>
-        <Button size="lg" disabled={busy} onClick={() => void respond({ behavior: 'allow' })} data-tooltip="Start, and ask before each file edit">
+        <Button size="lg" disabled={busy} onClick={() => void respond(permissionDecisions.allow())} data-tooltip="Start, and ask before each file edit">
           Approve, ask before edits
         </Button>
-        <DenyButton label="Keep planning" busy={busy} onClick={keepPlanning} />
+        <DenyButton label="Keep planning" busy={busy} onClick={keepPlanning} embedded={embedded} />
       </div>
       <FeedbackField value={feedback} onChange={setFeedback} onSubmit={keepPlanning} busy={busy} />
       <ErrorLine error={error} />
@@ -458,9 +481,10 @@ function PlanApproval({ request, titleId, cardRef }: CardProps) {
 
 /**
  * A pending permission prompt, rendered above the composer. It's a labelled region, so VoiceOver
- * users can jump to it; the session view announces it when it appears.
+ * users can jump to it; the session view announces it when it appears. `embedded`: inside the catch-up card, which
+ * draws the frame around it and keeps Esc for itself.
  */
-export function PermissionCard({ request, cwd }: { request: PermissionRequest; cwd: string | null }) {
+export function PermissionCard({ request, cwd, embedded = false }: { request: PermissionRequest; cwd: string | null; embedded?: boolean }) {
   const titleId = useId();
   const cardRef = useRef<HTMLElement>(null);
   return (
@@ -469,15 +493,16 @@ export function PermissionCard({ request, cwd }: { request: PermissionRequest; c
       aria-labelledby={titleId}
       // A faint pink tint over the card colour, so the frame reads as "needs you" in both themes.
       // The margin keeps the 4px ring inside the scrolling list that holds the cards.
-      className="rounded-xl border border-warn/55 bg-[color-mix(in_oklab,var(--color-warn)_5%,var(--color-card))] px-4 py-3 ring-4 ring-warn/10"
+      className={embedded ? '' : 'rounded-xl border border-warn/55 bg-[color-mix(in_oklab,var(--color-warn)_5%,var(--color-card))] px-4 py-3 ring-4 ring-warn/10'}
       data-permission-request
+      data-permission-embedded={embedded || undefined}
     >
       {request.toolName === 'AskUserQuestion' ? (
-        <AskUserQuestion request={request} titleId={titleId} cardRef={cardRef} />
+        <AskUserQuestion request={request} titleId={titleId} cardRef={cardRef} embedded={embedded} />
       ) : request.toolName === 'ExitPlanMode' ? (
-        <PlanApproval request={request} titleId={titleId} cardRef={cardRef} />
+        <PlanApproval request={request} titleId={titleId} cardRef={cardRef} embedded={embedded} />
       ) : (
-        <ToolPermission request={request} cwd={cwd} titleId={titleId} cardRef={cardRef} />
+        <ToolPermission request={request} cwd={cwd} titleId={titleId} cardRef={cardRef} embedded={embedded} />
       )}
     </section>
   );

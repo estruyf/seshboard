@@ -92,6 +92,7 @@ const HOME: ShortcutContext = {
   session: false,
   running: false,
   pending: null,
+  catchUp: null,
   selection: 0,
   split: false,
   behind: false,
@@ -244,6 +245,16 @@ describe('the shortcut registry', () => {
       'permission.allow': [{ ...SESSION, pending: 'permission' }, SESSION],
       'permission.deny': [{ ...SESSION, pending: 'question' }, SESSION],
       'permission.pick': [{ ...SESSION, pending: 'question' }, { ...SESSION, pending: 'permission' }],
+      'catchup.primary': [{ ...SESSION, catchUp: 'strip' }, SESSION],
+      'catchup.close': [{ ...SESSION, catchUp: 'full' }, { ...at({ view: 'usage' }), catchUp: 'full' }],
+      'catchup.review': [{ ...SESSION, catchUp: 'full' }, { ...SESSION, catchUp: 'strip' }],
+      'catchup.commit': [{ ...SESSION, catchUp: 'full' }, { ...SESSION, catchUp: 'strip' }],
+      'catchup.reply': [{ ...SESSION, catchUp: 'full' }, SESSION],
+      'catchup.read': [{ ...SESSION, catchUp: 'full' }, SESSION],
+      'catchup.archive': [{ ...SESSION, catchUp: 'full' }, SESSION],
+      'catchup.expand': [{ ...SESSION, catchUp: 'strip' }, SESSION],
+      'catchup.option': [{ ...SESSION, catchUp: 'full', pending: 'question' }, { ...SESSION, catchUp: 'full', pending: 'permission' }],
+      'catchup.pick': [{ ...SESSION, catchUp: 'full', pending: 'question' }, { ...SESSION, catchUp: 'strip', pending: 'question' }],
       'new-session.pick': [at({ view: 'new-session' }), SESSION],
       'new-session.start': [at({ view: 'new-session' }), SESSION],
       'new-session.queue': [at({ view: 'new-session' }), SESSION],
@@ -271,6 +282,9 @@ const INTENDED_OVERLAPS: Record<string, string> = {
   escape: 'Esc closes or cancels what is nearest: a menu or dialog first, then a waiting card, then the message box stops Claude.',
   'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session). Create pull request is a dialog: while it is open, ⌘↩ is its own.',
   'cmd+k': 'In the terminal ⌘K clears it, as in Terminal; the palette is ⌘⇧P there.',
+  ...Object.fromEntries(
+    ['1', '2', '3'].map((n) => [n, 'A catch-up that asks a question shows the question card itself: its numbers pick the same options either way.']),
+  ),
 };
 
 describe('shortcut collisions', () => {
@@ -280,7 +294,7 @@ describe('shortcut collisions', () => {
   const contexts = VIEWS.flatMap((view) =>
     FOCUS.flatMap((focus): ShortcutContext[] => [
       at({ view, focus, session: view === 'session' }),
-      { view, focus, session: view === 'session', running: true, pending: 'question', selection: 2, split: true, behind: true, terminal: { open: true, maximized: true, actionRunning: true } },
+      { view, focus, session: view === 'session', running: true, pending: 'question', catchUp: 'full', selection: 2, split: true, behind: true, terminal: { open: true, maximized: true, actionRunning: true } },
     ]),
   );
 

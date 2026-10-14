@@ -224,6 +224,8 @@ export interface ShortcutContext {
   running: boolean;
   /** A permission or question card is waiting for an answer. */
   pending: "permission" | "question" | null;
+  /** The open session's catch-up: in full (the card or the banner), folded into its strip, or none. */
+  catchUp: "full" | "strip" | null;
   /** Sessions picked in the sidebar. */
   selection: number;
   /** More than one pane open (sessions side by side or stacked). */
@@ -241,6 +243,7 @@ export type ShortcutSection =
   | "session"
   | "composer"
   | "permissions"
+  | "catch-up"
   | "actions"
   | "new-session"
   | "settings"
@@ -253,6 +256,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
   session: "In a session",
   composer: "Message box",
   permissions: "Permissions and questions",
+  "catch-up": "Catch-up",
   actions: "Project actions",
   "new-session": "New session",
   usage: "Usage",
@@ -260,7 +264,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view";
 
 export interface ShortcutDef {
   id: string;
@@ -293,6 +297,10 @@ const withTerminal = (ctx: ShortcutContext) =>
   inSession(ctx) || ctx.view !== "session";
 const inMessageBox = (ctx: ShortcutContext) =>
   inSession(ctx) || ctx.view === "new-session";
+/** A catch-up is on screen; folded into its strip, only Space and ↩ work. */
+const withCatchUp = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp !== null;
+const catchUpCard = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp === "full";
+const catchUpQuestion = (ctx: ShortcutContext) => catchUpCard(ctx) && ctx.pending === "question";
 
 export const SHORTCUTS = [
   // General
@@ -845,6 +853,92 @@ export const SHORTCUTS = [
     section: "permissions",
     context: "When a question is waiting",
     when: (ctx) => inSession(ctx) && ctx.pending === "question",
+  },
+
+  // Catch-up: the briefing at the top of a finished or waiting session. Never in the message box or another field.
+  {
+    id: "catchup.primary",
+    keys: ["enter"],
+    action: "Run the catch-up's main action",
+    section: "catch-up",
+    context: "Commit, Reply, Allow, Send answer, Review changes or Archive",
+    when: withCatchUp,
+    where: "view",
+  },
+  {
+    id: "catchup.close",
+    keys: ["escape"],
+    action: "Close the reply, the Changes panel, Details, then the catch-up",
+    section: "catch-up",
+    context: "One at a time, the nearest first",
+    when: withCatchUp,
+    where: "view",
+  },
+  {
+    id: "catchup.review",
+    keys: ["d"],
+    action: "Review changes",
+    section: "catch-up",
+    context: "Opens or closes the Changes panel",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.commit",
+    keys: ["c"],
+    action: "Commit",
+    section: "catch-up",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.reply",
+    keys: ["r"],
+    action: "Reply to Claude",
+    section: "catch-up",
+    context: "Puts you in the message box",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.read",
+    keys: ["u"],
+    action: "Mark as read",
+    section: "catch-up",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.archive",
+    keys: ["e"],
+    action: "Archive, and go to the next session",
+    section: "catch-up",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.expand",
+    keys: ["space"],
+    action: "Expand the conversation, or show the catch-up",
+    section: "catch-up",
+    when: withCatchUp,
+    where: "view",
+  },
+  {
+    id: "catchup.option",
+    keys: ["arrowup", "arrowdown"],
+    action: "Move between a question's options",
+    section: "catch-up",
+    when: catchUpQuestion,
+    where: "view",
+  },
+  {
+    id: "catchup.pick",
+    keys: ["1..3"],
+    action: "Pick a question's option",
+    section: "catch-up",
+    when: catchUpQuestion,
+    where: "view",
   },
 
   // New session

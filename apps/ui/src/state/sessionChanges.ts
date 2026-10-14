@@ -50,3 +50,16 @@ export function createBatcher<T>(apply: (items: T[]) => void, schedule: Schedule
     },
   };
 }
+
+/**
+ * The sessions with one summary changed here, ahead of the engine (Mark as read, Archive from the catch-up), or the same
+ * map when the session isn't known.
+ */
+export function patchedSessions(
+  sessions: Map<string, SessionSummary>,
+  id: string,
+  patch: Partial<Pick<SessionSummary, 'unread' | 'viewedAt' | 'archivedAt'>>,
+): Map<string, SessionSummary> {
+  const summary = sessions.get(id);
+  return summary ? new Map(sessions).set(id, { ...summary, ...patch }) : sessions;
+}
