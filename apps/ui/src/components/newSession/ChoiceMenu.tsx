@@ -1,3 +1,4 @@
+import { scrollMovesAnchor } from '../../lib/menuScroll.ts';
 import { localizeKeys } from '../../lib/shortcuts.ts';
 import { Check, ChevronDown } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
@@ -105,8 +106,9 @@ export function ChoiceMenu<T extends string>({
     (filter ?? items.find((b) => b.getAttribute('aria-checked') === 'true') ?? items[0])?.focus();
     const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
     const onBlur = () => setOpen(false);
-    // The panel is placed once, from the pill: when what's around it scrolls, the menu would be left behind.
-    const onScroll = (e: Event) => !panel.current?.contains(e.target as Node) && setOpen(false);
+    // The panel is placed once, from the pill: when what's around it scrolls, the menu would be left behind. A scroller
+    // that doesn't hold the pill leaves it where it is: the transcript scrolls itself whenever Claude writes.
+    const onScroll = (e: Event) => scrollMovesAnchor(e.target as Node | null, trigger.current) && setOpen(false);
     window.addEventListener('mousedown', onDown);
     window.addEventListener('blur', onBlur);
     window.addEventListener('scroll', onScroll, true);
