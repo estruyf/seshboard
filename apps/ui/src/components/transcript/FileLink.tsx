@@ -1,13 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { useHosts } from '../../state/hostsStore.ts';
-import { useOpenIn } from '../OpenInButton.tsx';
+import { useFileLinkActions } from './useFileLinkActions.tsx';
 import { createPathResolver, fileUrl, type FileRef, type PathResolver } from './fileRefs.ts';
 
 const FileLinkContext = createContext<PathResolver | null>(null);
 
 /**
- * Lets the Markdown inside turn file paths into links that open in the editor. Relative paths are
+ * Lets the Markdown inside turn file paths into links that show in the file manager or open in the editor. Relative paths are
  * looked up from `cwd`, the session's folder. Without it (or without the engine) paths stay text.
  */
 export function FileLinksProvider({ cwd, children }: { cwd: string | null; children: ReactNode }) {
@@ -41,39 +40,36 @@ function useResolvedPath(ref: FileRef | null): string | null {
 }
 
 /**
- * Inline code or a link in a reply that names a file: a link that opens the file in the default
- * editor (at its line) once the engine finds it, and `fallback` until then or when it doesn't exist.
+ * Inline code or a link in a reply that names a file: a link once the engine finds it, and  until then or
+ * when it doesn't exist. A click shows the file in the file manager or opens it in the editor (at its line), as
+ * Settings › Conversation says; Shift-click does the other, and the context menu has both.
  */
 export function FileLink({ fileRef, fallback, children }: { fileRef: FileRef | null; fallback: ReactNode; children: ReactNode }) {
   const path = useResolvedPath(fileRef);
-  const openIn = useOpenIn();
-  const editor = useHosts((s) => s.editors.find((e) => e.id === s.defaultEditorId)?.name ?? null);
-  const [error, setError] = useState<string | null>(null);
   if (!path) return <>{fallback}</>;
-  const line = fileRef?.line;
-  const target = line ? `${path}:${line}` : path;
+  return (
+    <ResolvedFileLink path={path} line={fileRef?.line}>
+      {children}
+    </ResolvedFileLink>
+  );
+}
+
+function ResolvedFileLink({ path, line, children }: { path: string; line: number | undefined; children: ReactNode }) {
+  const { action, tooltip, error, handlers, extras } = useFileLinkActions(path, line);
   return (
     <>
       <a
         href={fileUrl(path)}
-        onClick={(event) => {
-          // The main process would refuse a file:// link anyway; the engine opens it in the editor.
-          event.preventDefault();
-          setError(null);
-          openIn(path, line ? { line } : {}).catch((e: unknown) => setError(`Couldn't open ${target}: ${e instanceof Error ? e.message : String(e)}`));
-        }}
+        {...handlers}
         className={`underline decoration-current/30 underline-offset-2 hover:decoration-current ${error ? 'text-error' : 'text-link'}`}
-        data-tooltip={error ?? `Open ${target} in ${editor ?? 'your editor'}`}
-        data-file-link={target}
+        data-tooltip={error ?? tooltip}
+        aria-description={tooltip}
+        data-file-link={line ? `${path}:${line}` : path}
+        data-file-link-action={action}
       >
         {children}
       </a>
-      {/* The tooltip only shows on hover; say it out loud too. */}
-      {error && (
-        <span role="alert" className="sr-only">
-          {error}
-        </span>
-      )}
+      {extras}
     </>
   );
 }

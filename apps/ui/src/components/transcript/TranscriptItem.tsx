@@ -1,7 +1,8 @@
 import { Bot, ChevronRight, ClipboardList } from 'lucide-react';
 import { memo, useId, useState, type ReactNode } from 'react';
 import { isAbsolutePath } from '@switchboard/protocol/client';
-import { useOpenIn } from '../OpenInButton.tsx';
+import { fileLinkChipLabel } from './fileLinkAction.ts';
+import { useFileLinkActions } from './useFileLinkActions.tsx';
 import { DiffView } from './DiffView.tsx';
 import { ActivityGroupView } from './ActivityGroup.tsx';
 import { ClampedPrompt } from './ClampedPrompt.tsx';
@@ -65,11 +66,36 @@ function fileTarget(item: ToolItem): { path: string; line?: number } | null {
   return typeof input.offset === 'number' && input.offset > 0 ? { path, line: input.offset } : { path };
 }
 
+/**
+ * The chip beside a tool run that touched a file: a click does what Settings › Conversation says for a file link (show it
+ * in the file manager, or open it in the editor), Shift-click does the other, and the context menu lists both. It is the
+ * same action as a file link in a reply (`useFileLinkActions`), so a file that is gone shows its error here too.
+ */
+function FileToolChip({ path, line }: { path: string; line?: number }) {
+  const { action, tooltip, error, handlers, extras } = useFileLinkActions(path, line);
+  const label = fileLinkChipLabel(action);
+  return (
+    <>
+      <button
+        type="button"
+        {...handlers}
+        data-tooltip={error ?? tooltip}
+        aria-label={error ?? tooltip}
+        data-file-chip={path}
+        data-file-link-action={action}
+        className={`shrink-0 rounded px-1 text-meta group-hover/row:opacity-100 hover:bg-border/60 focus-visible:opacity-100 ${error ? 'text-error opacity-100' : 'text-muted opacity-0 hover:text-accent-ink'}`}
+      >
+        {label}
+      </button>
+      {extras}
+    </>
+  );
+}
+
 const resultState = (item: ToolItem) => (item.result === null ? 'pending' : item.result.isError ? 'error' : 'ok');
 
 function ToolCard({ item, cwd, sessionId }: { item: ToolItem; cwd: string | null; sessionId: string }) {
   const [open, setOpen] = useState(false);
-  const openIn = useOpenIn();
   const target = fileTarget(item);
   const hunks = editHunks(item);
   const isAgent = item.name === 'Task' || item.name === 'Agent';
@@ -85,19 +111,7 @@ function ToolCard({ item, cwd, sessionId }: { item: ToolItem; cwd: string | null
         controls={detailsId}
         // A running agent spins; everything else shows how it went.
         mark={isAgent && item.result === null ? <Spinner /> : <Dot state={resultState(item)} />}
-        after={
-          target && (
-            <button
-              type="button"
-              data-tooltip={`Open ${target.path} in your editor`}
-              aria-label={`Open ${target.path} in your editor`}
-              onClick={() => void openIn(target.path, target.line ? { line: target.line } : {}).catch(() => {})}
-              className="shrink-0 rounded px-1 text-meta text-muted opacity-0 group-hover/row:opacity-100 hover:bg-border/60 hover:text-accent-ink focus-visible:opacity-100"
-            >
-              Open ↗
-            </button>
-          )
-        }
+        after={target && <FileToolChip path={target.path} line={target.line} />}
       >
         {isAgent && <Bot size={13} className="shrink-0 text-muted" aria-hidden />}
         <span className="shrink-0 text-ui font-medium">{label}</span>

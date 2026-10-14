@@ -1,5 +1,5 @@
-import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
-import { trashName } from '../../lib/platform.ts';
+import { clickKeysFor, formatKeys, keysFor } from '../../lib/shortcuts.ts';
+import { fileManagerName, trashName } from '../../lib/platform.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -93,6 +93,14 @@ export function settingsIndex(): SettingEntry[] {
       detail: 'Summarised shows each run of tool calls as one line, like Claude Code. Every step shows each one.',
       keywords: 'summarised summarized every step tools steps',
       target: '[data-tool-activity]',
+    },
+    {
+      id: 'file-link-click',
+      page: 'conversation',
+      label: 'Clicking a file link',
+      detail: `What a click does on a file in Claude’s replies. ${formatKeys(clickKeysFor('transcript.file-link-other'))} does the other, and right-click lists both.`,
+      keywords: `file link path click open show reveal editor ${fileManagerName()} finder explorer shift context menu`,
+      target: '[data-file-link-click]',
     },
     {
       id: 'while-working',
