@@ -26,6 +26,7 @@ import { SettingsView } from './components/SettingsView.tsx';
 import { useUsageSync } from './components/UsageBand.tsx';
 import { UsageView } from './components/usage/UsageView.tsx';
 import { SessionHud } from './components/sidebar/SessionHud.tsx';
+import { EngineStalledNotice } from './components/EngineStalledNotice.tsx';
 import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { TranscriptView } from './components/transcript/TranscriptView.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
@@ -70,6 +71,15 @@ function currentTerminalOwner(): string | null {
 /** A dialog, menu or popover is open: it keeps Tab for itself, so ⌃⇥ doesn't switch sessions behind it. */
 const overlayOpen = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [data-popover]') !== null;
 
+/** The palette, Search and the shortcuts sheet: their shortcuts close them or switch between them. */
+const OWN_OVERLAYS = '[data-command-palette], [data-search], [data-shortcuts-sheet]';
+
+/**
+ * Another modal is open (Add context, Rename session…). The palette, Search and the shortcuts sheet would
+ * open under it, half hidden, and take the keys, so their shortcuts do nothing until it closes.
+ */
+const otherModalOpen = () => Array.from(document.querySelectorAll('[aria-modal="true"]')).some((el) => !el.matches(OWN_OVERLAYS));
+
 /**
  * The window's own shortcuts (keys in `lib/shortcuts.ts`): new session, open in editor, the terminal, the
  * command palette and go-to, search, Home, the sidebar, moving between sessions, closing the other pane
@@ -85,8 +95,9 @@ function useShortcuts() {
       // took it (the actions' listener may come before or after this one). They have no default to stop.
       const later = (run: () => void) => setTimeout(() => !event.defaultPrevented && run(), 0);
       if (matches(event, 'shortcuts')) {
-        // From anywhere, the terminal and the message box included; a shortcut recorder that took the key keeps it.
-        if (event.defaultPrevented) return;
+        // From anywhere, the terminal and the message box included; a shortcut recorder that took the key
+        // keeps it, and another dialog keeps the window until it closes.
+        if (event.defaultPrevented || otherModalOpen()) return;
         event.preventDefault();
         useOverlay.getState().toggleShortcuts();
       } else if (matches(event, 'session.next') || matches(event, 'session.previous')) {
@@ -99,6 +110,7 @@ function useShortcuts() {
         event.preventDefault();
         useSessions.getState().goHome();
       } else if (matches(event, 'search')) {
+        if (otherModalOpen()) return;
         event.preventDefault();
         const overlay = useOverlay.getState();
         if (overlay.open === 'search') overlay.close();
@@ -106,9 +118,11 @@ function useShortcuts() {
       } else if (matches(event, 'palette.commands')) {
         // In the terminal, ⌘K clears the screen as usual; ⌘⇧P (as in VS Code) is the way to the palette there.
         if (matches(event, 'terminal.clear') && (event.target as HTMLElement | null)?.closest?.('.xterm')) return;
+        if (otherModalOpen()) return;
         event.preventDefault();
         useOverlay.getState().togglePalette('commands');
       } else if (matches(event, 'palette.goto')) {
+        if (otherModalOpen()) return;
         event.preventDefault();
         useOverlay.getState().togglePalette('goto');
       } else if (matches(event, 'terminal.maximize')) {
@@ -174,7 +188,7 @@ function useWindowFocus() {
   // Switchboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.
   useEffect(() => window.switchboard?.onOpenSettings((section) => useSessions.getState().openSettings(section ?? undefined)), []);
   // Help › Keyboard Shortcuts (⌘/) in the menu bar.
-  useEffect(() => window.switchboard?.onToggleShortcuts(() => useOverlay.getState().toggleShortcuts()), []);
+  useEffect(() => window.switchboard?.onToggleShortcuts(() => !otherModalOpen() && useOverlay.getState().toggleShortcuts()), []);
 }
 
 export function App() {
@@ -276,6 +290,7 @@ export function App() {
       <FocusGateDialog />
       <ClaudeInstallDialog />
       <SessionHud />
+      <EngineStalledNotice />
       <ToastLayer />
       <TooltipLayer />
     </div>

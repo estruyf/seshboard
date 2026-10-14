@@ -275,7 +275,9 @@ export function SidebarRail() {
     }, [items]),
     overscan: 10,
   });
-  useEffect(() => virtualizer.measure(), [items, virtualizer]);
+  // No measure() when the items change: their heights are fixed per kind, and getItemKey changes with `items`,
+  // which recomputes every position. Measuring on each change queued another render, and a burst of new sessions
+  // ran into React's limit on nested updates.
   const virtualItems = virtualizer.getVirtualItems();
 
   // One Tab stop for the list (roving tabindex): the selected row while it's rendered, else the first rendered one.

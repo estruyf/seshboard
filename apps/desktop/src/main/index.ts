@@ -48,8 +48,14 @@ ipcMain.on(IpcChannel.getAppInfo, (event) => {
   event.returnValue = appInfo;
 });
 
-// The smoke test and the screenshots run against a throwaway profile so they never touch real app data.
-if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'switchboard-smoke-')));
+// The smoke test and the screenshots run against a throwaway profile so they never touch real app data. A driven run
+// may name its own folder (SWITCHBOARD_DRIVEN_PROFILE), so a restart finds the same profile (scripts/chaos); never one
+// inside the app data folder, where the installed app keeps the user's real data.
+const drivenProfile = driven ? process.env.SWITCHBOARD_DRIVEN_PROFILE : undefined;
+if (drivenProfile && isAbsolutePath(drivenProfile) && !isSameOrInside(drivenProfile, app.getPath('appData'))) {
+  mkdirSync(drivenProfile, { recursive: true });
+  app.setPath('userData', drivenProfile);
+} else if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'switchboard-smoke-')));
 // The engine inherits these: the Claude Code check reads a mock registry that offers a newer version, and an
 // update is refused even if one were clicked, so the user's real `claude` is never touched.
 if (scripted) {
@@ -4566,6 +4572,8 @@ async function runPaletteStep(win: BrowserWindow): Promise<string> {
 
   const panelOpen = () => has('[data-changes-panel]');
   const before = await panelOpen();
+  // Outside git the session has no Changes panel to show: the command still runs, but only its ranking is checked.
+  const onGit = await has('[data-current-session] [data-toggle-changes]');
   const runCommand = async (text: string) => {
     if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return null;
     await setFieldValue(win, '[data-palette-input]', text);
@@ -4577,9 +4585,9 @@ async function runPaletteStep(win: BrowserWindow): Promise<string> {
   };
   const first = await runCommand('tog chan');
   if (first !== 'toggle-changes') return `"tog chan" ranked ${String(first)} first`;
-  if (!(await waitInPage(win, before ? "!document.querySelector('[data-changes-panel]')" : "!!document.querySelector('[data-changes-panel]')", 2_000))) return 'Toggle changes did nothing';
+  if (onGit && !(await waitInPage(win, before ? "!document.querySelector('[data-changes-panel]')" : "!!document.querySelector('[data-changes-panel]')", 2_000))) return 'Toggle changes did nothing';
   await runCommand('tog chan');
-  if ((await panelOpen()) !== before) return 'could not toggle the panel back';
+  if (onGit && (await panelOpen()) !== before) return 'could not toggle the panel back';
 
   // Home: nothing for a session.
   pressKey(win, 'H', ['meta', 'shift']);

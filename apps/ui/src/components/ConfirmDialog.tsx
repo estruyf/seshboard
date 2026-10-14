@@ -9,6 +9,11 @@ export interface ConfirmDialogProps {
   danger?: boolean;
   /** Shown instead of the confirm button when the action isn't possible right now. */
   blockedReason?: string | null;
+  /**
+   * How `blockedReason` reads: `error` (the default) in the error colour, announced at once; `info` for a reason that
+   * isn't a failure (still loading, nothing to do), quiet and announced politely.
+   */
+  blockedTone?: 'error' | 'info';
   /** Next to Cancel: another way out that also does something (the quit prompt's Show unsent). Escape still only closes. */
   secondary?: { label: string; onSelect(): void; data?: Record<`data-${string}`, string | boolean> };
   /** More under the text: a breakdown of what the action touches. */
@@ -69,10 +74,21 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       {(props.details || error || props.blockedReason) && (
         <div className="grid gap-3">
           {props.details}
-          {(error || props.blockedReason) && (
+          {error ? (
             <p role="alert" className="text-ui text-error">
-              {error ? `That didn't work: ${error}` : props.blockedReason}
+              That didn't work: {error}
             </p>
+          ) : (
+            props.blockedReason &&
+            (props.blockedTone === 'info' ? (
+              <p role="status" className="text-ui text-muted" data-blocked-reason="info">
+                {props.blockedReason}
+              </p>
+            ) : (
+              <p role="alert" className="text-ui text-error" data-blocked-reason="error">
+                {props.blockedReason}
+              </p>
+            ))
           )}
         </div>
       )}

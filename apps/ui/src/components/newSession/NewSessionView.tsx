@@ -698,7 +698,7 @@ export function NewSessionView() {
         ? `Couldn't check this folder: ${inspectError}`
         : 'Checking folder…'
       : !inspection.exists
-        ? 'This folder no longer exists.'
+        ? inspection.isFile ? 'That is a file, not a folder.' : 'This folder no longer exists.'
         : null;
 
   const projectName = cwd ? (project?.name ?? basename(cwd)) : null;
@@ -1040,7 +1040,7 @@ export function NewSessionView() {
               onContextChange={setDraftContext}
               controls={controls}
               onCycleMode={() => update({ permissionMode: nextMode(d.permissionMode) })}
-              disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? 'That folder no longer exists' : null}
+              disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
               onSubmit={(text, attachments, requested, parts) => create(text, attachments, parts, { skipGate: requested === true })}
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (

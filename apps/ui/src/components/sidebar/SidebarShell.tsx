@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { useSidebar } from '../../state/sidebarStore.ts';
-import { shownWidth, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, snapFromCollapsed, snapWidth, stepState } from '../../state/sidebarWidth.ts';
+import { useShownSidebar, useSidebar } from '../../state/sidebarStore.ts';
+import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, snapFromCollapsed, snapWidth, stepState, type SidebarSnap } from '../../state/sidebarWidth.ts';
 import { Sidebar } from './Sidebar.tsx';
 import { SidebarRail } from './SidebarRail.tsx';
 
@@ -9,10 +9,8 @@ import { SidebarRail } from './SidebarRail.tsx';
  * the rail and closed as you go (`snapWidth`); ← and → step through the same states (`stepState`);
  * a double-click opens it at the default width.
  */
-function SidebarResizeHandle({ onDragging }: { onDragging(dragging: boolean): void }) {
-  const state = useSidebar((s) => s.state);
-  const width = useSidebar((s) => s.width);
-  const shown = shownWidth(state, width);
+function SidebarResizeHandle({ fitted, onDragging }: { fitted: SidebarSnap; onDragging(dragging: boolean): void }) {
+  const { state, width: shown } = fitted;
 
   const apply = (next: { state: typeof state; width: number }) => {
     const store = useSidebar.getState();
@@ -25,9 +23,10 @@ function SidebarResizeHandle({ onDragging }: { onDragging(dragging: boolean): vo
     event.preventDefault();
     const start = useSidebar.getState();
     const startX = event.clientX;
-    const startShown = shownWidth(start.state, start.width);
+    // From where the edge is on screen, which a small window may have narrowed.
+    const startShown = shown;
     // Dragged out of the rail (or from the window's edge), it opens at a width you had before.
-    const collapsed = start.state !== 'open';
+    const collapsed = state !== 'open';
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
     onDragging(true);
@@ -80,22 +79,26 @@ function SidebarResizeHandle({ onDragging }: { onDragging(dragging: boolean): vo
  * over 150ms (none with reduced motion), except while dragging the open edge, which follows the pointer.
  */
 export function SidebarShell() {
-  const state = useSidebar((s) => s.state);
-  const width = useSidebar((s) => s.width);
+  const saved = useSidebar((s) => s.state);
+  // In a small window (or zoomed in) the sidebar narrows, or shows as the rail, so the session view
+  // keeps its room; the saved state and width come back as the window grows.
+  const fitted = useShownSidebar();
+  const state = fitted.state;
   const [dragging, setDragging] = useState(false);
   const animate = !dragging || state !== 'open';
   return (
     <div
       className={`relative h-full shrink-0 ${animate ? 'transition-[width] duration-150 ease-out motion-reduce:transition-none' : ''}`}
-      style={{ width: shownWidth(state, width) }}
+      style={{ width: fitted.width }}
       data-sidebar
       data-sidebar-state={state}
+      data-sidebar-fitted={state !== saved || undefined}
       data-sidebar-dragging={dragging || undefined}
     >
       <div className="h-full overflow-hidden">
         {state === 'open' ? <Sidebar /> : state === 'minimal' ? <SidebarRail /> : null}
       </div>
-      <SidebarResizeHandle onDragging={setDragging} />
+      <SidebarResizeHandle fitted={fitted} onDragging={setDragging} />
     </div>
   );
 }

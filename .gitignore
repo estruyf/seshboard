@@ -8,3 +8,5 @@ dist/
 .smoke/
 .screenshots/
 *.vsix
+
+tests/chaos-hunt*

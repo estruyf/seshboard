@@ -37,6 +37,7 @@ npm run dev:vscode   # rebuild the VS Code companion on every change (F5 in VS C
 npm run website:dev  # the website and docs with hot reload
 npm run website:build          # build the website; fails on a broken internal link
 npm run website:screenshots    # retake the website's screenshots in a made-up demo home folder
+npm run chaos -- --phase repro # chaos testing in a sandbox (macOS; docs/chaos-testing.md)
 npm run dist         # package the app for this OS: Switchboard.app and a .dmg, or the Windows installer
 ```
 

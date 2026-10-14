@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    // Node runs these files by stripping types, so only syntax that can be erased.
+    "erasableSyntaxOnly": true,
+    "noUnusedLocals": true
+  },
+  "include": ["**/*.ts"]
+}
