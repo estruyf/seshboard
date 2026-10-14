@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import type { CatchUp, GitChanges, PermissionRequest } from '@switchboard/protocol/client';
+import type { CatchUp, GitChanges } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
@@ -8,36 +8,30 @@ import { currentOrder } from '../../state/sessionNav.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { CommitDialog } from '../git/CommitDialog.tsx';
-import { usePermissionAnswer } from '../session/PermissionCard.tsx';
-import { nextAfterArchive, type CatchUpActionId, type CatchUpShow } from './catchUpModel.ts';
+import { nextAfterArchive, type CatchUpActionId } from './catchUpModel.ts';
 
 export interface CatchUpActions {
   run(id: CatchUpActionId): void;
+  /** Folds the banner into the strip (true), or opens it from there (false). */
+  fold(collapsed: boolean): void;
   /** Dialogs the actions open (Commit). */
   overlays: ReactNode;
-  /** What went wrong last, for a line under the card. */
+  /** What went wrong last, for a line under the banner. */
   error: string | null;
-  /** The open request a waiting card is about (the oldest), if any. */
-  request: PermissionRequest | null;
-  /** An answer to a question picked in the banner, by option label. */
-  answer(label: string): void;
-  busy: boolean;
 }
 
 /**
- * What the card's buttons and keys do. Review changes opens the Changes panel; Commit opens the Commit dialog; Reply puts
- * you in the message box; Mark as read and Archive change the session at once (so the focus counter follows) and tell
- * the engine; Expand conversation folds the card. Allow, Deny and an answer go through the permission card's own handler.
+ * What the catch-up's buttons and keys do. Review changes opens the Changes panel; Commit opens the Commit dialog; Reply
+ * puts you in the message box; Mark as read and Archive change the session at once (so the focus counter follows) and
+ * tell the engine.
  */
-export function useCatchUpActions({ card, show, cwd, changes, request }: { card: CatchUp; show: CatchUpShow; cwd: string | null; changes: GitChanges | null; request: PermissionRequest | null }): CatchUpActions {
+export function useCatchUpActions({ card, cwd, changes }: { card: CatchUp; cwd: string | null; changes: GitChanges | null }): CatchUpActions {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const sessionId = card.sessionId;
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fail = (what: string) => (e: unknown) => setError(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
-  // A waiting card always has its request; this stand-in keeps the hook's order the same when it doesn't.
-  const permission = usePermissionAnswer(request ?? STAND_IN);
 
   const run = (id: CatchUpActionId) => {
     setError(null);
@@ -68,20 +62,6 @@ export function useCatchUpActions({ card, show, cwd, changes, request }: { card:
         else useSessions.getState().goHome();
         return;
       }
-      case 'expand':
-        // In full it folds into the strip; from the strip it opens again.
-        store.setCollapsed(card, show === 'full');
-        return;
-      case 'allow':
-        if (request) void permission.allow();
-        return;
-      case 'deny':
-        if (request) void permission.deny();
-        return;
-      case 'answer':
-        // Answering takes a choice: the card shows the question in full.
-        store.setCollapsed(card, false);
-        return;
     }
   };
 
@@ -101,32 +81,5 @@ export function useCatchUpActions({ card, show, cwd, changes, request }: { card:
       />
     ) : null;
 
-  return {
-    run,
-    overlays,
-    error: error ?? (request ? permission.error : null),
-    request,
-    answer: (label) => {
-      if (!request) return;
-      const question = (request.input as { questions?: Array<{ question: string }> }).questions?.[0];
-      if (question) void permission.answer({ [question.question]: label });
-    },
-    busy: permission.busy,
-  };
+  return { run, fold: (collapsed) => useCatchUp.getState().setCollapsed(card, collapsed), overlays, error };
 }
-
-/** Never answered: `usePermissionAnswer` only sends when its card's buttons are pressed. */
-const STAND_IN: PermissionRequest = {
-  requestId: '',
-  sessionId: '',
-  toolName: '',
-  toolUseId: null,
-  input: {},
-  title: null,
-  description: null,
-  decisionReason: null,
-  blockedPath: null,
-  alwaysLabel: null,
-  agentId: null,
-  createdAt: 0,
-};

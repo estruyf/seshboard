@@ -56,3 +56,24 @@ export const CatchUp = z.object({
   reviewMinutes: z.number().int().min(1).max(30),
 });
 export type CatchUp = z.infer<typeof CatchUp>;
+
+/**
+ * Why a session asks you something right now, for the side panel behind "Why is Claude asking?" on a permission or a
+ * question. `ask`, `did` and `claudeSaid` come from the turn so far, never a model; `what` and `why` are Haiku's plain
+ * explanation (`source: 'model'`), null without one (summaries off, or no answer in time).
+ */
+export const RequestWhy = z.object({
+  requestId: z.string(),
+  source: z.enum(['model', 'fallback']),
+  /** The prompt that started this piece of work. */
+  ask: z.string().max(240),
+  /** What Claude did so far in the turn, as 1–5 short plain lines. */
+  did: z.array(z.string().max(200)).max(5),
+  /** Claude's own last words before it asked. */
+  claudeSaid: z.string().max(1200).nullable(),
+  /** What the request does if you say yes (a command's parts, whether it changes anything), or what a question wants to know. */
+  what: z.string().max(400).nullable(),
+  /** Why Claude needs it for your ask. */
+  why: z.string().max(400).nullable(),
+});
+export type RequestWhy = z.infer<typeof RequestWhy>;

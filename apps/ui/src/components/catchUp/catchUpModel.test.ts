@@ -7,7 +7,7 @@ import {
   chipsOf,
   escapeStep,
   nextAfterArchive,
-  primaryActions,
+  primaryAction,
   replyPlaceholder,
   reviewLabel,
   secondaryActions,
@@ -31,14 +31,19 @@ const card = (patch: Partial<CatchUp> = {}, signals: Partial<CatchUp['signals']>
   ...patch,
 });
 const need = (kind: CatchUp['need']['kind']) => ({ kind, title: 'x', text: 'y' });
-const ctx = (patch: Partial<ShowContext> = {}): ShowContext => ({ layout: 'card', unread: true, working: false, waiting: false, collapsed: null, ...patch });
+const ctx = (patch: Partial<ShowContext> = {}): ShowContext => ({ enabled: true, unread: true, working: false, waiting: false, collapsed: null, ...patch });
 const key = (k: string, mods: Partial<KeyLike> = {}): KeyLike => ({ key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods });
 
 describe('when the catch-up shows', () => {
-  it('shows in full for an unread finish, an error and a session that waits for you', () => {
+  it('shows the banner for an unread finish and an error', () => {
     expect(catchUpShow(card(), ctx())).toBe('full');
     expect(catchUpShow(card({ state: 'error' }), ctx({ unread: false }))).toBe('full');
-    expect(catchUpShow(card({ state: 'waiting', need: need('permission') }), ctx({ unread: false, waiting: true }))).toBe('full');
+  });
+
+  it('leaves a session that waits for you to the permission card', () => {
+    expect(catchUpShow(card({ state: 'waiting', need: need('permission') }), ctx({ waiting: true }))).toBeNull();
+    // A finished card from before the request doesn't show over it either.
+    expect(catchUpShow(card(), ctx({ waiting: true }))).toBeNull();
   });
 
   it('folds into the strip once read, or when you collapsed this turn', () => {
@@ -50,20 +55,23 @@ describe('when the catch-up shows', () => {
     expect(catchUpShow(card(), ctx({ unread: false, collapsed: false }))).toBe('full');
   });
 
-  it('shows nothing without a card, with the layout off, while Claude works, or for a request that is gone', () => {
+  it('shows nothing without a card, while Claude works, or for a request that is gone', () => {
     expect(catchUpShow(null, ctx())).toBeNull();
-    expect(catchUpShow(card(), ctx({ layout: 'off' }))).toBeNull();
     expect(catchUpShow(card(), ctx({ working: true }))).toBeNull();
     expect(catchUpShow(card({ state: 'waiting', need: need('question') }), ctx({ waiting: false }))).toBeNull();
   });
+
+  it('with summaries off, shows only when you ask for it, and folding hides it', () => {
+    expect(catchUpShow(card(), ctx({ enabled: false }))).toBeNull();
+    expect(catchUpShow(card(), ctx({ enabled: false, collapsed: false }))).toBe('full');
+    expect(catchUpShow(card(), ctx({ enabled: false, collapsed: true }))).toBeNull();
+  });
 });
 
-describe('what the card says', () => {
+describe('what the banner says', () => {
   it('names the state in its colour', () => {
     expect(stateLabel(card(), false)).toEqual({ label: 'Finished', tone: 'unread' });
     expect(stateLabel(card({ state: 'error' }), false)).toEqual({ label: 'Finished with errors', tone: 'error' });
-    expect(stateLabel(card({ state: 'waiting', need: need('question') }), false)).toEqual({ label: 'Needs you · question', tone: 'warn' });
-    expect(stateLabel(card({ state: 'waiting', need: need('permission') }), false)).toEqual({ label: 'Needs you · permission', tone: 'warn' });
     expect(stateLabel(card(), true)).toEqual({ label: 'Committed', tone: 'ok' });
   });
 
@@ -90,28 +98,25 @@ describe('what the card says', () => {
 
 describe('the actions', () => {
   it('has one primary action per kind of need', () => {
-    expect(primaryActions('commit', false)).toEqual(['commit']);
-    expect(primaryActions('reply', false)).toEqual(['reply']);
-    expect(primaryActions('permission', false)).toEqual(['allow', 'deny']);
-    expect(primaryActions('question', false)).toEqual(['answer']);
-    expect(primaryActions('review', false)).toEqual(['review']);
-    expect(primaryActions('none', false)).toEqual(['archive']);
+    expect(primaryAction('commit', false)).toBe('commit');
+    expect(primaryAction('reply', false)).toBe('reply');
+    expect(primaryAction('review', false)).toBe('review');
+    expect(primaryAction('none', false)).toBe('archive');
     // After a commit there is only archiving left.
-    expect(primaryActions('commit', true)).toEqual(['archive']);
+    expect(primaryAction('commit', true)).toBe('archive');
   });
 
   it('lists the others in order, without the primary and what doesn’t apply', () => {
-    expect(secondaryActions(card(), { unread: true, committed: false })).toEqual(['review', 'reply', 'read', 'archive', 'expand']);
-    expect(secondaryActions(card({ need: need('review') }), { unread: false, committed: false })).toEqual(['commit', 'reply', 'archive', 'expand']);
-    expect(secondaryActions(card({ need: need('none') }, { diff: { files: 0, add: 0, del: 0 } }), { unread: true, committed: false })).toEqual(['reply', 'read', 'expand']);
-    expect(secondaryActions(card({ need: need('reply') }, { diff: null }), { unread: false, committed: false })).toEqual(['archive', 'expand']);
-    expect(secondaryActions(card({ state: 'waiting', need: need('permission') }), { unread: true, committed: false })).toEqual(['review', 'expand']);
-    expect(secondaryActions(card(), { unread: false, committed: true })).toEqual(['review', 'reply', 'expand']);
+    expect(secondaryActions(card(), { unread: true, committed: false })).toEqual(['review', 'reply', 'read', 'archive']);
+    expect(secondaryActions(card({ need: need('review') }), { unread: false, committed: false })).toEqual(['commit', 'reply', 'archive']);
+    expect(secondaryActions(card({ need: need('none') }, { diff: { files: 0, add: 0, del: 0 } }), { unread: true, committed: false })).toEqual(['reply', 'read']);
+    expect(secondaryActions(card({ need: need('reply') }, { diff: null }), { unread: false, committed: false })).toEqual(['archive']);
+    expect(secondaryActions(card(), { unread: false, committed: true })).toEqual(['review', 'reply']);
   });
 
   it('says Hide changes while the panel is open', () => {
-    expect(actionLabel('review', { changesOpen: false, layout: 'card' })).toBe('Review changes');
-    expect(actionLabel('review', { changesOpen: true, layout: 'card' })).toBe('Hide changes');
+    expect(actionLabel('review', { changesOpen: false })).toBe('Review changes');
+    expect(actionLabel('review', { changesOpen: true })).toBe('Hide changes');
   });
 
   it('opens the next session after archiving, in the sidebar’s order', () => {
@@ -128,16 +133,9 @@ describe('the actions', () => {
 });
 
 describe('the keys', () => {
-  const at = (target: 'view' | 'control' | 'elsewhere', extra: Partial<{ overlay: boolean; show: 'full' | 'strip' | null; question: boolean; options: number }> = {}) => ({
-    target,
-    overlay: false,
-    show: 'full' as const,
-    question: false,
-    options: 0,
-    ...extra,
-  });
+  const at = (target: 'view' | 'control' | 'elsewhere', extra: Partial<{ overlay: boolean; show: 'full' | 'strip' | null }> = {}) => ({ target, overlay: false, show: 'full' as const, ...extra });
 
-  it('maps the card’s keys', () => {
+  it('maps the banner’s keys', () => {
     expect(catchUpKey(key('Enter'), at('view'))).toEqual({ type: 'primary' });
     expect(catchUpKey(key('Escape'), at('view'))).toEqual({ type: 'escape' });
     expect(catchUpKey(key('d'), at('view'))).toEqual({ type: 'action', id: 'review' });
@@ -145,12 +143,12 @@ describe('the keys', () => {
     expect(catchUpKey(key('r'), at('view'))).toEqual({ type: 'action', id: 'reply' });
     expect(catchUpKey(key('u'), at('view'))).toEqual({ type: 'action', id: 'read' });
     expect(catchUpKey(key('e'), at('view'))).toEqual({ type: 'action', id: 'archive' });
-    expect(catchUpKey(key(' '), at('view'))).toEqual({ type: 'action', id: 'expand' });
+    expect(catchUpKey(key(' '), at('view'))).toEqual({ type: 'space' });
     expect(catchUpKey(key('x'), at('view'))).toBeNull();
   });
 
   it('never takes keys typed into the message box or another field, with a modifier, or under a dialog', () => {
-    for (const k of ['Enter', 'Escape', 'c', ' ', 'ArrowDown', '1']) expect(catchUpKey(key(k), at('elsewhere', { question: true, options: 3 }))).toBeNull();
+    for (const k of ['Enter', 'Escape', 'c', ' ']) expect(catchUpKey(key(k), at('elsewhere'))).toBeNull();
     expect(catchUpKey(key('c', { metaKey: true }), at('view'))).toBeNull();
     expect(catchUpKey(key('Enter', { ctrlKey: true }), at('view'))).toBeNull();
     expect(catchUpKey(key('C', { shiftKey: true }), at('view'))).toBeNull();
@@ -164,22 +162,14 @@ describe('the keys', () => {
     expect(catchUpKey(key('c'), at('control'))).toEqual({ type: 'action', id: 'commit' });
   });
 
-  it('moves between and picks a question’s options', () => {
-    expect(catchUpKey(key('ArrowDown'), at('view', { question: true, options: 3 }))).toEqual({ type: 'option', step: 1 });
-    expect(catchUpKey(key('ArrowUp'), at('view', { question: true, options: 3 }))).toEqual({ type: 'option', step: -1 });
-    expect(catchUpKey(key('2'), at('view', { question: true, options: 3 }))).toEqual({ type: 'pick', index: 1 });
-    expect(catchUpKey(key('4'), at('view', { question: true, options: 3 }))).toBeNull();
-    expect(catchUpKey(key('ArrowDown'), at('view'))).toBeNull();
-  });
-
-  it('in the strip, only shows the card again or runs its primary action', () => {
-    expect(catchUpKey(key(' '), at('view', { show: 'strip' }))).toEqual({ type: 'action', id: 'expand' });
+  it('in the strip, only shows the banner again or runs its primary action', () => {
+    expect(catchUpKey(key(' '), at('view', { show: 'strip' }))).toEqual({ type: 'space' });
     expect(catchUpKey(key('Enter'), at('view', { show: 'strip' }))).toEqual({ type: 'primary' });
     expect(catchUpKey(key('c'), at('view', { show: 'strip' }))).toBeNull();
     expect(catchUpKey(key('c'), at('view', { show: null }))).toBeNull();
   });
 
-  it('closes things with Esc from the inside out: the reply, the Changes panel, Details, then the card', () => {
+  it('closes things with Esc from the inside out: the reply, the Changes panel, Details, then the banner', () => {
     const all = { replying: true, changesOpen: true, detailsOpen: true, show: 'full' as const };
     expect(escapeStep(all)).toBe('leave-reply');
     expect(escapeStep({ ...all, replying: false })).toBe('close-changes');

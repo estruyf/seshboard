@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { PermissionRequest, SessionHostInfo, SessionSummary } from '@switchboard/protocol/client';
+import type { SessionHostInfo, SessionSummary } from '@switchboard/protocol/client';
 import { focusSessions } from '../../state/focus.ts';
 import { patchedSessions } from '../../state/sessionChanges.ts';
-import { DECLINED, permissionDecisions } from '../session/permissionDecisions.ts';
 
 const NOW = Date.UTC(2026, 9, 14, 12);
 
@@ -70,19 +69,5 @@ describe('the catch-up and the focus limit', () => {
 
   it('leaves the sessions alone for one it doesn’t know', () => {
     expect(patchedSessions(sessions, 'x', { unread: false })).toBe(sessions);
-  });
-});
-
-describe('answering from the catch-up', () => {
-  const request = { input: { questions: [{ question: 'Which easing?', options: [{ label: 'Ease out' }] }] } } as Pick<PermissionRequest, 'input'>;
-
-  it('sends what the card above the message box sends', () => {
-    expect(permissionDecisions.allow()).toEqual({ behavior: 'allow' });
-    expect(permissionDecisions.deny()).toEqual({ behavior: 'deny', message: DECLINED });
-    expect(permissionDecisions.deny('  use pnpm  ')).toEqual({ behavior: 'deny', message: 'use pnpm' });
-    expect(permissionDecisions.answer(request, { 'Which easing?': 'Ease out' })).toEqual({
-      behavior: 'allow',
-      updatedInput: { questions: [{ question: 'Which easing?', options: [{ label: 'Ease out' }] }], answers: { 'Which easing?': 'Ease out' } },
-    });
   });
 });

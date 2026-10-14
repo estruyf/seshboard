@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { CatchUp, reviewMinutes, type GitChanges, type LogLevel, type PermissionRequest } from '@switchboard/protocol';
+import { CatchUp, RequestWhy, reviewMinutes, type GitChanges, type LogLevel, type PermissionRequest } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { CatchUpStore } from './catchUpStore.ts';
 import { fallbackSummary, waitingNeed, type Summary } from './fallback.ts';
 import { signalsOf, type Exists } from './signals.ts';
-import { parseSummary, summaryInput } from './summary.ts';
+import { parseSummary, parseWhy, summaryInput, whyInput, WHY_SYSTEM_PROMPT } from './summary.ts';
 import { lastTurn, mergeMessages, oneLine, promptText, ASK_MAX, type Turn } from './turn.ts';
 
 export interface CatchUpServiceOptions {
@@ -17,9 +17,9 @@ export interface CatchUpServiceOptions {
   profileOf(sessionId: string): string;
   /** The checkout's uncommitted changes; null outside git. */
   changes(cwd: string): Promise<GitChanges | null>;
-  /** Asks Haiku for the summary; null when it gave nothing in time. */
-  summarize(profileId: string, sessionId: string, input: string): Promise<string | null>;
-  /** Settings › Conversation: "Write catch-up summaries with Haiku". Off, the fallback always writes the card. */
+  /** Asks Haiku (told `system`, the summary's prompt when left out); null when it gave nothing in time. */
+  summarize(profileId: string, sessionId: string, input: string, system?: string): Promise<string | null>;
+  /** Settings › Conversation: "Write catch-up summaries with Haiku". Off, the fallback always writes the card and a "why" has no explanation. */
   useModel(): boolean;
   emit(sessionId: string, catchUp: CatchUp | null): void;
   log(level: LogLevel, message: string): void;
@@ -39,7 +39,8 @@ const LIVE_LIMIT = 3_000;
 
 /**
  * Makes, keeps and clears the catch-up cards. A card is made when a turn ends (finished, or stopped with an error) and
- * while a session waits for a permission or an answer; your next message clears it, and so does Claude going back to
+ * while a session waits for a permission or an answer (that one only for the sidebar's review times and order: the app
+ * shows no banner then, and `why` explains the request instead); your next message clears it, and so does Claude going back to
  * work. Working sessions have no card. The turn's messages come live from the sessions this app runs (ahead of the
  * file), merged with the transcript for earlier prompts and the plan.
  */
@@ -52,6 +53,8 @@ export class CatchUpService {
   private readonly interrupted = new Set<string>();
   /** Open requests per session, oldest first. */
   private readonly waiting = new Map<string, PermissionRequest[]>();
+  /** Each open request's "why", made once (also while it is being made, so two asks share one Haiku call). */
+  private readonly whys = new Map<string, Promise<RequestWhy | null>>();
 
   constructor(private readonly options: CatchUpServiceOptions) {}
 
@@ -83,7 +86,7 @@ export class CatchUpService {
   started(sessionId: string): void {
     this.bump(sessionId);
     this.interrupted.delete(sessionId);
-    this.waiting.delete(sessionId);
+    this.dropWaiting(sessionId);
     this.clear(sessionId);
   }
 
@@ -94,7 +97,7 @@ export class CatchUpService {
 
   /** A turn ended. Makes its card, unless you stopped it. */
   async turnEnded(sessionId: string, outcome: TurnOutcome): Promise<CatchUp | null> {
-    this.waiting.delete(sessionId);
+    this.dropWaiting(sessionId);
     if (this.interrupted.delete(sessionId)) {
       this.bump(sessionId);
       this.clear(sessionId);
@@ -113,6 +116,7 @@ export class CatchUpService {
 
   /** A request was answered: the next one gets the card, or Claude is working again and the card goes. */
   async permissionResolved(requestId: string, sessionId: string): Promise<CatchUp | null> {
+    this.whys.delete(requestId);
     const list = (this.waiting.get(sessionId) ?? []).filter((r) => r.requestId !== requestId);
     if (list.length) {
       this.waiting.set(sessionId, list);
@@ -129,6 +133,58 @@ export class CatchUpService {
   /** The session's process ended: what came live is in the transcript now. */
   closed(sessionId: string): void {
     this.live.delete(sessionId);
+    this.dropWaiting(sessionId);
+  }
+
+  /**
+   * Why the session asks for an open request (`catchup.why`): the turn so far, and with summaries on Haiku's plain
+   * explanation of what saying yes does and why Claude needs it. Null when the request isn't open (any more).
+   */
+  why(sessionId: string, requestId: string): Promise<RequestWhy | null> {
+    const request = this.waiting.get(sessionId)?.find((r) => r.requestId === requestId);
+    if (!request) return Promise.resolve(null);
+    let made = this.whys.get(requestId);
+    if (!made) {
+      made = this.makeWhy(sessionId, request);
+      this.whys.set(requestId, made);
+      // A failed one is asked again next time.
+      void made.then((why) => (why ? undefined : this.whys.delete(requestId)), () => this.whys.delete(requestId));
+    }
+    return made;
+  }
+
+  private async makeWhy(sessionId: string, request: PermissionRequest): Promise<RequestWhy | null> {
+    const turn = this.turnSoFar(await this.messagesOf(sessionId), request);
+    const lines = fallbackSummary(turn, signalsOf(turn, null, this.options.cwd(sessionId)), { state: 'finished', error: null });
+    let explained: { what: string; why: string } | null = null;
+    if (this.options.useModel()) {
+      const text = await this.options.summarize(this.options.profileOf(sessionId), sessionId, whyInput(turn, request), WHY_SYSTEM_PROMPT).catch(() => null);
+      explained = text === null ? null : parseWhy(text);
+      if (text !== null && !explained) this.options.log('debug', `Why for ${request.requestId} wasn't usable; showing the turn only`);
+    }
+    const parsed = RequestWhy.safeParse({
+      requestId: request.requestId,
+      source: explained ? 'model' : 'fallback',
+      ask: turn.ask,
+      did: lines.did,
+      claudeSaid: turn.finalText ? oneLine(turn.finalText, 1_200) : null,
+      what: explained?.what ?? null,
+      why: explained?.why ?? null,
+    });
+    if (!parsed.success) {
+      this.options.log('warn', `Why for ${request.requestId} was not made: ${parsed.error.message}`);
+      return null;
+    }
+    return parsed.data;
+  }
+
+  /** The turn a request came in, so far; one without an answer from Claude yet is only your prompt. */
+  private turnSoFar(messages: RawSessionMessage[], request: PermissionRequest): Turn {
+    return lastTurn(messages) ?? { id: request.requestId, ask: oneLine(messages.map(promptText).filter((t) => t !== null).at(-1) ?? '', ASK_MAX), finalText: '', tools: [], plan: null };
+  }
+
+  private dropWaiting(sessionId: string): void {
+    for (const request of this.waiting.get(sessionId) ?? []) this.whys.delete(request.requestId);
     this.waiting.delete(sessionId);
   }
 
@@ -177,9 +233,8 @@ export class CatchUpService {
     const request = this.waiting.get(sessionId)?.[0];
     if (!request) return null;
     const generation = this.bump(sessionId);
-    const messages = await this.messagesOf(sessionId);
     // The request comes from a tool call in the turn, so the turn usually has an answer from Claude already.
-    const turn: Turn = lastTurn(messages) ?? { id: request.requestId, ask: oneLine(messages.map(promptText).filter((t) => t !== null).at(-1) ?? '', ASK_MAX), finalText: '', tools: [], plan: null };
+    const turn = this.turnSoFar(await this.messagesOf(sessionId), request);
     const cwd = this.options.cwd(sessionId);
     const changes = cwd ? await this.options.changes(cwd).catch(() => null) : null;
     const signals = signalsOf(turn, changes, cwd, false, existsIn(changes?.root ?? cwd));

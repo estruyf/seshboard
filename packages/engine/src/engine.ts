@@ -72,7 +72,7 @@ import { scopeOf } from './usage/usageScanner.ts';
 import { ModelRouter, RoutingStore, stubRoute } from './autoModel/router.ts';
 import { CatchUpService } from './catchUp/catchUpService.ts';
 import { CatchUpStore, CatchUpUsageStore } from './catchUp/catchUpStore.ts';
-import { stubSummary, Summarizer } from './catchUp/summary.ts';
+import { stubAnswer, Summarizer } from './catchUp/summary.ts';
 import { ProjectRegistry, type FolderActivity } from './projects/projectRegistry.ts';
 import { QuestionsFolder } from './questions/questionsFolder.ts';
 import { createAppStateStore } from './db/appState.ts';
@@ -580,7 +580,7 @@ export function createEngine(options: EngineOptions): Engine {
       broadcast('usage.tokens', { profileIds: [profileId], scan: null });
     },
     log,
-    ...(options.stubCatchUp ? { stub: stubSummary } : {}),
+    ...(options.stubCatchUp ? { stub: stubAnswer } : {}),
   });
   const catchUpStore = new CatchUpStore(cache.db);
   for (const card of options.demoUsage?.catchUps ?? []) catchUpStore.save(card);
@@ -590,7 +590,7 @@ export function createEngine(options: EngineOptions): Engine {
     cwd: (id) => hosts.list().hosts.find((h) => h.sessionId === id)?.cwd ?? sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null,
     profileOf: sessionProfile,
     changes: (cwd) => listChanges(cwd, 'uncommitted').catch(() => null),
-    summarize: (profileId, sessionId, input) => summarizer.ask(profileId, sessionId, input),
+    summarize: (profileId, sessionId, input, system) => summarizer.ask(profileId, sessionId, input, system),
     useModel: () => catchUpSummaries,
     emit: (sessionId, card) => broadcast('catchup.changed', { sessionId, catchUp: card }),
     log,
@@ -1962,6 +1962,11 @@ export function createEngine(options: EngineOptions): Engine {
       const card = await catchUp.build(sessionId);
       if (!card) throw new RpcError('NOT_FOUND', 'This session has no finished turn to catch up on.');
       return { catchUp: card };
+    },
+    'catchup.why': async ({ sessionId, requestId }) => {
+      const why = await catchUp.why(sessionId, requestId);
+      if (!why) throw new RpcError('NOT_FOUND', 'This request was already answered.');
+      return { why };
     },
     'claudeUpdate.get': () => claudeUpdater.state,
     'claudeUpdate.check': () => {

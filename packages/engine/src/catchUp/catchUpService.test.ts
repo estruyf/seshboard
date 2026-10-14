@@ -8,7 +8,7 @@ import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { git, listChanges } from '../git/gitChanges.ts';
 import { CatchUpService } from './catchUpService.ts';
 import { CatchUpStore } from './catchUpStore.ts';
-import { stubSummary } from './summary.ts';
+import { stubAnswer, SUMMARY_SYSTEM_PROMPT, WHY_SYSTEM_PROMPT } from './summary.ts';
 
 const SESSION = 'session-1';
 const user = (uuid: string, content: unknown): RawSessionMessage => ({ type: 'user', uuid, parent_tool_use_id: null, message: { role: 'user', content } });
@@ -21,6 +21,8 @@ let cache: CacheDatabase;
 let file: RawSessionMessage[];
 let emitted: Array<{ sessionId: string; catchUp: CatchUp | null }>;
 let asked: string[];
+/** The "why" inputs Haiku was given. */
+let askedWhy: string[];
 let useModel: boolean;
 
 beforeEach(async () => {
@@ -37,6 +39,7 @@ beforeEach(async () => {
   file = [];
   emitted = [];
   asked = [];
+  askedWhy = [];
   useModel = true;
 });
 
@@ -52,9 +55,9 @@ function service(db = cache) {
     cwd: () => repo,
     profileOf: () => 'default',
     changes: (cwd) => listChanges(cwd, 'uncommitted').catch(() => null),
-    summarize: async (_profile, _session, input) => {
-      asked.push(input);
-      return stubSummary(input);
+    summarize: async (_profile, _session, input, system = SUMMARY_SYSTEM_PROMPT) => {
+      (system === WHY_SYSTEM_PROMPT ? askedWhy : asked).push(input);
+      return stubAnswer(input, system);
     },
     useModel: () => useModel,
     emit: (sessionId, catchUp) => emitted.push({ sessionId, catchUp }),
@@ -150,6 +153,40 @@ describe('catch-up cards', () => {
     expect(catchUp.get(SESSION)?.need.title).toBe('Allow a command');
     await catchUp.permissionResolved('req-1', SESSION);
     expect(catchUp.get(SESSION)?.need).toEqual({ kind: 'question', title: 'Answer a question', text: 'Which easing?' });
+  });
+
+  it('says why a session asks: the turn so far, Claude\'s words and Haiku\'s explanation, made once', async () => {
+    const catchUp = service();
+    playTurn(catchUp);
+    catchUp.messages(SESSION, [assistant('a3', [{ type: 'text', text: 'Now I publish it.' }, { type: 'tool_use', id: 'b9', name: 'Bash', input: { command: 'npm publish' } }])]);
+    await catchUp.permission(request());
+    const why = await catchUp.why(SESSION, 'req-1');
+    expect(why).toEqual({
+      requestId: 'req-1',
+      source: 'model',
+      ask: 'Make a.ts shout',
+      did: ['Edited a.ts', 'Ran npx vitest run'],
+      claudeSaid: 'Now I publish it.',
+      what: 'Runs npm publish. It only reads files and changes nothing.',
+      why: 'Claude needs it to check its work for your ask.',
+    });
+    expect(await catchUp.why(SESSION, 'req-1')).toEqual(why);
+    expect(askedWhy).toHaveLength(1);
+    expect(askedWhy[0]).not.toContain('CONTENTS_OF_THE_FILE');
+    // The request itself is the request, not one of the tool calls so far.
+    expect(JSON.parse(askedWhy[0]!).toolCalls.map((t: { tool: string }) => t.tool)).toEqual(['Write', 'Bash']);
+  });
+
+  it('says why without Haiku when summaries are off, and nothing once the request is answered', async () => {
+    useModel = false;
+    const catchUp = service();
+    playTurn(catchUp);
+    await catchUp.permission(request());
+    expect(await catchUp.why(SESSION, 'req-1')).toMatchObject({ source: 'fallback', what: null, why: null, claudeSaid: 'Done. a.ts shouts now.' });
+    expect(askedWhy).toEqual([]);
+    await catchUp.permissionResolved('req-1', SESSION);
+    expect(await catchUp.why(SESSION, 'req-1')).toBeNull();
+    expect(await catchUp.why(SESSION, 'unknown')).toBeNull();
   });
 
   it('clears the card when you send a new message', async () => {

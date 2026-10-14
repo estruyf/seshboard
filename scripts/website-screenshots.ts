@@ -443,7 +443,7 @@ class Tour {
 type Screen = { name: string; take(t: Tour): Promise<void> };
 
 const HERO = 'Add dark mode toggle';
-/** The finished session the catch-up pictures open (its card comes with the demo, `demoCatchUps`). */
+/** The finished session the catch-up pictures open (its catch-up comes with the demo, `demoCatchUps`). */
 const CATCH_UP = 'Refactor auth middleware';
 const WORKING = 'Fix rounding';
 const NEEDS_YOU = 'Upgrade Stripe';
@@ -565,33 +565,21 @@ const screens: Screen[] = [
     },
   },
   {
-    name: 'catch-up-card',
-    async take(t) {
-      await t.openSession(CATCH_UP);
-      // Read sessions show the strip; Show catch-up opens the card.
-      await t.click('[data-current-session] [data-catchup-show]', 'the catch-up strip did not show');
-      await t.need('[data-current-session] [data-catchup-layout="card"]', 'the catch-up card did not open');
-      await t.shot('catch-up-card');
-      await t.click('[data-current-session] [data-catchup-collapse]');
-      await t.need('[data-current-session] [data-catchup-strip]', 'the card did not fold into the strip');
-      await t.shot('catch-up-strip', { clip: '[data-current-session] [data-catchup-strip]', pad: 12 });
-    },
-  },
-  {
     name: 'catch-up-banner',
     async take(t) {
-      await setCatchUpLayout(t, 'banner');
       await t.openSession(CATCH_UP);
-      await t.click('[data-current-session] [data-catchup-show]', 'the catch-up strip did not show');
+      // Read sessions show the strip; Show catch-up opens the banner.
+      await t.need('[data-current-session] [data-catchup-strip]', 'the catch-up strip did not show');
+      await t.shot('catch-up-strip', { clip: '[data-current-session] [data-catchup-strip]', pad: 12 });
+      await t.click('[data-current-session] [data-catchup-show]');
       await t.need('[data-current-session] [data-catchup-banner]', 'the catch-up banner did not open');
       await t.shot('catch-up-banner');
       await t.click('[data-current-session] [data-catchup-details-toggle]');
       await t.need('[data-current-session] [data-catchup-details]', 'Details did not open');
       await t.shot('catch-up-banner-details', { clip: '[data-current-session] [data-catchup-banner]', pad: 12 });
-      // Folded again, so the session opens on its conversation in the other screens.
-      await t.click('[data-current-session] [data-catchup-details] [data-catchup-action="expand"]');
+      // Folded again, so the session opens on its strip in the other screens.
+      await t.click('[data-current-session] [data-catchup-collapse]');
       await t.need('[data-current-session] [data-catchup-strip]', 'the banner did not fold into the strip');
-      await setCatchUpLayout(t, 'card');
     },
   },
   {
@@ -1072,15 +1060,6 @@ async function openNewSession(t: Tour, project: string): Promise<void> {
   }
   void index;
   throw new Error(`New session could not pick ${project}`);
-}
-
-/** Settings › Conversation › Catch-up's layout, picked like a person would. */
-async function setCatchUpLayout(t: Tour, layout: 'card' | 'banner' | 'off'): Promise<void> {
-  await t.click('[data-open-settings]');
-  await t.click('[data-settings-section="conversation"]');
-  await t.click(`[data-catchup-layout-choice="${layout}"]`);
-  await t.click('[data-close-settings]');
-  await t.home();
 }
 
 async function openMemoryTab(t: Tour): Promise<void> {

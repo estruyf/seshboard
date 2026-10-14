@@ -2987,6 +2987,11 @@
       "page": "sessions/catch-up"
     },
     {
+      "id": "palette:why-request",
+      "name": "Why is Claude asking?",
+      "page": "permissions"
+    },
+    {
       "id": "shortcut:usage.open",
       "name": "usage.open",
       "page": "usage"
@@ -3049,16 +3054,6 @@
     {
       "id": "shortcut:catchup.expand",
       "name": "catchup.expand",
-      "page": "sessions/catch-up"
-    },
-    {
-      "id": "shortcut:catchup.option",
-      "name": "catchup.option",
-      "page": "sessions/catch-up"
-    },
-    {
-      "id": "shortcut:catchup.pick",
-      "name": "catchup.pick",
       "page": "sessions/catch-up"
     },
     {

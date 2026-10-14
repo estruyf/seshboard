@@ -4644,20 +4644,19 @@ async function runUsageViewStep(win: BrowserWindow): Promise<string> {
 
 /**
  * The catch-up on the smoke session, made from its transcript with the stubbed summary (no model is called): the
- * palette's Catch up on this session opens the card in place of the conversation; Esc folds it into the strip and Space
- * opens it again; a key pressed in the message box stays there; Expand conversation folds it; as a banner it sits over
- * the conversation, Space opens Details and Esc closes Details, then the banner; the sidebar's Quickest to unblock
- * groups the sessions. Read-only: nothing is committed, archived, marked read or sent.
+ * palette's Catch up on this session opens the banner over the conversation; Space opens Details and Esc closes Details,
+ * then folds the banner into the strip, and Space opens it again; a key pressed in the message box stays there; the
+ * sidebar's Quickest to unblock groups the sessions. Read-only: nothing is committed, archived, marked read or sent.
  */
 async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const has = (selector: string) => js(`!!document.querySelector(${JSON.stringify(selector)})`) as Promise<boolean>;
   if (!smokeSessionId) return 'failed: no smoke session was opened';
   const view = `[data-current-session="${smokeSessionId}"]`;
-  const card = `${view} [data-catchup][data-catchup-layout="card"]`;
+  const banner = `${view} [data-catchup-banner]`;
   const strip = `${view} [data-catchup-strip]`;
   const blur = () => js('document.activeElement?.blur?.(); true');
-  const transcriptHidden = `getComputedStyle(document.querySelector('${view} [data-transcript]')).display === 'none'`;
+  const transcriptShown = `getComputedStyle(document.querySelector('${view} [data-transcript]')).display !== 'none'`;
   await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
   if (!(await waitInPage(win, `document.querySelector('${view} [data-transcript-item]')`, 5_000))) return 'failed: the smoke session did not open';
 
@@ -4665,59 +4664,43 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   await setFieldValue(win, '[data-palette-input]', 'Catch up on this session');
   if (!(await waitInPage(win, "document.querySelector('[data-palette-command=\"build-catch-up\"]')", 3_000))) {
     await closePalette(win);
-    // A card made earlier in the run (or one the session already had) shows its strip instead.
+    // A catch-up made earlier in the run (or one the session already had) shows its strip instead.
     if (!(await has(strip))) return 'the palette did not offer Catch up on this session';
     await js(`document.querySelector('${strip} [data-catchup-show]').click()`);
   } else await js("document.querySelector('[data-palette-command=\"build-catch-up\"]').click()");
-  if (!(await waitInPage(win, `document.querySelector('${card}')`, 15_000))) {
+  if (!(await waitInPage(win, `document.querySelector('${banner}')`, 15_000))) {
     const toast = (await js("document.querySelector('[data-toast]')?.innerText ?? ''")) as string;
     if (/no finished turn/i.test(toast)) return 'ok: skipped, the smoke session has no finished turn to catch up on';
-    return `the catch-up card did not open${toast ? ` (${toast.replace(/\s+/g, ' ')})` : ''}`;
+    return `the catch-up banner did not open${toast ? ` (${toast.replace(/\s+/g, ' ')})` : ''}`;
   }
-  if (!(await has(`${card} [data-catchup-primary]`))) return 'the card has no primary action';
-  if (!(await waitInPage(win, transcriptHidden, 2_000))) return 'the card did not stand in for the conversation';
-  await shot(win, 'catch-up-card.png');
-  const need = await js(`document.querySelector('${card}').dataset.catchupNeed`);
+  if (!(await has(`${banner} [data-catchup-primary]`))) return 'the banner has no primary action';
+  if (!(await waitInPage(win, transcriptShown, 2_000))) return 'the banner hid the conversation';
+  await shot(win, 'catch-up-banner.png');
+  const need = await js(`document.querySelector('${banner}').dataset.catchupNeed`);
 
   await blur();
-  // Esc closes the nearest thing first: the Changes panel (an earlier step may have left it open), then the card.
+  // Esc closes the nearest thing first: the Changes panel (an earlier step may have left it open), then the banner.
   const changesOpen = await has('[data-changes-panel]');
   if (changesOpen) {
     pressKey(win, 'Escape');
-    if (!(await waitInPage(win, `!document.querySelector('[data-changes-panel]') && document.querySelector('${card}')`, 3_000))) return 'Esc did not close the Changes panel before the card';
+    if (!(await waitInPage(win, `!document.querySelector('[data-changes-panel]') && document.querySelector('${banner}')`, 3_000))) return 'Esc did not close the Changes panel before the banner';
   }
-  pressKey(win, 'Escape');
-  if (!(await waitInPage(win, `document.querySelector('${strip}') && !document.querySelector('${card}') && !(${transcriptHidden})`, 3_000))) return 'Esc did not fold the card into the strip';
   pressKey(win, 'Space');
-  if (!(await waitInPage(win, `document.querySelector('${card}')`, 3_000))) return 'Space did not open the card again';
+  if (!(await waitInPage(win, `document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Space did not open the banner’s Details';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `document.querySelector('${banner}') && !document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Esc did not close Details first';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `document.querySelector('${strip}') && !document.querySelector('${banner}')`, 3_000))) return 'Esc did not fold the banner into the strip';
+  pressKey(win, 'Space');
+  if (!(await waitInPage(win, `document.querySelector('${banner}')`, 3_000))) return 'Space did not open the banner again';
 
-  // In the message box, keys are the message box's: Esc there leaves the card alone.
+  // In the message box, keys are the message box's: Esc there leaves the banner alone.
   await js(`document.querySelector('${view} [data-composer]')?.focus(); true`);
   pressKey(win, 'Escape');
   // A fixed wait, only to show that nothing happened.
   await new Promise((resolve) => setTimeout(resolve, 400));
-  if (!(await has(card))) return 'Esc in the message box folded the card';
+  if (!(await has(banner))) return 'Esc in the message box folded the banner';
   await blur();
-
-  await js(`document.querySelector('${view} [data-catchup-expand-conversation]').click()`);
-  if (!(await waitInPage(win, `document.querySelector('${strip}') && !(${transcriptHidden})`, 3_000))) return 'Expand conversation did not fold the card';
-
-  updatePreferences({ catchUpLayout: 'banner' });
-  try {
-    await js(`document.querySelector('${strip} [data-catchup-show]')?.click()`);
-    const banner = `${view} [data-catchup-banner]`;
-    if (!(await waitInPage(win, `document.querySelector('${banner}') && !(${transcriptHidden})`, 3_000))) return 'the banner did not show over the conversation';
-    await shot(win, 'catch-up-banner.png');
-    await blur();
-    pressKey(win, 'Space');
-    if (!(await waitInPage(win, `document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Space did not open the banner’s Details';
-    pressKey(win, 'Escape');
-    if (!(await waitInPage(win, `document.querySelector('${banner}') && !document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Esc did not close Details first';
-    pressKey(win, 'Escape');
-    if (!(await waitInPage(win, `document.querySelector('${strip}')`, 3_000))) return 'Esc did not fold the banner into the strip';
-  } finally {
-    updatePreferences({ catchUpLayout: 'card' });
-  }
 
   await js("document.querySelector('[data-sort-quick]')?.click()");
   const grouped = await waitInPage(win, "document.querySelector('[data-session-group=\"review\"], [data-session-group=\"read\"], [data-session-group=\"still-working\"]') && !document.querySelector('[data-session-group=\"today\"], [data-session-group=\"pinned\"], [data-queue-header]')", 3_000);
@@ -4725,7 +4708,7 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-sort-recent]')?.click()");
   if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
   if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
-  return `ok: card (needs ${need}) in place of the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Esc folded it and Space opened it, Esc in the message box left it, Expand conversation folded it, banner Details opened with Space and Esc closed Details then the banner, Quickest to unblock regrouped the sidebar`;
+  return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Space opened Details, Esc closed Details then folded the banner, Space opened it again, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
 }
 
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
@@ -6393,7 +6376,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('unsent messages', () => runUnsentStep(win));
   await step('search', () => runSearchStep(win));
   await step('command palette', () => runPaletteStep(win));
-  await step('catch-up: card, strip, keys, banner and Quickest to unblock', () => runCatchUpStep(win));
+  await step('catch-up: banner, strip, keys and Quickest to unblock', () => runCatchUpStep(win));
   await step('shortcuts sheet', () => runShortcutsStep(win));
   await step('tools', () => runToolsStep(win));
   await step('split panes', () => runSplitStep(win));

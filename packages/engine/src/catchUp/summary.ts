@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { CatchUpNeedKind, type LogLevel, type TokenCounts } from '@switchboard/protocol';
+import { CatchUpNeedKind, type LogLevel, type PermissionRequest, type TokenCounts } from '@switchboard/protocol';
 import type { SdkRuntime } from '../host/hostManager.ts';
 import { needKind, needOf, type Summary } from './fallback.ts';
 import type { Signals } from './signals.ts';
@@ -96,6 +96,66 @@ export function parseSummary(text: string, rules: { signals: Signals; state: 'fi
   };
 }
 
+/**
+ * What Haiku is told when you ask why a session wants a permission or asks a question. It sees your prompt, Claude's
+ * last words, the tool calls so far and the request (a command, a file's path, a plan or the questions, never a file's
+ * contents), and answers with one JSON object.
+ */
+export const WHY_SYSTEM_PROMPT = `A coding assistant (Claude) stopped to ask a developer for permission, or to ask them a question. Explain the request so they can decide in a few seconds.
+
+You get JSON with: "ask" (what they asked for), "claudeSaid" (the assistant's last words before asking), "toolCalls" (what it did so far: tool, file or command, exit code) and "request" (the tool it wants to use with its command, file or plan, or its questions).
+
+Answer with one JSON object and nothing else:
+{"what": "...", "why": "..."}
+
+- "what": one or two plain sentences on what happens if they say yes. For a shell command, say what each part does and whether it only reads or changes something (files, git, packages, the network). For a plan, what it will change. For a question, what Claude wants to know.
+- "why": one or two plain sentences on why Claude needs this for the ask, from what it did so far. When it doesn't seem to fit the ask, say so plainly.
+
+Write plain, short sentences. No markdown. No em dashes. Don't start a sentence with "And" or "But".`;
+
+type WhyRequest = Pick<PermissionRequest, 'toolName' | 'input' | 'title' | 'description' | 'toolUseId'>;
+
+/** The request as Haiku may see it: a command, a path, a plan or the questions. Never what an edit writes. */
+function requestPart(request: WhyRequest): Record<string, unknown> {
+  const input = (request.input ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+  if (request.toolName === 'Bash') return { tool: 'Bash', command: oneLine(str(input.command) ?? '', 1_000), description: str(input.description) };
+  if (request.toolName === 'ExitPlanMode') return { tool: 'ExitPlanMode', plan: oneLine(str(input.plan) ?? '', 4_000) };
+  if (request.toolName === 'AskUserQuestion') {
+    const questions = Array.isArray(input.questions) ? (input.questions as Array<{ question?: unknown; options?: Array<{ label?: unknown }> }>) : [];
+    return { tool: 'AskUserQuestion', questions: questions.slice(0, 4).map((q) => ({ question: str(q.question), options: (q.options ?? []).map((o) => str(o.label)).filter(Boolean) })) };
+  }
+  return { tool: request.toolName, file: str(input.file_path) ?? str(input.notebook_path) ?? str(input.path), url: str(input.url), title: request.title ?? undefined };
+}
+
+/** The user message for a "why": the turn so far and the request, as JSON. */
+export function whyInput(turn: Turn, request: WhyRequest): string {
+  return JSON.stringify({
+    ask: turn.ask,
+    claudeSaid: oneLine(turn.finalText, 2_000),
+    toolCalls: turn.tools
+      .filter((t) => t.id !== request.toolUseId)
+      .slice(-40)
+      .map((t) => ({ tool: t.name, ...(t.command ? { command: oneLine(t.command, 200) } : t.file ? { file: t.file } : {}), exitCode: t.declined ? 'declined' : t.exitCode })),
+    request: requestPart(request),
+  });
+}
+
+const WhyAnswer = z.object({ what: z.string().trim().min(1).max(800), why: z.string().trim().min(1).max(800) });
+
+/** Reads Haiku's "why": the first JSON object in it, in plain words. Null when it is unusable. */
+export function parseWhy(text: string): { what: string; why: string } | null {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    const parsed = WhyAnswer.safeParse(JSON.parse(text.slice(start, end + 1)));
+    return parsed.success ? { what: plain(parsed.data.what, 400), why: plain(parsed.data.why, 400) } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** One summary call, as kept for Usage: on the profile's usage scope, when it ran. */
 export interface SummaryRecord {
   id: string;
@@ -118,7 +178,7 @@ export interface SummarizerOptions {
   /** How long Claude Code has to start before the answer clock runs. */
   startMs?: number;
   /** Smoke runs and screenshots: answer from this instead of calling a model. */
-  stub?: (input: string) => string | null;
+  stub?: (input: string, system: string) => string | null;
 }
 
 const emptyTokens = (): TokenCounts => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
@@ -131,8 +191,9 @@ const sum = (t: TokenCounts) => t.input + t.output + t.cacheRead + t.cacheWrite;
 export class Summarizer {
   constructor(private readonly options: SummarizerOptions) {}
 
-  async ask(profileId: string, sessionId: string, input: string): Promise<string | null> {
-    if (this.options.stub) return this.options.stub(input);
+  /** `system`: what Haiku is told, the summary's prompt or the "why"'s. */
+  async ask(profileId: string, sessionId: string, input: string, system: string = SUMMARY_SYSTEM_PROMPT): Promise<string | null> {
+    if (this.options.stub) return this.options.stub(input, system);
     const helperId = randomUUID();
     this.options.ephemeral.add(helperId);
     let query: ReturnType<SdkRuntime['query']> | undefined;
@@ -165,7 +226,7 @@ export class Summarizer {
           sessionId: helperId,
           persistSession: false,
           model: 'haiku',
-          systemPrompt: SUMMARY_SYSTEM_PROMPT,
+          systemPrompt: system,
           // Only what summaryInput gives it: no tools, no MCP servers, no settings files (so no CLAUDE.md or memory).
           tools: [],
           mcpServers: {},
@@ -219,3 +280,13 @@ export function stubSummary(input: string): string | null {
     planDeviated: false,
   });
 }
+
+/** The smoke run's and the screenshots' "why": plain words from the request, in the shape Haiku must answer. */
+export function stubWhy(input: string): string | null {
+  const data = JSON.parse(input) as { request: { tool: string; command?: string } };
+  const what = data.request.command ? `Runs ${data.request.command}. It only reads files and changes nothing.` : `Uses ${data.request.tool}.`;
+  return JSON.stringify({ what, why: 'Claude needs it to check its work for your ask.' });
+}
+
+/** The stub for both prompts. */
+export const stubAnswer = (input: string, system: string) => (system === WHY_SYSTEM_PROMPT ? stubWhy(input) : stubSummary(input));

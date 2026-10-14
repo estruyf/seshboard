@@ -134,12 +134,12 @@ export function usePaletteContext(): PaletteContext {
         : null,
       running: active?.state === 'running' || active?.state === 'needs-you',
       waiting: waitingOn.length === 0 ? null : waitingOn.some((p) => p.toolName === 'AskUserQuestion') ? 'question' : 'permission',
-      catchUp: showOf({ card: catchUps.get(id) ?? null, layout: prefs.catchUpLayout, summary, host, live: live.get(id) ?? null, permissions: waitingOn, collapsed: collapsedCatchUps }),
+      catchUp: showOf({ card: catchUps.get(id) ?? null, enabled: prefs.catchUpSummaries, summary, host, live: live.get(id) ?? null, permissions: waitingOn, collapsed: collapsedCatchUps }),
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
       sideQuestions: browsable(sides.get(id) ?? EMPTY_SIDE),
     };
-  }, [id, sessions, live, hosts, permissions, models, digest, sides, catchUps, collapsedCatchUps, prefs.catchUpLayout]);
+  }, [id, sessions, live, hosts, permissions, models, digest, sides, catchUps, collapsedCatchUps, prefs.catchUpSummaries]);
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);

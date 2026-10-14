@@ -90,8 +90,6 @@ export type NewSessionMode = "last" | "default" | "acceptEdits" | "plan" | "auto
 export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["last", "default", "acceptEdits", "plan", "auto"];
 /** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
 export type WhileWorking = "queue" | "steer";
-/** The catch-up at the top of a finished or waiting session: a full card, a compact banner over the conversation, or none. */
-export type CatchUpLayout = "card" | "banner" | "off";
 /** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
 export type SidebarSort = "recent" | "quickest";
 
@@ -191,9 +189,10 @@ export interface Preferences {
   whileWorking: WhileWorking;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
-  /** Settings › Conversation › Catch-up: how the briefing on a finished or waiting session shows. */
-  catchUpLayout: CatchUpLayout;
-  /** Settings › Conversation › Catch-up: Haiku writes the briefing's lines; off, they come from the tool calls. */
+  /**
+   * Settings › Conversation: "Write catch-up summaries with Haiku". On, a finished session shows the catch-up banner and
+   * Haiku writes its lines (and explains a permission when you ask why); off, there is no banner and no Haiku call.
+   */
   catchUpSummaries: boolean;
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
@@ -225,7 +224,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
-  catchUpLayout: "card",
   catchUpSummaries: true,
   sidebarSort: "recent",
   githubStar: "ask",
@@ -380,8 +378,6 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.whileWorking = raw.whileWorking;
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
-  if (oneOf(["card", "banner", "off"] as const, raw.catchUpLayout))
-    out.catchUpLayout = raw.catchUpLayout;
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;

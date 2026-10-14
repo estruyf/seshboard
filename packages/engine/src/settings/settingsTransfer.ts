@@ -70,7 +70,6 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   deleteArchived: 'Delete archived sessions',
   whileWorking: 'Enter while Claude is working',
   autoModel: 'Auto model',
-  catchUpLayout: 'Catch-up',
   catchUpSummaries: 'Write catch-up summaries with Haiku',
   sidebarSort: 'Sidebar order',
   githubStar: 'Star on GitHub',

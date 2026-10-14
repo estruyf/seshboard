@@ -282,16 +282,14 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 
 | Shortcut | What it does |
 |---|---|
-| ↩ | Run the catch-up's main action (Commit, Reply, Allow, Send answer, Review changes or Archive) |
+| ↩ | Run the catch-up's main action (Commit, Reply, Review changes or Archive) |
 | Esc | Close the reply, the Changes panel, Details, then the catch-up (One at a time, the nearest first) |
 | D | Review changes (Opens or closes the Changes panel) |
 | C | Commit |
 | R | Reply to Claude (Puts you in the message box) |
 | U | Mark as read |
 | E | Archive, and go to the next session |
-| Space | Expand the conversation, or show the catch-up |
-| ↑ or ↓ | Move between a question's options |
-| 1 to 3 | Pick a question's option |
+| Space | Open or close Details, or show the folded catch-up |
 
 **New session**
 

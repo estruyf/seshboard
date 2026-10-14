@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { asksBack, fallbackSummary, needKind, testsText, waitingNeed } from './fallback.ts';
 import { inScope, namedPaths, scopeCheck, signalsOf, testsSignal, type Signals } from './signals.ts';
-import { parseSummary, stubSummary, summaryInput } from './summary.ts';
+import { parseSummary, parseWhy, stubSummary, summaryInput, whyInput } from './summary.ts';
 import { isTestCommand, parseTestCounts } from './testCommands.ts';
 import { askOf, lastTurn, mergeMessages, promptText, type ToolCall, type Turn } from './turn.ts';
 
@@ -212,6 +212,13 @@ describe('the fallback summary', () => {
     expect(summary.need).toEqual({ kind: 'commit', title: 'Commit the changes', text: 'Tests pass. Ready to commit.' });
   });
 
+  it('says it looked around when that is all it did, and leaves a failed look-around out of skipped', () => {
+    const turn = turnOf({ tools: [call({ command: 'ls && cat package.json; ls tests', exitCode: 2 }), call({ command: 'git status' })] });
+    const summary = fallbackSummary(turn, signals(), { state: 'finished', error: null });
+    expect(summary.did).toEqual(['Looked through the project']);
+    expect(summary.skipped).toEqual([]);
+  });
+
   it('follows the rules for what it needs from you', () => {
     const clean = signals({ diff: { files: 1, add: 1, del: 0 } });
     expect(needKind({ state: 'finished', signals: clean, asksBack: false })).toBe('commit');
@@ -316,5 +323,26 @@ describe('the Haiku summary', () => {
   it('has a stub for runs that must never call a model, in the shape Haiku answers', () => {
     const text = stubSummary(summaryInput(turnOf({ tools: [call({ name: 'Edit', file: '/repo/a.ts' })] }), signals()))!;
     expect(parseSummary(text, rules)).not.toBeNull();
+  });
+});
+
+describe('why a session asks', () => {
+  const ask = { title: null, description: null, toolUseId: 'w1' };
+  it('shows Haiku a command, a path, a plan or the questions, never what an edit writes', () => {
+    const turn = turnOf({ tools: [call({ id: 'w1', name: 'Write', file: '/repo/a.ts' })] });
+    const edit = JSON.parse(whyInput(turn, { ...ask, toolName: 'Write', input: { file_path: '/repo/a.ts', content: 'SECRET_CONTENTS' } }));
+    expect(edit.request).toEqual({ tool: 'Write', file: '/repo/a.ts' });
+    expect(JSON.stringify(edit)).not.toContain('SECRET_CONTENTS');
+    // The request isn't one of the calls so far.
+    expect(edit.toolCalls).toEqual([]);
+    expect(JSON.parse(whyInput(turn, { ...ask, toolName: 'Bash', input: { command: 'npm publish', description: 'Publish' } })).request).toEqual({ tool: 'Bash', command: 'npm publish', description: 'Publish' });
+    const question = JSON.parse(whyInput(turn, { ...ask, toolName: 'AskUserQuestion', input: { questions: [{ question: 'Which easing?', options: [{ label: 'Linear' }, { label: 'Ease' }] }] } }));
+    expect(question.request.questions).toEqual([{ question: 'Which easing?', options: ['Linear', 'Ease'] }]);
+  });
+
+  it('reads Haiku\'s answer in plain words, or nothing', () => {
+    expect(parseWhy('Sure: {"what": "Runs **npm publish** — it uploads the package.", "why": "You asked to release."}')).toEqual({ what: 'Runs npm publish, it uploads the package.', why: 'You asked to release.' });
+    expect(parseWhy('{"what": ""}')).toBeNull();
+    expect(parseWhy('no idea')).toBeNull();
   });
 });

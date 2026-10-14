@@ -224,7 +224,7 @@ export interface ShortcutContext {
   running: boolean;
   /** A permission or question card is waiting for an answer. */
   pending: "permission" | "question" | null;
-  /** The open session's catch-up: in full (the card or the banner), folded into its strip, or none. */
+  /** The open session's catch-up: in full (the banner), folded into its strip, or none. */
   catchUp: "full" | "strip" | null;
   /** Sessions picked in the sidebar. */
   selection: number;
@@ -300,7 +300,6 @@ const inMessageBox = (ctx: ShortcutContext) =>
 /** A catch-up is on screen; folded into its strip, only Space and ↩ work. */
 const withCatchUp = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp !== null;
 const catchUpCard = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp === "full";
-const catchUpQuestion = (ctx: ShortcutContext) => catchUpCard(ctx) && ctx.pending === "question";
 
 export const SHORTCUTS = [
   // General
@@ -855,13 +854,13 @@ export const SHORTCUTS = [
     when: (ctx) => inSession(ctx) && ctx.pending === "question",
   },
 
-  // Catch-up: the briefing at the top of a finished or waiting session. Never in the message box or another field.
+  // Catch-up: the banner over a finished session. Never in the message box or another field.
   {
     id: "catchup.primary",
     keys: ["enter"],
     action: "Run the catch-up's main action",
     section: "catch-up",
-    context: "Commit, Reply, Allow, Send answer, Review changes or Archive",
+    context: "Commit, Reply, Review changes or Archive",
     when: withCatchUp,
     where: "view",
   },
@@ -919,25 +918,9 @@ export const SHORTCUTS = [
   {
     id: "catchup.expand",
     keys: ["space"],
-    action: "Expand the conversation, or show the catch-up",
+    action: "Open or close Details, or show the folded catch-up",
     section: "catch-up",
     when: withCatchUp,
-    where: "view",
-  },
-  {
-    id: "catchup.option",
-    keys: ["arrowup", "arrowdown"],
-    action: "Move between a question's options",
-    section: "catch-up",
-    when: catchUpQuestion,
-    where: "view",
-  },
-  {
-    id: "catchup.pick",
-    keys: ["1..3"],
-    action: "Pick a question's option",
-    section: "catch-up",
-    when: catchUpQuestion,
     where: "view",
   },
 

@@ -47,7 +47,7 @@ import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from '.
 import { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from './later.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { SideQuestionEvent, SideQuestionList } from './sideQuestions.ts';
-import { CatchUp } from './catchUp.ts';
+import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
@@ -960,6 +960,11 @@ export const contract = {
      * terminal), and sends it with `catchup.changed`. NOT_FOUND without a finished turn; SESSION_BUSY while Claude works.
      */
     'catchup.build': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp }) },
+    /**
+     * Why the session asks for an open permission or question: the turn so far and, with summaries on, Haiku's plain
+     * explanation (6 seconds at most). The same request answers from memory the second time. NOT_FOUND once it is answered.
+     */
+    'catchup.why': { params: z.object({ sessionId: SessionId, requestId: z.string() }), result: z.object({ why: RequestWhy }) },
 
     // --- Claude Code updates -----------------------------------------------------------------
     'claudeUpdate.get': { params: z.object({}), result: ClaudeUpdateState },

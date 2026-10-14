@@ -98,14 +98,16 @@ export function fallbackSummary(turn: Turn, signals: Signals, outcome: { state: 
   const looked = new Set(turn.tools.filter((t) => t.name === 'Read' && t.file).map((t) => t.file));
   if (looked.size && did.length < 4) did.push(`Read ${plural(looked.size, 'file')}`);
   if (turn.tools.some((t) => t.name === 'WebSearch' || t.name === 'WebFetch') && did.length < 5) did.push('Looked things up on the web');
-  if (did.length === 0) did.push(turn.tools.length ? `Used ${plural(turn.tools.length, 'tool')}` : 'Answered without running any tools');
+  // Only looking around so far (ls, cat, git status): say so, not how many tools that took.
+  if (did.length === 0) did.push(turn.tools.length ? 'Looked through the project' : 'Answered without running any tools');
 
   const skipped: string[] = [];
   if (outcome.state === 'error') skipped.push(oneLine(`Stopped with an error${outcome.error ? `: ${outcome.error}` : ''}`, 200));
   for (const call of turn.tools) {
     if (skipped.length === 3) break;
     if (call.declined) skipped.push(oneLine(`You declined ${call.command ?? call.name}`, 200));
-    else if (call.exitCode !== null && call.exitCode !== 0 && call.command && !isTestCommand(call.command)) skipped.push(failedLine(call));
+    // A command that only looks around failing (`ls tests` where there is none) is no unfinished work.
+    else if (call.exitCode !== null && call.exitCode !== 0 && call.command && !isTestCommand(call.command) && !LOOKING.test(call.command.trim())) skipped.push(failedLine(call));
   }
   if (signals.tests.state === 'failed' && skipped.length < 3) skipped.push(testsText(signals.tests));
 
