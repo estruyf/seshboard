@@ -13,6 +13,8 @@ export const PANEL_MIN_WIDTH = 360;
 export const PANEL_MAX_WIDTH_SHARE = 0.7;
 /** Docked right, the conversation keeps at least this much: the message box with its buttons and Send. */
 export const CHAT_MIN_WIDTH = 440;
+/** Docked below, the conversation keeps at least this much height: the message box with a few lines above it. */
+export const CHAT_MIN_HEIGHT = 220;
 /** How far one arrow key moves the panel's edge. */
 export const PANEL_KEY_STEP = 24;
 
@@ -52,6 +54,15 @@ export function rightBlocked(changesOnRight: boolean, viewWidth: number | null):
   if (changesOnRight) return 'changes';
   if (viewWidth !== null && viewWidth < PANEL_MIN_WIDTH + CHAT_MIN_WIDTH) return 'narrow';
   return null;
+}
+
+/**
+ * Docked below, the tallest the panel can be in a session view `viewHeight` tall and still leave the conversation its
+ * minimum. A stacked pane is wide but short: without this the panel would push the message box out of it.
+ * It never goes under the panel's own minimum height; null: not measured yet.
+ */
+export function maxBottomHeight(viewHeight: number | null): number {
+  return viewHeight === null ? Number.POSITIVE_INFINITY : Math.max(PANEL_MIN_HEIGHT, Math.floor(viewHeight - CHAT_MIN_HEIGHT));
 }
 
 /** Docked right, the widest the panel can be in a session view `viewWidth` wide and still leave the conversation its minimum. */
