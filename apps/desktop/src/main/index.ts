@@ -3292,20 +3292,120 @@ async function runPullRequestStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Read-only: file paths in Claude's replies that exist became links that open in the editor, with a
- * tooltip naming it. Not clicked: that would open the user's editor.
+ * Read-only: file paths in Claude's replies that exist became links, and the chips beside file tools do the same. What a
+ * click does is the setting Clicking a file link (the file manager by default): the label and tooltip say it and what
+ * Shift-click does instead, and the right-click and Shift+F10 menus list both ways and Copy path. Switching the setting in
+ * Settings › Conversation flips them. Nothing is ever clicked: that would open Explorer, Finder or the user's editor. The
+ * menus are only opened and closed with Escape, and the setting is put back at the end.
  */
 async function runFileLinksStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  // Paths are looked up a moment after they render.
-  await waitInPage(win, "document.querySelector('[data-transcript] [data-file-link]')", 2_000);
-  const links = (await js(
-    "[...document.querySelectorAll('[data-transcript] [data-file-link]')].map((a) => ({ target: a.dataset.fileLink, href: a.getAttribute('href'), tooltip: a.dataset.tooltip }))",
-  )) as Array<{ target: string; href: string; tooltip: string }>;
-  if (links.length === 0) return 'ok: no file paths in the replies on screen';
-  const bad = links.find((link) => !link.href.startsWith('file:///') || !isAbsolutePath(link.target) || !link.tooltip.startsWith(`Open ${link.target} in `));
-  if (bad) return `a file link is wrong: ${JSON.stringify(bad)}`;
-  return `ok: ${links.length} file links, e.g. "${links[0]!.tooltip}"`;
+  const fileManager = process.platform === 'win32' ? 'File Explorer' : process.platform === 'darwin' ? 'Finder' : 'Files';
+  const original = preferences.get().fileLinkClick;
+  if (original !== 'file-manager') return `the setting started as ${original}, not Show in ${fileManager}`;
+  const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
+  const LINK = "[data-transcript] [data-file-link]";
+  const shiftClick = /(Shift\+click|⇧-click) (opens|shows) it in /;
+
+  /** The links and chips on screen, as they read, once a path has been looked up. */
+  const read = async () => {
+    // Paths are looked up a moment after they render.
+    await waitInPage(win, `document.querySelector('${LINK}')`, 2_000);
+    const links = (await js(
+      `[...document.querySelectorAll('${LINK}')].map((a) => ({ target: a.dataset.fileLink, href: a.getAttribute('href'), tooltip: a.dataset.tooltip, described: a.getAttribute('aria-description'), action: a.dataset.fileLinkAction }))`,
+    )) as Array<{ target: string; href: string; tooltip: string; described: string | null; action: string }>;
+    const chips = (await js(
+      "[...document.querySelectorAll('[data-transcript] [data-file-chip]')].map((b) => ({ path: b.dataset.fileChip, tooltip: b.dataset.tooltip, label: b.getAttribute('aria-label'), text: b.textContent, action: b.dataset.fileLinkAction }))",
+    )) as Array<{ path: string; tooltip: string; label: string | null; text: string; action: string }>;
+    return { links, chips };
+  };
+
+  /** What each link and chip must say when a click does `mode`'s action. Null when all is right. */
+  const check = (shown: Awaited<ReturnType<typeof read>>, mode: 'file-manager' | 'editor'): string | null => {
+    const show = mode === 'file-manager';
+    const expectedAction = show ? 'show' : 'editor';
+    for (const link of shown.links) {
+      const path = link.target.replace(/:\d+$/, '');
+      const start = show ? `Show ${path} in ${fileManager}. ` : `Open ${link.target} in `;
+      const second = show ? 'opens it in ' : `shows it in ${fileManager}`;
+      if (!link.href.startsWith('file:///') || !isAbsolutePath(path)) return `a file link is wrong: ${JSON.stringify(link)}`;
+      if (!link.tooltip.startsWith(start) || !shiftClick.test(link.tooltip) || !link.tooltip.includes(second) || link.action !== expectedAction) return `with ${mode} set, a link says "${link.tooltip}" (${link.action})`;
+      if (link.described !== link.tooltip) return `a link's description for screen readers is not its tooltip: ${JSON.stringify(link)}`;
+    }
+    for (const chip of shown.chips) {
+      const start = show ? `Show ${chip.path} in ${fileManager}. ` : 'Open ';
+      if (!chip.tooltip.startsWith(start) || !shiftClick.test(chip.tooltip) || chip.label !== chip.tooltip || chip.text !== (show ? 'Show ↗' : 'Open ↗') || chip.action !== expectedAction) return `with ${mode} set, a file chip says "${chip.text}" / "${chip.tooltip}" (${chip.action})`;
+    }
+    return null;
+  };
+
+  /** Opens the first link's context menu (a right-click, or Shift+F10 on the focused link) and returns its items; closes it with Escape. */
+  const menuOf = async (how: 'right-click' | 'keyboard') => {
+    if (how === 'right-click') {
+      await js(`(() => { const a = document.querySelector('${LINK}'); const r = a.getBoundingClientRect(); a.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.left + 2, clientY: r.top + 2 })); })()`);
+    } else {
+      await js(`document.querySelector('${LINK}').focus()`);
+      pressKey(win, 'F10', ['shift']);
+    }
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-file-link-menu-item]')", 2_000))) return `the ${how} menu did not open`;
+    const items = (await js("[...document.querySelectorAll('[role=menu] [data-file-link-menu-item]')].map((b) => ({ id: b.dataset.fileLinkMenuItem, label: b.textContent.trim() }))")) as Array<{ id: string; label: string }>;
+    const inside = (await js("!!document.activeElement?.closest('[role=menu]')")) as boolean;
+    if (how === 'right-click') await shot(win, 'file-link-menu.png');
+    // Only close it when it is open: Escape on its own would stop a working session.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return `Escape did not close the ${how} menu`;
+    const ids = items.map((item) => item.id).join(',');
+    if (ids !== 'show,editor,copy') return `the ${how} menu lists ${ids}, not show,editor,copy`;
+    if (items[0]!.label !== `Show in ${fileManager}` || !items[1]!.label.startsWith('Open in ') || items[2]!.label !== 'Copy path') return `the ${how} menu reads ${JSON.stringify(items.map((item) => item.label))}`;
+    if (!inside) return `focus did not move into the ${how} menu`;
+    return items;
+  };
+
+  const setInSettings = async (value: 'file-manager' | 'editor') => {
+    await js("document.querySelector('[data-open-settings]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"conversation\"]')", 3_000))) return 'Settings did not open';
+    await js("document.querySelector('[data-settings-section=\"conversation\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-file-link-click]')", 2_000))) return 'Settings › Conversation has no Clicking a file link';
+    const shownValue = (await js("document.querySelector('[data-file-link-click]').dataset.value")) as string;
+    const text = (await js("document.querySelector('[data-file-link-click]').innerText")) as string;
+    const expectedText = shownValue === 'file-manager' ? `Show in ${fileManager}` : 'Open in editor';
+    if (!text.includes(expectedText)) return `the setting reads "${text}", not "${expectedText}"`;
+    await shot(win, 'settings-file-link-click.png');
+    if (!(await chooseOption(win, '[data-file-link-click]', value))) return `could not choose ${value}`;
+    await js("document.querySelector('[data-close-settings]').click()");
+    if (!(await until(() => preferences.get().fileLinkClick === value))) return `${value} was not saved`;
+    return null;
+  };
+
+  try {
+    const first = await read();
+    const wrong = check(first, 'file-manager');
+    if (wrong) return wrong;
+    let menus = 'no file link on screen to open a menu on';
+    if (first.links.length > 0) {
+      for (const how of ['right-click', 'keyboard'] as const) {
+        const items = await menuOf(how);
+        if (typeof items === 'string') return items;
+      }
+      menus = 'right-click and Shift+F10 list Show, Open and Copy path';
+    }
+
+    const failed = await setInSettings('editor');
+    if (failed) return failed;
+    if (session) {
+      openSession(session);
+      if (!(await waitInPage(win, `document.querySelector('[data-current-session="${session}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session after Settings';
+    }
+    const second = await read();
+    const wrongToo = check(second, 'editor');
+    if (wrongToo) return wrongToo;
+    return `ok: ${first.links.length} links and ${first.chips.length} chips say Show in ${fileManager} with Shift-click for the editor, and the other way round with Open in editor; ${menus}; e.g. "${first.links[0]?.tooltip ?? first.chips[0]?.tooltip ?? 'none on screen'}"`;
+  } finally {
+    // Put the setting back for the steps after this one (and close Settings if a failure left it open).
+    if (await js("!!document.querySelector('[data-close-settings]')")) await js("document.querySelector('[data-close-settings]').click()");
+    if (await js("!!document.querySelector('[role=menu]')")) pressKey(win, 'Escape');
+    if (preferences.get().fileLinkClick !== original) updatePreferences({ fileLinkClick: original });
+  }
 }
 
 /** ⌘⇧F, type a word, open the first hit: the session opens with that message highlighted. */
