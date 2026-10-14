@@ -45,12 +45,3 @@ export function tildify(path: string, home: string | null): string {
   const rest = path.slice(home.length);
   return same && (rest === '' || rest.startsWith(windows ? '\\' : '/')) ? `~${rest}` : path;
 }
-
-/** Best-effort home folder from the paths we already know (the UI has no Node APIs). */
-export function guessHome(paths: Iterable<string>): string | null {
-  for (const p of paths) {
-    const match = /^(\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)/.exec(p);
-    if (match) return match[1]!;
-  }
-  return null;
-}

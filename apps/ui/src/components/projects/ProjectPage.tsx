@@ -2,7 +2,8 @@ import { Brain, ChevronRight, FolderGit2, FolderOpen, GitBranch, Plus } from 'lu
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { guessHome, tildify } from '../../lib/format.ts';
+import { tildify } from '../../lib/format.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { PROJECT_TABS, useProjectPage, type ProjectTab } from '../../state/projectPageStore.ts';
 import { useBranchesOf } from '../../state/branchesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -63,7 +64,7 @@ export function ProjectPage() {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const openIn = useOpenIn();
-  const home = useMemo(() => guessHome(projects.keys()), [projects]);
+  const home = useHomeFolder();
   const [isGitRepo, setIsGitRepo] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef(new Map<ProjectTab, HTMLButtonElement>());

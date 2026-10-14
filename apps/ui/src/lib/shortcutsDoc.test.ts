@@ -12,7 +12,7 @@ describe('the README shortcuts table', () => {
     const markdown = shortcutsMarkdown();
     expect(markdown).toContain('**General**');
     expect(markdown).toContain('| ⌘K or ⌘⇧P | Command palette (in the terminal ⌘K clears it, so use ⌘⇧P) |');
-    expect(markdown).toContain('| ⌘\\\\ | Close the other pane (with two panes open) |');
+    expect(markdown).toContain('| ⌘\\\\ | Close the other panes (with more than one pane open; Keeps the pane you are in) |');
     expect(markdown).not.toContain('Project actions');
   });
 

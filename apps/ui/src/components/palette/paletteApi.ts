@@ -148,9 +148,9 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
         await c.call('editors.open', { path: cwd, editorId: finder.id });
       }),
     closeSession: () => {
-      const { splitId, activePane, closePane, closeSession } = useSessions.getState();
-      // With two panes, close this one (as its ×); otherwise go Home.
-      if (splitId) closePane(activePane);
+      const { paneIds, closePane, closeSession } = useSessions.getState();
+      // With several panes, close this one (as its ×); otherwise go Home.
+      if (paneIds.length > 1) closePane();
       else closeSession();
     },
     deleteSession: () => session && usePaletteBus.getState().showDialog({ kind: 'delete-session', sessionId, title: session.title }),
@@ -203,14 +203,12 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       const terminal = activeTerminal();
       if (terminal) call('restart the action', (c) => restartTerminal(c, terminal));
     },
-    focusOtherPane: () => {
-      const { activePane, focusPane } = useSessions.getState();
-      focusPane(activePane === 'main' ? 'split' : 'main');
-    },
-    closePane: () => {
-      const { activePane, closePane } = useSessions.getState();
-      closePane(activePane);
-    },
+    focusNextPane: () => useSessions.getState().focusNext(),
+    focusPane: (way) => useSessions.getState().focusWay(way),
+    swapPanes: () => useSessions.getState().swapPanes(),
+    flipSplit: () => useSessions.getState().flipSplit(),
+    closePane: () => useSessions.getState().closePane(),
+    closeOtherPanes: () => useSessions.getState().closeOtherPanes(),
     newSessionRequest: (kind) => usePaletteBus.getState().requestNewSession(kind),
     openNewSession: () => useSessions.getState().openNewSession(),
     startQueued: (id) => {

@@ -3,6 +3,8 @@ import type { SidebarState } from '../../state/sidebarWidth.ts';
 import type { ActionIcon, HostState } from '@switchboard/protocol/client';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import type { Direction } from '../../state/tiling.ts';
+import type { Way } from '../../state/tilingGeometry.ts';
 
 /** Where you are: what the main area shows. */
 /** `projects` is the list of projects; `project` one project's page. */
@@ -72,8 +74,12 @@ export interface PaletteContext {
   session: PaletteSession | null;
   git: PaletteGit | null;
   terminal: PaletteTerminal;
-  /** Two sessions side by side. */
+  /** More than one pane open. */
   split: boolean;
+  /** How the split holding the active pane lays its panes out: `row` side by side, `column` one above the other; null with one pane. */
+  splitDirection: Direction | null;
+  /** The directions in which the active pane has a neighbour to go to. */
+  paneWays: readonly Way[];
   /** Null while the focus limit is off. */
   focusLimit: number | null;
   /** Settings › Notifications: notifications and sounds on or off. */

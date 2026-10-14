@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { BACKUP_SECTIONS, settingsFileName, type BackupSection, type FolderMapping, type ImportChange, type ImportMode, type ImportPreview } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { DEFAULT_EXPORT_SECTIONS, groupChanges, hasEffect, SECTION_INFO, summarizeChanges } from '../../lib/backup.ts';
-import { basename, guessHome, tildify } from '../../lib/format.ts';
+import { basename, tildify } from '../../lib/format.ts';
 import { useBackup } from '../../state/backupStore.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -191,7 +192,7 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
     if (to) setRelocate((list) => [...list.filter((m) => m.from !== from), { from, to }]);
   };
 
-  const home = useMemo(() => guessHome([...(preview?.missingFolders ?? []), ...relocate.map((m) => m.to), ...(preview?.changes.map((c) => c.label) ?? [])]), [preview, relocate]);
+  const home = useHomeFolder();
   const groups = useMemo(() => groupChanges((preview?.changes ?? []).filter((c) => sections?.includes(c.section))), [preview, sections]);
   const effect = preview ? hasEffect(preview.changes) : false;
 

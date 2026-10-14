@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GateOutcome } from '../../state/focusGate.ts';
 import type { Choices } from './choices.ts';
-import { checkoutBranchFor, sessionCreateParams, shouldPrewarm, startNewSession, type NewSessionStart, type StartDeps } from './startSession.ts';
+import { branchBlocked, checkoutBranchFor, sessionCreateParams, shouldPrewarm, startNewSession, type NewSessionStart, type StartDeps } from './startSession.ts';
 
 const CHOICES: Choices = { model: 'opus', permissionMode: 'acceptEdits', effort: 'high', workspace: 'current', baseRef: 'fresh', branch: '' };
 const START: NewSessionStart = { cwd: '/work/app', prompt: 'Fix the login redirect', choices: CHOICES, worktree: false, currentBranch: 'main', profileId: 'default' };
@@ -13,6 +13,7 @@ function deps(outcome: GateOutcome = 'start') {
     createSession: vi.fn(async () => (calls.push('create'), { sessionId: 'new-1' })),
     gate: vi.fn(async () => (calls.push('gate'), outcome)),
     addProject: vi.fn(async () => void calls.push('add')),
+    keep: vi.fn(() => void calls.push('keep')),
     open: vi.fn(() => void calls.push('open')),
   } satisfies StartDeps & { calls: string[] };
   return fake;
@@ -54,6 +55,15 @@ describe('sessionCreateParams', () => {
   });
 });
 
+describe('branchBlocked', () => {
+  it('says why a branch checked out in another worktree can’t be checked out here', () => {
+    expect(branchBlocked('feature', ['feature', 'other'])).toBe('feature is checked out in another worktree. Pick another branch, or start in a new worktree.');
+    expect(branchBlocked('main', ['feature'])).toBeNull();
+    expect(branchBlocked(null, ['feature'])).toBeNull();
+    expect(branchBlocked('feature', undefined)).toBeNull();
+  });
+});
+
 describe('shouldPrewarm', () => {
   it('warms up the checkout as it is, not a worktree or another branch', () => {
     expect(shouldPrewarm(CHOICES)).toBe(true);
@@ -67,7 +77,7 @@ describe('startNewSession', () => {
     const fake = deps();
     const outcome = await startNewSession({ ...START, addProject: true }, fake);
     expect(outcome).toEqual({ kind: 'started', sessionId: 'new-1' });
-    expect(fake.calls).toEqual(['gate', 'create', 'add', 'open']);
+    expect(fake.calls).toEqual(['gate', 'create', 'keep', 'add', 'open']);
     expect(fake.open).toHaveBeenCalledWith('new-1');
     expect(fake.addProject).toHaveBeenCalledWith('/work/app');
   });
@@ -90,7 +100,33 @@ describe('startNewSession', () => {
   it('skips the gate after Start anyway, and never adds a link’s folder as a project', async () => {
     const fake = deps('stop');
     await startNewSession({ ...START, skipGate: true, fromLink: true, addProject: true }, fake);
-    expect(fake.calls).toEqual(['create', 'open']);
+    expect(fake.calls).toEqual(['create', 'keep', 'open']);
+  });
+
+  it('keeps the prompt with the choices it started with, so a session that fails first can start again', async () => {
+    const fake = deps();
+    await startNewSession({ ...START, worktree: true, attachments: [] }, fake);
+    expect(fake.keep).toHaveBeenCalledWith('new-1', {
+      cwd: '/work/app',
+      prompt: 'Fix the login redirect',
+      attachments: [],
+      form: { choices: { ...CHOICES, workspace: 'worktree' }, profileId: 'default' },
+    });
+  });
+
+  it('keeps nothing when the session could not be created', async () => {
+    const fake = deps();
+    fake.createSession.mockRejectedValueOnce(new Error('Not logged in'));
+    await expect(startNewSession(START, fake)).rejects.toThrow('Not logged in');
+    expect(fake.keep).not.toHaveBeenCalled();
+  });
+
+  it('starts nothing on a branch checked out in another worktree, but a new worktree still starts', async () => {
+    const taken = { ...START, choices: { ...CHOICES, branch: 'feature' }, checkedOutElsewhere: ['feature'] };
+    const fake = deps();
+    await expect(startNewSession(taken, fake)).rejects.toThrow('feature is checked out in another worktree');
+    expect(fake.calls).toEqual([]);
+    expect(await startNewSession({ ...taken, worktree: true }, fake)).toMatchObject({ kind: 'started' });
   });
 
   it('still opens the session when adding the project fails', async () => {
@@ -107,7 +143,7 @@ describe('startNewSession with Auto', () => {
   it('starts and opens the session at once, leaving the pick to the engine', async () => {
     const fake = deps();
     expect(await startNewSession(AUTO, fake)).toEqual({ kind: 'started', sessionId: 'new-1' });
-    expect(fake.calls).toEqual(['gate', 'create', 'open']);
+    expect(fake.calls).toEqual(['gate', 'create', 'keep', 'open']);
     expect(fake.createSession).toHaveBeenCalledWith(expect.objectContaining({ model: 'auto' }));
   });
 

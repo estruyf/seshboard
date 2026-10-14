@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
-import { parseDrafts, serializeDrafts } from './drafts.ts';
+import { parseDrafts, parseFirstPrompts, serializeDrafts } from './drafts.ts';
 import { useDrafts } from './draftsStore.ts';
+import { useHosts } from './hostsStore.ts';
+import { useSessions } from './sessionsStore.ts';
 
 /** Where unsent messages are kept between launches, next to the sidebar's width and sections. */
 const DRAFTS_KEY = 'ui.drafts';
@@ -16,7 +18,7 @@ export function loadDrafts(client: EngineClient): Promise<void> {
   let read = reads.get(client);
   if (!read) {
     read = client.call('appState.get', { key: DRAFTS_KEY }).then(
-      ({ value }) => useDrafts.getState().load(parseDrafts(value)),
+      ({ value }) => useDrafts.getState().load(parseDrafts(value), parseFirstPrompts(value)),
       () => useDrafts.getState().load({}),
     );
     reads.set(client, read);
@@ -36,10 +38,10 @@ export function useDraftsSync(): void {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const save = () => {
       clearTimeout(timer);
-      const { drafts, loaded } = useDrafts.getState();
+      const { drafts, firstPrompts, loaded } = useDrafts.getState();
       // Until the saved ones are read, writing would wipe them.
       if (!loaded) return;
-      const value = serializeDrafts(drafts);
+      const value = serializeDrafts(drafts, firstPrompts);
       const json = JSON.stringify(value);
       if (json === saved) return;
       saved = json;
@@ -49,17 +51,41 @@ export function useDraftsSync(): void {
       });
     };
     void loadDrafts(client).then(() => {
-      saved = JSON.stringify(serializeDrafts(useDrafts.getState().drafts));
+      const { drafts, firstPrompts } = useDrafts.getState();
+      saved = JSON.stringify(serializeDrafts(drafts, firstPrompts));
+      settle();
     });
     const off = useDrafts.subscribe((state, previous) => {
-      if (state.drafts === previous.drafts && state.loaded === previous.loaded) return;
+      if (state.drafts === previous.drafts && state.firstPrompts === previous.firstPrompts && state.loaded === previous.loaded) return;
       clearTimeout(timer);
       timer = setTimeout(save, SAVE_DELAY_MS);
+    });
+    // New sessions' first prompts follow their sessions: forgotten once there is a transcript, shown when one failed.
+    const settle = () => {
+      const sessions = useSessions.getState();
+      const hosts = useHosts.getState().hosts;
+      useDrafts.getState().settleFirstPrompts({
+        ready: sessions.loaded && sessions.complete && useHosts.getState().loaded,
+        hasTranscript: (id) => sessions.sessions.has(id),
+        hostState: (id) => hosts.get(id)?.state,
+      });
+    };
+    const offSessions = useSessions.subscribe((state, previous) => {
+      if (state.sessions !== previous.sessions || state.complete !== previous.complete || state.loaded !== previous.loaded) settle();
+    });
+    const offHosts = useHosts.subscribe((state, previous) => {
+      if (state.hosts !== previous.hosts || state.loaded !== previous.loaded) settle();
+    });
+    const offFirst = useDrafts.subscribe((state, previous) => {
+      if (state.firstPrompts !== previous.firstPrompts) settle();
     });
     // Quitting right after typing: save what's there rather than wait for the timer.
     window.addEventListener('pagehide', save);
     return () => {
       off();
+      offSessions();
+      offHosts();
+      offFirst();
       clearTimeout(timer);
       window.removeEventListener('pagehide', save);
     };

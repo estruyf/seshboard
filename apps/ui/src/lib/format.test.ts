@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { basename, dirnameOf, guessHome, pathTail, shortAge, tildify } from './format.ts';
+import { basename, dirnameOf, pathTail, shortAge, tildify } from './format.ts';
 
 describe('format', () => {
   const now = Date.UTC(2026, 9, 5, 12, 0, 0);
@@ -13,14 +13,12 @@ describe('format', () => {
 
   it('handles paths', () => {
     expect(basename('/Users/me/dev/app/')).toBe('app');
-    expect(guessHome(['/tmp/x', '/Users/me/dev/app'])).toBe('/Users/me');
     expect(tildify('/Users/me/dev/app', '/Users/me')).toBe('~/dev/app');
     expect(tildify('/Users/meow/app', '/Users/me')).toBe('/Users/meow/app');
   });
 
   it('handles Windows paths', () => {
     expect(basename('C:\\Users\\me\\dev\\app\\')).toBe('app');
-    expect(guessHome(['E:\\repos\\app', 'C:\\Users\\me\\.claude'])).toBe('C:\\Users\\me');
     expect(tildify('C:\\Users\\me\\dev\\app', 'C:\\Users\\me')).toBe('~\\dev\\app');
     expect(tildify('c:\\Users\\me\\dev', 'C:\\Users\\me')).toBe('~\\dev');
     expect(tildify('C:\\Users\\meow\\app', 'C:\\Users\\me')).toBe('C:\\Users\\meow\\app');

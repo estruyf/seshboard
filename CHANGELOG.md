@@ -6,21 +6,28 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### New
 
+- **Copy a reply as rich text.** Claude's replies have a second copy button, **Copy as rich text**, next to **Copy as Markdown**. Paste into an email, a document, Slack or Notion and the headings, lists, bold, links, code and tables come along. A plain text field gets the Markdown.
 - **A terminal anywhere.** Press ⌘J (Ctrl+J on Windows) on Home, a project's page, Projects, Usage, New session or Settings to open a terminal there too, without opening a session first. On a project's page it starts in the project's folder, in New session in the folder the session would start in, and elsewhere in your home folder. These views share one terminal, so its tabs stay with you as you move between them; a session still has its own.
+
+- **Split view is now a tiling layout.** Open as many sessions as fit, side by side, one above the other, or mixed. ⌥-click a session to split the active pane (a wide pane gets the new session on its right, a tall one below it), and Switchboard says so when the window has no room for another. Drag a pane by its title, or a session from the sidebar, into the panes: a pane's edge docks beside it, its middle swaps (or replaces a session that isn't open yet), and a band along each edge of the window docks across its whole length, so you can turn one pane next to two stacked ones into three equal columns. A session that is already open just moves its tile. Esc cancels, and a red frame says when the result wouldn't fit. Drag the dividers between panes to resize them (or use the arrow keys, and double-click for equal sizes). New keys and commands: go to the pane on a side (⌘⌥ and an arrow, Ctrl+Alt on Windows), close this pane (⌘⌥W), close the other panes (⌘ and the backslash key), turn the split the active pane is in (⌘⇧O) and swap with the next pane (⌘⇧X). In a window too small for every pane only the active one shows, and the rest come back as the window grows. Nothing reloads while you rearrange, so your unsent messages and scroll positions stay.
 
 ### Fixed
 
 - **File Explorer and Windows Terminal open on Windows.** "Open in File Explorer" and "Open in Windows Terminal" in the ⋯ menu started a window you could not see. They now open where you can.
+- **Up next fits above the message box.** It shows five whole messages, and scrolls a whole message at a time when there are more, with the edge faded, instead of cutting the last one in half under the box. A long message is cut short with its full text in the tooltip, so every message keeps its **Send now**, edit and remove buttons in view.
 - **Menus under the message box stay open.** The profile, model, effort and permission menus no longer close on their own when a new message arrives in the session.
 - **Edit in Up next keeps your files.** A queued message you edit comes back with its files as chips again, not as `@` mentions in the text.
 - **Starting a session when Claude Code can't run.** Start now says why, for example that you are not logged in, instead of "This session is not running". A Claude Code process that already failed is no longer handed to the next new session.
-- **A new session that fails at once** keeps its message box, instead of saying "The folder for this session is unknown". Send again to start it in the same folder.
+- **A new session that fails at once** keeps its message box, instead of saying "The folder for this session is unknown". Send again to start it in the same folder. Its first message is back in the message box, and if you quit Switchboard first, it waits in New session for that folder, listed with your unsent messages.
 - **Many sessions at once.** Adding a Claude profile with a long history, or syncing many sessions, no longer freezes the window or shows an error.
 - **When Switchboard's engine stops answering**, the window now says so and waits for it, instead of showing old information without a word.
 - **Terminals after an engine restart.** The terminal panel now says its terminals were closed, instead of going empty.
 - **Changed files stay up to date.** The count in the session header and the Changes panel now update by themselves every few seconds, and when you open the panel, also for changes made in the terminal.
+- **Your home folder shows as ~ everywhere**, also when it isn't in the usual place (some Linux setups, or a Windows profile on another drive): in folder names and paths, and in the name of a terminal tab that opens there.
+- The command palette only offers **Toggle changes** in a git checkout. Elsewhere it did nothing.
 - **A file is no longer taken as a project folder.** New session and links that point at a file say "That is a file, not a folder."
-- The branch menu shows branches that are checked out in another worktree as unavailable, with the reason, instead of failing when you pick one.
+- The branch menu shows branches that are checked out in another worktree as unavailable, with the reason, instead of failing when you pick one. New session and the command palette's New session do the same, and Start says why instead of showing git's "already checked out" error.
+- Branch lists load again with git older than 2.23. The branch menu, New session's branch picker and a project's defaults showed no branches.
 - Changes, branches and worktree status in a folder that was moved away say "Folder not found" instead of "spawn git ENOENT".
 - The Memory tab no longer shows an error when a project's folder was replaced by a file.
 - A broken startup message from Claude Code no longer breaks the Worktrees tab until you restart.

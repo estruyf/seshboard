@@ -4,8 +4,9 @@ import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
-import { basename, guessHome, shortAge, tildify } from '../../lib/format.ts';
+import { basename, shortAge, tildify } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
@@ -13,7 +14,7 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { realBranch, useSessions, type Pane } from '../../state/sessionsStore.ts';
+import { realBranch, useSessions } from '../../state/sessionsStore.ts';
 import { runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
@@ -36,6 +37,7 @@ import { CapabilitiesDialog } from '../capabilities/CapabilitiesDialog.tsx';
 import { ChangesPanel, useChangesLayout } from '../changes/ChangesPanel.tsx';
 import { ContextMeter } from '../session/ContextMeter.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
+import { useHeight } from '../ui/useHeight.ts';
 import { useWidth } from '../ui/useWidth.ts';
 import { BranchMenu } from '../worktree/BranchMenu.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
@@ -49,6 +51,7 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
 import { SessionControls } from '../session/StatusBar.tsx';
@@ -256,8 +259,12 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
   return { changes, isRepo, refresh };
 }
 
-/** A session: live transcript, plus composer and controls when it can run here. */
-export function TranscriptView({ sessionId, pane = null, active = true }: { sessionId: string; pane?: Pane | null; active?: boolean }) {
+/**
+ * A session: live transcript, plus composer and controls when it can run here. `tiled`: it is one of several
+ * panes, so its header has the handle to drag it by and a close for the pane, and an inactive one dims.
+ * `leading`: it is the pane at the window's top left, which carries the sidebar toggle.
+ */
+export function TranscriptView({ sessionId, tiled = false, active = true, leading = true }: { sessionId: string; tiled?: boolean; active?: boolean; leading?: boolean }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const summary = useSessions((s) => s.sessions.get(sessionId) ?? null);
@@ -267,7 +274,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const permissionMap = useHosts((s) => s.permissions);
   const commandsVersion = useHosts((s) => s.commandsVersion);
   const permissions = useMemo(() => [...permissionMap.values()].filter((p) => p.sessionId === sessionId), [permissionMap, sessionId]);
-  const home = useSessions((s) => guessHome([...s.sessions.values()].slice(0, 20).flatMap((x) => (x.cwd ? [x.cwd] : []))));
+  const home = useHomeFolder();
   const { status, messages, error: readError, retry: retryRead } = useTranscript(sessionId);
   // The terminal panel belongs to this session's view: another session doesn't show it.
   const panelOpen = useTerminals((s) => s.openFor.has(sessionId));
@@ -378,6 +385,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const terminalShown = panelOpen;
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyWidth = useWidth(bodyRef);
+  const bodyHeight = useHeight(bodyRef);
   const terminalBlocked = rightBlocked(showChanges, bodyWidth);
   const terminalDock = effectiveDock(useTerminals((s) => s.dock), terminalBlocked);
   const terminalMaximized = useTerminals((s) => s.maximizedFor.has(sessionId)) && terminalShown;
@@ -664,6 +672,14 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const [boxPreset, setBoxPreset] = useState<{ text: string; attachments: ImageAttachment[]; seq: number } | null>(null);
   const presetSeq = useRef(0);
   const presetBox = useCallback((text: string, attachments: ImageAttachment[]) => setBoxPreset({ text, attachments, seq: ++presetSeq.current }), []);
+  // Claude Code failed before the session started: its first prompt is now the session's unsent message (the drafts
+  // store moved it there), and a box that was open already shows it too, ready to start the session again.
+  const restarting = restart !== null;
+  useEffect(() => {
+    if (!restarting) return;
+    const kept = useDrafts.getState().drafts[sessionId];
+    if (kept?.startIn) presetBox(kept.text, kept.attachments);
+  }, [restarting, sessionId]);
   const onDraftLoaded = (draft: ComposerDraft) => setRestored(draft.seeded ? null : draft);
   const onDraftText = useCallback((text: string) => setRestored((current) => (current && current.text !== text ? null : current)), []);
 
@@ -775,7 +791,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
       // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
       const outcome = await startNewSession(
         { ...restart, prompt: text, attachments, skipGate: ungated },
-        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, addProject: async () => {}, open: select },
+        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
       );
       return outcome.kind === 'started' ? undefined : false;
     }
@@ -881,7 +897,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
     <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${terminalDock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
-      <TerminalPanel sessionId={sessionId} cwd={cwd} projectRoot={options.projectActions ? projectRoot : null} home={home} dock={terminalDock} rightBlocked={terminalBlocked} viewWidth={bodyWidth} />
+      <TerminalPanel sessionId={sessionId} cwd={cwd} projectRoot={options.projectActions ? projectRoot : null} home={home} dock={terminalDock} rightBlocked={terminalBlocked} viewWidth={bodyWidth} viewHeight={bodyHeight} />
     </Suspense>
   );
 
@@ -890,14 +906,20 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     <div className="@container flex h-full min-h-0 flex-col" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-cwd={cwd ?? undefined} data-drop-zone>
       {/* With two panes, the active one has an accent line along the top. */}
       <header
-        className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 @max-[860px]:gap-2 @max-[860px]:px-4 ${pane && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
-        data-pane={pane ?? undefined}
-        data-pane-active={pane ? active : undefined}
+        className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 @max-[860px]:gap-2 @max-[860px]:px-4 ${tiled && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
+        data-pane={tiled ? sessionId : undefined}
+        data-pane-active={tiled ? active : undefined}
       >
-        {/* The sidebar toggle belongs to the window's left edge: in split view, only the left pane has it. */}
-        {pane !== 'split' && <SidebarToggle />}
-        {projectRoot && <ProjectIcon project={project} root={projectRoot} size={22} />}
-        <div className="min-w-24 flex-1">
+        {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
+        {leading && <SidebarToggle />}
+        {/* In a pane under 400px wide the header has no room for the icon: the title and the buttons come first. */}
+        {projectRoot && (
+          <span className="flex shrink-0 @max-[400px]:hidden">
+            <ProjectIcon project={project} root={projectRoot} size={22} />
+          </span>
+        )}
+        {/* With several panes this is the handle to drag the pane by (useTileDrag); it can't be part of the window's drag region, which takes the mouse. */}
+        <div className={`min-w-24 flex-1 @max-[400px]:min-w-16 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
           <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
             {title}
           </h1>
@@ -1007,7 +1029,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           title={summary ? title : null}
           onStop={activeHost ? () => void client?.call('session.close', { sessionId }) : null}
         />
-        {!pane && (
+        {!tiled && (
           <Button
             variant="quiet"
             iconOnly
@@ -1019,16 +1041,16 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
             className="no-drag shrink-0"
           />
         )}
-        {pane && (
+        {tiled && <SplitDirectionControl sessionId={sessionId} />}
+        {tiled && (
           <Button
             variant="quiet"
             iconOnly
             icon={<X size={15} />}
             data-close-pane
-            onClick={() => useSessions.getState().closePane(pane)}
-            // Braces, because a plain JSX attribute string keeps both backslashes of `\\`.
-            data-tooltip={`Close this pane (${formatKeys(keysFor('pane.close-other'))} closes the other one)`}
+            onClick={() => useSessions.getState().closePane(sessionId)}
             aria-label="Close this pane"
+            shortcut="pane.close"
             className="no-drag shrink-0"
           />
         )}
