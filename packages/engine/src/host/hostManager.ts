@@ -142,6 +142,8 @@ export interface CreateParams {
   pickModel?: (sessionId: string) => Promise<{ model: string | null; autoPick: AutoPick }>;
 }
 
+const NOT_RUNNING_MESSAGE = 'This session is not running in Switchboard';
+
 const DEFAULT_MODELS: ModelOption[] = [
   { value: 'default', displayName: 'Default', description: 'Your Claude Code default', supportsEffort: true },
   { value: 'opus', displayName: 'Opus', description: 'Most capable', supportsEffort: true },
@@ -213,6 +215,8 @@ export class HostManager {
       if (params.model) await host.setModel(params.model).catch(() => {});
       if (params.permissionMode !== 'default') await host.setPermissionMode(params.permissionMode).catch(() => {});
     }
+    // Claude Code has already failed (no login, a folder it can't start in): no message can go, so say why.
+    if (!host.active) throw new RpcError('START_FAILED', host.info.error ?? 'Claude Code stopped before the session started');
     // Return the id now, so the window can show the session (and its setup terminals) right away.
     const setup = params.beforeFirstMessage?.(sessionId).catch((error: Error) => this.deps.log('warn', `Worktree setup failed: ${error.message}`));
     if (params.pickModel) {
@@ -383,10 +387,13 @@ export class HostManager {
   }
 
   async context(sessionId: string): Promise<ContextUsage> {
+    const host = this.require(sessionId);
     try {
-      return await this.require(sessionId).contextUsage();
+      return await host.contextUsage();
     } catch (error) {
       if (error instanceof RpcError) throw error;
+      // While its process starts or exits, Claude Code can't answer ("ProcessTransport is not ready for writing").
+      if (!host.active || host.info.state === 'starting') throw new RpcError('NOT_RUNNING', NOT_RUNNING_MESSAGE);
       throw new RpcError('CONTEXT_FAILED', (error as Error).message);
     }
   }
@@ -429,6 +436,8 @@ export class HostManager {
 
   /** What Auto picked for a session (null: it didn't), also when it isn't running. */
   autoPick(sessionId: string): AutoPick | null {
+    // A host without a proper id must not break the whole list.
+    if (typeof sessionId !== 'string' || !sessionId) return null;
     if (!this.picks.has(sessionId)) this.picks.set(sessionId, this.settings.get(sessionId)?.autoPick ?? null);
     return this.picks.get(sessionId) ?? null;
   }
@@ -676,10 +685,15 @@ export class HostManager {
       this.deps.log,
     );
     const warm = sdk.startup({ options });
-    warm.catch((error: unknown) => this.deps.log('debug', `Pre-warm failed: ${(error as Error).message}`));
     const timer = setTimeout(() => this.discardWarm(), this.deps.warmTtlMs ?? 120_000);
     timer.unref?.();
-    this.warm = { cwd, profileId, sessionId, warm, route, timer };
+    const entry: Warm = { cwd, profileId, sessionId, warm, route, timer };
+    this.warm = entry;
+    // A process that failed (no login, crashed) is no use to a session: drop it, so the next pre-warm tries again.
+    warm.catch((error: unknown) => {
+      this.deps.log('debug', `Pre-warm failed: ${(error as Error).message}`);
+      if (this.warm === entry) this.discardWarm();
+    });
   }
 
   closeAll(): void {
@@ -708,7 +722,7 @@ export class HostManager {
 
   private require(sessionId: string): SessionHost {
     const host = this.hosts.get(sessionId);
-    if (!host?.active) throw new RpcError('NOT_RUNNING', 'This session is not running in Switchboard');
+    if (!host?.active) throw new RpcError('NOT_RUNNING', NOT_RUNNING_MESSAGE);
     return host;
   }
 
@@ -740,9 +754,14 @@ export class HostManager {
     let hostRef: SessionHost | undefined;
     const canUseTool: CanUseTool = (toolName, input, options) => this.ask(hostRef!.sessionId, toolName, input, options);
     const startQuery: StartQuery = warm
-      ? async ({ prompt }) => {
+      ? async (args) => {
           warm.route.canUseTool = canUseTool;
-          return (await warm.warm).query(prompt);
+          // It failed after this session took it: start a fresh process, which fails with its own reason if Claude Code can't run.
+          const started = await warm.warm.catch((error: Error) => {
+            this.deps.log('info', `Pre-warmed process failed (${error.message}); starting a fresh one`);
+            return null;
+          });
+          return started ? started.query(args.prompt) : sdk.query(args);
         }
       : (args) => sdk.query(args);
     const host = new SessionHost(

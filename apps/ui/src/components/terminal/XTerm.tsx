@@ -8,6 +8,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { appKeyInTerminal, matches } from '../../lib/shortcuts.ts';
 import { currentPlatform } from '../../lib/platform.ts';
+import { releaseWebglContexts } from './releaseWebgl.ts';
 
 /** Fallbacks after the user's own terminal font: system monospace, then common Nerd Fonts for prompt glyphs. */
 const FALLBACK_FONTS = '"SF Mono", ui-monospace, Menlo, "Symbols Nerd Font Mono", "MesloLGS NF", "Hack Nerd Font Mono", "JetBrainsMono Nerd Font Mono", monospace';
@@ -160,7 +161,11 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
       input.dispose();
       offData();
       void client.call('terminal.detach', { id }).catch(() => {});
+      // Disposing takes the WebGL canvas out of the host but leaves its context alive until garbage collection;
+      // free it right after, or toggling the terminal fast runs into Chromium's limit on live contexts.
+      const canvases = [...host.querySelectorAll('canvas')];
       term.dispose();
+      releaseWebglContexts(canvases);
       termRef.current = null;
     };
   }, [client, id]);

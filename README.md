@@ -83,7 +83,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - **Two sessions side by side**: ⌥-click a session (or choose *Open beside*) to open it next to the current one.
 - **Home** (⌘⇧H, or the house button at the top of the sidebar) shows what needs you, what is working, and your projects. **Close a session** with the × in its header to go back to Home. A session that is working keeps running; pick it in the sidebar to open it again.
 - **Tools** (below the message box): the session's MCP servers, with their status and tools (turn them on or off, or reconnect, while the session runs in Switchboard), plus its skills, commands, agents and plugins.
-- A built-in terminal per session: ⌘J (or **Terminal** in the header) opens a shell in the session's folder. **⋯ → Open in → Claude Code** opens the session in the full Claude Code terminal interface.
+- A built-in terminal per session: ⌘J (or **Terminal** in the header) opens a shell in the session's folder. Outside a session, ⌘J opens a terminal too: in the project's folder on its page, otherwise in your home folder. **⋯ → Open in → Claude Code** opens the session in the full Claude Code terminal interface.
 - **Project actions**: one-click buttons for things like *Commit*, *Test* or *Publish*, running a command or sending Claude a prompt. See [Project actions](docs/project-actions.md).
 - **Open in** your editor, terminal or Finder (⌘O), or on GitHub, and click any file path in the conversation to open it at that line.
 - **Continue in VS Code** (under **⋯** in the session header): stops the session in Switchboard and opens it in Claude Code's VS Code extension, in the window for its folder.
@@ -199,6 +199,8 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
 | ⌘Q then ⌘Q | Quit (Switchboard asks first; Press once if you turned that off) |
+| ⌘J or ⌃` | Show or hide the terminal |
+| ⌘⇧J | Maximize or restore the terminal |
 | ⌘S | Save the memory or instructions you are editing (on a project's Memory tab, or Settings › Memory) |
 
 **Sessions and sidebar**
@@ -238,8 +240,6 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ↩ or ⌘G | Next match (in Find) |
 | ⇧↩ or ⌘⇧G | Previous match (in Find) |
 | ⌘⇧D | Show or hide Changes |
-| ⌘J or ⌃` | Show or hide the terminal |
-| ⌘⇧J | Maximize or restore the terminal |
 | Esc | Restore the terminal (while it fills the view, outside the shell) |
 | ⌘K | Clear the terminal (in the terminal) |
 | ⌃C | Stop the action (in the terminal, while an action runs) |

@@ -207,7 +207,8 @@ export class SessionHost {
   start(): void {
     this.query = (async () => this.startQuery({ prompt: this.input, options: buildOptions(this.config, this.events.log) }))().then(
       (query) => {
-        void this.loop(query);
+        // The loop catches its own failures; this is the last line, so nothing becomes an unhandled rejection.
+        this.loop(query).catch((error: unknown) => this.events.log('error', `Session ${this.sessionId} broke: ${(error as Error).message}`));
         return query;
       },
       (error: unknown) => {
@@ -482,7 +483,12 @@ export class SessionHost {
     if (ended && this.closedAt === undefined) this.closedAt = Date.now();
     // Background tasks die with the process.
     this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [] } : {}) };
-    this.events.info(this.info);
+    try {
+      this.events.info(this.info);
+    } catch (error) {
+      // Whoever listens failing must not stop this host from tracking its own state.
+      this.events.log('warn', `Could not report session ${this.sessionId}: ${(error as Error).message}`);
+    }
   }
 
   private fail(error: unknown): void {
@@ -560,12 +566,17 @@ export class SessionHost {
   private handleSystem(message: Extract<SDKMessage, { type: 'system' }>): void {
     if (message.subtype === 'init') {
       const init = message as Extract<SDKMessage, { subtype: 'init' }>;
+      // Without an id the session would be filed under `undefined` (and break every list that looks it up): skip it.
+      if (typeof init.session_id !== 'string' || !init.session_id) {
+        this.events.log('warn', `Session ${this.sessionId}: ignored a startup message from Claude Code without a session id`);
+        return;
+      }
       const first = this.info.state === 'starting';
       this.update({
         sessionId: init.session_id,
-        cwd: init.cwd,
-        model: init.model,
-        permissionMode: init.permissionMode as PermissionMode,
+        cwd: typeof init.cwd === 'string' && init.cwd ? init.cwd : this.info.cwd,
+        model: typeof init.model === 'string' ? init.model : this.info.model,
+        permissionMode: typeof init.permissionMode === 'string' ? (init.permissionMode as PermissionMode) : this.info.permissionMode,
         state: first ? 'idle' : this.info.state,
       });
       const terminalOnly = (init as { terminal_slash_commands?: unknown }).terminal_slash_commands;

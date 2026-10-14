@@ -557,8 +557,11 @@ export function Sidebar() {
     ),
     overscan: 10,
   });
-  // Row heights change with the sidebar style, and a header's height with its place (the first has less room above).
-  useEffect(() => virtualizer.measure(), [sidebarStyle, rows, virtualizer]);
+  // Row heights change with the sidebar style: the sizes are estimates, which the virtualiser only reads again when
+  // asked. New rows (and a header's height with its place: the first has less room above) need no call, because
+  // getItemKey changes with `rows` and that recomputes every position. Measuring on every change of `rows` too
+  // queued one more render per change, and a burst of new sessions ran into React's limit on nested updates.
+  useEffect(() => virtualizer.measure(), [sidebarStyle, virtualizer]);
 
   // Archived moves between the dock under the list and its place in the list, right under the last active row.
   // Opening, the header slides up from the dock (FLIP) while the list scrolls it near the top when it would land

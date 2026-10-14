@@ -48,8 +48,14 @@ ipcMain.on(IpcChannel.getAppInfo, (event) => {
   event.returnValue = appInfo;
 });
 
-// The smoke test and the screenshots run against a throwaway profile so they never touch real app data.
-if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'switchboard-smoke-')));
+// The smoke test and the screenshots run against a throwaway profile so they never touch real app data. A driven run
+// may name its own folder (SWITCHBOARD_DRIVEN_PROFILE), so a restart finds the same profile (scripts/chaos); never one
+// inside the app data folder, where the installed app keeps the user's real data.
+const drivenProfile = driven ? process.env.SWITCHBOARD_DRIVEN_PROFILE : undefined;
+if (drivenProfile && isAbsolutePath(drivenProfile) && !isSameOrInside(drivenProfile, app.getPath('appData'))) {
+  mkdirSync(drivenProfile, { recursive: true });
+  app.setPath('userData', drivenProfile);
+} else if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'switchboard-smoke-')));
 // The engine inherits these: the Claude Code check reads a mock registry that offers a newer version, and an
 // update is refused even if one were clicked, so the user's real `claude` is never touched.
 if (scripted) {
@@ -1566,6 +1572,66 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-terminal-panel]') && document.querySelector('[data-toggle-terminal]')?.click()");
   }
 }
+/**
+ * The window's own terminal, from the Usage view: ⌘J opens a shell in the home folder, Esc in it stays with the
+ * shell, Esc outside it leaves Usage for the session (where the panel steps aside), and back in Usage the same
+ * tab is there; closing it hides the panel. Runs only `pwd`, into a file in the throwaway profile.
+ */
+async function runAppTerminalStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const panel = "document.querySelector('[data-terminal-panel][data-terminal-owner=\"app\"]')";
+  const usage = "document.querySelector('[data-usage-view]')";
+  const marker = join(app.getPath('userData'), 'smoke-app-terminal.txt');
+  const sessionId = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
+  const openUsage = async () => {
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return false;
+    await setFieldValue(win, '[data-palette-input]', 'Open usage');
+    if (!(await waitInPage(win, "[...document.querySelectorAll('[data-command-palette] [role=option]')].some((el) => el.innerText.includes('Open usage'))", 3_000))) return false;
+    pressKey(win, 'Return');
+    return waitInPage(win, usage, 5_000);
+  };
+  rmSync(marker, { force: true });
+  try {
+    if (!(await openUsage())) return 'failed: could not open Usage from the palette';
+    pressKey(win, 'J', ['meta']);
+    if (!(await waitInPage(win, `${panel}?.querySelector('[data-terminal] textarea')`, 5_000))) return "failed: ⌘J in Usage did not open the window's terminal";
+    await js(`${panel}.querySelector('[data-terminal] textarea').focus()`);
+    const line = process.platform === 'win32' ? `(Get-Location).Path | Set-Content -NoNewline '${marker.replace(/'/g, "''")}'` : `pwd > ${JSON.stringify(marker)}`;
+    await win.webContents.insertText(line);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+    win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+    const read = () => (existsSync(marker) ? readFileSync(marker, 'utf8').trim() : '');
+    if (!(await until(() => read() !== '', 10_000))) return 'failed: the shell did not run the command';
+    if (realpathSync.native(read()) !== realpathSync.native(homedir())) return `failed: the shell started in ${read()}, not the home folder`;
+    const tab = (await js(`${panel}.querySelector('[role=tab][aria-selected=true]').innerText.trim()`)) as string;
+    if (tab !== '~') return `failed: the tab is called "${tab}", not ~`;
+    await shot(win, 'app-terminal.png');
+
+    // Esc in the shell is the shell's: Usage stays. Outside it, Esc goes back to the session, where the panel steps aside.
+    pressKey(win, 'Escape');
+    await settle(win);
+    if (!(await js(`!!${usage}`))) return 'failed: Esc in the terminal left the Usage view';
+    await js('document.activeElement?.blur()');
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${usage} && !${panel}`, 3_000))) return "failed: Esc did not leave Usage, or the window's terminal stayed";
+    if (!(await openUsage())) return 'failed: could not open Usage again';
+    if (!(await waitInPage(win, `${panel}?.querySelectorAll('[role=tab]').length === 1`, 3_000))) return "failed: the window's terminal did not come back with its tab";
+    await clickLikeAUser(win, '[data-terminal-owner="app"] [role=tab][aria-selected=true] + [data-terminal-tab-close]');
+    if (!(await waitInPage(win, `!${panel}`, 3_000))) return 'failed: closing the last tab did not hide the panel';
+    return `ok: a shell in ${read()} from Usage, out of the way ${sessionId ? 'in the session' : 'on Home'}`;
+  } finally {
+    rmSync(marker, { force: true });
+    if (await js(`!!${panel}`)) pressKey(win, 'J', ['meta']);
+    // Back to the session the next steps work in.
+    if (await js(`!!${usage}`)) {
+      await js('document.activeElement?.blur()');
+      pressKey(win, 'Escape');
+      await waitInPage(win, `!${usage}`, 3_000);
+    }
+  }
+}
+
 /** ⌘Q asks first; Cancel keeps the app open; a second ⌘Q while asking quits (recorded, not performed, in smoke mode). */
 async function runQuitStep(win: BrowserWindow): Promise<boolean> {
   const pressQuit = () => Menu.getApplicationMenu()?.getMenuItemById('quit')?.click();
@@ -4506,6 +4572,8 @@ async function runPaletteStep(win: BrowserWindow): Promise<string> {
 
   const panelOpen = () => has('[data-changes-panel]');
   const before = await panelOpen();
+  // Outside git the session has no Changes panel to show: the command still runs, but only its ranking is checked.
+  const onGit = await has('[data-current-session] [data-toggle-changes]');
   const runCommand = async (text: string) => {
     if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return null;
     await setFieldValue(win, '[data-palette-input]', text);
@@ -4517,9 +4585,9 @@ async function runPaletteStep(win: BrowserWindow): Promise<string> {
   };
   const first = await runCommand('tog chan');
   if (first !== 'toggle-changes') return `"tog chan" ranked ${String(first)} first`;
-  if (!(await waitInPage(win, before ? "!document.querySelector('[data-changes-panel]')" : "!!document.querySelector('[data-changes-panel]')", 2_000))) return 'Toggle changes did nothing';
+  if (onGit && !(await waitInPage(win, before ? "!document.querySelector('[data-changes-panel]')" : "!!document.querySelector('[data-changes-panel]')", 2_000))) return 'Toggle changes did nothing';
   await runCommand('tog chan');
-  if ((await panelOpen()) !== before) return 'could not toggle the panel back';
+  if (onGit && (await panelOpen()) !== before) return 'could not toggle the panel back';
 
   // Home: nothing for a session.
   pressKey(win, 'H', ['meta', 'shift']);
@@ -5678,6 +5746,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('terminal panel opened a shell', () => runTerminalStep(win));
   await step('⌘K in the terminal', () => runTerminalClearStep(win));
   await step('terminal layout', () => runTerminalLayoutStep(win));
+  await step("the window's own terminal, outside a session", () => runAppTerminalStep(win));
   await step('project action added through the editor and run in a terminal tab', () => runActionStep(win));
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));

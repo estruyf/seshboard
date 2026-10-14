@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampSidebarWidth,
+  fitSidebar,
+  MAIN_MIN_WIDTH,
   parseSidebarState,
   shownWidth,
   SIDEBAR_DEFAULT_WIDTH,
@@ -101,5 +103,32 @@ describe('shownWidth and parseSidebarState', () => {
     expect(parseSidebarState('minimal')).toBe('minimal');
     expect(parseSidebarState('wide')).toBe('open');
     expect(parseSidebarState(undefined)).toBe('open');
+  });
+});
+
+describe('fitSidebar', () => {
+  it('leaves the sidebar alone when the window has room', () => {
+    expect(fitSidebar('open', 320, 1440)).toEqual({ state: 'open', width: 320 });
+    expect(fitSidebar('open', 320, 900)).toEqual({ state: 'open', width: 320 });
+  });
+
+  it('narrows the open sidebar so the main area keeps its minimum', () => {
+    expect(fitSidebar('open', 520, 900)).toEqual({ state: 'open', width: 900 - MAIN_MIN_WIDTH });
+    expect(fitSidebar('open', 320, MAIN_MIN_WIDTH + SIDEBAR_MIN_WIDTH)).toEqual({ state: 'open', width: SIDEBAR_MIN_WIDTH });
+  });
+
+  it('shows the rail when even the minimum width does not fit (zoomed in, a small window)', () => {
+    expect(fitSidebar('open', 320, MAIN_MIN_WIDTH + SIDEBAR_MIN_WIDTH - 1)).toEqual({ state: 'minimal', width: SIDEBAR_RAIL_WIDTH });
+    expect(fitSidebar('open', 320, 625)).toEqual({ state: 'minimal', width: SIDEBAR_RAIL_WIDTH });
+    expect(fitSidebar('open', 320, 300)).toEqual({ state: 'minimal', width: SIDEBAR_RAIL_WIDTH });
+  });
+
+  it('keeps the rail and closed as they are', () => {
+    expect(fitSidebar('minimal', 320, 400)).toEqual({ state: 'minimal', width: SIDEBAR_RAIL_WIDTH });
+    expect(fitSidebar('closed', 320, 400)).toEqual({ state: 'closed', width: 0 });
+  });
+
+  it('ignores a viewport width that is not a number', () => {
+    expect(fitSidebar('open', 320, Number.NaN)).toEqual({ state: 'open', width: 320 });
   });
 });

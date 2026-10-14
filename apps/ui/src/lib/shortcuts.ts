@@ -288,6 +288,9 @@ export interface ShortcutDef {
 
 const inSession = (ctx: ShortcutContext) =>
   ctx.view === "session" && ctx.session;
+/** ⌘J has a terminal to show: the session's, or outside a session (Settings too) the window's own. */
+const withTerminal = (ctx: ShortcutContext) =>
+  inSession(ctx) || ctx.view !== "session";
 const inMessageBox = (ctx: ShortcutContext) =>
   inSession(ctx) || ctx.view === "new-session";
 
@@ -587,15 +590,15 @@ export const SHORTCUTS = [
     id: "terminal.toggle",
     keys: ["mod+j", "ctrl+`"],
     action: "Show or hide the terminal",
-    section: "session",
-    when: inSession,
+    section: "general",
+    when: withTerminal,
   },
   {
     id: "terminal.maximize",
     keys: ["mod+shift+j"],
     action: "Maximize or restore the terminal",
-    section: "session",
-    when: inSession,
+    section: "general",
+    when: withTerminal,
   },
   {
     id: "terminal.restore",
@@ -603,7 +606,7 @@ export const SHORTCUTS = [
     action: "Restore the terminal",
     section: "session",
     context: "While it fills the view, outside the shell",
-    when: (ctx) => inSession(ctx) && ctx.terminal.maximized,
+    when: (ctx) => withTerminal(ctx) && ctx.terminal.maximized,
     where: "terminal",
   },
   {
@@ -612,7 +615,7 @@ export const SHORTCUTS = [
     action: "Clear the terminal",
     section: "session",
     context: "In the terminal",
-    when: (ctx) => inSession(ctx) && ctx.terminal.open,
+    when: (ctx) => withTerminal(ctx) && ctx.terminal.open,
     where: "terminal",
   },
   {
@@ -621,7 +624,7 @@ export const SHORTCUTS = [
     action: "Stop the action",
     section: "session",
     context: "In the terminal, while an action runs",
-    when: (ctx) => inSession(ctx) && ctx.terminal.actionRunning,
+    when: (ctx) => withTerminal(ctx) && ctx.terminal.actionRunning,
     where: "terminal",
   },
   {

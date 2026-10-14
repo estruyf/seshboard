@@ -17,6 +17,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
+import { ownerSession } from '../terminal/appTerminal.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
@@ -59,9 +60,11 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
   const call = <T>(what: string, run: (client: EngineClient) => Promise<T>) => {
     if (client) void run(client).catch(failed(what));
   };
+  // ⌘J's panel: the session's, or outside a session the window's own. Terminal commands only run while there is one.
+  const owner = ctx.terminal.owner ?? '';
   const activeTerminal = () => {
     const { terminals, active } = useTerminals.getState();
-    return terminals.get(active.get(sessionId) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === sessionId).at(-1);
+    return terminals.get(active.get(owner) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === ownerSession(owner)).at(-1);
   };
 
   return {
@@ -124,8 +127,8 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     },
     copySessionId: () => void navigator.clipboard.writeText(sessionId).catch(failed('copy the session id')),
     checkTranscript: () => usePaletteBus.getState().showDialog({ kind: 'transcript-diagnosis', sessionId, title: session?.title ?? null }),
-    toggleTerminal: () => useTerminals.getState().togglePanel(sessionId),
-    newTerminalTab: () => cwd && call('open a terminal', (c) => openTerminal(c, sessionId, cwd, 'shell')),
+    toggleTerminal: () => owner && useTerminals.getState().togglePanel(owner),
+    newTerminalTab: () => owner && call('open a terminal', (c) => openTerminal(c, owner, ctx.terminal.cwd, 'shell')),
     toggleChanges: () => useOverlay.getState().toggleChanges(),
     // After the palette's own close, so the Tools dialog isn't closed along with it.
     showTools: () => setTimeout(() => useOverlay.getState().show('tools')),
@@ -186,11 +189,11 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
         if (files.length) usePaletteBus.getState().showDialog({ kind: 'revert-all', cwd, paths: files.map((file) => file.path) });
       }),
     runAction: (id) => useOverlay.getState().requestAction(id),
-    hideTerminal: () => useTerminals.getState().togglePanel(sessionId, false),
-    toggleMaximizeTerminal: () => useTerminals.getState().setMaximized(sessionId),
+    hideTerminal: () => useTerminals.getState().togglePanel(owner, false),
+    toggleMaximizeTerminal: () => useTerminals.getState().setMaximized(owner),
     dockTerminal: (dock) => {
       useTerminals.getState().setDock(dock);
-      useTerminals.getState().setMaximized(sessionId, false);
+      useTerminals.getState().setMaximized(owner, false);
     },
     stopAction: () => {
       const terminal = activeTerminal();

@@ -1,6 +1,6 @@
 import { Brain, Search } from 'lucide-react';
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { MemoryHit, SearchHit } from '@switchboard/protocol/client';
+import { MAX_SEARCH_QUERY_LENGTH, type MemoryHit, type SearchHit } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename, shortAge } from '../../lib/format.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
@@ -70,6 +70,8 @@ export function SearchDialog() {
   const [active, setActive] = useState(0);
   /** The query the shown hits answer, so "no matches" waits for the engine instead of flashing while you type. */
   const [answered, setAnswered] = useState('');
+  /** Why the last search failed; its results are cleared rather than left answering an older query. */
+  const [failed, setFailed] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const listId = useId();
   const optionId = (index: number) => `${listId}-${index}`;
@@ -86,10 +88,18 @@ export function SearchDialog() {
         setMemories(result.memories);
         setIndexing(result.indexing);
         setAnswered(query);
+        setFailed(null);
         if (first) setActive(0);
         const building = result.indexing.total === 0 || result.indexing.indexed < result.indexing.total;
         if (building && query.trim()) timer = setTimeout(() => ask(false), 1_000);
-      }, () => {});
+      }, (error: unknown) => {
+        if (cancelled) return;
+        setHits([]);
+        setMemories([]);
+        setAnswered(query);
+        setActive(0);
+        setFailed(error instanceof Error ? error.message : String(error));
+      });
     };
     timer = setTimeout(() => ask(true), 120);
     return () => {
@@ -140,7 +150,9 @@ export function SearchDialog() {
   const pending = answered !== query;
   const announcement = !typed || pending
     ? ''
-    : flat.length === 0
+    : failed !== null
+      ? "Couldn't search"
+      : flat.length === 0
       ? stillIndexing
         ? 'No matches yet, still indexing'
         : 'No matches'
@@ -160,6 +172,7 @@ export function SearchDialog() {
           aria-activedescendant={flat[active] ? optionId(active) : undefined}
           aria-label={memoryOnly ? 'Search memory' : 'Search memory and all conversations'}
           value={query}
+          maxLength={MAX_SEARCH_QUERY_LENGTH}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') (e.preventDefault(), setActive((i) => Math.max(0, Math.min(flat.length - 1, i + 1))));
@@ -195,6 +208,11 @@ export function SearchDialog() {
         <p className="px-4 py-6 text-center text-ui text-muted">
           {memoryOnly ? 'Search what Claude Code remembers: names, descriptions and text.' : "Search memory, your prompts and Claude's replies in every session. Pick a match to open it."}
         </p>
+      ) : failed !== null && !pending ? (
+        <div className="grid gap-1 px-4 py-6 text-center text-ui" data-search-error>
+          <p className="text-error">Couldn't search.</p>
+          <p className="text-muted">{failed}</p>
+        </div>
       ) : flat.length === 0 && !pending ? (
         <div className="grid gap-1 px-4 py-6 text-center text-ui">
           <p className="text-text">{stillIndexing && !memoryOnly ? `Nothing for “${typed}” yet.` : memoryOnly ? `No memory mentions “${typed}”.` : `Nothing mentions “${typed}”.`}</p>

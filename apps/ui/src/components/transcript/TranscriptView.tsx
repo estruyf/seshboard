@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, Blocks, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
@@ -28,6 +28,7 @@ import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
+import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
 import { ActionPills } from '../actions/ActionPills.tsx';
 import { useActionsMenu } from '../actions/useActionsMenu.tsx';
@@ -35,6 +36,7 @@ import { CapabilitiesDialog } from '../capabilities/CapabilitiesDialog.tsx';
 import { ChangesPanel, useChangesLayout } from '../changes/ChangesPanel.tsx';
 import { ContextMeter } from '../session/ContextMeter.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
+import { useWidth } from '../ui/useWidth.ts';
 import { BranchMenu } from '../worktree/BranchMenu.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import { WorktreeMenu } from '../worktree/WorktreeMenu.tsx';
@@ -71,6 +73,9 @@ import { MessageActionsContext, messageUuid, type MessageActions } from './messa
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { TranscriptItem } from './TranscriptItem.tsx';
 import { useTranscript } from './useTranscript.ts';
+import { startNewSession } from '../newSession/startSession.ts';
+import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
+import { restartAsNew } from './restartAsNew.ts';
 import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
 
 const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', sdk: 'SDK', app: 'Switchboard', unknown: '' } as const;
@@ -173,49 +178,82 @@ function Announcer({ sessionId, working, failed, permissions, cwd }: { sessionId
 }
 
 /**
- * The checkout's git changes, refreshed when the session does something (debounced),
- * when the window comes back into focus, and on request. `isRepo` is false outside git.
+ * The checkout's git changes, refreshed when the session does something (debounced), when the Changes panel
+ * opens, when the window comes back into focus or into view, on request, and every few seconds while the window
+ * is visible: files also change from the terminal, a project action or another app. `open`: the Changes panel
+ * shows them. `isRepo` is false outside git.
  */
-function useGitChanges(cwd: string | null, base: ChangesBase, activity: string) {
+function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, open: boolean) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [changes, setChanges] = useState<GitChanges | null>(null);
   const [isRepo, setIsRepo] = useState(true);
-  const [version, setVersion] = useState(0);
+  /** Asks for a check after `delay` ms (a later ask replaces a waiting one); a no-op without a folder. */
+  const request = useRef<(delay: number) => void>(() => {});
+  const openRef = useRef(open);
+  openRef.current = open;
   useEffect(() => {
     if (!client || !cwd) return;
     let cancelled = false;
-    const timer = setTimeout(() => {
-      client.call('git.changes', { cwd, base }).then(
-        (result) => !cancelled && (setChanges(result), setIsRepo(true)),
-        () => !cancelled && (setChanges(null), setIsRepo(false)),
-      );
-    }, 500);
+    // One git.changes at a time: an ask while one runs checks again once it is back.
+    let busy = false;
+    let again = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = () => {
+      timer = undefined;
+      if (busy) {
+        again = true;
+        return;
+      }
+      busy = true;
+      client
+        .call('git.changes', { cwd, base })
+        .then(
+          (result) => {
+            if (cancelled) return;
+            // The open panel takes every new list (its open diffs reload with it); the header's count only needs news.
+            setChanges((current) => (!openRef.current && sameChanges(current, result) ? current : result));
+            setIsRepo(true);
+          },
+          () => !cancelled && (setChanges(null), setIsRepo(false)),
+        )
+        .finally(() => {
+          busy = false;
+          if (cancelled || !again) return;
+          again = false;
+          load();
+        });
+    };
+    const ask = (delay: number) => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(load, delay);
+    };
+    request.current = ask;
+    ask(500);
+    const visible = () => document.visibilityState === 'visible';
+    // Nothing is checked while the window is hidden; it checks once it shows again.
+    const poll = setInterval(() => visible() && !busy && timer === undefined && load(), GIT_POLL_MS);
+    const onVisible = () => visible() && ask(0);
+    const onFocus = () => ask(500);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      request.current = () => {};
     };
-  }, [client, cwd, base, activity, version]);
+  }, [client, cwd, base]);
+  // The session did something (or the branch changed): check again once it settles.
+  useEffect(() => request.current(500), [activity]);
+  // Opening the panel shows what is there now, not what was there at the last check.
   useEffect(() => {
-    const onFocus = () => setVersion((v) => v + 1);
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, []);
-  return { changes, isRepo, refresh: () => setVersion((v) => v + 1) };
-}
-
-/** An element's width, following resizes (null until it has been measured). */
-function useWidth(ref: RefObject<HTMLElement | null>): number | null {
-  const [width, setWidth] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setWidth(el.getBoundingClientRect().width);
-    const observer = new ResizeObserver(([entry]) => setWidth(entry!.contentRect.width));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref]);
-  return width;
+    if (open) request.current(0);
+  }, [open]);
+  const refresh = useCallback(() => request.current(500), []);
+  return { changes, isRepo, refresh };
 }
 
 /** A session: live transcript, plus composer and controls when it can run here. */
@@ -302,7 +340,11 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const activeHost = isActiveHost(host) ? host : null;
   const live = activeHost ? hostAsLive(activeHost) : registryLive;
   const openElsewhere = !activeHost && registryLive !== null;
-  const cwd = activeHost?.cwd ?? summary?.cwd ?? registryLive?.cwd ?? null;
+  // Last, the host's own folder: a session whose Claude Code failed (or stopped) before it wrote a transcript has no
+  // other, and without one the message box would stay shut.
+  const cwd = activeHost?.cwd ?? summary?.cwd ?? registryLive?.cwd ?? host?.cwd ?? null;
+  /** Failed before it wrote a transcript: nothing to resume, so the next message starts it again as a new session. */
+  const restart = restartAsNew(host, { hasTranscript: summary !== null, openElsewhere });
   /** A quick question: no project actions, and no git (nothing to diff, commit or branch). The terminal still opens, in its folder. */
   const question = useProjects((s) => isQuestionsFolder(projectRoot ?? cwd, s.questionsDir));
   const options = sessionOptions(question);
@@ -324,7 +366,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const [changesBase, setChangesBase] = useState<ChangesBase>('uncommitted');
   // A branch switch (here or in another pane on the same checkout) changes what the panel shows.
   const branchSwitches = useCheckoutBranches((s) => s.switches);
-  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, `${items.length}:${live?.status ?? ''}:${branchSwitches}`);
+  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, `${items.length}:${live?.status ?? ''}:${branchSwitches}`, changesOpen && active);
   const isRepo = options.git && inRepo;
   // The badge on the Changes button counts uncommitted files only (the panel can compare with a branch too).
   const changedCount = changesBase === 'uncommitted' && changes ? changes.files.length : 0;
@@ -729,6 +771,14 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
    */
   const send = async (text: string, attachments: ImageAttachment[], fork = false, ungated = false, mode?: SendMode): Promise<void | false> => {
     if (!client) throw new Error('Not connected to the engine');
+    if (restart) {
+      // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
+      const outcome = await startNewSession(
+        { ...restart, prompt: text, attachments, skipGate: ungated },
+        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, addProject: async () => {}, open: select },
+      );
+      return outcome.kind === 'started' ? undefined : false;
+    }
     if (!ungated && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return false;
     const sentAt = Date.now();
     const result = await client.call('session.send', { sessionId, text, attachments, fork, ...(mode ? { mode } : {}) });
@@ -752,9 +802,15 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     const { message } = await client.call('session.queue.remove', { sessionId, id });
     if (!message) return false;
     const draft = useDrafts.getState().drafts[sessionId];
-    const merged = mergeIntoBox({ text: draft?.text ?? '', attachments: draft?.attachments ?? [] }, message);
+    const merged = mergeIntoBox({ text: draft?.text ?? '', attachments: draft?.attachments ?? [] }, backInBox(message.text, message.attachments));
     presetBox(merged.text, merged.attachments);
     return true;
+  };
+  /** A message back in the box: its file mentions become chips again, as they were when it was written. */
+  const backInBox = (prompt: string, attachments: ImageAttachment[]) => {
+    const { text, context } = contextFromPrompt(prompt, cwd);
+    if (context.length) useDrafts.getState().addContext(sessionId, context);
+    return { text, attachments };
   };
   const upNextActions: UpNextActions = {
     edit: (message) => void takeBack(message.id).catch((e: Error) => setActionError(`Could not take the message back: ${e.message}`)),
@@ -767,7 +823,10 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           toast('Removed from Up next', {
             undo: () => {
               // Still working: back in its place. Otherwise it would go at once, so it returns to the message box instead.
-              if (!running) return presetBox(removed.text, removed.attachments);
+              if (!running) {
+                const back = backInBox(removed.text, removed.attachments);
+                return presetBox(back.text, back.attachments);
+              }
               void client
                 .call('session.send', { sessionId, text: removed.text, attachments: removed.attachments, fork: false, mode: 'queue' })
                 .then((r) => (r.queued && at > 0 ? client.call('session.queue.move', { sessionId, id: r.messageUuid, toIndex: at }) : undefined))
@@ -1105,6 +1164,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                       ? 'Nothing to undo: no files changed after this message.'
                       : null)
               }
+              // Still loading, or nothing to undo, isn't something going wrong.
+              blockedTone={!rewinding.error && (!rewinding.preview || (rewinding.preview.canRewind && rewinding.preview.files.length === 0)) ? 'info' : 'error'}
               body={
                 <>
                   <p>Files go back to how they were before this message. The conversation stays as it is.</p>
@@ -1258,7 +1319,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                   cwd={cwd}
                   commands={commands}
                   running={running}
-                  placeholder={running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : 'Message Claude to resume this session'}
+                  placeholder={running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
                   submitLabel={openElsewhere ? 'Fork and send' : undefined}
                   dropHint={status === 'ready' && messages.length === 0}
                   disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}

@@ -161,7 +161,8 @@ function useEscapeToClose(sheet: RefObject<HTMLElement | null>) {
       // Search's results are a listbox too, but part of the page rather than a dropdown over it.
       const overlays = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].filter((el) => !el.closest('[data-settings-results]'));
       if (overlays.some((el) => el !== sheet.current)) return;
-      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable=true]')) return;
+      // The window's terminal can sit next to Settings: Esc there belongs to the program in it, or restores the panel.
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable=true], [data-terminal-panel]')) return;
       // The session behind keeps its own Escape (deny a permission, stop Claude): this press is ours.
       event.preventDefault();
       close();
@@ -447,10 +448,20 @@ export function SettingsView() {
   const sheet = useRef<HTMLDivElement>(null);
   /** The page's scroll area: long pages (all sessions) virtualise their lists against it. */
   const scroller = useRef<HTMLDivElement>(null);
-  // Start keyboard focus in Settings (not a trap: the sidebar stays reachable with Tab).
+  // What had focus before Settings opened (its button, the message box), read before the effect below moves it.
+  const [opener] = useState(() => document.activeElement as HTMLElement | null);
+  // Start keyboard focus in Settings (not a trap: the sidebar stays reachable with Tab), and give it back
+  // on close. The sheet is a region, not a dialog, so `useModalFocus` doesn't do this; by the time this
+  // runs the sheet has left the page and its focus fell to `body`, unless something else took it.
   useEffect(() => {
-    if (!sheet.current?.contains(document.activeElement)) sheet.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
-  }, []);
+    const root = sheet.current;
+    if (!root?.contains(document.activeElement)) root?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
+    return () => {
+      const active = document.activeElement;
+      if (!opener?.isConnected || opener === document.body || root?.contains(opener)) return;
+      if (!active || active === document.body || root?.contains(active)) opener.focus({ preventScroll: true });
+    };
+  }, [opener]);
   useEscapeToClose(sheet);
 
   // Search: while there is a query, the page shows what it found in every page instead.

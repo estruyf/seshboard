@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, parse, relative, resolve } from 'node:path';
 import {
   countLines,
@@ -28,7 +28,7 @@ import {
   isSameOrInside,
 } from '@switchboard/protocol';
 import { git } from '../git/gitChanges.ts';
-import { ignoredPaths, isInside, listInstructionFiles, listMemoryFiles, memoryDirFor } from './folders.ts';
+import { ignoredPaths, isInside, listInstructionFiles, listMemoryFiles, memoryDirFor, statQuiet } from './folders.ts';
 import { importedFileText, similar, textForClaudeApp, type Candidate } from './claudeExport.ts';
 import { loadOrder, memoryIndexCut } from './loadOrder.ts';
 import { duplicates, indexMismatch, makeTargetsOf, oldMemories, staleReferences } from './health.ts';
@@ -151,7 +151,7 @@ export class MemoryService {
   private memoryFileDir(root: string | null, path: string): string {
     const dir = dirname(path);
     if (resolve(path) !== path || !path.endsWith('.md') || basename(path) === MEMORY_INDEX || !this.memoryFolders(root).includes(dir)) throw new RpcError('FORBIDDEN', 'That isn’t a memory Switchboard can change');
-    const stat = lstatSync(path, { throwIfNoEntry: false });
+    const stat = statQuiet(path);
     if (!stat) throw new RpcError('NOT_FOUND', `${basename(path)} is gone`);
     if (!stat.isFile()) throw new RpcError('FORBIDDEN', `${basename(path)} is a link; Switchboard doesn’t write through it`);
     return dir;
@@ -601,7 +601,7 @@ export class MemoryService {
         .map((m) => ({ ...m, description: m.description ?? '', body: splitFrontmatter(readText(m.path) ?? '').body })),
     );
     const head = root ? (await git(root, ['rev-parse', 'HEAD']).catch(() => '')).trim() : '';
-    const signature = [head, ...folders.map((dir) => `${dir}:${statSync(join(dir, MEMORY_INDEX), { throwIfNoEntry: false })?.mtimeMs ?? 0}`), ...memories.map((m) => `${m.path}:${m.modified}`)].join('|');
+    const signature = [head, ...folders.map((dir) => `${dir}:${statQuiet(join(dir, MEMORY_INDEX), true)?.mtimeMs ?? 0}`), ...memories.map((m) => `${m.path}:${m.modified}`)].join('|');
     const key = root ?? '';
     const cached = this.healthCache.get(key);
     if (cached && cached.signature === signature) return cached.findings;
@@ -827,7 +827,7 @@ export class MemoryService {
   private assertMemoryFile(root: string, path: string): void {
     const dirs = this.dirs(root);
     const ok = resolve(path) === path && path.endsWith('.md') && basename(path) !== MEMORY_INDEX && dirs.includes(dirname(path));
-    if (!ok || !lstatSync(path, { throwIfNoEntry: false })?.isFile()) throw new RpcError('FORBIDDEN', 'That isn’t one of this project’s memories');
+    if (!ok || !statQuiet(path)?.isFile()) throw new RpcError('FORBIDDEN', 'That isn’t one of this project’s memories');
   }
 
   /**
@@ -841,7 +841,7 @@ export class MemoryService {
     while (!existsSync(existing) && isInside(root, existing) && existing !== root) existing = dirname(existing);
     const real = this.realOrNull(existing);
     if (!real || !isInside(realRoot, real)) throw new RpcError('FORBIDDEN', `${relative(root, path)} leads outside the project`);
-    if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) throw new RpcError('FORBIDDEN', `${relative(root, path)} is a link; Switchboard doesn’t write through it`);
+    if (statQuiet(path)?.isSymbolicLink()) throw new RpcError('FORBIDDEN', `${relative(root, path)} is a link; Switchboard doesn’t write through it`);
   }
 
   private realOrNull(path: string): string | null {

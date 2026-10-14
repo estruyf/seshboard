@@ -4,3 +4,6 @@
  * big for its context window; it says so in the session.
  */
 export const MAX_PROMPT_LENGTH = 1_000_000;
+
+/** The longest query, in characters, that `search.query` takes; Search's field stops there. */
+export const MAX_SEARCH_QUERY_LENGTH = 500;

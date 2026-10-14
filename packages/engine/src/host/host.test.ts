@@ -1,11 +1,15 @@
 import type { Options, PermissionResult, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
+import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type SdkRuntime } from './hostManager.ts';
 import { describeSuggestions } from './permissions.ts';
 import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, type HostConfig } from './sessionHost.ts';
-import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
+import { createMemorySessionSettings, createSessionSettingsStore, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** Minimal async channel that can also fail, like a Claude Code process dying. */
@@ -157,7 +161,20 @@ const until = async (check: () => boolean, timeoutMs = 2000) => {
 };
 
 function setup(
-  opts: { openElsewhere?: string[]; cwds?: Record<string, string>; profiles?: Record<string, string>; settings?: SessionSettingsStore; refreshLive?: () => void; upNext?: ReturnType<typeof memoryUpNext> } = {},
+  opts: {
+    openElsewhere?: string[];
+    cwds?: Record<string, string>;
+    profiles?: Record<string, string>;
+    settings?: SessionSettingsStore;
+    refreshLive?: () => void;
+    upNext?: ReturnType<typeof memoryUpNext>;
+    /** Pre-warmed processes fail to start, at once or after a while (no login, a crash). */
+    warmFails?: { message: string; afterMs?: number };
+    /** Claude Code can't be started at all. */
+    startFails?: string;
+    /** Sees each process as it starts, before it gets a message. */
+    onQuery?: (query: FakeQuery) => void;
+  } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
   const models: ModelOption[][] = [];
@@ -172,13 +189,19 @@ function setup(
   const ephemeral = new Set<string>();
   const sdk: SdkRuntime = {
     query: ({ prompt, options }) => {
+      if (opts.startFails) throw new Error(opts.startFails);
       const q = new FakeQuery(prompt, options);
       queries.push(q);
+      opts.onQuery?.(q);
       return q as never;
     },
     startup: async ({ options }) => {
       const warmup = { options, closed: false };
       warmups.push(warmup);
+      if (opts.warmFails) {
+        await new Promise((r) => setTimeout(r, opts.warmFails!.afterMs ?? 0));
+        throw new Error(opts.warmFails.message);
+      }
       return {
         query: (prompt: AsyncIterable<SDKUserMessage>) => {
           const q = new FakeQuery(prompt, options);
@@ -607,6 +630,47 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('answers "not running" for the context of a session whose process is exiting', async () => {
+    let exiting = false;
+    const t = setup({
+      onQuery: (q) => {
+        q.getContextUsage = async () => {
+          if (!exiting) return { totalTokens: 124, maxTokens: 1000, percentage: 12.4, model: 'fake', categories: [] } as never;
+          // The process goes away while the SDK asks it.
+          q.out.fail(new Error('Claude Code process exited with code 1'));
+          await new Promise((r) => setTimeout(r, 10));
+          throw new Error('ProcessTransport is not ready for writing');
+        };
+      },
+    });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    await expect(t.manager.context(id)).resolves.toMatchObject({ percentage: 12.4 });
+    exiting = true;
+    await expect(t.manager.context(id)).rejects.toMatchObject({ code: 'NOT_RUNNING' });
+    expect(lastState(t.infos, id)).toBe('error');
+    await expect(t.manager.context(id)).rejects.toMatchObject({ code: 'NOT_RUNNING' });
+    t.manager.closeAll();
+  });
+
+  it('ignores a startup message without a session id, so the session list keeps working', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'switchboard-host-'));
+    const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
+    try {
+      const t = setup({ settings: createSessionSettingsStore(cache.db), onQuery: (q) => q.out.push({ type: 'system', subtype: 'init' }) });
+      const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+      await until(() => lastState(t.infos, id) === 'idle');
+      expect(t.infos.every((i) => i.sessionId === id && i.cwd === '/w')).toBe(true);
+      expect(t.manager.list().hosts).toMatchObject([{ sessionId: id, cwd: '/w', state: 'idle' }]);
+      // A host that got no proper id can't break the list either.
+      expect(t.manager.autoPick(undefined as never)).toBeNull();
+      t.manager.closeAll();
+    } finally {
+      cache.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('isolates a crashing Claude Code process to its own session', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'crash' });
@@ -626,6 +690,43 @@ describe('HostManager', () => {
     await until(() => lastState(t.infos, id) === 'idle');
     expect(t.queries).toHaveLength(1);
     expect(t.queries[0]!.mode).toBe('plan');
+    t.manager.closeAll();
+  });
+
+  it('drops a pre-warmed process that failed, so the next pre-warm tries again and a session starts fresh', async () => {
+    const t = setup({ warmFails: { message: 'Claude Code process exited with code 1' } });
+    await t.manager.prewarm('/work/app', 'default');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(t.ephemeral.size).toBe(1);
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(2);
+    await new Promise((r) => setTimeout(r, 20));
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries).toHaveLength(1);
+    expect(t.queries[0]!.options).toMatchObject({ sessionId: id, permissionMode: 'plan' });
+    t.manager.closeAll();
+  });
+
+  it('starts a fresh process when the pre-warmed one fails after a new session took it', async () => {
+    const t = setup({ warmFails: { message: 'Claude Code process exited with code 1', afterMs: 30 } });
+    await t.manager.prewarm('/work/app', 'default');
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan', model: 'opus' });
+    expect(id).toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries).toHaveLength(1);
+    expect(t.queries[0]!.options).toMatchObject({ sessionId: id, permissionMode: 'plan', model: 'opus' });
+    expect(t.queries[0]!.received).toEqual([{ text: 'Say hi' }]);
+    t.manager.closeAll();
+  });
+
+  it('says why a new session could not start instead of "not running"', async () => {
+    const t = setup({ warmFails: { message: 'Claude Code process exited with code 1', afterMs: 30 }, startFails: 'Not logged in · Please run /login' });
+    await t.manager.prewarm('/work/app', 'default');
+    await expect(t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan' })).rejects.toMatchObject({
+      code: 'START_FAILED',
+      message: 'Not logged in · Please run /login',
+    });
     t.manager.closeAll();
   });
 
