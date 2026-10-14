@@ -288,9 +288,9 @@ export interface ShortcutDef {
 
 const inSession = (ctx: ShortcutContext) =>
   ctx.view === "session" && ctx.session;
-/** ⌘J has a terminal to show: the session's, or outside a session the window's own (not in Settings). */
+/** ⌘J has a terminal to show: the session's, or outside a session (Settings too) the window's own. */
 const withTerminal = (ctx: ShortcutContext) =>
-  inSession(ctx) || (ctx.view !== "session" && ctx.view !== "settings");
+  inSession(ctx) || ctx.view !== "session";
 const inMessageBox = (ctx: ShortcutContext) =>
   inSession(ctx) || ctx.view === "new-session";
 
@@ -591,7 +591,6 @@ export const SHORTCUTS = [
     keys: ["mod+j", "ctrl+`"],
     action: "Show or hide the terminal",
     section: "general",
-    context: "In any view but Settings",
     when: withTerminal,
   },
   {

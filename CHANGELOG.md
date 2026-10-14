@@ -6,7 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### New
 
-- **A terminal anywhere.** Press ⌘J (Ctrl+J on Windows) on Home, a project's page, Projects, Usage or New session to open a terminal there too, without opening a session first. On a project's page it starts in the project's folder, in New session in the folder the session would start in, and elsewhere in your home folder. These views share one terminal, so its tabs stay with you as you move between them; a session still has its own.
+- **A terminal anywhere.** Press ⌘J (Ctrl+J on Windows) on Home, a project's page, Projects, Usage, New session or Settings to open a terminal there too, without opening a session first. On a project's page it starts in the project's folder, in New session in the folder the session would start in, and elsewhere in your home folder. These views share one terminal, so its tabs stay with you as you move between them; a session still has its own.
 
 ### Fixed
 

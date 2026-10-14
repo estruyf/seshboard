@@ -7,12 +7,8 @@ describe('terminalOwner', () => {
     expect(terminalOwner('session', null)).toBeNull();
   });
 
-  it("is the window's own terminal on the other views", () => {
-    for (const view of ['home', 'new-session', 'projects', 'project', 'usage'] as const) expect(terminalOwner(view, 's1')).toBe(APP_TERMINAL);
-  });
-
-  it('is none in Settings', () => {
-    expect(terminalOwner('settings', 's1')).toBeNull();
+  it("is the window's own terminal on the other views, Settings included", () => {
+    for (const view of ['home', 'new-session', 'projects', 'project', 'usage', 'settings'] as const) expect(terminalOwner(view, 's1')).toBe(APP_TERMINAL);
   });
 });
 
@@ -36,6 +32,6 @@ describe('appTerminalFolder', () => {
   });
 
   it('starts in the home folder elsewhere', () => {
-    for (const view of ['home', 'projects', 'usage'] as const) expect(appTerminalFolder(view, place)).toBeNull();
+    for (const view of ['home', 'projects', 'usage', 'settings'] as const) expect(appTerminalFolder(view, place)).toBeNull();
   });
 });

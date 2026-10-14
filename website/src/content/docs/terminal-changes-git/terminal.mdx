@@ -12,7 +12,7 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 
 Every session has its own terminal panel. It opens a shell in the session's folder (its worktree, when it has one), so you can run a command without leaving Switchboard. [Project actions](/projects/actions/), git steps and code blocks from the conversation run there too.
 
-Outside a session you have a terminal too: on Home, a project's page, Projects, Usage and New session. See [Outside a session](#outside-a-session).
+Outside a session you have a terminal too: on Home, a project's page, Projects, Usage, New session and Settings. See [Outside a session](#outside-a-session).
 
 <Screenshot name="terminal" alt="A session with the terminal panel open below the conversation: tabs at the top, a shell with output, and buttons to dock, maximize and hide the panel" eager />
 
@@ -26,13 +26,13 @@ The first time you open it, the panel starts a shell.
 
 ### Outside a session
 
-Press <Kbd shortcut="terminal.toggle" /> anywhere else in the app to open a terminal that isn't tied to a session. It works on Home, a project's page, Projects, Usage and New session. In Settings it doesn't open.
+Press <Kbd shortcut="terminal.toggle" /> anywhere else in the app to open a terminal that isn't tied to a session. It works on Home, a project's page, Projects, Usage, New session and Settings.
 
 - On a project's page, a new tab starts in the project's folder.
 - In New session, it starts in the folder the new session would start in.
 - Everywhere else, it starts in your home folder.
 
-These views share one terminal panel, so its tabs stay with you when you go from Home to a project and back. Each tab is named after its folder; hover it to see the full path. When you open a session, the panel steps aside for the session's own terminal, and it is back when you leave the session.
+These views share one terminal panel, so its tabs stay with you when you go from Home to a project and back. Each tab is named after its folder; hover it to see the full path. When you open a session, the panel steps aside for the session's own terminal, and it is back when you leave the session. Settings, even when you open it from a session, shows this shared terminal too.
 
 *Toggle terminal* and *New terminal tab* in the command palette work here too. You can maximize, dock and resize this panel the same way as a session's.
 

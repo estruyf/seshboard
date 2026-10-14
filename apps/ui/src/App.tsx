@@ -61,7 +61,7 @@ function terminalView(view: MainView, sessionId: string | null): TerminalView {
   return view === 'new' ? 'new-session' : view === 'session' ? (sessionId ? 'session' : 'home') : view;
 }
 
-/** The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere, none in Settings. */
+/** The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere (Settings too). */
 function currentTerminalOwner(): string | null {
   const { view, selectedId } = useSessions.getState();
   return terminalOwner(terminalView(view, selectedId), selectedId);
@@ -207,7 +207,8 @@ export function App() {
   const settingsFrom = useSessions((s) => s.settingsFrom);
   const behind = view === 'settings' ? settingsFrom : view;
   const mainId = useSessions((s) => s.mainId);
-  const shownView = terminalView(behind, mainId);
+  // Settings covers the view it opened from, a session too: there the window's terminal is the one ⌘J shows.
+  const shownView = view === 'settings' ? 'settings' : terminalView(behind, mainId);
   const splitId = useSessions((s) => s.splitId);
   const activePane = useSessions((s) => s.activePane);
   const overlay = useOverlay((s) => s.open);
@@ -225,10 +226,10 @@ export function App() {
     <div className="flex h-full">
       <SidebarShell />
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Outside a session, the window's own terminal (⌘J) docks below or beside the view, and Settings. */}
+        <AppTerminalFrame view={shownView}>
         {/* Settings is a sheet over the view it opened from, which stays on screen (inert) behind it. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={view === 'settings'}>
-        {/* Outside a session, the window's own terminal (⌘J) docks below or beside the view. */}
-        <AppTerminalFrame view={shownView}>
         {behind === 'usage' ? (
           <UsageView />
         ) : behind === 'projects' ? (
@@ -256,9 +257,9 @@ export function App() {
         ) : (
           <HomeView />
         )}
-        </AppTerminalFrame>
         </div>
         {view === 'settings' && <SettingsView />}
+        </AppTerminalFrame>
       </main>
       <QuitPrompt />
       <LinkError />

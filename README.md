@@ -199,7 +199,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
 | ⌘Q then ⌘Q | Quit (Switchboard asks first; Press once if you turned that off) |
-| ⌘J or ⌃` | Show or hide the terminal (in any view but Settings) |
+| ⌘J or ⌃` | Show or hide the terminal |
 | ⌘⇧J | Maximize or restore the terminal |
 | ⌘S | Save the memory or instructions you are editing (on a project's Memory tab, or Settings › Memory) |
 

@@ -12,9 +12,10 @@ const TerminalPanel = lazy(() => import('./TerminalPanel.tsx').then((m) => ({ de
 
 /**
  * The main area with the window's own terminal below or beside it, for the views outside a session (Home, a
- * project's page, Projects, Usage, New session). `view` is the one on screen (behind Settings, the one it
- * opened from). A session view brings its own panel, so there this one steps aside, still open for later.
- * Maximized, the view stays mounted but hidden, as the conversation does behind a session's terminal.
+ * project's page, Projects, Usage, New session, Settings). `view` is the one on screen. A session view brings
+ * its own panel, so there this one steps aside, still open for later. Settings is a sheet over the view it
+ * opened from: it covers the views (a session's panel too) but not this panel. Maximized, the view stays
+ * mounted but hidden, as the conversation does behind a session's terminal.
  */
 export function AppTerminalFrame({ view, children }: { view: TerminalView; children: ReactNode }) {
   const shown = useTerminals((s) => s.openFor.has(APP_TERMINAL)) && view !== 'session';
@@ -31,7 +32,8 @@ export function AppTerminalFrame({ view, children }: { view: TerminalView; child
 
   return (
     <div ref={frameRef} className={`flex min-h-0 min-w-0 flex-1 ${shown && dock === 'right' ? 'flex-row' : 'flex-col'}`} data-app-terminal-frame>
-      <div className={maximized ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}>{children}</div>
+      {/* `relative`: the Settings sheet fills this, not the panel next to it. */}
+      <div className={maximized ? 'hidden' : 'relative flex min-h-0 min-w-0 flex-1 flex-col'}>{children}</div>
       {shown && (
         <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${dock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
           <TerminalPanel sessionId={null} cwd={cwd} projectRoot={null} home={home} dock={dock} rightBlocked={blocked} viewWidth={width} />

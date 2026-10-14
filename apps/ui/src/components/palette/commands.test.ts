@@ -263,8 +263,6 @@ describe('when(): git, actions, terminal, panes', () => {
     expect(ids(home)).toEqual(expect.arrayContaining(['toggle-app-terminal', 'new-app-terminal-tab']));
     expect(ids(home)).not.toContain('toggle-terminal');
     expect(ids(inSession())).not.toContain('toggle-app-terminal');
-    // In Settings there is no terminal to show.
-    expect(ids(context({ view: 'settings' }))).not.toContain('toggle-app-terminal');
     const open = context({ terminal: { ...home.terminal, open: true } });
     expect(groupIds(open, 'terminal')).toEqual(['hide-terminal', 'maximize-terminal', 'dock-right']);
   });

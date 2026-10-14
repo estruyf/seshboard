@@ -161,7 +161,8 @@ function useEscapeToClose(sheet: RefObject<HTMLElement | null>) {
       // Search's results are a listbox too, but part of the page rather than a dropdown over it.
       const overlays = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].filter((el) => !el.closest('[data-settings-results]'));
       if (overlays.some((el) => el !== sheet.current)) return;
-      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable=true]')) return;
+      // The window's terminal can sit next to Settings: Esc there belongs to the program in it, or restores the panel.
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable=true], [data-terminal-panel]')) return;
       // The session behind keeps its own Escape (deny a permission, stop Claude): this press is ours.
       event.preventDefault();
       close();
