@@ -541,7 +541,7 @@ const screens: Screen[] = [
       await t.q(`[data-sidebar-state] [data-session-id="${working}"]`).click({ modifiers: ['Alt'] });
       await t.until(`document.querySelectorAll('[data-pane]').length === 2 && document.querySelector('[data-current-session="${working}"] [data-transcript-item]')`, 'the second pane did not open');
       await t.shot('split');
-      await t.click('[data-pane="split"] [data-close-pane]');
+      await t.click(`[data-pane="${working}"] [data-close-pane]`);
       await t.gone('[data-split]', 'the second pane did not close');
     },
   },

@@ -121,7 +121,7 @@ export async function runScreenshotTour(win: BrowserWindow, outDir: string, hook
     await js(`document.querySelector('${row(working)}').dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }))`);
     await need(`document.querySelectorAll('[data-pane]').length === 2 && document.querySelector('[data-current-session="${working}"] [data-transcript-item]')`, 'the second pane did not open');
     await shot(`split-${scheme}`);
-    await click('[data-pane="split"] [data-close-pane]');
+    await click(`[data-pane="${working}"] [data-close-pane]`);
     await need("!document.querySelector('[data-split]')", 'the second pane did not close');
 
     // The keyboard shortcuts sheet (⌘/) over the finished session: what works here, the rest faded.
