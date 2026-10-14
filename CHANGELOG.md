@@ -4,12 +4,13 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+## [0.0.17] - 2026-10-14
+
 ### New
 
 - **A click on a file link shows the file in File Explorer (Finder on a Mac).** The file is selected in its folder. ⇧-click (Shift+click on Windows) opens it in your editor at its line instead, and a right-click on the link lists **Show in File Explorer**, **Open in** your editor and **Copy path**, above the message's **Quote** and **Remember this…**. The **Show** or **Open** chip beside a tool run that touched a file does the same. If a file is gone, the link now says so. To make a click open the editor, change **Clicking a file link** in Settings › Conversation.
 - **Copy a reply as rich text.** Claude's replies have a second copy button, **Copy as rich text**, next to **Copy as Markdown**. Paste into an email, a document, Slack or Notion and the headings, lists, bold, links, code and tables come along. A plain text field gets the Markdown.
 - **A terminal anywhere.** Press ⌘J (Ctrl+J on Windows) on Home, a project's page, Projects, Usage, New session or Settings to open a terminal there too, without opening a session first. On a project's page it starts in the project's folder, in New session in the folder the session would start in, and elsewhere in your home folder. These views share one terminal, so its tabs stay with you as you move between them; a session still has its own.
-
 - **Split view is now a tiling layout.** Open as many sessions as fit, side by side, one above the other, or mixed. ⌥-click a session to split the active pane (a wide pane gets the new session on its right, a tall one below it), and Switchboard says so when the window has no room for another. Drag a pane by its title, or a session from the sidebar, into the panes: a pane's edge docks beside it, its middle swaps (or replaces a session that isn't open yet), and a band along each edge of the window docks across its whole length, so you can turn one pane next to two stacked ones into three equal columns. A session that is already open just moves its tile. Esc cancels, and a red frame says when the result wouldn't fit. Drag the dividers between panes to resize them (or use the arrow keys, and double-click for equal sizes). New keys and commands: go to the pane on a side (⌘⌥ and an arrow, Ctrl+Alt on Windows), close this pane (⌘⌥W), close the other panes (⌘ and the backslash key), turn the split the active pane is in (⌘⇧O) and swap with the next pane (⌘⇧X). In a window too small for every pane only the active one shows, and the rest come back as the window grows. Nothing reloads while you rearrange, so your unsent messages and scroll positions stay.
 
 ### Fixed
