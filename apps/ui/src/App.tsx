@@ -28,7 +28,7 @@ import { UsageView } from './components/usage/UsageView.tsx';
 import { SessionHud } from './components/sidebar/SessionHud.tsx';
 import { EngineStalledNotice } from './components/EngineStalledNotice.tsx';
 import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
-import { TranscriptView } from './components/transcript/TranscriptView.tsx';
+import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { isActiveHost, useHosts } from './state/hostsStore.ts';
 import { useLaterSync } from './state/laterStore.ts';
@@ -38,7 +38,7 @@ import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
 import { useNavHistorySync } from './state/navHistoryStore.ts';
-import { useSessions, type MainView, type Pane } from './state/sessionsStore.ts';
+import { useSessions, type MainView } from './state/sessionsStore.ts';
 import { useOverlay } from './state/overlayStore.ts';
 import { usePreferencesSync } from './state/preferencesStore.ts';
 import { useThemesSync } from './state/themeStore.ts';
@@ -54,7 +54,7 @@ import { useUpdatesSync } from './state/updatesStore.ts';
 import { useClaudeUpdateSync } from './state/claudeUpdateStore.ts';
 import { useHostsSync } from './state/useHostsSync.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
-import { matches } from './lib/shortcuts.ts';
+import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 
 /** What the main area shows, as the terminal sees it: Home is the session view without a session. */
@@ -80,10 +80,22 @@ const OWN_OVERLAYS = '[data-command-palette], [data-search], [data-shortcuts-she
  */
 const otherModalOpen = () => Array.from(document.querySelectorAll('[aria-modal="true"]')).some((el) => !el.matches(OWN_OVERLAYS));
 
+/** What each key of the panes does (keys in `lib/shortcuts.ts`). */
+const PANE_KEYS: ReadonlyArray<readonly [ShortcutId, (sessions: ReturnType<typeof useSessions.getState>) => void]> = [
+  ['pane.close', (s) => s.closePane()],
+  ['pane.close-other', (s) => s.closeOtherPanes()],
+  ['pane.focus-left', (s) => s.focusWay('left')],
+  ['pane.focus-right', (s) => s.focusWay('right')],
+  ['pane.focus-up', (s) => s.focusWay('up')],
+  ['pane.focus-down', (s) => s.focusWay('down')],
+  ['pane.swap', (s) => s.swapPanes()],
+  ['pane.orientation', (s) => s.flipSplit()],
+];
+
 /**
  * The window's own shortcuts (keys in `lib/shortcuts.ts`): new session, open in editor, the terminal, the
- * command palette and go-to, search, Home, the sidebar, moving between sessions, closing the other pane
- * and the shortcuts sheet. The terminal passes ⌘ keys and ⌃⇥ on to the window (XTerm.tsx), so these work
+ * command palette and go-to, search, Home, the sidebar, moving between sessions, the panes (close, focus,
+ * swap, turn) and the shortcuts sheet. The terminal passes ⌘ keys and ⌃⇥ on to the window (XTerm.tsx), so these work
  * there too.
  */
 function useShortcuts() {
@@ -142,11 +154,12 @@ function useShortcuts() {
         if (!owner) return;
         event.preventDefault();
         useTerminals.getState().togglePanel(owner);
-      } else if (matches(event, 'pane.close-other')) {
-        const { splitId, activePane, closePane } = useSessions.getState();
-        if (!splitId) return;
+      } else if (PANE_KEYS.some(([id]) => matches(event, id))) {
+        // The panes' keys work with more than one pane open, and in the session view (Settings sits over it, inert).
+        const sessions = useSessions.getState();
+        if (sessions.view !== 'session' || sessions.paneIds.length < 2) return;
         event.preventDefault();
-        closePane(activePane === 'main' ? 'split' : 'main');
+        PANE_KEYS.find(([id]) => matches(event, id))![1](sessions);
       } else if (matches(event, 'session.new')) {
         event.preventDefault();
         // On a project's page, the new session starts in that project (its New session button says ⌘N).
@@ -220,21 +233,12 @@ export function App() {
   const view = useSessions((s) => s.view);
   const settingsFrom = useSessions((s) => s.settingsFrom);
   const behind = view === 'settings' ? settingsFrom : view;
-  const mainId = useSessions((s) => s.mainId);
+  const hasPanes = useSessions((s) => s.layout !== null);
+  const selectedId = useSessions((s) => s.selectedId);
   // Settings covers the view it opened from, a session too: there the window's terminal is the one ⌘J shows.
-  const shownView = view === 'settings' ? 'settings' : terminalView(behind, mainId);
-  const splitId = useSessions((s) => s.splitId);
-  const activePane = useSessions((s) => s.activePane);
+  const shownView = view === 'settings' ? 'settings' : terminalView(behind, selectedId);
   const overlay = useOverlay((s) => s.open);
   const adding = useProjects((s) => s.adding);
-  const panes: { id: string; pane: Pane | null }[] = !mainId
-    ? []
-    : splitId && splitId !== mainId
-      ? [
-          { id: mainId, pane: 'main' },
-          { id: splitId, pane: 'split' },
-        ]
-      : [{ id: mainId, pane: null }];
 
   return (
     <div className="flex h-full">
@@ -252,22 +256,8 @@ export function App() {
           <ProjectPage />
         ) : behind === 'new' ? (
           <NewSessionView />
-        ) : mainId ? (
-          // One session, or two side by side. Both cases share this tree and each pane is keyed by its
-          // session, so opening or closing a split never remounts the session that stays (its unsent
-          // message, scroll and Find). Clicking in a pane makes it the active one.
-          <div className="flex min-h-0 flex-1" data-split={splitId ? true : undefined}>
-            {panes.map(({ id, pane }) => (
-              // The inactive pane dims as a whole, and brightens a little on hover to say a click makes it active.
-              <div
-                key={id}
-                className={`flex min-w-0 flex-1 flex-col transition-opacity duration-150 ${pane === 'split' ? 'border-l border-border' : ''} ${pane && activePane !== pane ? 'opacity-60 hover:opacity-85' : ''}`}
-                onMouseDownCapture={pane ? () => useSessions.getState().focusPane(pane) : undefined}
-              >
-                <TranscriptView sessionId={id} pane={pane} active={pane ? activePane === pane : true} />
-              </div>
-            ))}
-          </div>
+        ) : hasPanes ? (
+          <SplitPanes />
         ) : (
           <HomeView />
         )}

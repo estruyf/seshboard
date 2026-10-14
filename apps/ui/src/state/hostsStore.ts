@@ -17,6 +17,8 @@ export interface StreamingBlock {
 
 interface HostsState {
   hosts: Map<string, SessionHostInfo>;
+  /** The engine has listed its hosts (once per connection). */
+  loaded: boolean;
   /** Open permission prompts, oldest first. */
   permissions: Map<string, PermissionRequest>;
   /** The block Claude is writing right now, per session. */
@@ -39,6 +41,7 @@ interface HostsState {
 
 export const useHosts = create<HostsState>()((set) => ({
   hosts: new Map(),
+  loaded: false,
   permissions: new Map(),
   streaming: new Map(),
   models: [],
@@ -49,6 +52,7 @@ export const useHosts = create<HostsState>()((set) => ({
   reset: (hosts, permissions) =>
     set({
       hosts: new Map(hosts.map((h) => [h.sessionId, h])),
+      loaded: true,
       permissions: new Map(permissions.map((p) => [p.requestId, p])),
       streaming: new Map(),
     }),

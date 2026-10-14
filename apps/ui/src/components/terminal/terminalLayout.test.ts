@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CHAT_MIN_HEIGHT,
   CHAT_MIN_WIDTH,
   clampPanelHeight,
   clampPanelWidth,
@@ -11,6 +12,7 @@ import {
   PANEL_MIN_WIDTH,
   panelSizeForKey,
   parseDock,
+  maxBottomHeight,
   maxRightWidth,
   rightBlocked,
 } from './terminalLayout.ts';
@@ -51,6 +53,17 @@ describe('maxRightWidth', () => {
   it('never goes under the panel minimum, and has no limit before the view is measured', () => {
     expect(maxRightWidth(500)).toBe(PANEL_MIN_WIDTH);
     expect(maxRightWidth(null)).toBe(Number.POSITIVE_INFINITY);
+  });
+});
+
+describe('maxBottomHeight', () => {
+  it('leaves the conversation its minimum, so a short stacked pane keeps its message box', () => {
+    expect(maxBottomHeight(700)).toBe(700 - CHAT_MIN_HEIGHT);
+    expect(maxBottomHeight(348)).toBe(PANEL_MIN_HEIGHT + 8);
+  });
+  it('never goes under the panel minimum, and has no limit before the view is measured', () => {
+    expect(maxBottomHeight(200)).toBe(PANEL_MIN_HEIGHT);
+    expect(maxBottomHeight(null)).toBe(Number.POSITIVE_INFINITY);
   });
 });
 

@@ -1,4 +1,4 @@
-import { Brain, Check, Copy, GitFork, Pencil, Undo2 } from 'lucide-react';
+import { Brain, Check, ClipboardType, Copy, GitFork, Pencil, Undo2 } from 'lucide-react';
 import { createContext, useContext, type ReactNode } from 'react';
 import { Button } from '../ui/Button.tsx';
 import { useFlash } from '../ui/useFlash.ts';
@@ -41,11 +41,31 @@ function CopyAction({ text, label }: { text: string; label: string }) {
 }
 
 /**
+ * Copies Claude's reply formatted, for an app that doesn't read Markdown (email, Docs, Slack, Word): the rendered
+ * reply as HTML, and the Markdown as plain text for a field that takes only text. The renderer loads on the first
+ * copy; the clipboard gets it as a promise, so the write still counts as part of the click.
+ */
+function RichCopyAction({ text }: { text: string }) {
+  const [copied, flash] = useFlash(1_500);
+  const copy = () => {
+    const html = import('./richText.tsx').then(({ replyHtml }) => new Blob([replyHtml(text)], { type: 'text/html' }));
+    const item = new ClipboardItem({ 'text/html': html, 'text/plain': new Blob([text], { type: 'text/plain' }) });
+    void navigator.clipboard.write([item]).then(() => flash('Copied'), () => {});
+  };
+  return (
+    <Action title={copied ? 'Copied' : 'Copy as rich text'} onClick={copy}>
+      {copied ? <Check size={13} className="text-ok" /> : <ClipboardType size={13} />}
+    </Action>
+  );
+}
+
+/**
  * Small toolbar that appears when you hover a message. It's invisible rather than removed the
  * rest of the time, so Tab still reaches its buttons and it shows up while one has focus.
  * On your prompt cards it floats over the card's top edge; under Claude's replies it's a row of
  * its own below the text, with its height kept, so it never covers the reply or makes it jump.
- * Copy is always there; fork, edit and rewind need the session view and a top-level message.
+ * Copy is always there (and Copy as rich text on Claude's replies); fork, edit and rewind need the session view
+ * and a top-level message.
  */
 export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { itemKey: string; kind: 'user' | 'command' | 'text'; text: string; copyOnly?: boolean }) {
   const context = useContext(MessageActionsContext);
@@ -80,6 +100,7 @@ export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { item
         <Button variant="quiet" size="sm" iconOnly icon={<Brain size={13} />} aria-label="Remember this…" onClick={() => context.remember(text, kind === 'user' ? 'user' : 'claude')} data-remember-message />
       )}
       {text && <CopyAction text={text} label={kind === 'text' ? 'Copy as Markdown' : 'Copy message'} />}
+      {text && kind === 'text' && <RichCopyAction text={text} />}
     </div>
   );
 }

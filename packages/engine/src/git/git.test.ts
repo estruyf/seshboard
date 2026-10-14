@@ -329,6 +329,26 @@ describe('branches', () => {
     expect((await listBranches(repo)).checkedOutElsewhere).toEqual(['worktree-tidy']);
   });
 
+  it('still lists the branches with a git older than 2.23, which rejects %(worktreepath)', async () => {
+    await run('branch', 'feature');
+    await run('worktree', 'add', '-q', '-b', 'worktree-tidy', join(repo, '.claude', 'worktrees', 'tidy'));
+    const asked: string[][] = [];
+    const oldGit: typeof git = (cwd, args, options) => {
+      asked.push(args);
+      if (args.some((arg) => arg.includes('%(worktreepath)'))) return Promise.reject(new Error('fatal: unknown field name: worktreepath'));
+      return git(cwd, args, options);
+    };
+    const listed = await listBranches(repo, oldGit);
+    expect(listed.current).toBe('main');
+    expect(listed.branches).toEqual(expect.arrayContaining(['main', 'feature', 'worktree-tidy']));
+    // The marks come from `git worktree list` instead.
+    expect(listed.checkedOutElsewhere).toEqual(['worktree-tidy']);
+    expect(asked.some((args) => args[0] === 'worktree')).toBe(true);
+    // Without `git worktree list` too, the branches still load, unmarked.
+    const older: typeof git = (cwd, args, options) => (args[0] === 'worktree' ? Promise.reject(new Error('unknown command')) : oldGit(cwd, args, options));
+    expect(await listBranches(repo, older)).toMatchObject({ current: 'main', branches: expect.arrayContaining(['main', 'feature', 'worktree-tidy']), checkedOutElsewhere: [] });
+  });
+
   it('says the folder is gone, not that git is missing, when the folder was moved away', async () => {
     const gone = join(repo, 'moved');
     mkdirSync(gone);

@@ -54,10 +54,8 @@ export function PaletteDialogs() {
             if (!client) throw new Error('Not connected to the engine');
             await client.call('session.delete', { sessionId: dialog.sessionId });
             useDrafts.getState().removeDraft(dialog.sessionId);
-            const panes = useSessions.getState();
-            // Two panes: the other one takes the full width. One: back Home, rather than keep a trashed session on screen.
-            if (panes.splitId && (dialog.sessionId === panes.mainId || dialog.sessionId === panes.splitId)) panes.closePane(dialog.sessionId === panes.mainId ? 'main' : 'split');
-            else if (panes.selectedId === dialog.sessionId) panes.closeSession();
+            // Its pane closes and the others take the space; the last one goes back Home, rather than keep a trashed session on screen.
+            useSessions.getState().closeSessions([dialog.sessionId]);
           }}
           onClose={close}
         />

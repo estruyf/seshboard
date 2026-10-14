@@ -231,7 +231,7 @@ export const SessionRow = memo(function SessionRow({
 }: {
   data: SessionRowData;
   selected: boolean;
-  /** Shown in the other (inactive) pane. */
+  /** Shown in another (inactive) pane. */
   beside?: boolean;
   /** Listed under Archived. */
   archived: boolean;
@@ -434,13 +434,12 @@ export function Sidebar() {
   const waiting = useHosts((s) => s.permissions.size);
   const search = useSessions((s) => s.filter);
   const selectedId = useSessions((s) => s.selectedId);
-  const mainId = useSessions((s) => s.mainId);
-  const splitId = useSessions((s) => s.splitId);
+  const paneIds = useSessions((s) => s.paneIds);
   const complete = useSessions((s) => s.complete);
   const loaded = useSessions((s) => s.loaded);
   const view = useSessions((s) => s.view);
   // Home is the main area with no session open (also behind Settings when it was opened from there).
-  const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.mainId === null);
+  const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
   // Settings is a sheet over the session, which stays selected in the list behind it.
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
   const { setFilter: setSearch, select, setView } = useSessions.getState();
@@ -972,7 +971,7 @@ export function Sidebar() {
                       picked={multi && picked.has(row.data.id)}
                       picking={multi}
                       selected={listView === 'session' && row.data.id === selectedId}
-                      beside={listView === 'session' && splitId !== null && row.data.id !== selectedId && (row.data.id === mainId || row.data.id === splitId)}
+                      beside={listView === 'session' && row.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(row.data.id)}
                       now={now}
                       tabbable={row.data.id === tabStopId}
                       waitingFor={rowStatus(row.data) === 'needs-you' ? waitingLabel(waitingTool.get(row.data.id)?.tool ?? null) : null}

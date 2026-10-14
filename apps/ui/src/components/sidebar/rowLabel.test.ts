@@ -31,7 +31,7 @@ describe('sessionRowLabel', () => {
     expect(sessionRowLabel({ ...base, status: 'needs-you', pinned: true })).toBe('Fix the login bug, switchboard, Waiting for you, pinned, updated 5 minutes ago');
     expect(sessionRowLabel({ ...base, archived: true, picked: true })).toBe('Fix the login bug, switchboard, archived, in the selection, updated 5 minutes ago');
     expect(sessionRowLabel({ ...base, status: 'running', archived: true, beside: true })).toBe(
-      'Fix the login bug, switchboard, Claude is working, archived, open in the other pane, updated 5 minutes ago',
+      'Fix the login bug, switchboard, Claude is working, archived, open in another pane, updated 5 minutes ago',
     );
   });
 

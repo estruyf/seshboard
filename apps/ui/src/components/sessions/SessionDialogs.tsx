@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ClaudeProfile } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { tildify, guessHome } from '../../lib/format.ts';
+import { tildify } from '../../lib/format.ts';
 import { trashName } from '../../lib/platform.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -178,7 +179,7 @@ export function CleanupPeriodDialog({
   const [choice, setChoice] = useState<Record<string, number | null>>(() => Object.fromEntries(periods.map((p) => [p.profileId, p.days])));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const home = guessHome(periods.map((p) => p.settingsPath));
+  const home = useHomeFolder();
   const changed = periods.filter((p) => !p.error && choice[p.profileId] !== p.days);
   const profileOf = (id: string): ClaudeProfile | undefined => profiles.find((p) => p.id === id);
   useEffect(() => setError(null), [choice]);

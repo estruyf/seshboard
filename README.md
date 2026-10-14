@@ -217,7 +217,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | Esc | Clear the selection (while sessions are selected) |
 | F2 | Rename the session (in the sidebar) |
 | ⌘⌫ | Delete the session (in the sidebar, to the Trash) |
-| ⌥-click | Open beside the current session (in the sidebar) |
+| ⌥-click | Open beside the current session (in the sidebar; Dragging the session onto a pane opens it there) |
 | Middle-click | Archive a finished session (in the sidebar) |
 | ← or → | Close or open a section (on a section header in the sidebar) |
 | ⌥-click | Close or open every section (on a section header in the sidebar) |
@@ -227,7 +227,14 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌥⇧↑ | Move a queued item to the top (on a queued item, in the sidebar or Home) |
 | ⌫ | Remove a queued item (on a queued item, in the sidebar or Home; Undo puts it back) |
 | ⇧F10 | Open the context menu (on a session, project or file; or right-click) |
-| ⌘\\ | Close the other pane (with two panes open) |
+| ⌘⌥W | Close this pane (with more than one pane open; The panes next to it take its space) |
+| ⌘\\ | Close the other panes (with more than one pane open; Keeps the pane you are in) |
+| ⌘⌥← | Go to the pane on the left (with more than one pane open) |
+| ⌘⌥→ | Go to the pane on the right (with more than one pane open) |
+| ⌘⌥↑ | Go to the pane above (with more than one pane open) |
+| ⌘⌥↓ | Go to the pane below (with more than one pane open) |
+| ⌘⇧X | Swap this pane with the next one (with more than one pane open; Dragging a pane's header onto the middle of another one does the same) |
+| ⌘⇧O | Stack this pane's split, or put it side by side (with more than one pane open; Turns the panes this one sits in the other way) |
 
 **In a session**
 

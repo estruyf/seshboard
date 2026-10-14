@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEve
 import { isSameOrInside, MEMORY_INDEX_LIMIT, type InstructionFile, type MemoryFile } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
-import { basename, dirnameOf, guessHome, shortAge, tildify } from '../../lib/format.ts';
+import { basename, dirnameOf, shortAge, tildify } from '../../lib/format.ts';
 import { LEVEL_TEXT } from '../../lib/levels.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { guardMemoryEdits, useMemoryView } from '../../state/memoryStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -271,8 +272,7 @@ export function MemoryTab({ root }: { root: string }) {
   const homeDir = list?.memoryDir ?? '';
   const select = (path: string) => guardMemoryEdits(() => setSelectedPath(path));
   const names = useMemo(() => new Set([...(list?.memories ?? []), ...(personal?.memories ?? [])].map((m) => m.name)), [list, personal]);
-  const projects = useProjects((s) => s.projects);
-  const home = useMemo(() => guessHome(projects.keys()), [projects]);
+  const home = useHomeFolder();
 
   /** Moves a memory to the personal folder, or from it into this project (the project's own profile). */
   const move = (memory: MemoryFile, to: 'personal' | 'project') =>

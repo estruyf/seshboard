@@ -72,6 +72,26 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "palette:close-other-panes",
+      "name": "Close other panes",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:swap-panes",
+      "name": "Swap panes",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:stack-panes",
+      "name": "Stack panes",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:panes-side-by-side",
+      "name": "Show panes side by side",
+      "page": "sessions/split-view"
+    },
+    {
       "id": "palette:close-session",
       "name": "Close session",
       "page": "sessions/home"
@@ -198,7 +218,27 @@
     },
     {
       "id": "palette:focus-other-pane",
-      "name": "Focus other pane",
+      "name": "Focus next pane",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:focus-pane-left",
+      "name": "Focus pane on the left",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:focus-pane-right",
+      "name": "Focus pane on the right",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:focus-pane-up",
+      "name": "Focus pane above",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:focus-pane-down",
+      "name": "Focus pane below",
       "page": "sessions/split-view"
     },
     {
@@ -762,8 +802,43 @@
       "page": "command-palette"
     },
     {
+      "id": "shortcut:pane.close",
+      "name": "pane.close",
+      "page": "sessions/split-view"
+    },
+    {
       "id": "shortcut:pane.close-other",
       "name": "pane.close-other",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.focus-left",
+      "name": "pane.focus-left",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.focus-right",
+      "name": "pane.focus-right",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.focus-up",
+      "name": "pane.focus-up",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.focus-down",
+      "name": "pane.focus-down",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.swap",
+      "name": "pane.swap",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.orientation",
+      "name": "pane.orientation",
       "page": "sessions/split-view"
     },
     {
@@ -1334,6 +1409,11 @@
     {
       "id": "feature:copy-message",
       "name": "Copy a message",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:copy-rich-text",
+      "name": "Copy a reply as rich text",
       "page": "sessions/conversation"
     },
     {
@@ -2389,6 +2469,36 @@
     {
       "id": "feature:split-view",
       "name": "Split view",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:swap-panes-drag",
+      "name": "Dock or swap panes by dragging a header",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:stacked-panes",
+      "name": "Side by side and stacked panes, mixed",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:drag-session-to-pane",
+      "name": "Drag a session from the sidebar onto a pane",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:dock-window-edge",
+      "name": "Dock a pane along a whole window edge",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:pane-dividers",
+      "name": "Resize panes with a divider",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:small-window-panes",
+      "name": "Only the active pane in a small window",
       "page": "sessions/split-view"
     },
     {

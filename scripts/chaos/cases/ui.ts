@@ -1,4 +1,5 @@
 /** The window: search, the message box, zoom, the terminal, a hung engine, imports, themes, memory, the session order. */
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,6 +10,104 @@ import type { Case } from './types.ts';
 const HERO = 'Add dark mode toggle';
 
 export const uiCases: Record<string, Case> = {
+  upNextLayout: {
+    finding: 'check',
+    mutates: true,
+    expect: 'Up next shows whole rows above the message box, never one cut in half under it, and a long message is cut short so every row keeps its actions in view.',
+    async run(c, note) {
+      const id = await openSessionByTitle(c, HERO);
+      if (!id) return { ok: false, saw: 'no hero session' };
+      const info = await c.rpc('system.info', {});
+      const db = (info.result as { paths: { database: string } } | undefined)?.paths.database;
+      if (!db) return { ok: false, saw: info.error ?? 'no database path' };
+      c.assertInSandbox(db);
+      // Messages kept for a session that isn't running show in its Up next. Written while the app is closed.
+      const long = `Once you are done, you can start with the following issue, and read every comment on it first: ${'https://github.com/example/repo/issues/97 '.repeat(4)}`;
+      const texts = [long, 'Fix issue 98', 'Fix issue 99', 'Fix issue 101', 'Implement issue 88', 'Also fix the queue'];
+      const ids = texts.map(() => randomUUID());
+      await c.quit();
+      const quote = (v: string) => `'${v.replaceAll("'", "''")}'`;
+      const rows = texts.map((text, i) => `(${quote(ids[i]!)}, ${quote(id)}, ${i}, ${quote(text)}, ${quote(i === 5 ? '[{"type":"image","mediaType":"image/png","data":"iVBORw0KGgo=","name":"image.png"}]' : '[]')}, ${Date.now() + i})`);
+      execFileSync('/usr/bin/sqlite3', [db, `INSERT INTO up_next (id, session_id, position, text, attachments_json, created_at) VALUES ${rows.join(', ')};`]);
+      await c.launch();
+      try {
+        await openSessionByTitle(c, HERO);
+        await c.page.locator('[data-current-session] [data-queue-list]').waitFor();
+        await sleep(300);
+        // Hover the long row: its Edit and Remove show, and must sit inside the list.
+        await c.page.locator('[data-current-session] [data-queue-item-row]').first().hover();
+        await sleep(200);
+        const seen = await c.page.evaluate(() => {
+          const list = document.querySelector<HTMLElement>('[data-current-session] [data-queue-list]')!;
+          const frame = document.querySelector('[data-current-session] [data-composer]')?.closest('.rounded-xl');
+          const box = list.getBoundingClientRect();
+          const rows = [...list.querySelectorAll<HTMLElement>('[data-queue-item-row]')].map((row) => row.getBoundingClientRect());
+          const visible = rows.filter((r) => r.bottom > box.top + 0.5 && r.top < box.bottom - 0.5);
+          const remove = list.querySelector('[data-queue-remove]')!.getBoundingClientRect();
+          return {
+            rows: rows.length,
+            visible: visible.length,
+            cutRows: visible.filter((r) => r.top < box.top - 0.5 || r.bottom > box.bottom + 0.5).length,
+            wider: list.scrollWidth - list.clientWidth,
+            removeInside: remove.right <= box.right + 0.5 && remove.width > 0,
+            overlapsBox: frame ? Math.max(0, box.bottom - frame.getBoundingClientRect().top) : null,
+            more: list.dataset.queueMore === 'true',
+          };
+        });
+        note('up next', seen);
+        const ok = seen.rows === 6 && seen.visible === 5 && seen.cutRows === 0 && seen.wider <= 0 && seen.removeInside && seen.overlapsBox === 0 && seen.more;
+        return { ok, saw: seen };
+      } finally {
+        for (const queued of ids) await c.rpc('session.queue.remove', { sessionId: id, id: queued });
+      }
+    },
+  },
+
+  copyRichText: {
+    finding: 'check',
+    expect: 'Copy as rich text on a Claude reply puts the rendered reply on the clipboard as HTML, and its Markdown as plain text.',
+    async run(c, note) {
+      await openSessionByTitle(c, HERO);
+      const reply = c.page.locator('[data-current-session] [data-item-kind="text"]').filter({ has: c.page.locator('.markdown') }).first();
+      await reply.waitFor();
+      // The clipboard is the Mac's own: keep what is on it, and put it back.
+      await c.app.evaluate(async ({ clipboard }) => {
+        // Items read can't be written back as they are: keep their data, to build new ones.
+        const saved: Array<Record<string, Blob>> = [];
+        for (const item of await clipboard.read()) {
+          const data: Record<string, Blob> = {};
+          for (const type of item.types) {
+            const value = await item.getType(type).catch(() => null);
+            if (value instanceof Blob) data[type] = value;
+          }
+          if (Object.keys(data).length) saved.push(data);
+        }
+        (globalThis as { __chaosClipboard?: unknown }).__chaosClipboard = saved;
+        await clipboard.clear();
+      });
+      try {
+        await reply.hover();
+        await reply.locator('[data-message-actions] button[aria-label="Copy as rich text"]').click();
+        await c.page.waitForFunction(() => !!document.querySelector('[data-current-session] [data-message-actions] button[aria-label="Copied"]'), null, { timeout: 3_000 }).catch(() => {});
+        const copied = await c.app.evaluate(async ({ clipboard }) => {
+          const [item] = await clipboard.read();
+          const read = async (type: string) => (item?.types.includes(type) ? await ((await item.getType(type)) as Blob).text() : '');
+          return { text: await read('text/plain'), html: await read('text/html') };
+        });
+        note('clipboard', { text: copied.text.slice(0, 120), html: copied.html.slice(0, 200) });
+        const html = /<(p|h\d|ul|ol|pre|table)\b/.test(copied.html) && !copied.html.includes('class=');
+        const plain = copied.text.trim() !== '' && !/<\/?(p|h\d|ul|ol)\b/.test(copied.text);
+        return { ok: html && plain, saw: { html: copied.html.slice(0, 200), text: copied.text.slice(0, 120) } };
+      } finally {
+        await c.app.evaluate(async ({ clipboard, ClipboardItem }) => {
+          const saved = (globalThis as { __chaosClipboard?: Array<Record<string, Blob>> }).__chaosClipboard;
+          if (saved?.length) await clipboard.write(saved.map((data) => new ClipboardItem(data)));
+          else await clipboard.clear();
+        });
+      }
+    },
+  },
+
   engineHang: {
     finding: 'CU1',
     expect: 'When the engine stops answering for a while (paused 10 s), the window says so.',

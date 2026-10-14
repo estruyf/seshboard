@@ -67,7 +67,7 @@ export const sessionCases: Record<string, Case> = {
   newSessionFails: {
     finding: 'CS2',
     mutates: true,
-    expect: 'When a new session fails at once (no login), its prompt can be sent again: the message box is usable, or the prompt is kept as unsent after a restart.',
+    expect: 'When a new session fails at once (no login), its prompt can be sent again: it is back in the message box, and kept as unsent after a restart.',
     async run(c, note) {
       const prompt = 'A prompt that must not get lost';
       await newSessionIn(c, 'acme-store');
@@ -76,14 +76,14 @@ export const sessionCases: Record<string, Case> = {
       await sleep(5_000);
       const view = await c.page.evaluate(() => {
         const box = document.querySelector('[data-current-session] [data-composer]') as HTMLTextAreaElement | null;
-        return { header: (document.querySelector('[data-current-session]') as HTMLElement | null)?.innerText.split('\n').slice(0, 3).join(' | ') ?? null, boxDisabled: box?.disabled ?? null };
+        return { header: (document.querySelector('[data-current-session]') as HTMLElement | null)?.innerText.split('\n').slice(0, 3).join(' | ') ?? null, boxDisabled: box?.disabled ?? null, boxText: box?.value ?? null };
       });
       note('view', view);
       await c.restart();
       await sleep(2_000);
       const unsent = await c.page.evaluate(() => (document.querySelector('[data-home-unsent]') as HTMLElement | null)?.innerText ?? '');
       note('unsent after restart', unsent.slice(0, 200));
-      return { ok: view.boxDisabled === false || unsent.includes(prompt), saw: view };
+      return { ok: view.boxDisabled === false && view.boxText === prompt && unsent.includes(prompt), saw: { ...view, unsent: unsent.slice(0, 200) } };
     },
   },
 

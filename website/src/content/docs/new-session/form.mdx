@@ -50,6 +50,8 @@ On the current checkout, the branch button lists your local branches, with a sea
 
 Switching uses git's own checkout: uncommitted changes that don't conflict come along, and git refuses when they would be overwritten. Nothing is stashed or thrown away.
 
+A branch that is checked out in another worktree (such as one Claude Code made in `.claude/worktrees`) is listed but can't be picked: git won't check out a branch twice. It says *Checked out in another worktree*. When a branch kept from before is one of them, **Start** says so; **Start in a new worktree** and **Add to queue** still work.
+
 A folder that isn't a git repository shows `no git`, and Claude edits the folder directly.
 
 ### Update from remote

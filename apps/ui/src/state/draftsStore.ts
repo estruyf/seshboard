@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { ContextItem, ImageAttachment } from '@switchboard/protocol/client';
-import { addChips } from '../components/composer/contextItems.ts';
-import { DRAFT_SETTLE_MS, isCountingDraft, nextDraft, type Draft, type DraftForm } from './drafts.ts';
+import { addChips, contextFromPrompt } from '../components/composer/contextItems.ts';
+import { DRAFT_SETTLE_MS, isCountingDraft, nextDraft, settleFirstPrompts, type Draft, type DraftForm, type FirstPrompt, type SessionsSeen } from './drafts.ts';
 
 export type ComposerDraft = Draft<ImageAttachment>;
 
@@ -15,6 +15,8 @@ export interface ArchivePrompt {
 interface DraftsState {
   /** By session id, or `new:<project folder>` for New session (see `newDraftKey`). */
   drafts: Record<string, ComposerDraft>;
+  /** New sessions' first prompts by session id, out of sight until the session has a transcript or fails. */
+  firstPrompts: Record<string, FirstPrompt<ImageAttachment>>;
   /** The saved drafts have been read (or there were none to read). */
   loaded: boolean;
   /** A message box should take focus with the caret at the end of its text (opened from the Unsent list or ⌘P). */
@@ -40,8 +42,12 @@ interface DraftsState {
   removeDrafts(keys: readonly string[]): void;
   /** A New session prompt follows the project it moves to. */
   moveDraft(from: string, to: string): void;
+  /** Keeps a new session's first prompt (as sent: its `@` mentions become chips again) until the session has a transcript. */
+  keepFirstPrompt(sessionId: string, start: { cwd: string; prompt: string; attachments: ImageAttachment[]; form: DraftForm }): void;
+  /** Moves first prompts on as sessions start, fail or turn out gone (`settleFirstPrompts`). */
+  settleFirstPrompts(seen: SessionsSeen): void;
   /** Drafts read back after a restart; anything typed meanwhile wins. */
-  load(drafts: Record<string, ComposerDraft>): void;
+  load(drafts: Record<string, ComposerDraft>, firstPrompts?: Record<string, FirstPrompt<ImageAttachment>>): void;
   requestFocus(key: string): void;
   clearFocus(): void;
   requestQuote(key: string, text: string): void;
@@ -100,6 +106,7 @@ export const useDrafts = create<DraftsState>()((set, get) => {
 
   return {
     drafts: {},
+    firstPrompts: {},
     loaded: false,
     focus: null,
     quote: null,
@@ -166,7 +173,19 @@ export const useDrafts = create<DraftsState>()((set, get) => {
       set((s) => ({ drafts: { ...without(s.drafts, [from]), [to]: moved } }));
       settleLater(to, moved);
     },
-    load: (drafts) => set((s) => ({ drafts: { ...drafts, ...s.drafts }, loaded: true })),
+    keepFirstPrompt: (sessionId, { cwd, prompt, attachments, form }) => {
+      const { text, context } = contextFromPrompt(prompt, cwd);
+      const chips = addChips([], context);
+      const draft = { text, attachments, updatedAt: Date.now(), counted: true, lostImages: 0, form, startIn: cwd, ...(chips.length ? { context: chips } : {}) };
+      set((s) => ({ firstPrompts: { ...s.firstPrompts, [sessionId]: { draft, restored: false } } }));
+    },
+    settleFirstPrompts: (seen) => {
+      const { drafts, firstPrompts, loaded } = get();
+      if (!loaded) return;
+      const next = settleFirstPrompts(drafts, firstPrompts, seen);
+      if (next) set(next);
+    },
+    load: (drafts, firstPrompts = {}) => set((s) => ({ drafts: { ...drafts, ...s.drafts }, firstPrompts: { ...firstPrompts, ...s.firstPrompts }, loaded: true })),
     requestFocus: (key) => set({ focus: { key, nonce: ++focusRequests } }),
     clearFocus: () => set({ focus: null }),
     requestQuote: (key, text) => set({ quote: { key, text, nonce: ++focusRequests } }),

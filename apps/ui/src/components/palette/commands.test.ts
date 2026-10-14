@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { arrangeCommands, COMMANDS, hintOf, rememberIn, titleOf, visibleCommands, type PaletteApi } from './commands.ts';
-import type { PaletteContext, PaletteSession } from './paletteContext.ts';
+import type { PaletteContext, PaletteGit, PaletteSession } from './paletteContext.ts';
 import { shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { APP_TERMINAL } from '../terminal/appTerminal.ts';
 
@@ -30,6 +30,8 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     git: null,
     terminal: { owner: null, cwd: null, open: false, maximized: false, dock: 'bottom', action: null },
     split: false,
+    splitDirection: null,
+    paneWays: [],
     focusLimit: null,
     notifications: true,
     sounds: false,
@@ -60,6 +62,8 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
   };
 }
 
+/** A clean checkout with a GitHub remote. */
+const GIT: PaletteGit = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false };
 const inSession = (session: Partial<PaletteSession> = {}, over: Partial<PaletteContext> = {}) =>
   context({ view: 'session', session: { ...SESSION, ...session }, terminal: { ...context().terminal, owner: 's1', cwd: '/work/app' }, ...over });
 const ids = (ctx: PaletteContext) => visibleCommands(ctx).map((c) => c.id);
@@ -146,7 +150,7 @@ describe('when(): always', () => {
 
 describe('when(): a session is open', () => {
   it('shows This session only in the session view', () => {
-    const shown = groupIds(inSession(), 'session');
+    const shown = groupIds(inSession({}, { git: GIT }), 'session');
     expect(shown).toEqual(expect.arrayContaining(['rename-session', 'pin', 'archive', 'copy-session-id', 'toggle-terminal', 'new-terminal-tab', 'toggle-changes', 'tools', 'open-in-editor', 'reveal-in-finder', 'close-session', 'delete-session']));
     expect(groupIds({ ...inSession(), view: 'settings' }, 'session')).toEqual([]);
   });
@@ -156,6 +160,13 @@ describe('when(): a session is open', () => {
     expect(fresh).not.toEqual(expect.arrayContaining(['rename-session']));
     for (const id of ['rename-session', 'pin', 'archive', 'delete-session', 'open-in-editor', 'toggle-changes', 'tools']) expect(fresh, id).not.toContain(id);
     expect(fresh).toEqual(expect.arrayContaining(['copy-session-id', 'close-session']));
+  });
+
+  it('offers Toggle changes only in a git checkout, where the Changes panel can show', () => {
+    expect(ids(inSession({}, { git: GIT }))).toContain('toggle-changes');
+    expect(ids(inSession())).not.toContain('toggle-changes');
+    // The folder commands still work outside git.
+    expect(ids(inSession())).toEqual(expect.arrayContaining(['open-in-editor', 'reveal-in-finder', 'tools']));
   });
 
   it('says Pin or Unpin, Archive or Unarchive, from the session', () => {
@@ -267,9 +278,22 @@ describe('when(): git, actions, terminal, panes', () => {
     expect(groupIds(open, 'terminal')).toEqual(['hide-terminal', 'maximize-terminal', 'dock-right']);
   });
 
-  it('offers the pane commands with two sessions side by side', () => {
+  it('offers the pane commands with more than one pane open', () => {
     expect(groupIds(inSession(), 'panes')).toEqual([]);
-    expect(groupIds(inSession({}, { split: true }), 'panes')).toEqual(['focus-other-pane', 'close-pane']);
+    expect(groupIds(inSession({}, { split: true, splitDirection: 'row' }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'stack-panes', 'close-pane', 'close-other-panes']);
+  });
+
+  it('offers the other direction of the split the active pane is in, never the one it has', () => {
+    expect(groupIds(inSession({}, { split: true, splitDirection: 'column' }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'panes-side-by-side', 'close-pane', 'close-other-panes']);
+    expect(ids(inSession({}, { splitDirection: 'column' }))).not.toContain('panes-side-by-side');
+    expect(ids(context({ view: 'settings', split: true, splitDirection: 'row' }))).not.toContain('swap-panes');
+  });
+
+  it('offers to go only where the active pane has a neighbour', () => {
+    const open = (paneWays: PaletteContext['paneWays']) => groupIds(inSession({}, { split: true, splitDirection: 'row', paneWays }), 'panes').filter((id) => id.startsWith('focus-pane-'));
+    expect(open([])).toEqual([]);
+    expect(open(['right'])).toEqual(['focus-pane-right']);
+    expect(open(['left', 'right', 'up', 'down'])).toEqual(['focus-pane-left', 'focus-pane-right', 'focus-pane-up', 'focus-pane-down']);
   });
 });
 
@@ -306,7 +330,7 @@ describe('arrangeCommands', () => {
   });
 
   it('ranks matches by title, highlights the letters, and finds keywords too', () => {
-    const ctx = inSession();
+    const ctx = inSession({}, { git: GIT });
     const [matches] = arrangeCommands(visibleCommands(ctx), ctx, [], 'tog chan');
     expect(matches!.items[0]!.command.id).toBe('toggle-changes');
     expect(matches!.items[0]!.indices.length).toBeGreaterThan(0);
@@ -349,10 +373,10 @@ describe('sidebar and session navigation', () => {
     expect(ids(context({ sidebar: 'closed' }))).not.toContain('sidebar-close');
   });
 
-  it('puts ⌘B on Toggle sidebar and keeps ⌘\\ for closing the other pane', () => {
+  it('puts ⌘B on Toggle sidebar and ⌘\\ on closing the other panes', () => {
     const byShortcut = (keys: string) => COMMANDS.filter((c) => c.shortcut && shortcutGlyphs(c.shortcut) === keys).map((c) => c.id);
     expect(byShortcut('⌘B')).toEqual(['toggle-sidebar']);
-    expect(byShortcut('⌘\\')).toEqual([]);
+    expect(byShortcut('⌘\\')).toEqual(['close-other-panes']);
   });
 
   it('steps through sessions with their shortcuts', () => {

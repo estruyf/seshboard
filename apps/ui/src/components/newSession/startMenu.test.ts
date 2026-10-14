@@ -15,6 +15,17 @@ describe('the Start button', () => {
     ]);
   });
 
+  it('keeps a new worktree and the queue when the branch is checked out in another worktree', () => {
+    const reason = 'feature is checked out in another worktree. Pick another branch, or start in a new worktree.';
+    const state = startButtonState({ ...ready, branchBlocked: reason });
+    expect(state).toMatchObject({ disabled: true, menuDisabled: false, reason });
+    expect(state.items.map((i) => [i.action, i.disabled])).toEqual([
+      ['start', true],
+      ['queue', false],
+      ['start-worktree', false],
+    ]);
+  });
+
   it('offers a new worktree only on the current checkout of a git repository', () => {
     expect(startButtonState({ ...ready, worktree: true }).items.map((i) => i.action)).toEqual(['start', 'queue']);
     expect(startButtonState({ ...ready, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);

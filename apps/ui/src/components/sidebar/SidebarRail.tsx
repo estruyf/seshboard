@@ -163,7 +163,7 @@ const RailRow = memo(function RailRow({
       data-session-status={status ?? undefined}
       tabIndex={tabbable ? 0 : -1}
       aria-current={selected ? 'true' : undefined}
-      aria-label={[data.title || 'Untitled session', projectName, status ? STATUS_LABEL[status].toLowerCase() : null, beside ? 'open in the other pane' : null, draft !== null ? 'unsent message' : null].filter(Boolean).join(', ')}
+      aria-label={[data.title || 'Untitled session', projectName, status ? STATUS_LABEL[status].toLowerCase() : null, beside ? 'open in another pane' : null, draft !== null ? 'unsent message' : null].filter(Boolean).join(', ')}
       data-has-draft={draft !== null || undefined}
       data-tooltip={[data.title, meta, line?.text ?? (draft !== null ? `Draft: ${draft}` : null), hint].filter(Boolean).join('\n')}
       data-tooltip-placement="right"
@@ -212,11 +212,10 @@ export function SidebarRail() {
   const hosts = useHosts((s) => s.hosts);
   const permissions = useHosts((s) => s.permissions);
   const selectedId = useSessions((s) => s.selectedId);
-  const mainId = useSessions((s) => s.mainId);
-  const splitId = useSessions((s) => s.splitId);
+  const paneIds = useSessions((s) => s.paneIds);
   const view = useSessions((s) => s.view);
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
-  const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.mainId === null);
+  const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const now = useNow();
@@ -386,7 +385,7 @@ export function SidebarRail() {
                   <RailRow
                     data={item.data}
                     selected={listView === 'session' && item.data.id === selectedId}
-                    beside={listView === 'session' && splitId !== null && item.data.id !== selectedId && (item.data.id === mainId || item.data.id === splitId)}
+                    beside={listView === 'session' && item.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(item.data.id)}
                     tabbable={item.data.id === tabStopId}
                     now={now}
                     request={requests.get(item.data.id) ?? null}

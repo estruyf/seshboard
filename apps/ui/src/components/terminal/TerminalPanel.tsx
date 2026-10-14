@@ -9,7 +9,7 @@ import { useTicker } from '../transcript/ActivityGroup.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { APP_TERMINAL } from './appTerminal.ts';
-import { maxRightWidth, PANEL_MIN_HEIGHT, PANEL_MIN_WIDTH, PANEL_MAX_HEIGHT_SHARE, PANEL_MAX_WIDTH_SHARE, panelSizeForKey, type RightBlocked, type TerminalDock } from './terminalLayout.ts';
+import { maxBottomHeight, maxRightWidth, PANEL_MIN_HEIGHT, PANEL_MIN_WIDTH, PANEL_MAX_HEIGHT_SHARE, PANEL_MAX_WIDTH_SHARE, panelSizeForKey, type RightBlocked, type TerminalDock } from './terminalLayout.ts';
 import { actionCommand, elapsedLabel, runStatus, tabStatus, type RunTimes } from './terminalStatus.ts';
 import { XTerm } from './XTerm.tsx';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -31,6 +31,7 @@ export function TerminalPanel({
   dock,
   rightBlocked,
   viewWidth,
+  viewHeight = null,
 }: {
   /** Null: the window's own terminal. */
   sessionId: string | null;
@@ -43,6 +44,8 @@ export function TerminalPanel({
   rightBlocked: RightBlocked;
   /** The session view's width: docked right, the conversation keeps its minimum next to the panel. */
   viewWidth: number | null;
+  /** The session view's height: docked below, the conversation keeps its minimum next to the panel. */
+  viewHeight?: number | null;
 }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -52,8 +55,11 @@ export function TerminalPanel({
   const canOpen = app || cwd !== null;
   const all = useTerminals((s) => s.terminals);
   const runs = useTerminals((s) => s.runs);
-  const height = useTerminals((s) => s.panelHeight);
-  const setHeight = useTerminals((s) => s.setPanelHeight);
+  // Docked below in a short view (a stacked pane), the conversation keeps its minimum height: the same limit as the width.
+  const maxHeight = Math.min(maxBottomHeight(viewHeight), Math.floor(window.innerHeight * PANEL_MAX_HEIGHT_SHARE));
+  const height = Math.min(useTerminals((s) => s.panelHeight), maxHeight);
+  const storeHeight = useTerminals((s) => s.setPanelHeight);
+  const setHeight = (next: number) => storeHeight(Math.min(next, maxHeight));
   // A width dragged out in a wider window is kept, and shown as wide as this view allows.
   const maxWidth = Math.min(maxRightWidth(viewWidth), Math.floor(window.innerWidth * PANEL_MAX_WIDTH_SHARE));
   const width = Math.min(useTerminals((s) => s.panelWidth), maxWidth);
@@ -195,7 +201,7 @@ export function TerminalPanel({
           aria-label={right ? 'Terminal width' : 'Terminal height'}
           aria-valuenow={right ? width : height}
           aria-valuemin={right ? PANEL_MIN_WIDTH : PANEL_MIN_HEIGHT}
-          aria-valuemax={right ? maxWidth : Math.round(window.innerHeight * PANEL_MAX_HEIGHT_SHARE)}
+          aria-valuemax={right ? maxWidth : maxHeight}
           tabIndex={0}
           onPointerDown={startResize}
           onKeyDown={resizeByKey}

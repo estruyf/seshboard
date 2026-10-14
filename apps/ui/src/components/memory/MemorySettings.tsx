@@ -3,12 +3,13 @@ import { fileManagerName } from '../../lib/platform.ts';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MEMORY_INDEX_LIMIT, type MemoryFile } from '@switchboard/protocol/client';
 import type { ContextMenuPoint } from '../../lib/contextMenu.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { guardMemoryEdits, useMemoryView } from '../../state/memoryStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { MemoryEditor } from './MemoryEditor.tsx';
 import { MemoryRow, useMemoryActions } from './MemoryTab.tsx';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { basename, guessHome, tildify } from '../../lib/format.ts';
+import { basename, tildify } from '../../lib/format.ts';
 import { LEVEL_TEXT } from '../../lib/levels.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -46,8 +47,7 @@ function BlockPreviewDialog({ onClose, onInstalled, readOnly }: { onClose(): voi
   const [previews, setPreviews] = useState<Array<{ profileId: string; path: string; exists: boolean; diff: string }> | null>(null);
   const [line, setLine] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const projects = useProjects((s) => s.projects);
-  const home = useMemo(() => guessHome(projects.keys()), [projects]);
+  const home = useHomeFolder();
   useEffect(() => {
     if (!client) return;
     void client.call('memory.blockPreview', {}).then(
@@ -191,7 +191,7 @@ export function MemorySettings({ actions }: { actions?: ReactNode }) {
   const client = connection.status === 'connected' ? connection.client : null;
   const { personal, error, set } = usePersonalMemory();
   const projects = useProjects((s) => s.projects);
-  const home = useMemo(() => guessHome(projects.keys()), [projects]);
+  const home = useHomeFolder();
   const [overview, setOverview] = useState<Array<{ root: string; memories: number; indexLines: number }> | null>(null);
   const [dialog, setDialog] = useState<'preview' | 'line' | 'remove' | null>(null);
 

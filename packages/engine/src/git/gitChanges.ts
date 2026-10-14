@@ -77,11 +77,12 @@ export async function baseBranch(cwd: string): Promise<string | null> {
  * Local branches, most recently committed first, and the one checked out (null when HEAD is detached).
  * `checkedOutElsewhere` lists the branches checked out in another worktree (Claude Code's `.claude/worktrees/*`,
  * say): git refuses to switch to them here, so the branch menu shows them as not available.
+ * `run` is git itself, swapped in tests.
  */
-export async function listBranches(cwd: string): Promise<{ current: string | null; branches: string[]; checkedOutElsewhere: string[] }> {
+export async function listBranches(cwd: string, run: typeof git = git): Promise<{ current: string | null; branches: string[]; checkedOutElsewhere: string[] }> {
   const [refs, head] = await Promise.all([
-    git(cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)%00%(worktreepath)', 'refs/heads']),
-    git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowExitCodes: [1, 128] }),
+    run(cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)%00%(worktreepath)', 'refs/heads']).catch((error: Error) => olderGitRefs(cwd, run, error)),
+    run(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowExitCodes: [1, 128] }),
   ]);
   const current = head.trim() || null;
   const branches: string[] = [];
@@ -94,6 +95,30 @@ export async function listBranches(cwd: string): Promise<{ current: string | nul
     if (worktree && name !== current) checkedOutElsewhere.push(name);
   }
   return { current, branches, checkedOutElsewhere };
+}
+
+/**
+ * The same lines as `listBranches` asks for, for a git older than 2.23, which has no `%(worktreepath)` and rejects
+ * the whole format. The branches come without it, and their worktrees from `git worktree list` (git 2.7); without
+ * that either, no branch is marked. Another failure (the folder is gone) is the first call's error.
+ */
+async function olderGitRefs(cwd: string, run: typeof git, error: Error): Promise<string> {
+  const names = await run(cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads']).catch(() => {
+    throw error;
+  });
+  const listed = await run(cwd, ['worktree', 'list', '--porcelain']).catch(() => '');
+  // A worktree's block holds `worktree <path>` and, unless it is detached, `branch refs/heads/<name>`.
+  const inWorktree = new Set(
+    listed
+      .split('\n')
+      .filter((line) => line.startsWith('branch refs/heads/'))
+      .map((line) => line.slice('branch refs/heads/'.length)),
+  );
+  return names
+    .split('\n')
+    .filter(Boolean)
+    .map((name) => (inWorktree.has(name) ? `${name}\0worktree` : name))
+    .join('\n');
 }
 
 /**

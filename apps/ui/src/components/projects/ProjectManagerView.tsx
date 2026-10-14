@@ -2,7 +2,8 @@ import { AlertTriangle, ArrowDown, ArrowUp, Ellipsis, FolderPlus, SquarePen } fr
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import type { ProjectInfo } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { agoText, guessHome, tildify } from '../../lib/format.ts';
+import { agoText, tildify } from '../../lib/format.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { addedProjects, baseOrder, moveRoot } from '../../state/projectList.ts';
 import { useProfile } from '../../state/profilesStore.ts';
@@ -112,7 +113,7 @@ export function ProjectManagerView() {
   const reload = useProjects((s) => s.reload);
   const icons = useProjectIconEntries();
   const list = useMemo(() => addedProjects(projects), [projects]);
-  const home = useMemo(() => guessHome(projects.keys()), [projects]);
+  const home = useHomeFolder();
   const [menu, setMenu] = useState<{ root: string; x: number; y: number; full: boolean } | null>(null);
 
   // The order last sent, until the list catches up with it: two quick clicks must not both start from the old list.

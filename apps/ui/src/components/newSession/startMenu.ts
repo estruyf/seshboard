@@ -14,6 +14,8 @@ export interface StartButtonInput {
   hasText: boolean;
   /** Why starting can't while queueing still can (the focus limit in Strict mode). */
   startBlocked: string | null;
+  /** Why starting on this checkout can't, while a new worktree still can (the branch is checked out in another worktree). */
+  branchBlocked?: string | null;
   /** The folder is a git repository, so a new worktree is possible. */
   canWorktree: boolean;
   /** The route already is a new worktree. */
@@ -51,19 +53,20 @@ export interface StartButtonState {
 export function startButtonState(input: StartButtonInput): StartButtonState {
   const { blocked, sending, hasMessage, hasText, startBlocked } = input;
   const canStart = !blocked && !sending && hasMessage && !startBlocked;
+  const canStartHere = canStart && !input.branchBlocked;
   const canQueue = !blocked && !sending && hasText;
   const verb = input.question ? 'Ask' : 'Start';
   const items: StartMenuItem[] = [
-    { action: 'start', label: input.question ? 'Ask' : 'Start session', shortcut: 'new-session.start', disabled: !canStart },
+    { action: 'start', label: input.question ? 'Ask' : 'Start session', shortcut: 'new-session.start', disabled: !canStartHere },
     { action: 'queue', label: 'Add to queue', shortcut: 'new-session.queue', disabled: !canQueue },
   ];
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
   return {
     label: sending ? `${input.question ? 'Asking' : 'Starting'}…` : verb,
     sending,
-    disabled: !canStart,
+    disabled: !canStartHere,
     menuDisabled: items.every((item) => item.disabled),
-    reason: sending ? null : (blocked ?? (!hasMessage ? 'Type a message first' : startBlocked)),
+    reason: sending ? null : (blocked ?? (!hasMessage ? 'Type a message first' : (startBlocked ?? input.branchBlocked ?? null))),
     items,
   };
 }
