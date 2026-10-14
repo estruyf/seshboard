@@ -28,6 +28,7 @@ import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
+import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
 import { ActionPills } from '../actions/ActionPills.tsx';
 import { useActionsMenu } from '../actions/useActionsMenu.tsx';
@@ -739,9 +740,15 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     const { message } = await client.call('session.queue.remove', { sessionId, id });
     if (!message) return false;
     const draft = useDrafts.getState().drafts[sessionId];
-    const merged = mergeIntoBox({ text: draft?.text ?? '', attachments: draft?.attachments ?? [] }, message);
+    const merged = mergeIntoBox({ text: draft?.text ?? '', attachments: draft?.attachments ?? [] }, backInBox(message.text, message.attachments));
     presetBox(merged.text, merged.attachments);
     return true;
+  };
+  /** A message back in the box: its file mentions become chips again, as they were when it was written. */
+  const backInBox = (prompt: string, attachments: ImageAttachment[]) => {
+    const { text, context } = contextFromPrompt(prompt, cwd);
+    if (context.length) useDrafts.getState().addContext(sessionId, context);
+    return { text, attachments };
   };
   const upNextActions: UpNextActions = {
     edit: (message) => void takeBack(message.id).catch((e: Error) => setActionError(`Could not take the message back: ${e.message}`)),
@@ -754,7 +761,10 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           toast('Removed from Up next', {
             undo: () => {
               // Still working: back in its place. Otherwise it would go at once, so it returns to the message box instead.
-              if (!running) return presetBox(removed.text, removed.attachments);
+              if (!running) {
+                const back = backInBox(removed.text, removed.attachments);
+                return presetBox(back.text, back.attachments);
+              }
               void client
                 .call('session.send', { sessionId, text: removed.text, attachments: removed.attachments, fork: false, mode: 'queue' })
                 .then((r) => (r.queued && at > 0 ? client.call('session.queue.move', { sessionId, id: r.messageUuid, toIndex: at }) : undefined))
