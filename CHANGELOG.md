@@ -11,6 +11,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **File Explorer and Windows Terminal open on Windows.** "Open in File Explorer" and "Open in Windows Terminal" in the ⋯ menu started a window you could not see. They now open where you can.
 - **Menus under the message box stay open.** The profile, model, effort and permission menus no longer close on their own when a new message arrives in the session.
 - **Edit in Up next keeps your files.** A queued message you edit comes back with its files as chips again, not as `@` mentions in the text.
 - **Starting a session when Claude Code can't run.** Start now says why, for example that you are not logged in, instead of "This session is not running". A Claude Code process that already failed is no longer handed to the next new session.

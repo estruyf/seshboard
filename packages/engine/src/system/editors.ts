@@ -122,6 +122,8 @@ export interface Launch {
   command: string;
   args: string[];
   verbatim?: boolean;
+  /** A program that shows its own window (Explorer, Windows Terminal): Windows must not start it hidden. */
+  window?: boolean;
 }
 
 /** Runs `file` with `args`; on Windows a `.cmd` goes through `cmd.exe`, every argument escaped for it. */
@@ -148,14 +150,14 @@ export function openCommand(
   const windows = platform === 'win32';
   if (spec.kind === 'finder') {
     // Explorer reads `/select,"C:\a b\c.txt"` itself; Node's quoting of the whole argument would break it.
-    if (windows) return { command: 'explorer.exe', args: [isDirectory ? `"${path}"` : `/select,"${path}"`], verbatim: true };
+    if (windows) return { command: 'explorer.exe', args: [isDirectory ? `"${path}"` : `/select,"${path}"`], verbatim: true, window: true };
     return { command: 'open', args: isDirectory ? [path] : ['-R', path] };
   }
   const where = isDirectory ? path : (windows ? win32 : posix).dirname(path);
   if (spec.id === 'windows-terminal') {
     const wt = findCli(spec, env, platform, exists) ?? 'wt.exe';
     // Windows Terminal splits its command line at `;`, so one in a folder name is escaped.
-    return { command: wt, args: ['-d', where.replace(/;/g, '\\;')] };
+    return { command: wt, args: ['-d', where.replace(/;/g, '\\;')], window: true };
   }
   if (spec.kind === 'terminal') return { command: 'open', args: ['-a', spec.app!, where] };
   const cli = findCli(spec, env, platform, exists);
@@ -164,8 +166,17 @@ export function openCommand(
   return { command: 'open', args: ['-a', spec.app!, path] };
 }
 
+/** How a launch is spawned. `windowsHide` keeps a console from flashing for `cmd.exe` and the like, but a program with a window of its own (Explorer, Windows Terminal) would open it hidden. */
+export const spawnOptions = (target: Launch, env: Record<string, string>, options: { detached?: boolean } = {}) => ({
+  env,
+  stdio: 'ignore' as const,
+  windowsHide: !target.window,
+  ...(target.verbatim ? { windowsVerbatimArguments: true } : {}),
+  ...options,
+});
+
 function start(target: Launch, env: Record<string, string>, options: { detached?: boolean } = {}) {
-  return spawn(target.command, target.args, { env, stdio: 'ignore', windowsHide: true, ...(target.verbatim ? { windowsVerbatimArguments: true } : {}), ...options });
+  return spawn(target.command, target.args, spawnOptions(target, env, options));
 }
 
 export function openInEditor(editorId: string, path: string, line: number | undefined, env: Record<string, string>, folder?: string): void {
