@@ -48,8 +48,14 @@ ipcMain.on(IpcChannel.getAppInfo, (event) => {
   event.returnValue = appInfo;
 });
 
-// The smoke test and the screenshots run against a throwaway profile so they never touch real app data.
-if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'switchboard-smoke-')));
+// The smoke test and the screenshots run against a throwaway profile so they never touch real app data. A driven run
+// may name its own folder (SWITCHBOARD_DRIVEN_PROFILE), so a restart finds the same profile (scripts/chaos); never one
+// inside the app data folder, where the installed app keeps the user's real data.
+const drivenProfile = driven ? process.env.SWITCHBOARD_DRIVEN_PROFILE : undefined;
+if (drivenProfile && isAbsolutePath(drivenProfile) && !isSameOrInside(drivenProfile, app.getPath('appData'))) {
+  mkdirSync(drivenProfile, { recursive: true });
+  app.setPath('userData', drivenProfile);
+} else if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'switchboard-smoke-')));
 // The engine inherits these: the Claude Code check reads a mock registry that offers a newer version, and an
 // update is refused even if one were clicked, so the user's real `claude` is never touched.
 if (scripted) {
