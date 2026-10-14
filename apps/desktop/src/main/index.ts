@@ -4836,11 +4836,11 @@ async function runToolsStep(win: BrowserWindow): Promise<string> {
 async function runSplitStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const active = () => js("document.querySelector('[data-pane-active=\"true\"]')?.dataset.pane ?? null") as Promise<string | null>;
-  await js(
-    `[...document.querySelectorAll('[data-session-id]')].find((row) => row.dataset.sessionId !== '${smokeSessionId}').dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }))`,
-  );
+  const other = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.dataset.sessionId !== '${smokeSessionId}')?.dataset.sessionId ?? null`)) as string | null;
+  if (!other) return 'failed: no second session to open beside';
+  await js(`document.querySelector('[data-session-id="${other}"]').dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }))`);
   if (!(await waitInPage(win, "document.querySelectorAll('[data-pane]').length === 2", 5_000))) return '⌥-click did not open a second pane';
-  if ((await active()) !== 'split') return 'the new pane is not the active one';
+  if ((await active()) !== other) return 'the new pane is not the active one';
   await waitInPage(win, "document.querySelectorAll('[data-transcript-item]').length > 0", 5_000);
   // The git split button stays in a narrow pane (on a git checkout, where the Changes button shows).
   const gitInEveryPane = "[...document.querySelectorAll('[data-current-session]')].every((pane) => !pane.querySelector('[data-toggle-changes]') || pane.querySelector('[data-git-button]'))";
@@ -4851,9 +4851,9 @@ async function runSplitStep(win: BrowserWindow): Promise<string> {
     "[...document.querySelectorAll('[data-current-session]')].flatMap((pane) => { const edge = pane.getBoundingClientRect().right + 1; return [...pane.querySelectorAll('[data-composer-submit], [data-open-tools], [data-context-meter], [data-git-menu], [data-more-menu]')].filter((el) => el.getBoundingClientRect().right > edge).map((el) => el.dataset.composerSubmit !== undefined ? 'send' : el.dataset.openTools !== undefined ? 'tools' : el.dataset.gitMenu !== undefined ? 'git' : el.dataset.moreMenu !== undefined ? 'more' : 'context'); })",
   )) as string[];
   if (overflow.length) return `in split view these stick out of their pane: ${overflow.join(', ')}`;
-  await js("document.querySelector('[data-pane=\"main\"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))");
-  if (!(await waitInPage(win, "document.querySelector('[data-pane-active=\"true\"]')?.dataset.pane === 'main'", 2_000))) return 'clicking the left pane did not make it active';
-  await js("document.querySelector('[data-pane=\"split\"] [data-close-pane]').click()");
+  await js(`document.querySelector('[data-pane="${smokeSessionId}"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+  if (!(await waitInPage(win, `document.querySelector('[data-pane-active="true"]')?.dataset.pane === '${smokeSessionId}'`, 2_000))) return 'clicking the first pane did not make it active';
+  await js(`document.querySelector('[data-pane="${other}"] [data-close-pane]').click()`);
   if (!(await waitInPage(win, "!document.querySelector('[data-split]') && document.querySelector('[data-current-session]')", 2_000))) return 'closing the pane did not go back to one';
   // Closing the last session lands on Home; picking it in the sidebar opens it again.
   const remaining = (await js("document.querySelector('[data-current-session]').dataset.currentSession")) as string;
@@ -4867,21 +4867,23 @@ async function runSplitStep(win: BrowserWindow): Promise<string> {
 type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 
 /**
- * Split view's layout. Two panes swap places by dragging a header onto the other (Esc cancels, a click doesn't
- * swap), by ⌘⇧X and from the palette, and no pane is remounted or moved in the DOM (each keeps its mark and
- * scroll). They stack one above the other and back (the layout buttons, ⌘⇧O), with nothing sticking out of a
- * pane, a terminal docked below a stacked pane leaving the message box room, and a window too short to stack
- * them shows them side by side again. Only the layout (kept in the throwaway profile) changes, and it is put back.
+ * Split view as a tiling layout: a third pane (a row and a column mixed), a drop that does not fit refused with
+ * a red indicator, docking by dragging a header onto an edge, swapping on the centre (Esc cancels, a click does
+ * nothing), a divider moved by the keyboard (and its minimum, double-click for equal sizes, a drag), flipping a
+ * split with ⌘⇧O, going to a neighbour with ⌘⌥ and the arrows, the palette, closing a pane, a window too small for
+ * the panes showing only the active one (and everything coming back), and opening a session by dragging its row
+ * from the sidebar onto a pane. No pane is remounted or moved in the DOM (each keeps its mark and scroll). Only
+ * the layout changes (nothing is kept between runs), and it is put back to the smoke session alone.
  */
 async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const sessionIn = (pane: string) => js(`document.querySelector('[data-pane-slot="${pane}"] [data-current-session]')?.dataset.currentSession ?? null`) as Promise<string | null>;
   const box = (selector: string) =>
     js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) }; })()`) as Promise<Box | null>;
+  const slot = (id: string) => box(`[data-pane-slot="${id}"]`);
   const activePane = () => js("document.querySelector('[data-pane-active=\"true\"]')?.dataset.pane ?? null") as Promise<string | null>;
-  const orientation = () => js("document.querySelector('[data-split]')?.dataset.splitOrientation ?? null") as Promise<string | null>;
+  const paneCount = () => js("Number(document.querySelector('[data-pane-count]')?.dataset.paneCount ?? 0)") as Promise<number>;
   const domOrder = () => js("[...document.querySelectorAll('[data-current-session]')].map((el) => el.dataset.currentSession).join()") as Promise<string>;
-  const shows = (value: string) => `document.querySelector('[data-split-orientation-toggle]')?.dataset.splitShown === '${value}'`;
+  const slots = () => js("[...document.querySelectorAll('[data-pane-slot]')].map((el) => { const r = el.getBoundingClientRect(); return { id: el.dataset.paneSlot, hidden: el.hasAttribute('data-pane-hidden'), left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }; })") as Promise<Array<{ id: string; hidden: boolean; left: number; top: number; width: number; height: number }>>;
   // Tags each pane's view and notes its scroll position: a remounted or moved view loses both.
   const mark = async () => {
     // Scrolled up a little, then left alone until the conversations stop moving (they open at their end).
@@ -4898,7 +4900,7 @@ async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
     js("[...document.querySelectorAll('[data-current-session]')].map((view) => { const t = view.querySelector('[data-transcript]'); return (view.dataset.smokeMark !== view.dataset.currentSession ? 'remounted' : '') + (String(t ? t.scrollHeight - t.scrollTop - t.clientHeight : '') !== (view.dataset.smokeScroll ?? '') ? 'scrolled, ' + view.dataset.smokeScroll + 'px from the end to ' + (t.scrollHeight - t.scrollTop - t.clientHeight) : ''); }).filter(Boolean).join('; ')") as Promise<string>;
   /** What sticks out of its pane, or overlaps: the header, the message box with its chips and Send, and the conversation above it. */
   const stickingOut = () =>
-    js(`[...document.querySelectorAll('[data-current-session]')].flatMap((view) => {
+    js(`[...document.querySelectorAll('[data-pane-slot]:not([data-pane-hidden]) [data-current-session]')].flatMap((view) => {
       const pane = view.getBoundingClientRect(), header = view.querySelector('header').getBoundingClientRect(), found = [];
       const inside = (name, el) => { const b = el.getBoundingClientRect(); if (b.right > pane.right + 1 || b.bottom > pane.bottom + 1 || b.left < pane.left - 1 || b.top < pane.top - 1) found.push(name); return b; };
       for (const [name, selector] of [['header', 'header'], ['message box', '[data-composer]'], ['chips', '[data-composer-chips]'], ['Send', '[data-composer-submit]'], ['more menu', '[data-more-menu]']]) {
@@ -4909,24 +4911,49 @@ async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
       }
       return found.map((what) => view.dataset.currentSession.slice(0, 8) + ': ' + what);
     })`) as Promise<string[]>;
+  /** The panes tile the area: none overlaps another, none is under its minimum size, and together they cover it. */
+  const tiles = async (): Promise<string | null> => {
+    const area = await box('[data-pane-count]');
+    const all = (await slots()).filter((s) => !s.hidden);
+    if (!area || all.length === 0) return 'no panes';
+    let covered = 0;
+    for (const [i, a] of all.entries()) {
+      if (a.width < 338 || a.height < 338) return `${a.id.slice(0, 8)} is only ${a.width} x ${a.height}`;
+      covered += a.width * a.height;
+      for (const b of all.slice(i + 1)) {
+        const w = Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left);
+        const h = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top);
+        if (w > 2 && h > 2) return `${a.id.slice(0, 8)} and ${b.id.slice(0, 8)} overlap`;
+      }
+    }
+    return Math.abs(covered - area.width * area.height) / (area.width * area.height) > 0.02 ? `the panes cover ${covered} of ${area.width * area.height}px²` : null;
+  };
+  const point = (b: Box, zone: 'left' | 'right' | 'top' | 'bottom' | 'center') => ({
+    x: Math.round(zone === 'left' ? b.left + b.width * 0.08 : zone === 'right' ? b.right - b.width * 0.08 : b.left + b.width / 2),
+    y: Math.round(zone === 'top' ? b.top + b.height * 0.08 : zone === 'bottom' ? b.bottom - b.height * 0.08 : b.top + b.height / 2),
+  });
 
-  /** Presses on `from`'s title, drags to the middle of `to` and lets go ('drop'), presses Esc first ('escape'), or lets go in place ('click'). */
-  const drag = async (from: 'main' | 'split', to: 'main' | 'split', finish: 'drop' | 'escape' | 'click', picture?: string): Promise<string | null> => {
-    const handle = await box(`[data-pane-slot="${from}"] [data-pane-handle] h1`);
-    const target = await box(`[data-pane-slot="${to}"]`);
+  /**
+   * Presses on `grab` (a pane's title, or a session's row), drags over `zone` of the pane showing `onto` and lets go
+   * ('drop'), presses Esc first ('escape'), or lets go in place ('click'). Returns what was wrong, or null.
+   */
+  const drag = async (grab: string, onto: string, zone: 'left' | 'right' | 'top' | 'bottom' | 'center', finish: 'drop' | 'escape' | 'click', expect: { label?: string; blocked?: boolean; picture?: string } = {}): Promise<string | null> => {
+    const handle = await box(grab);
+    const target = await slot(onto);
     if (!handle || !target) return 'there is no header to drag or no pane to drop on';
-    const start = { x: handle.left + 12, y: Math.round(handle.top + handle.height / 2) };
-    const end = { x: Math.round(target.left + target.width / 2), y: Math.round(target.top + target.height / 2) };
+    const start = { x: handle.left + Math.min(12, Math.round(handle.width / 2)), y: Math.round(handle.top + handle.height / 2) };
+    const end = point(target, zone);
     win.webContents.sendInputEvent({ type: 'mouseMove', x: start.x, y: start.y });
     win.webContents.sendInputEvent({ type: 'mouseDown', x: start.x, y: start.y, button: 'left', clickCount: 1 });
     let problem: string | null = null;
     if (finish !== 'click') {
       for (let i = 1; i <= 6; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: start.x + Math.round(((end.x - start.x) * i) / 6), y: start.y + Math.round(((end.y - start.y) * i) / 6), button: 'left' });
-      if (!(await waitInPage(win, `document.querySelector('[data-pane-drop-target="${to}"]')`, 2_000))) problem = 'no drop indicator showed over the other pane while dragging';
+      if (!(await waitInPage(win, `document.querySelector('[data-pane-drop-target="${onto}"][data-pane-drop-zone="${zone}"]')`, 2_000))) problem = `no ${zone} drop indicator showed over the pane while dragging`;
       else {
-        const frame = (await js(`(() => { const el = document.querySelector('[data-pane-drop-target="${to}"]'); return { ring: getComputedStyle(el).boxShadow !== 'none', label: el.innerText.trim(), cursor: getComputedStyle(document.body).cursor }; })()`)) as { ring: boolean; label: string; cursor: string };
-        if (!frame.ring || frame.label !== 'Swap panes') problem = `the drop indicator is wrong: ${JSON.stringify(frame)}`;
-        if (picture) await shot(win, picture);
+        await settle(win);
+        const frame = (await js(`(() => { const el = document.querySelector('[data-pane-drop-target]'); const r = el.getBoundingClientRect(), p = document.querySelector('[data-pane-slot="${onto}"]').getBoundingClientRect(); return { over: el.dataset.paneDropTarget.slice(0, 8), zone: el.dataset.paneDropZone, label: el.innerText.trim(), blocked: el.hasAttribute('data-pane-drop-blocked'), border: getComputedStyle(el).borderTopWidth, region: [r.left, r.top, r.width, r.height].map(Math.round).join(','), pane: [p.left, p.top, p.width, p.height].map(Math.round).join(','), cursor: getComputedStyle(document.body).cursor }; })()`)) as { label: string; blocked: boolean; border: string; cursor: string };
+        if (frame.border === '0px' || frame.blocked !== Boolean(expect.blocked) || (expect.label && frame.label !== expect.label)) problem = `the drop indicator is wrong: ${JSON.stringify(frame)}`;
+        if (expect.picture) await shot(win, expect.picture);
       }
     }
     if (finish === 'escape') pressKey(win, 'Escape');
@@ -4935,124 +4962,227 @@ async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
     await settle(win);
     return problem;
   };
-  const ended = "!document.querySelector('[data-pane-drop-target]') && !document.documentElement.hasAttribute('data-pane-dragging')";
+  const ended = "!document.querySelector('[data-pane-drop-target]') && !document.documentElement.hasAttribute('data-pane-dragging') && !document.querySelector('[data-session-drag-ghost]')";
+  const handleOf = (id: string) => `[data-pane-slot="${id}"] [data-pane-handle] h1`;
 
-  const firstView = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
-  if (!firstView || !smokeSessionId) return 'failed: no session open to split';
-  await js(
-    `[...document.querySelectorAll('[data-session-id]')].find((row) => row.dataset.sessionId !== '${smokeSessionId}').dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }))`,
-  );
-  if (!(await waitInPage(win, "document.querySelectorAll('[data-pane]').length === 2", 5_000))) return 'failed: ⌥-click did not open a second pane';
-  await waitInPage(win, "document.querySelectorAll('[data-transcript-item]').length > 0", 5_000);
+  const smoke = smokeSessionId;
+  if (!smoke || !(await waitInPage(win, `document.querySelector('[data-current-session="${smoke}"]')`, 3_000))) return 'failed: no session open to split';
+  const others = (await js(`[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId).filter((id) => id !== '${smoke}').slice(0, 3)`)) as string[];
+  if (others.length < 3) return `failed: needs four sessions in the sidebar to arrange, found ${others.length + 1}`;
+  const [one, two, three] = others as [string, string, string];
   const bounds = win.getBounds();
-  let left = await sessionIn('main');
-  let right = await sessionIn('split');
-  if (!left || !right || left === right) return `failed: the panes show ${left} and ${right}`;
-  const extra = left === smokeSessionId ? right : left;
   try {
-    if ((await orientation()) !== 'side') return `failed: split view did not open side by side (${await orientation()})`;
-    const region = (await js("getComputedStyle(document.querySelector('[data-pane-handle]')).getPropertyValue('-webkit-app-region')")) as string;
-    if (region && region !== 'no-drag') return `failed: the header's handle is part of the window's drag region (${region}), which takes the mouse`;
+    const region = await js("(() => { const h = document.querySelector('[data-pane-handle]'); return h ? getComputedStyle(h).getPropertyValue('-webkit-app-region') : 'no-handle'; })()");
+    if (region !== 'no-handle') return 'failed: a lone session has a pane handle';
 
-    // Drag the left pane's header onto the right pane: they trade places, and the active pane stays with its session.
+    // Two panes, then a third: a row and a column mixed, nothing sticking out, no divider missing.
+    const openBeside = (id: string) => js(`document.querySelector('[data-session-id="${id}"]').dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }))`);
+    await openBeside(one);
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-pane]').length === 2", 5_000))) return 'failed: ⌥-click did not open a second pane';
+    await openBeside(two);
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-pane]').length === 3", 5_000))) return 'failed: ⌥-click did not open a third pane';
+    await waitInPage(win, "document.querySelectorAll('[data-transcript-item]').length > 0", 5_000);
+    await settle(win);
+    const handleRegion = (await js("getComputedStyle(document.querySelector('[data-pane-handle]')).getPropertyValue('-webkit-app-region')")) as string;
+    if (handleRegion && handleRegion !== 'no-drag') return `failed: the header's handle is part of the window's drag region (${handleRegion}), which takes the mouse`;
+    if ((await activePane()) !== two) return 'failed: the newest pane is not the active one';
+    const three3 = await slots();
+    const lefts = new Set(three3.map((s) => s.left));
+    const tops = new Set(three3.map((s) => s.top));
+    if (lefts.size < 2 || tops.size < 2) return `failed: three panes are not a row and a column mixed (${JSON.stringify(three3)})`;
+    const gaps = await tiles();
+    if (gaps) return `failed: three panes do not tile the area: ${gaps}`;
+    if ((await js("document.querySelectorAll('[data-pane-divider]').length")) !== 2) return 'failed: three panes should have two dividers';
+    const sticking = await stickingOut();
+    if (sticking.length) return `failed: with three panes these stick out of their pane: ${sticking.join(', ')}`;
+    await shot(win, 'split-three.png');
     await mark();
     const order = await domOrder();
-    const dragged = await drag('main', 'split', 'drop', 'split-drag.png');
-    if (dragged) return `failed: ${dragged}`;
-    if (!(await waitInPage(win, `document.querySelector('[data-pane-slot="main"] [data-current-session="${right}"]') && document.querySelector('[data-pane-slot="split"] [data-current-session="${left}"]')`, 3_000))) {
-      return 'failed: dragging a header onto the other pane did not swap them';
+    const stays = async (what: string): Promise<string | null> => {
+      const lost = await changed();
+      return lost || (await domOrder()) !== order ? `failed: ${what} remounted or moved a pane (${lost || 'its place in the DOM changed'})` : null;
+    };
+    const was = await slots();
+
+    // A drop that cannot fit (three panes stacked need more height than there is) is refused in red and changes nothing.
+    const tall = await slot(smoke);
+    const below = await slot(two);
+    if (tall && below && tall.left < below.left) {
+      const refused = await drag(handleOf(smoke), two, 'bottom', 'drop', { blocked: true, label: 'No room for that here', picture: 'split-no-room.png' });
+      if (refused) return `failed: ${refused}`;
+      if (JSON.stringify(await slots()) !== JSON.stringify(was) || !(await waitInPage(win, ended, 2_000))) return 'failed: a drop that does not fit changed the layout or left the indicator';
     }
-    [left, right] = [right, left];
-    const lost = await changed();
-    if (lost || (await domOrder()) !== order) return `failed: the swap remounted or moved a pane (${lost || 'its place in the DOM changed'})`;
-    const [one, two] = [await box('[data-pane-slot="main"]'), await box('[data-pane-slot="split"]')];
-    if (!one || !two || one.left >= two.left) return 'failed: after the swap the first pane is not on the left';
-    if ((await activePane()) !== 'split' || (await sessionIn('split')) !== right) return 'failed: the active pane did not stay with its session';
+
+    // Docking: the first pane's header onto the right edge of another pane docks it beside that pane.
+    const docked = await drag(handleOf(smoke), one, 'right', 'drop', { label: 'Dock on the right', picture: 'split-dock.png' });
+    if (docked) return `failed: ${docked}`;
     if (!(await waitInPage(win, ended, 2_000))) return 'failed: the drag indicator stayed after the drop';
-
-    // Esc cancels a drag; a click on the header, without moving, swaps nothing.
-    const cancelled = await drag('main', 'split', 'escape');
-    if (cancelled) return `failed: ${cancelled}`;
-    if (!(await waitInPage(win, ended, 2_000)) || (await sessionIn('main')) !== left) return 'failed: Esc did not cancel the drag';
-    const clicked = await drag('main', 'split', 'click');
-    if (clicked || (await sessionIn('main')) !== left) return 'failed: a click on a header swapped the panes';
-
-    // The keyboard and the palette do the same.
-    pressKey(win, 'X', ['meta', 'shift']);
-    if (!(await waitInPage(win, `document.querySelector('[data-pane-slot="main"] [data-current-session="${right}"]')`, 3_000))) return 'failed: ⌘⇧X did not swap the panes';
-    [left, right] = [right, left];
-    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return 'failed: ⌘K did not open the palette';
-    await setFieldValue(win, '[data-palette-input]', 'swap panes');
-    if (!(await waitInPage(win, "document.querySelector('[data-command-palette] [data-palette-command]')?.dataset.paletteCommand === 'swap-panes'", 3_000))) return 'failed: the palette does not put Swap panes first for "swap panes"';
-    pressKey(win, 'Return');
-    if (!(await waitInPage(win, `!document.querySelector('[data-command-palette]') && document.querySelector('[data-pane-slot="main"] [data-current-session="${right}"]')`, 3_000))) return 'failed: Swap panes in the palette did not swap';
-    [left, right] = [right, left];
-    if (await changed()) return 'failed: swapping from the keyboard remounted a pane';
-
-    // Stacked: one pane above the other, filling the area.
-    const area = await box('[data-split]');
-    let stacked = '';
-    if (area && area.height >= 700) {
-      const click = await clickLikeAUser(win, '[data-split-orientation-toggle]');
-      if (!(await waitInPage(win, `document.querySelector('[data-split]')?.dataset.splitOrientation === 'stacked' && ${shows('stacked')}`, 3_000))) return `failed: Stacked did not stack the panes (the click landed on ${click.at})`;
-      await settle(win);
-      const [top, bottom] = [await box('[data-pane-slot="main"]'), await box('[data-pane-slot="split"]')];
-      if (!top || !bottom || bottom.top < top.bottom - 1 || Math.abs(top.width - bottom.width) > 1 || top.height < 300 || bottom.height < 300) return `failed: the stacked panes are not one above the other (${JSON.stringify({ top, bottom })})`;
-      const sticking = await stickingOut();
-      if (sticking.length) return `failed: stacked, these stick out of their pane: ${sticking.join(', ')}`;
-      await shot(win, 'split-stacked.png');
-      // Drag works in rows too.
-      await mark();
-      const dragged2 = await drag('main', 'split', 'drop');
-      if (dragged2) return `failed: stacked, ${dragged2}`;
-      if (!(await waitInPage(win, `document.querySelector('[data-pane-slot="main"] [data-current-session="${right}"]') && document.querySelector('[data-pane-slot="split"] [data-current-session="${left}"]')`, 3_000))) return 'failed: stacked, dragging a header did not swap the panes';
-      [left, right] = [right, left];
-      const [first, second] = [await box('[data-pane-slot="main"]'), await box('[data-pane-slot="split"]')];
-      if ((await changed()) || !first || !second || first.top >= second.top) return 'failed: stacked, the swap remounted a pane or left the first one below';
-      // A terminal docked below a short pane leaves the conversation its room: the smoke session's panel, in its folder.
-      const view = `[data-current-session="${smokeSessionId}"]`;
-      await js(`document.querySelector('${view} [data-toggle-terminal]')?.click()`);
-      if (!(await waitInPage(win, `document.querySelector('${view} [data-terminal-panel]')`, 3_000))) return 'failed: the terminal did not open in the stacked pane';
-      await settle(win);
-      const panel = await box(`${view} [data-terminal-panel]`);
-      const pane = await box(view);
-      const send = await box(`${view} [data-composer-submit]`);
-      const transcript = await box(`${view} [data-transcript]`);
-      if (!panel || !pane || !send || !transcript) return 'failed: no panel, message box or conversation in the stacked pane';
-      if (panel.bottom > pane.bottom + 1 || send.bottom > panel.top + 1 || transcript.height < 40) return `failed: in a stacked pane the terminal pushes the message box out (${JSON.stringify({ pane, panel, send, transcript })})`;
-      await shot(win, 'split-stacked-terminal.png');
-      const stuck = await stickingOut();
-      if (stuck.length) return `failed: stacked with a terminal, these stick out of their pane: ${stuck.join(', ')}`;
-      await js(`document.querySelector('${view} [data-terminal-panel] [data-terminal-tab-close]')?.click()`);
-      if (!(await waitInPage(win, `!document.querySelector('${view} [data-terminal-panel]')`, 3_000))) return 'failed: closing the terminal tab did not hide the panel';
-
-      // ⌘⇧O flips it back, and a window too short to stack them shows them side by side (the choice is kept).
-      pressKey(win, 'O', ['meta', 'shift']);
-      if (!(await waitInPage(win, `document.querySelector('[data-split]')?.dataset.splitOrientation === 'side' && ${shows('side')}`, 3_000))) return 'failed: ⌘⇧O did not put the panes side by side';
-      pressKey(win, 'O', ['meta', 'shift']);
-      if (!(await waitInPage(win, "document.querySelector('[data-split]')?.dataset.splitOrientation === 'stacked'", 3_000))) return 'failed: ⌘⇧O did not stack the panes';
-      win.setContentSize(1280, 600);
-      if (!(await waitInPage(win, `document.querySelector('[data-split]')?.dataset.splitOrientation === 'side' && ${shows('side')} && document.querySelector('[data-split-orientation-toggle]').dataset.tooltip.includes('taller')`, 3_000))) {
-        return 'failed: in a window too short to stack, the panes did not go side by side with a reason';
-      }
-      await settle(win);
-      const short = await stickingOut();
-      if (short.length) return `failed: in the small window these stick out of their pane: ${short.join(', ')}`;
-      win.setBounds(bounds);
-      if (!(await waitInPage(win, "document.querySelector('[data-split]')?.dataset.splitOrientation === 'stacked'", 3_000))) return 'failed: the stacked layout did not come back in the taller window';
-      pressKey(win, 'O', ['meta', 'shift']);
-      if (!(await waitInPage(win, `document.querySelector('[data-split]')?.dataset.splitOrientation === 'side'`, 3_000))) return 'failed: ⌘⇧O did not put the panes side by side again';
-      stacked = ', stacked them (also with a terminal and in a window too short for it)';
-    } else {
-      stacked = `; the window is too short here (${area?.height}px) to check stacking`;
+    const [smokeBox, oneBox, twoBox] = [await slot(smoke), await slot(one), await slot(two)];
+    if (!smokeBox || !oneBox || !twoBox || smokeBox.left < oneBox.right - 2 || Math.abs(smokeBox.top - oneBox.top) > 2 || twoBox.top < oneBox.bottom - 2) {
+      return `failed: docking on the right did not put the pane beside the other with the third below (${JSON.stringify({ smokeBox, oneBox, twoBox })})`;
     }
-    return `ok: dragged a header to swap the panes (Esc cancels, a click does not), swapped with ⌘⇧X and the palette without remounting${stacked}`;
+    if ((await activePane()) !== smoke) return 'failed: the docked pane did not become active';
+    const afterDock = await stays('docking');
+    if (afterDock) return afterDock;
+    const tidy = await tiles();
+    if (tidy) return `failed: after docking the panes do not tile the area: ${tidy}`;
+
+    // The centre swaps; Esc cancels; a click on the header does nothing.
+    const swapped = await drag(handleOf(smoke), two, 'center', 'drop', { label: 'Swap panes' });
+    if (swapped) return `failed: ${swapped}`;
+    const [smokeAfter, twoAfter] = [await slot(smoke), await slot(two)];
+    if (!smokeAfter || !twoAfter || Math.abs(smokeAfter.top - twoBox.top) > 2 || Math.abs(twoAfter.top - smokeBox.top) > 2) return 'failed: dropping on the centre did not swap the panes';
+    const placed = JSON.stringify(await slots());
+    const cancelled = await drag(handleOf(smoke), one, 'top', 'escape');
+    if (cancelled) return `failed: ${cancelled}`;
+    if (!(await waitInPage(win, ended, 2_000)) || JSON.stringify(await slots()) !== placed) return 'failed: Esc did not cancel the drag';
+    const clicked = await drag(handleOf(smoke), one, 'top', 'click');
+    if (clicked || JSON.stringify(await slots()) !== placed) return 'failed: a click on a header moved a pane';
+    const afterSwap = await stays('swapping');
+    if (afterSwap) return afterSwap;
+
+    // A divider by the keyboard: ← → move it by one step (24px), Home and End stop at the minimum sizes.
+    const divider = '[data-pane-divider="row"]';
+    const everyPane = await slots();
+    const topRow = everyPane.filter((s) => s.top === Math.min(...everyPane.map((x) => x.top))).sort((a, b) => a.left - b.left);
+    const [left, right] = topRow;
+    if (topRow.length !== 2 || !left || !right) return `failed: no two panes side by side to resize (${JSON.stringify(everyPane)})`;
+    await js(`document.querySelector('${divider}').focus()`);
+    const role = (await js(`(() => { const el = document.querySelector('${divider}'); return el.getAttribute('role') + ' ' + el.getAttribute('aria-orientation') + ' ' + el.getAttribute('aria-valuenow'); })()`)) as string;
+    if (!role.startsWith('separator vertical')) return `failed: the divider is not a vertical separator (${role})`;
+    pressKey(win, 'Right');
+    if (!(await waitInPage(win, `Math.abs(document.querySelector('[data-pane-slot="${left.id}"]').getBoundingClientRect().width - ${left.width + 24}) < 3`, 2_000))) return 'failed: → did not move the divider by one step';
+    const stepped = (await slots()).find((s) => s.id === right.id)!;
+    if (Math.abs(stepped.width - (right.width - 24)) > 3) return 'failed: the pane on the other side of the divider did not give up the space';
+    pressKey(win, 'Left');
+    pressKey(win, 'End');
+    if (!(await waitInPage(win, `document.querySelector('[data-pane-slot="${right.id}"]').getBoundingClientRect().width < 345`, 2_000))) return 'failed: End did not stop at the pane minimum';
+    const squeezed = (await slots()).find((s) => s.id === right.id)!;
+    if (squeezed.width < 338) return `failed: End took a pane under its minimum (${squeezed.width}px)`;
+    // Double-click: equal sizes. Then a drag of the divider with the mouse moves it with the pointer.
+    const grip = await box(divider);
+    if (!grip) return 'failed: the divider went away';
+    const at = { x: Math.round(grip.left + grip.width / 2), y: Math.round(grip.top + grip.height / 2) };
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: at.x, y: at.y });
+    for (const clickCount of [1, 2]) {
+      win.webContents.sendInputEvent({ type: 'mouseDown', x: at.x, y: at.y, button: 'left', clickCount });
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: at.x, y: at.y, button: 'left', clickCount });
+    }
+    if (!(await waitInPage(win, `(() => { const a = document.querySelector('[data-pane-slot="${left.id}"]').getBoundingClientRect().width, b = document.querySelector('[data-pane-slot="${right.id}"]').getBoundingClientRect().width; return Math.abs(a - b) < 3; })()`, 2_000))) return 'failed: double-clicking the divider did not make the two panes equal';
+    const before = (await slots()).find((s) => s.id === left.id);
+    const moved = await box(divider);
+    if (!before || !moved) return 'failed: no divider to drag';
+    const from = { x: Math.round(moved.left + moved.width / 2), y: Math.round(moved.top + moved.height / 2) };
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: from.x, y: from.y });
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: from.x, y: from.y, button: 'left', clickCount: 1 });
+    for (let i = 1; i <= 5; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: from.x + 16 * i, y: from.y, button: 'left' });
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: from.x + 80, y: from.y, button: 'left', clickCount: 1 });
+    if (!(await waitInPage(win, `Math.abs(document.querySelector('[data-pane-slot="${left.id}"]').getBoundingClientRect().width - ${before.width + 80}) < 4`, 2_000))) return 'failed: dragging the divider did not follow the pointer';
+    const afterResize = await stays('resizing');
+    if (afterResize) return afterResize;
+    const resized = await tiles();
+    if (resized) return `failed: after resizing the panes do not tile the area: ${resized}`;
+
+    // The keyboard: ⌘⌥ and the arrows go to the neighbour; ⌘⇧O is refused when the turned layout would not fit; ⌘⇧X swaps.
+    const [west, east] = [left, right];
+    await js(`document.querySelector('[data-pane="${east.id}"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+    pressKey(win, 'Left', ['meta', 'alt']);
+    if (!(await waitInPage(win, `document.querySelector('[data-pane-active="true"]')?.dataset.pane === '${west.id}'`, 2_000))) return 'failed: ⌘⌥← did not go to the pane on the left';
+    pressKey(win, 'Right', ['meta', 'alt']);
+    if (!(await waitInPage(win, `document.querySelector('[data-pane-active="true"]')?.dataset.pane === '${east.id}'`, 2_000))) return 'failed: ⌘⌥→ did not go to the pane on the right';
+    pressKey(win, 'Down', ['meta', 'alt']);
+    if (!(await waitInPage(win, `document.querySelector('[data-pane-active="true"]')?.dataset.pane === '${smoke}'`, 2_000))) return 'failed: ⌘⌥↓ did not go to the pane below';
+    pressKey(win, 'Up', ['meta', 'alt']);
+    if (!(await waitInPage(win, `[${JSON.stringify(west.id)}, ${JSON.stringify(east.id)}].includes(document.querySelector('[data-pane-active="true"]')?.dataset.pane)`, 2_000))) return 'failed: ⌘⌥↑ did not go back up';
+    const beforeFlip = JSON.stringify(await slots());
+    pressKey(win, 'O', ['meta', 'shift']);
+    await settle(win);
+    if (JSON.stringify(await slots()) !== beforeFlip) return 'failed: ⌘⇧O changed three panes into a layout that does not fit the window';
+    const rects = async () => (await slots()).map((s) => `${s.left},${s.top},${s.width},${s.height}`).sort().join('|');
+    const activeRect = async () => {
+      const id = await activePane();
+      const s = (await slots()).find((x) => x.id === id);
+      return s ? `${s.left},${s.top}` : '';
+    };
+    const [placesBefore, activeBefore] = [await rects(), await activeRect()];
+    pressKey(win, 'X', ['meta', 'shift']);
+    if (!(await waitInPage(win, `[...document.querySelectorAll('[data-pane-slot]')].some((el) => el.dataset.paneSlot === (document.querySelector('[data-pane-active="true"]')?.dataset.pane) && Math.round(el.getBoundingClientRect().left) + ',' + Math.round(el.getBoundingClientRect().top) !== '${activeBefore}')`, 2_000))) return 'failed: ⌘⇧X did not move the active pane to the next one’s place';
+    if ((await rects()) !== placesBefore) return 'failed: swapping changed the places or sizes of the panes';
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return 'failed: ⌘K did not open the palette';
+    await setFieldValue(win, '[data-palette-input]', 'pane');
+    const commands = (await js("[...document.querySelectorAll('[data-command-palette] [data-palette-command]')].map((el) => el.dataset.paletteCommand)")) as string[];
+    for (const wanted of ['swap-panes', 'close-pane', 'close-other-panes', 'focus-other-pane']) if (!commands.includes(wanted)) return `failed: the palette has no ${wanted} (it lists ${commands.join(', ')})`;
+    await closePalette(win);
+    const afterKeys = await stays('moving with the keyboard');
+    if (afterKeys) return afterKeys;
+
+    // A window too small for every pane at its minimum shows only the active one; the others stay and come back.
+    const full = JSON.stringify(await slots());
+    win.setContentSize(1280, 560);
+    if (!(await waitInPage(win, "document.querySelector('[data-split-fallback]') && document.querySelector('[data-pane-fallback-note]')", 3_000))) return 'failed: in a window too small for three panes the active one did not take over';
+    await settle(win);
+    const small = await slots();
+    const shown = small.filter((s) => !s.hidden);
+    const keptActive = await activePane();
+    if (small.length !== 3 || shown.length !== 1 || shown[0]!.id !== keptActive) return `failed: a small window should show only the active pane and keep the others (${JSON.stringify(small)})`;
+    const smallSticking = await stickingOut();
+    if (smallSticking.length) return `failed: in the small window these stick out of the pane: ${smallSticking.join(', ')}`;
+    await shot(win, 'split-small-window.png');
+    if (await changed()) return 'failed: shrinking the window remounted a pane';
+    win.setBounds(bounds);
+    if (!(await waitInPage(win, "!document.querySelector('[data-split-fallback]')", 3_000))) return 'failed: the panes did not come back in the larger window';
+    await settle(win);
+    if (JSON.stringify(await slots()) !== full) return 'failed: the layout did not come back as it was';
+    const grown = await stays('shrinking and growing the window');
+    if (grown) return grown;
+
+    // Closing: a pane's × gives its space to the neighbours. Two panes can turn (stacked, side by side) with ⌘⇧O.
+    await js(`document.querySelector('[data-pane="${one}"] [data-close-pane]').click()`);
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-pane]').length === 2", 2_000))) return 'failed: closing a pane left a different number';
+    await settle(win);
+    const closed = await tiles();
+    if (closed) return `failed: after closing a pane the others do not tile the area: ${closed}`;
+    await js(`document.querySelector('[data-pane="${two}"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+    await mark();
+    const orderTwo = await domOrder();
+    const stacked = JSON.stringify(await slots());
+    pressKey(win, 'O', ['meta', 'shift']);
+    if (!(await waitInPage(win, `(() => { const a = document.querySelector('[data-pane-slot="${two}"]').getBoundingClientRect(), b = document.querySelector('[data-pane-slot="${smoke}"]').getBoundingClientRect(); return Math.abs(a.top - b.top) < 3 && (a.left - b.left) * (a.left - b.left) > 2500; })()`, 3_000))) return `failed: ⌘⇧O did not turn the two stacked panes side by side (${stacked})`;
+    const turnedTiles = await tiles();
+    if (turnedTiles) return `failed: after turning the split the panes do not tile the area: ${turnedTiles}`;
+    pressKey(win, 'O', ['meta', 'shift']);
+    if (!(await waitInPage(win, `(() => { const a = document.querySelector('[data-pane-slot="${two}"]').getBoundingClientRect(), b = document.querySelector('[data-pane-slot="${smoke}"]').getBoundingClientRect(); return Math.abs(a.left - b.left) < 3 && (a.top - b.top) * (a.top - b.top) > 2500; })()`, 3_000))) return 'failed: ⌘⇧O again did not stack them';
+    // The panes changed height, so how far each conversation is from its end rightly changed: only a remount or a move counts here.
+    const remountedAfterTurn = await js("[...document.querySelectorAll('[data-current-session]')].some((view) => view.dataset.smokeMark !== view.dataset.currentSession)");
+    if (remountedAfterTurn || (await domOrder()) !== orderTwo) return 'failed: turning a split remounted or moved a pane';
+    pressKey(win, 'W', ['meta', 'alt']);
+    if (!(await waitInPage(win, `!document.querySelector('[data-split]') && document.querySelector('[data-current-session="${smoke}"]')`, 2_000))) return 'failed: ⌘⌥W did not close the active pane, leaving the other';
+    const tail = await tiles();
+    if (tail) return `failed: one pane does not fill the area: ${tail}`;
+
+    // From the sidebar: dragging a session's row onto a pane's edge opens it there, and onto its centre replaces it.
+    const viaSidebar = await drag(`[data-session-id="${three}"]`, smoke, 'bottom', 'drop', { label: 'Dock below', picture: 'split-drag-from-sidebar.png' });
+    if (viaSidebar) return `failed: dragging a row from the sidebar: ${viaSidebar}`;
+    if (!(await waitInPage(win, `document.querySelectorAll('[data-pane]').length === 2 && document.querySelector('[data-pane-slot="${three}"]')`, 3_000)) || !(await waitInPage(win, ended, 2_000))) return 'failed: dropping a sidebar row on a pane edge did not open it there';
+    const [keptBox, droppedBox] = [await slot(smoke), await slot(three)];
+    if (!keptBox || !droppedBox || droppedBox.top < keptBox.bottom - 2) return 'failed: the session dropped on the bottom edge is not below the other';
+    if ((await activePane()) !== three) return 'failed: the session opened by dragging did not become active';
+    const replaced = await drag(`[data-session-id="${one}"]`, three, 'center', 'drop', { label: 'Replace this session' });
+    if (replaced) return `failed: dragging a row onto a pane's centre: ${replaced}`;
+    if (!(await waitInPage(win, `document.querySelectorAll('[data-pane]').length === 2 && document.querySelector('[data-pane-slot="${one}"]') && !document.querySelector('[data-pane-slot="${three}"]')`, 3_000))) return "failed: dropping a sidebar row on a pane's centre did not replace its session";
+    return 'ok: opened a third pane (a row and a column mixed), refused a drop and a turn that did not fit, docked by dragging to an edge, swapped on the centre (Esc and a click do nothing), moved a divider with the arrows, Home and End, a double-click and the mouse, moved between panes and swapped with the keyboard, listed the pane commands, showed only the active pane in a window too small and brought the rest back, closed panes, turned a split, and opened sessions by dragging their rows, all without remounting';
   } finally {
     win.setBounds(bounds);
-    // Put things back: side by side, one pane (the smoke session), a settled window.
-    if ((await orientation()) === 'stacked') await js(`document.querySelector('[data-split-orientation-toggle]')?.click()`);
-    await js(`document.querySelector('[data-current-session="${extra}"]')?.closest('[data-pane-slot]')?.querySelector('[data-close-pane]')?.click()`);
+    // Put things back: one pane with the smoke session, a settled window.
+    for (let i = 0; i < 6; i++) {
+      const extra = (await js(`[...document.querySelectorAll('[data-pane]')].map((el) => el.dataset.pane).find((id) => id !== '${smoke}') ?? null`)) as string | null;
+      if (!extra) break;
+      await js(`document.querySelector('[data-pane="${extra}"] [data-close-pane]')?.click()`);
+      await settle(win);
+    }
     await waitInPage(win, "!document.querySelector('[data-split]')", 2_000);
+    // A lone pane that is not the smoke session (the drops replaced it): the sidebar's row brings it back.
+    if (!(await js(`!!document.querySelector('[data-current-session="${smoke}"]')`))) await js(`document.querySelector('[data-session-id="${smoke}"]')?.click()`);
     await settle(win);
   }
 }
@@ -5904,7 +6034,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('shortcuts sheet', () => runShortcutsStep(win));
   await step('tools', () => runToolsStep(win));
   await step('split panes', () => runSplitStep(win));
-  await step('split layout: swap and stack', () => runSplitLayoutStep(win));
+  await step('split layout: tiling panes', () => runSplitLayoutStep(win));
   await step('archive', () => runArchiveStep(win));
   await step('rename', () => runRenameStep(win));
   await step('multi-select and archive', () => runArchiveManyStep(win));
