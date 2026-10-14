@@ -1,59 +1,78 @@
 ---
 title: Split view
-description: Open two sessions side by side or one above the other, and swap them.
+description: Tile sessions next to each other and above each other, drag them into place and resize them.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Split view shows two sessions next to each other, or one above the other, so you can follow one while you work in the other, or compare what two sessions did. Each pane is a full session view, with its own message box, Changes and terminal.
+Split view tiles your sessions like a tiling window manager. Open as many as fit, side by side, one above the other, or mixed, so you can follow one while you work in another, or compare what several sessions did. Each pane is a full session view, with its own message box, Changes and terminal.
 
 <Screenshot name="split" alt="Two sessions side by side: one finished on the personal profile on the left, one still working on the work profile on the right" eager />
 
-## Open it
+## Open a pane
 
-With a session open, open a second one beside it:
+With a session open, open another one next to it:
 
 - <Kbd shortcut="sidebar.open-beside" /> a session in the sidebar.
 - Right-click a session in the sidebar and choose **Open beside**.
 - In <Kbd shortcut="palette.goto" />, pick a session with <Kbd keys="alt+enter" />.
+- Drag a session from the sidebar onto a pane (see below).
+
+The new session splits the active pane. A pane that is at least as wide as it is tall gets the new session on its right; a taller pane gets it below. If that doesn't fit, the other way is tried.
+
+Every pane needs at least 340 pixels each way, so the number of panes depends on the size of the window. When there is no room for another pane, Switchboard says so and opens nothing. Make the window larger, or close a pane first.
 
 ## How to use it
 
-- **The active pane** has a yellow line along the top of its header; the other one is a little faded. Click in a pane to make it active. Keyboard shortcuts, such as <Kbd shortcut="terminal.toggle" first /> or <Kbd shortcut="find" />, work on the active pane.
-- **Picking a session** in the sidebar opens it in the active pane. Opening another session beside replaces the pane that isn't active.
-- **In the sidebar**, the session in the other pane has a light outline, and the active one the usual selection.
-- Only the first pane, the left one or the top one, has the sidebar button in its header.
+- **The active pane** has a yellow line along the top of its header; the others are a little faded. Click in a pane to make it active. Keyboard shortcuts, such as <Kbd shortcut="terminal.toggle" first /> or <Kbd shortcut="find" />, work on the active pane.
+- **Picking a session** in the sidebar opens it in the active pane. If it is already open in another pane, that pane becomes active instead.
+- **In the sidebar**, sessions in the other panes have a light outline, and the active one the usual selection.
+- Only the pane in the top left corner has the sidebar button in its header.
 - In a narrow pane, headers and bars get more compact: the message box chips show fewer words, and project actions show only their icon.
 
-## Swap the panes
+## Drag panes into place
 
-Two ways to trade places, in either layout:
+Drag a pane by its title in the header (the project and session name, which shows a hand when you point at it) over another pane. The pane you point at shows five places to drop:
 
-- **Drag** a pane by its title in the header (the project and session name, which shows a hand when you point at it) onto the other pane. A frame and *Swap panes* show where it lands. Release to swap, or press <Kbd keys="escape" /> to cancel. The buttons in the header keep working as usual.
-- <Kbd shortcut="pane.swap" /> swaps them from the keyboard, and the command palette has *Swap panes*.
+- **An edge** (left, right, top or bottom) docks the dragged pane on that side. A frame shows the part of the pane it will take.
+- **The middle** swaps the two panes.
 
-The active pane stays with the same session, and nothing reloads: the message you were typing, the scroll position and Find are where you left them.
+Release to drop, or press <Kbd keys="escape" /> to cancel. The buttons in the header keep working as usual. If the result would not fit in the window, the frame turns red and says so, and releasing changes nothing.
 
-## Stack the panes
+Dragging a session from the sidebar (the list or the narrow rail) works the same way: an edge opens it beside that pane, and the middle puts it in place of the pane's session.
 
-Panes sit side by side by default. To put one above the other, click **Stack panes** in the second pane's header (next to the ×), press <Kbd shortcut="pane.orientation" />, or run *Stack panes* in the command palette. The button then says **Show panes side by side**, as does the same key and the command palette. In a narrow pane the button is hidden to leave room for the title; the key and the palette still work.
+Nothing reloads when you rearrange panes: the message you were typing, the scroll position and Find stay where you left them.
 
-Stacked panes are wide but short, so each pane needs some height. In a window too short for that, the panes stay side by side, and the button's tooltip says so. Switchboard remembers your choice, also after a restart, and uses it again when the window is taller. A terminal docked below a stacked pane stays short enough to leave the message box and a few lines of the conversation.
+## Resize and turn
+
+- A **divider** sits between every two neighbouring panes. Drag it to resize them. It snaps to equal sizes, and no pane gets smaller than its minimum.
+- Click a divider, or tab to it, and use the arrow keys (left and right for side by side, up and down for stacked). <Kbd keys="home" /> and <Kbd keys="end" /> go as far as the minimum sizes allow.
+- **Double-click** a divider to make the panes around it equal.
+- <Kbd shortcut="pane.orientation" /> turns the panes the active pane sits in the other way: side by side become stacked, and back. The header has a button for it too (hidden in a narrow pane), and the command palette has *Stack panes* and *Show panes side by side*. If the turned panes would not fit, nothing changes.
+- <Kbd shortcut="pane.swap" /> swaps the active pane with the next one.
+
+## Move between panes
+
+- <Kbd shortcut="pane.focus-left" />, <Kbd shortcut="pane.focus-right" />, <Kbd shortcut="pane.focus-up" /> and <Kbd shortcut="pane.focus-down" /> go to the pane next door.
+- *Focus next pane* in the command palette goes through them in reading order.
+
+## When the window is too small
+
+If you make the window smaller than the panes need, Switchboard shows only the active pane, with a note above it. The other panes stay open, and they all come back, as you had them, when the window is large enough again. Press one of the keys above to show another pane in the meantime.
 
 ## Close a pane
 
-- The **×** in a pane's header (*Close this pane*) closes that pane. The other session then takes the full width.
-- <Kbd shortcut="pane.close-other" /> closes the pane that isn't active.
-- The command palette has *Close this pane*, *Focus other pane*, *Swap panes*, *Stack panes* and *Show panes side by side*.
+- The **×** in a pane's header (*Close this pane*), <Kbd shortcut="pane.close" /> or the command palette closes that pane. The panes next to it take its space.
+- <Kbd shortcut="pane.close-other" /> closes every pane but the active one.
 
-Closing a pane only closes the view: a session that is working keeps running. Archiving a session that is open in a pane closes that pane too.
+Closing a pane only closes the view: a session that is working keeps running. Archiving or deleting a session that is open in a pane closes that pane too.
 
 <Aside type="tip">
-<Kbd shortcut="home" /> closes both panes and goes to Home.
+<Kbd shortcut="home" /> closes all the panes and goes to Home.
 </Aside>
 
 ## Settings
 
-Split view has no settings.
+Split view has no settings. The panes are not saved: after a restart Switchboard opens the session you had open last.
