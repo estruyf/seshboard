@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { LiveSession, SessionHostInfo, SessionsChanged, SessionsSnapshot, SessionSummary } from '@switchboard/protocol/client';
 import { hostAsLive, isActiveHost } from './hostsStore.ts';
 import { mergeSessionChanges } from './sessionChanges.ts';
+import { swapSlots } from './splitLayout.ts';
 
 /** `project` is one project's page (`useProjectPage` says which); `projects` is the list of them. */
 export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage';
@@ -53,6 +54,8 @@ interface SessionsState {
   /** Shows Home: what needs you, what is working, and your projects. */
   goHome(): void;
   focusPane(pane: Pane): void;
+  /** The two panes trade places; the active pane stays with its session. Nothing happens with one pane. */
+  swapPanes(): void;
   setView(view: MainView): void;
   /** Opens Settings, on a given page or the last one shown. */
   openSettings(section?: SettingsSection): void;
@@ -128,6 +131,7 @@ export const useSessions = create<SessionsState>()((set) => ({
     }),
   goHome: () => set({ ...panes({ mainId: null, splitId: null, activePane: 'main' }), view: 'session' }),
   focusPane: (pane) => set((s) => (s.activePane === pane || (pane === 'split' && !s.splitId) ? {} : panes({ ...s, activePane: pane }))),
+  swapPanes: () => set((s) => (s.splitId ? panes(swapSlots(s)) : {})),
   setView: (view) => set({ view }),
   openSettings: (section) =>
     set((s) => ({ view: 'settings', settingsSection: section ?? s.settingsSection, settingsFrom: s.view === 'settings' ? s.settingsFrom : s.view })),

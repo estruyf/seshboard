@@ -26,6 +26,10 @@ describe('record', () => {
     expect(record(visit(session('a', 'b')), session('a', 'b', 'split'), 9000).entries).toEqual([session('a', 'b', 'split')]);
   });
 
+  it('changes the entry when the two panes swap places', () => {
+    expect(record(visit(session('a', 'b')), session('b', 'a', 'split'), 9000).entries).toEqual([session('b', 'a', 'split')]);
+  });
+
   it('lets a place only passed through give its entry to the next', () => {
     let h = visit(session('home'));
     h = record(h, session('a'), 5000);

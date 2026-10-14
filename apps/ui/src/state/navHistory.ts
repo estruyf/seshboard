@@ -25,9 +25,10 @@ export const emptyHistory: NavHistory = { entries: [], index: -1, at: 0 };
 
 const samePlace = (a: NavPlace, b: NavPlace) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Another tab of the same project, page of Settings or active pane of the same split: it changes the entry instead of adding one. */
+/** Another tab of the same project, page of Settings, active pane or order of the same split: it changes the entry instead of adding one. */
 function sameStop(a: NavPlace, b: NavPlace): boolean {
-  if (a.view === 'session' && b.view === 'session') return a.mainId === b.mainId && a.splitId === b.splitId;
+  // The same two sessions in either order (a swap of the panes) are the same stop.
+  if (a.view === 'session' && b.view === 'session') return (a.mainId === b.mainId && a.splitId === b.splitId) || (a.splitId !== null && a.mainId === b.splitId && a.splitId === b.mainId);
   if (a.view === 'project' && b.view === 'project') return a.root === b.root;
   return a.view === b.view;
 }
