@@ -22,6 +22,7 @@ import { useTerminals } from '../../state/terminalsStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { activeComposer, useComposerTargets } from '../../state/composerTargets.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
+import { APP_TERMINAL, appTerminalFolder, ownerSession, terminalOwner } from '../terminal/appTerminal.ts';
 import { planGit } from '../git/gitPlan.ts';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './paletteContext.ts';
@@ -138,7 +139,10 @@ export function usePaletteContext(): PaletteContext {
 
   const added = useMemo(() => addedProjects(projects), [projects]);
   const currentRoot = view === 'project' && pageRoot ? pageRoot : projectRoot && isAbsolutePath(projectRoot) ? projectRoot : projectFilter;
-  const activeTerminal = id ? (terminals.get(activeTerminals.get(id) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === id).at(-1)) : undefined;
+  // ⌘J's panel: the session's, or outside a session the window's own, which starts in the project on screen.
+  const owner = terminalOwner(view, id);
+  const terminalCwd = owner === APP_TERMINAL ? appTerminalFolder(view, { projectRoot: pageRoot, newSessionCwd: activeComposer(boxes, 'new', null)?.cwd ?? null }) : (session?.cwd ?? null);
+  const activeTerminal = owner ? (terminals.get(activeTerminals.get(owner) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === ownerSession(owner)).at(-1)) : undefined;
 
   return {
     view,
@@ -146,10 +150,12 @@ export function usePaletteContext(): PaletteContext {
     session,
     git: session?.cwd && !question ? git : null,
     terminal: {
-      open: id !== null && openFor.has(id),
-      maximized: id !== null && maximizedFor.has(id),
+      owner,
+      cwd: terminalCwd,
+      open: owner !== null && openFor.has(owner),
+      maximized: owner !== null && maximizedFor.has(owner),
       dock,
-      action: activeTerminal?.kind === 'action' && activeTerminal.sessionId === id ? { running: activeTerminal.exitCode === null } : null,
+      action: owner && activeTerminal?.kind === 'action' && activeTerminal.sessionId === ownerSession(owner) ? { running: activeTerminal.exitCode === null } : null,
     },
     split: splitId !== null,
     focusLimit: prefs.focusLimit,

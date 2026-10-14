@@ -6,7 +6,7 @@ export type TerminalKind = z.infer<typeof TerminalKind>;
 
 export const TerminalInfo = z.object({
   id: z.string(),
-  /** The session this terminal belongs to (panels are per session). */
+  /** The session this terminal belongs to (panels are per session); null for the window's own terminal, outside sessions. */
   sessionId: z.string().nullable(),
   kind: TerminalKind,
   title: z.string(),

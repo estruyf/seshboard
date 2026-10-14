@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { arrangeCommands, COMMANDS, hintOf, rememberIn, titleOf, visibleCommands, type PaletteApi } from './commands.ts';
 import type { PaletteContext, PaletteSession } from './paletteContext.ts';
 import { shortcutGlyphs } from '../../lib/shortcuts.ts';
+import { APP_TERMINAL } from '../terminal/appTerminal.ts';
 
 const SESSION: PaletteSession = {
   id: 's1',
@@ -27,7 +28,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     connected: true,
     session: null,
     git: null,
-    terminal: { open: false, maximized: false, dock: 'bottom', action: null },
+    terminal: { owner: null, cwd: null, open: false, maximized: false, dock: 'bottom', action: null },
     split: false,
     focusLimit: null,
     notifications: true,
@@ -59,7 +60,8 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
   };
 }
 
-const inSession = (session: Partial<PaletteSession> = {}, over: Partial<PaletteContext> = {}) => context({ view: 'session', session: { ...SESSION, ...session }, ...over });
+const inSession = (session: Partial<PaletteSession> = {}, over: Partial<PaletteContext> = {}) =>
+  context({ view: 'session', session: { ...SESSION, ...session }, terminal: { ...context().terminal, owner: 's1', cwd: '/work/app' }, ...over });
 const ids = (ctx: PaletteContext) => visibleCommands(ctx).map((c) => c.id);
 const groupIds = (ctx: PaletteContext, group: string) => visibleCommands(ctx).filter((c) => c.group === group).map((c) => c.id);
 
@@ -249,11 +251,22 @@ describe('when(): git, actions, terminal, panes', () => {
 
   it('shows the terminal commands while it is open, and docks to the other side', () => {
     expect(groupIds(inSession(), 'terminal')).toEqual([]);
-    const open = { open: true, maximized: false, dock: 'bottom' as const, action: null };
+    const open = { owner: 's1', cwd: '/work/app', open: true, maximized: false, dock: 'bottom' as const, action: null };
     expect(groupIds(inSession({}, { terminal: open }), 'terminal')).toEqual(['hide-terminal', 'maximize-terminal', 'dock-right']);
     expect(groupIds(inSession({}, { terminal: { ...open, dock: 'right' } }), 'terminal')).toContain('dock-below');
     expect(groupIds(inSession({}, { terminal: { ...open, action: { running: true } } }), 'terminal')).toEqual(expect.arrayContaining(['stop-action', 'restart-action']));
     expect(groupIds(inSession({}, { terminal: { ...open, action: { running: false } } }), 'terminal')).not.toContain('stop-action');
+  });
+
+  it("offers the window's own terminal outside a session", () => {
+    const home = context({ terminal: { ...context().terminal, owner: APP_TERMINAL } });
+    expect(ids(home)).toEqual(expect.arrayContaining(['toggle-app-terminal', 'new-app-terminal-tab']));
+    expect(ids(home)).not.toContain('toggle-terminal');
+    expect(ids(inSession())).not.toContain('toggle-app-terminal');
+    // In Settings there is no terminal to show.
+    expect(ids(context({ view: 'settings' }))).not.toContain('toggle-app-terminal');
+    const open = context({ terminal: { ...home.terminal, open: true } });
+    expect(groupIds(open, 'terminal')).toEqual(['hide-terminal', 'maximize-terminal', 'dock-right']);
   });
 
   it('offers the pane commands with two sessions side by side', () => {

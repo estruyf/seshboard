@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@switchboard/protocol/client';
 import { MAX_PROMPT_LENGTH } from '@switchboard/protocol/client';
-import { addChips, chipLabel, chipsSummary, fenceFor, isLongPaste, mentionFor, PASTE_CARD_CHARS, PASTE_CARD_LINES, pastedItem, pasteSize, pasteTooLongReason, promptWithContext, tooLongReason } from './contextItems.ts';
+import { addChips, chipLabel, chipsSummary, contextFromPrompt, fenceFor, isLongPaste, mentionFor, PASTE_CARD_CHARS, PASTE_CARD_LINES, pastedItem, pasteSize, pasteTooLongReason, promptWithContext, tooLongReason } from './contextItems.ts';
 
 const file = (path: string, extra: Partial<Extract<ContextItem, { kind: 'file' }>> = {}): Extract<ContextItem, { kind: 'file' }> => ({ kind: 'file', path, directory: false, ...extra });
 
@@ -89,5 +89,38 @@ describe('pasted text', () => {
     expect(pasteTooLongReason('x'.repeat(MAX_PROMPT_LENGTH + 1))).toContain('Drop the file on the message box instead');
     expect(tooLongReason('hi')).toBeNull();
     expect(tooLongReason('x'.repeat(MAX_PROMPT_LENGTH + 1))).toBe('Too long to send: 1,000,001 characters, and a message holds up to 1,000,000. Shorten it or remove a pasted text.');
+  });
+});
+
+describe('contextFromPrompt', () => {
+  it('turns the line of mentions back into chips, the way promptWithContext wrote them', () => {
+    const chips: ContextItem[] = [file('/repo/src/auth.ts', { range: { start: 12, end: 40 } }), file('/repo/test', { directory: true }), file('/repo/My Docs/a b.md'), file('/elsewhere/x.ts')];
+    const prompt = promptWithContext('Why does this fail?', chips, '/repo');
+    expect(contextFromPrompt(prompt, '/repo')).toEqual({ text: 'Why does this fail?', context: chips });
+  });
+
+  it('finds the mentions before text blocks, which stay in the text', () => {
+    const chips: ContextItem[] = [file('/repo/a.ts'), { kind: 'text', source: 'terminal', label: 'Terminal output', text: 'boom', language: 'sh' }];
+    const prompt = promptWithContext('Fix it', chips, '/repo');
+    const back = contextFromPrompt(prompt, '/repo');
+    expect(back.context).toEqual([file('/repo/a.ts')]);
+    expect(back.text).toBe('Fix it\n\nTerminal output:\n```sh\nboom\n```');
+  });
+
+  it('takes a message of only files', () => {
+    expect(contextFromPrompt('@tests/chaos-test-prompt.md', '/repo')).toEqual({ text: '', context: [file('/repo/tests/chaos-test-prompt.md')] });
+  });
+
+  it('leaves mentions in a sentence, and prompts without them, as they are', () => {
+    expect(contextFromPrompt('Look at @src/a.ts please', '/repo')).toEqual({ text: 'Look at @src/a.ts please', context: [] });
+    expect(contextFromPrompt('Hello\n\nthere', '/repo')).toEqual({ text: 'Hello\n\nthere', context: [] });
+  });
+
+  it('keeps relative mentions as text without a folder to resolve them', () => {
+    expect(contextFromPrompt('Hi\n\n@src/a.ts', null)).toEqual({ text: 'Hi\n\n@src/a.ts', context: [] });
+  });
+
+  it('resolves into a Windows folder', () => {
+    expect(contextFromPrompt('Hi\n\n@src/a.ts', 'C:\\repo').context).toEqual([file('C:\\repo\\src\\a.ts')]);
   });
 });

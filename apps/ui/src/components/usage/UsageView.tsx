@@ -30,6 +30,8 @@ function ago(at: number, now: number): string {
 
 /** A field or a control that takes keys itself (the breakdown's filter) keeps number keys and Esc. */
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.closest('input, textarea, [contenteditable="true"]') !== null);
+/** In the window's terminal, Esc belongs to the program there (or restores the panel), not to Back. */
+const inTerminal = (target: EventTarget | null) => target instanceof HTMLElement && target.closest('[data-terminal-panel]') !== null;
 /** A menu, dialog or popover is open: it takes Esc first. */
 const overlayOpen = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [data-popover]') !== null;
 
@@ -69,7 +71,7 @@ export function UsageView() {
       } else if (matches(event, 'usage.period') && !typing(event.target) && !overlayOpen()) {
         event.preventDefault();
         useUsageView.getState().setPeriod(PERIODS[Number(event.key) - 1]!);
-      } else if (matches(event, 'usage.back') && !overlayOpen()) {
+      } else if (matches(event, 'usage.back') && !overlayOpen() && !inTerminal(event.target)) {
         // Esc in the filter clears it first (the field handles that and marks the key handled).
         event.preventDefault();
         closeUsage();

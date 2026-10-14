@@ -644,11 +644,12 @@ export const contract = {
     /**
      * Starts a terminal. `claude` runs `claude --resume <session>` (or `--fork-session` with `fork`);
      * it refuses with SESSION_RUNNING_HERE / SESSION_BUSY_ELSEWHERE when the session is open in a process already.
+     * Without a session it is the window's own terminal (outside session views); without `cwd` it starts in the home folder.
      */
     'terminal.open': {
       params: z.object({
         sessionId: SessionId.nullable(),
-        cwd: AbsolutePath,
+        cwd: AbsolutePath.optional(),
         kind: TerminalKind,
         cols: z.number().int().min(2).max(1000),
         rows: z.number().int().min(1).max(500),

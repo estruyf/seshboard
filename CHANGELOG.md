@@ -4,8 +4,13 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **A terminal anywhere.** Press ⌘J (Ctrl+J on Windows) on Home, a project's page, Projects, Usage or New session to open a terminal there too, without opening a session first. On a project's page it starts in the project's folder, in New session in the folder the session would start in, and elsewhere in your home folder. These views share one terminal, so its tabs stay with you as you move between them; a session still has its own.
+
 ### Fixed
 
+- **Edit in Up next keeps your files.** A queued message you edit comes back with its files as chips again, not as `@` mentions in the text.
 - **Starting a session when Claude Code can't run.** Start now says why, for example that you are not logged in, instead of "This session is not running". A Claude Code process that already failed is no longer handed to the next new session.
 - **A new session that fails at once** keeps its message box, instead of saying "The folder for this session is unknown". Send again to start it in the same folder.
 - **Many sessions at once.** Adding a Claude profile with a long history, or syncing many sessions, no longer freezes the window or shows an error.

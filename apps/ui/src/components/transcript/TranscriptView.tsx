@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, Blocks, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
@@ -28,6 +28,7 @@ import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
+import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
 import { ActionPills } from '../actions/ActionPills.tsx';
 import { useActionsMenu } from '../actions/useActionsMenu.tsx';
@@ -35,6 +36,7 @@ import { CapabilitiesDialog } from '../capabilities/CapabilitiesDialog.tsx';
 import { ChangesPanel, useChangesLayout } from '../changes/ChangesPanel.tsx';
 import { ContextMeter } from '../session/ContextMeter.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
+import { useWidth } from '../ui/useWidth.ts';
 import { BranchMenu } from '../worktree/BranchMenu.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import { WorktreeMenu } from '../worktree/WorktreeMenu.tsx';
@@ -252,20 +254,6 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
   }, [open]);
   const refresh = useCallback(() => request.current(500), []);
   return { changes, isRepo, refresh };
-}
-
-/** An element's width, following resizes (null until it has been measured). */
-function useWidth(ref: RefObject<HTMLElement | null>): number | null {
-  const [width, setWidth] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setWidth(el.getBoundingClientRect().width);
-    const observer = new ResizeObserver(([entry]) => setWidth(entry!.contentRect.width));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref]);
-  return width;
 }
 
 /** A session: live transcript, plus composer and controls when it can run here. */
@@ -814,9 +802,15 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     const { message } = await client.call('session.queue.remove', { sessionId, id });
     if (!message) return false;
     const draft = useDrafts.getState().drafts[sessionId];
-    const merged = mergeIntoBox({ text: draft?.text ?? '', attachments: draft?.attachments ?? [] }, message);
+    const merged = mergeIntoBox({ text: draft?.text ?? '', attachments: draft?.attachments ?? [] }, backInBox(message.text, message.attachments));
     presetBox(merged.text, merged.attachments);
     return true;
+  };
+  /** A message back in the box: its file mentions become chips again, as they were when it was written. */
+  const backInBox = (prompt: string, attachments: ImageAttachment[]) => {
+    const { text, context } = contextFromPrompt(prompt, cwd);
+    if (context.length) useDrafts.getState().addContext(sessionId, context);
+    return { text, attachments };
   };
   const upNextActions: UpNextActions = {
     edit: (message) => void takeBack(message.id).catch((e: Error) => setActionError(`Could not take the message back: ${e.message}`)),
@@ -829,7 +823,10 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           toast('Removed from Up next', {
             undo: () => {
               // Still working: back in its place. Otherwise it would go at once, so it returns to the message box instead.
-              if (!running) return presetBox(removed.text, removed.attachments);
+              if (!running) {
+                const back = backInBox(removed.text, removed.attachments);
+                return presetBox(back.text, back.attachments);
+              }
               void client
                 .call('session.send', { sessionId, text: removed.text, attachments: removed.attachments, fork: false, mode: 'queue' })
                 .then((r) => (r.queued && at > 0 ? client.call('session.queue.move', { sessionId, id: r.messageUuid, toIndex: at }) : undefined))

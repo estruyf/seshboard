@@ -38,7 +38,7 @@ import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
 import { useNavHistorySync } from './state/navHistoryStore.ts';
-import { useSessions, type Pane } from './state/sessionsStore.ts';
+import { useSessions, type MainView, type Pane } from './state/sessionsStore.ts';
 import { useOverlay } from './state/overlayStore.ts';
 import { usePreferencesSync } from './state/preferencesStore.ts';
 import { useThemesSync } from './state/themeStore.ts';
@@ -48,12 +48,25 @@ import { useProjects, useProjectsSync } from './state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from './state/sessionNav.ts';
 import { useSidebar, useSidebarSync } from './state/sidebarStore.ts';
 import { useTerminals, useTerminalsSync } from './state/terminalsStore.ts';
+import { AppTerminalFrame } from './components/terminal/AppTerminalFrame.tsx';
+import { terminalOwner, type TerminalView } from './components/terminal/appTerminal.ts';
 import { useUpdatesSync } from './state/updatesStore.ts';
 import { useClaudeUpdateSync } from './state/claudeUpdateStore.ts';
 import { useHostsSync } from './state/useHostsSync.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { matches } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
+
+/** What the main area shows, as the terminal sees it: Home is the session view without a session. */
+function terminalView(view: MainView, sessionId: string | null): TerminalView {
+  return view === 'new' ? 'new-session' : view === 'session' ? (sessionId ? 'session' : 'home') : view;
+}
+
+/** The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere, none in Settings. */
+function currentTerminalOwner(): string | null {
+  const { view, selectedId } = useSessions.getState();
+  return terminalOwner(terminalView(view, selectedId), selectedId);
+}
 
 /** A dialog, menu or popover is open: it keeps Tab for itself, so ⌃⇥ doesn't switch sessions behind it. */
 const overlayOpen = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [data-popover]') !== null;
@@ -113,22 +126,22 @@ function useShortcuts() {
         event.preventDefault();
         useOverlay.getState().togglePalette('goto');
       } else if (matches(event, 'terminal.maximize')) {
-        // The terminal takes the whole session view, or gives it back. Closed, it opens maximized.
-        const { view, selectedId } = useSessions.getState();
-        if (view !== 'session' || !selectedId) return;
+        // The terminal takes the whole view, or gives it back. Closed, it opens maximized.
+        const owner = currentTerminalOwner();
+        if (!owner) return;
         event.preventDefault();
         const { openFor, togglePanel, setMaximized } = useTerminals.getState();
-        if (openFor.has(selectedId)) setMaximized(selectedId);
+        if (openFor.has(owner)) setMaximized(owner);
         else {
-          togglePanel(selectedId);
-          setMaximized(selectedId, true);
+          togglePanel(owner);
+          setMaximized(owner, true);
         }
       } else if (matches(event, 'terminal.toggle')) {
-        // The panel of the session in the active pane.
-        const { view, selectedId } = useSessions.getState();
-        if (view !== 'session' || !selectedId) return;
+        // The panel of the session in the active pane; outside a session, the window's own.
+        const owner = currentTerminalOwner();
+        if (!owner) return;
         event.preventDefault();
-        useTerminals.getState().togglePanel(selectedId);
+        useTerminals.getState().togglePanel(owner);
       } else if (matches(event, 'pane.close-other')) {
         const { splitId, activePane, closePane } = useSessions.getState();
         if (!splitId) return;
@@ -208,6 +221,7 @@ export function App() {
   const settingsFrom = useSessions((s) => s.settingsFrom);
   const behind = view === 'settings' ? settingsFrom : view;
   const mainId = useSessions((s) => s.mainId);
+  const shownView = terminalView(behind, mainId);
   const splitId = useSessions((s) => s.splitId);
   const activePane = useSessions((s) => s.activePane);
   const overlay = useOverlay((s) => s.open);
@@ -227,6 +241,8 @@ export function App() {
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Settings is a sheet over the view it opened from, which stays on screen (inert) behind it. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={view === 'settings'}>
+        {/* Outside a session, the window's own terminal (⌘J) docks below or beside the view. */}
+        <AppTerminalFrame view={shownView}>
         {behind === 'usage' ? (
           <UsageView />
         ) : behind === 'projects' ? (
@@ -254,6 +270,7 @@ export function App() {
         ) : (
           <HomeView />
         )}
+        </AppTerminalFrame>
         </div>
         {view === 'settings' && <SettingsView />}
       </main>

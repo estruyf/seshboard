@@ -282,6 +282,11 @@
       "page": "projects/actions"
     },
     {
+      "id": "palette:new-app-terminal-tab",
+      "name": "New terminal tab (outside a session)",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
       "id": "palette:new-session",
       "name": "New session…",
       "page": "new-session/form"
@@ -565,6 +570,11 @@
       "id": "palette:theme:*",
       "name": "Theme: <name>",
       "page": "themes/built-in"
+    },
+    {
+      "id": "palette:toggle-app-terminal",
+      "name": "Toggle terminal (outside a session)",
+      "page": "terminal-changes-git/terminal"
     },
     {
       "id": "palette:toggle-changes",

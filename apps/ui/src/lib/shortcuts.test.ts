@@ -201,7 +201,7 @@ describe('the shortcut registry', () => {
       'find.next': [SESSION, HOME],
       'find.previous': [SESSION, HOME],
       'changes.toggle': [SESSION, at({ view: 'session' })],
-      'terminal.toggle': [SESSION, HOME],
+      'terminal.toggle': [HOME, at({ view: 'settings' })],
       'terminal.maximize': [SESSION, at({ view: 'settings' })],
       'terminal.restore': [{ ...SESSION, terminal: { open: true, maximized: true, actionRunning: false } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],
       'terminal.clear': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }, SESSION],
