@@ -983,7 +983,7 @@ export function createEngine(options: EngineOptions): Engine {
           electron: process.versions.electron ?? null,
           sqlite: cache.sqliteVersion,
         },
-        paths: { dataDir: options.dataDir, database: cache.path, claudeConfigDir },
+        paths: { dataDir: options.dataDir, database: cache.path, claudeConfigDir, home: homedir() },
         shell: { path: described.shell, resolved: described.resolved, cached: described.cached, durationMs: described.durationMs },
         claude: await claude,
       };

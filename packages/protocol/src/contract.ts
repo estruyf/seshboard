@@ -74,6 +74,8 @@ export const SystemInfo = z.object({
     dataDir: z.string(),
     database: z.string(),
     claudeConfigDir: z.string(),
+    /** The folder a terminal without a folder starts in. */
+    home: z.string(),
   }),
   shell: z.object({
     path: z.string(),

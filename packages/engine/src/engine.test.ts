@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -99,6 +99,7 @@ describe('engine over a MessagePort', () => {
     const { client, dataDir } = connect();
     const info = await client.call('system.info', {});
     expect(info.paths.database).toBe(join(dataDir, 'cache.sqlite'));
+    expect(info.paths.home).toBe(homedir());
     expect(info.versions.sqlite).toMatch(/^\d+\.\d+/);
     expect(info.shell.resolved).toBe(false);
     expect(info.claude).toBeNull();
