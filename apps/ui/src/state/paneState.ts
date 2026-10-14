@@ -5,6 +5,7 @@ import {
   cycleLeaf,
   flipDirection,
   hasLeaf,
+  dockAtEdge,
   insertLeaf,
   leaf,
   leafIds,
@@ -14,9 +15,8 @@ import {
   sameTile,
   swapLeaves,
   type Tile,
-  type Zone,
 } from './tiling.ts';
-import { fits, neighbour, planOpen, type Size, type Way } from './tilingGeometry.ts';
+import { fits, neighbour, planOpen, type DropTarget, type Size, type Way } from './tilingGeometry.ts';
 
 /** The layout (null: no session is open, Home shows) and the session in the active pane, which is always one of its leaves. */
 export interface PaneState {
@@ -62,23 +62,29 @@ export function openBeside(state: PaneState, id: string, area: Size | null): { s
   return plan ? { state: settled(plan.tree, id), opened: true } : { state, opened: false };
 }
 
+/** What a drop would do: the layout it makes, nothing (it would change nothing), or no room (the result would not fit the window). */
+export type DropPlan = { kind: 'ok'; tree: Tile } | { kind: 'nothing' } | { kind: 'no-room' };
+
 /**
- * Drops a session on `zone` of the pane showing `targetId` (see `insertLeaf`): an open session moves, a new one
- * docks or replaces. `ok` is false when the result would not fit the area (nothing changes then). The dropped
- * session becomes active.
+ * What dropping the session `id` on `target` would do. On a part of a pane (`insertLeaf`): a session that is
+ * already open moves there, whatever it is dropped on (never a second copy, never a replacement: the centre
+ * swaps the two panes); one that is not open docks beside the pane on an edge, and takes the pane's place in the
+ * centre. Along an edge of the window (`dockAtEdge`) either one becomes a cell the whole length of that edge.
  */
-export function drop(state: PaneState, id: string, targetId: string, zone: Zone, area: Size | null): { state: PaneState; ok: boolean } {
-  if (!state.layout || !hasLeaf(state.layout, targetId) || id === targetId) return { state, ok: false };
-  const next = insertLeaf(state.layout, id, targetId, zone);
-  if (next === state.layout || !fits(next, area)) return { state, ok: false };
-  return { state: settled(next, id), ok: true };
+export function planDrop(layout: Tile | null, id: string, target: DropTarget, area: Size | null): DropPlan {
+  if (!layout) return { kind: 'nothing' };
+  let next: Tile;
+  if (target.kind === 'edge') next = dockAtEdge(layout, id, target.side);
+  else if (!hasLeaf(layout, target.id) || id === target.id) return { kind: 'nothing' };
+  else next = insertLeaf(layout, id, target.id, target.zone);
+  if (next === layout || sameTile(next, layout)) return { kind: 'nothing' };
+  return fits(next, area) ? { kind: 'ok', tree: next } : { kind: 'no-room' };
 }
 
-/** What dropping would make, for deciding whether to offer the drop; null when it changes nothing or does not fit. */
-export function dropResult(layout: Tile | null, id: string, targetId: string, zone: Zone, area: Size | null): Tile | null {
-  if (!layout || !hasLeaf(layout, targetId) || id === targetId) return null;
-  const next = insertLeaf(layout, id, targetId, zone);
-  return next !== layout && fits(next, area) ? next : null;
+/** Drops a session (see `planDrop`); the dropped session becomes active. `outcome` says whether anything happened. */
+export function drop(state: PaneState, id: string, target: DropTarget, area: Size | null): { state: PaneState; outcome: 'done' | 'nothing' | 'no-room' } {
+  const plan = planDrop(state.layout, id, target, area);
+  return plan.kind === 'ok' ? { state: settled(plan.tree, id), outcome: 'done' } : { state, outcome: plan.kind };
 }
 
 /** Closes the pane showing `id` (the active one by default); its neighbours take the space. A lone pane stays: closing the session is another thing. */

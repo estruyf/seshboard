@@ -332,6 +332,14 @@
   cursor: grabbing !important;
   user-select: none !important;
 }
+/* No tooltips while dragging: they would cover the drop indicator. */
+[data-pane-dragging] [data-tooltip-layer] {
+  display: none;
+}
+/* The window's drag regions (the headers) take the mouse from the page on some systems; during a drag over the panes they don't. */
+[data-pane-dragging] * {
+  -webkit-app-region: no-drag !important;
+}
 
 html,
 body,

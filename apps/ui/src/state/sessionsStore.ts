@@ -3,9 +3,9 @@ import type { LiveSession, SessionHostInfo, SessionsChanged, SessionsSnapshot, S
 import { hostAsLive, isActiveHost } from './hostsStore.ts';
 import { mergeSessionChanges } from './sessionChanges.ts';
 import * as panes from './paneState.ts';
-import { leafIds, type Tile, type Zone } from './tiling.ts';
+import { leafIds, type Tile } from './tiling.ts';
 import { useTilingArea } from './tilingArea.ts';
-import type { Way } from './tilingGeometry.ts';
+import type { DropTarget, Way } from './tilingGeometry.ts';
 import { toast } from './toastStore.ts';
 
 /** `project` is one project's page (`useProjectPage` says which); `projects` is the list of them. */
@@ -61,8 +61,8 @@ interface SessionsState {
   select(id: string | null): void;
   /** Opens a session in a new pane next to the active one (`planOpen`); with no room, says so in a toast instead. */
   openBeside(id: string): void;
-  /** Drops a session on a part of a pane (`drop`): a pane already open moves there, a new one docks beside the pane or replaces it. With no room, says so. */
-  dropOn(id: string, targetId: string, zone: Zone): void;
+  /** Drops a session on a part of a pane or along an edge of the window (`planDrop`): one already open moves there, a new one docks (or replaces a pane's session in its centre). With no room, says so. */
+  dropOn(id: string, target: DropTarget): void;
   /** Closes the pane showing a session (the active one by default); its neighbours take the space. A lone pane stays. */
   closePane(id?: string): void;
   /** Closes every pane but the active one. */
@@ -129,10 +129,10 @@ export const useSessions = create<SessionsState>()((set) => ({
     if (!out.opened) return toast(NO_ROOM);
     set((s) => ({ ...apply(s, out.state), view: 'session' }));
   },
-  dropOn: (id, targetId, zone) => {
-    const out = panes.drop(now(useSessions.getState()), id, targetId, zone, useTilingArea.getState().size);
-    if (!out.ok) return toast(NO_ROOM);
-    set((s) => ({ ...apply(s, out.state), view: 'session' }));
+  dropOn: (id, target) => {
+    const out = panes.drop(now(useSessions.getState()), id, target, useTilingArea.getState().size);
+    if (out.outcome === 'no-room') return toast(NO_ROOM);
+    if (out.outcome === 'done') set((s) => ({ ...apply(s, out.state), view: 'session' }));
   },
   closePane: (id) => set((s) => apply(s, panes.closePane(now(s), id))),
   closeOtherPanes: () => set((s) => apply(s, panes.closeOthers(now(s)))),

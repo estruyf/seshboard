@@ -903,9 +903,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       >
         {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
         {leading && <SidebarToggle />}
-        {projectRoot && <ProjectIcon project={project} root={projectRoot} size={22} />}
+        {/* In a pane under 400px wide the header has no room for the icon: the title and the buttons come first. */}
+        {projectRoot && (
+          <span className="flex shrink-0 @max-[400px]:hidden">
+            <ProjectIcon project={project} root={projectRoot} size={22} />
+          </span>
+        )}
         {/* With several panes this is the handle to drag the pane by (useTileDrag); it can't be part of the window's drag region, which takes the mouse. */}
-        <div className={`min-w-24 flex-1 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
+        <div className={`min-w-24 flex-1 @max-[400px]:min-w-16 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
           <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
             {title}
           </h1>

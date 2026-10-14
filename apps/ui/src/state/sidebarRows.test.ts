@@ -513,7 +513,7 @@ describe('panes', () => {
     s.openBeside('b');
     s.openBeside('c');
     expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
-    s.dropOn('c', 'a', 'top');
+    s.dropOn('c', { kind: 'pane', id: 'a', zone: 'top' });
     expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
     useTilingArea.getState().set(null);
     s.openBeside('c');
@@ -540,12 +540,30 @@ describe('panes', () => {
     const s = useSessions.getState();
     s.select('a');
     s.openBeside('b');
-    s.dropOn('a', 'b', 'right');
+    s.dropOn('a', { kind: 'pane', id: 'b', zone: 'right' });
     expect(state()).toEqual({ panes: ['b', 'a'], selected: 'a' });
-    s.dropOn('n', 'b', 'bottom');
+    s.dropOn('n', { kind: 'pane', id: 'b', zone: 'bottom' });
     expect(state()).toEqual({ panes: ['b', 'n', 'a'], selected: 'n' });
-    s.dropOn('x', 'n', 'center');
+    s.dropOn('x', { kind: 'pane', id: 'n', zone: 'center' });
     expect(state()).toEqual({ panes: ['b', 'x', 'a'], selected: 'x' });
+  });
+
+  it('docks along a window edge, and a session already open moves instead of opening twice', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.openBeside('c');
+    useTilingArea.getState().set({ width: 2400, height: 1200 });
+    s.dropOn('c', { kind: 'edge', side: 'right' });
+    expect(state().panes).toHaveLength(3);
+    expect(useSessions.getState().layout).toMatchObject({ direction: 'row' });
+    s.dropOn('n', { kind: 'edge', side: 'left' });
+    expect(state()).toEqual({ panes: ['n', 'a', 'b', 'c'], selected: 'n' });
+    // The sidebar row of a session that is open moves its pane: still four panes, none duplicated.
+    s.dropOn('a', { kind: 'edge', side: 'bottom' });
+    expect([...useSessions.getState().paneIds].sort()).toEqual(['a', 'b', 'c', 'n']);
+    useTilingArea.getState().set(null);
   });
 });
 

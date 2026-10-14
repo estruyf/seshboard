@@ -1,9 +1,8 @@
 import { ArrowRightLeft, PanelBottomClose, PanelLeftClose, PanelRightClose, PanelTopClose, Replace } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { useSessions } from '../../state/sessionsStore.ts';
-import type { Zone } from '../../state/tiling.ts';
 import { useTilingArea } from '../../state/tilingArea.ts';
-import { computeLayout, constrain, dropRegion, fits, stableOrder, type Box, type Rect } from '../../state/tilingGeometry.ts';
+import { computeLayout, constrain, edgeBand, fits, stableOrder, type Box } from '../../state/tilingGeometry.ts';
 import { TranscriptView } from '../transcript/TranscriptView.tsx';
 import { useSize } from '../ui/useSize.ts';
 import { PaneDivider } from './PaneDivider.tsx';
@@ -90,8 +89,18 @@ export function SplitPanes() {
 }
 
 /** The word for what a drop would do, and its icon. */
-function dropLabel(drag: TileDrag, zone: Zone, open: boolean): { text: string; icon: typeof ArrowRightLeft } {
-  switch (zone) {
+function dropLabel(drag: TileDrag, open: boolean): { text: string; icon: typeof ArrowRightLeft } {
+  const over = drag.over;
+  if (!over) return { text: 'Drop on a pane', icon: ArrowRightLeft };
+  if (over.kind === 'edge') {
+    return {
+      left: { text: 'Dock on the left, full height', icon: PanelLeftClose },
+      right: { text: 'Dock on the right, full height', icon: PanelRightClose },
+      top: { text: 'Dock on top, full width', icon: PanelTopClose },
+      bottom: { text: 'Dock at the bottom, full width', icon: PanelBottomClose },
+    }[over.side];
+  }
+  switch (over.zone) {
     case 'left':
       return { text: 'Dock on the left', icon: PanelLeftClose };
     case 'right':
@@ -106,40 +115,65 @@ function dropLabel(drag: TileDrag, zone: Zone, open: boolean): { text: string; i
 }
 
 /**
- * While something is dragged over a pane: the pane's five zones (the dashed middle is the centre) and, over the
- * zone under the pointer, the region the dropped pane would take, in the accent; when the result would not fit
- * the window, in the error colour with the reason. A dragged session also follows the pointer by its title.
+ * While something is dragged over the panes: a faint band along each edge of the window (dropping there docks
+ * across its whole length), the five zones of the pane under the pointer (the dashed middle is the centre) and,
+ * for the target, the region the dropped pane will take: where it ends up in the layout the drop makes, so a
+ * window-edge dock shows the full-length column or row. When the result would not fit the window, the frame is in
+ * the error colour with the reason. What is dragged follows the pointer by its title and says what dropping does.
  */
 function DropPreview({ drag, area }: { drag: TileDrag; area: React.RefObject<HTMLDivElement | null> }) {
   const areaRect = area.current?.getBoundingClientRect();
   const title = useSessions((s) => s.sessions.get(drag.id)?.title ?? s.live.get(drag.id)?.name ?? 'Session');
   const open = useSessions((s) => s.paneIds.includes(drag.id));
-  if (!areaRect) return null;
-  const target = drag.over ? area.current?.querySelector<HTMLElement>(`[data-pane-slot="${CSS.escape(drag.over.id)}"]`) : null;
-  // A plain object: a DOMRect's fields are getters, which spreading (as `dropRegion` does) would lose.
+  const size = useTilingArea((s) => s.size);
+  if (!areaRect || !size) return null;
+  const over = drag.over;
+  const place = (r: { left: number; top: number; width: number; height: number }) => ({ left: r.left, top: r.top, width: r.width, height: r.height });
+  const bandX = edgeBand(size.width);
+  const bandY = edgeBand(size.height);
+  const bands: Record<'left' | 'right' | 'top' | 'bottom', { left: number; top: number; width: number; height: number }> = {
+    left: { left: 0, top: 0, width: bandX, height: size.height },
+    right: { left: size.width - bandX, top: 0, width: bandX, height: size.height },
+    top: { left: 0, top: 0, width: size.width, height: bandY },
+    bottom: { left: 0, top: size.height - bandY, width: size.width, height: bandY },
+  };
+  const target = over?.kind === 'pane' ? area.current?.querySelector<HTMLElement>(`[data-pane-slot="${CSS.escape(over.id)}"]`) : null;
   const rect = target?.getBoundingClientRect();
-  const paneRect: Rect | null = rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } : null;
-  const local = (r: Rect): Rect => ({ left: r.left - areaRect.left, top: r.top - areaRect.top, right: r.right - areaRect.left, bottom: r.bottom - areaRect.top });
-  const place = (r: Rect) => ({ left: r.left, top: r.top, width: r.right - r.left, height: r.bottom - r.top });
-  const pane = paneRect ? local(paneRect) : null;
-  const region = paneRect && drag.over ? local(dropRegion(paneRect, drag.over.zone)) : null;
-  const label = drag.over ? dropLabel(drag, drag.over.zone, open) : null;
-  const Icon = label?.icon;
-  const blocked = drag.over !== null && !drag.fits;
+  const pane = rect ? { left: rect.left - areaRect.left, top: rect.top - areaRect.top, width: rect.width, height: rect.height } : null;
+  // Where the dropped pane ends up in the layout the drop makes; for a drop that doesn't fit, what was aimed at.
+  const landing = drag.tree ? computeLayout(constrain(drag.tree, size)).panes.find((p) => p.id === drag.id)?.box : null;
+  const region = landing
+    ? { left: landing.x * size.width, top: landing.y * size.height, width: landing.w * size.width, height: landing.h * size.height }
+    : over?.kind === 'edge'
+      ? bands[over.side]
+      : pane;
+  const blocked = over !== null && !drag.fits;
+  const label = dropLabel(drag, open);
+  const Icon = label.icon;
+  const aimed = over !== null;
   return (
     <>
-      {pane && (
+      {(['left', 'right', 'top', 'bottom'] as const).map((side) => (
+        <div
+          key={side}
+          className={`pointer-events-none absolute z-30 border border-dashed ${over?.kind === 'edge' && over.side === side ? 'border-accent-ink/70 bg-accent/10' : 'border-accent-ink/25 bg-accent/5'}`}
+          style={place(bands[side])}
+          data-pane-drop-band={side}
+        />
+      ))}
+      {pane && over?.kind === 'pane' && (
         // The zones of the pane under the pointer: the centre is the dashed box, the edges are what is around it.
-        <div className="pointer-events-none absolute z-30" style={place(pane)} data-pane-drop-pane={drag.over!.id}>
+        <div className="pointer-events-none absolute z-30" style={place(pane)} data-pane-drop-pane={over.id}>
           <div className="absolute inset-[25%] rounded-md border border-dashed border-accent-ink/50" />
         </div>
       )}
-      {region && label && Icon && drag.over && (
+      {region && over && (
         <div
           className={`pointer-events-none absolute z-30 flex items-center justify-center rounded-md border-2 ${blocked ? 'border-error bg-error/10' : 'border-accent-ink bg-accent/15'}`}
           style={place(region)}
-          data-pane-drop-target={drag.over.id}
-          data-pane-drop-zone={drag.over.zone}
+          data-pane-drop-target={over.kind === 'pane' ? over.id : 'edge'}
+          data-pane-drop-zone={over.kind === 'pane' ? over.zone : over.side}
+          data-pane-drop-edge={over.kind === 'edge' ? over.side : undefined}
           data-pane-drop-blocked={blocked || undefined}
         >
           <span className="overlay flex items-center gap-2 rounded-lg border px-3 py-2 text-ui font-medium text-text">
@@ -148,15 +182,19 @@ function DropPreview({ drag, area }: { drag: TileDrag; area: React.RefObject<HTM
           </span>
         </div>
       )}
-      {drag.source === 'session' && (
-        <span
-          className="pointer-events-none fixed z-40 max-w-64 truncate overlay rounded-lg border px-2.5 py-1 text-ui text-text"
-          style={{ left: drag.point.x + 14, top: drag.point.y + 14 }}
-          data-session-drag-ghost
-        >
-          {title}
-        </span>
-      )}
+      <span
+        className={`pointer-events-none fixed z-40 flex max-w-72 flex-col overlay rounded-lg border px-2.5 py-1 text-ui text-text ${blocked ? 'border-error' : aimed ? 'border-accent-ink' : ''}`}
+        // Beside the pointer, on the other side of it near the window's right or bottom edge (where a window-edge drop is aimed).
+        style={{
+          ...(drag.point.x > window.innerWidth - 300 ? { right: window.innerWidth - drag.point.x + 14 } : { left: drag.point.x + 14 }),
+          ...(drag.point.y > window.innerHeight - 80 ? { bottom: window.innerHeight - drag.point.y + 14 } : { top: drag.point.y + 14 }),
+        }}
+        data-pane-drag-ghost
+        data-session-drag-ghost={drag.source === 'session' ? true : undefined}
+      >
+        <span className="truncate">{title}</span>
+        <span className="truncate text-meta text-muted">{blocked ? 'No room for that here' : aimed ? label.text : drag.source === 'session' ? 'Drop on the panes to open it' : 'Drop on another pane'}</span>
+      </span>
     </>
   );
 }

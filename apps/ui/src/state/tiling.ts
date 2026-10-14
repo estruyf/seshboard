@@ -93,26 +93,85 @@ export function normalize(tile: Tile): Tile | null {
   );
 }
 
-/** A pane on `side` of the one showing `targetId`, showing `newId`: the target's space is shared equally. Nothing changes if either is already or not there. */
+/** Shares this close (a fraction of the split) count as equal: VS Code allows 2px, which is about this on a 600px split. */
+const EVEN = 0.004;
+
+/** Every share is (nearly) the same: the panes of a split that has not been resized by hand. */
+export const areDistributed = (sizes: readonly number[]): boolean => Math.max(...sizes) - Math.min(...sizes) <= EVEN;
+
+/**
+ * A pane on `side` of the one showing `targetId`, showing `newId`. Sizes follow VS Code's "auto": in a split
+ * of the same direction whose panes are all the same size, everyone (the new pane too) gets an equal share;
+ * otherwise the new pane takes half of the target's space and the rest keep theirs. In a split of the other
+ * direction (or a lone pane) the target is wrapped in a new split, half each. Nothing changes if the target is
+ * missing or the session is already open.
+ */
 export function splitLeaf(tree: Tile, targetId: string, newId: string, side: Side): Tile {
   if (!hasLeaf(tree, targetId) || hasLeaf(tree, newId)) return tree;
   const direction = sideDirection(side);
+  const parent = parentSplit(tree, targetId);
   const wrap = (tile: Tile): Tile => {
     if (isSplit(tile)) return { ...tile, children: tile.children.map(wrap) };
     if (tile.id !== targetId) return tile;
     return { direction, children: comesFirst(side) ? [leaf(newId), tile] : [tile, leaf(newId)], sizes: [0.5, 0.5] };
   };
-  return normalize(wrap(tree)) ?? tree;
+  const result = normalize(wrap(tree)) ?? tree;
+  // The panes beside it were all equal: the new one makes them equal again (the parent's path doesn't change).
+  return parent && parent.split.direction === direction && areDistributed(parent.split.sizes) ? equalize(result, parent.path) : result;
 }
 
-/** The tree without the pane showing `id`: its siblings take the space in proportion, and a split left with one child dissolves. Null when nothing is left. */
+/**
+ * Puts a pane along a whole edge of the layout, as a new cell as long (or as tall) as the window: in a root split
+ * of that direction it joins the others (an equal share if they were all equal, else a 1/(n+1) share with the
+ * others keeping their proportions); in a root of the other direction, or a lone pane, the whole old layout
+ * becomes one cell and the new pane the other, half each (as VS Code does).
+ */
+function insertAtRoot(root: Tile, newId: string, side: Side): Tile {
+  const direction = sideDirection(side);
+  const first = comesFirst(side);
+  if (isSplit(root) && root.direction === direction) {
+    const n = root.children.length;
+    const share = 1 / (n + 1);
+    const others = root.sizes.map((size) => (size * n) / (n + 1));
+    return {
+      direction,
+      children: first ? [leaf(newId), ...root.children] : [...root.children, leaf(newId)],
+      sizes: first ? [share, ...others] : [...others, share],
+    };
+  }
+  return { direction, children: first ? [leaf(newId), root] : [root, leaf(newId)], sizes: [0.5, 0.5] };
+}
+
+/**
+ * Docks the session `id` on `side` of the whole layout (see `insertAtRoot`). An open session is taken out of its
+ * place first (its space goes to its neighbours, `removeLeaf`); a lone pane has nowhere else to go, so nothing changes.
+ */
+export function dockAtEdge(tree: Tile, id: string, side: Side): Tile {
+  const rest = hasLeaf(tree, id) ? removeLeaf(tree, id) : tree;
+  return rest ? (normalize(insertAtRoot(rest, id, side)) ?? tree) : tree;
+}
+
+/**
+ * Where the space of a removed child of a split goes, as VS Code's "auto": when all the panes were the same
+ * size, everyone is the same size again; otherwise the pane before it (the one after it, for the first) takes it.
+ */
+function freed(sizes: readonly number[], at: number): number[] {
+  if (areDistributed(sizes)) return equalSizes(sizes.length);
+  const next = sizes.slice();
+  next[at === 0 ? 1 : at - 1]! += next[at]!;
+  return next;
+}
+
+/** The tree without the pane showing `id`: the space goes to its neighbour (`freed`), and a split left with one child dissolves. Null when nothing is left. */
 export function removeLeaf(tree: Tile, id: string): Tile | null {
   if (!hasLeaf(tree, id)) return tree;
   const prune = (tile: Tile): Tile | null => {
     if (!isSplit(tile)) return tile.id === id ? null : tile;
+    const at = tile.children.findIndex((child) => !isSplit(child) && child.id === id);
+    const sizes = at === -1 ? tile.sizes : freed(tile.sizes, at);
     return build(
       tile.direction,
-      tile.children.map((child, i) => [prune(child), tile.sizes[i]!] as const),
+      tile.children.map((child, i) => [i === at ? null : prune(child), sizes[i]!] as const),
     );
   };
   return prune(tree);

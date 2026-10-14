@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useSessions } from '../../state/sessionsStore.ts';
-import { dropResult } from '../../state/paneState.ts';
+import { planDrop } from '../../state/paneState.ts';
+import type { Tile } from '../../state/tiling.ts';
 import { useTilingArea } from '../../state/tilingArea.ts';
-import { dragStarted, dropTarget, type DropTarget, type Point, type Rect } from '../../state/tilingGeometry.ts';
+import { dragStarted, dropAt, type DropTarget, type Point, type Rect } from '../../state/tilingGeometry.ts';
 
 /** Where a drag comes from: a pane's header (the pane moves) or a session's row in the sidebar (it opens in the pane it lands on). */
 export type DragSource = 'pane' | 'session';
@@ -16,6 +17,8 @@ export interface TileDrag {
   over: DropTarget | null;
   /** Dropping here would give a layout that fits. When it does not, the drop is refused. */
   fits: boolean;
+  /** The layout the drop would make (null when there is no target or it would not fit). */
+  tree: Tile | null;
 }
 
 /** Things in a header or a row that keep their own clicks: a press on one never starts a drag. */
@@ -74,12 +77,16 @@ export function useTileDrag(area: RefObject<HTMLElement | null>, enabled: boolea
       const start: Point = { x: event.clientX, y: event.clientY };
       const panes = (): Array<{ id: string; rect: Rect }> =>
         [...(area.current?.querySelectorAll<HTMLElement>('[data-pane-slot]:not([data-pane-hidden])') ?? [])].map((el) => ({ id: el.dataset.paneSlot!, rect: el.getBoundingClientRect() }));
-      const at = (point: Point): Pick<TileDrag, 'over' | 'fits'> => {
-        const over = dropTarget(source === 'pane' ? id : null, point, panes());
-        if (!over) return { over: null, fits: true };
-        // A session already open moves like a pane does; one dropped on the pane it is in lands on nothing.
-        if (over.id === id) return { over: null, fits: true };
-        return { over, fits: dropResult(useSessions.getState().layout, id, over.id, over.zone, useTilingArea.getState().size) !== null };
+      const at = (point: Point): Pick<TileDrag, 'over' | 'fits' | 'tree'> => {
+        const box = area.current?.getBoundingClientRect();
+        const bounds: Rect = box ? { left: box.left, top: box.top, right: box.right, bottom: box.bottom } : { left: 0, top: 0, right: 0, bottom: 0 };
+        const over = dropAt(source === 'pane' ? id : null, point, panes(), bounds);
+        const none = { over: null, fits: true, tree: null };
+        if (!over) return none;
+        // A session already open moves like a pane does; dropped on its own pane, or where it already is, nothing would change.
+        const plan = planDrop(useSessions.getState().layout, id, over, useTilingArea.getState().size);
+        if (plan.kind === 'nothing') return none;
+        return plan.kind === 'ok' ? { over, fits: true, tree: plan.tree } : { over, fits: false, tree: null };
       };
       let dragging = false;
 
@@ -127,7 +134,7 @@ export function useTileDrag(area: RefObject<HTMLElement | null>, enabled: boolea
         end();
         if (!landed?.over) return;
         // A drop that doesn't fit says so (the store toasts) and changes nothing.
-        useSessions.getState().dropOn(id, landed.over.id, landed.over.zone);
+        useSessions.getState().dropOn(id, landed.over);
       };
       // Esc cancels the drag, and nothing else (the message box would stop Claude on it).
       const key = (e: KeyboardEvent) => {

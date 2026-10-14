@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cycleLeaf,
+  dockAtEdge,
   equalize,
   flipDirection,
   hasLeaf,
@@ -105,8 +106,21 @@ describe('splitLeaf', () => {
 });
 
 describe('removeLeaf', () => {
-  it('gives the space to the siblings in proportion', () => {
-    expect(show(removeLeaf(row([L('a'), L('b'), L('c')], [0.5, 0.25, 0.25]), 'c'))).toBe('r[a.67 b.33]');
+  it('gives the space to the pane before it, or to the one after for the first (as VS Code does)', () => {
+    const tree = row([L('a'), L('b'), L('c')], [0.5, 0.3, 0.2]);
+    expect(show(removeLeaf(tree, 'c'))).toBe('r[a.50 b.50]');
+    expect(show(removeLeaf(tree, 'b'))).toBe('r[a.80 c.20]');
+    expect(show(removeLeaf(tree, 'a'))).toBe('r[b.80 c.20]');
+  });
+
+  it('makes everyone equal again when they were all the same size', () => {
+    expect(show(removeLeaf(row([L('a'), L('b'), L('c'), L('d')]), 'b'))).toBe('r[a.33 c.33 d.33]');
+    expect(show(removeLeaf(row([L('a'), L('b'), L('c')], [0.335, 0.333, 0.332]), 'a'))).toBe('r[b.50 c.50]');
+  });
+
+  it('gives a dissolved split its share of the space above', () => {
+    // The column took 60% of the row; its last pane goes, so the one left keeps the 60%.
+    expect(show(removeLeaf(row([L('a'), col([L('b'), L('c')])], [0.4, 0.6]), 'b'))).toBe('r[a.40 c.60]');
   });
 
   it('dissolves a split left with one child, which may then join the split above', () => {
@@ -144,9 +158,10 @@ describe('swapLeaves and replaceLeaf', () => {
 });
 
 describe('moveLeaf', () => {
-  it('docks a pane on the edge of another, taking the space from the target', () => {
+  it('docks a pane on the edge of another: everyone equal again if they were, else the target shares its space', () => {
     const tree = row([L('a'), L('b'), L('c')]);
-    expect(show(moveLeaf(tree, 'a', 'c', 'right'))).toBe('r[b.50 c.25 a.25]');
+    expect(show(moveLeaf(tree, 'a', 'c', 'right'))).toBe('r[b.33 c.33 a.33]');
+    expect(show(moveLeaf(row([L('a'), L('b'), L('c')], [0.5, 0.3, 0.2]), 'a', 'c', 'right'))).toBe('r[b.80 c.10 a.10]');
     expect(show(moveLeaf(tree, 'a', 'c', 'bottom'))).toBe('r[b.50 c[c.50 a.50].50]');
     expect(show(moveLeaf(tree, 'c', 'a', 'top'))).toBe('r[c[c.50 a.50].50 b.50]');
   });
@@ -165,6 +180,89 @@ describe('moveLeaf', () => {
         for (const zone of ['left', 'right', 'top', 'bottom', 'center'] as const) {
           expect(leafIds(moveLeaf(tree, id, target, zone)).sort(), `${id} onto ${target} ${zone}`).toEqual(['a', 'b', 'c', 'd']);
         }
+      }
+    }
+  });
+});
+
+describe('splitLeaf sizes (VS Code auto sizing)', () => {
+  it('makes a same-direction split equal when all its panes were', () => {
+    expect(show(splitLeaf(row([L('a'), L('b'), L('c')]), 'b', 'd', 'right'))).toBe('r[a.25 b.25 d.25 c.25]');
+    expect(show(splitLeaf(row([L('a'), L('b')]), 'a', 'c', 'left'))).toBe('r[c.33 a.33 b.33]');
+  });
+
+  it('shares the target only when the panes had been resized by hand', () => {
+    expect(show(splitLeaf(row([L('a'), L('b'), L('c')], [0.5, 0.3, 0.2]), 'b', 'd', 'right'))).toBe('r[a.50 b.15 d.15 c.20]');
+  });
+
+  it('inserts a sibling at that position in the same-direction split, not a nested split', () => {
+    const out = splitLeaf(row([L('a'), L('b'), L('c')]), 'b', 'x', 'left');
+    expect(leafIds(out)).toEqual(['a', 'x', 'b', 'c']);
+    expect(isSplit(out) && out.children.every((child) => !isSplit(child))).toBe(true);
+  });
+});
+
+describe('dockAtEdge', () => {
+  /** A on the left, B over C on the right: half and half, and B over C half and half. */
+  const layout = () => row([L('a'), col([L('b'), L('c')])]);
+
+  it('turns A | (B over C) into three equal columns when C is docked on the right edge', () => {
+    const out = dockAtEdge(layout(), 'c', 'right');
+    expect(show(out)).toBe('r[a.33 b.33 c.33]');
+    expect(leafIds(out)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('docks on every edge of a root split of the same direction, as a new cell the whole length', () => {
+    const wide = row([L('a'), L('b')]);
+    expect(show(dockAtEdge(wide, 'n', 'left'))).toBe('r[n.33 a.33 b.33]');
+    expect(show(dockAtEdge(wide, 'n', 'right'))).toBe('r[a.33 b.33 n.33]');
+    const tall = col([L('a'), L('b')]);
+    expect(show(dockAtEdge(tall, 'n', 'top'))).toBe('c[n.33 a.33 b.33]');
+    expect(show(dockAtEdge(tall, 'n', 'bottom'))).toBe('c[a.33 b.33 n.33]');
+  });
+
+  it('wraps the whole old layout as one cell when the root runs the other way', () => {
+    const wide = row([L('a'), L('b')], [0.4, 0.6]);
+    expect(show(dockAtEdge(wide, 'n', 'top'))).toBe('c[n.50 r[a.40 b.60].50]');
+    expect(show(dockAtEdge(wide, 'n', 'bottom'))).toBe('c[r[a.40 b.60].50 n.50]');
+    const tall = col([L('a'), L('b')]);
+    expect(show(dockAtEdge(tall, 'n', 'left'))).toBe('r[n.50 c[a.50 b.50].50]');
+    expect(show(dockAtEdge(tall, 'n', 'right'))).toBe('r[c[a.50 b.50].50 n.50]');
+  });
+
+  it('wraps a lone pane, half each', () => {
+    expect(show(dockAtEdge(L('a'), 'n', 'right'))).toBe('r[a.50 n.50]');
+    expect(show(dockAtEdge(L('a'), 'n', 'top'))).toBe('c[n.50 a.50]');
+  });
+
+  it('keeps the proportions of resized panes and gives the new cell a 1/(n+1) share', () => {
+    expect(show(dockAtEdge(row([L('a'), L('b')], [0.7, 0.3]), 'n', 'right'))).toBe('r[a.47 b.20 n.33]');
+  });
+
+  it('takes an open pane out of its place first: the space goes to its neighbours and a split of one dissolves', () => {
+    // Taking B out of the column leaves C alone in it, which takes the column's whole space.
+    const out = dockAtEdge(row([L('a'), col([L('b'), L('c')])], [0.3, 0.7]), 'b', 'left');
+    expect(show(out)).toBe('r[b.33 a.20 c.47]');
+    expect(leafIds(out)).toEqual(['b', 'a', 'c']);
+    expect(isSplit(out) && out.children.every((child) => !isSplit(child))).toBe(true);
+  });
+
+  it('moves a pane that is the only other child of a split out of it, dissolving the split', () => {
+    const out = dockAtEdge(layout(), 'b', 'bottom');
+    // A | C stay side by side and B spans the whole bottom.
+    expect(show(out)).toBe('c[r[a.50 c.50].50 b.50]');
+  });
+
+  it('does nothing for a lone pane, and adds a new session at the edge', () => {
+    const lone = L('a');
+    expect(dockAtEdge(lone, 'a', 'right')).toBe(lone);
+    expect(show(dockAtEdge(row([L('a'), L('b')]), 'z', 'left'))).toBe('r[z.33 a.33 b.33]');
+  });
+
+  it('keeps every session exactly once whichever edge', () => {
+    for (const id of ['a', 'b', 'c']) {
+      for (const side of ['left', 'right', 'top', 'bottom'] as const) {
+        expect(leafIds(dockAtEdge(layout(), id, side)).sort(), `${id} ${side}`).toEqual(['a', 'b', 'c']);
       }
     }
   });

@@ -285,36 +285,53 @@ export function zoneAt(point: Point, rect: Rect): Zone | null {
   return distance < EDGE_ZONE ? zone : 'center';
 }
 
-/** The region a drop on `zone` of a pane would give the dropped pane: that half of it, or all of it in the centre. */
-export function dropRegion(rect: Rect, zone: Zone): Rect {
-  const midX = (rect.left + rect.right) / 2;
-  const midY = (rect.top + rect.bottom) / 2;
-  switch (zone) {
-    case 'left':
-      return { ...rect, right: midX };
-    case 'right':
-      return { ...rect, left: midX };
-    case 'top':
-      return { ...rect, bottom: midY };
-    case 'bottom':
-      return { ...rect, top: midY };
-    default:
-      return rect;
-  }
+/**
+ * Where a drop lands: a part of a pane (an edge docks beside it, the centre swaps or replaces), or along a whole
+ * edge of the layout, which docks as a new cell as long (or as tall) as the window.
+ */
+export type DropTarget = { kind: 'pane'; id: string; zone: Zone } | { kind: 'edge'; side: Side };
+
+/** The band along each edge of the layout that docks across the whole window: this much of the length, but between ROOT_EDGE_MIN and ROOT_EDGE_MAX pixels and never more than a quarter. */
+export const ROOT_EDGE_SHARE = 0.06;
+export const ROOT_EDGE_MIN = 40;
+export const ROOT_EDGE_MAX = 72;
+
+/** How thick the window-edge band is along a side of `length` pixels. */
+export const edgeBand = (length: number): number => Math.min(Math.max(length * ROOT_EDGE_SHARE, ROOT_EDGE_MIN), ROOT_EDGE_MAX, length / 4);
+
+/**
+ * The window-edge band the point is in, or null. In a corner it is the band the point is deepest in, in
+ * proportion to its thickness (left and right win a tie, as zones in a pane do).
+ */
+export function edgeAt(point: Point, area: Rect): Side | null {
+  const width = area.right - area.left;
+  const height = area.bottom - area.top;
+  if (!(width > 0 && height > 0) || point.x < area.left || point.x >= area.right || point.y < area.top || point.y >= area.bottom) return null;
+  const bandX = edgeBand(width);
+  const bandY = edgeBand(height);
+  const depths: Array<[Side, number]> = [
+    ['left', (point.x - area.left) / bandX],
+    ['right', (area.right - point.x) / bandX],
+    ['top', (point.y - area.top) / bandY],
+    ['bottom', (area.bottom - point.y) / bandY],
+  ];
+  const [side, depth] = depths.reduce((best, d) => (d[1] < best[1] ? d : best));
+  return depth < 1 ? side : null;
 }
 
-export interface DropTarget {
-  /** The pane (its session) the pointer is over. */
-  id: string;
-  zone: Zone;
-}
-
-/** The pane and zone under a point, ignoring the pane being dragged (`from`, null when a session comes from the sidebar). */
-export function dropTarget(from: string | null, point: Point, panes: ReadonlyArray<{ id: string; rect: Rect }>): DropTarget | null {
+/**
+ * What a point over the layout would drop on, ignoring the pane being dragged (`from`, null when a session comes
+ * from the sidebar). The window-edge bands come first, over the zones of the panes in them; anything else is the
+ * pane under the point and its zone. Panes tile the whole area, so everywhere in it is a target (except the
+ * dragged pane's own middle).
+ */
+export function dropAt(from: string | null, point: Point, panes: ReadonlyArray<{ id: string; rect: Rect }>, area: Rect): DropTarget | null {
+  const side = edgeAt(point, area);
+  if (side) return { kind: 'edge', side };
   for (const pane of panes) {
     if (pane.id === from) continue;
     const zone = zoneAt(point, pane.rect);
-    if (zone) return { id: pane.id, zone };
+    if (zone) return { kind: 'pane', id: pane.id, zone };
   }
   return null;
 }

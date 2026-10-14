@@ -9,8 +9,9 @@ import {
   DIVIDER_KEY_STEP,
   DIVIDER_SNAP,
   dragStarted,
-  dropRegion,
-  dropTarget,
+  dropAt,
+  edgeAt,
+  edgeBand,
   fits,
   MIN_PANE_HEIGHT,
   MIN_PANE_WIDTH,
@@ -299,29 +300,79 @@ describe('drop zones', () => {
     expect(zoneAt({ x: 1, y: 1 }, { left: 1, top: 1, right: 1, bottom: 1 })).toBeNull();
   });
 
-  it('shows the region a drop would give: that half, or the whole pane to swap', () => {
-    expect(dropRegion(rect, 'left')).toEqual({ left: 100, top: 100, right: 300, bottom: 300 });
-    expect(dropRegion(rect, 'right')).toEqual({ left: 300, top: 100, right: 500, bottom: 300 });
-    expect(dropRegion(rect, 'top')).toEqual({ left: 100, top: 100, right: 500, bottom: 200 });
-    expect(dropRegion(rect, 'bottom')).toEqual({ left: 100, top: 200, right: 500, bottom: 300 });
-    expect(dropRegion(rect, 'center')).toEqual(rect);
-  });
-
   it('finds the pane under the pointer, never the one being dragged', () => {
     const panes = [
       { id: 'a', rect: { left: 0, top: 0, right: 400, bottom: 400 } },
       { id: 'b', rect: { left: 400, top: 0, right: 800, bottom: 400 } },
     ];
-    expect(dropTarget('a', { x: 600, y: 200 }, panes)).toEqual({ id: 'b', zone: 'center' });
-    expect(dropTarget('a', { x: 410, y: 200 }, panes)).toEqual({ id: 'b', zone: 'left' });
-    expect(dropTarget('a', { x: 100, y: 200 }, panes)).toBeNull();
-    expect(dropTarget(null, { x: 100, y: 200 }, panes)).toEqual({ id: 'a', zone: 'center' });
-    expect(dropTarget('a', { x: 900, y: 200 }, panes)).toBeNull();
+    // The area is bigger than the panes here, so the window-edge bands stay out of these points.
+    const area = { left: -200, top: -200, right: 1000, bottom: 600 };
+    expect(dropAt('a', { x: 600, y: 200 }, panes, area)).toEqual({ kind: 'pane', id: 'b', zone: 'center' });
+    expect(dropAt('a', { x: 410, y: 200 }, panes, area)).toEqual({ kind: 'pane', id: 'b', zone: 'left' });
+    expect(dropAt('a', { x: 100, y: 200 }, panes, area)).toBeNull();
+    expect(dropAt(null, { x: 100, y: 200 }, panes, area)).toEqual({ kind: 'pane', id: 'a', zone: 'center' });
+    expect(dropAt('a', { x: 1200, y: 200 }, panes, area)).toBeNull();
   });
 
   it('starts a drag only after a few pixels', () => {
     expect(dragStarted({ x: 0, y: 0 }, { x: 3, y: 3 })).toBe(false);
     expect(dragStarted({ x: 0, y: 0 }, { x: 6, y: 0 })).toBe(true);
+  });
+});
+
+describe('window-edge bands', () => {
+  const area: Rect = { left: 300, top: 0, right: 1260, bottom: 820 };
+  const panes = [
+    { id: 'a', rect: { left: 300, top: 0, right: 780, bottom: 820 } },
+    { id: 'b', rect: { left: 780, top: 0, right: 1260, bottom: 410 } },
+    { id: 'c', rect: { left: 780, top: 410, right: 1260, bottom: 820 } },
+  ];
+
+  it('is a share of the length, between a minimum and a maximum, and never over a quarter', () => {
+    expect(edgeBand(960)).toBeCloseTo(57.6);
+    expect(edgeBand(300)).toBe(40);
+    expect(edgeBand(4000)).toBe(72);
+    expect(edgeBand(120)).toBe(30);
+  });
+
+  it('says which edge band a point is in, or none', () => {
+    expect(edgeAt({ x: 310, y: 400 }, area)).toBe('left');
+    expect(edgeAt({ x: 1250, y: 400 }, area)).toBe('right');
+    expect(edgeAt({ x: 800, y: 5 }, area)).toBe('top');
+    expect(edgeAt({ x: 800, y: 815 }, area)).toBe('bottom');
+    expect(edgeAt({ x: 800, y: 400 }, area)).toBeNull();
+    expect(edgeAt({ x: 100, y: 400 }, area)).toBeNull();
+    expect(edgeAt({ x: 1260, y: 400 }, area)).toBeNull();
+  });
+
+  it('takes a corner for the band the point is deepest in, in proportion to its thickness', () => {
+    // 20px in from the left (band 57.6) and 10px down (band 49.2): the top band is deeper.
+    expect(edgeAt({ x: 320, y: 10 }, area)).toBe('top');
+    expect(edgeAt({ x: 305, y: 40 }, area)).toBe('left');
+    // A tie goes to left and right.
+    expect(edgeAt({ x: 300, y: 0 }, { left: 300, top: 0, right: 1260, bottom: 960 })).toBe('left');
+  });
+
+  it('comes before the zones of the panes inside it', () => {
+    // 10px from the right edge is inside c's right zone, but the band wins: it docks across the whole window.
+    expect(dropAt('a', { x: 1250, y: 600 }, panes, area)).toEqual({ kind: 'edge', side: 'right' });
+    expect(zoneAt({ x: 1250, y: 600 }, panes[2]!.rect)).toBe('right');
+    // The dragged pane's own area is also in the band.
+    expect(dropAt('a', { x: 310, y: 400 }, panes, area)).toEqual({ kind: 'edge', side: 'left' });
+    // Just outside the band, the pane's own zone applies again.
+    expect(dropAt('a', { x: 1260 - 100, y: 600 }, panes, area)).toEqual({ kind: 'pane', id: 'c', zone: 'right' });
+  });
+
+  it('puts the whole area in reach: every point is the band, a pane zone, or the dragged pane itself', () => {
+    let nothing = 0;
+    for (let x = area.left; x < area.right; x += 20) {
+      for (let y = area.top; y < area.bottom; y += 20) if (!dropAt('a', { x, y }, panes, area)) nothing++;
+    }
+    // Only the middle of the dragged pane (and not its edge bands) is not a target.
+    expect(nothing).toBeGreaterThan(0);
+    for (let x = 800; x < area.right; x += 20) for (let y = 0; y < area.bottom; y += 20) expect(dropAt('a', { x, y }, panes, area), `${x},${y}`).not.toBeNull();
+    // A session from the sidebar has no pane of its own: everywhere is a target.
+    for (let x = area.left; x < area.right; x += 20) for (let y = area.top; y < area.bottom; y += 20) expect(dropAt(null, { x, y }, panes, area), `${x},${y}`).not.toBeNull();
   });
 });
 

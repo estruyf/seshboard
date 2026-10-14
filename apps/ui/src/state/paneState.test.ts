@@ -5,19 +5,19 @@ import {
   closeSessions,
   commitLayout,
   drop,
-  dropResult,
   flipActive,
   focusNext,
   focusPane,
   focusWay,
   NO_PANES,
   openBeside,
+  planDrop,
   showSession,
   swapWithNext,
   type PaneState,
 } from './paneState.ts';
-import { isSplit, leaf, leafIds, type Direction, type Tile } from './tiling.ts';
-import { fits } from './tilingGeometry.ts';
+import { isSplit, leaf, leafIds, type Direction, type Side, type Tile, type Zone } from './tiling.ts';
+import { fits, type DropTarget } from './tilingGeometry.ts';
 
 const L = leaf;
 const split = (direction: Direction, children: Tile[], sizes?: number[]): Tile => ({ direction, children, sizes: sizes ?? children.map(() => 1 / children.length) });
@@ -208,37 +208,72 @@ describe('swapWithNext and flipActive', () => {
 
 describe('drop', () => {
   const s = at(row([L('a'), L('b'), L('c')]), 'a');
+  const onPane = (id: string, zone: Zone): DropTarget => ({ kind: 'pane', id, zone });
+  const onEdge = (side: Side): DropTarget => ({ kind: 'edge', side });
 
   it('docks a pane on an edge of another and makes it active', () => {
-    const out = drop(s, 'a', 'c', 'bottom', BIG);
-    expect(out.ok).toBe(true);
+    const out = drop(s, 'a', onPane('c', 'bottom'), BIG);
+    expect(out.outcome).toBe('done');
     expect(view(out.state)).toBe('b,c,a @a');
     expect(out.state.layout).toMatchObject({ direction: 'row' });
   });
 
   it('swaps in the centre', () => {
-    const out = drop(s, 'a', 'c', 'center', BIG);
-    expect(view(out.state)).toBe('c,b,a @a');
+    expect(view(drop(s, 'a', onPane('c', 'center'), BIG).state)).toBe('c,b,a @a');
   });
 
-  it('opens a session from the sidebar beside a pane, or in place of it', () => {
-    expect(view(drop(s, 'n', 'b', 'left', BIG).state)).toBe('a,n,b,c @n');
-    expect(view(drop(s, 'n', 'b', 'center', BIG).state)).toBe('a,n,c @n');
+  it('opens a session that is not open yet beside a pane, or in place of it in the centre', () => {
+    expect(view(drop(s, 'n', onPane('b', 'left'), BIG).state)).toBe('a,n,b,c @n');
+    expect(view(drop(s, 'n', onPane('b', 'center'), BIG).state)).toBe('a,n,c @n');
   });
 
-  it('refuses a layout that would not fit, onto itself, or onto nothing', () => {
+  it('moves a session that is already open, never opening it twice or replacing the pane it lands on', () => {
+    // Dragging the sidebar row of an open session is the same as dragging its pane's header to the same place.
+    for (const target of [onPane('c', 'right'), onPane('b', 'top'), onPane('c', 'center'), onEdge('right'), onEdge('bottom')]) {
+      const fromRow = drop(s, 'a', target, BIG);
+      expect(fromRow.outcome).toBe('done');
+      expect(leafIds(fromRow.state.layout).sort(), JSON.stringify(target)).toEqual(['a', 'b', 'c']);
+    }
+    expect(view(drop(s, 'a', onPane('c', 'center'), BIG).state)).toBe('c,b,a @a');
+  });
+
+  it('docks along a whole edge of the window', () => {
+    const stacked = at(row([L('a'), col([L('b'), L('c')])]), 'a');
+    const out = drop(stacked, 'c', onEdge('right'), BIG);
+    expect(out.outcome).toBe('done');
+    expect(view(out.state)).toBe('a,b,c @c');
+    expect(out.state.layout).toMatchObject({ direction: 'row', sizes: [1 / 3, 1 / 3, 1 / 3] });
+    // A session that is not open yet, along the bottom: the whole layout is one cell and it is the other.
+    const bottom = drop(stacked, 'n', onEdge('bottom'), BIG);
+    expect(bottom.state.layout).toMatchObject({ direction: 'column' });
+    expect(view(bottom.state)).toBe('a,b,c,n @n');
+  });
+
+  it('refuses a layout that would not fit, and says nothing for a drop that changes nothing', () => {
     const tight = { width: 1100, height: 400 };
-    expect(drop(s, 'a', 'c', 'bottom', tight)).toEqual({ state: s, ok: false });
-    expect(drop(s, 'a', 'a', 'left', BIG).ok).toBe(false);
-    expect(drop(s, 'a', 'x', 'left', BIG).ok).toBe(false);
-    expect(drop(NO_PANES, 'a', 'b', 'left', BIG).ok).toBe(false);
+    expect(drop(s, 'a', onPane('c', 'bottom'), tight)).toEqual({ state: s, outcome: 'no-room' });
+    expect(drop(s, 'n', onEdge('top'), tight).outcome).toBe('no-room');
+    expect(drop(s, 'a', onPane('a', 'left'), BIG).outcome).toBe('nothing');
+    expect(drop(s, 'a', onPane('x', 'left'), BIG).outcome).toBe('nothing');
+    expect(drop(NO_PANES, 'a', onPane('b', 'left'), BIG).outcome).toBe('nothing');
+    expect(drop(at(L('a'), 'a'), 'a', onEdge('left'), BIG).outcome).toBe('nothing');
   });
 
-  it('says what a drop would make without making it', () => {
-    expect(dropResult(s.layout, 'a', 'c', 'right', BIG)).not.toBeNull();
-    expect(dropResult(s.layout, 'a', 'c', 'bottom', { width: 1100, height: 400 })).toBeNull();
-    expect(dropResult(s.layout, 'a', 'a', 'left', BIG)).toBeNull();
-    expect(dropResult(null, 'a', 'c', 'left', BIG)).toBeNull();
+  it('plans a drop without making it', () => {
+    expect(planDrop(s.layout, 'a', onPane('c', 'right'), BIG).kind).toBe('ok');
+    expect(planDrop(s.layout, 'a', onPane('c', 'bottom'), { width: 1100, height: 400 }).kind).toBe('no-room');
+    expect(planDrop(s.layout, 'a', onPane('a', 'left'), BIG).kind).toBe('nothing');
+    expect(planDrop(null, 'a', onPane('c', 'left'), BIG).kind).toBe('nothing');
+    const plan = planDrop(s.layout, 'n', onEdge('left'), BIG);
+    expect(plan.kind === 'ok' && leafIds(plan.tree)).toEqual(['n', 'a', 'b', 'c']);
+  });
+
+  it('dissolves the split a pane is taken out of, when it was the only other child', () => {
+    const grid = at(row([L('a'), col([L('b'), L('c')])]), 'a');
+    const out = drop(grid, 'b', onPane('a', 'left'), BIG);
+    // C is alone where the column was, so A and C share the row with B in front.
+    expect(out.state.layout && isSplit(out.state.layout) && out.state.layout.children.every((child) => !isSplit(child))).toBe(true);
+    expect(view(out.state)).toBe('b,a,c @b');
   });
 });
 
