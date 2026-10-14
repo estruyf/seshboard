@@ -34,14 +34,17 @@ Every pane needs at least 340 pixels each way, so the number of panes depends on
 
 ## Drag panes into place
 
-Drag a pane by its title in the header (the project and session name, which shows a hand when you point at it) over another pane. The pane you point at shows five places to drop:
+Drag a pane by its title in the header (the project and session name, which shows a hand when you point at it), or a session from the sidebar (the list or the narrow rail), into the panes. Anywhere over them is a place to drop, and a frame shows the region the tile will take before you let go.
 
-- **An edge** (left, right, top or bottom) docks the dragged pane on that side. A frame shows the part of the pane it will take.
-- **The middle** swaps the two panes.
+- **A window edge.** A band along each edge of the panes (a faint dashed strip while you drag) docks the tile across the whole length of that edge: a column the full height on the left or right, a row the full width on the top or bottom. It beats the edge of whichever pane lies under it. With a layout of one pane next to two stacked ones, dragging the lower one to the right edge gives three equal columns. When the layout already runs that way, the tile joins it; otherwise the whole layout becomes one cell and the tile the other.
+- **A pane's edge** (left, right, top or bottom) docks the tile on that side of that pane. In a row of panes it becomes another pane in the row, not a nested split.
+- **A pane's middle** swaps the two panes. A session from the sidebar that is not open yet takes the place of the pane's session there; the session it replaced stays in the sidebar.
+
+A session that is already open is never opened twice: dragging its row in the sidebar moves its tile, exactly like dragging that tile's header to the same place.
 
 Release to drop, or press <Kbd keys="escape" /> to cancel. The buttons in the header keep working as usual. If the result would not fit in the window, the frame turns red and says so, and releasing changes nothing.
 
-Dragging a session from the sidebar (the list or the narrow rail) works the same way: an edge opens it beside that pane, and the middle puts it in place of the pane's session.
+Sizes follow the same rule as VS Code. If the panes beside each other were all the same size, they are all the same size again once one is added or taken away. Otherwise a new pane takes half of the pane it docks beside, and a pane that leaves gives its space to the pane next to it.
 
 Nothing reloads when you rearrange panes: the message you were typing, the scroll position and Find stay where you left them.
 

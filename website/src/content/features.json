@@ -2472,6 +2472,11 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "feature:dock-window-edge",
+      "name": "Dock a pane along a whole window edge",
+      "page": "sessions/split-view"
+    },
+    {
       "id": "feature:pane-dividers",
       "name": "Resize panes with a divider",
       "page": "sessions/split-view"
