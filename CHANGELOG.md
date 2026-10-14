@@ -13,6 +13,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **File Explorer and Windows Terminal open on Windows.** "Open in File Explorer" and "Open in Windows Terminal" in the ⋯ menu started a window you could not see. They now open where you can.
 - **Up next fits above the message box.** It shows five whole messages, and scrolls a whole message at a time when there are more, with the edge faded, instead of cutting the last one in half under the box. A long message is cut short with its full text in the tooltip, so every message keeps its **Send now**, edit and remove buttons in view.
 - **Menus under the message box stay open.** The profile, model, effort and permission menus no longer close on their own when a new message arrives in the session.
 - **Edit in Up next keeps your files.** A queued message you edit comes back with its files as chips again, not as `@` mentions in the text.

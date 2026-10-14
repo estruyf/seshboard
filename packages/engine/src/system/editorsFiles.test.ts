@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { appStateFake } from './testing.ts';
-import { detectEditors, openCommand } from './editors.ts';
+import { detectEditors, openCommand, spawnOptions } from './editors.ts';
 import { FileIndex, fuzzyScore, walk } from './files.ts';
 import { ShellEnvironment } from './shellEnvironment.ts';
 
@@ -51,10 +51,18 @@ describe('openCommand', () => {
     expect(code.verbatim).toBe(true);
     expect(code.args.slice(0, 4)).toEqual(['/d', '/v:off', '/s', '/c']);
     expect(code.args[4]).toContain('code.cmd');
-    expect(win('finder', 'C:\\repo\\a b.ts', false)).toEqual({ command: 'explorer.exe', args: ['/select,"C:\\repo\\a b.ts"'], verbatim: true });
-    expect(win('finder', 'C:\\repo', true)).toEqual({ command: 'explorer.exe', args: ['"C:\\repo"'], verbatim: true });
+    expect(win('finder', 'C:\\repo\\a b.ts', false)).toEqual({ command: 'explorer.exe', args: ['/select,"C:\\repo\\a b.ts"'], verbatim: true, window: true });
+    expect(win('finder', 'C:\\repo', true)).toEqual({ command: 'explorer.exe', args: ['"C:\\repo"'], verbatim: true, window: true });
     const wt = win('windows-terminal', 'C:\\repo;x\\a.ts', false, undefined, undefined, { PATH: 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps' });
-    expect(wt).toEqual({ command: 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe', args: ['-d', 'C:\\repo\\;x'] });
+    expect(wt).toEqual({ command: 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe', args: ['-d', 'C:\\repo\\;x'], window: true });
+  });
+});
+
+describe('spawnOptions', () => {
+  it('hides the console of a helper like cmd.exe, but never the window of Explorer or Windows Terminal', () => {
+    expect(spawnOptions({ command: 'cmd.exe', args: [] }, {}).windowsHide).toBe(true);
+    expect(spawnOptions({ command: 'explorer.exe', args: [], verbatim: true, window: true }, {})).toMatchObject({ windowsHide: false, windowsVerbatimArguments: true });
+    expect(spawnOptions({ command: 'wt.exe', args: [], window: true }, {}, { detached: true })).toMatchObject({ windowsHide: false, detached: true });
   });
 });
 
