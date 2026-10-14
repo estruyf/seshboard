@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { canSymlink } from '../util/canSymlink.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { PlanHistoryStore } from './planHistory.ts';
@@ -117,7 +118,7 @@ describe('UsageScanner', () => {
     expect(totals(scope)).toEqual([{ session: 's1', output: 300, turns: 3 }]);
   });
 
-  it('reads a config folder shared by two profiles once', async () => {
+  it.skipIf(!canSymlink())('reads a config folder shared by two profiles once', async () => {
     const config = configDir();
     symlinkSync(config, join(dir, 'linked'));
     writeFileSync(join(config, 'projects', '-work-app', 's1.jsonl'), line({ id: 'm1', session: 's1', at: '2026-10-12T10:00:00Z' }));

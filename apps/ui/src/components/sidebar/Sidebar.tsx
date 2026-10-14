@@ -26,6 +26,7 @@ import { NO_PICKS, pickGroup, rangePick, stepPick, togglePick, visiblePicks, typ
 import { FocusCounter } from '../focus/FocusCounter.tsx';
 import type { MenuEntry } from '../Menu.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
+import { RAIL_TONE, railShape } from './rail.ts';
 import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -66,7 +67,6 @@ const rowHeight = (row: SidebarListRow, style: SidebarStyle) =>
 const sectionOfHeader = (row: SidebarListRow): SectionKey | null => (row.kind === 'queue-header' ? 'queue' : row.kind === 'group' && isSectionKey(row.group) ? row.group : null);
 
 /** The 3px rail at a row's left edge: only the states that ask for a look get one. */
-const RAIL_TONE: Partial<Record<Exclude<RowStatus, null>, string>> = { 'needs-you': 'bg-warn', running: 'bg-accent-ink', unread: 'bg-unread' };
 const AGE_TONE: Partial<Record<Exclude<RowStatus, null>, string>> = { 'needs-you': 'text-warn', running: 'text-accent-ink', unread: 'text-unread' };
 
 /** The selection sheet's actions: three to a row in the sidebar's width, so they keep less padding than a button usually has. */
@@ -275,7 +275,7 @@ export const SessionRow = memo(function SessionRow({
   const railTone = profileRail ?? statusRail;
   const rail = railTone && (
     <span
-      className={`absolute inset-0 rounded-[inherit] [clip-path:inset(0_calc(100%-3px)_0_0)] ${railTone} ${archived && !selected ? 'opacity-50' : ''}`}
+      className={`${railShape(!picked && (selected || beside))} ${railTone} ${archived && !selected ? 'opacity-50' : ''}`}
       data-profile-badge={profileRail && profile ? profile.id : undefined}
       aria-hidden
     />

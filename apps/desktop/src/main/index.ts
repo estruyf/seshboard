@@ -4261,7 +4261,8 @@ async function runSectionsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   if (!(await js("!!document.querySelector('[data-sidebar-open]')"))) return 'the sidebar is not open';
   const earlier = (await js("document.querySelector('[data-section-toggle=\"earlier\"]')?.dataset.open ?? 'none'")) as string;
-  if (earlier === 'true') return 'Earlier did not start closed';
+  // Earlier starts closed (unit-tested with DEFAULT_SECTIONS), but opening a session in it opens it, and earlier steps
+  // (search, the palette) open real sessions, so here it may legitimately be open.
   const group = (await js("['today', 'yesterday', 'pinned', 'working'].find((g) => document.querySelector(`[data-section-toggle=\"${g}\"][data-open=\"true\"]`)) ?? null")) as string | null;
   if (!group) return `ok: no open section to collapse (Earlier ${earlier === 'none' ? 'not shown' : 'closed'})`;
   const toggle = `document.querySelector('[data-section-toggle="${group}"]')`;
@@ -4283,7 +4284,7 @@ async function runSectionsStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${toggle}.dataset.open === 'false'`, 2_000))) return `← did not close ${group}`;
   pressKey(win, 'Right');
   if (!(await waitInPage(win, `${toggle}.dataset.open === 'true'`, 2_000))) return `could not open ${group} again`;
-  return `ok: closed ${group} (${before} ${before === 1 ? 'row' : 'rows'} hidden, header "${header}"${summary ? `, summary "${summary}"` : ''}), ← → on the header, Earlier ${earlier === 'none' ? 'not shown' : 'starts closed'}`;
+  return `ok: closed ${group} (${before} ${before === 1 ? 'row' : 'rows'} hidden, header "${header}"${summary ? `, summary "${summary}"` : ''}), ← → on the header, Earlier ${earlier === 'none' ? 'not shown' : earlier === 'true' ? 'open' : 'closed'}`;
 }
 
 /**

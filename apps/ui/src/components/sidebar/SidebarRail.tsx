@@ -17,6 +17,7 @@ import { isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { FocusCounter } from '../focus/FocusCounter.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
+import { RAIL_TONE, railShape } from './rail.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Button } from '../ui/Button.tsx';
 import { newSessionDraftTooltip, PenBadge } from '../drafts/PenBadge.tsx';
@@ -100,7 +101,6 @@ function QueueButton({ item }: { item: Extract<RailItem, { kind: 'queue' }> }) {
 }
 
 /** The 3px rail at a row's left edge, as in the open sidebar: only the states that ask for a look get one. */
-const RAIL_TONE: Partial<Record<Exclude<RowStatus, null>, string>> = { 'needs-you': 'bg-warn', running: 'bg-accent-ink', unread: 'bg-unread' };
 /** The dot at the icon's corner: needs you or unread, the two that wait for you to look. */
 const CORNER_DOT: Partial<Record<Exclude<RowStatus, null>, string>> = { 'needs-you': 'bg-warn', unread: 'bg-unread' };
 
@@ -190,7 +190,7 @@ const RailRow = memo(function RailRow({
       }}
       className={`relative mx-auto flex h-10 w-11 items-center justify-center rounded-lg ${selected ? 'bg-selected' : beside ? 'bg-border/45 ring-1 ring-inset ring-border' : 'hover:bg-border/45'}`}
     >
-      {railTone && <span aria-hidden className={`absolute inset-0 rounded-[inherit] [clip-path:inset(0_calc(100%-3px)_0_0)] ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
+      {railTone && <span aria-hidden className={`${railShape(selected || beside)} ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
       <ProjectIcon project={project} root={data.projectRoot} size={26} />
       {draft !== null && <PenBadge size={14} className="absolute bottom-0.5 left-0.5" data-rail-pen />}
       {dot && (
