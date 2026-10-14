@@ -2,7 +2,8 @@ import { Check, ChevronRight, Copy, FolderOpen, Plus, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { expandHome, isAbsolutePath, PROFILE_COLORS, separatorOf, type ClaudeProfile, type ProfileColor, type ProjectDefaults } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { guessHome, tildify } from '../../lib/format.ts';
+import { tildify } from '../../lib/format.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { describeDefaults, ProjectDefaultsEditor } from '../projects/ProjectDefaultsEditor.tsx';
@@ -340,9 +341,7 @@ export function ProfilesSettings() {
   const client = connection.status === 'connected' ? connection.client : null;
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<ClaudeProfile | null>(null);
-  // The built-in folder is usually ~/.claude, which tells us where home is.
-  const builtin = profiles.find((p) => p.builtin)?.configDir;
-  const home = guessHome(profiles.map((p) => p.configDir)) ?? (builtin && /[\\/]\.claude$/.test(builtin) ? builtin.slice(0, -'/.claude'.length) : null);
+  const home = useHomeFolder();
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2" data-profiles>

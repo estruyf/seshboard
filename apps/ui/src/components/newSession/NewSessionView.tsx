@@ -6,9 +6,10 @@ import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
 import { routeHint } from './route.ts';
 import { filterBranches } from '../worktree/branchMenu.ts';
-import { basename, guessHome, shortAge } from '../../lib/format.ts';
+import { basename, shortAge } from '../../lib/format.ts';
 import { nextMode, randomWorktreeName } from '../../lib/modes.ts';
 import { passFocusGate, useFocus } from '../../state/focusGate.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { addToQueue, removeFromQueue, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
 import { busyInProject, promptLabel, sameDraft } from '../../state/queue.ts';
@@ -50,7 +51,7 @@ import { UsageBand } from '../UsageBand.tsx';
 import { linkNoticeText } from './linkNotice.ts';
 import { activityByProject, latestBranches, orderProjects, pickUpRows, tileStatus } from './projectTiles.ts';
 import { branchLabel, branchNote, freshBase } from './trayLabels.ts';
-import { checkoutBranchFor, shouldPrewarm, startNewSession } from './startSession.ts';
+import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
 import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices, type GlobalChoices } from './choices.ts';
 import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
@@ -87,7 +88,7 @@ export function NewSessionView() {
   const [d, setD] = useState<Choices>(() => ({ ...withNewSessionMode(INITIAL_CHOICES, newSessionMode), branch: '' }));
   const [loaded, setLoaded] = useState(false);
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
-  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[] }>({ current: null, branches: [] });
+  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[] }>({ current: null, branches: [] });
   /** Where the checkout stands: the remote a fresh worktree branches from, its default branch, and how far the upstream is ahead. */
   const [gitStatus, setGitStatus] = useState<WorktreeStatus | null>(null);
   const [worktreeName, setWorktreeName] = useState('');
@@ -155,7 +156,7 @@ export function NewSessionView() {
   const reloadProjects = useProjects((s) => s.reload);
   const yours = useMemo(() => addedProjects(projects), [projects]);
   const folders = useMemo(() => yours.filter((p) => p.exists).map((p) => p.root), [yours]);
-  const home = useMemo(() => guessHome(projects.keys()), [projects]);
+  const home = useHomeFolder();
   const project = cwd ? projects.get(cwd) : undefined;
   const questionsDir = useProjects((s) => s.questionsDir);
   /** Quick question picked: the scratch folder, with no git and no project to add or keep defaults for. */
@@ -498,6 +499,8 @@ export function NewSessionView() {
   const branch = inspection?.branch ?? (cwd ? (lastBranches.get(cwd) ?? null) : null);
   const folderBranches = useMemo(() => (cwd && inspection?.branch ? new Map(lastBranches).set(cwd, inspection.branch) : lastBranches), [lastBranches, cwd, inspection]);
   const checkoutBranch = checkoutBranchFor(d, useWorktree, gitBranches.current);
+  /** A branch kept from before (a draft, the project's default) can since be checked out in another worktree. */
+  const branchTaken = branchBlocked(checkoutBranch, gitBranches.checkedOutElsewhere);
   const branchOptions = d.branch && !gitBranches.branches.includes(d.branch) ? [d.branch, ...gitBranches.branches] : gitBranches.branches;
   const asDefaults = toProjectDefaults({ ...d, workspace: useWorktree ? 'worktree' : d.workspace });
   const unsaved = isProject && !sameDefaults(asDefaults, project!.defaults);
@@ -618,6 +621,7 @@ export function NewSessionView() {
         worktree,
         worktreeName: effectiveName,
         currentBranch: gitBranches.current,
+        checkedOutElsewhere: gitBranches.checkedOutElsewhere,
         profileId,
         fromLink,
         skipGate,
@@ -629,6 +633,7 @@ export function NewSessionView() {
         createSession: (params) => client.call('session.create', params),
         gate: passFocusGate,
         addProject: (path) => client.call('projects.add', { path }).then(reloadProjects),
+        keep: useDrafts.getState().keepFirstPrompt,
         open: (sessionId) => {
           // Edited from the queue and started here: it leaves the queue, and items waiting on it follow this session.
           // New session's own prompt for the project stays.
@@ -987,7 +992,7 @@ export function NewSessionView() {
                       width={300}
                       choices={[
                         ...(gitBranches.current ? [] : [{ value: '', label: 'Stay on the current checkout' }]),
-                        ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null) })),
+                        ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null), ...(gitBranches.checkedOutElsewhere?.includes(b) ? { disabled: true, description: ELSEWHERE_NOTE } : {}) })),
                       ]}
                     >
                       <GitBranch size={14} className="shrink-0" aria-hidden />
@@ -1045,7 +1050,7 @@ export function NewSessionView() {
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <StartButton
-                  state={startButtonState({ ...box, startBlocked, canWorktree, worktree: useWorktree, question })}
+                  state={startButtonState({ ...box, startBlocked, branchBlocked: branchTaken, canWorktree, worktree: useWorktree, question })}
                   onAction={(action) =>
                     action === 'queue' ? box.submitSecondary() : action === 'start-worktree' ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true })) : box.submit()
                   }

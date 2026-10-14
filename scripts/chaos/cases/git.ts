@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from 'node:path';
 import type { Chaos } from '../lib/harness.ts';
 import { sleep } from '../lib/harness.ts';
-import { command, gitStatus, openSessionByTitle } from '../lib/ui.ts';
+import { command, gitStatus, newSessionIn, openSessionByTitle } from '../lib/ui.ts';
 import type { Case } from './types.ts';
 
 const HERO = 'Add dark mode toggle';
@@ -54,6 +54,37 @@ export const gitCases: Record<string, Case> = {
       const current = git(c, c.world.acme, 'branch', '--show-current').trim();
       const wrong = offered.filter((b) => b !== current && inWorktrees.includes(b));
       return { ok: wrong.length === 0, saw: { offeredButCheckedOutElsewhere: wrong } };
+    },
+  },
+
+  newSessionBranchInWorktree: {
+    finding: 'CG2',
+    expect: "New session's branch picker shows branches checked out in another worktree as unavailable, with the reason, so a session never starts on one.",
+    async run(c, note) {
+      const inWorktrees = git(c, c.world.acme, 'worktree', 'list', '--porcelain')
+        .split('\n')
+        .filter((l) => l.startsWith('branch refs/heads/'))
+        .map((l) => l.slice('branch refs/heads/'.length));
+      const current = git(c, c.world.acme, 'branch', '--show-current').trim();
+      const elsewhere = inWorktrees.filter((b) => b !== current);
+      await newSessionIn(c, 'acme-store');
+      // The branch picker is there for the current checkout, not a new worktree.
+      if ((await c.page.locator('[data-workspace-select]').getAttribute('data-value').catch(() => null)) === 'worktree') {
+        await c.page.locator('[data-workspace-select]').click();
+        await c.page.locator('[data-menu="workspace"] [data-choice="current"]').click();
+      }
+      await c.page.locator('[data-branch-select]').click();
+      await c.page.locator('[data-menu="branch"]').waitFor();
+      const choices = await c.page.evaluate(() =>
+        [...document.querySelectorAll<HTMLButtonElement>('[data-menu="branch"] [data-choice]')].map((e) => ({ branch: e.dataset.choice!, disabled: e.disabled, text: e.innerText })),
+      );
+      await c.page.keyboard.press('Escape');
+      const offered = choices.filter((ch) => elsewhere.includes(ch.branch) && !ch.disabled).map((ch) => ch.branch);
+      const unexplained = choices.filter((ch) => elsewhere.includes(ch.branch) && ch.disabled && !ch.text.includes('Checked out in another worktree')).map((ch) => ch.branch);
+      const shown = choices.filter((ch) => elsewhere.includes(ch.branch)).length;
+      note('branches', { elsewhere, shown, offered, unexplained });
+      // Without such a branch in the demo world, the case proves nothing.
+      return { ok: elsewhere.length > 0 && shown > 0 && offered.length === 0 && unexplained.length === 0, saw: { elsewhere, shown, offered, unexplained } };
     },
   },
 

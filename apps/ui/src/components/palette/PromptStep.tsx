@@ -28,7 +28,7 @@ import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { StartButton } from '../newSession/StartButton.tsx';
 import { focusStartBlock, startButtonState } from '../newSession/startMenu.ts';
 import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, readGlobals, startingChoices, withNewSessionMode, type Choices, type GlobalChoices } from '../newSession/choices.ts';
-import { checkoutBranchFor, shouldPrewarm, startNewSession } from '../newSession/startSession.ts';
+import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from '../newSession/startSession.ts';
 import { branchLabel, branchNote, freshBase } from '../newSession/trayLabels.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Pill } from '../ui/Pill.tsx';
@@ -73,7 +73,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
   const [d, setD] = useState<Choices>(() => ({ ...startingChoices(withNewSessionMode(INITIAL_CHOICES, newSessionMode), sessionDefaults), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
-  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[] }>({ current: null, branches: [] });
+  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[] }>({ current: null, branches: [] });
   const [gitStatus, setGitStatus] = useState<{ remote: string | null; baseBranch: string | null; behindUpstream: number | null } | null>(null);
   const moved = from && from !== root ? from : null;
   const [saved] = useState(() => (moved ? savedDraft(moved) : undefined) ?? savedDraft(root));
@@ -142,6 +142,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const canWorktree = options.git && (inspection?.isGitRepo ?? false);
   const useWorktree = d.workspace === 'worktree' && canWorktree;
   const checkoutBranch = checkoutBranchFor(d, useWorktree, gitBranches.current);
+  const branchTaken = branchBlocked(checkoutBranch, gitBranches.checkedOutElsewhere);
   const trayBranch = branchLabel({
     worktree: useWorktree,
     baseRef: d.baseRef,
@@ -206,6 +207,8 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   /** `worktree`: Start's menu can start in a new worktree for once, without turning the switch on. */
   const start = async (worktree = useWorktree) => {
     if (!client || !canStart) return;
+    // A new worktree checks nothing out, so only starting here waits for the branch.
+    if (!worktree && branchTaken) return setError(branchTaken);
     const prompt = text.trim();
     const tooLong = tooLongReason(prompt);
     if (tooLong) return setError(tooLong);
@@ -224,6 +227,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
           choices: d,
           worktree,
           currentBranch: gitBranches.current,
+          checkedOutElsewhere: gitBranches.checkedOutElsewhere,
           profileId,
           addProject: options.addAsProject && !isProject && !!inspection?.exists,
           saveForLater: () => addToQueue(laterDraft(prompt)),
@@ -233,6 +237,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
           createSession: (params) => client.call('session.create', params),
           gate: passFocusGate,
           addProject: (path) => client.call('projects.add', { path }).then(() => useProjects.getState().reload()),
+          keep: useDrafts.getState().keepFirstPrompt,
           open: (sessionId) => {
             finish();
             useSessions.getState().select(sessionId);
@@ -333,7 +338,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
             disabled={gitBranches.branches.length === 0}
             choices={[
               ...(gitBranches.current ? [] : [{ value: '', label: 'Stay on the current checkout' }]),
-              ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null) })),
+              ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null), ...(gitBranches.checkedOutElsewhere?.includes(b) ? { disabled: true, description: ELSEWHERE_NOTE } : {}) })),
             ]}
           >
             <GitBranch size={13} className="shrink-0" aria-hidden />
@@ -415,7 +420,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
           />
         </div>
         <StartButton
-          state={startButtonState({ blocked, sending: busy, hasMessage: text.trim() !== '', hasText: text.trim() !== '', startBlocked: focusStartBlock(focus), canWorktree, worktree: useWorktree, question })}
+          state={startButtonState({ blocked, sending: busy, hasMessage: text.trim() !== '', hasText: text.trim() !== '', startBlocked: focusStartBlock(focus), branchBlocked: branchTaken, canWorktree, worktree: useWorktree, question })}
           onAction={(action) => void (action === 'queue' ? queue() : start(action === 'start-worktree' || useWorktree))}
           data={{ 'data-palette-start': true }}
           itemData={{ queue: { 'data-palette-queue': true } }}

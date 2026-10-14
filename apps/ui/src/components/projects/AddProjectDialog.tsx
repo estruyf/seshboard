@@ -1,6 +1,7 @@
 import { Check, FolderOpen, Plus } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { guessHome, shortAge, tildify } from '../../lib/format.ts';
+import { shortAge, tildify } from '../../lib/format.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { knownFolders } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -26,7 +27,7 @@ export function AddProjectDialog({ onClose: close }: { onClose(): void }) {
     close();
     if (lastAdded.current) manage(lastAdded.current);
   }, [close]);
-  const home = useMemo(() => guessHome(projects.keys()), [projects]);
+  const home = useHomeFolder();
   const folders = useMemo(() => knownFolders(projects, query, home), [projects, query, home]);
   // The extra row at the end: the system folder dialog.
   const count = folders.length + 1;

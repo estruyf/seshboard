@@ -3369,8 +3369,8 @@ async function runLongPromptStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Every message has a Copy button (Markdown for Claude's replies), and the text of prompts, commands
- * and replies can be selected. Read-only: it doesn't click Copy, which would replace the clipboard.
+ * Every message has a Copy button (Markdown for Claude's replies, which also have Copy as rich text), and the text
+ * of prompts, commands and replies can be selected. Read-only: it doesn't click Copy, which would replace the clipboard.
  */
 async function runCopyMessageStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -3396,6 +3396,8 @@ async function runCopyMessageStep(win: BrowserWindow): Promise<string> {
   }
   const textCopy = (await js(`document.querySelector('[data-item-kind="text"] [data-message-actions] button[aria-label^="Copy"]')?.getAttribute('aria-label') ?? null`)) as string | null;
   if (report.text && textCopy !== 'Copy as Markdown') return `Claude's Copy button is labelled ${JSON.stringify(textCopy)}`;
+  const withoutRich = (await js(`[...document.querySelectorAll('[data-item-kind="text"]')].filter((row) => row.querySelector('.markdown') && !row.querySelector('[data-message-actions] button[aria-label="Copy as rich text"]')).length`)) as number;
+  if (withoutRich > 0) return `${withoutRich} of Claude's replies have no Copy as rich text`;
   return `ok: Copy and selectable text on ${kinds.map(([kind, { rows }]) => `${rows} ${kind}`).join(', ')} messages`;
 }
 
@@ -4547,7 +4549,7 @@ async function closePalette(win: BrowserWindow): Promise<boolean> {
 /**
  * The command palette: ⌘K and ⌘⇧P open its commands, ⌘P go-to (sessions); typing ">" switches to the
  * commands and ⌫ leaves them; "This session" leads with a session open and is gone at Home; "tog chan"
- * and Enter run Toggle changes (and again, to put it back).
+ * and Enter run Toggle changes (and again, to put it back), which outside git isn't offered.
  */
 async function runPaletteStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -4573,21 +4575,26 @@ async function runPaletteStep(win: BrowserWindow): Promise<string> {
 
   const panelOpen = () => has('[data-changes-panel]');
   const before = await panelOpen();
-  // Outside git the session has no Changes panel to show: the command still runs, but only its ranking is checked.
+  // Outside git the session has no Changes panel, so the palette doesn't offer Toggle changes.
   const onGit = await has('[data-current-session] [data-toggle-changes]');
+  const firstMatch = "document.querySelector('[data-command-palette] [data-palette-command]')?.dataset.paletteCommand ?? null";
   const runCommand = async (text: string) => {
     if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return null;
     await setFieldValue(win, '[data-palette-input]', text);
-    await settle(win);
-    const first = await js("document.querySelector('[data-command-palette] [data-palette-command]')?.dataset.paletteCommand ?? null");
-    pressKey(win, 'Return');
+    // The palette reads the checkout's git state when it opens: on git, wait for the command to be offered.
+    if (onGit) await waitInPage(win, `${firstMatch} === 'toggle-changes'`, 3_000);
+    else await settle(win);
+    const first = await js(firstMatch);
+    if (first === 'toggle-changes') pressKey(win, 'Return');
+    else await closePalette(win);
     await waitInPage(win, "!document.querySelector('[data-command-palette]')", 2_000);
     return first;
   };
   const first = await runCommand('tog chan');
-  if (first !== 'toggle-changes') return `"tog chan" ranked ${String(first)} first`;
+  if (onGit && first !== 'toggle-changes') return `"tog chan" ranked ${String(first)} first`;
+  if (!onGit && first === 'toggle-changes') return 'Toggle changes was offered outside git';
   if (onGit && !(await waitInPage(win, before ? "!document.querySelector('[data-changes-panel]')" : "!!document.querySelector('[data-changes-panel]')", 2_000))) return 'Toggle changes did nothing';
-  await runCommand('tog chan');
+  if (onGit) await runCommand('tog chan');
   if (onGit && (await panelOpen()) !== before) return 'could not toggle the panel back';
 
   // Home: nothing for a session.
@@ -4599,7 +4606,7 @@ async function runPaletteStep(win: BrowserWindow): Promise<string> {
   await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
   await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"] [data-transcript-item]')`, 5_000);
   if (sessionCommands) return '"This session" commands showed at Home';
-  return 'ok: ⌘K and ⌘⇧P open the commands with "This session" first, ⌘P lists sessions, ">" and ⌫ switch mode, "tog chan" ran Toggle changes, nothing for a session at Home';
+  return `ok: ⌘K and ⌘⇧P open the commands with "This session" first, ⌘P lists sessions, ">" and ⌫ switch mode, ${onGit ? '"tog chan" ran Toggle changes' : 'no Toggle changes outside git'}, nothing for a session at Home`;
 }
 
 const SHEET = "document.querySelector('[data-shortcuts-sheet]')";

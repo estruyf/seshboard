@@ -1332,6 +1332,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:copy-rich-text",
+      "name": "Copy a reply as rich text",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:copy-to-my-memory",
       "name": "Copy to my memory… (a section of an instruction file)",
       "page": "memory/share-with-the-team"

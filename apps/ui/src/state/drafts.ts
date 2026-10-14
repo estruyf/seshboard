@@ -1,4 +1,4 @@
-import { isAbsolutePath, type ContextItem } from '@switchboard/protocol/client';
+import { isAbsolutePath, type ContextItem, type HostState } from '@switchboard/protocol/client';
 import type { Choices } from '../components/newSession/choices.ts';
 import { addChips, chipsSummary, type ContextChip } from '../components/composer/contextItems.ts';
 import { spokenAge } from '../components/sidebar/rowLabel.ts';
@@ -40,6 +40,11 @@ export interface Draft<A = unknown> {
   form?: DraftForm;
   /** Files, lines and text added as context (the chips above the text), sent with it. */
   context?: ContextChip[];
+  /**
+   * The first prompt of a session that never started (Claude Code failed before it wrote a transcript): the folder it
+   * was started in. With `form`, it lets the prompt go back to New session there once the session is gone (a restart).
+   */
+  startIn?: string;
 }
 
 /** There is something to send: text, or images or context without text. */
@@ -78,6 +83,7 @@ export function nextDraft<A>(previous: Draft<A> | undefined, next: { text: strin
     lostImages: 0,
     form: previous?.form,
     ...(context?.length ? { context } : {}),
+    ...(previous?.startIn ? { startIn: previous.startIn } : {}),
   };
 }
 
@@ -122,14 +128,17 @@ interface StoredDraft {
   images: number;
   form?: DraftForm;
   context?: ContextItem[];
+  startIn?: string;
 }
 export interface StoredDrafts {
   version: 1;
   drafts: Record<string, StoredDraft>;
+  /** New sessions' first prompts, by session id, while they wait for a transcript (see `settleFirstPrompts`). */
+  firstPrompts?: Record<string, StoredDraft>;
 }
 
-/** What is saved: drafts with text or context (images stay behind; a box with only images has nothing to keep). */
-export function serializeDrafts(drafts: Readonly<Record<string, Draft>>): StoredDrafts {
+/** The drafts worth saving: those with text or context (images stay behind; a box with only images has nothing to keep). */
+function storedDrafts(drafts: Readonly<Record<string, Draft>>): Record<string, StoredDraft> {
   const out: Record<string, StoredDraft> = {};
   for (const [key, draft] of Object.entries(drafts)) {
     if (draft.text.trim() === '' && !draft.context?.length) continue;
@@ -141,9 +150,16 @@ export function serializeDrafts(drafts: Readonly<Record<string, Draft>>): Stored
       images: draft.attachments.length + draft.lostImages,
       ...(draft.form ? { form: draft.form } : {}),
       ...(context?.length ? { context } : {}),
+      ...(draft.startIn ? { startIn: draft.startIn } : {}),
     };
   }
-  return { version: 1, drafts: out };
+  return out;
+}
+
+/** What is saved: the drafts, and the first prompts of new sessions that have no transcript yet. */
+export function serializeDrafts(drafts: Readonly<Record<string, Draft>>, firstPrompts: Readonly<Record<string, FirstPrompt>> = {}): StoredDrafts {
+  const waiting = storedDrafts(Object.fromEntries(Object.entries(firstPrompts).map(([id, first]) => [id, first.draft])));
+  return { version: 1, drafts: storedDrafts(drafts), ...(Object.keys(waiting).length ? { firstPrompts: waiting } : {}) };
 }
 
 const isRange = (value: unknown): value is { start: number; end: number } =>
@@ -188,26 +204,129 @@ function parseForm(value: unknown): DraftForm | undefined {
   };
 }
 
+/** One saved draft, as a draft that counts straight away; null when it doesn't read as one. */
+function parseDraft(raw: unknown): Draft<never> | null {
+  if (!isRecord(raw) || typeof raw.text !== 'string' || typeof raw.updatedAt !== 'number') return null;
+  const context = addChips([], parseContext(raw.context));
+  if (raw.text.trim() === '' && context.length === 0) return null;
+  const form = parseForm(raw.form);
+  // Without its choices, a session that never started can't go back to New session as it was.
+  const startIn = form && typeof raw.startIn === 'string' && isAbsolutePath(raw.startIn) ? raw.startIn : null;
+  return {
+    text: raw.text,
+    attachments: [],
+    updatedAt: raw.updatedAt,
+    counted: true,
+    lostImages: typeof raw.images === 'number' && raw.images > 0 ? Math.floor(raw.images) : 0,
+    ...(form ? { form } : {}),
+    ...(context.length ? { context } : {}),
+    ...(startIn ? { startIn } : {}),
+  };
+}
+
 /** Drafts saved earlier, as drafts that count straight away; anything that doesn't read as one is left out. */
 export function parseDrafts(value: unknown): Record<string, Draft<never>> {
   const out: Record<string, Draft<never>> = {};
   if (!isRecord(value) || value.version !== 1 || !isRecord(value.drafts)) return out;
   for (const [key, raw] of Object.entries(value.drafts)) {
-    if (!key || !isRecord(raw) || typeof raw.text !== 'string' || typeof raw.updatedAt !== 'number') continue;
-    const context = addChips([], parseContext(raw.context));
-    if (raw.text.trim() === '' && context.length === 0) continue;
-    const form = parseForm(raw.form);
-    out[key] = {
-      text: raw.text,
-      attachments: [],
-      updatedAt: raw.updatedAt,
-      counted: true,
-      lostImages: typeof raw.images === 'number' && raw.images > 0 ? Math.floor(raw.images) : 0,
-      ...(form ? { form } : {}),
-      ...(context.length ? { context } : {}),
-    };
+    const draft = key ? parseDraft(raw) : null;
+    if (draft) out[key] = draft;
   }
   return out;
+}
+
+/** New sessions' first prompts saved earlier, marked as read back after a restart. */
+export function parseFirstPrompts(value: unknown): Record<string, FirstPrompt<never>> {
+  const out: Record<string, FirstPrompt<never>> = {};
+  if (!isRecord(value) || value.version !== 1 || !isRecord(value.firstPrompts)) return out;
+  for (const [id, raw] of Object.entries(value.firstPrompts)) {
+    const draft = id && !isNewDraftKey(id) ? parseDraft(raw) : null;
+    if (draft?.startIn) out[id] = { draft: { ...draft, startIn: draft.startIn }, restored: true };
+  }
+  return out;
+}
+
+/**
+ * The first prompt of a session started here, out of sight while the session runs, until Claude Code writes its
+ * transcript. A session that fails first (no login) would lose it otherwise: there is no transcript to read it back
+ * from, and after a restart nothing even knows the session.
+ */
+export interface FirstPrompt<A = unknown> {
+  draft: Draft<A> & { startIn: string };
+  /** Read back after a restart: a session that has no host then never started. */
+  restored: boolean;
+}
+
+/** What `settleFirstPrompts` needs to know about sessions. */
+export interface SessionsSeen {
+  /** The engine's first lists are in (sessions scanned, hosts listed), so a session missing from both never started. */
+  ready: boolean;
+  hasTranscript(sessionId: string): boolean;
+  /** The state of the session's host in this app, undefined without one. */
+  hostState(sessionId: string): HostState | undefined;
+}
+
+/**
+ * Where new sessions' first prompts go as sessions change, or null when nothing moves:
+ * - the session has a transcript: it started, and its first prompt is forgotten;
+ * - its Claude Code failed or stopped first: the prompt becomes the session's unsent message, in its message box,
+ *   which starts it again;
+ * - it has no host (after a restart): the prompt goes back to New session in its folder, with its choices.
+ */
+export function settleFirstPrompts<A>(
+  drafts: Readonly<Record<string, Draft<A>>>,
+  firstPrompts: Readonly<Record<string, FirstPrompt<A>>>,
+  seen: SessionsSeen,
+): { drafts: Record<string, Draft<A>>; firstPrompts: Record<string, FirstPrompt<A>> } | null {
+  const nextDrafts = { ...drafts };
+  const nextFirst = { ...firstPrompts };
+  let changed = false;
+  for (const [id, { draft, restored }] of Object.entries(firstPrompts)) {
+    if (seen.hasTranscript(id)) {
+      delete nextFirst[id];
+      changed = true;
+      continue;
+    }
+    const state = seen.hostState(id);
+    const failed = state === 'error' || state === 'closed';
+    if (!failed && !(restored && seen.ready && state === undefined)) continue;
+    delete nextFirst[id];
+    // Anything typed into the session's box since wins.
+    if (!nextDrafts[id] || !hasContent(nextDrafts[id]!)) nextDrafts[id] = { ...draft, counted: true };
+    changed = true;
+  }
+  for (const [key, draft] of Object.entries(nextDrafts)) {
+    if (!draft.startIn || isNewDraftKey(key)) continue;
+    if (seen.hasTranscript(key)) {
+      // It did start after all: an ordinary unsent message now.
+      const { startIn: _startIn, form: _form, ...rest } = draft;
+      nextDrafts[key] = rest;
+      changed = true;
+    } else if (seen.ready && seen.hostState(key) === undefined) {
+      delete nextDrafts[key];
+      const target = newDraftKey(draft.startIn);
+      nextDrafts[target] = intoNewSession(nextDrafts[target], draft);
+      changed = true;
+    }
+  }
+  return changed ? { drafts: nextDrafts, firstPrompts: nextFirst } : null;
+}
+
+/** A prompt back in New session, after one written there meanwhile (which keeps its choices): neither is lost. */
+function intoNewSession<A>(existing: Draft<A> | undefined, prompt: Draft<A>): Draft<A> {
+  const { startIn: _startIn, ...back } = prompt;
+  if (!existing || !hasContent(existing)) return { ...back, counted: true };
+  const context = addChips(existing.context ?? [], back.context ?? []);
+  return {
+    ...existing,
+    text: [existing.text.trim(), back.text.trim()].filter(Boolean).join('\n\n'),
+    attachments: [...existing.attachments, ...back.attachments],
+    updatedAt: Math.max(existing.updatedAt, back.updatedAt),
+    counted: true,
+    lostImages: existing.lostImages + back.lostImages,
+    form: existing.form ?? back.form,
+    ...(context.length ? { context } : {}),
+  };
 }
 
 /** The note under a restored draft about its images: "1 image wasn't kept." */

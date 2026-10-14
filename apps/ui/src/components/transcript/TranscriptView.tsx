@@ -4,8 +4,9 @@ import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
-import { basename, guessHome, shortAge, tildify } from '../../lib/format.ts';
+import { basename, shortAge, tildify } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
@@ -267,7 +268,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const permissionMap = useHosts((s) => s.permissions);
   const commandsVersion = useHosts((s) => s.commandsVersion);
   const permissions = useMemo(() => [...permissionMap.values()].filter((p) => p.sessionId === sessionId), [permissionMap, sessionId]);
-  const home = useSessions((s) => guessHome([...s.sessions.values()].slice(0, 20).flatMap((x) => (x.cwd ? [x.cwd] : []))));
+  const home = useHomeFolder();
   const { status, messages, error: readError, retry: retryRead } = useTranscript(sessionId);
   // The terminal panel belongs to this session's view: another session doesn't show it.
   const panelOpen = useTerminals((s) => s.openFor.has(sessionId));
@@ -664,6 +665,14 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const [boxPreset, setBoxPreset] = useState<{ text: string; attachments: ImageAttachment[]; seq: number } | null>(null);
   const presetSeq = useRef(0);
   const presetBox = useCallback((text: string, attachments: ImageAttachment[]) => setBoxPreset({ text, attachments, seq: ++presetSeq.current }), []);
+  // Claude Code failed before the session started: its first prompt is now the session's unsent message (the drafts
+  // store moved it there), and a box that was open already shows it too, ready to start the session again.
+  const restarting = restart !== null;
+  useEffect(() => {
+    if (!restarting) return;
+    const kept = useDrafts.getState().drafts[sessionId];
+    if (kept?.startIn) presetBox(kept.text, kept.attachments);
+  }, [restarting, sessionId]);
   const onDraftLoaded = (draft: ComposerDraft) => setRestored(draft.seeded ? null : draft);
   const onDraftText = useCallback((text: string) => setRestored((current) => (current && current.text !== text ? null : current)), []);
 
@@ -775,7 +784,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
       // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
       const outcome = await startNewSession(
         { ...restart, prompt: text, attachments, skipGate: ungated },
-        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, addProject: async () => {}, open: select },
+        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
       );
       return outcome.kind === 'started' ? undefined : false;
     }
