@@ -865,6 +865,7 @@ export const SHORTCUTS = [
     where: "composer",
   },
 
+
   {
     id: "new-session.queue",
     keys: ["mod+shift+enter"],

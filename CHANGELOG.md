@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **Add a project from New session in one step.** **Add project…** next to the Project heading opens the same Add project dialog as on first start, with the folders you have used Claude Code in, and the project you add is picked right away. You can also type a path that starts with `~/` or `/` (a drive such as `C:\` on Windows): the field lists the folders in it, Tab completes a name, and ↩ (Enter on Windows) adds the folder and picks it. When a name matches none of your projects, the list offers the folders Claude Code already has sessions for, and you can drop a folder from Finder (File Explorer on Windows) onto the projects to add it. A folder that already is a project is picked instead. **Filter** next to it opens the full list, as does the fifth tile (**+N more**), which is gone when you have four projects or fewer.
+
 ## [0.0.17] - 2026-10-14
 
 ### New

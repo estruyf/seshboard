@@ -75,6 +75,24 @@ function readBranch(gitDir: string): string | null {
   }
 }
 
+/**
+ * The git directory of a checkout whose top is `dir` itself (a `.git` folder, or a worktree's `.git` file), or null when
+ * `dir` is not the top of one. Unlike `resolve`, it never looks at the folders above.
+ */
+export function ownGitDir(dir: string): string | null {
+  try {
+    const dotGit = join(dir, '.git');
+    const stat = statSync(dotGit, { throwIfNoEntry: false });
+    if (stat?.isDirectory()) return dotGit;
+    return stat?.isFile() ? readGitFile(dotGit, dir) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The branch checked out in a git directory: its name, a short SHA when detached, null when unreadable. */
+export const branchOf = (gitDir: string): string | null => readBranch(gitDir);
+
 export function createProjectResolver(home = homedir()): ProjectResolver {
   const cache = new Map<string, ProjectLocation>();
   return {

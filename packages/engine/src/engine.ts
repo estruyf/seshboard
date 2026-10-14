@@ -87,6 +87,7 @@ import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
 import { FileIndex } from './system/files.ts';
+import { listFolders } from './system/folders.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
 import { detectTerminalFont } from './system/terminalFont.ts';
 import type { ShellEnv } from './system/shellEnv.ts';
@@ -1300,6 +1301,7 @@ export function createEngine(options: EngineOptions): Engine {
       const location = resolver.resolve(path);
       return { path, exists, ...(stat && !exists ? { isFile: true } : {}), isGitRepo: exists && location.gitDir !== null, root: location.root, branch: resolver.branch(location) };
     },
+    'fs.folders': ({ path, prefix }) => listFolders(path, prefix),
     'files.search': async ({ cwd, query, limit }) => ({ files: await files.search(cwd, query, limit) }),
     'files.resolve': async ({ cwd, paths }) => ({ paths: await files.resolve(cwd, paths) }),
     'editors.list': async () => {
