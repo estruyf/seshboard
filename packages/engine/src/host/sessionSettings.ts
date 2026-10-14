@@ -39,16 +39,20 @@ export function createSessionSettingsStore(db: DatabaseSync): SessionSettingsSto
   `);
   const remove = db.prepare('DELETE FROM session_settings WHERE id = ?');
   const get = (sessionId: string): SessionSettings | null => {
+    // SQLite can't bind a missing id; such a session has nothing saved.
+    if (typeof sessionId !== 'string') return null;
     const row = select.get(sessionId) as { permission_mode: string | null; model: string | null; effort: string | null; auto_pick_json: string | null } | undefined;
     return row ? { permissionMode: row.permission_mode as PermissionMode | null, model: row.model, effort: row.effort as Effort | null, autoPick: readPick(row.auto_pick_json) } : null;
   };
   return {
     get,
     set(sessionId, patch) {
+      if (typeof sessionId !== 'string') return;
       const next = { ...EMPTY, ...get(sessionId), ...patch };
       upsert.run(sessionId, next.permissionMode, next.model, next.effort, next.autoPick ? JSON.stringify(next.autoPick) : null);
     },
     delete(sessionId) {
+      if (typeof sessionId !== 'string') return;
       remove.run(sessionId);
     },
   };

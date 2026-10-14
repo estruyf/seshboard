@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
-import { useSidebar } from '../../state/sidebarStore.ts';
+import { useShownSidebar, useSidebar } from '../../state/sidebarStore.ts';
 import { needsYouPill } from '../../state/sidebarOrder.ts';
 import { inScope } from '../../state/sidebarRows.ts';
 import { Button } from '../ui/Button.tsx';
@@ -17,7 +17,9 @@ import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
  * Only the leftmost header shows it: in split view, the left pane's.
  */
 export function SidebarToggle() {
-  const state = useSidebar((s) => s.state);
+  const state = useShownSidebar().state;
+  // The rail because the window is too small: ⌘B hides it, as there is no room to open it.
+  const fitted = useSidebar((s) => s.state) !== state;
   const collapsed = usePreferences((s) => s.prefs.sidebarCollapsed);
   const open = state === 'open';
   return (
@@ -29,7 +31,7 @@ export function SidebarToggle() {
         variant="quiet"
         iconOnly
         icon={<PanelLeft size={15} aria-hidden />}
-        aria-label={open ? (collapsed === 'closed' ? 'Hide sidebar' : 'Minimize sidebar') : 'Open sidebar'}
+        aria-label={fitted ? 'Hide sidebar' : open ? (collapsed === 'closed' ? 'Hide sidebar' : 'Minimize sidebar') : 'Open sidebar'}
         aria-expanded={open}
         data-tooltip={`Sidebar (${formatKeys(keysFor('sidebar.toggle'))})`}
         shortcut="sidebar.toggle"

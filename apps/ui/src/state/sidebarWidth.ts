@@ -59,6 +59,26 @@ export function shownWidth(state: SidebarState, openWidth: number): number {
 }
 
 /**
+ * The room the main area keeps next to the open sidebar, in CSS pixels: enough for the session header
+ * (the title, the git button, ⋯ and close) and the message box with Send.
+ */
+export const MAIN_MIN_WIDTH = 560;
+
+/**
+ * How the sidebar shows in a window `viewportWidth` CSS pixels wide (fewer when zoomed in). Open, it
+ * narrows so the main area keeps MAIN_MIN_WIDTH, and when even its minimum width doesn't fit it shows
+ * as the rail. The rail and closed stay as they are. Only what shows changes: the saved state and
+ * width come back as the window grows.
+ */
+export function fitSidebar(state: SidebarState, openWidth: number, viewportWidth: number): SidebarSnap {
+  const width = shownWidth(state, openWidth);
+  if (state !== 'open' || !Number.isFinite(viewportWidth)) return { state, width };
+  const room = Math.floor(viewportWidth - MAIN_MIN_WIDTH);
+  if (room < SIDEBAR_MIN_WIDTH) return { state: 'minimal', width: SIDEBAR_RAIL_WIDTH };
+  return { state: 'open', width: Math.min(width, room) };
+}
+
+/**
  * ← or → on the resize edge. Open, they change the width in steps; ← at the minimum goes to the rail and
  * again to closed, → comes back the same way and opens at the last open width. The open width only
  * changes while open.

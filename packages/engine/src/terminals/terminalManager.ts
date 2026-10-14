@@ -61,7 +61,15 @@ interface Terminal {
   /** When the current process was spawned, and when it last printed anything (for `whenReady`). */
   spawnedAt: number;
   lastOutputAt: number | undefined;
+  /** A restart that is still spawning: another Restart in the meantime (quick clicks) gets this one. */
+  restarting?: Promise<TerminalInfo>;
 }
+
+/**
+ * node-pty throws EBADF (or EIO) when its file descriptor closed before the exit event came: the process is ending,
+ * and a resize or keystroke for it has nowhere to go.
+ */
+const isClosedPty = (error: unknown) => /\b(EBADF|EIO)\b/.test(`${(error as NodeJS.ErrnoException)?.code ?? ''} ${(error as Error)?.message ?? ''}`);
 
 /**
  * node-pty's prebuilt `spawn-helper` can lose its executable bit when npm
@@ -187,12 +195,28 @@ export class TerminalManager {
    */
   async restart(id: string, change: { command?: string; cwd?: string } = {}): Promise<TerminalInfo> {
     const terminal = this.require(id);
+    // The exit code stays set until the new process is up, so a second Restart meanwhile (quick clicks on the pill and
+    // the tab) would start a second process: it gets the first one's instead.
+    terminal.restarting ??= this.restartNow(terminal, change).finally(() => (terminal.restarting = undefined));
+    return terminal.restarting;
+  }
+
+  private async restartNow(terminal: Terminal, change: { command?: string; cwd?: string }): Promise<TerminalInfo> {
     if (terminal.info.exitCode === null) throw new Error('This terminal is still running');
     if (change.command !== undefined && terminal.info.kind === 'action') terminal.spawn = { ...terminal.spawn, args: userShell(terminal.spawn.env).run(change.command), command: change.command };
     if (change.cwd !== undefined) terminal.spawn = { ...terminal.spawn, cwd: change.cwd };
     if (!existsSync(terminal.spawn.cwd)) throw new Error(`Folder not found: ${terminal.spawn.cwd}`);
     this.buffer(terminal, '\r\n\x1b[2m── Restarted ──\x1b[0m\r\n\r\n');
     await this.start(terminal);
+    // Closed while it was starting: nothing would ever stop the new process.
+    if (this.terminals.get(terminal.info.id) !== terminal) {
+      try {
+        terminal.pty.kill();
+      } catch {
+        // Already gone.
+      }
+      throw new Error('This terminal is gone');
+    }
     terminal.info = { ...terminal.info, cwd: terminal.spawn.cwd, exitCode: null };
     this.options.log('info', `Restarted ${terminal.info.kind} terminal in ${terminal.spawn.cwd} (pid ${terminal.pty.pid})`);
     this.changed();
@@ -312,13 +336,24 @@ export class TerminalManager {
   /** Keystrokes for a terminal that just closed are dropped, not errors (a closing tab can still send one). */
   write(id: string, data: string): void {
     const terminal = this.terminals.get(id);
-    if (terminal && terminal.info.exitCode === null) terminal.pty.write(data);
+    if (!terminal || terminal.info.exitCode !== null) return;
+    try {
+      terminal.pty.write(data);
+    } catch (error) {
+      if (!isClosedPty(error)) throw error;
+    }
   }
 
+  /** A resize for a process that just ended is dropped: `exitCode` is still null between the pty closing and its exit event. */
   resize(id: string, cols: number, rows: number): void {
     const terminal = this.terminals.get(id);
     if (!terminal || terminal.info.exitCode !== null || (terminal.info.cols === cols && terminal.info.rows === rows)) return;
-    terminal.pty.resize(cols, rows);
+    try {
+      terminal.pty.resize(cols, rows);
+    } catch (error) {
+      if (isClosedPty(error)) return;
+      throw error;
+    }
     terminal.info = { ...terminal.info, cols, rows };
   }
 

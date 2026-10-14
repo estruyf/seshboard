@@ -48,7 +48,7 @@ import { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from './later.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { SideQuestionEvent, SideQuestionList } from './sideQuestions.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
-import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
+import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
 import { CompanionTarget } from './companion.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
@@ -74,6 +74,8 @@ export const SystemInfo = z.object({
     dataDir: z.string(),
     database: z.string(),
     claudeConfigDir: z.string(),
+    /** The folder a terminal without a folder starts in. */
+    home: z.string(),
   }),
   shell: z.object({
     path: z.string(),
@@ -427,6 +429,7 @@ export const contract = {
      * project: `projects.list` leaves it out, and adding, renaming or setting defaults for it is refused (INVALID).
      */
     'questions.folder': { params: z.object({}), result: z.object({ path: AbsolutePath }) },
+    /** Whether `path` is a folder (`exists` is false for a file, with `isFile` set) and the git checkout it is in. */
     'projects.inspect': { params: z.object({ path: AbsolutePath }), result: ProjectInspection },
     /** Fuzzy file search for @-mentions (git-tracked and untracked-but-not-ignored files). */
     'files.search': {
@@ -480,7 +483,7 @@ export const contract = {
       // Memories (`memories`) match their name, description and text; `memoryTypes` and `memoryScope` (a project root,
       // `personal` or `all`) narrow them, and `only` leaves out conversations or memory.
       params: z.object({
-        query: z.string().max(500),
+        query: z.string().max(MAX_SEARCH_QUERY_LENGTH),
         limit: z.number().int().min(1).max(500).default(200),
         scope: z.enum(['switchboard', 'all']).default('all'),
         only: z.enum(['all', 'conversations', 'memory']).default('all'),
@@ -509,8 +512,14 @@ export const contract = {
       params: z.object({ cwd: AbsolutePath, base: ChangesBase, path: z.string().max(4096) }),
       result: z.object({ diff: z.string(), truncated: z.boolean() }),
     },
-    /** Local branches of the repository at `cwd`, and the one checked out (null when detached or not a repo). */
-    'git.branches': { params: z.object({ cwd: AbsolutePath }), result: z.object({ current: z.string().nullable(), branches: z.array(z.string()) }) },
+    /**
+     * Local branches of the repository at `cwd`, and the one checked out (null when detached or not a repo).
+     * `checkedOutElsewhere`: the branches checked out in another worktree, which git won't switch to here.
+     */
+    'git.branches': {
+      params: z.object({ cwd: AbsolutePath }),
+      result: z.object({ current: z.string().nullable(), branches: z.array(z.string()), checkedOutElsewhere: z.array(z.string()).optional() }),
+    },
     /**
      * Checks out a local branch in the checkout at `cwd` with `git switch`: uncommitted changes that
      * don't conflict come along, and git refuses (GIT_FAILED) when they do. Nothing is stashed or

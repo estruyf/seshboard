@@ -27,6 +27,8 @@
     "website:dev": "npm run dev -w @switchboard/website",
     "website:build": "npm run build -w @switchboard/website",
     "website:screenshots": "npm run build -w @switchboard/desktop && node scripts/website-screenshots.ts",
+    "chaos": "npm run build -w @switchboard/desktop && node scripts/chaos/run.ts",
+    "chaos:round": "npm run build -w @switchboard/desktop && node scripts/chaos/round.ts",
     "dist": "npm run dist -w @switchboard/desktop",
     "smoke:packaged": "npm run smoke:packaged -w @switchboard/desktop",
     "dist:preview": "npm run dist:preview -w @switchboard/desktop",

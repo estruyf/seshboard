@@ -152,7 +152,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
     isGitRepo: inspection?.isGitRepo ?? null,
   });
   const branchOptions = d.branch && !gitBranches.branches.includes(d.branch) ? [d.branch, ...gitBranches.branches] : gitBranches.branches;
-  const blocked = !client ? 'Connecting to the engine…' : inspection && !inspection.exists ? 'This folder no longer exists' : null;
+  const blocked = !client ? 'Connecting to the engine…' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'This folder no longer exists') : null;
   const canStart = !busy && !blocked && text.trim() !== '';
   const focus = useFocus();
   // Pasting or dropping images and files works as in the message box.

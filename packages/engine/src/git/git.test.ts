@@ -313,9 +313,37 @@ describe('stageForCommit', () => {
 });
 
 describe('branches', () => {
+  it('marks the branches checked out in another worktree, from the main checkout and from the worktree', async () => {
+    await run('branch', 'feature');
+    const tree = join(repo, '.claude', 'worktrees', 'tidy');
+    await run('worktree', 'add', '-q', '-b', 'worktree-tidy', tree);
+    const fromMain = await listBranches(repo);
+    expect(fromMain.current).toBe('main');
+    expect(fromMain.branches).toEqual(expect.arrayContaining(['main', 'feature', 'worktree-tidy']));
+    expect(fromMain.checkedOutElsewhere).toEqual(['worktree-tidy']);
+    const fromTree = await listBranches(tree);
+    expect(fromTree.current).toBe('worktree-tidy');
+    expect(fromTree.checkedOutElsewhere).toEqual(['main']);
+    // Detached here: every branch checked out anywhere is elsewhere.
+    await run('switch', '-q', '--detach');
+    expect((await listBranches(repo)).checkedOutElsewhere).toEqual(['worktree-tidy']);
+  });
+
+  it('says the folder is gone, not that git is missing, when the folder was moved away', async () => {
+    const gone = join(repo, 'moved');
+    mkdirSync(gone);
+    rmSync(gone, { recursive: true });
+    await expect(git(gone, ['status'])).rejects.toThrow(`Folder not found: ${gone}`);
+    await expect(listBranches(gone)).rejects.toThrow(/Folder not found/);
+    await expect(worktreeStatus(gone)).rejects.toThrow(/Folder not found/);
+    // A missing folder isn't an allowed exit code either.
+    await expect(git(gone, ['rev-parse', '--verify', '--quiet', 'HEAD'], { allowExitCodes: [1] })).rejects.toThrow(/Folder not found/);
+    await expect(git(join(repo, 'a.txt'), ['status'])).rejects.toThrow(`Not a folder: ${join(repo, 'a.txt')}`);
+  });
+
   it('lists local branches and switches without losing uncommitted work', async () => {
     await run('branch', 'feature');
-    expect(await listBranches(repo)).toEqual({ current: 'main', branches: expect.arrayContaining(['main', 'feature']) });
+    expect(await listBranches(repo)).toEqual({ current: 'main', branches: expect.arrayContaining(['main', 'feature']), checkedOutElsewhere: [] });
     write('scratch.txt', 'mine\n');
     await switchBranch(repo, 'feature');
     expect((await listBranches(repo)).current).toBe('feature');

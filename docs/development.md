@@ -24,6 +24,7 @@ npm run dist       # package Switchboard.app and a .dmg (signed when a Developer
 npm run dist:notarized   # sign, notarise and staple
 npm run smoke:packaged   # run the smoke test against the packaged app
 npm run smoke:demo       # run the smoke test in the made-up home folder of the README screenshots
+npm run chaos -- --phase repro   # chaos testing in a sandbox (see Chaos testing)
 npm run dev:vscode       # rebuild the VS Code companion on every change
 npm run build:vscode     # build it once (apps/vscode-extension/dist)
 npm run package:vscode   # a .vsix in apps/vscode-extension
@@ -73,6 +74,15 @@ Builds the app and takes the screenshots in the README, in light and dark mode, 
 Run it again after a visible UI change, and always before a release (it is a step in [Releasing](building-and-signing.md#releasing-automated-in-github-actions)). The tour waits for each view's `data-` hooks and fails when one is gone, so a failing run means the tour is out of date with the UI. To add a view, add a step to the tour and the image to the README.
 
 From VS Code's terminal it needs Node 24 on the PATH (the script itself unsets `ELECTRON_RUN_AS_NODE` for Electron).
+
+### Chaos testing
+
+```bash
+npm run chaos -- --list
+npm run chaos:round -- --seed 7000 --targeted
+```
+
+Drives the built app at random and at its edges (fast clicks, odd input, a changing world, a killed engine, corrupted files) in a sandbox of the same made-up home folder, and logs everything that goes wrong; its repro cases check findings with a verdict. macOS only. See [Chaos testing](chaos-testing.md).
 
 Tests that call the real Claude Code (a few cents of Haiku each) are opt-in and need a throwaway git repo:
 

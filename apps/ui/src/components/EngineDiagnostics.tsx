@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { FolderOpen } from 'lucide-react';
 import type { LogLevel } from '@switchboard/protocol/client';
 import { useDiagnostics } from '../engine/useDiagnostics.ts';
-import { useEngineConnection } from '../engine/useEngine.ts';
+import { useEngineConnection, useEngineStalled } from '../engine/useEngine.ts';
 import { CodeBlock } from './transcript/CodeBlock.tsx';
 import { Markdown } from './transcript/Markdown.tsx';
 import { Button } from './ui/Button.tsx';
@@ -84,6 +84,7 @@ const logTone: Record<LogLevel, string> = {
 
 export function EngineDiagnostics() {
   const connection = useEngineConnection();
+  const stalled = useEngineStalled();
   const { info, pingMs, logs, error, refreshPing } = useDiagnostics();
   const [openError, setOpenError] = useState<string | null>(null);
   const client = connection.status === 'connected' ? connection.client : null;
@@ -102,6 +103,10 @@ export function EngineDiagnostics() {
     ) : connection.status === 'connecting' ? (
       <span className="flex items-center gap-2">
         <Dot tone="warn" /> Connecting…
+      </span>
+    ) : stalled ? (
+      <span className="flex items-center gap-2" data-diagnostics-stalled>
+        <Dot tone="warn" /> Not answering. Waiting for it…
       </span>
     ) : (
       <span className="flex items-center gap-2">

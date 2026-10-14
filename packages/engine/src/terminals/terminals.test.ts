@@ -218,6 +218,64 @@ describe('TerminalManager', () => {
     expect(fake.pty.killed).toBe(true);
     await expect(manager.open({ sessionId: null, cwd: join(tempDir(), 'missing'), kind: 'shell', cols: 80, rows: 24, fork: false })).rejects.toThrow(/Folder not found/);
   });
+
+  /** A new pty for every spawn, each one able to exit and to fail like a closed pty does. */
+  function fakePtys() {
+    const ptys: Array<Pty & { killed: boolean; exit(code: number): void; closed: boolean }> = [];
+    const spawn: SpawnPty = () => {
+      let onExit: (event: { exitCode: number }) => void = () => {};
+      const pty = {
+        pid: 5000 + ptys.length,
+        killed: false,
+        closed: false,
+        onData: () => ({ dispose() {} }),
+        onExit: (l: typeof onExit) => ((onExit = l), { dispose() {} }),
+        write() {
+          if (pty.closed) throw new Error('write EIO');
+        },
+        resize() {
+          if (pty.closed) throw new Error('ioctl(2) failed, EBADF');
+        },
+        kill() {
+          pty.killed = true;
+        },
+        exit: (code: number) => onExit({ exitCode: code }),
+      };
+      ptys.push(pty);
+      return pty;
+    };
+    return { spawn, ptys };
+  }
+
+  it('starts one process for two Restarts at once, and kills one that starts after its tab closed', async () => {
+    const fake = fakePtys();
+    const { manager } = setup(fake.spawn);
+    const info = await manager.open({ sessionId: null, cwd: tempDir(), kind: 'action', command: 'echo hi', title: 'Echo', cols: 80, rows: 24, fork: false });
+    fake.ptys[0]!.exit(0);
+    const [a, b] = await Promise.all([manager.restart(info.id), manager.restart(info.id)]);
+    expect(fake.ptys).toHaveLength(2);
+    expect(a).toEqual(b);
+    expect(a).toMatchObject({ id: info.id, exitCode: null, pid: fake.ptys[1]!.pid });
+    // Running again: a later Restart is refused as before.
+    await expect(manager.restart(info.id)).rejects.toThrow(/still running/);
+
+    fake.ptys[1]!.exit(0);
+    const restarting = manager.restart(info.id);
+    manager.close(info.id);
+    await expect(restarting).rejects.toThrow(/gone/);
+    expect(fake.ptys).toHaveLength(3);
+    expect(fake.ptys[2]!.killed).toBe(true);
+  });
+
+  it('drops a resize or keystroke for a pty that closed before its exit event', async () => {
+    const fake = fakePtys();
+    const { manager } = setup(fake.spawn);
+    const info = await manager.open({ sessionId: null, cwd: tempDir(), kind: 'shell', cols: 80, rows: 24, fork: false });
+    fake.ptys[0]!.closed = true;
+    expect(() => manager.resize(info.id, 120, 40)).not.toThrow();
+    expect(() => manager.write(info.id, 'ls\n')).not.toThrow();
+    expect(manager.list()[0]).toMatchObject({ cols: 80, rows: 24, exitCode: null });
+  });
 });
 
 describe('terminal font detection', async () => {

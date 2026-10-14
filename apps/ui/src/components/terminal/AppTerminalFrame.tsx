@@ -1,8 +1,7 @@
 import { lazy, Suspense, useRef, type ReactNode } from 'react';
-import { guessHome } from '../../lib/format.ts';
 import { activeComposer, useComposerTargets } from '../../state/composerTargets.ts';
 import { useProjectPage } from '../../state/projectPageStore.ts';
-import { useSessions } from '../../state/sessionsStore.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { useWidth } from '../ui/useWidth.ts';
 import { APP_TERMINAL, appTerminalFolder, type TerminalView } from './appTerminal.ts';
@@ -27,7 +26,7 @@ export function AppTerminalFrame({ view, children }: { view: TerminalView; child
   const dock = effectiveDock(useTerminals((s) => s.dock), blocked);
   const projectRoot = useProjectPage((s) => s.root);
   const newSessionCwd = useComposerTargets((s) => activeComposer(s.boxes, 'new', null)?.cwd ?? null);
-  const home = useSessions((s) => guessHome([...s.sessions.values()].slice(0, 20).flatMap((x) => (x.cwd ? [x.cwd] : []))));
+  const home = useHomeFolder();
   const cwd = appTerminalFolder(view, { projectRoot, newSessionCwd });
 
   return (
