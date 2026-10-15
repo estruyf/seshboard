@@ -1,4 +1,5 @@
 import type { Computer, RemoteMessage, RemoteSession, RemoteSessions, RemoteTranscriptUpdate, StreamDelta } from '@switchboard/protocol/client';
+import { basename } from '../../lib/format.ts';
 
 /**
  * Another computer's sessions and conversations, as this app shows them (Other computers, docs/remote-access.md).
@@ -50,6 +51,125 @@ export function toolLine(name: string, input: unknown): string {
   return first.length > 120 ? `${first.slice(0, 117)}…` : first;
 }
 
+/** A tool call in another computer's conversation. */
+export interface RemoteTool {
+  id: string;
+  name: string;
+  input: unknown;
+  /** Its result said it failed. */
+  failed: boolean;
+}
+
+/** What the conversation shows, in order: your prompts, Claude's text, and each run of tool calls as one item. */
+export type RemoteItem =
+  | { kind: 'user'; key: string; text: string; device: string | null }
+  | { kind: 'text'; key: string; text: string }
+  | { kind: 'tools'; key: string; tools: RemoteTool[] };
+
+/**
+ * The conversation as the local transcript lays it out: consecutive tool calls (across messages, as long as no text
+ * or prompt comes between them) folded into one item, like `ActivityGroup`. Thinking isn't shown. `messages` is every
+ * message, so tool results can say which calls failed.
+ */
+export function remoteItems(messages: readonly RemoteMessage[]): RemoteItem[] {
+  const failed = new Set<string>();
+  for (const m of messages) for (const b of m.blocks) if (b.type === 'tool_result' && b.isError) failed.add(b.toolUseId);
+  const items: RemoteItem[] = [];
+  for (const message of visibleMessages(messages)) {
+    if (message.role === 'user') {
+      const text = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : b.type === 'image' ? ['[image]'] : [])).join('\n\n');
+      if (text.trim()) items.push({ kind: 'user', key: message.uuid, text, device: message.device ?? null });
+      continue;
+    }
+    message.blocks.forEach((block, index) => {
+      if (block.type === 'text') {
+        if (block.text.trim()) items.push({ kind: 'text', key: `${message.uuid}:${index}`, text: block.text });
+      } else if (block.type === 'tool_use') {
+        const tool = { id: block.id, name: block.name, input: block.input, failed: failed.has(block.id) };
+        const last = items.at(-1);
+        if (last?.kind === 'tools') last.tools.push(tool);
+        else items.push({ kind: 'tools', key: `${message.uuid}:${index}`, tools: [tool] });
+      }
+    });
+  }
+  return items;
+}
+
+const EDITS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
+
+const lineCount = (text: unknown): number => (typeof text === 'string' && text.length > 0 ? text.split('\n').length : 0);
+
+/** Lines an edit adds and takes away, as far as its input tells: the new text against the old one. */
+function editLines(name: string, input: Record<string, unknown>): { added: number; removed: number } {
+  if (name === 'Write') return { added: lineCount(input.content), removed: 0 };
+  if (name === 'MultiEdit' && Array.isArray(input.edits)) {
+    return (input.edits as Array<Record<string, unknown> | null>).reduce<{ added: number; removed: number }>(
+      (sum, edit) => ({ added: sum.added + lineCount(edit?.new_string), removed: sum.removed + lineCount(edit?.old_string) }),
+      { added: 0, removed: 0 },
+    );
+  }
+  return { added: lineCount(input.new_string ?? input.new_source), removed: lineCount(input.old_string) };
+}
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+type ToolCall = Pick<RemoteTool, 'name' | 'input'>;
+
+/** Which part of the summary a call counts in: edits, searches, web and agents each as one, other tools by name. */
+const kindOf = (name: string) =>
+  EDITS.has(name) ? 'edit' : name === 'Grep' || name === 'Glob' ? 'search' : name === 'WebFetch' || name === 'WebSearch' ? 'web' : name === 'Task' || name === 'Agent' ? 'agent' : name;
+
+/**
+ * A run of tool calls as one line, from what each call says (`toolLine`): "Read 4 files · Edited ContentOverview.tsx
+ * +42 −6 · Ran npm test", in the order each kind first came. One call (or one file) is named; more are counted.
+ */
+export function toolsSummary(tools: readonly ToolCall[]): string {
+  const groups = new Map<string, ToolCall[]>();
+  for (const tool of tools) {
+    const kind = kindOf(tool.name);
+    const group = groups.get(kind);
+    if (group) group.push(tool);
+    else groups.set(kind, [tool]);
+  }
+  return [...groups].map(([kind, calls]) => describeCalls(kind, calls)).join(' · ');
+}
+
+function describeCalls(kind: string, calls: readonly ToolCall[]): string {
+  const first = calls[0]!;
+  const line = toolLine(first.name, first.input);
+  const input = (call: ToolCall) => (call.input ?? {}) as Record<string, unknown>;
+  const files = new Set(calls.map((call) => String(input(call).file_path ?? input(call).notebook_path ?? '')));
+  const fileName = files.size === 1 && typeof (input(first).file_path ?? input(first).notebook_path) === 'string' ? basename(String(input(first).file_path ?? input(first).notebook_path)) : null;
+  const one = calls.length === 1;
+  switch (kind) {
+    case 'Read':
+      return fileName ? `Read ${fileName}` : `Read ${plural(files.size, 'file', 'files')}`;
+    case 'edit': {
+      const lines = calls.reduce(
+        (sum, call) => {
+          const each = editLines(call.name, input(call));
+          return { added: sum.added + each.added, removed: sum.removed + each.removed };
+        },
+        { added: 0, removed: 0 },
+      );
+      const counts = [lines.added ? `+${lines.added}` : '', lines.removed ? `−${lines.removed}` : ''].filter(Boolean).join(' ');
+      return `Edited ${fileName ?? plural(files.size, 'file', 'files')}${counts ? ` ${counts}` : ''}`;
+    }
+    case 'Bash':
+      return one && line ? `Ran ${line}` : `Ran ${plural(calls.length, 'command', 'commands')}`;
+    case 'search':
+      return one && line ? `Searched for ${line}` : `Searched ${plural(calls.length, 'time', 'times')}`;
+    case 'web':
+      return one && line ? `Looked up ${line}` : `Looked up ${plural(calls.length, 'page', 'pages')}`;
+    case 'agent':
+      return one && line ? `Ran an agent: ${line}` : `Ran ${plural(calls.length, 'agent', 'agents')}`;
+    case 'TodoWrite':
+      return 'Updated the to-do list';
+    default:
+      return one ? `Used ${first.name}` : `Used ${first.name} ${plural(calls.length, 'time', 'times')}`;
+  }
+}
+
 /** The groups of the list, as the sidebar has them: what needs you, what is working, then the rest by time. */
 export function sessionGroups(list: RemoteSessions | null): Array<{ key: 'needs-you' | 'working' | 'recent'; label: string; sessions: RemoteSession[] }> {
   if (!list) return [];
@@ -80,10 +200,30 @@ export function computerLine(computer: Computer, now = Date.now()): string {
       return 'Connecting…';
     case 'unpaired':
       return computer.message ?? 'Pair it again.';
-    case 'offline': {
-      const seconds = computer.retryAt ? Math.max(0, Math.ceil((computer.retryAt - now) / 1000)) : null;
-      const retry = seconds === null ? '' : seconds < 1 ? ' Trying again…' : ` Trying again in ${seconds < 60 ? `${seconds}s` : `${Math.ceil(seconds / 60)} min`}.`;
-      return `${computer.message ?? 'Offline.'}${retry}`;
-    }
+    case 'offline':
+      return `${computer.message ?? 'Offline.'}${retryText(computer, now)}`;
+  }
+}
+
+/** " Trying again in 30s." while a retry is planned, else nothing. */
+function retryText(computer: Pick<Computer, 'retryAt'>, now: number): string {
+  const seconds = computer.retryAt ? Math.max(0, Math.ceil((computer.retryAt - now) / 1000)) : null;
+  return seconds === null ? '' : seconds < 1 ? ' Trying again…' : ` Trying again in ${seconds < 60 ? `${seconds}s` : `${Math.ceil(seconds / 60)} min`}.`;
+}
+
+/**
+ * The banner over a remote session while its computer is away: "mystic is offline. Trying again in 30s.", or that it
+ * is connecting, or that it has to be paired again. Null while connected.
+ */
+export function awayBanner(computer: Pick<Computer, 'name' | 'state' | 'retryAt'>, now = Date.now()): string | null {
+  switch (computer.state) {
+    case 'connected':
+      return null;
+    case 'connecting':
+      return `Connecting to ${computer.name}…`;
+    case 'unpaired':
+      return `${computer.name} no longer knows this computer. Pair it again.`;
+    case 'offline':
+      return `${computer.name} is offline.${retryText(computer, now)}`;
   }
 }

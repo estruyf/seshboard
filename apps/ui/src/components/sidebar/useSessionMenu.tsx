@@ -13,6 +13,7 @@ import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemoryEntries } from '../memory/sessionMemories.tsx';
+import { remoteSessionEntries } from '../computers/remoteActions.ts';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -66,6 +67,14 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   };
 
   const openSessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
+    // A session on another computer: only what its remote contract offers (no rename, delete or folder here).
+    if (data.remote) {
+      const { computerId, computerName, offline, sessionId, projectId, projectName } = data.remote;
+      const computer = { id: computerId, name: computerName, state: offline ? ('offline' as const) : ('connected' as const) };
+      const session = { id: sessionId, title: data.title, pinned: data.pinned, projectId, projectName };
+      setMenu({ ...at, label: `Session “${data.title}” on ${computerName}`, entries: remoteSessionEntries(client, computer, session, { open: true }) });
+      return;
+    }
     const archivedNow = !isActive(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
     const flag = (change: FlagChange) => flagAll([data], change);
     const cwd = data.summary?.cwd ?? data.live?.cwd ?? null;

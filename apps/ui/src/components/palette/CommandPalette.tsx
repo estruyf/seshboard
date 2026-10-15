@@ -18,6 +18,7 @@ import { addedProjects } from '../../state/projectList.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { openRow, useRemoteRows } from '../../state/useRemoteRows.ts';
 import { GROUP_LABEL, inScope } from '../../state/sidebarRows.ts';
 import { toast } from '../../state/toastStore.ts';
 import { rememberLimit } from '../focus/focusLimit.ts';
@@ -156,9 +157,13 @@ export function CommandPalette() {
   const unsent = useUnsent();
   const digest = usePaletteBus((s) => s.digest);
   const home = useHomeFolder();
-  const nameOf = (root: string) => projects.get(root)?.name ?? basename(root);
-  const sessionRows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
-  const activity = useMemo(() => activityByProject(sessionRows), [sessionRows]);
+  // Sessions on other computers can be found too; their detail line names the computer ("involv-timesheet · mystic").
+  const remoteRows = useRemoteRows();
+  const remoteNames = useMemo(() => new Map(remoteRows.flatMap((row) => (row.remote ? [[row.projectRoot, `${row.remote.projectName} · ${row.remote.computerName}`] as const] : []))), [remoteRows]);
+  const nameOf = (root: string) => remoteNames.get(root) ?? projects.get(root)?.name ?? basename(root);
+  const localRows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const sessionRows = useMemo(() => [...localRows, ...remoteRows], [localRows, remoteRows]);
+  const activity = useMemo(() => activityByProject(localRows), [localRows]);
   const branches = useMemo(() => latestBranches(sessions.values()), [sessions]);
   const projectRoots = useMemo(() => {
     const roots = addedProjects(projects)
@@ -365,8 +370,8 @@ export function CommandPalette() {
       }
       case 'session':
         close();
-        if (alt) useSessions.getState().openBeside(row.data.id);
-        else useSessions.getState().select(row.data.id);
+        if (alt && !row.data.remote) useSessions.getState().openBeside(row.data.id);
+        else openRow(row.data.id);
         return;
       case 'draft':
         close();

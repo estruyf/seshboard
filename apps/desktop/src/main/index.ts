@@ -2881,6 +2881,90 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Other computers in the same app: pairs with the second computer the smoke script starts (scripts/remote-demo.ts, the
+ * real Remote hub over made-up sessions, in a throwaway folder), through the link field in Settings › Remote. Then its
+ * sessions are in the sidebar with the computer's chip and the Computers strip; one opens in the session view with the
+ * violet line and "on Smoke Mac", its terminal button disabled with the reason; and New session with Run on set to it
+ * starts a session there, which opens here. Run on goes back to this computer and the computer is removed again.
+ */
+async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
+  const linkFile = process.env.SWITCHBOARD_SMOKE_COMPUTER_LINK;
+  if (!linkFile) return 'ok: skipped, no second computer (run through npm run smoke)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  if (!(await until(() => existsSync(linkFile), 20_000))) return 'the second computer wrote no pairing link';
+
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000))) return 'Settings has no Remote section';
+  await click('[data-settings-section="remote"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-computers-link]')", 5_000))) return 'Settings › Remote has no field for another computer’s link';
+  await setFieldValue(win, '[data-computers-link]', readFileSync(linkFile, 'utf8').trim());
+  await click('[data-computers-add]');
+  if (!(await waitInPage(win, "document.querySelector('[data-computer][data-computer-state=\"connected\"]')", 20_000))) {
+    return `the second computer did not connect: ${await js("document.querySelector('[data-computers-settings]')?.innerText.replace(/\\s+/g, ' ').slice(0, 200)")}`;
+  }
+  const computerId = (await js("document.querySelector('[data-computer]').dataset.computer")) as string;
+  // Close Settings: the sidebar stays, the main area comes back.
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-settings-close]')?.click()");
+
+  // 1. Its sessions are in the sidebar, each with the computer's chip; the strip shows the computer.
+  const row = `[data-session-list] [data-remote-row=${JSON.stringify(computerId)}]`;
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(row)})`, 10_000))) return 'no session of the other computer in the sidebar';
+  const rows = (await js(`document.querySelectorAll(${JSON.stringify(row)}).length`)) as number;
+  if (!(await js(`[...document.querySelectorAll(${JSON.stringify(row)})].every((r) => r.querySelector('[data-computer-chip="Smoke Mac"]'))`))) return 'a remote row has no chip with the computer’s name';
+  if (!(await js(`Boolean(document.querySelector('[data-computers-strip] [data-computer-filter=${JSON.stringify(computerId)}]'))`))) return 'the Computers strip has no chip for the other computer';
+  await shot(win, 'computers-sidebar.png');
+
+  // 2. One opens in the session view, with the violet line and "on Smoke Mac".
+  await js(`document.querySelector(${JSON.stringify(row)}).click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-header]')", 5_000))) return 'a remote row did not open in the session view';
+  const line = (await js("getComputedStyle(document.querySelector('[data-remote-header]')).boxShadow")) as string;
+  if (!/inset/.test(line)) return `the remote header has no line along its top (box-shadow: ${line})`;
+  const chip = (await js("document.querySelector('[data-remote-chip]')?.innerText.trim()")) as string | undefined;
+  if (chip !== 'on Smoke Mac') return `the header chip says "${chip}", not "on Smoke Mac"`;
+  if (!(await js(`[...document.querySelectorAll(${JSON.stringify(row)})].some((r) => r.getAttribute('aria-current') === 'true')`))) return 'the opened remote session is not selected in the sidebar';
+  if (!(await waitInPage(win, "document.querySelector('[data-transcript] [data-prompt-bubble], [data-transcript] [data-remote-tools]')", 10_000))) return 'the remote conversation did not load';
+
+  // 3. The terminal is on that computer: its button stays, disabled, with the reason.
+  if (!(await js("document.querySelector('[data-remote-terminal]')?.disabled === true"))) return 'the terminal button of a remote session is not disabled';
+  const why = (await js("document.querySelector('[data-remote-terminal]').parentElement.dataset.tooltip")) as string;
+  if (why !== 'Terminal is on Smoke Mac. Not available from here.') return `the disabled terminal says "${why}"`;
+  await shot(win, 'computers-session.png');
+
+  // 4. New session with Run on set to it starts a session there, which opens here.
+  await click('[data-new-session]');
+  if (!(await waitInPage(win, `document.querySelector('[data-run-on-option=${JSON.stringify(computerId)}]')`, 5_000))) return 'New session has no Run on switch with the other computer';
+  await click(`[data-run-on-option=${JSON.stringify(computerId)}]`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-remote-project]')", 10_000))) return 'Run on the other computer showed none of its projects';
+  await click('[data-remote-new-session] [data-remote-project]');
+  const prompt = `Smoke test ${Date.now()}`;
+  await setFieldValue(win, '[data-remote-new-session] textarea', prompt);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-start]') && !document.querySelector('[data-remote-start]').disabled", 3_000))) return 'Start on Smoke Mac stayed disabled with a project and a prompt';
+  const label = (await js("document.querySelector('[data-remote-start]').innerText")) as string;
+  await shot(win, 'computers-new-session.png');
+  await click('[data-remote-start]');
+  if (!(await waitInPage(win, `document.querySelector('[data-remote-header] h1')?.innerText === ${JSON.stringify(prompt)}`, 10_000))) return `the session started on the other computer did not open here (${await js("document.querySelector('[data-computer-empty]')?.innerText ?? document.querySelector('[data-remote-header] h1')?.innerText")})`;
+
+  // Clean up: Run on back on this computer, and the computer removed.
+  await click('[data-new-session]');
+  await waitInPage(win, `document.querySelector('[data-run-on-option="local"]')`, 3_000);
+  await click('[data-run-on-option="local"]');
+  await click('[data-open-settings]');
+  await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
+  await click('[data-settings-section="remote"]');
+  if (await waitInPage(win, "document.querySelector('[data-computer-forget]')", 3_000)) {
+    await click('[data-computer-forget]');
+    await waitInPage(win, "document.querySelector('[data-confirm-strip] [data-confirm]')", 2_000);
+    await click('[data-confirm-strip] [data-confirm]');
+  }
+  const removed = await waitInPage(win, "!document.querySelector('[data-computer]') && !document.querySelector('[data-remote-row]')", 5_000);
+  pressKey(win, 'Escape');
+  if (!removed) return 'the other computer and its rows did not go after Remove';
+  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, "${label}" started "${prompt}" there, removed again`;
+}
+
+/**
  * Settings → Backup: exports to a file in the throwaway profile (main skips the save dialog in a smoke run)
  * and checks it parses, then opens the import preview of that file and cancels. Nothing is imported.
  */
@@ -6682,6 +6766,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
+  await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   rendering = (await js(

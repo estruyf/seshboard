@@ -10,7 +10,8 @@ export type NavPlace =
   | { view: 'projects' }
   | { view: 'project'; root: string; tab: ProjectTab }
   | { view: 'usage'; profileId: string | null }
-  | { view: 'computer'; computerId: string; sessionId: string | null };
+  /** A session on another computer, or (without one) that computer's page. */
+  | { view: 'remote'; computerId: string; sessionId: string | null };
 
 export interface NavHistory {
   entries: readonly NavPlace[];
@@ -32,7 +33,8 @@ function sameStop(a: NavPlace, b: NavPlace): boolean {
   // The same sessions in any arrangement (panes moved, swapped, resized, another one active) are the same stop; opening or closing a pane is a new one.
   if (a.view === 'session' && b.view === 'session') return JSON.stringify(leafIds(a.layout).sort()) === JSON.stringify(leafIds(b.layout).sort());
   if (a.view === 'project' && b.view === 'project') return a.root === b.root;
-  if (a.view === 'computer' && b.view === 'computer') return a.computerId === b.computerId;
+  // Another remote session is another stop, as another local one is.
+  if (a.view === 'remote' && b.view === 'remote') return a.computerId === b.computerId && a.sessionId === b.sessionId;
   return a.view === b.view;
 }
 

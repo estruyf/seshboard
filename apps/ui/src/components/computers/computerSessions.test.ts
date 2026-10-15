@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Computer, RemoteMessage, RemoteSession, RemoteSessions } from '@switchboard/protocol/client';
-import { appendMessages, applyStream, applyUpdate, computerLine, NOT_STREAMING, prependMessages, sessionGroups, toolLine, visibleMessages, waitingCount } from './computerSessions.ts';
+import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, NOT_STREAMING, prependMessages, remoteItems, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
 
 const message = (uuid: string, text = uuid, extra: Partial<RemoteMessage> = {}): RemoteMessage => ({ uuid, role: 'assistant', timestamp: 1, parentToolUseId: null, blocks: [{ type: 'text', text }], ...extra });
 const session = (id: string, status: RemoteSession['status']): RemoteSession => ({
@@ -62,9 +62,62 @@ describe('another computer’s list', () => {
   });
 
   it('says how the connection is', () => {
-    const computer: Computer = { id: 'c', name: 'Studio Mac', address: 'https://x', pairedAt: 1, state: 'offline', message: 'Studio Mac doesn’t answer.', retryAt: 31_000, version: null };
+    const computer: Computer = { id: 'c', name: 'Studio Mac', address: 'https://x', pairedAt: 1, state: 'offline', message: 'Studio Mac doesn’t answer.', retryAt: 31_000, version: null, lastSeen: null };
     expect(computerLine(computer, 1_000)).toBe('Studio Mac doesn’t answer. Trying again in 30s.');
     expect(computerLine({ ...computer, retryAt: 120_000 }, 0)).toBe('Studio Mac doesn’t answer. Trying again in 2 min.');
     expect(computerLine({ ...computer, state: 'connected', message: null })).toBe('Connected');
+  });
+
+  it('says why a remote session is away', () => {
+    const computer = { name: 'mystic', state: 'offline' as const, retryAt: 31_000 };
+    expect(awayBanner(computer, 1_000)).toBe('mystic is offline. Trying again in 30s.');
+    expect(awayBanner({ ...computer, retryAt: null })).toBe('mystic is offline.');
+    expect(awayBanner({ ...computer, state: 'connected' })).toBeNull();
+    expect(awayBanner({ ...computer, state: 'unpaired' })).toBe('mystic no longer knows this computer. Pair it again.');
+  });
+});
+
+describe('the remote transcript', () => {
+  const tool = (id: string, name: string, input: unknown) => ({ type: 'tool_use' as const, id, name, input: input as never, truncated: false });
+
+  it('folds consecutive tool calls into one item, across messages', () => {
+    const messages: RemoteMessage[] = [
+      message('u', 'Add a filter', { role: 'user' }),
+      message('a1', '', { blocks: [tool('t1', 'Read', { file_path: '/p/a.ts' }), tool('t2', 'Read', { file_path: '/p/b.ts' })] }),
+      message('r1', '', { role: 'user', blocks: [{ type: 'tool_result', toolUseId: 't2', isError: true, text: 'no', truncated: false }] }),
+      message('a2', '', { blocks: [tool('t3', 'Edit', { file_path: '/p/a.ts', old_string: 'x', new_string: 'y\nz' })] }),
+      message('a3', 'Done.'),
+      message('a4', '', { blocks: [tool('t4', 'Bash', { command: 'npm test' })] }),
+    ];
+    const items = remoteItems(messages);
+    expect(items.map((i) => i.kind)).toEqual(['user', 'tools', 'text', 'tools']);
+    const first = items[1]!;
+    expect(first.kind === 'tools' && first.tools.map((t) => [t.id, t.failed])).toEqual([
+      ['t1', false],
+      ['t2', true],
+      ['t3', false],
+    ]);
+  });
+
+  it('leaves out thinking, subagents and empty prompts', () => {
+    const items = remoteItems([
+      message('t', '', { blocks: [{ type: 'thinking', text: 'hmm' }] }),
+      message('s', 'from an agent', { parentToolUseId: 'x' }),
+      message('u', '  ', { role: 'user' }),
+      message('p', 'Look', { role: 'user', device: 'Elio’s iPhone' }),
+    ]);
+    expect(items).toEqual([{ kind: 'user', key: 'p', text: 'Look', device: 'Elio’s iPhone' }]);
+  });
+
+  it('sums up a run of tool calls in one line', () => {
+    const reads = ['ContentOverview.tsx', 'useItems.ts', 'a.ts', 'b.ts'].map((f) => ({ name: 'Read', input: { file_path: `/p/src/${f}` } }));
+    const edit = { name: 'Edit', input: { file_path: '/p/src/ContentOverview.tsx', old_string: 'a\nb', new_string: 'a\nb\nc' } };
+    expect(toolsSummary([...reads, edit])).toBe('Read 4 files · Edited ContentOverview.tsx +3 −2');
+    expect(toolsSummary([reads[0]!])).toBe('Read ContentOverview.tsx');
+    expect(toolsSummary([{ name: 'Bash', input: { command: 'npm test' } }])).toBe('Ran npm test');
+    expect(toolsSummary([{ name: 'Bash', input: { command: 'a' } }, { name: 'Bash', input: { command: 'b' } }])).toBe('Ran 2 commands');
+    expect(toolsSummary([{ name: 'Write', input: { file_path: '/p/new.ts', content: '1\n2' } }, { name: 'Edit', input: { file_path: '/p/old.ts', old_string: 'x', new_string: 'y' } }])).toBe('Edited 2 files +3 −1');
+    expect(toolsSummary([{ name: 'Grep', input: { pattern: 'TODO' } }, { name: 'Glob', input: { pattern: '*.ts' } }, { name: 'TodoWrite', input: {} }])).toBe('Searched 2 times · Updated the to-do list');
+    expect(toolsSummary([{ name: 'mcp__github__create_issue', input: {} }])).toBe('Used mcp__github__create_issue');
   });
 });

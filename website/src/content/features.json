@@ -662,6 +662,16 @@
       "page": "remote-access"
     },
     {
+      "id": "palette:new-session-on:*",
+      "name": "New session on <computer>…",
+      "page": "remote-access"
+    },
+    {
+      "id": "palette:show-only:*",
+      "name": "Show only <computer>",
+      "page": "remote-access"
+    },
+    {
       "id": "palette:vscode-extension",
       "name": "VS Code extension",
       "page": "vscode-companion"
@@ -1128,8 +1138,18 @@
     },
     {
       "id": "feature:other-computers",
-      "name": "Other computers: follow and steer another computer's sessions",
+      "name": "Other computers: their sessions in the same sidebar and view, marked with the computer's name",
       "page": "remote-access"
+    },
+    {
+      "id": "feature:computers-filter",
+      "name": "Computers strip and Show sessions from: filter the sidebar by computer",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:run-on",
+      "name": "Run on: start a new session on a paired computer",
+      "page": "new-session/form"
     },
     {
       "id": "feature:remote-status-card",

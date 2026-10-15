@@ -20,6 +20,9 @@ import { FocusCounter } from '../focus/FocusCounter.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { RAIL_TONE, railShape } from './rail.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
+import { useComputers } from '../../state/computersStore.ts';
+import { filterBySource, offlineLine } from '../../state/remoteRows.ts';
+import { openRow, useRemoteRows, useShownRowId } from '../../state/useRemoteRows.ts';
 import { Button } from '../ui/Button.tsx';
 import { newSessionDraftTooltip, PenBadge } from '../drafts/PenBadge.tsx';
 import { openDraft, useNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
@@ -144,8 +147,9 @@ const RailRow = memo(function RailRow({
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
   onMiddleClick(data: SessionRowData): void;
 }) {
-  const project = useProjects((s) => s.projects.get(data.projectRoot));
-  const projectName = project?.name ?? basename(data.projectRoot);
+  const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
+  const remote = data.remote ?? null;
+  const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const status = rowStatus(data);
   // With more than one Claude profile the rail is the profile's colour on every row, as in the open sidebar.
   const multipleProfiles = useMultipleProfiles();
@@ -153,9 +157,11 @@ const RailRow = memo(function RailRow({
   const profileRail = multipleProfiles && profile ? PROFILE_DOT[profile.color] : null;
   const railTone = profileRail ?? (status && RAIL_TONE[status]);
   const dot = status && CORNER_DOT[status];
-  const line = statusLine(status, status === 'needs-you' ? waitingDetail(request) : null);
-  const meta = [projectName, data.branch, shortAge(data.updatedAt, now)].filter(Boolean).join(' · ');
-  const hint = localizeKeys('Click to open · ⌥-click to open beside');
+  const line = remote?.offline
+    ? { text: offlineLine(remote.computerName, remote.lastSeen, now), tone: 'faint' as const }
+    : statusLine(status, status === 'needs-you' ? (remote ? waitingDetail(remote.waitingTool ? { toolName: remote.waitingTool, input: null } : null) : waitingDetail(request)) : null);
+  const meta = [projectName, data.branch, remote ? `on ${remote.computerName}` : null, shortAge(data.updatedAt, now)].filter(Boolean).join(' · ');
+  const hint = remote ? 'Click to open' : localizeKeys('Click to open · ⌥-click to open beside');
   const menuAt = (el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
     return { x: rect.right - 4, y: rect.top + 8 };
@@ -164,6 +170,7 @@ const RailRow = memo(function RailRow({
     <button
       type="button"
       data-sidebar-rail-row={data.id}
+      data-remote-row={remote?.computerId}
       data-session-status={status ?? undefined}
       tabIndex={tabbable ? 0 : -1}
       aria-current={selected ? 'true' : undefined}
@@ -192,10 +199,10 @@ const RailRow = memo(function RailRow({
           onMenu(menuAt(e.currentTarget), data);
         }
       }}
-      className={`relative mx-auto flex h-10 w-11 items-center justify-center rounded-lg ${selected ? 'bg-selected' : beside ? 'bg-border/45 ring-1 ring-inset ring-border' : 'hover:bg-border/45'}`}
+      className={`relative mx-auto flex h-10 w-11 items-center justify-center rounded-lg ${selected ? 'bg-selected' : beside ? 'bg-border/45 ring-1 ring-inset ring-border' : 'hover:bg-border/45'} ${remote?.offline ? 'opacity-55' : ''}`}
     >
       {railTone && <span aria-hidden className={`${railShape(selected || beside)} ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
-      <ProjectIcon project={project} root={data.projectRoot} size={26} />
+      <ProjectIcon project={project} root={data.projectRoot} size={26} name={remote?.projectName} remote={remote !== null} />
       {draft !== null && <PenBadge size={14} className="absolute bottom-0.5 left-0.5" data-rail-pen />}
       {outside && (
         <span aria-hidden className="absolute right-0.5 bottom-0.5 flex size-3.5 items-center justify-center rounded-full bg-sidebar text-caution" data-rail-outside>
@@ -233,10 +240,15 @@ export function SidebarRail() {
   const newDraft = useNewSessionDraft();
 
   const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  // Other computers' sessions too, in the same groups, with the Computers filter applied: the same list as the open sidebar.
+  const remoteRows = useRemoteRows();
+  const hidden = useComputers((s) => s.hidden);
+  const listed = useMemo(() => filterBySource([...all, ...remoteRows], hidden), [all, remoteRows, hidden]);
+  const shownId = useShownRowId();
   const sort = usePreferences((s) => s.prefs.sidebarSort);
   const catchUps = useCatchUp((s) => s.cards);
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
-  const groups = useMemo(() => sidebarGroups(all, { now, archiveAfterDays, sort, quick }), [all, now, archiveAfterDays, sort, quick]);
+  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick }), [listed, now, archiveAfterDays, sort, quick]);
   const sectionsOpen = useSidebarSections((s) => s.open);
   const queue = useQueue(all);
   const items = useMemo<RailItem[]>(() => {
@@ -253,7 +265,7 @@ export function SidebarRail() {
       if (isSectionKey(group) && !sectionsOpen[group]) {
         // A closed section is one chip; the open session stays beside it, as in the sidebar.
         const unread = rows.filter((row) => rowStatus(row) === 'unread').length;
-        const kept = rows.filter((row) => row.id === selectedId).map((data) => ({ kind: 'session' as const, data }));
+        const kept = rows.filter((row) => row.id === shownId).map((data) => ({ kind: 'session' as const, data }));
         blocks.push({ key: group, items: [{ kind: 'chip', section: group, group, count: rows.length, unread }, ...kept] });
       } else blocks.push({ key: group, items: rows.map((data) => ({ kind: 'session' as const, data })) });
       if (group === 'working') {
@@ -263,7 +275,7 @@ export function SidebarRail() {
     }
     if (!queued) blocks.push(...queueBlock);
     return blocks.flatMap((block, i) => [...(i > 0 ? [{ kind: 'divider' as const, key: `divider-${block.key}` }] : []), ...block.items]);
-  }, [groups, sectionsOpen, queue.entries.length, queue.readyCount, selectedId, sort]);
+  }, [groups, sectionsOpen, queue.entries.length, queue.readyCount, shownId, sort]);
   const order = useMemo(() => items.flatMap((item) => (item.kind === 'session' ? [item.data.id] : [])), [items]);
   // The oldest open request of each waiting session: what its tooltip says it waits for.
   const requests = useMemo(() => {
@@ -299,7 +311,7 @@ export function SidebarRail() {
   });
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const tabStopId =
-    focusedId && renderedIds.includes(focusedId) ? focusedId : listView === 'session' && selectedId && renderedIds.includes(selectedId) ? selectedId : (renderedIds[0] ?? null);
+    focusedId && renderedIds.includes(focusedId) ? focusedId : shownId && renderedIds.includes(shownId) ? shownId : (renderedIds[0] ?? null);
 
   const focusRow = (id: string) => {
     setFocusedId(id);
@@ -324,8 +336,9 @@ export function SidebarRail() {
   const rowClick = useCallback((event: MouseEvent, data: SessionRowData) => {
     // Picking several sessions happens in the open sidebar.
     if (modKey(event) || event.shiftKey) return useSidebar.getState().setState('open');
-    if (event.altKey) useSessions.getState().openBeside(data.id);
-    else useSessions.getState().select(data.id);
+    // A remote session only opens in the main area: it can't sit in a pane beside a local one.
+    if (event.altKey && !data.remote) useSessions.getState().openBeside(data.id);
+    else openRow(data.id);
   }, []);
 
   return (
@@ -343,7 +356,7 @@ export function SidebarRail() {
             shortcut="session.new"
             data-tooltip-placement="right"
             data-new-session
-            onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession())}
+            onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))}
             className={`w-9! rounded-lg! ${view === 'new' ? 'ring-2 ring-accent/40 ring-offset-1 ring-offset-sidebar' : ''}`}
           />
           {newDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />}
@@ -397,7 +410,7 @@ export function SidebarRail() {
                 ) : (
                   <RailRow
                     data={item.data}
-                    selected={listView === 'session' && item.data.id === selectedId}
+                    selected={item.data.id === shownId}
                     beside={listView === 'session' && item.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(item.data.id)}
                     tabbable={item.data.id === tabStopId}
                     now={now}

@@ -38,10 +38,15 @@ import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
-import { ProjectFilter } from './ProjectMenu.tsx';
+import { ProjectFilter, type RemoteProjectSummary, type SourceSummary } from './ProjectMenu.tsx';
+import { thisComputerName } from '../../lib/platform.ts';
 import { sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
-import { ComputersDock } from '../computers/ComputersDock.tsx';
+import { ComputersStrip } from '../computers/ComputersStrip.tsx';
+import { ComputerChip } from '../computers/ComputerChip.tsx';
+import { useComputers } from '../../state/computersStore.ts';
+import { filterBySource, offlineLine, THIS_COMPUTER } from '../../state/remoteRows.ts';
+import { openRow, useRemoteRows, useShownRowId } from '../../state/useRemoteRows.ts';
 import { StatusIcon } from './StatusIcon.tsx';
 import { ARCHIVE, useSessionMenu, type FlagChange } from './useSessionMenu.tsx';
 import { formatKeys, keysFor, matches, modKey } from '../../lib/shortcuts.ts';
@@ -266,8 +271,11 @@ export const SessionRow = memo(function SessionRow({
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
   onMiddleClick(data: SessionRowData): void;
 }) {
-  const project = useProjects((s) => s.projects.get(data.projectRoot));
+  const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
   const style = usePreferences((s) => s.prefs.sidebarStyle);
+  const remote = data.remote ?? null;
+  // A computer that went offline keeps its last list: its rows are dimmed and say since when.
+  const away = remote?.offline ? offlineLine(remote.computerName, remote.lastSeen, now) : null;
   // With a project filter on, every row is in that project: the name would only repeat.
   const filtered = useProjects((s) => s.filter !== null);
   const status = rowStatus(data);
@@ -280,7 +288,7 @@ export const SessionRow = memo(function SessionRow({
   const branch = liveBranch ?? data.branch;
   const emphasised = status === 'needs-you' || status === 'running' || status === 'unread';
   const ageTone = (status && AGE_TONE[status]) ?? 'text-faint';
-  const projectName = project?.name ?? basename(data.projectRoot);
+  const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const titleTone = emphasised || selected ? 'font-semibold text-text' : archived ? 'text-muted' : 'text-text/85';
   const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone}`}>{shortAge(data.updatedAt, now)}</span>;
   // The line at the row's left edge. With more than one Claude profile it is the profile's colour, on
@@ -314,7 +322,7 @@ export const SessionRow = memo(function SessionRow({
       <PickBox on={picked} size={size} onToggle={() => onTogglePick(data.id)} />
     ) : (
       <span className={`flex shrink-0 ${archived && !selected ? 'opacity-60' : ''}`}>
-        <ProjectIcon project={project} root={data.projectRoot} size={size} />
+        <ProjectIcon project={project} root={data.projectRoot} size={size} name={remote?.projectName} remote={remote !== null} />
       </span>
     );
   // Below the row's corner, for menus opened from the keyboard (or VoiceOver, which sends a contextmenu at 0,0).
@@ -357,8 +365,24 @@ export const SessionRow = memo(function SessionRow({
       }
     },
     'data-row-limit': limitText !== null || undefined,
-    'data-tooltip': [data.title, style === 'compact' ? projectName : null, style === 'compact' ? waitingFor : null, limitText, multipleProfiles && profile ? `Profile: ${profile.name}` : null, data.summary?.cwd].filter(Boolean).join('\n'),
+    'data-remote-row': remote ? remote.computerId : undefined,
+    'data-remote-offline': remote?.offline || undefined,
+    'data-tooltip': [
+      data.title,
+      style === 'compact' ? projectName : null,
+      style === 'compact' ? waitingFor : null,
+      limitText,
+      multipleProfiles && profile ? `Profile: ${profile.name}` : null,
+      data.summary?.cwd,
+      remote && !away ? `On ${remote.computerName}` : null,
+      away,
+    ]
+      .filter(Boolean)
+      .join('\n'),
   };
+  // A remote session's computer, at the end of its second line.
+  const chip = remote && <ComputerChip name={remote.computerName} offline={remote.offline} className="ml-auto max-w-[45%]" />;
+  const dim = away ? 'opacity-55' : '';
   // Selection is a neutral fill (a yellow tint vanishes on the light sidebar). Picked rows sit on a
   // tinted block the list draws behind them, so they need no fill of their own.
   const surface = picked
@@ -371,13 +395,14 @@ export const SessionRow = memo(function SessionRow({
 
   if (style === 'compact') {
     return (
-      <button {...common} className={`relative flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-meta ${surface}`}>
+      <button {...common} className={`relative flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-meta ${surface} ${dim}`}>
         {rail}
         {icon(16)}
         <span className={`min-w-0 flex-1 truncate text-body ${titleTone}`}>{data.title}</span>
         {pin}
         {pen}
         {warning}
+        {remote && <ComputerChip name={remote.computerName} offline={remote.offline} />}
         {status ? <StatusIcon status={status} /> : age}
       </button>
     );
@@ -423,6 +448,7 @@ export const SessionRow = memo(function SessionRow({
             <span className="min-w-0 flex-1 truncate">{(status === 'unread' ? ['Finished, unread', filtered ? null : projectName].filter(Boolean) : place).join(' · ')}</span>
           </>
         )}
+        {chip}
         {/* The rail and the age's colour already say needs you, working and unread; the icon is for the rest. */}
         {!statusRail && <StatusIcon status={status} />}
       </span>
@@ -432,7 +458,7 @@ export const SessionRow = memo(function SessionRow({
   return (
     <button
       {...common}
-      className={`relative flex w-full items-center gap-2.5 rounded-lg pr-2.5 pl-3 text-left ${style === 'large' ? 'h-12' : 'h-11'} ${surface}`}
+      className={`relative flex w-full items-center gap-2.5 rounded-lg pr-2.5 pl-3 text-left ${style === 'large' ? 'h-12' : 'h-11'} ${surface} ${dim}`}
     >
       {rail}
       {/* The project's icon tells rows from different projects apart inside a status group. */}
@@ -508,10 +534,14 @@ export function Sidebar() {
   const newDraft = useNewSessionDraft();
 
   const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
-  const { active, archived } = useMemo(() => buildSessionList(all, { search, project: projectFilter, now, archiveAfterDays }), [all, search, projectFilter, now, archiveAfterDays]);
+  // Other computers' sessions sit in the same groups; the Computers filter can leave out any computer, this one too.
+  const remoteRows = useRemoteRows();
+  const hidden = useComputers((s) => s.hidden);
+  const merged = useMemo(() => filterBySource([...all, ...remoteRows], hidden), [all, remoteRows, hidden]);
+  const { active, archived } = useMemo(() => buildSessionList(merged, { search, project: projectFilter, now, archiveAfterDays }), [merged, search, projectFilter, now, archiveAfterDays]);
   const counts = useMemo(() => {
     const map = new Map<string, { total: number; active: number }>();
-    for (const row of all) {
+    for (const row of [...all, ...remoteRows]) {
       const entry = map.get(row.projectRoot) ?? { total: 0, active: 0 };
       entry.total++;
       if (isActive(row, now, archiveAfterDays)) entry.active++;
@@ -520,12 +550,33 @@ export function Sidebar() {
     return map;
   }, [all, now, archiveAfterDays]);
 
+  // "Show sessions from" in the project menu: each computer with its counts, and the projects other computers list.
+  const computers = useComputers((s) => s.status?.computers);
+  const sourceSummaries = useMemo<SourceSummary[]>(() => {
+    if (!computers?.length) return [];
+    const needs = (rows: readonly SessionRowData[]) => rows.filter((row) => rowStatus(row) === 'needs-you').length;
+    return [
+      { source: THIS_COMPUTER, label: thisComputerName(), total: all.filter((row) => isActive(row, now, archiveAfterDays)).length, waiting: needs(all), offline: false, remote: false },
+      ...computers.map((computer) => {
+        const rows = remoteRows.filter((row) => row.remote?.computerId === computer.id);
+        return { source: computer.id, label: computer.name, total: rows.length, waiting: needs(rows), offline: computer.state !== 'connected', remote: true };
+      }),
+    ];
+  }, [computers, all, remoteRows, now, archiveAfterDays]);
+  const remoteProjects = useMemo<RemoteProjectSummary[]>(() => {
+    const seen = new Map<string, RemoteProjectSummary>();
+    for (const row of remoteRows) if (row.remote && !seen.has(row.projectRoot)) seen.set(row.projectRoot, { key: row.projectRoot, name: row.remote.projectName, computerName: row.remote.computerName, offline: row.remote.offline });
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name) || a.computerName.localeCompare(b.computerName));
+  }, [remoteRows]);
+
   // Sections (Needs you, Working, the Queue, Pinned, Today, Yesterday, Earlier), then Archived while it's open. Closed
   // sections keep their header (and the open session's row). Closed, Archived is docked under the list; while
   // searching, its matches are listed under the rest.
   const searching = search.trim() !== '';
   const archivedAt = archivedPlacement(archived.length, { open: archivedOpen, searching });
-  const listSelected = listView === 'session' ? selectedId : null;
+  // The row of what the main area shows: a local session, or one on another computer.
+  const shownId = useShownRowId();
+  const listSelected = shownId;
   const rows = useMemo(
     () => buildListRows(active, archived, { now, archivedOpen: archivedAt === 'list', queue: { entries: queueEntries, ready: queueReady }, closed, selectedId: listSelected, sort, quick }),
     [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick],
@@ -700,7 +751,7 @@ export function Sidebar() {
     const row = rows[item.index];
     return row?.kind === 'session' ? [row.data.id] : [];
   });
-  const tabStopId = listView === 'session' && selectedId && renderedIds.includes(selectedId) ? selectedId : (renderedIds[0] ?? null);
+  const tabStopId = listSelected && renderedIds.includes(listSelected) ? listSelected : (renderedIds[0] ?? null);
   // The queue has its own Tab stop: its first item.
   const firstQueued = queueEntries[0]?.item.id ?? null;
 
@@ -720,6 +771,10 @@ export function Sidebar() {
 
   // ⌘-click adds a row to the selection, ⇧-click selects a range, ⌥-click opens it in the other pane.
   const rowClick = (event: MouseEvent, data: SessionRowData) => {
+    if (data.remote) {
+      setPicks(NO_PICKS);
+      return openRow(data.id);
+    }
     if (modKey(event)) togglePicked(data.id);
     else if (event.shiftKey) setPicks((p) => rangePick(p, data.id, selectedId, order));
     else {
@@ -809,14 +864,14 @@ export function Sidebar() {
     setPicks(NO_PICKS);
     const ids = rows.flatMap((r, index) => (r.kind === 'session' ? [{ id: r.data.id, index }] : []));
     if (ids.length === 0) return;
-    const current = ids.findIndex((r) => r.id === selectedId);
+    const current = ids.findIndex((r) => r.id === listSelected);
     // ↓ from the last row goes on to the docked Archived header.
     if (event.key === 'ArrowDown' && current === ids.length - 1 && archivedAt === 'dock') {
       archivedToggle('dock')?.focus();
       return;
     }
     const next = ids[current === -1 ? 0 : Math.min(ids.length - 1, Math.max(0, current + (event.key === 'ArrowDown' ? 1 : -1)))]!;
-    select(next.id);
+    openRow(next.id);
     virtualizer.scrollToIndex(next.index, { align: 'auto' });
     // Focus follows the selection, so VoiceOver reads the new row and Tab stays where you are.
     focusRow(next.id);
@@ -834,7 +889,7 @@ export function Sidebar() {
     if (!last) return;
     event.preventDefault();
     setPicks(NO_PICKS);
-    select(last);
+    openRow(last);
     virtualizer.scrollToIndex(rows.findIndex((r) => r.kind === 'session' && r.data.id === last), { align: 'auto' });
     focusRow(last);
   };
@@ -871,6 +926,7 @@ export function Sidebar() {
   // would make the count disagree with what's visible.
   const liveCount = all.filter((row) => row.live !== null && isActive(row, now, archiveAfterDays)).length;
   const waitingNotice = useWaitingAnnouncement(all, loaded);
+  const localWaiting = all.filter((row) => rowStatus(row) === 'needs-you').length;
 
   return (
     // Drawn at the open width even while the frame around it eases narrower or wider, so it slides rather than reflows.
@@ -919,7 +975,7 @@ export function Sidebar() {
             aria-label={newDraft ? newSessionDraftTooltip(newDraft.name) : 'New session'}
             shortcut="session.new"
             data-new-session
-            onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession())}
+            onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))}
             className={`rounded-lg! ${view === 'new' ? 'ring-2 ring-accent/40 ring-offset-1 ring-offset-sidebar' : ''}`}
           />
           {newDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />}
@@ -941,7 +997,7 @@ export function Sidebar() {
           ]}
         />
       </div>
-      <ProjectFilter counts={counts} />
+      <ProjectFilter counts={counts} sources={sourceSummaries} remoteProjects={remoteProjects} />
       {noProjects && (
         <div className="mx-3 mb-2 grid justify-items-start gap-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-ui" data-sidebar-onboarding>
           <p className="font-medium text-text">Add a project</p>
@@ -1027,11 +1083,11 @@ export function Sidebar() {
                       archived={row.archived}
                       picked={multi && picked.has(row.data.id)}
                       picking={multi}
-                      selected={listView === 'session' && row.data.id === selectedId}
+                      selected={row.data.id === listSelected}
                       beside={listView === 'session' && row.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(row.data.id)}
                       now={now}
                       tabbable={row.data.id === tabStopId}
-                      waitingFor={rowStatus(row.data) === 'needs-you' ? waitingLabel(waitingTool.get(row.data.id)?.tool ?? null) : null}
+                      waitingFor={rowStatus(row.data) === 'needs-you' ? waitingLabel(row.data.remote ? row.data.remote.waitingTool : (waitingTool.get(row.data.id)?.tool ?? null)) : null}
                       draft={draftPreviews.get(row.data.id) ?? null}
                       review={reviewOf(catchUps.get(row.data.id))}
                       outside={(catchUps.get(row.data.id)?.signals.outOfScope.length ?? 0) > 0}
@@ -1105,7 +1161,7 @@ export function Sidebar() {
         </div>
       )}
 
-      <ComputersDock />
+      <ComputersStrip localWaiting={localWaiting} />
 
       <StarOnGithub sessions={all.length} />
 

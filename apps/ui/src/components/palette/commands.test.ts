@@ -58,6 +58,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     questionsDir: '/data/questions',
     composer: null,
     canContinueInVSCode: false,
+    computers: [],
     ...over,
   };
 }

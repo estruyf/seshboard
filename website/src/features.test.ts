@@ -35,8 +35,8 @@ const missing = (wanted: string[]) => wanted.filter((id) => !ids.has(id));
 describe('features.json', () => {
   it('documents every palette command', () => {
     expect(missing(COMMANDS.map((command) => `palette:${command.id}`))).toEqual([]);
-    // The commands made per project, action and theme.
-    expect(missing(['palette:action:*', 'palette:theme:*', 'palette:project:*'])).toEqual([]);
+    // The commands made per project, action, theme and paired computer.
+    expect(missing(['palette:action:*', 'palette:theme:*', 'palette:project:*', 'palette:new-session-on:*', 'palette:show-only:*'])).toEqual([]);
   });
 
   it('documents every keyboard shortcut', () => {

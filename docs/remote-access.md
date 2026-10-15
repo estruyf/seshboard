@@ -175,14 +175,18 @@ Switchboard on another computer pairs with Remote as a phone does, and shows its
 - **Connection.** One per paired computer, kept by the engine: a ping every 20 seconds notices a computer that went to sleep, and it reconnects with backoff up to a minute, without giving up. Close code 4403 stops it (`unpaired`).
 - **The windows** reach a computer only through `computers.call`, with `COMPUTER_METHODS`: the remote contract without `hello`, push and `device.visibility`. The other computer validates the params; the results are shown as text (`components/computers/RemoteText.tsx`: no file links, no Run, no images loaded). Its events come as `computers.event`.
 - **No loops.** A computer only ever serves its own sessions; the ones it shows from another computer are not in its list, so pairing both ways shows each computer's own sessions once.
-- **Not built yet:** New session on the other computer (the "Run on" choice, with projects matched by their git remote), Changes and Commit, Ask, plan usage, images, notifications for its sessions, and more than one window watching different sessions there (the remote contract watches one transcript per connection).
+- **One sidebar.** Each computer's last `sessions.list` becomes rows of the normal sidebar (`apps/ui/src/state/remoteRows.ts`), with the same status rules as that computer's list (an open prompt is needs you), in the same groups, search, ⌃⇥ and ⌘⇧U. A remote row's id is `remote:<computer>:<session>` (`remoteSelection.ts`), and a remote session is opened as `{ computerId, sessionId }` in the `remote` main view, never in the panes. A row only offers what the contract has: Open, Pin and Archive (`session.setFlags`), Copy title, and New session in its project. An offline computer keeps its last list, dimmed, and `lastSeen` (from the hub: when its connection last ended) says since when; a forgotten computer's rows go. The Computers strip and "Show sessions from" filter by computer, per window.
+- **The same session view** (`RemoteSessionView.tsx`): the local header, column, permission card (with its keys) and message box, with the computer's chip and a 2px violet line. The transcript stays `RemoteText`; consecutive tool calls fold into one line (`toolsSummary`). Changes, the terminal, the editor and pull requests are disabled, with the reason as a tooltip.
+- **New session on another computer** (`RemoteNewSession.tsx`): Run on picks the computer; its `projects.list` gives the tiles, `session.create` starts the session, and model, effort, mode and worktree show only when `options.get` answers (an older Switchboard there has no `options.get`, so the start sends only the project and the prompt). Folders there can't be picked, images aren't sent, and Quick question, the queue and the focus limit are this computer's.
+- **Not built yet:** Changes and Commit, Ask, plan usage, images, notifications for its sessions, projects matched across computers, and more than one window watching different sessions there (the remote contract watches one transcript per connection).
 
 | Where | What |
 |---|---|
 | `packages/protocol/src/computers.ts`, `computerConstants.ts` | The status schemas, the methods a window may call, the origin |
 | `packages/engine/src/remote/computerLink.ts` | Dialing, pairing, the connection and its backoff |
 | `packages/engine/src/remote/computerHub.ts`, `computerStore.ts` | Paired computers, their state and wording, passing calls and events on |
-| `apps/ui/src/components/computers/` | Settings › Other computers, the sidebar dock, the Computer view |
+| `apps/ui/src/state/remoteRows.ts`, `remoteSelection.ts`, `computersStore.ts`, `runOnStore.ts` | Remote sessions as sidebar rows, the selection, the filter by computer, Run on |
+| `apps/ui/src/components/computers/` | Settings › Other computers, the Computers strip, the remote session view, New session on another computer, a computer's page |
 
 ## Known limits
 

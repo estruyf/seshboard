@@ -7,6 +7,9 @@ import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { useShownSidebar, useSidebar } from '../../state/sidebarStore.ts';
 import { needsYouPill } from '../../state/sidebarOrder.ts';
 import { inScope } from '../../state/sidebarRows.ts';
+import { useComputers } from '../../state/computersStore.ts';
+import { remoteRowId } from '../../state/remoteSelection.ts';
+import { openRow, useRemoteRows } from '../../state/useRemoteRows.ts';
 import { Button } from '../ui/Button.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
@@ -50,19 +53,18 @@ function NeedsYouPill() {
   const hosts = useHosts((s) => s.hosts);
   const permissions = useHosts((s) => s.permissions);
   const scope = usePreferences((s) => s.prefs.sessionScope);
-  const pill = useMemo(
-    () =>
-      needsYouPill(
-        toRows(sessions, live, hosts).filter((row) => inScope(row, scope)),
-        permissions.values(),
-      ),
-    [sessions, live, hosts, permissions, scope],
-  );
+  // Sessions on other computers that need you count too, with their open prompts.
+  const remoteRows = useRemoteRows();
+  const lists = useComputers((s) => s.lists);
+  const pill = useMemo(() => {
+    const remoteRequests = [...lists].flatMap(([computerId, list]) => list.prompts.map((p) => ({ ...p, sessionId: remoteRowId({ computerId, sessionId: p.sessionId }) })));
+    return needsYouPill([...toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), ...remoteRows], [...permissions.values(), ...remoteRequests]);
+  }, [sessions, live, hosts, permissions, scope, remoteRows, lists]);
   if (!pill) return null;
   return (
     <Pill
       tone="warn"
-      onClick={() => useSessions.getState().select(pill.targetId)}
+      onClick={() => openRow(pill.targetId)}
       icon={<span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-warn" />}
       aria-label={`${pill.label}: open the session waiting longest`}
       data-tooltip="Open the session waiting longest"

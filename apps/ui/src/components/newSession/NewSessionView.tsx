@@ -25,6 +25,11 @@ import { inScope, rowStatus } from '../../state/sidebarRows.ts';
 import { Composer, type SentParts } from '../composer/Composer.tsx';
 import { promptWithContext } from '../composer/contextItems.ts';
 import { StartButton } from './StartButton.tsx';
+import { RunOnSwitch } from './RunOnSwitch.tsx';
+import { RemoteNewSession } from '../computers/RemoteNewSession.tsx';
+import { useComputers } from '../../state/computersStore.ts';
+import { THIS_COMPUTER } from '../../state/remoteRows.ts';
+import { useRunOn } from '../../state/runOnStore.ts';
 import { AutoWand } from '../composer/ComposerChips.tsx';
 import { AUTO_OFF_NOTE, effectiveModel, modelChoices, modelLabel } from '../../lib/autoModel.ts';
 import { focusStartBlock, startButtonState } from './startMenu.ts';
@@ -66,7 +71,19 @@ const keysOf = (id: 'new-session.pick') => shortcutById(id).keys[0]!;
  * branch or a worktree). Options start from the project's defaults; fields it leaves unset use the
  * choices last made here.
  */
+/**
+ * New session: on this computer (`LocalNewSession`), or, with another computer picked in Run on, on that one
+ * (`RemoteNewSession`, docs/remote-access.md). A computer that goes away falls back to this one.
+ */
 export function NewSessionView() {
+  const target = useRunOn((s) => s.target);
+  const computer = useComputers((s) => (target === THIS_COMPUTER ? null : (s.status?.computers.find((c) => c.id === target && c.state === 'connected') ?? null)));
+  const connection = useEngineConnection();
+  if (computer) return <RemoteNewSession client={connection.status === 'connected' ? connection.client : null} computer={computer} />;
+  return <LocalNewSession />;
+}
+
+function LocalNewSession() {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const sessions = useSessions((s) => s.sessions);
@@ -836,6 +853,10 @@ export function NewSessionView() {
             <p className="mt-1 text-ui text-muted">
               <Kbd keys={comboPresses(keysOf('new-session.pick'))[0]!} /> to <Kbd keys={comboPresses(keysOf('new-session.pick')).at(-1)!} /> picks a project, or start typing its name
             </p>
+            {/* With a paired computer: where Claude runs. */}
+            <div className="mt-3">
+              <RunOnSwitch />
+            </div>
           </div>
 
           <FolderPicker
