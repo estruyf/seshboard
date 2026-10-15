@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { chipShape, effortBars, footerLevel, modelFamily, shortModelName } from './chipFaces.ts';
 
 describe('footerLevel', () => {
-  const widths = [420, 340, 310, 260];
+  const widths = [420, 340, 310, 280, 260];
 
   it('keeps everything when the full row fits', () => {
     expect(footerLevel(600, widths)).toBe(0);
@@ -17,31 +17,34 @@ describe('footerLevel', () => {
     expect(footerLevel(339, widths)).toBe(2);
     expect(footerLevel(310, widths)).toBe(2);
     expect(footerLevel(309, widths)).toBe(3);
-    expect(footerLevel(260, widths)).toBe(3);
+    expect(footerLevel(280, widths)).toBe(3);
+    expect(footerLevel(279, widths)).toBe(4);
+    expect(footerLevel(260, widths)).toBe(4);
   });
 
   it('stays at the last level when even that does not fit', () => {
-    expect(footerLevel(100, widths)).toBe(3);
-    expect(footerLevel(0, widths)).toBe(3);
+    expect(footerLevel(100, widths)).toBe(4);
+    expect(footerLevel(0, widths)).toBe(4);
   });
 
   it('skips a level that saves nothing', () => {
-    // No effort chip and no profile: level 1 is as wide as level 0, so the model is the next to shrink.
-    expect(footerLevel(300, [320, 320, 280, 280])).toBe(2);
+    // Only one profile: level 1 is as wide as level 0, so the model is the next to shrink.
+    expect(footerLevel(300, [320, 320, 280, 260, 240])).toBe(2);
   });
 
   it('treats a level not measured yet as too wide', () => {
-    expect(footerLevel(500, [])).toBe(3);
-    expect(footerLevel(500, [600])).toBe(3);
+    expect(footerLevel(500, [])).toBe(4);
+    expect(footerLevel(500, [600])).toBe(4);
   });
 });
 
 describe('chip faces', () => {
-  it('drops effort and mode labels first, then the model version, then the profile name', () => {
+  it('drops the profile name first, then the model version, then the effort and mode labels', () => {
     expect(chipShape(0)).toEqual({ effortLabel: true, modeLabel: true, modelVersion: true, profileName: true });
-    expect(chipShape(1)).toEqual({ effortLabel: false, modeLabel: false, modelVersion: true, profileName: true });
-    expect(chipShape(2)).toEqual({ effortLabel: false, modeLabel: false, modelVersion: false, profileName: true });
-    expect(chipShape(3)).toEqual({ effortLabel: false, modeLabel: false, modelVersion: false, profileName: false });
+    expect(chipShape(1)).toEqual({ effortLabel: true, modeLabel: true, modelVersion: true, profileName: false });
+    expect(chipShape(2)).toEqual({ effortLabel: true, modeLabel: true, modelVersion: false, profileName: false });
+    expect(chipShape(3)).toEqual({ effortLabel: false, modeLabel: true, modelVersion: false, profileName: false });
+    expect(chipShape(4)).toEqual({ effortLabel: false, modeLabel: false, modelVersion: false, profileName: false });
   });
 
   it('shortens model names without cutting words', () => {

@@ -14,6 +14,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### Changed
 
 - **Remote: Mark as read and Archive from the list.** Right-click a session in the list for **Mark as read** and **Archive**, without opening it. The quick replies above the message box (**Continue**, **Run the tests**, **Open a PR**, **Mark as read**) are gone: the session's **⋯** menu still has **Mark as read** and **Archive**.
+- **Message box: the model, effort and mode stay readable.** In a narrow window, the profile shrinks to its dot first, then the model drops its version, and the effort and mode labels go last.
 
 ### Fixed
 
