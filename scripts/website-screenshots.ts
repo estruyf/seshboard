@@ -982,6 +982,27 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'usage-limit-notice',
+    async take(t) {
+      // A finished session on the Work profile, so the made-up limit shows nowhere else in the pictures.
+      const title = 'Add CSV export to the reports endpoint';
+      // It is old enough to be under Archived: open it from there, then fold Archived again.
+      await t.home();
+      if (!(await t.page.locator('[data-archived-header]').count())) await t.click('[data-archived-toggle]');
+      await t.openSession(title);
+      await t.click('[data-archived-toggle]');
+      await t.need('[data-archived-dock]', 'Archived did not close');
+      const resetsAt = Math.round((Date.now() + (4 * 60 + 42) * 60_000) / 60_000) * 60_000;
+      const held = ['Then add a test for an empty report.', 'Update the API docs for text/csv.'];
+      writeFileSync(demoLimitFile(t.world), JSON.stringify({ sessionId: t.world.history[title]!.id, kind: 'five_hour', resetsAt, held }));
+      await t.need('[data-current-session] [data-limit-notice="stopped"]', 'the usage limit notice did not show', 10_000);
+      await t.need('[data-current-session] [data-queue-hold="limit"]', 'Up next did not say the usage limit holds it');
+      await t.shot('usage-limit-notice');
+      writeFileSync(demoLimitFile(t.world), 'null');
+      await t.gone('[data-current-session] [data-limit-notice]', 'the usage limit notice did not go away');
+    },
+  },
+  {
     name: 'usage-tokens',
     async take(t) {
       await openUsageView(t, 'tokens', 'week');
@@ -1156,10 +1177,14 @@ function demoUsage(world: DemoWorld): string {
       ],
       autoPicks: demoAutoPicks(world, now),
       catchUps: demoCatchUps(world, now),
+      limitFile: demoLimitFile(world),
     }),
   );
   return file;
 }
+
+/** Where the tour writes the made-up usage limit for its picture; the demo engine watches it (see `DemoUsage.limitFile`). */
+const demoLimitFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-limit.json');
 
 /**
  * What Auto model picked for some of the demo sessions, and a few more routing calls, so a session shows its pick

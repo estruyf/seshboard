@@ -111,6 +111,14 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-while-working]',
     },
     {
+      id: 'resume-at-limit',
+      page: 'conversation',
+      label: 'Resume after a usage limit resets',
+      detail: 'Ask each time offers Resume when it resets on a session a usage limit stopped. Always resumes it by itself, shortly after the limit resets.',
+      keywords: 'usage limit rate limit plan reset continue resume automatically wait 5-hour weekly',
+      target: '[data-resume-at-limit]',
+    },
+    {
       id: 'catchup-summaries',
       page: 'conversation',
       label: 'Write catch-up summaries with Haiku',

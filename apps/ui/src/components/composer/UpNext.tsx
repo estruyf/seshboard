@@ -37,12 +37,12 @@ function edgeMask(edges: { above: boolean; below: boolean }): string | undefined
  * each time Claude finishes. Each can be edited (back into the message box), removed, moved (drag, or ⌥↑ ⌥↓) or
  * sent now. They are not in the conversation yet, so none of this changes what Claude has seen.
  */
-export function UpNext({ queue, hold, actions }: { queue: readonly QueuedMessage[]; hold: SessionHostInfo['queueHold']; actions: UpNextActions }) {
+export function UpNext({ queue, hold, limited = false, actions }: { queue: readonly QueuedMessage[]; hold: SessionHostInfo['queueHold']; limited?: boolean; actions: UpNextActions }) {
   const listRef = useRef<HTMLUListElement>(null);
   const idsRef = useRef<string[]>([]);
   idsRef.current = queue.map((m) => m.id);
   const drag = useQueueDrag({ ids: () => idsRef.current, move: (id, to) => actions.move(id, to), mime: DRAG_TYPE });
-  const note = holdNote(hold, queue.length);
+  const note = holdNote(hold, queue.length, limited);
 
   // Whether rows wait out of view above or below, measured as it scrolls, resizes and changes.
   const [edges, setEdges] = useState({ above: false, below: false });
@@ -103,11 +103,14 @@ export function UpNext({ queue, hold, actions }: { queue: readonly QueuedMessage
         {upNextTitle(queue.length)}
       </span>
       {note && (
-        <div className="flex items-center gap-2 px-1 text-meta text-muted" data-queue-hold={hold}>
+        <div className="flex items-center gap-2 px-1 text-meta text-muted" data-queue-hold={limited ? 'limit' : hold}>
           <span className="min-w-0 flex-1 truncate">{note}</span>
-          <Button size="sm" icon={<Play size={10} fill="currentColor" aria-hidden />} onClick={actions.resume} data-queue-resume>
-            Send next
-          </Button>
+          {/* Sending into the limit would only fail: Resume in the notice above lets it go. */}
+          {!limited && (
+            <Button size="sm" icon={<Play size={10} fill="currentColor" aria-hidden />} onClick={actions.resume} data-queue-resume>
+              Send next
+            </Button>
+          )}
         </div>
       )}
       {/*

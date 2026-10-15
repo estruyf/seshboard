@@ -1,7 +1,7 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon, Smartphone } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
+import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -274,6 +274,25 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 segments={[
                   { value: 'queue', label: 'Queue', data: { 'data-while-working': 'queue' } },
                   { value: 'steer', label: 'Steer', data: { 'data-while-working': 'steer' } },
+                ]}
+                className="shrink-0"
+              />
+            </div>
+          </Section>
+          <Section title="Usage limits">
+            <div className="flex items-center justify-between gap-4" data-setting-row>
+              <span>
+                <span className="block text-ui">Resume after a usage limit resets</span>
+                <span className="block text-meta text-muted">Ask each time offers Resume when it resets on a session a usage limit stopped. Always resumes it by itself, shortly after the limit resets.</span>
+              </span>
+              <SegmentedControl<ResumeAtLimit>
+                mode="radio"
+                label="Resume after a usage limit resets"
+                value={prefs.resumeAtLimit}
+                onChange={(resumeAtLimit) => update({ resumeAtLimit })}
+                segments={[
+                  { value: 'ask', label: 'Ask each time', data: { 'data-resume-at-limit': 'ask' } },
+                  { value: 'always', label: 'Always', data: { 'data-resume-at-limit': 'always' } },
                 ]}
                 className="shrink-0"
               />

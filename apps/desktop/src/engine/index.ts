@@ -90,6 +90,11 @@ process.parentPort.on('message', (event) => {
     engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
     return;
   }
+  // Settings › Conversation › Resume after a usage limit resets.
+  if (data?.type === 'limits') {
+    engine.setResumeAtLimit((data as { resume?: unknown }).resume === 'always' ? 'always' : 'ask');
+    return;
+  }
   // Settings › Sessions, from main's preferences (sent at start and after each change).
   if (data?.type === 'retention') {
     const archiveAfterDays = clampDays(data.archiveAfterDays, ARCHIVE_AFTER_DAYS) ?? ARCHIVE_AFTER_DAYS.default;

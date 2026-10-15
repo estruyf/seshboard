@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { Archive, ArchiveRestore, Check, Ellipsis, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2, TriangleAlert } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2, TriangleAlert } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { CatchUp } from '@switchboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -21,6 +21,8 @@ import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
+import { useLimits } from '../../state/limitsStore.ts';
+import { rowLimitLabel, stoppedBy } from '../../lib/usageLimit.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
@@ -268,6 +270,9 @@ export const SessionRow = memo(function SessionRow({
   // With a project filter on, every row is in that project: the name would only repeat.
   const filtered = useProjects((s) => s.filter !== null);
   const status = rowStatus(data);
+  // A usage limit stopped it: it waits for the limit (or for you to resume), which its second line and tooltip say.
+  const limit = useLimits((s) => stoppedBy(s.state, data.id, data.profileId));
+  const limitText = limit && status !== 'running' && status !== 'needs-you' ? rowLimitLabel(limit, now) : null;
   // A running session on its project's checkout: the branch the header read from git, once it has.
   const liveCwd = data.live?.cwd && !data.isWorktree && !inWorktree(data.live.cwd) ? data.live.cwd : null;
   const liveBranch = useCheckoutBranches((s) => (liveCwd && s.byCwd.has(liveCwd) ? (s.byCwd.get(liveCwd) ?? 'detached') : null));
@@ -328,7 +333,7 @@ export const SessionRow = memo(function SessionRow({
     'data-archived': archived || undefined,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, draft: draft !== null, updatedAt: data.updatedAt, now }),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, draft: draft !== null, updatedAt: data.updatedAt, now }), limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -350,7 +355,8 @@ export const SessionRow = memo(function SessionRow({
         onTogglePick(data.id);
       }
     },
-    'data-tooltip': [data.title, style === 'compact' ? projectName : null, style === 'compact' ? waitingFor : null, multipleProfiles && profile ? `Profile: ${profile.name}` : null, data.summary?.cwd].filter(Boolean).join('\n'),
+    'data-row-limit': limitText !== null || undefined,
+    'data-tooltip': [data.title, style === 'compact' ? projectName : null, style === 'compact' ? waitingFor : null, limitText, multipleProfiles && profile ? `Profile: ${profile.name}` : null, data.summary?.cwd].filter(Boolean).join('\n'),
   };
   // Selection is a neutral fill (a yellow tint vanishes on the light sidebar). Picked rows sit on a
   // tinted block the list draws behind them, so they need no fill of their own.
@@ -398,6 +404,11 @@ export const SessionRow = memo(function SessionRow({
           </span>
         ) : waitingFor ? (
           <span className="min-w-0 flex-1 truncate font-medium text-warn">{waitingFor}</span>
+        ) : limitText ? (
+          <span className="flex min-w-0 flex-1 items-center gap-1 text-muted">
+            <Clock size={11} className="shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{limitText}</span>
+          </span>
         ) : draft !== null && status !== 'needs-you' && status !== 'running' ? (
           // Nothing going on: the draft takes the line. Needs you and Working keep theirs; only the pen shows then.
           <span className="min-w-0 flex-1 truncate" data-row-draft>

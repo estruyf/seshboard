@@ -41,6 +41,12 @@ describe('holdNote', () => {
     expect(holdNote(null, 2)).toBeNull();
     expect(holdNote('stopped', 0)).toBeNull();
   });
+
+  it('says a usage limit holds it, before any other reason', () => {
+    expect(holdNote(null, 2, true)).toBe('Held: usage limit. 2 messages are waiting.');
+    expect(holdNote('saved', 1, true)).toBe('Held: usage limit. 1 message is waiting.');
+    expect(holdNote(null, 0, true)).toBeNull();
+  });
 });
 
 describe('mergeIntoBox', () => {

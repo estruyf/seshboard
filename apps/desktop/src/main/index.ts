@@ -162,6 +162,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'autoModel', prefs: prefs.autoModel });
   // Settings › Conversation › Catch-up: whether Haiku writes the summaries.
   engine?.sendStanding({ type: 'catchUp', summaries: prefs.catchUpSummaries });
+  // Settings › Conversation › Resume after a usage limit resets: Always arms a session the moment a limit stops it.
+  engine?.sendStanding({ type: 'limits', resume: prefs.resumeAtLimit });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {

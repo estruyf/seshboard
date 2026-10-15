@@ -85,6 +85,27 @@ Claude doesn't report usage per session, so every **Share (est.)** is an estimat
 
 A share is a session's part of the period's activity, never a part of a limit.
 
+## When you hit a limit
+
+When a session stops because your plan's usage limit is reached, a notice above its message box says which limit, when it resets and how long that is: *5-hour limit reached. Resets at 15:16 · in 4h 42m*. The countdown keeps up as you wait. When Claude Code gives no reset time, the notice only says the limit was reached.
+
+<Screenshot name="usage-limit-notice" alt="A session stopped by the 5-hour limit: a notice above the message box with the reset time and countdown, Resume now and Resume when it resets, and 2 messages held in Up next" />
+
+- **Resume now** sends Claude *Continue where you left off.* right away.
+- **Resume when it resets** sends the same message by itself, 30 seconds after the reset (right at the reset, Claude can still refuse). The notice then says *Resumes at 15:16*, with **Cancel**. It also works when you quit Switchboard in between: the session resumes when you open it again. If the limit still holds when it tries (the reset moved), it waits for the new reset, three times at most, and then says it couldn't resume.
+- You get a notification when a session resumes this way, *Resumed after the usage limit reset*, and one when a limit stops a session, *Usage limit reached*.
+
+The limit belongs to your [Claude profile](/settings/claude-profiles/), not to one session. While it holds:
+
+- Messages in a session's [Up next](/sessions/conversation/) wait instead of being sent into the limit. Up next says *Held: usage limit*, and the notice says how many are held. Resuming lets them go once a turn gets through.
+- Other sessions of the same profile show the limit above their message box too.
+- The [queue](/new-session/queue/) holds new sessions for that profile until the reset.
+- Sessions of another profile go on as usual.
+
+To have every stopped session resume by itself, set **Resume after a usage limit resets** to **Always** in [Settings › Conversation](/settings/#conversation).
+
+With an API key, Amazon Bedrock or Google Vertex there are no plan limits, so none of this shows.
+
 ## Where the numbers come from
 
 <Aside>

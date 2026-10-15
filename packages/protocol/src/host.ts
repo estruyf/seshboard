@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { UsageLimitHit } from './usageLimit.ts';
 
 /** Permission modes the UI can switch between (bypassPermissions is deliberately not offered). */
 export const PermissionMode = z.enum(['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']);
@@ -108,6 +109,8 @@ export const SessionHostInfo = z.object({
   autoPick: AutoPick.nullable().optional(),
   /** Auto is still picking the model this session starts on; your first message waits for it. */
   autoChoosing: z.boolean().optional(),
+  /** Its profile is at a plan usage limit: what is queued waits, and new sessions in the profile wait too. */
+  usageLimit: UsageLimitHit.nullable().optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 

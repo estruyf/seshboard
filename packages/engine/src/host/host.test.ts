@@ -6,7 +6,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
-import { HostManager, type SdkRuntime } from './hostManager.ts';
+import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
+import type { LimitStop } from '../usageLimit/usageLimit.ts';
 import { describeSuggestions } from './permissions.ts';
 import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, type HostConfig } from './sessionHost.ts';
 import { createMemorySessionSettings, createSessionSettingsStore, type SessionSettingsStore } from './sessionSettings.ts';
@@ -79,6 +80,15 @@ class FakeQuery {
       state('running');
       if (text.startsWith('<side-question>')) {
         await this.answerSideQuestion(sessionId, text);
+        state('idle');
+        continue;
+      }
+      if (text.startsWith('limit')) {
+        // A usage limit: Claude Code reports it rejected, says so as an error message, and the turn ends as an error.
+        const said = "You've hit your limit · resets 3pm";
+        this.out.push({ type: 'rate_limit_event', session_id: sessionId, rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: 1_760_000_000 } });
+        this.out.push({ type: 'assistant', uuid: `a-${text}`, error: 'rate_limit', parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: [{ type: 'text', text: said }] } });
+        this.out.push({ type: 'result', subtype: 'success', is_error: true, result: said, total_cost_usd: 0, session_id: sessionId });
         state('idle');
         continue;
       }
@@ -196,6 +206,7 @@ function setup(
     startFails?: string;
     /** Sees each process as it starts, before it gets a message. */
     onQuery?: (query: FakeQuery) => void;
+    limits?: HostManagerDeps['limits'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -218,6 +229,7 @@ function setup(
       opts.onQuery?.(q);
       return q as never;
     },
+    USAGE_LIMIT_ERROR_PREFIXES: ["You've hit your", "You've reached your"],
     startup: async ({ options }) => {
       const warmup = { options, closed: false };
       warmups.push(warmup);
@@ -252,6 +264,7 @@ function setup(
     onCreated: (id) => created.push(id),
     onTurnEnd: (sessionId, outcome) => turns.push({ sessionId, ...outcome }),
     sessionSettings: opts.settings,
+    limits: opts.limits,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -301,6 +314,63 @@ describe('HostManager', () => {
     await t.manager.send({ sessionId: id, text: 'fail', attachments: [], fork: false });
     await until(() => t.turns.length === 2);
     expect(t.turns[1]).toMatchObject({ sessionId: id, ok: false });
+    t.manager.closeAll();
+  });
+
+  it('sets the profile\'s usage limit when a turn stops on it, holds the queue, and lets it go once a turn gets through', async () => {
+    // The profile's limit, kept as UsageLimits keeps it (that class has its own tests).
+    let limit: (LimitStop & { profileId: string; sessionIds: string[] }) | null = null;
+    const hits: Array<{ profileId: string; sessionId: string }> = [];
+    let manager: HostManager | undefined;
+    const t = setup({
+      limits: {
+        of: (profileId) => (limit?.profileId === profileId ? { ...limit, since: 0 } : null),
+        hit: (profileId, sessionId, stop) => {
+          hits.push({ profileId, sessionId });
+          limit = { ...stop, profileId, sessionIds: [sessionId] };
+        },
+        ok: (profileId) => {
+          if (limit?.profileId !== profileId) return;
+          limit = null;
+          manager!.limitChanged(profileId);
+        },
+      },
+    });
+    manager = t.manager;
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'limit' });
+    await until(() => lastState(t.infos, id) === 'idle' && t.turns.length === 1);
+    expect(hits).toEqual([{ profileId: 'default', sessionId: id }]);
+    expect(limit).toMatchObject({ kind: 'five_hour', resetsAt: 1_760_000_000_000, message: "You've hit your limit · resets 3pm" });
+    expect(t.turns[0]).toMatchObject({ ok: false });
+
+    // The session reports the limit, and what you queue waits for it instead of running into it.
+    t.manager.limitChanged('default');
+    expect(t.infos.at(-1)).toMatchObject({ sessionId: id, usageLimit: { profileId: 'default', kind: 'five_hour' } });
+    // Not the error hold: the queue moves on by itself once the limit is cleared.
+    expect(t.infos.at(-1)!.queueHold).toBeNull();
+
+    // A message sent while the limit holds still goes (it is yours); when it gets through, the limit is cleared.
+    await t.manager.send({ sessionId: id, text: 'Say hi', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(limit).toBeNull();
+    await until(() => t.infos.at(-1)!.usageLimit === null);
+    t.manager.closeAll();
+  });
+
+  it('holds Up next while the profile is at a usage limit, and sends it once the limit is cleared', async () => {
+    let limited = true;
+    const t = setup({ limits: { of: (profileId) => (limited ? { profileId, kind: null, resetsAt: null, since: 0, message: null, sessionIds: [] } : null), hit: () => {}, ok: () => {} } });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test' });
+    await until(() => t.permissions.length === 1);
+    await t.manager.send({ sessionId: id, text: 'Then the docs', attachments: [], fork: false });
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['bash:npm test']);
+    limited = false;
+    t.manager.limitChanged('default');
+    await until(() => t.queries[0]!.received.length === 2);
+    expect(t.queries[0]!.received.at(-1)!.text).toBe('Then the docs');
     t.manager.closeAll();
   });
 

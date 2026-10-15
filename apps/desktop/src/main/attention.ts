@@ -1,7 +1,7 @@
 import type { HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
 
 export interface AttentionEvent {
-  kind: 'needs-you' | 'finished' | 'failed' | 'action-done';
+  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed';
   sessionId: string;
   title: string;
   body: string;
@@ -44,6 +44,10 @@ export class Attention {
     const previous = this.hostStates.get(info.sessionId);
     this.hostStates.set(info.sessionId, info.state);
     const busy = previous === 'running' || previous === 'needs-you';
+    // A usage limit stopped the turn: it didn't finish, and it can't go on until the limit resets.
+    if (busy && info.state === 'idle' && info.usageLimit?.sessionIds.includes(info.sessionId)) {
+      return [{ kind: 'failed', sessionId: info.sessionId, title: 'Usage limit reached', body: this.label(info.sessionId, info.cwd) }];
+    }
     if (busy && info.state === 'idle') {
       return [{ kind: 'finished', sessionId: info.sessionId, title: 'Claude finished', body: this.label(info.sessionId, info.cwd), cwd: info.cwd }];
     }
@@ -57,6 +61,11 @@ export class Attention {
     this.pending.set(request.requestId, request);
     const what = request.toolName === 'AskUserQuestion' ? 'Claude has a question' : request.toolName === 'ExitPlanMode' ? 'Claude has a plan for you' : `Claude wants to use ${request.toolName}`;
     return [{ kind: 'needs-you', sessionId: request.sessionId, title: what, body: this.titles.get(request.sessionId) ?? 'Waiting for your approval' }];
+  }
+
+  /** A session armed with Resume when it resets was sent its message after the reset. */
+  onResumed(sessionId: string): AttentionEvent[] {
+    return [{ kind: 'resumed', sessionId, title: 'Resumed after the usage limit reset', body: this.titles.get(sessionId) ?? 'New session' }];
   }
 
   onPermissionResolved(requestId: string): void {

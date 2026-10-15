@@ -1,4 +1,5 @@
-import { trimTrailingSeparators, type LaterDraft, type LaterItem, type QueueStarted, type QueueWaitFor } from '@switchboard/protocol/client';
+import { trimTrailingSeparators, type LaterDraft, type LaterItem, type QueueStarted, type QueueWaitFor, type UsageLimitHit } from '@switchboard/protocol/client';
+import { clockTime, limitAhead } from '../lib/usageLimit.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import { rowStatus } from './sidebarRows.ts';
 
@@ -32,6 +33,10 @@ export interface QueueInputs {
   rows: readonly SessionRowData[];
   /** A project's name for a folder. */
   projectName(root: string): string;
+  /** The usage limit the item's Claude profile is at, or null: a session started there now would stop on it. */
+  limitOf?(item: LaterItem): UsageLimitHit | null;
+  /** The time, for whether a limit has reset. */
+  now?: number;
 }
 
 export interface QueueSummary {
@@ -77,6 +82,12 @@ export function queueStates(inputs: QueueInputs): QueueSummary {
   const entries = inputs.items.map((item, i): QueueEntry => {
     const name = inputs.projectName(item.cwd);
     const wait: QueueWaitFor = item.waitFor;
+    // Its profile is at a usage limit: it waits for the reset, whatever else it waits for.
+    const limit = inputs.limitOf?.(item) ?? null;
+    if (limit && limitAhead(limit, inputs.now)) {
+      const at = limit.resetsAt === null ? null : clockTime(limit.resetsAt, inputs.now);
+      return { item, state: 'waiting', label: at ? `usage limit until ${at}` : 'usage limit', detail: at ? `Waits for the usage limit to reset at ${at}` : 'Waits for the usage limit to reset', blockers: [] };
+    }
     const ready = (label: string): QueueEntry => ({ item, state: 'ready', label, detail: `Ready: ${label}`, blockers: [] });
     const onSession = (sessionId: string): QueueEntry => {
       const row = byId.get(sessionId);

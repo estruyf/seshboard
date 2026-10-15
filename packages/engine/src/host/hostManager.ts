@@ -19,6 +19,7 @@ import {
   type SessionHostInfo,
   type SlashCommand,
   type StreamDelta,
+  type UsageLimitHit,
   type WorktreeRequest,
 } from '@switchboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
@@ -29,11 +30,14 @@ import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQu
 import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
+import { limitPrefixes, type LimitStop } from '../usageLimit/usageLimit.ts';
 
 /** The two SDK entry points the manager needs; injected so tests can fake Claude Code. */
 export interface SdkRuntime {
   query(args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }): Query;
   startup(args: { options: Options }): Promise<WarmQuery>;
+  /** The messages that mean a usage limit was reached (alpha in the SDK, so it may be missing: see `limitPrefixes`). */
+  USAGE_LIMIT_ERROR_PREFIXES?: readonly string[];
 }
 
 export interface HostManagerDeps {
@@ -91,6 +95,11 @@ export interface HostManagerDeps {
   onUpNext?: (sessionId: string, queue: QueuedMessage[]) => void;
   /** A session's turn ended: finished, or stopped with an error. */
   onTurnEnd?: (sessionId: string, outcome: { ok: boolean; error: string | null }) => void;
+  /**
+   * Plan usage limits per profile (`UsageLimits`): a turn a limit stopped sets one, a turn that gets through clears it,
+   * and while one is set the profile's queues wait. Call `limitChanged` when one is set or cleared from elsewhere.
+   */
+  limits?: { of(profileId: string): UsageLimitHit | null; hit(profileId: string, sessionId: string, stop: LimitStop): void; ok(profileId: string, sessionId: string): void };
 }
 
 /** Command lists differ per folder (project commands) and per profile (user commands, skills, plugins). */
@@ -445,7 +454,21 @@ export class HostManager {
   }
 
   private withPick(info: SessionHostInfo): SessionHostInfo {
-    return { ...info, autoPick: this.autoPick(info.sessionId), ...(this.choosing.has(info.sessionId) ? { autoChoosing: true } : {}) };
+    return {
+      ...info,
+      autoPick: this.autoPick(info.sessionId),
+      ...(this.choosing.has(info.sessionId) ? { autoChoosing: true } : {}),
+      usageLimit: this.deps.limits?.of(info.profileId) ?? null,
+    };
+  }
+
+  /** A profile hit or left a usage limit: its sessions report it, and their queues move on once it is cleared. */
+  limitChanged(profileId: string): void {
+    for (const host of this.hosts.values()) {
+      if (!host.active || host.info.profileId !== profileId) continue;
+      this.deps.onInfo(this.withPick(host.info));
+      host.drainQueue();
+    }
   }
 
   close(sessionId: string): void {
@@ -832,7 +855,7 @@ export class HostManager {
         }
       : (args) => sdk.query(args);
     const host = new SessionHost(
-      { ...config, env, claudePath, canUseTool },
+      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk) },
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),
@@ -845,6 +868,9 @@ export class HostManager {
         commandsChanged: () => this.forgetCommands(config.profileId),
         queue: (sessionId, messages) => this.saveQueue(sessionId, messages),
         turnEnded: (sessionId, outcome) => this.deps.onTurnEnd?.(sessionId, outcome),
+        limitHit: (sessionId, stop) => this.deps.limits?.hit(config.profileId, sessionId, stop),
+        turnOk: (sessionId) => this.deps.limits?.ok(config.profileId, sessionId),
+        limited: () => !!this.deps.limits?.of(config.profileId),
       },
       startQuery,
     );

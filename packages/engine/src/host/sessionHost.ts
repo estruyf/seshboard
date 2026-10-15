@@ -21,6 +21,7 @@ import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
 import { InputQueue } from './inputQueue.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
+import { limitStop, type LimitStop, type RateLimitUpdate } from '../usageLimit/usageLimit.ts';
 
 /** Starts the Claude Code process for a host. Real hosts use the SDK's `query()` (or a pre-warmed one). */
 export type StartQuery = (args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query | Promise<Query>;
@@ -46,6 +47,12 @@ export interface HostEvents {
   queue?(sessionId: string, messages: StoredUpNext[]): void;
   /** Claude's turn ended (its `result`): finished, or stopped with an error, with Claude Code's message. */
   turnEnded?(sessionId: string, outcome: { ok: boolean; error: string | null }): void;
+  /** A usage limit stopped Claude's turn (called before the session goes idle, so the queue already waits). */
+  limitHit?(sessionId: string, stop: LimitStop): void;
+  /** A turn finished without an error: whatever limit the profile was at no longer holds. */
+  turnOk?(sessionId: string): void;
+  /** The profile is at a usage limit: what is queued waits until it is cleared. */
+  limited?(): boolean;
 }
 
 export interface HostConfig {
@@ -67,6 +74,8 @@ export interface HostConfig {
   env: Record<string, string>;
   claudePath: string | undefined;
   canUseTool: CanUseTool;
+  /** The SDK's messages for a usage limit that was reached (`limitPrefixes`); empty when this SDK has none. */
+  limitPrefixes?: readonly string[];
 }
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
@@ -123,6 +132,13 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
     if (config.worktree.baseRef === 'head') options.settings = { worktree: { baseRef: 'head' } };
   }
   return options;
+}
+
+/** The text of an assistant message (Claude Code's error messages are one text block). */
+function textOf(message: Extract<SDKMessage, { type: 'assistant' }>): string | null {
+  const content = message.message.content as Array<{ type: string; text?: string }>;
+  const text = content.filter((block) => block.type === 'text' && block.text).map((block) => block.text).join('\n');
+  return text || null;
 }
 
 function toRaw(message: Extract<SDKMessage, { type: 'assistant' | 'user' }>): RawSessionMessage {
@@ -304,6 +320,11 @@ export class SessionHost {
    */
   private nowPhase: 'stopping' | 'sent' | null = null;
   private nowTimer: ReturnType<typeof setTimeout> | undefined;
+  /** This turn's `rejected` rate-limit update, and the latest of any status: what a usage limit that stops it says. */
+  private rejected: RateLimitUpdate | null = null;
+  private lastRateLimit: RateLimitUpdate | null = null;
+  /** The text of an error Claude Code reported as an assistant message this turn (a usage limit comes as one). */
+  private assistantError: string | null = null;
 
   /**
    * Holds a message until Claude's turn ends, then sends it, one message per turn. The transcript doesn't show
@@ -372,9 +393,14 @@ export class SessionHost {
     this.info = { ...this.info, queue: this.pending.map(summarise), queueHold: this.queueHold };
   }
 
-  /** When Claude is ready for the next message: sends the first queued one, unless the queue is on hold. */
+  /** The profile left its usage limit: what is queued may move on again. */
+  drainQueue(): void {
+    this.drain();
+  }
+
+  /** When Claude is ready for the next message: sends the first queued one, unless the queue is on hold or the profile is at a usage limit. */
   private drain(): void {
-    if (!this.active || this.busy || this.queueHold || this.nowPhase || this.pending.length === 0) return;
+    if (!this.active || this.busy || this.queueHold || this.nowPhase || this.pending.length === 0 || this.events.limited?.()) return;
     const next = this.pending.shift()!;
     this.push(next.text, next.attachments);
     this.publishQueue();
@@ -538,6 +564,7 @@ export class SessionHost {
         if (message.parent_tool_use_id !== null) return;
         // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
         if (this.nowPhase === 'sent') this.nowStarted();
+        if (message.error) this.assistantError = textOf(message) ?? this.assistantError;
         this.events.messages(this.sessionId, [toRaw(message)]);
         this.pushStream('clear', '');
         return;
@@ -547,15 +574,27 @@ export class SessionHost {
         if (message.parent_tool_use_id !== null || ('isReplay' in message && message.isReplay) || message.isSynthetic) return;
         this.events.messages(this.sessionId, [toRaw(message)]);
         return;
-      case 'result':
-        // A failed turn leaves the queue for you to decide, unless you stopped it yourself (already held) or sent a message now.
-        if ((message.subtype !== 'success' || message.is_error) && !this.nowPhase && !this.queueHold) this.holdQueue('error');
+      case 'result': {
+        const outcome = resultOutcome(message);
+        const stop = outcome.ok
+          ? null
+          : limitStop({ error: outcome.error ?? this.assistantError, rejected: this.rejected, last: this.lastRateLimit, prefixes: this.config.limitPrefixes ?? [] });
+        this.rejected = null;
+        this.assistantError = null;
+        // A failed turn leaves the queue for you to decide, unless you stopped it yourself (already held) or sent a
+        // message now. A usage limit holds it instead, until the limit is cleared.
+        if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold) this.holdQueue('error');
+        if (stop) this.events.limitHit?.(this.sessionId, stop);
+        else if (outcome.ok) this.events.turnOk?.(this.sessionId);
         this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd });
         void this.refreshContext();
         this.events.usageHint?.();
-        this.events.turnEnded?.(this.sessionId, resultOutcome(message));
+        this.events.turnEnded?.(this.sessionId, outcome);
         return;
+      }
       case 'rate_limit_event':
+        this.lastRateLimit = message.rate_limit_info;
+        if (message.rate_limit_info.status === 'rejected') this.rejected = message.rate_limit_info;
         this.events.rateLimit?.(this.sessionId, message.rate_limit_info);
         this.events.usageHint?.();
         return;

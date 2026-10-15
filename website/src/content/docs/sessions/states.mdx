@@ -34,6 +34,8 @@ Every session is in one state, and each state has its own colour everywhere: in 
 
 A session that isn't open anywhere has no status icon at all, only its age.
 
+A session that your plan's usage limit stopped waits for the limit: its row's second line says *Usage limit · resets 15:16* with a clock, and so does its tooltip. See [When you hit a limit](/usage/#when-you-hit-a-limit).
+
 Yellow always means working, never unread. Sessions that need you or failed always stay in the main list, even when you archived them.
 
 <Aside type="note">
@@ -48,7 +50,7 @@ With more than one [Claude profile](/settings/claude-profiles/), the rail on eve
 
 Switchboard tells you when something changes while you are elsewhere:
 
-- **A notification** when a session needs you ("Claude wants to use Bash", "Claude has a question", "Claude has a plan for you"), when Claude finishes ("Claude finished"), and when a run fails ("Claude Code stopped with an error"). Click it to open the session. You don't get one for the session you are looking at in a focused window.
+- **A notification** when a session needs you ("Claude wants to use Bash", "Claude has a question", "Claude has a plan for you"), when Claude finishes ("Claude finished"), when a run fails ("Claude Code stopped with an error"), when a usage limit stops it ("Usage limit reached") and when it resumes after the limit reset ("Resumed after the usage limit reset"). Click it to open the session. You don't get one for the session you are looking at in a focused window.
 - <Os mac="The Dock badge counts the sessions that wait for you. When one starts waiting while Switchboard is in the background, the Dock icon bounces once." windows="A pink dot on Switchboard's taskbar button says sessions wait for you (hover the button for how many; Windows has no badge count). When one starts waiting while Switchboard is in the background, the taskbar button flashes until you switch to the window." />
 - With **Show sessions from other apps** on, a Claude Code session in your terminal that waits for you gets a notification too ("Claude is waiting for you in Terminal").
 - **A sound**, if you turn on **Sounds** in [Settings › Notifications](/settings/notifications/): one for each moment, such as a session that needs you, one that finishes and one that stops with an error. You can turn the notifications off there too; the badge stays.

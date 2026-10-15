@@ -133,6 +133,23 @@ describe('queue states', () => {
   });
 });
 
+describe('queue states at a usage limit', () => {
+  const limit = { profileId: 'work', kind: 'five_hour', resetsAt: new Date(2026, 9, 9, 15, 16).getTime(), since: NOW, message: null, sessionIds: [] };
+  const limitOf = (i: LaterItem) => (i.profileId === 'work' ? limit : null);
+  const at = (now: number) => queueStates({ items: [item('a', { profileId: 'work' }), item('b')], rows: [], started: [], projectName, limitOf, now });
+
+  it('keeps an item of a profile at its limit waiting, with the reset time, and leaves other profiles alone', () => {
+    const { entries } = at(new Date(2026, 9, 9, 12).getTime());
+    expect(entries[0]).toMatchObject({ state: 'waiting', blockers: [] });
+    expect(entries[0]!.detail).toMatch(/^Waits for the usage limit to reset at /);
+    expect(entries[1]!.state).toBe('ready');
+  });
+
+  it('lets it go once the reset time has passed', () => {
+    expect(at(new Date(2026, 9, 9, 16).getTime()).entries[0]!.state).toBe('ready');
+  });
+});
+
 describe('the "project is free" toast', () => {
   const byId = (entries: QueueEntry[]) => new Map(entries.map((e) => [e.item.id, e]));
 

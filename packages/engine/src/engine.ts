@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
@@ -37,6 +37,7 @@ import {
   AUTO_MODEL,
   DEFAULT_AUTO_MODEL,
   type AutoModelPrefs,
+  type ResumeAtLimit,
   type AutoPick,
   type CatchUp,
   type QueuedMessage,
@@ -56,7 +57,7 @@ import { SearchIndex } from './sessions/searchIndex.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
 import { LaterStore } from './later/laterStore.ts';
-import { UpNextStore } from './host/upNextStore.ts';
+import { summarise, UpNextStore } from './host/upNextStore.ts';
 import { Asker, AskStore } from './host/sideQuestions.ts';
 import { MemoryService, type MemoryTrashScope } from './memory/memoryService.ts';
 import { MemoryWatcher } from './memory/watcher.ts';
@@ -100,6 +101,9 @@ import { listFolders } from './system/folders.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
 import { detectTerminalFont } from './system/terminalFont.ts';
 import type { ShellEnv } from './system/shellEnv.ts';
+import { LimitStore } from './usageLimit/limitStore.ts';
+import { RESUME_PROMPT, snapshotReset } from './usageLimit/usageLimit.ts';
+import { UsageLimits } from './usageLimit/usageLimits.ts';
 import pkg from '../package.json' with { type: 'json' };
 
 export interface EngineOptions {
@@ -178,6 +182,11 @@ export interface DemoUsage {
   autoPicks?: Array<{ configDir: string; sessionId: string | null; pick: AutoPick; routingModel: string; tokens: TokenCounts }>;
   /** Catch-up cards for the demo sessions, as if their turns had just finished. */
   catchUps?: CatchUp[];
+  /**
+   * A file the screenshot tour writes to show a usage limit on one session, only for its picture: `{ sessionId, kind,
+   * resetsAt, held }` sets it (with `held` messages in its Up next), anything else (or no file) clears it.
+   */
+  limitFile?: string;
 }
 
 /** What one run of the clean-up of archived sessions did. */
@@ -201,6 +210,8 @@ export interface Engine {
   setAutoModel(prefs: AutoModelPrefs): void;
   /** Settings › Conversation › Catch-up: write the summaries with Haiku (else from the tool calls), from main. */
   setCatchUpSummaries(enabled: boolean): void;
+  /** Settings › Conversation › Resume after a usage limit resets, from main. */
+  setResumeAtLimit(mode: ResumeAtLimit): void;
   /** Runs the clean-up of archived sessions now (it also runs on launch and daily). Null when deleting is off. */
   deleteArchivedNow(): Promise<ArchivedCleanup | null>;
   close(): void;
@@ -533,7 +544,27 @@ export function createEngine(options: EngineOptions): Engine {
 
   // Up next is kept per session, so it outlives the process (Stop, the idle timeout) and the app.
   const upNext = new UpNextStore(cache.db);
+  // --- Usage limits -------------------------------------------------------------------------------------------------
+  /** Main sends Settings › Conversation › "Resume after a usage limit resets" when the engine starts and after each change. */
+  let resumeAtLimit: ResumeAtLimit = 'ask';
+  const limits = new UsageLimits({
+    store: new LimitStore(cache.db),
+    // A session that is already working again (you sent something yourself) needs no nudge.
+    resume: async (sessionId) => {
+      if (hosts.list().hosts.some((h) => h.sessionId === sessionId && (h.state === 'running' || h.state === 'needs-you'))) return;
+      await hosts.send({ sessionId, text: RESUME_PROMPT, attachments: [], fork: false });
+      sessions.wake(sessionId);
+    },
+    profileOf: (sessionId) => sessionProfile(sessionId),
+    fallbackReset: (profileId, kind) => snapshotReset(usageMonitors.get(profileId)?.current()?.limits ?? [], kind),
+    mode: () => resumeAtLimit,
+    onChange: (state) => broadcast('limits.changed', state),
+    onLimitChanged: (profileId) => hosts.limitChanged(profileId),
+    onResumed: (sessionId) => broadcast('limits.resumed', { sessionId }),
+    log,
+  });
   const hosts = new HostManager({
+    limits,
     sdk,
     ephemeral,
     onUsageHint: (profileId) => usageMonitors.get(profileId)?.nudge(),
@@ -596,6 +627,35 @@ export function createEngine(options: EngineOptions): Engine {
     },
     log,
   });
+
+  // Armed resumes kept from before start their timers (one due while the app was closed goes shortly).
+  limits.start();
+  const demoLimitFile = options.demoUsage?.limitFile;
+  /** The session the screenshot tour stopped on a made-up limit, to clear it again. */
+  let demoLimited: string | null = null;
+  const readDemoLimit = (): { sessionId?: string; kind: string; resetsAt: number; held?: string[] } | null => {
+    try {
+      return JSON.parse(readFileSync(demoLimitFile!, 'utf8')) as { sessionId?: string; kind: string; resetsAt: number; held?: string[] } | null;
+    } catch {
+      return null;
+    }
+  };
+  const demoLimit = () => {
+    const wanted = readDemoLimit();
+    if (demoLimited) {
+      limits.ok(sessionProfile(demoLimited), demoLimited);
+      upNext.save(demoLimited, []);
+      broadcast('upNext.changed', { sessionId: demoLimited, queue: [] });
+      demoLimited = null;
+    }
+    if (!wanted?.sessionId) return;
+    demoLimited = wanted.sessionId;
+    const held = (wanted.held ?? []).map((text, i) => ({ id: `demo-held-${i}`, text, attachments: [], createdAt: Date.now() }));
+    upNext.save(wanted.sessionId, held);
+    broadcast('upNext.changed', { sessionId: wanted.sessionId, queue: held.map(summarise) });
+    limits.hit(sessionProfile(wanted.sessionId), wanted.sessionId, { kind: wanted.kind, resetsAt: wanted.resetsAt, message: null });
+  };
+  if (demoLimitFile) watchFile(demoLimitFile, { interval: 200 }, demoLimit);
 
   // --- Catch-up -----------------------------------------------------------------------------------------------------
   /** Main sends Settings › Conversation › Catch-up's "Write catch-up summaries with Haiku" at start and after each change. */
@@ -1079,6 +1139,7 @@ export function createEngine(options: EngineOptions): Engine {
     await toTrash(paths, { configDir: profiles.runtime(sessionProfile(sessionId)).configDir });
     sessions.forget(sessionId);
     hosts.forget(sessionId);
+    limits.forget(sessionId);
     catchUp.forget(sessionId);
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
@@ -1403,6 +1464,15 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'upNext.list': () => ({ queues: hosts.upNextLists() }),
+    'limits.state': () => limits.state(),
+    'limits.resume': async ({ sessionId }) => {
+      await limits.resumeNow(sessionId);
+      return {};
+    },
+    'limits.arm': ({ sessionId, armed }) => {
+      limits.arm(sessionId, armed);
+      return {};
+    },
     'session.forkAt': async ({ sessionId, messageUuid }) => {
       if (!source.fork) throw new RpcError('UNSUPPORTED', 'Forking is not available');
       let forked: string;
@@ -2187,6 +2257,9 @@ export function createEngine(options: EngineOptions): Engine {
     setCatchUpSummaries: (enabled) => {
       catchUpSummaries = enabled;
     },
+    setResumeAtLimit: (mode) => {
+      resumeAtLimit = mode;
+    },
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
@@ -2198,6 +2271,8 @@ export function createEngine(options: EngineOptions): Engine {
       clearTimeout(startupMemorySync);
       for (const server of servers) server.dispose();
       servers.clear();
+      limits.close();
+      if (demoLimitFile) unwatchFile(demoLimitFile);
       hosts.closeAll();
       for (const monitor of usageMonitors.values()) monitor.stop();
       insights.close();

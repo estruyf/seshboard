@@ -36,6 +36,7 @@ import {
   TranscriptUpdate,
 } from './sessions.ts';
 import { TerminalInfo, TerminalKind } from './terminal.ts';
+import { LimitsState } from './usageLimit.ts';
 import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
 import { ChangesBase, GithubStarStatus, GitChanges, GitSyncAction, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
@@ -433,6 +434,13 @@ export const contract = {
       params: z.object({ profileId: ProfileId.optional(), period: UsagePeriod, timeZone: z.string().max(100).default('UTC') }),
       result: PlanHistory,
     },
+
+    /** Profiles at a plan usage limit, the sessions armed to resume when it resets, and those that gave up; `limits.changed` follows each change. */
+    'limits.state': { params: z.object({}), result: LimitsState },
+    /** Resume now: sends a short message to a session a usage limit stopped, and lets its queue move on once a turn gets through. */
+    'limits.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Resume when it resets: arms (or disarms) a session to continue by itself shortly after its profile's limit resets. */
+    'limits.arm': { params: z.object({ sessionId: SessionId, armed: z.boolean() }), result: z.object({}) },
 
     // --- Folders, files and editors -----------------------------------------------------------
     /**
@@ -1049,6 +1057,10 @@ export const contract = {
     'later.changed': z.object({ items: z.array(LaterItem), started: z.array(QueueStarted) }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
+    /** A profile hit or left a usage limit, or a resume was armed, fired or gave up. */
+    'limits.changed': LimitsState,
+    /** A session armed with Resume when it resets was sent its message after the reset (for the notification). */
+    'limits.resumed': z.object({ sessionId: z.string() }),
     /** Skills were reloaded: ask for slash command lists again. */
     'commands.changed': z.object({}),
     /** Settings were imported: reload projects and actions. */

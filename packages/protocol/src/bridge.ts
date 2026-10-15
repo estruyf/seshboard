@@ -90,6 +90,8 @@ export type NewSessionMode = "last" | "default" | "acceptEdits" | "plan" | "auto
 export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["last", "default", "acceptEdits", "plan", "auto"];
 /** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
 export type WhileWorking = "queue" | "steer";
+/** After a usage limit stops a session: offer to resume when it resets (`ask`), or arm that straight away (`always`). */
+export type ResumeAtLimit = "ask" | "always";
 /** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
 export type SidebarSort = "recent" | "quickest";
 
@@ -194,6 +196,11 @@ export interface Preferences {
    * Haiku writes its lines (and explains a permission when you ask why); off, there is no banner and no Haiku call.
    */
   catchUpSummaries: boolean;
+  /**
+   * Settings › Conversation: "Resume after a usage limit resets". `ask`: a session a usage limit stopped offers
+   * Resume when it resets; `always`: it is armed to continue by itself at once.
+   */
+  resumeAtLimit: ResumeAtLimit;
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
   githubStar: GithubStar;
@@ -225,6 +232,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
+  resumeAtLimit: "ask",
   sidebarSort: "recent",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
@@ -379,6 +387,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
+  if (oneOf(["ask", "always"] as const, raw.resumeAtLimit))
+    out.resumeAtLimit = raw.resumeAtLimit;
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
   if (oneOf(["ask", "done"] as const, raw.githubStar))

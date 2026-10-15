@@ -20,6 +20,8 @@ import { sessionDraftBanner } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { useUpNext } from '../../state/upNextStore.ts';
+import { useLimits } from '../../state/limitsStore.ts';
+import { UsageLimitNotice } from '../session/UsageLimitNotice.tsx';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
@@ -879,6 +881,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const keptUpNext = useUpNext((s) => s.queues.get(sessionId));
   const upNext = activeHost ? activeHost.queue : (keptUpNext ?? []);
   const upNextHold = activeHost ? activeHost.queueHold : upNext.length ? 'saved' : null;
+  // The profile is at a usage limit: Up next waits for it rather than sending into it.
+  const limitHeld = useLimits((s) => profileId !== null && s.state.limits.some((l) => l.profileId === profileId));
   /** Sending from Up next brings a session that isn't running back, which the focus limit has a say in. */
   const resumeAllowed = async () => Boolean(activeHost) || (await passFocusGate({ target: sessionId })) === 'start';
   const takeBack = async (id: string): Promise<boolean> => {
@@ -1407,7 +1411,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   }}
                 />
               )}
-              <UpNext queue={upNext} hold={upNextHold} actions={upNextActions} />
+              {profileId && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
+              <UpNext queue={upNext} hold={upNextHold} limited={limitHeld} actions={upNextActions} />
               <div className="relative">
                 <Composer
                   draftKey={sessionId}

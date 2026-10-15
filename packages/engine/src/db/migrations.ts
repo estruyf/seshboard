@@ -469,4 +469,20 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX side_question_usage_scope_at ON side_question_usage (scope, at);
   `,
+
+  // v27: Usage limits. The limit each Claude profile is at (one per profile, until a turn there gets through), and the
+  // sessions armed to resume when it resets, so a resume survives quitting the app. The armed resumes are your own
+  // choices: keep them when rebuilding.
+  `
+  CREATE TABLE usage_limits (
+    profile_id TEXT PRIMARY KEY,
+    json       TEXT NOT NULL
+  );
+  CREATE TABLE limit_resumes (
+    session_id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    at         INTEGER NOT NULL,
+    attempts   INTEGER NOT NULL DEFAULT 0
+  );
+  `,
 ];

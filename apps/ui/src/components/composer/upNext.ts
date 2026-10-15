@@ -21,9 +21,11 @@ export function upNextTitle(count: number): string {
  * The line that says why nothing is sending by itself. Null while the queue moves on its own: each message goes
  * when the turn before it ends.
  */
-export function holdNote(hold: SessionHostInfo['queueHold'], count: number): string | null {
-  if (!hold || count === 0) return null;
+export function holdNote(hold: SessionHostInfo['queueHold'], count: number, limited = false): string | null {
+  if ((!hold && !limited) || count === 0) return null;
   const waiting = count === 1 ? '1 message is waiting' : `${count} messages are waiting`;
+  // The profile is at a usage limit: the notice above says when it resets and offers to resume.
+  if (limited) return `Held: usage limit. ${waiting}.`;
   if (hold === 'stopped') return `You stopped Claude. ${waiting}.`;
   if (hold === 'error') return `The last turn failed. ${waiting}.`;
   return `Kept from before the session stopped. ${waiting}.`;

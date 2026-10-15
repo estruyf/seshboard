@@ -71,6 +71,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   whileWorking: 'Enter while Claude is working',
   autoModel: 'Auto model',
   catchUpSummaries: 'Write catch-up summaries with Haiku',
+  resumeAtLimit: 'Resume after a usage limit resets',
   sidebarSort: 'Sidebar order',
   githubStar: 'Star on GitHub',
   notifications: 'Notifications',

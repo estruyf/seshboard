@@ -1432,6 +1432,26 @@
       "page": "new-session/auto-model"
     },
     {
+      "id": "feature:usage-limit-notice",
+      "name": "Usage limit notice: which limit, reset time and countdown, Resume now",
+      "page": "usage"
+    },
+    {
+      "id": "feature:usage-limit-resume",
+      "name": "Resume when it resets, kept across restarts, with a notification",
+      "page": "usage"
+    },
+    {
+      "id": "feature:usage-limit-hold",
+      "name": "Up next and the queue wait while a profile is at its usage limit",
+      "page": "usage"
+    },
+    {
+      "id": "feature:usage-limit-setting",
+      "name": "Settings › Conversation › Resume after a usage limit resets",
+      "page": "usage"
+    },
+    {
       "id": "feature:auto-model-suggest",
       "name": "Suggest a stronger model later",
       "page": "new-session/auto-model"

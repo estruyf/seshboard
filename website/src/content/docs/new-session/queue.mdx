@@ -50,6 +50,8 @@ When the project you picked in New session has a session working, a line under t
 
 A ready item has a light green tint and a **Start** button. The others show a clock and what they wait for ("after “Fix login”"), with **Start** on hover.
 
+An item whose [Claude profile](/settings/claude-profiles/) is at its usage limit waits for the limit too, whatever else it waits for: it says "usage limit until 15:16", and turns ready once the limit resets. A session started before then would stop on the limit straight away. See [When you hit a limit](/usage/#when-you-hit-a-limit).
+
 ### When something finishes
 
 When an item turns ready because a session finished, a message in the bottom right corner says so, such as "acme-store is free", with what finished and what's next. **Start it** starts the item; **Review first** opens the session that finished. With several items ready at once, one message names them all, with **Show queue**. The "Claude finished" notification also names what's next in the queue for that project.

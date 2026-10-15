@@ -34,6 +34,7 @@ import { isActiveHost, useHosts } from './state/hostsStore.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
+import { useLimitsSync } from './state/limitsStore.ts';
 import { useAskSync } from './state/askStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
@@ -221,6 +222,7 @@ export function App() {
   useLaterSync();
   useCatchUpSync();
   useUpNextSync();
+  useLimitsSync();
   useAskSync();
   useQueueToasts();
   useSidebarSectionsSync();

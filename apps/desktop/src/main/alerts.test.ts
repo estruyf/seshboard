@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, type SoundPrefs } from '@switchboard/protocol/bridge';
 import { alertFor, louder, soundEventOf, type AlertPrefs } from './alerts.ts';
 
-const KINDS = ['needs-you', 'finished', 'failed', 'action-done'] as const;
+const KINDS = ['needs-you', 'finished', 'failed', 'action-done', 'resumed'] as const;
 const prefs = ({ notifications = true, ...sounds }: Partial<SoundPrefs> & { notifications?: boolean } = {}): AlertPrefs => ({
   notifications: { enabled: notifications },
   sounds: { ...DEFAULT_SOUNDS, ...sounds },
@@ -52,7 +52,7 @@ describe('alertFor', () => {
 
 describe('sounds for events that arrive together', () => {
   it('maps kinds to moments', () => {
-    expect(KINDS.map(soundEventOf)).toEqual(['needsYou', 'finished', 'error', 'actionEnded']);
+    expect(KINDS.map(soundEventOf)).toEqual(['needsYou', 'finished', 'error', 'actionEnded', 'finished']);
   });
 
   it('plays one: needing you, then an error, a finished turn, an action', () => {
