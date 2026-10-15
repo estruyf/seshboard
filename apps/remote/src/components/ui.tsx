@@ -115,5 +115,6 @@ export const STATUS_LABEL: Record<CompanionStatus, string> = {
 };
 
 export function StatusDot({ status }: { status: CompanionStatus }) {
-  return <span role="img" aria-label={STATUS_LABEL[status]} className={`inline-block size-2 shrink-0 rounded-full ${STATUS_DOT[status]}`} />;
+  // Working pulses, so a session that is busy reads as alive at a glance.
+  return <span role="img" aria-label={STATUS_LABEL[status]} className={`inline-block size-2 shrink-0 rounded-full ${STATUS_DOT[status]} ${status === 'working' ? 'pulse-dot' : ''}`} />;
 }

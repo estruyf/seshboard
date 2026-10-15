@@ -1227,6 +1227,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-working-line",
+      "name": "Remote: the working line with its timer, and the pulsing working dot",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-streaming-markdown",
       "name": "Remote: answers formatted while Claude writes them",
       "page": "remote-access"

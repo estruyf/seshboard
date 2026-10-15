@@ -7,6 +7,7 @@ import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessage
 import type { Client } from './Connected.tsx';
 import { ItemView } from './MessageView.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
+import { formatDuration, turnStart, workingLabel } from '../lib/working.ts';
 import { answer } from './answer.ts';
 import { CatchUpCard } from './CatchUpCard.tsx';
 import { ChangesSheet, CommitSheet, type ChangesState } from './ChangesSheet.tsx';
@@ -369,6 +370,7 @@ function Transcript({
   onUnfold: () => void;
 }) {
   const items = useMemo(() => transcriptItems(messages), [messages]);
+  const since = useMemo(() => turnStart(messages), [messages]);
   const scroller = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
   const [away, setAway] = useState(false);
@@ -420,11 +422,7 @@ function Transcript({
                     <span className="mt-0.5 block h-3.5 w-1.5 animate-pulse bg-accent-ink" aria-hidden />
                   </div>
                 ) : (
-                  streaming.kind && (
-                    <p className="text-body whitespace-pre-wrap text-muted italic" aria-live="polite">
-                      {streaming.kind === 'tool' ? `Running ${streaming.text}…` : streaming.text}
-                    </p>
-                  )
+                  (working || streaming.kind) && <WorkingLine streaming={streaming} since={since} />
                 )}
               </div>
             </>
@@ -438,6 +436,32 @@ function Transcript({
         </Button>
       )}
     </div>
+  );
+}
+
+/**
+ * Claude is working, at the end of the conversation, as on the computer: three dots, how long the turn has taken and
+ * what Claude is doing (thinking, using a tool), so a quiet stretch doesn't look like a session that stopped.
+ */
+function WorkingLine({ streaming, since }: { streaming: Streaming; since: number | null }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <p className="flex min-w-0 items-center gap-2 text-ui text-muted" data-remote-working>
+      <span className="working-dots flex w-4 shrink-0 justify-center" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </span>
+      {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
+      <span className="shrink-0" aria-live="polite">
+        {workingLabel(streaming)}
+      </span>
+      {streaming.kind === 'thinking' && streaming.text && <span className="min-w-0 truncate text-faint italic">{streaming.text.slice(-160)}</span>}
+    </p>
   );
 }
 
