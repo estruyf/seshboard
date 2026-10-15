@@ -34,7 +34,8 @@ It uses the Claude Code you already have installed, with your login, settings, c
 **Keep track of every session**
 - One list of all your sessions, newest first, across every project. Sessions you haven't touched for a while move to **Archived**, out of the way. You can archive one yourself too, even while it works: it comes back when it needs you or has finished. Nothing is deleted; to remove a session for good, delete it (it goes to the Trash).
 - Select several sessions with ⌘-click or ⇧-click to archive or unarchive them together.
-- See at a glance which sessions are **working**, **waiting for you**, **finished** or **unread**.
+- See at a glance which sessions are **working**, **waiting for you**, **finished** or **unread**. Sort the sidebar by **Quickest to unblock** to see the sessions that wait for you first, then the unread ones by how long they take to review.
+- **Catch-up:** when a session finishes, a short briefing says what you asked, the one thing it needs from you next, whether the tests passed and how much changed, with a key for every action.
 - Filter by one of your projects, filter by title, and pin the sessions you keep coming back to.
 - Close a section of the sidebar (Working, Queue, Pinned, Today, Yesterday, Earlier) by clicking its header, or ← and → on it; ⌥-click closes or opens them all. A closed section keeps its count and says what's unread, and the session you have open stays visible under it.
 - **Search every conversation** (⌘⇧F): your prompts and Claude's replies across all sessions, with the matching words highlighted. Pick a result to jump straight to that message.
@@ -51,13 +52,13 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - **Clean up branches.** A project's **Branches** tab lists its branches here and on the remote, says which are merged or deleted on the remote, and deletes the ones you tick: the local copy, the one on the remote, or both. See [Branches](#branches).
 - Chat as you would in the terminal. You get streaming replies, `/` commands (your own commands and skills included), `@` file mentions, and images you paste, drop or attach. Drag files anywhere over a session and the message box shows what a drop does: images are attached, other files and folders are added as context.
 - **Context** shows as chips above the message: files you drop, pick from the `@` list, or choose several at once with **Add context** (⌘⇧A, or the paperclip). Remove one with its ×. Files go to Claude as references it reads itself, so a large file stays small. With the [VS Code companion](#vs-code-companion) you can send the lines you have selected in VS Code, problems and terminal output too.
-- Approve or deny permission requests, answer Claude's questions and review plans in the conversation.
+- Approve or deny permission requests, answer Claude's questions and review plans in the conversation. **Why?** on a permission or question card says why Claude needs it and what saying yes does.
 - Follow what Claude does without the noise: each run of tool calls is one line ("Reading src/app.ts…", then "Ran 3 commands and edited 2 files"), and a click shows every step, with diffs, command output, to-do lists and subagent runs.
 - Images Claude reads or you attach are shown in the conversation.
 - Press **Esc** (or **Stop**) to stop Claude, **⇧Tab** to switch permission mode, and keep typing while it works: messages wait in **Up next** above the message box (edit, remove, reorder or **Send now** each one), or **Steer** Claude at its next step (Settings › Conversation picks what Enter does). **Stop session** under **⋯** in the header ends the Claude Code process; sending a message picks it up again.
 - **Ask about this session:** the **Ask** button next to Send opens a panel on the right where you ask Claude about the session, also while it works. Claude answers from the conversation and the project, with read-only tools, and nothing is added to the conversation. Follow-ups stay in threads, and `/btw` and a question asks there too.
 - Change the model, permission mode and **effort** while a session runs, from the chips in the message box, and see how full the **context window** is under it. Click it for what fills it, like `/context`, and to compact the conversation.
-- **Agents** Claude starts, background ones included, are under **⋯** in the session header ("2 running"; a dot on **⋯** says some are); pick **Agents** to watch what each one is doing.
+- **Agents** Claude starts, background ones included, show in a panel on the right (⌘⇧K, or the **Agents** button in the header, which shows how many run). Pick one to see what it is doing, what Claude asked it and what it reported, and stop a background agent.
 - Continue any past session. If it's still open in a terminal, Switchboard offers to **fork** it instead, leaving the original untouched.
 - Hover over a message to go back in time:
   - **Undo file changes** since one of your prompts. You see which files would change first.
@@ -70,6 +71,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - A **queue** of prompts to start next, each one saying when it's ready (when its project is free). See [Queue](#queue).
 - **Unsent messages** are kept, also after you quit. See [Unsent messages](#unsent-messages).
 - An optional **focus limit**: how many sessions you want going at the same time, so starting another doesn't come at the cost of the ones already running. See [Focus limit](#focus-limit).
+- **Remote:** follow your sessions from your phone's browser. See what needs you, allow or deny, answer questions, send prompts, review changes and commit, end-to-end encrypted. Turn it on in Settings › Remote and pair a phone with a QR code.
 - Your plan usage under the message box: how much of your 5-hour and weekly limits you've used (hover for when they reset).
 
 **Review and finish the work**

@@ -4,6 +4,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+## [0.0.18] - 2026-10-15
+
 ### New
 
 - **Agents panel, next to the conversation.** The agents Claude started in a session now show in a panel on the right, a tab beside Changes and Ask, instead of a popup. Leave it open while you keep talking to Claude. **Active** and **Finished** are two lists you can fold. Pick an agent to see what it is doing, what Claude asked it and, once done, what it reported. A background agent has a **Stop** button. With more than one panel open, the header buttons show which one is in front: a bar under its icon, the others paler. Open it with ⌘⇧K (Ctrl+Shift+K on Windows), the **Agents** button in the header (it shows how many run), **Toggle agents** in the command palette, or **Agents** under ⋯. In the background tasks above the message box, an agent's name now opens it in the panel, and an agent's call in the conversation has **Open in Agents panel**.
@@ -31,13 +33,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **The list above the message box stays open.** When you open the background tasks or Claude's task list above the message box, it is still open when you come back to the session after going to another one or hiding it.
 - **Random characters at the prompt of a terminal.** Switching to a terminal tab or session could type text like `11;rgb:1111/1111/1b1b` and `1R8;81R` into the shell. They were answers to questions programs asked a while ago, which the terminal sent again when it showed its history. They are no longer sent.
-
-### Fixed
-
 - **Notifications that don't come through on a newer Mac.** Newer versions of macOS no longer let Switchboard see that notifications are off, so Settings › Notifications never said so. Next to **Send a test notification** it now asks "Nothing showed up?" and has **Open System Settings** to check.
-
-### Fixed
-
 - **Questions from Claude are easier to read and answer.** When Claude asks several questions at once, the one you are answering has an accent line and "1 of 2" before it, and the questions you have answered fade back, so the next one stands out. Picking an answer to a single-choice question, with a click or a number key, moves on to the next open question and scrolls it into view. A multi-select stays until you press Enter or **Next question**, and so does the answer field. Changing an earlier answer doesn't jump ahead.
 
 ## [0.0.17] - 2026-10-14
