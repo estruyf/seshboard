@@ -80,11 +80,44 @@ export function needOf(kind: CatchUpNeedKind, context: { signals: Signals; quest
   }
 }
 
+/** Markdown out of a line of Claude's reply: emphasis, backticks, links, headings and list markers. */
+const plainText = (text: string) =>
+  text
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*(#{1,6}\s+|[-*•]\s+|\d+[.)]\s+)/, '')
+    .replace(/\*\*|__|`/g, '')
+    .replace(/\s+—\s+/g, ', ')
+    .trim();
+
 /**
- * The card's lines without a model, from the turn's tool calls: what was edited and run (`did`), and what failed or you
- * declined (`skipped`). `need` follows the rules above.
+ * What Claude itself said it did, from its last reply, when there is no model to read it: the first sentence (the
+ * headline of a report), then up to two bold leads ("**Finding 1: valid, but not a regression.**"). Empty when the reply
+ * is only a question for you, since the need already shows it.
  */
-export function fallbackSummary(turn: Turn, signals: Signals, outcome: { state: 'finished' | 'error'; error: string | null }): Summary {
+export function replyLines(finalText: string): string[] {
+  const paragraphs = finalText.replace(/```[\s\S]*?```/g, '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const first = paragraphs[0] ? plainText(paragraphs[0].split('\n')[0]!) : '';
+  const lines: string[] = [];
+  // A short opening sentence like "Done." says nothing; a question belongs to the need.
+  const headline = first.split(/(?<=[.!?])\s+/)[0] ?? '';
+  if (headline.length >= 15 && !headline.endsWith('?')) lines.push(oneLine(headline, 200));
+  for (const paragraph of paragraphs.slice(1)) {
+    if (lines.length === 3) break;
+    const lead = /^(?:[-*•]\s+)?\*\*([^*]{8,}?)\*\*/.exec(paragraph)?.[1];
+    if (!lead) continue;
+    const line = oneLine(plainText(lead).replace(/[:.\s]+$/, ''), 200);
+    if (line && !lines.includes(line)) lines.push(line);
+  }
+  return lines;
+}
+
+/**
+ * The card's lines without a model: Claude's own account first when `reply` is on (see `replyLines`), then what the
+ * tool calls show, what was edited and run (`did`), and what failed or you declined (`skipped`). `need` follows the
+ * rules above.
+ */
+export function fallbackSummary(turn: Turn, signals: Signals, outcome: { state: 'finished' | 'error'; error: string | null }, options: { reply?: boolean } = {}): Summary {
+  const said = options.reply ? replyLines(turn.finalText) : [];
   const did: string[] = [];
   const edited = [...new Set(turn.tools.filter((t) => EDIT_TOOLS.has(t.name) && t.file && t.exitCode === 0).map((t) => t.file!))];
   if (edited.length === 1) did.push(`Edited ${nameOf(edited[0]!)}`);
@@ -99,7 +132,7 @@ export function fallbackSummary(turn: Turn, signals: Signals, outcome: { state: 
   if (looked.size && did.length < 4) did.push(`Read ${plural(looked.size, 'file')}`);
   if (turn.tools.some((t) => t.name === 'WebSearch' || t.name === 'WebFetch') && did.length < 5) did.push('Looked things up on the web');
   // Only looking around so far (ls, cat, git status): say so, not how many tools that took.
-  if (did.length === 0) did.push(turn.tools.length ? 'Looked through the project' : 'Answered without running any tools');
+  if (did.length === 0 && said.length === 0) did.push(turn.tools.length ? 'Looked through the project' : 'Answered without running any tools');
 
   const skipped: string[] = [];
   if (outcome.state === 'error') skipped.push(oneLine(`Stopped with an error${outcome.error ? `: ${outcome.error}` : ''}`, 200));
@@ -113,7 +146,7 @@ export function fallbackSummary(turn: Turn, signals: Signals, outcome: { state: 
 
   const question = asksBack(turn.finalText);
   const kind = needKind({ state: outcome.state, signals, asksBack: question !== null });
-  return { did: did.slice(0, 5), skipped, need: needOf(kind, { signals, question, error: outcome.state === 'error' ? (outcome.error ?? 'The turn ended with an error.') : null }) };
+  return { did: [...said, ...did].slice(0, 5), skipped, need: needOf(kind, { signals, question, error: outcome.state === 'error' ? (outcome.error ?? 'The turn ended with an error.') : null }) };
 }
 
 /** What a waiting session asks, from the request itself (never a model): a question, a plan to approve, or a tool to allow. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RawSessionMessage } from '../claude/transcript.ts';
-import { asksBack, fallbackSummary, needKind, testsText, waitingNeed } from './fallback.ts';
+import { asksBack, fallbackSummary, needKind, replyLines, testsText, waitingNeed } from './fallback.ts';
 import { inScope, namedPaths, scopeCheck, signalsOf, testsSignal, type Signals } from './signals.ts';
 import { parseSummary, parseWhy, stubSummary, summaryInput, whyInput } from './summary.ts';
 import { isTestCommand, parseTestCounts } from './testCommands.ts';
@@ -217,6 +217,22 @@ describe('the fallback summary', () => {
     const summary = fallbackSummary(turn, signals(), { state: 'finished', error: null });
     expect(summary.did).toEqual(['Looked through the project']);
     expect(summary.skipped).toEqual([]);
+  });
+
+  it('leads with what Claude said it did, then what the tool calls show', () => {
+    const finalText = [
+      'Both review findings were valid, and both are fixed and pushed to #321.',
+      '**Finding 1: valid, but not a regression.** I had pre-marked the page as changed.',
+      '- **Finding 2: valid, and worse than described.** The error message blocked nothing.',
+      'Done.',
+    ].join('\n\n');
+    const lines = replyLines(finalText);
+    expect(lines).toEqual(['Both review findings were valid, and both are fixed and pushed to #321.', 'Finding 1: valid, but not a regression', 'Finding 2: valid, and worse than described']);
+    const turn = turnOf({ finalText, tools: [call({ command: 'git push', exitCode: 0 })] });
+    expect(fallbackSummary(turn, signals(), { state: 'finished', error: null }, { reply: true }).did).toEqual([...lines, 'Ran git push']);
+    expect(fallbackSummary(turn, signals(), { state: 'finished', error: null }).did).toEqual(['Ran git push']);
+    expect(replyLines('Done.')).toEqual([]);
+    expect(replyLines('Should I also update the docs?')).toEqual([]);
   });
 
   it('follows the rules for what it needs from you', () => {
