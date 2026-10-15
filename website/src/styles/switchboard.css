@@ -25,6 +25,8 @@
   --sb-caution: #ffa94d;
   /* Claude Code memory: a hue of its own, never a status. */
   --sb-memory: #b197fc;
+  /* Only for things on another computer. */
+  --sb-remote: #b197fc;
   --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
   --sb-popover: #2a3244;
   --sb-overlay-border: #414861;
@@ -110,6 +112,7 @@
   --sb-unread: #005cc5;
   --sb-caution: #b35900;
   --sb-memory: #8250df;
+  --sb-remote: #7048e8;
   --sb-selected: color-mix(in srgb, var(--sb-text) 10%, transparent);
   --sb-popover: #ffffff;
   --sb-overlay-border: #d1d5da;

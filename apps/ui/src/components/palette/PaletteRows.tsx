@@ -99,7 +99,7 @@ export function SessionRow({ data, project, projectName, indices, draft = false,
   return (
     <RowShell {...common} data-palette-session={data.id}>
       <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${DOT[status ?? 'idle'] ?? 'bg-faint/50'}`} />
-      <ProjectIcon project={project} root={data.projectRoot} size={16} />
+      <ProjectIcon project={project} root={data.projectRoot} size={16} name={data.remote?.projectName} remote={!!data.remote} />
       <span className="flex min-w-0 flex-1 items-baseline gap-1.5 truncate text-body">
         <Highlight className="truncate" text={data.title || 'Untitled session'} indices={indices} />
         <span className="shrink-0 text-ui text-muted">· {projectName}</span>

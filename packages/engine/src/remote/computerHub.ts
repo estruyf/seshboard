@@ -40,7 +40,7 @@ export interface ComputerHubOptions {
 export class ComputerHub {
   private readonly store: ComputerStore;
   private readonly dial: Dial;
-  private readonly links = new Map<string, { link: ComputerLink; state: LinkState }>();
+  private readonly links = new Map<string, { link: ComputerLink; state: LinkState; lastSeen: number | null }>();
   private pairing: ComputerPairing = null;
   private pairingAbort: AbortController | null = null;
   private device: KeyPair | null = null;
@@ -155,8 +155,9 @@ export class ComputerHub {
   }
 
   private connect(computer: PairedComputer, device: KeyPair): void {
-    const entry: { link: ComputerLink; state: LinkState } = {
+    const entry: { link: ComputerLink; state: LinkState; lastSeen: number | null } = {
       state: { kind: 'connecting' },
+      lastSeen: null,
       link: new ComputerLink({
         address: computer.address,
         enginePublicKey: computer.enginePublicKey,
@@ -164,6 +165,8 @@ export class ComputerHub {
         dial: this.dial,
         ...(this.options.now ? { now: this.options.now } : {}),
         onState: (state) => {
+          // Leaving a connection: when it was last there, for "Last seen 2h ago" while it is away.
+          if (entry.state.kind === 'connected' && state.kind !== 'connected') entry.lastSeen = (this.options.now ?? Date.now)();
           entry.state = state;
           if (state.kind === 'connected' && state.name && state.name !== this.store.find(computer.enginePublicKey)?.name) this.store.setName(computer.id, state.name);
           if (state.kind === 'unpaired') this.options.log('info', `Other computers: ${computer.address} no longer knows this computer`);
@@ -177,11 +180,12 @@ export class ComputerHub {
   }
 
   private view(computer: PairedComputer): Computer {
-    const state = this.links.get(computer.id)?.state ?? { kind: 'connecting' as const };
-    const base = { id: computer.id, name: computer.name, address: computer.address, pairedAt: computer.pairedAt };
+    const entry = this.links.get(computer.id);
+    const state = entry?.state ?? { kind: 'connecting' as const };
+    const base = { id: computer.id, name: computer.name, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null };
     switch (state.kind) {
       case 'connected':
-        return { ...base, state: 'connected', message: null, retryAt: null, version: state.version };
+        return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, lastSeen: null };
       case 'connecting':
         return { ...base, state: 'connecting', message: null, retryAt: null, version: null };
       case 'offline':

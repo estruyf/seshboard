@@ -34,6 +34,9 @@ import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
 import { basename } from '../../lib/format.ts';
 import type { PaletteApi } from './commands.ts';
+import { newSessionOn } from '../computers/remoteActions.ts';
+import { useComputers } from '../../state/computersStore.ts';
+import { onlySource, THIS_COMPUTER } from '../../state/remoteRows.ts';
 import type { PaletteContext } from './paletteContext.ts';
 
 /** Says why a command didn't work: the palette has closed by then, so it can't say it itself. */
@@ -234,6 +237,11 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     closeOtherPanes: () => useSessions.getState().closeOtherPanes(),
     newSessionRequest: (kind) => usePaletteBus.getState().requestNewSession(kind),
     openNewSession: () => useSessions.getState().openNewSession(),
+    newSessionOn: (computerId) => newSessionOn(computerId),
+    showOnlyComputer: (computerId) => {
+      const computers = useComputers.getState().status?.computers ?? [];
+      useComputers.getState().setHidden(onlySource([THIS_COMPUTER, ...computers.map((c) => c.id)], computerId));
+    },
     startQueued: (id) => {
       const item = useLater.getState().items.find((i) => i.id === id);
       if (item) void startQueued(item);

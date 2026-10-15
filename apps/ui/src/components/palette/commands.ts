@@ -205,6 +205,10 @@ export interface PaletteApi {
   newSessionRequest(kind: NewSessionRequest): void;
   /** Opens the New session view (Add to queue… outside it). */
   openNewSession(): void;
+  /** Opens New session with another computer picked in Run on. */
+  newSessionOn(computerId: string): void;
+  /** The sidebar shows only that computer's sessions (the Computers filter). */
+  showOnlyComputer(computerId: string): void;
   /** Starts a queued item (through the focus limit's gate). */
   startQueued(id: string): void;
 }
@@ -759,9 +763,33 @@ export function projectCommands(ctx: PaletteContext): PaletteCommand[] {
   }));
 }
 
+/** For each connected computer: "New session on <name>…" (New session with it picked in Run on) and "Show only <name>". */
+export function computerCommands(ctx: PaletteContext): PaletteCommand[] {
+  return ctx.computers.flatMap((computer) => [
+    {
+      id: `new-session-on:${computer.id}`,
+      title: `New session on ${computer.name}…`,
+      group: 'general' as const,
+      icon: Monitor,
+      keywords: 'start run remote other computer machine',
+      when: always,
+      run: (api: PaletteApi) => api.newSessionOn(computer.id),
+    },
+    {
+      id: `show-only:${computer.id}`,
+      title: `Show only ${computer.name}`,
+      group: 'general' as const,
+      icon: Monitor,
+      keywords: 'filter sidebar sessions computer remote',
+      when: always,
+      run: (api: PaletteApi) => api.showOnlyComputer(computer.id),
+    },
+  ]);
+}
+
 /** Every command that can show here, before matching what is typed. */
 export function visibleCommands(ctx: PaletteContext, commands: readonly PaletteCommand[] = COMMANDS): PaletteCommand[] {
-  return [...commands, ...actionCommands(ctx), ...themeCommands(ctx), ...projectCommands(ctx)].filter((command) => command.when(ctx));
+  return [...commands, ...actionCommands(ctx), ...themeCommands(ctx), ...projectCommands(ctx), ...computerCommands(ctx)].filter((command) => command.when(ctx));
 }
 
 /** A command as a row: its title for this context, and which letters matched what was typed. */

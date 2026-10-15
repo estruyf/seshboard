@@ -7,6 +7,7 @@ import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { statusLine } from '../../state/sidebarOrder.ts';
 import { rowStatus } from '../../state/sidebarRows.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
+import { useRemoteRows } from '../../state/useRemoteRows.ts';
 
 /** How long the HUD stays after a jump. */
 export const HUD_MS = 1_200;
@@ -26,6 +27,7 @@ export function SessionHud() {
   const live = useSessions((s) => s.live);
   const hosts = useHosts((s) => s.hosts);
   const projects = useProjects((s) => s.projects);
+  const remoteRows = useRemoteRows();
 
   useEffect(() => {
     if (!message) return;
@@ -34,7 +36,10 @@ export function SessionHud() {
     return () => clearTimeout(timer);
   }, [message, nonce]);
 
-  const session = useMemo(() => (message?.kind === 'session' ? (toRows(sessions, live, hosts).find((row) => row.id === message.id) ?? null) : null), [message, sessions, live, hosts]);
+  const session = useMemo(
+    () => (message?.kind === 'session' ? ([...toRows(sessions, live, hosts), ...remoteRows].find((row) => row.id === message.id) ?? null) : null),
+    [message, sessions, live, hosts, remoteRows],
+  );
   const project = session ? projects.get(session.projectRoot) : undefined;
   const line = session ? statusLine(rowStatus(session)) : null;
   const text = message?.kind === 'note' ? message.text : session && message?.kind === 'session' ? `${message.position} of ${message.total}: ${session.title}` : '';
@@ -59,7 +64,7 @@ export function SessionHud() {
                 {message.position} of {message.total}
               </span>
               <span aria-hidden className={`size-2 shrink-0 rounded-full ${DOT[line?.tone ?? 'faint']}`} />
-              <ProjectIcon project={project} root={session.projectRoot} size={18} />
+              <ProjectIcon project={project} root={session.projectRoot} size={18} name={session.remote?.projectName} remote={!!session.remote} />
               <span className="min-w-0 truncate text-body font-semibold text-text">{session.title || 'Untitled session'}</span>
               <span className="shrink-0 text-meta text-muted">{project?.name ?? basename(session.projectRoot)}</span>
             </>

@@ -6,13 +6,15 @@ import * as panes from './paneState.ts';
 import { leafIds, type Tile } from './tiling.ts';
 import { useTilingArea } from './tilingArea.ts';
 import type { DropTarget, Way } from './tilingGeometry.ts';
+import type { RemoteRowInfo } from './remoteRows.ts';
+import { useRunOn } from './runOnStore.ts';
 import { toast } from './toastStore.ts';
 
 /**
- * `project` is one project's page (`useProjectPage` says which); `projects` is the list of them; `computer` is another
- * computer's sessions (`useComputers` says which).
+ * `project` is one project's page (`useProjectPage` says which); `projects` is the list of them; `remote` is a session
+ * on another computer, or that computer's page (`useComputers` says which).
  */
-export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'computer';
+export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote';
 /** The pages of Settings, listed in its own sidebar. */
 export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'conversation' | 'notifications' | 'focus' | 'profiles' | 'memory' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
 
@@ -98,8 +100,11 @@ interface SessionsState {
   openSettings(section?: SettingsSection): void;
   /** Closes Settings and returns to the view it opened over. */
   closeSettings(): void;
-  /** Opens the New session view and asks it to focus the prompt. */
-  openNewSession(): void;
+  /**
+   * Opens the New session view and asks it to focus the prompt. It starts on this computer, or with `runOn: 'last'`
+   * (the sidebar's +) on the computer picked last in Run on.
+   */
+  openNewSession(options?: { runOn?: 'here' | 'last' }): void;
   setFilter(filter: string): void;
 }
 
@@ -162,7 +167,10 @@ export const useSessions = create<SessionsState>()((set) => ({
   openSettings: (section) =>
     set((s) => ({ view: 'settings', settingsSection: section ?? s.settingsSection, settingsFrom: s.view === 'settings' ? s.settingsFrom : s.view })),
   closeSettings: () => set((s) => (s.view === 'settings' ? { view: s.settingsFrom } : {})),
-  openNewSession: () => set((s) => ({ view: 'new', newSessionRequest: s.newSessionRequest + 1 })),
+  openNewSession: (options) => {
+    useRunOn.getState().openOn(options?.runOn ?? 'here');
+    set((s) => ({ view: 'new', newSessionRequest: s.newSessionRequest + 1 }));
+  },
   setFilter: (filter) => set({ filter }),
 }));
 
@@ -187,6 +195,11 @@ export interface SessionRowData {
   error: boolean;
   /** The Claude profile the session belongs to. */
   profileId: string;
+  /**
+   * A session on another computer (`remoteRows`): its computer, its id there and its state. Its row's `id` is
+   * `remoteRowId`, never a local session id; `live` and `summary` are null.
+   */
+  remote?: RemoteRowInfo | null;
 }
 
 export function toRows(

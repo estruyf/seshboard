@@ -25,9 +25,10 @@ function currentPlace(): NavPlace {
     }
     case 'usage':
       return { view: 'usage', profileId: useUsageView.getState().profileId };
-    case 'computer': {
-      const { openId, sessionId } = useComputers.getState();
-      return openId ? { view: 'computer', computerId: openId, sessionId } : { view: 'session', layout: s.layout, active: s.selectedId };
+    case 'remote': {
+      const { selected, pageId } = useComputers.getState();
+      if (selected) return { view: 'remote', computerId: selected.computerId, sessionId: selected.sessionId };
+      return pageId ? { view: 'remote', computerId: pageId, sessionId: null } : { view: 'session', layout: s.layout, active: s.selectedId };
     }
     default:
       return { view: s.view };
@@ -39,7 +40,11 @@ const sessionExists = (id: string) => useSessions.getState().sessions.has(id) ||
 function usable(place: NavPlace): boolean {
   if (place.view === 'session') return place.layout === null || leafIds(place.layout).some(sessionExists);
   if (place.view === 'project') return useProjects.getState().projects.has(place.root);
-  if (place.view === 'computer') return useComputers.getState().status?.computers.some((c) => c.id === place.computerId) ?? false;
+  if (place.view === 'remote') {
+    const { status, lists } = useComputers.getState();
+    if (!status?.computers.some((c) => c.id === place.computerId)) return false;
+    return place.sessionId === null || (lists.get(place.computerId)?.sessions.some((session) => session.id === place.sessionId) ?? false);
+  }
   return true;
 }
 
@@ -66,8 +71,9 @@ function show(place: NavPlace) {
     case 'usage':
       openUsage(place.profileId);
       break;
-    case 'computer':
-      useComputers.getState().open(place.computerId, place.sessionId);
+    case 'remote':
+      if (place.sessionId) useComputers.getState().openSession({ computerId: place.computerId, sessionId: place.sessionId });
+      else useComputers.getState().openPage(place.computerId);
       break;
     default:
       useSessions.getState().setView(place.view);
@@ -109,7 +115,7 @@ export function startRecording(): () => void {
   const stopProject = useProjectPage.subscribe(note);
   // The Usage view's profile is part of its place.
   const stopUsage = useUsageView.subscribe(note);
-  // So is the computer and session of the Computer view.
+  // So is the remote session (or computer page) on screen.
   const stopComputers = useComputers.subscribe(note);
   return () => {
     stopSessions();

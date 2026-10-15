@@ -24,6 +24,8 @@
   --sb-caution: #b35900;
   /* Claude Code memory (MEMORY.md in What loads here): a hue of its own, never a status. */
   --sb-memory: #8250df;
+  /* Only for things on another computer (its chips, badges, the line over its sessions): no state uses violet. */
+  --sb-remote: #7048e8;
   /*
    * The selected row in a list: a neutral fill (a yellow tint disappears on the light sidebar). A tint
    * of the text colour rather than a fixed grey, so it shows on every surface: sidebar, card, dialog.
@@ -83,6 +85,7 @@
     --sb-unread: #74c0fc;
     --sb-caution: #ffa94d;
     --sb-memory: #b197fc;
+    --sb-remote: #b197fc;
     --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
     --sb-profile-yellow: #ffd43b;
     --sb-profile-blue: #74c0fc;
@@ -134,6 +137,7 @@
   --sb-unread: #74c0fc;
   --sb-caution: #ffa94d;
   --sb-memory: #b197fc;
+  --sb-remote: #b197fc;
   --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
   --sb-profile-yellow: #ffd43b;
   --sb-profile-blue: #74c0fc;
@@ -179,6 +183,7 @@
   --color-unread: var(--sb-unread);
   --color-caution: var(--sb-caution);
   --color-memory: var(--sb-memory);
+  --color-remote: var(--sb-remote);
   --color-selected: var(--sb-selected);
   --color-profile-yellow: var(--sb-profile-yellow);
   --color-profile-blue: var(--sb-profile-blue);

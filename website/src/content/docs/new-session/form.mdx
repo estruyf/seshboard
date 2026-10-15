@@ -111,6 +111,19 @@ You can also edit the defaults on the project's [Settings tab](/projects/setting
 
 With more than one [Claude profile](/settings/claude-profiles/), the first chip under the message box shows the profile the session runs on. It starts on the project's profile, or the default one, marked "(project)" or "(default)" in the menu. Pick another for this session only. The usage on the right follows the profile you pick.
 
+## Run on another computer
+
+<Screenshot name="computers-new-session" alt="New session with Run on set to mystic: three project tiles from mystic with a monitor badge, the strip above the message box with mystic, the project and Current checkout, and Start on mystic, with a line under it that Claude runs on mystic" />
+
+With [another computer paired](/remote-access/#other-computers), **Run on** sits under the heading: <Os mac="This Mac" windows="This PC" /> and each paired computer, with a green dot when it is connected. Pick a computer and Claude runs there, in its folders and with its Claude profile. You follow the session from here.
+
+- The tiles are that computer's projects, each with a small monitor badge. <Kbd shortcut="new-session.pick" /> still picks one, and **+6 more on mystic** shows the rest. Folders on another computer can't be picked from here, so there is no **Other folder** or **Add project…**.
+- The strip above the message box starts with the computer's name, then the project. **Where** (the current checkout or a new worktree) and the model, effort and mode chips show when the other computer's Switchboard offers them. An older version only takes the project and the prompt.
+- **Start on mystic** (<Kbd shortcut="new-session.start" />) starts the session there and opens it here.
+- Images can't go to another computer yet. Quick question, **Add to queue** and the focus limit are for this computer only.
+
+An offline computer stays in the switch, greyed out, with when it was last seen. **Run on** remembers your last choice for the **+** button in the sidebar. <Kbd shortcut="session.new" /> always starts on this computer. **New session on mystic…** in the command palette opens New session with that computer picked.
+
 ## At the focus limit
 
 With the [focus limit](/focus-limit/) on and reached, a note above the message box lists the sessions that count, each with **Open**, and **Change limit** opens Settings. Its **Add to queue** keeps the idea for later.
