@@ -4,7 +4,7 @@ import { age, groupSessions, projectStatus, recentProjects, startOfDay, suggeste
 
 const NOW = new Date(2026, 9, 15, 14, 0).getTime();
 const HOUR = 3_600_000;
-const session = (id: string, status: RemoteSession['status'], updatedAt: number, projectId = 'aaaaaaaaaaaaaaaa'): RemoteSession => ({ id, title: id, projectId, projectName: 'Web', branch: null, status, updatedAt });
+const session = (id: string, status: RemoteSession['status'], updatedAt: number, projectId = 'aaaaaaaaaaaaaaaa'): RemoteSession => ({ id, title: id, projectId, projectName: 'Web', branch: null, status, updatedAt, unread: status === 'unread', pinned: false, model: null, permissionMode: null });
 
 describe('groupSessions', () => {
   it('puts what needs you and what works first, then the rest by calendar day, newest first', () => {

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import type { CompanionStatus } from '@switchboard/protocol/remote-client';
 
 /**
@@ -22,7 +22,7 @@ const SIZES: Record<Size, string> = {
   lg: 'min-h-11 px-4 pointer-fine:min-h-8 pointer-fine:px-3.5',
 };
 
-export function Button({ variant = 'secondary', size = 'lg', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
+export function Button({ variant = 'secondary', size = 'lg', className = '', ...props }: ComponentProps<'button'> & { variant?: Variant; size?: Size }) {
   return (
     <button
       type="button"
@@ -33,9 +33,9 @@ export function Button({ variant = 'secondary', size = 'lg', className = '', ...
 }
 
 /** The small capitals over a group of rows, in the group's colour, with its count (the sidebar's SectionHeader). */
-export function SectionHeader({ id, label, count, tone = 'text-faint' }: { id?: string; label: string; count?: number; tone?: string }) {
+export function SectionHeader({ id, label, count, tone = 'text-faint', className = 'px-4' }: { id?: string; label: string; count?: number; tone?: string; className?: string }) {
   return (
-    <h2 id={id} className={`flex items-center gap-1.5 px-4 pt-4 pb-1 text-meta font-semibold tracking-wide uppercase ${tone}`}>
+    <h2 id={id} className={`flex items-center gap-1.5 pt-4 pb-1 text-meta font-semibold tracking-wide uppercase ${tone} ${className}`}>
       {label}
       {count !== undefined && <span className="font-normal text-faint tabular-nums">{count}</span>}
     </h2>

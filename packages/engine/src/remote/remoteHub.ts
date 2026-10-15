@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   keyPairFromSecret,
@@ -19,6 +20,15 @@ import {
   type TranscriptUpdate,
   type StreamDelta,
   type QueuedMessage,
+  type CatchUp,
+  type GitChanges,
+  type PermissionRequest,
+  type SessionHostInfo,
+  type RemotePushSubscription,
+  type ModelOption,
+  type PermissionMode,
+  Effort,
+  REMOTE_DIFF_LINES,
 } from '@switchboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
@@ -26,9 +36,24 @@ import { DeviceStore, type RemoteDevice } from './devices.ts';
 import { Pairing } from './pairing.ts';
 import { RemoteServer } from './remoteServer.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
-import { projectIdOf, remoteMessage, remoteSessions, transcriptPage } from './remoteView.ts';
+import { finishedLine, needsYouLine, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
+import { generateVapidKeys, isPushEndpoint, sendPush, type VapidKeys } from './webPush.ts';
+import { capDiff, projectIdOf, remoteCatchUp, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
+/** The engine's VAPID key pair, made the first time a phone asks for it. */
+const VAPID_KEY = 'remote.vapid';
+/** Each paired device's push subscription and the moments it wants, by device id. */
+const PUSH_KEY = 'remote.push';
+/** How long a finished turn's push waits for its catch-up, which says what happened. */
+const CATCH_UP_WAIT_MS = 8_000;
+
+type PushEntry = {
+  deviceId: string;
+  subscription: RemotePushSubscription;
+  needsYou: boolean;
+  finished: boolean;
+};
 const DEFAULT_SETTINGS: RemoteSettings = { enabled: false, tunnel: 'cloudflare', customUrl: null, ngrokDomain: null, port: REMOTE_DEFAULT_PORT };
 /** Waits before starting a tunnel again after it stopped by itself: longer each time, up to a minute. */
 const RETRY_MS = [2_000, 5_000, 15_000, 60_000];
@@ -48,6 +73,8 @@ export interface RemoteHubOptions {
   db: DatabaseSync;
   appState: AppStateStore;
   appVersion: string;
+  /** What the phone calls this computer (tests and the demo pass their own). */
+  computerName?: () => string;
   /** The remote app (`REMOTE_APP_URL`; a development build can point at its own). */
   appUrl?: string;
   /**
@@ -66,8 +93,22 @@ export interface RemoteHubOptions {
   dequeue(sessionId: string, id: string): void;
   interrupt(sessionId: string): Promise<void>;
   respond(requestId: string, decision: PermissionDecision): void;
-  /** A new session in `root` with the project's defaults for model, effort and mode. */
-  create(root: string, prompt: string, defaults: ProjectDefaults): Promise<{ sessionId: string }>;
+  /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
+  create(root: string, prompt: string, choice: SessionChoice): Promise<{ sessionId: string }>;
+  /** Puts a prompt in the queue (Later) for `root`. */
+  queue(root: string, prompt: string, choice: SessionChoice): { id: string };
+  /** As opening the session on the computer: no longer unread. */
+  markRead(sessionId: string): void;
+  setFlags(sessionId: string, flags: { pinned?: boolean; archived?: boolean }): void;
+  setModel(sessionId: string, model: string | null): Promise<void>;
+  setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void>;
+  models(): ModelOption[];
+  catchUp(sessionId: string): CatchUp | null;
+  /** What changed in the session's checkout, uncommitted; null when it has no folder. */
+  changes(sessionId: string): Promise<GitChanges | null>;
+  diff(sessionId: string, path: string): Promise<{ diff: string; truncated: boolean }>;
+  /** Commits every change in the session's checkout, without a terminal. */
+  commit(sessionId: string, message: string): Promise<{ ok: true; sha: string } | { ok: false; output: string }>;
   /** Tells the app's windows. */
   onStatus(status: RemoteStatus): void;
   /** A prompt or an answer came from a phone, for the label in the conversation. */
@@ -77,6 +118,9 @@ export interface RemoteHubOptions {
   findTool?: (tool: TunnelTool) => string | null;
   tunnelCommand?: (tool: TunnelTool, port: number) => { file: string; args: string[] };
   retryMs?: readonly number[];
+  /** Tests: where pushes go instead of the push services. */
+  pushFetch?: typeof fetch;
+  catchUpWaitMs?: number;
 }
 
 /** What a phone watches: one transcript at a time. */
@@ -109,6 +153,11 @@ export class RemoteHub {
   private changeTimer: ReturnType<typeof setTimeout> | undefined;
   private lastSessions = '';
   private readonly watches = new Map<HandlerContext<RemoteContract>, Watch>();
+  /** Connections whose app is on the device's screen, with their device: no pushes to those devices. */
+  private readonly visible = new Map<HandlerContext<RemoteContract>, string>();
+  private readonly turnEnds = new TurnEnds();
+  /** Finished turns waiting for their catch-up before their push goes out. */
+  private readonly finishing = new Map<string, ReturnType<typeof setTimeout>>();
   /** Messages sent from a phone, by session, for the label (kept while the engine runs). */
   private readonly sentFrom = new Map<string, Map<string, string>>();
   private applying: Promise<void> = Promise.resolve();
@@ -125,6 +174,7 @@ export class RemoteHub {
       devices: this.devices,
       pairing: this.pairing,
       appVersion: options.appVersion,
+      ...(options.computerName ? { computerName: options.computerName } : {}),
       origins: [new URL(this.appUrl).origin],
       cloudflare: () => this.settings.tunnel === 'cloudflare',
       log: options.log,
@@ -185,6 +235,7 @@ export class RemoteHub {
 
   revoke(deviceId: string): void {
     this.devices.revoke(deviceId);
+    this.setPush(deviceId, null);
     this.server.disconnect(deviceId);
     this.statusChanged();
   }
@@ -212,8 +263,32 @@ export class RemoteHub {
     for (const [phone, watch] of this.watches) if (watch.sessionId === sessionId) phone.emit('upNext.changed', { sessionId, queue });
   }
 
+  /** A session's catch-up changed: phones watching it get the new one, and a finished turn's push goes out with it. */
+  catchUpChanged(sessionId: string, card: CatchUp | null): void {
+    if (card && this.finishing.has(sessionId)) this.sendFinished(sessionId);
+    for (const [phone, watch] of this.watches) if (watch.sessionId === sessionId) phone.emit('catchup.changed', { sessionId, catchUp: remoteCatchUp(card) });
+  }
+
+  /** A prompt opened: paired phones that want it get a push. */
+  permissionAsked(request: PermissionRequest): void {
+    const session = this.list().sessions.find((s) => s.id === request.sessionId);
+    if (!session) return;
+    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, line: needsYouLine(request) });
+  }
+
+  /** A session's process changed state: a turn that ended sends its push once the catch-up is in (or soon without). */
+  hostChanged(info: SessionHostInfo): void {
+    if (!this.turnEnds.ended(info.sessionId, info.state)) return;
+    clearTimeout(this.finishing.get(info.sessionId));
+    const timer = setTimeout(() => this.sendFinished(info.sessionId), this.options.catchUpWaitMs ?? CATCH_UP_WAIT_MS);
+    timer.unref?.();
+    this.finishing.set(info.sessionId, timer);
+  }
+
   stop(): void {
     this.generation++;
+    for (const timer of this.finishing.values()) clearTimeout(timer);
+    this.finishing.clear();
     clearTimeout(this.changeTimer);
     this.pairing.cancel();
     this.stopListening();
@@ -317,6 +392,7 @@ export class RemoteHub {
     this.tunnelState = { state: 'off', message: null };
     for (const watch of this.watches.values()) watch.stop();
     this.watches.clear();
+    this.visible.clear();
     this.server.stop();
     this.lastSessions = '';
   }
@@ -331,6 +407,60 @@ export class RemoteHub {
     this.options.onStatus(this.status());
   }
 
+  // --- Push ---------------------------------------------------------------------------------------------------------
+
+  private vapid(): VapidKeys {
+    const saved = this.options.appState.get(VAPID_KEY) as Partial<VapidKeys> | null;
+    if (typeof saved?.publicKey === 'string' && typeof saved.privateKey === 'string') return { publicKey: saved.publicKey, privateKey: saved.privateKey };
+    const keys = generateVapidKeys();
+    this.options.appState.set(VAPID_KEY, keys);
+    return keys;
+  }
+
+  private pushEntries(): PushEntry[] {
+    const saved = this.options.appState.get(PUSH_KEY);
+    return Array.isArray(saved) ? (saved as unknown as PushEntry[]) : [];
+  }
+
+  private setPush(deviceId: string, entry: Omit<PushEntry, 'deviceId'> | null): void {
+    const rest = this.pushEntries().filter((e) => e.deviceId !== deviceId);
+    if (!entry && rest.length === this.pushEntries().length) return;
+    this.options.appState.set(PUSH_KEY, entry ? [...rest, { deviceId, ...entry }] : rest);
+  }
+
+  private sendFinished(sessionId: string): void {
+    clearTimeout(this.finishing.get(sessionId));
+    this.finishing.delete(sessionId);
+    const session = this.list().sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, line: finishedLine(this.options.catchUp(sessionId)) });
+  }
+
+  /**
+   * Sends a push to every device that wants this kind and doesn't have the app on screen. A subscription the push
+   * service says is gone is forgotten.
+   */
+  private push(payload: PushPayload): void {
+    if (!this.settings.enabled) return;
+    const entries = this.pushEntries();
+    if (!entries.length) return;
+    const known = new Set(this.devices.list().map((d) => d.id));
+    const targets = pushTargets(entries, payload.kind, new Set(this.visible.values()), known);
+    if (!targets.length) return;
+    const keys = this.vapid();
+    // At most 32 characters: a newer push about the same session replaces one the phone hasn't had yet.
+    const topic = createHash('sha256').update(`${payload.kind}:${payload.sessionId}`).digest('base64url').slice(0, 32);
+    for (const target of targets) {
+      void sendPush(target.subscription, payload, { keys, subject: new URL(this.appUrl).origin, urgent: payload.kind === 'needs-you', topic, ...(this.options.pushFetch ? { fetch: this.options.pushFetch } : {}) }).then(
+        (result) => {
+          if (result === 'gone') this.setPush(target.deviceId, null);
+          if (result === 'failed') this.options.log('warn', `Remote: a push service refused a notification`);
+        },
+        (error: Error) => this.options.log('warn', `Remote: couldn't reach the push service: ${error.message}`),
+      );
+    }
+  }
+
   // --- What a phone may do --------------------------------------------------------------------------------------
 
   private list(): RemoteSessions {
@@ -338,7 +468,6 @@ export class RemoteHub {
     return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames });
   }
 
-  /** A phone may only touch the sessions it can see in its list. */
   /** The projects New session offers, as the app's own list: the ones you added that still exist, in your order. */
   private yourProjects(): RemoteProject[] {
     return this.options
@@ -347,6 +476,13 @@ export class RemoteHub {
       .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name));
   }
 
+  private project(projectId: string): RemoteProject {
+    const project = this.yourProjects().find((p) => projectIdOf(p.root) === projectId);
+    if (!project) throw new RpcError('NOT_FOUND', 'No such project');
+    return project;
+  }
+
+  /** A phone may only touch the sessions it can see in its list. */
   private checkSession(sessionId: string): void {
     if (!this.list().sessions.some((s) => s.id === sessionId)) throw new RpcError('NOT_FOUND', 'No such session');
   }
@@ -409,10 +545,86 @@ export class RemoteHub {
         this.options.onFromDevice?.({ sessionId: prompt.sessionId, messageUuid: null, requestId, device: device.name });
         return {};
       },
-      'session.create': async ({ projectId, prompt }) => {
-        const project = this.yourProjects().find((p) => projectIdOf(p.root) === projectId);
-        if (!project) throw new RpcError('NOT_FOUND', 'No such project');
-        return this.options.create(project.root, prompt, project.defaults);
+      'session.create': async ({ projectId, prompt, ...options }) => {
+        const project = this.project(projectId);
+        return this.options.create(project.root, prompt, sessionChoice(options, project.defaults));
+      },
+      'later.add': ({ projectId, prompt, ...options }) => {
+        const project = this.project(projectId);
+        return this.options.queue(project.root, prompt, sessionChoice(options, project.defaults));
+      },
+      'session.markRead': ({ sessionId }) => {
+        this.checkSession(sessionId);
+        this.options.markRead(sessionId);
+        this.sessionsChanged();
+        return {};
+      },
+      'session.setFlags': ({ sessionId, pinned, archived }) => {
+        this.checkSession(sessionId);
+        this.options.setFlags(sessionId, { ...(pinned !== undefined ? { pinned } : {}), ...(archived !== undefined ? { archived } : {}) });
+        this.sessionsChanged();
+        return {};
+      },
+      'session.setModel': async ({ sessionId, model }) => {
+        this.checkSession(sessionId);
+        await this.options.setModel(sessionId, model);
+        this.sessionsChanged();
+        return {};
+      },
+      'session.setPermissionMode': async ({ sessionId, mode }) => {
+        this.checkSession(sessionId);
+        await this.options.setPermissionMode(sessionId, mode);
+        this.sessionsChanged();
+        return {};
+      },
+      'options.get': () => ({
+        models: this.options.models().map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })),
+        efforts: [...Effort.options],
+        modes: ['default', 'acceptEdits', 'plan', 'auto'],
+        projects: this.yourProjects().map((p) => ({
+          id: projectIdOf(p.root),
+          defaults: { model: p.defaults.model, effort: p.defaults.effort, permissionMode: p.defaults.permissionMode, worktree: p.defaults.workspace === 'worktree' },
+        })),
+      }),
+      'catchup.get': ({ sessionId }) => {
+        this.checkSession(sessionId);
+        return { catchUp: remoteCatchUp(this.options.catchUp(sessionId)) };
+      },
+      'changes.get': async ({ sessionId }) => {
+        this.checkSession(sessionId);
+        const changes = await this.options.changes(sessionId);
+        if (!changes) return { branch: null, files: [], error: 'This session has no folder.' };
+        return { branch: changes.branch, error: changes.error, files: changes.files.map(({ path, status, additions, deletions }) => ({ path, status, additions, deletions })) };
+      },
+      'changes.diff': async ({ sessionId, path }) => {
+        this.checkSession(sessionId);
+        // Only a file the list shows: the path comes from the phone, so it may not name anything else.
+        const listed = (await this.options.changes(sessionId))?.files.some((f) => f.path === path);
+        if (!listed) throw new RpcError('NOT_FOUND', 'That file has no changes');
+        return capDiff(await this.options.diff(sessionId, path), REMOTE_DIFF_LINES);
+      },
+      'push.key': () => ({ publicKey: this.vapid().publicKey }),
+      'push.subscribe': ({ subscription, needsYou, finished }) => {
+        // Only the browsers' push services: a phone can't make the engine send requests anywhere else.
+        if (!isPushEndpoint(subscription.endpoint)) throw new RpcError('INVALID_PARAMS', 'Not a push service this app knows');
+        this.setPush(device.id, { subscription, needsYou, finished });
+        return {};
+      },
+      'push.unsubscribe': () => {
+        this.setPush(device.id, null);
+        return {};
+      },
+      'device.visibility': ({ visible }, phone) => {
+        if (!this.visible.has(phone) && visible) phone.onDispose(() => this.visible.delete(phone));
+        if (visible) this.visible.set(phone, device.id);
+        else this.visible.delete(phone);
+        return {};
+      },
+      'changes.commit': async ({ sessionId, message }) => {
+        this.checkSession(sessionId);
+        const result = await this.options.commit(sessionId, message);
+        if (result.ok) this.options.log('info', `Remote: ${device.name} committed ${result.sha.slice(0, 7)} in session ${sessionId}`);
+        return result;
       },
     };
   }

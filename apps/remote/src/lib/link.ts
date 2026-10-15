@@ -10,6 +10,8 @@ export interface Paired {
   deviceId: string;
   name: string;
   pairedAt: number;
+  /** What the computer is called ("Elio's iMac"), from its last hello: the offline help names it. */
+  computerName?: string;
 }
 
 /** What to do with the page's link and what the phone has kept. */

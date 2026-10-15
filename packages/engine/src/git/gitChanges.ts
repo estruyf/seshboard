@@ -434,6 +434,34 @@ export async function stageForCommit(cwd: string): Promise<number> {
   return staged();
 }
 
+/** The last lines of a failed commit's output that come back to the phone: enough to read a hook's complaint. */
+const COMMIT_OUTPUT_LINES = 20;
+
+/**
+ * Commits every change in the checkout without a terminal (for the remote app, which can't see one): stages
+ * everything, runs `git commit` with the user's environment so hooks find their tools, and returns the new commit's
+ * hash, or the last lines of what git and its hooks printed when it failed. Never pushes.
+ */
+export async function commitAll(cwd: string, message: string, env: Record<string, string>): Promise<{ ok: true; sha: string; files: number } | { ok: false; output: string }> {
+  const root = await topLevel(cwd);
+  await git(root, ['add', '-A']);
+  const files = (await git(root, ['diff', '--cached', '--name-only', '-z'])).split('\0').filter(Boolean).length;
+  if (files === 0) return { ok: false, output: 'There is nothing to commit.' };
+  const output = await new Promise<{ code: number; text: string }>((resolvePromise) => {
+    execFile(
+      'git',
+      [...GIT_SETTINGS, 'commit', '-m', message],
+      { cwd: root, env: { ...process.env, ...env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' }, maxBuffer: 8 * 1024 * 1024, timeout: 300_000 },
+      (error, stdout, stderr) => resolvePromise({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, text: `${stdout}${stderr}` }),
+    );
+  });
+  if (output.code !== 0) {
+    const lines = output.text.replace(/\u001b\[[0-9;]*m/g, '').trimEnd().split('\n');
+    return { ok: false, output: lines.slice(-COMMIT_OUTPUT_LINES).join('\n') || 'git commit failed.' };
+  }
+  return { ok: true, sha: (await git(root, ['rev-parse', 'HEAD'])).trim(), files };
+}
+
 /** Removes a worktree (refuses with uncommitted changes) and optionally its branch. */
 export async function removeWorktree(status: WorktreeStatus, deleteBranch: boolean): Promise<void> {
   if (!status.isWorktree) throw new GitError('This folder is not a worktree');

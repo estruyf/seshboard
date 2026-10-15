@@ -41,6 +41,7 @@ import {
   type CatchUp,
   type QueuedMessage,
   type StreamDelta,
+  type PermissionRequest,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -48,7 +49,7 @@ import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts'
 import { findCheckout, githubPage } from './git/remotes.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
-import { checkoutRoot, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
@@ -249,11 +250,18 @@ export function createEngine(options: EngineOptions): Engine {
       companion?.sessionsChanged();
       remote?.sessionsChanged();
     }
+    // Pushes to paired phones: a prompt opened, a turn ended.
+    if (name === 'session.permission') remote?.permissionAsked(payload as PermissionRequest);
+    if (name === 'session.host') remote?.hostChanged(payload as SessionHostInfo);
     // Phones only hear these for the session they watch.
     if (name === 'session.stream') remote?.stream(payload as StreamDelta);
     if (name === 'upNext.changed') {
       const { sessionId, queue } = payload as { sessionId: string; queue: QueuedMessage[] };
       remote?.upNextChanged(sessionId, queue);
+    }
+    if (name === 'catchup.changed') {
+      const { sessionId, catchUp: card } = payload as { sessionId: string; catchUp: CatchUp | null };
+      remote?.catchUpChanged(sessionId, card);
     }
     if (name === 'memory.changed') memoryChangedHook();
   };
@@ -606,12 +614,14 @@ export function createEngine(options: EngineOptions): Engine {
     log,
     ...(options.stubCatchUp ? { stub: stubAnswer } : {}),
   });
+  /** Where a session works now: its process's folder (a worktree once it has one), else what its transcript says. */
+  const sessionCwd = (id: string) => hosts.list().hosts.find((h) => h.sessionId === id)?.cwd ?? sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null;
   const catchUpStore = new CatchUpStore(cache.db);
   for (const card of options.demoUsage?.catchUps ?? []) catchUpStore.save(card);
   const catchUp = new CatchUpService({
     store: catchUpStore,
     transcript: (id) => source.messages(id),
-    cwd: (id) => hosts.list().hosts.find((h) => h.sessionId === id)?.cwd ?? sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null,
+    cwd: (id) => sessionCwd(id),
     profileOf: sessionProfile,
     changes: (cwd) => listChanges(cwd, 'uncommitted').catch(() => null),
     summarize: (profileId, sessionId, input, system) => summarizer.ask(profileId, sessionId, input, system),
@@ -963,18 +973,57 @@ export function createEngine(options: EngineOptions): Engine {
       dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
       interrupt: (sessionId) => hosts.interrupt(sessionId),
       respond: (requestId, decision) => hosts.respond(requestId, decision),
-      create: (root, prompt, defaults) =>
+      create: (root, prompt, choice) =>
         createSession({
           cwd: root,
           prompt,
           attachments: [],
-          model: defaults.model,
-          permissionMode: defaults.permissionMode ?? 'default',
-          effort: defaults.effort,
-          worktree: null,
+          model: choice.model,
+          permissionMode: choice.permissionMode,
+          effort: choice.effort,
+          worktree: choice.worktree ? { name: randomWorktreeName(), baseRef: choice.baseRef } : null,
           profileId: null,
           checkoutBranch: null,
         }),
+      queue: (root, prompt, choice) => {
+        const item = later.add({ cwd: root, prompt, model: choice.model, effort: choice.effort, permissionMode: choice.permissionMode, workspace: choice.worktree ? 'worktree' : 'current', baseRef: choice.baseRef }, {});
+        laterChanged();
+        return { id: item.id };
+      },
+      markRead: (sessionId) => sessions.markViewed(sessionId),
+      setFlags: (sessionId, flags) => sessions.setFlags(sessionId, flags),
+      setModel: (sessionId, model) => hosts.setModel(sessionId, model),
+      setPermissionMode: (sessionId, mode) => hosts.setPermissionMode(sessionId, mode),
+      models: () => hosts.listModels(),
+      catchUp: (sessionId) => catchUp.get(sessionId),
+      changes: async (sessionId) => {
+        const cwd = sessionCwd(sessionId);
+        if (!cwd) return null;
+        try {
+          return await listChanges(cwd, 'uncommitted');
+        } catch (error) {
+          throw new RpcError('GIT_FAILED', (error as Error).message);
+        }
+      },
+      diff: async (sessionId, path) => {
+        const cwd = sessionCwd(sessionId);
+        if (!cwd) throw new RpcError('NOT_FOUND', 'This session has no folder');
+        try {
+          return await fileDiff(cwd, 'uncommitted', path);
+        } catch (error) {
+          throw new RpcError('GIT_FAILED', (error as Error).message);
+        }
+      },
+      commit: async (sessionId, message) => {
+        const cwd = sessionCwd(sessionId);
+        if (!cwd || !resolver.resolve(cwd).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');
+        await assertCheckoutIdle(cwd);
+        try {
+          return await commitAll(cwd, message, (await shell.ready).env);
+        } catch (error) {
+          throw new RpcError('GIT_FAILED', (error as Error).message);
+        }
+      },
       onStatus: (status) => broadcast('remote.changed', status),
       onFromDevice: (event) => broadcast('remote.fromDevice', event),
       log,

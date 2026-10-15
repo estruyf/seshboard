@@ -28,6 +28,10 @@
   --sb-diff-added: #00806f1f;
   --sb-diff-removed: #d73a491f;
   --sb-focus-ring: #916c008c;
+  --sb-caution: #b35900;
+  --sb-popover: #ffffff;
+  --sb-overlay-border: #d1d5da;
+  --sb-overlay-shadow: 0 2px 6px rgb(21 24 31 / 0.08), 0 12px 32px -4px rgb(21 24 31 / 0.2);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -53,6 +57,10 @@
     --sb-diff-added: #51cf661f;
     --sb-diff-removed: #ff6b6b1f;
     --sb-focus-ring: #ffd43b8c;
+    --sb-caution: #ffa94d;
+    --sb-popover: #2a3244;
+    --sb-overlay-border: #414861;
+    --sb-overlay-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 10px rgb(0 0 0 / 0.35), 0 16px 40px -6px rgb(0 0 0 / 0.7);
   }
 }
 
@@ -73,6 +81,8 @@
   --color-warn: var(--sb-warn);
   --color-error: var(--sb-error);
   --color-unread: var(--sb-unread);
+  --color-caution: var(--sb-caution);
+  --color-popover: var(--sb-popover);
   --color-selected: var(--sb-selected);
   --color-code: var(--sb-code-bg);
   --color-diff-added: var(--sb-diff-added);
@@ -176,4 +186,84 @@ body {
 }
 .pulse-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* Floating things (menus, sheets, toasts): the popover surface, its border and shadow (AGENTS.md, Surfaces). */
+@utility overlay {
+  background-color: var(--sb-popover);
+  border: 1px solid var(--sb-overlay-border);
+  box-shadow: var(--sb-overlay-shadow);
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.sheet-in {
+  animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 160ms ease-out;
+}
+@media (min-width: 768px) {
+  .sheet-in {
+    animation: toast-in 160ms ease-out;
+  }
+}
+.scrim-in {
+  animation: fade-in 160ms ease-out;
+}
+.toast-in {
+  animation: toast-in 160ms ease-out;
+}
+
+/* A prompt card that was answered folds away before it leaves the list. */
+.collapse-out {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 220ms ease-in,
+    opacity 180ms ease-in,
+    margin 220ms ease-in;
+}
+.collapse-out[data-leaving] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-block: 0;
+}
+.collapse-out > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-in,
+  .scrim-in,
+  .toast-in,
+  .pulse-dot {
+    animation: none;
+  }
+  .collapse-out,
+  .sheet-in {
+    transition: none;
+  }
+}
+
+/* A row of chips that scrolls sideways without a scrollbar. */
+@utility scroll-row {
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }

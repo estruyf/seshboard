@@ -7,19 +7,33 @@ describe('the remote contracts', () => {
     // A paired phone can make Claude run commands on the computer: adding a method here must be a deliberate change,
     // reviewed against the threat model in docs/remote-access.md.
     expect(Object.keys(remoteContract.requests).sort()).toEqual([
+      'catchup.get',
+      'changes.commit',
+      'changes.diff',
+      'changes.get',
+      'device.visibility',
       'hello',
+      'later.add',
+      'options.get',
       'projects.list',
+      'push.key',
+      'push.subscribe',
+      'push.unsubscribe',
       'session.create',
       'session.interrupt',
+      'session.markRead',
       'session.queue.remove',
       'session.respond',
       'session.send',
+      'session.setFlags',
+      'session.setModel',
+      'session.setPermissionMode',
       'sessions.list',
       'transcript.get',
       'transcript.unwatch',
       'transcript.watch',
     ]);
-    expect(Object.keys(remoteContract.events).sort()).toEqual(['session.stream', 'sessions.changed', 'transcript.updated', 'upNext.changed']);
+    expect(Object.keys(remoteContract.events).sort()).toEqual(['catchup.changed', 'session.stream', 'sessions.changed', 'transcript.updated', 'upNext.changed']);
     expect(Object.keys(remotePairContract.requests)).toEqual(['pair.request']);
   });
 
@@ -37,5 +51,20 @@ describe('the remote contracts', () => {
     expect(create.safeParse({ projectId: '0123456789abcdef', prompt: 'hi' }).success).toBe(true);
     expect(create.safeParse({ projectId: '/Users/me/web', prompt: 'hi' }).success).toBe(false);
     expect(remotePairContract.requests['pair.request'].params.safeParse({ name: 'x'.repeat(61) }).success).toBe(false);
+  });
+
+  it('only take the permission modes that still ask', () => {
+    const create = remoteContract.requests['session.create'].params;
+    for (const mode of ['default', 'acceptEdits', 'plan', 'auto']) expect(create.safeParse({ projectId: '0123456789abcdef', prompt: 'hi', permissionMode: mode }).success).toBe(true);
+    for (const mode of ['bypassPermissions', 'dontAsk']) {
+      expect(create.safeParse({ projectId: '0123456789abcdef', prompt: 'hi', permissionMode: mode }).success).toBe(false);
+      expect(remoteContract.requests['session.setPermissionMode'].params.safeParse({ sessionId: 's', mode }).success).toBe(false);
+      expect(remoteContract.requests['later.add'].params.safeParse({ projectId: '0123456789abcdef', prompt: 'hi', permissionMode: mode }).success).toBe(false);
+    }
+  });
+
+  it('take a session id for changes, never a folder', () => {
+    expect(remoteContract.requests['changes.get'].params.safeParse({ sessionId: 's', cwd: '/tmp' }).data).toEqual({ sessionId: 's' });
+    expect(remoteContract.requests['changes.commit'].params.safeParse({ sessionId: 's', message: '  ' }).success).toBe(false);
   });
 });

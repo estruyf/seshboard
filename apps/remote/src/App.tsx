@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Connected } from './components/Connected.tsx';
 import { Message } from './components/ui.tsx';
 import { PairScreen } from './components/PairScreen.tsx';
@@ -9,6 +9,8 @@ type Screen = { kind: 'loading' } | Start;
 
 /** Read once, before anything takes it out of the address bar: StrictMode runs the effect twice in development, and the second run would see no link. */
 const openedWith = window.location.hash;
+/** A notification opens the app at its session (`?s=<id>`, public/sw.js). */
+const openSession = new URLSearchParams(window.location.search).get('s');
 
 /**
  * The remote app: reads the link it was opened with (then takes it out of the address bar, so a pairing secret
@@ -19,7 +21,7 @@ export function App() {
 
   useEffect(() => {
     const hash = openedWith;
-    if (window.location.hash) history.replaceState(null, '', window.location.pathname);
+    if (window.location.hash || window.location.search) history.replaceState(null, '', window.location.pathname);
     void loadPaired()
       .catch(() => null)
       .then(async (paired) => {
@@ -34,6 +36,12 @@ export function App() {
     await savePaired(paired);
     setScreen({ kind: 'connect', paired });
   };
+
+  /** The same pairing with something new to keep (the computer's name): saved, without reconnecting. */
+  const keep = useCallback((paired: Paired) => {
+    void savePaired(paired).catch(() => {});
+    setScreen({ kind: 'connect', paired });
+  }, []);
 
   const forget = async () => {
     await forgetPaired();
@@ -56,6 +64,6 @@ export function App() {
     case 'pair':
       return <PairScreen link={screen.link} replaces={screen.replaces} onPaired={(paired) => void connect(paired)} />;
     case 'connect':
-      return <Connected paired={screen.paired} onForget={() => void forget()} />;
+      return <Connected paired={screen.paired} openSession={openSession} onForget={() => void forget()} onPaired={keep} />;
   }
 }

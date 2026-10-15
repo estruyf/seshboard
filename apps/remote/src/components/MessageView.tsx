@@ -1,47 +1,68 @@
 import { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { RemoteMessage } from '@switchboard/protocol/remote-client';
+import { runSummary, type TranscriptItem } from '../lib/steps.ts';
 import { editLines, toolSummary, type resultsByCall } from '../lib/transcript.ts';
+import { Markdown } from './Markdown.tsx';
 
 /**
- * One message. Everything is plain text (React escapes it): a transcript can hold anything, so nothing in it is ever
- * rendered as HTML. Your messages are cards; Claude's text and tool runs are a quiet timeline (AGENTS.md, Surfaces).
+ * One item of the conversation. Your messages are cards; Claude's text (markdown, drawn as React elements, never HTML)
+ * and tool runs are a quiet timeline (AGENTS.md, Surfaces). A run of calls is one line until you open it; the run
+ * Claude is working on stays open.
  */
-export function MessageView({ message, results }: { message: RemoteMessage; results: ReturnType<typeof resultsByCall> }) {
-  if (message.role === 'user') {
-    const text = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
-    return (
-      <div className="ml-8 rounded-xl border border-border bg-card px-3 py-2 sm:ml-16">
-        {text && <p className="text-body whitespace-pre-wrap">{text}</p>}
-        {message.blocks.some((b) => b.type === 'image') && <p className="text-meta text-faint">Image (on your computer)</p>}
-        {message.device && <p className="pt-1 text-meta text-faint">From {message.device}</p>}
-      </div>
-    );
+export function ItemView({ item, results, live }: { item: TranscriptItem; results: ReturnType<typeof resultsByCall>; live: boolean }) {
+  switch (item.kind) {
+    case 'message':
+      return <UserMessage message={item.message} />;
+    case 'text':
+      return <Markdown text={item.text} />;
+    case 'thinking':
+      return <Collapsible label="Thinking" body={item.text} tone="text-faint italic" />;
+    case 'image':
+      return <p className="text-meta text-faint">Image (on your computer)</p>;
+    case 'run':
+      return item.steps.length === 1 && item.steps[0]!.type === 'tool_use' ? (
+        <ToolRun name={item.steps[0]!.name} input={item.steps[0]!.input} result={results.get(item.steps[0]!.id) ?? null} />
+      ) : (
+        <Run steps={item.steps} results={results} live={live} />
+      );
   }
+}
+
+function UserMessage({ message }: { message: RemoteMessage }) {
+  const text = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
   return (
-    <div className="flex flex-col gap-2">
-      {message.blocks.map((block, index) => {
-        switch (block.type) {
-          case 'text':
-            return (
-              <p key={index} className="text-body break-words whitespace-pre-wrap">
-                {block.text}
-              </p>
-            );
-          case 'thinking':
-            return block.text ? <Collapsible key={index} label="Thinking" body={block.text} tone="text-faint italic" /> : null;
-          case 'tool_use':
-            return <ToolRun key={index} name={block.name} input={block.input} result={results.get(block.id) ?? null} />;
-          case 'image':
-            return (
-              <p key={index} className="text-meta text-faint">
-                Image (on your computer)
-              </p>
-            );
-          default:
-            return null;
-        }
-      })}
+    <div className="ml-8 rounded-xl border border-border bg-card px-3 py-2 sm:ml-16">
+      {text && <p className="text-body break-words whitespace-pre-wrap">{text}</p>}
+      {message.blocks.some((b) => b.type === 'image') && <p className="text-meta text-faint">Image (on your computer)</p>}
+      {message.device && <p className="pt-1 text-meta text-faint">From {message.device}</p>}
+    </div>
+  );
+}
+
+/** "6 steps · edited 3 files, ran 2 commands"; opened, each step as before. */
+function Run({ steps, results, live }: { steps: Extract<TranscriptItem, { kind: 'run' }>['steps']; results: ReturnType<typeof resultsByCall>; live: boolean }) {
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const open = chosen ?? live;
+  const failed = steps.some((s) => s.type === 'tool_use' && results.get(s.id)?.isError);
+  return (
+    <div className="text-ui" data-remote-run>
+      <button type="button" onClick={() => setChosen(!open)} aria-expanded={open} className="group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-border/45">
+        <Chevron open={open} />
+        <span className={`min-w-0 flex-1 truncate ${failed ? 'text-error' : 'text-muted group-hover:text-text'}`}>{runSummary(steps)}</span>
+        {live && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-accent-ink pulse-dot" />}
+      </button>
+      {open && (
+        <div className="ml-[7px] flex flex-col border-l border-border pl-3">
+          {steps.map((step, i) =>
+            step.type === 'tool_use' ? (
+              <ToolRun key={step.id} name={step.name} input={step.input} result={results.get(step.id) ?? null} />
+            ) : step.text ? (
+              <Collapsible key={i} label="Thinking" body={step.text} tone="text-faint italic" />
+            ) : null,
+          )}
+        </div>
+      )}
     </div>
   );
 }

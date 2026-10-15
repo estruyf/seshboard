@@ -18,6 +18,7 @@ import {
   type RemoteContract,
   type RpcServer,
 } from '@switchboard/protocol';
+import { computerName } from './computerName.ts';
 import type { DeviceStore, RemoteDevice } from './devices.ts';
 import type { Pairing } from './pairing.ts';
 
@@ -38,6 +39,8 @@ export interface RemoteServerOptions {
   pairing: Pairing;
   handlers: RemoteHandlers;
   appVersion: string;
+  /** What the phone calls this computer ("Elio's iMac"); asked once, at the first connection. */
+  computerName?: () => string;
   /**
    * The remote app's origins: a socket from a page anywhere else is refused. Browsers always send `Origin` on a
    * WebSocket and a page can't fake it, so another site open on the phone or this computer can't reach the engine.
@@ -98,9 +101,14 @@ export class RemoteServer {
   private readonly connections = new Map<WebSocket, RemoteConnection & { rpc: RpcServer<RemoteContract> }>();
   private readonly pending = new Set<WebSocket>();
   private readonly backoff: Backoff;
+  private name: string | null = null;
 
   constructor(private readonly options: RemoteServerOptions) {
     this.backoff = options.backoff ?? new Backoff();
+  }
+
+  private computerName(): string {
+    return (this.name ??= this.options.computerName?.() ?? computerName());
   }
 
   /** Listens on `127.0.0.1:port` (0: any free port, for tests). Rejects with EADDRINUSE when the port is taken. */
@@ -230,7 +238,7 @@ export class RemoteServer {
       transport,
       {
         ...this.options.handlers(known),
-        hello: () => ({ app: { version: this.options.appVersion }, device: { id: known.id, name: known.name } }),
+        hello: () => ({ app: { version: this.options.appVersion }, device: { id: known.id, name: known.name }, computer: { name: this.computerName() } }),
       },
       { onUnexpectedError: (method, error) => this.options.log('error', `Remote ${method} failed: ${error instanceof Error ? error.message : String(error)}`) },
     );

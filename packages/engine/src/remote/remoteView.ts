@@ -1,5 +1,20 @@
 import { createHash } from 'node:crypto';
-import type { PermissionRequest, RemoteBlock, RemoteMessage, RemotePrompt, RemoteSession, RemoteSessions, TranscriptBlock, TranscriptMessage } from '@switchboard/protocol';
+import {
+  isAbsolutePath,
+  type CatchUp,
+  type Effort,
+  type PermissionMode,
+  type PermissionRequest,
+  type ProjectDefaults,
+  type RemoteBlock,
+  type RemoteMessage,
+  type RemotePrompt,
+  type RemoteSession,
+  type RemoteSessionOptions,
+  type RemoteSessions,
+  type TranscriptBlock,
+  type TranscriptMessage,
+} from '@switchboard/protocol';
 import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
 /**
@@ -25,6 +40,8 @@ export interface ListOptions {
 export function remoteSessions(sources: SessionSources, options: ListOptions): RemoteSessions {
   const all = companionSessions(sources, { scope: options.scope, archiveAfterDays: options.archiveAfterDays, ...(options.now ? { now: options.now } : {}) });
   const listed = sessionsFor(all, [], REMOTE_SESSION_LIMIT);
+  const flags = new Map(sources.summaries.map((s) => [s.id, s]));
+  const running = new Map(sources.hosts.filter((h) => h.state !== 'closed' && h.state !== 'error').map((h) => [h.sessionId, h]));
   const sessions: RemoteSession[] = listed.map((s) => ({
     id: s.id,
     title: s.title,
@@ -33,6 +50,10 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     branch: s.branch,
     status: s.status,
     updatedAt: s.updatedAt,
+    unread: flags.get(s.id)?.unread ?? false,
+    pinned: flags.get(s.id)?.pinned ?? false,
+    model: running.get(s.id)?.model ?? null,
+    permissionMode: running.get(s.id)?.permissionMode ?? null,
   }));
   return { sessions, prompts: promptsFor(sources.permissions ?? [], listed).map(remotePrompt) };
 }
@@ -89,4 +110,44 @@ export function transcriptPage(messages: readonly TranscriptMessage[], { before,
   if (end === -1) return { messages: [], hasMore: false, reset: true };
   const start = Math.max(0, end - limit);
   return { messages: messages.slice(start, end), hasMore: start > 0, reset: false };
+}
+
+/** Outside the checkout: absolute (`/…`, `C:\…`, `\\server\…`) or climbing out of it (`../…`). */
+const outside = (path: string) => isAbsolutePath(path) || path.startsWith('\\\\') || /^\.\.([\\/]|$)/.test(path);
+
+/** A catch-up for a phone: changed files outside the project stay on the computer. */
+export const remoteCatchUp = (card: CatchUp | null): CatchUp | null =>
+  card && {
+    ...card,
+    signals: {
+      ...card.signals,
+      outOfScope: card.signals.outOfScope.filter((path) => !outside(path)),
+      scope: card.signals.scope && outside(card.signals.scope) ? null : card.signals.scope,
+    },
+  };
+
+/** A diff cut to its first `lines` lines. */
+export function capDiff(diff: { diff: string; truncated: boolean }, lines: number): { diff: string; truncated: boolean } {
+  const all = diff.diff.split('\n');
+  if (all.length <= lines) return diff;
+  return { diff: all.slice(0, lines).join('\n'), truncated: true };
+}
+
+/** What a new session from a phone starts with: what the phone chose, else the project's default. */
+export interface SessionChoice {
+  model: string | null;
+  effort: Effort | null;
+  permissionMode: PermissionMode;
+  worktree: boolean;
+  baseRef: 'fresh' | 'head';
+}
+
+export function sessionChoice(options: RemoteSessionOptions, defaults: ProjectDefaults): SessionChoice {
+  return {
+    model: options.model !== undefined ? options.model : defaults.model,
+    effort: options.effort !== undefined ? options.effort : defaults.effort,
+    permissionMode: options.permissionMode ?? defaults.permissionMode ?? 'default',
+    worktree: options.worktree ?? defaults.workspace === 'worktree',
+    baseRef: defaults.baseRef ?? 'fresh',
+  };
 }

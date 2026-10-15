@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { baseBranch, countNewLines, fileDiff, git, insideRepo, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './gitChanges.ts';
+import { baseBranch, commitAll, countNewLines, fileDiff, git, insideRepo, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './gitChanges.ts';
 
 let repo: string;
 const write = (path: string, text: string) => writeFileSync(join(repo, path), text);
@@ -309,6 +309,33 @@ describe('stageForCommit', () => {
 
   it('stages nothing on a clean checkout', async () => {
     expect(await stageForCommit(repo)).toBe(0);
+  });
+});
+
+describe('commitAll', () => {
+  it('commits every change, new files too, and gives the commit', async () => {
+    write('a.txt', 'one\nTWO\n');
+    write('new.txt', 'hello\n');
+    const result = await commitAll(repo, 'Change a', {});
+    expect(result).toMatchObject({ ok: true, files: 2 });
+    expect(result.ok && result.sha).toBe((await run('rev-parse', 'HEAD')).trim());
+    expect((await run('log', '-1', '--format=%s')).trim()).toBe('Change a');
+    expect((await listChanges(repo, 'uncommitted')).files).toEqual([]);
+  });
+
+  it('gives the end of what a failing hook printed, and commits nothing', async () => {
+    const hook = join(repo, '.git', 'hooks', 'pre-commit');
+    writeFileSync(hook, '#!/bin/sh\necho "lint: 2 problems"\necho "src/a.ts:1 no-console" >&2\nexit 1\n', { mode: 0o755 });
+    write('a.txt', 'changed\n');
+    const before = (await run('rev-parse', 'HEAD')).trim();
+    const result = await commitAll(repo, 'Change a', {});
+    expect(result.ok).toBe(false);
+    if (!result.ok && process.platform !== 'win32') expect(result.output).toContain('no-console');
+    expect((await run('rev-parse', 'HEAD')).trim()).toBe(before);
+  });
+
+  it('says when there is nothing to commit', async () => {
+    expect(await commitAll(repo, 'Nothing', {})).toEqual({ ok: false, output: 'There is nothing to commit.' });
   });
 });
 

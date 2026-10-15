@@ -1,6 +1,6 @@
 # Remote access
 
-Remote lets a paired phone follow and steer Switchboard's sessions from anywhere: the session list with its status, the live transcript, sending or queueing a prompt, answering a permission prompt, question or plan, stopping a turn, and starting a session in a known project. Everything else (the terminal, Changes, git, memory, settings, profiles, attachments) stays on the computer. Issue [#93](https://github.com/estruyf/switchboard/issues/93) started it; this note is the design as built. The page for people using the app is [website/src/content/docs/remote-access.mdx](../website/src/content/docs/remote-access.mdx).
+Remote lets a paired phone follow and steer Switchboard's sessions from anywhere: the session list with its status, the live transcript, sending or queueing a prompt, answering a permission prompt, question or plan, stopping a turn, marking read and archiving, a finished turn's catch-up, the session's uncommitted changes and committing them, starting a session in a known project (with a model, effort, permission mode and worktree of its own) or queueing one for later, and push notifications. Everything else (the terminal, pushing, pull requests, memory, settings, profiles, attachments) stays on the computer. Issue [#93](https://github.com/estruyf/switchboard/issues/93) started it; this note is the design as built. The page for people using the app is [website/src/content/docs/remote-access.mdx](../website/src/content/docs/remote-access.mdx).
 
 Whoever controls a session can make Claude run commands on the computer. So a paired phone is treated like an SSH key: pairing needs you at the computer, every connection is authenticated both ways and encrypted end to end, and a phone can only do the few things above.
 
@@ -25,7 +25,7 @@ phone browser ── https ──▶ switchboard.struyfconsulting.com/remote/   
 - **The remote app comes from Switchboard's own site** (`REMOTE_APP_URL`), built from `apps/remote` into `website/public/remote/` by `npm run website:build`. One fixed HTTPS origin:
   - the phone's device key lives on one origin, so it pairs once, whatever tunnel or tunnel address the computer has;
   - the app's code comes from the site, not from the tunnel provider, who terminates TLS and could otherwise change it;
-  - it is a secure context (installable, WebCrypto, push notifications later).
+  - it is a secure context (installable, WebCrypto, service workers and push notifications).
 - **The engine only accepts sockets whose `Origin` is the remote app's.** Browsers always send `Origin` on a WebSocket and a page can't fake it, so another site open on the phone or the computer can't reach the engine.
 
 ### Why tunnels and not the local network
@@ -40,6 +40,8 @@ The first version listened on the local network. A page served from an HTTPS sit
 
 `npm run dev:remote` serves the remote app at `http://localhost:5199/remote/`. Start the desktop app with `SWITCHBOARD_REMOTE_APP_URL=http://localhost:5199/remote/` and the engine accepts that origin and links straight to `http://127.0.0.1:<port>`, without a tunnel (`localhost` is a secure context, and `ws://` to the same computer isn't mixed content).
 
+Without the desktop app, `node --experimental-transform-types scripts/remote-demo.ts` runs the real Remote hub against made-up sessions, prompts, a catch-up and changes, on port 47699, and allows every pairing by itself. It prints a pairing link for `npm run dev:remote`; a browser paired once stays paired across runs. It pushes for real, through the browser's push service.
+
 ## What we protect against
 
 | Threat | Covered by |
@@ -52,7 +54,9 @@ The first version listened on the local network. A page served from an HTTPS sit
 | Someone pretends to be the computer | The phone checks the engine's key from the QR code on every connection |
 | A website open on the computer or the phone talks to the engine | `Origin` must be the remote app's; no cookies, no CORS; the engine listens on `127.0.0.1` |
 | Hostile content in a transcript runs script in the remote app | Strict CSP (`script-src 'self'`), transcripts rendered as text (React escapes it), never HTML |
-| A paired phone does more than it should | Its own contract (`remoteContract`), validated with zod; only sessions the sidebar lists; no terminal, files or settings |
+| A paired phone does more than it should | Its own contract (`remoteContract`), validated with zod; only sessions the sidebar lists; no terminal, files or settings; Changes take a session id, never a path, and a diff only of a file the change list has; only the permission modes that still ask (`RemotePermissionMode`); commits never push |
+| A paired phone makes the engine send requests elsewhere | Push subscriptions must point at a browser push service (`isPushEndpoint`: Google, Mozilla, Apple, Microsoft) over HTTPS |
+| The push service reads notifications | Payloads are encrypted for the phone's browser (RFC 8291, `aes128gcm`) and signed with the engine's VAPID key (RFC 8292) |
 | A lost phone | **Revoke**, which closes its connections at once (also one still in its handshake); devices unused for 30 days expire |
 | Someone guesses keys or pairing secrets | Keys are 256-bit; five failed pairings close pairing; failed handshakes back off per client address |
 
@@ -108,9 +112,37 @@ WebSocket close codes: 4400 refused, 4403 unknown device, 4410 pairing closed, 4
 | `packages/engine/src/remote/remoteHub.ts` | Settings › Remote, the tunnel's lifecycle, and each remote request mapped to the engine's own functions |
 | `apps/desktop/src/main/remoteIdentity.ts` | The engine's identity key, encrypted with `safeStorage`; asked for only once Remote is on |
 | `apps/ui/src/components/remote/` | Settings › Remote, the pairing dialog with the QR code and Allow |
-| `apps/remote` | The remote app |
+| `packages/engine/src/remote/webPush.ts` | Web Push without a library: the VAPID key pair and JWT, the payload encryption (checked against RFC 8291's example), sending |
+| `packages/engine/src/remote/pushEvents.ts` | When a phone gets a push (a prompt opens, a turn ends) and what it says |
+| `packages/engine/src/remote/computerName.ts` | The computer's name for the phone (macOS: the Sharing name) |
+| `apps/remote` | The remote app; `public/sw.js` is its service worker, which only shows notifications |
 
 The remote contract is not the app's contract: remote handlers call engine functions one by one, so a new method in `contract.ts` never becomes reachable from a phone. A test lists its methods. A phone can only read or act on sessions its list shows (the sidebar's, outside Archived).
+
+### The methods
+
+| Method | What it does |
+|---|---|
+| `hello` | The first request: the app's version, the device, and the computer's name |
+| `sessions.list`, `projects.list` | The list (with `unread`, `pinned`, and a running session's model and mode) and the projects you added |
+| `transcript.get`, `transcript.watch`, `transcript.unwatch` | A transcript's pages and live updates, for one session at a time |
+| `session.send`, `session.queue.remove`, `session.interrupt`, `session.respond` | Send or queue, take from Up next, stop, answer a prompt |
+| `session.create`, `later.add` | Start a session, or queue one, in a project you added; `model`, `effort`, `permissionMode` and `worktree` left out are the project's defaults |
+| `session.markRead`, `session.setFlags` | Read, as opening it on the computer; pin or archive |
+| `session.setModel`, `session.setPermissionMode` | A running session's model and mode; modes are `default`, `acceptEdits`, `plan` and `auto` only |
+| `options.get` | New session's choices: the models, efforts, modes and each project's defaults |
+| `catchup.get` | A session's catch-up, without paths outside its checkout |
+| `changes.get`, `changes.diff`, `changes.commit` | The session's uncommitted changes, one file's diff (at most 2,000 lines), and a commit of everything without a terminal (the last lines of the output when a hook fails) |
+| `push.key`, `push.subscribe`, `push.unsubscribe` | The engine's VAPID public key, and this device's subscription with its switches (Needs you, Finished) |
+| `device.visibility` | Whether the app is on the device's screen: no push while it is |
+
+Events: `sessions.changed`, and for the watched session `transcript.updated`, `session.stream`, `upNext.changed` and `catchup.changed`.
+
+### Push notifications
+
+The engine sends Web Push itself (`webPush.ts`), without a library or a server of Switchboard's: it keeps a VAPID key pair in its app state (`remote.vapid`, made the first time a phone asks), and each device's subscription (`remote.push`). It pushes when a prompt opens in a session the phone lists, and when a turn ends (a session it runs goes from working to idle), after waiting up to eight seconds for the turn's catch-up so the line can say "14 tests passed · ~2 min to review". A device with the app on screen (`device.visibility`) gets none. A push service that answers 404 or 410 drops the subscription; revoking a device does too.
+
+The payload is the kind, the session id, its title and project, and one line. It is encrypted for the browser, so the push service only carries ciphertext; the computer has to reach the push services over HTTPS. The remote app's service worker (`public/sw.js`, allowed by `worker-src 'self'`) shows it and opens the session on a tap (`?s=<id>`, or a message to a page already open). iOS only allows push for a page added to the Home Screen, and shows no buttons on notifications.
 
 Nothing listens until Remote is on: off by default, and started at launch (with its tunnel) only when it was on when the app quit.
 
@@ -125,5 +157,4 @@ Nothing listens until Remote is on: off by default, and started at launch (with 
 ## Phase 2
 
 - **Cloudflare Access (Zero Trust) in front of the tunnel.** A named Cloudflare tunnel on your own domain, with an Access login before anyone reaches the handshake. Access works with a cookie on the tunnel's hostname, which a browser doesn't send on a cross-site WebSocket (Safari blocks cross-site cookies outright), so the remote app has to come from that same hostname. Plan: an option under **My own address**, "Open the remote app from this address": the engine serves the built remote app itself (shipped inside the desktop app), accepts its own public origin next to `REMOTE_APP_URL`, and the QR codes point there. Pairing stays required underneath: Access is the outer lock, the device key the inner one. Optionally the engine checks Access's signed `Cf-Access-Jwt-Assertion` header too.
-- Push notifications when a session needs you (the remote app is a secure context now; the computer can send Web Push itself).
 - The device label in the computer's own transcript, an indicator outside Settings while a phone is connected, and "Keep this Mac awake".

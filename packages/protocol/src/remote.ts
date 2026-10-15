@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
-import { PermissionDecision, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { CatchUp } from './catchUp.ts';
+import { ChangedFile } from './git.ts';
+import { Effort, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 
 /**
@@ -26,6 +28,12 @@ export const RemoteSession = z.object({
   branch: z.string().nullable(),
   status: CompanionStatus,
   updatedAt: z.number(),
+  /** Finished since you last looked, on any device: the title shows in bold. */
+  unread: z.boolean(),
+  pinned: z.boolean(),
+  /** While it runs in Switchboard: its model and permission mode, for the chips in the message box. */
+  model: z.string().nullable(),
+  permissionMode: PermissionMode.nullable(),
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 
@@ -83,6 +91,51 @@ export const RemoteTranscriptUpdate = z.object({
 });
 export type RemoteTranscriptUpdate = z.infer<typeof RemoteTranscriptUpdate>;
 
+/**
+ * The permission modes a phone may pick. The others (don't ask, bypass permissions) let Claude run anything without
+ * asking: they are only offered on the computer.
+ */
+export const RemotePermissionMode = z.enum(['default', 'acceptEdits', 'plan', 'auto']);
+export type RemotePermissionMode = z.infer<typeof RemotePermissionMode>;
+
+/** What a phone may choose for a new session; anything left out is the project's default. */
+export const RemoteSessionOptions = z.object({
+  model: z.string().min(1).max(200).nullable().optional(),
+  effort: Effort.nullable().optional(),
+  permissionMode: RemotePermissionMode.optional(),
+  /** In a new worktree (true) or the project's folder (false). */
+  worktree: z.boolean().optional(),
+});
+export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
+
+/** New session's choices: the models and efforts, and each project's defaults (null: Switchboard's own default). */
+export const RemoteOptions = z.object({
+  models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })),
+  efforts: z.array(Effort),
+  modes: z.array(RemotePermissionMode),
+  projects: z.array(
+    z.object({
+      id: ProjectId,
+      defaults: z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean() }),
+    }),
+  ),
+});
+export type RemoteOptions = z.infer<typeof RemoteOptions>;
+
+/** A changed file in the session's checkout. */
+export const RemoteChangedFile = ChangedFile.pick({ path: true, status: true, additions: true, deletions: true });
+export type RemoteChangedFile = z.infer<typeof RemoteChangedFile>;
+
+/** A browser's push subscription (`PushSubscription.toJSON()`), checked by the engine against the known push services. */
+export const RemotePushSubscription = z.object({
+  endpoint: z.url({ protocol: /^https$/ }).max(2_000),
+  keys: z.object({ p256dh: z.string().regex(/^[A-Za-z0-9_-]{80,100}$/), auth: z.string().regex(/^[A-Za-z0-9_-]{16,40}$/) }),
+});
+export type RemotePushSubscription = z.infer<typeof RemotePushSubscription>;
+
+/** The most lines `changes.diff` returns. */
+export const REMOTE_DIFF_LINES = 2_000;
+
 /** The most messages one `transcript.get` returns. */
 export const REMOTE_PAGE_LIMIT = 200;
 
@@ -91,7 +144,12 @@ export const remoteContract = {
     /** The first request on a connection, after the handshake. */
     hello: {
       params: z.object({ client: z.object({ version: z.string().max(50) }) }),
-      result: z.object({ app: z.object({ version: z.string() }), device: z.object({ id: z.string(), name: z.string() }) }),
+      result: z.object({
+        app: z.object({ version: z.string() }),
+        device: z.object({ id: z.string(), name: z.string() }),
+        /** What people call the computer ("Elio's iMac"), for the connection chip and the offline help. */
+        computer: z.object({ name: z.string() }),
+      }),
     },
     'sessions.list': { params: z.object({}), result: RemoteSessions },
     'projects.list': { params: z.object({}), result: z.object({ projects: z.array(RemoteProject) }) },
@@ -120,14 +178,54 @@ export const remoteContract = {
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Answers a permission prompt, question or plan. NOT_FOUND when it was already answered. */
     'session.respond': { params: z.object({ requestId: z.string().min(1).max(200), decision: PermissionDecision }), result: z.object({}) },
-    /** A new session in a project Switchboard knows, with the project's defaults for model, effort and mode. */
-    'session.create': { params: z.object({ projectId: ProjectId, prompt: Prompt }), result: z.object({ sessionId: z.string() }) },
+    /** A new session in a project Switchboard knows. What it leaves out of the options is the project's default. */
+    'session.create': { params: z.object({ projectId: ProjectId, prompt: Prompt }).extend(RemoteSessionOptions.shape), result: z.object({ sessionId: z.string() }) },
+    /** Puts a prompt in Switchboard's queue (Later) for a project, to start when you choose. */
+    'later.add': { params: z.object({ projectId: ProjectId, prompt: Prompt }).extend(RemoteSessionOptions.shape), result: z.object({ id: z.string() }) },
+    /** Marks a session read, as opening it on the computer does. */
+    'session.markRead': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Pins or archives a session; an archived one leaves the phone's list. */
+    'session.setFlags': { params: z.object({ sessionId: SessionId, pinned: z.boolean().optional(), archived: z.boolean().optional() }), result: z.object({}) },
+    /** The model of a running session (null: the default). */
+    'session.setModel': { params: z.object({ sessionId: SessionId, model: z.string().min(1).max(200).nullable() }), result: z.object({}) },
+    'session.setPermissionMode': { params: z.object({ sessionId: SessionId, mode: RemotePermissionMode }), result: z.object({}) },
+    /** New session's choices. */
+    'options.get': { params: z.object({}), result: RemoteOptions },
+    /** The catch-up of a session's last turn, without paths outside its project. */
+    'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
+    /** What changed in the session's checkout (its worktree when it has one), not committed yet. */
+    'changes.get': {
+      params: z.object({ sessionId: SessionId }),
+      result: z.object({ branch: z.string().nullable(), files: z.array(RemoteChangedFile), error: z.string().nullable() }),
+    },
+    /** One changed file's unified diff, at most `REMOTE_DIFF_LINES` lines. Only files `changes.get` lists. */
+    'changes.diff': { params: z.object({ sessionId: SessionId, path: z.string().min(1).max(4096) }), result: z.object({ diff: z.string(), truncated: z.boolean() }) },
+    /**
+     * Commits every change in the session's checkout, without a terminal. A failed commit (a hook said no) is not an
+     * error: `output` has the last lines of what it printed. It never pushes.
+     */
+    'changes.commit': {
+      params: z.object({ sessionId: SessionId, message: z.string().trim().min(1).max(20_000) }),
+      result: z.discriminatedUnion('ok', [z.object({ ok: z.literal(true), sha: z.string() }), z.object({ ok: z.literal(false), output: z.string() })]),
+    },
+    /** The engine's VAPID public key, for `pushManager.subscribe` (made the first time a phone asks). */
+    'push.key': { params: z.object({}), result: z.object({ publicKey: z.string() }) },
+    /** Push to this device when a session needs you, finishes, or both; replaces what it had. */
+    'push.subscribe': {
+      params: z.object({ subscription: RemotePushSubscription, needsYou: z.boolean(), finished: z.boolean() }),
+      result: z.object({}),
+    },
+    'push.unsubscribe': { params: z.object({}), result: z.object({}) },
+    /** Whether the app is on this device's screen now: no push while it is. Sent after hello and on each change. */
+    'device.visibility': { params: z.object({ visible: z.boolean() }), result: z.object({}) },
   },
   events: {
     'sessions.changed': RemoteSessions,
     'transcript.updated': RemoteTranscriptUpdate,
     'session.stream': StreamDelta,
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
+    /** The catch-up of the session the phone watches changed. */
+    'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
   },
 } as const satisfies ContractShape;
 export type RemoteContract = typeof remoteContract;

@@ -10,8 +10,8 @@ import { defineConfig, type Plugin } from 'vite';
 const here = import.meta.dirname;
 
 /**
- * GitHub Pages can't send headers, so the CSP is a meta tag: the app's own files only, and sockets to any `wss://`
- * address (the tunnel), or to this computer while developing.
+ * GitHub Pages can't send headers, so the CSP is a meta tag: the app's own files only (and its service worker), and
+ * sockets to any `wss://` address (the tunnel), or to this computer while developing.
  */
 const csp = [
   "default-src 'none'",
@@ -20,6 +20,8 @@ const csp = [
   "img-src 'self' data:",
   "font-src 'self'",
   "manifest-src 'self'",
+  // The service worker that shows push notifications (public/sw.js).
+  "worker-src 'self'",
   'connect-src wss: ws://127.0.0.1:* ws://localhost:*',
   "base-uri 'none'",
   "form-action 'none'",

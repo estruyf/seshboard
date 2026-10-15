@@ -31,6 +31,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
     devices,
     pairing,
     appVersion: '1.2.3',
+    computerName: () => "Elio's iMac",
     origins: [APP_ORIGIN],
     ...options,
     log: () => {},
@@ -47,6 +48,20 @@ async function setup(options: { backoff?: Backoff } = {}) {
       'session.create': () => {
         throw new RpcError('NOT_FOUND', 'No such project');
       },
+      'later.add': () => ({ id: 'l1' }),
+      'session.markRead': () => ({}),
+      'session.setFlags': () => ({}),
+      'session.setModel': () => ({}),
+      'session.setPermissionMode': () => ({}),
+      'options.get': () => ({ models: [], efforts: [], modes: [], projects: [] }),
+      'catchup.get': () => ({ catchUp: null }),
+      'changes.get': () => ({ branch: null, files: [], error: null }),
+      'changes.diff': () => ({ diff: '', truncated: false }),
+      'changes.commit': () => ({ ok: false, output: '' }),
+      'push.key': () => ({ publicKey: '' }),
+      'push.subscribe': () => ({}),
+      'push.unsubscribe': () => ({}),
+      'device.visibility': () => ({}),
     }),
   });
   const { port } = await server.start(0);
@@ -79,7 +94,7 @@ describe('Remote server', () => {
 
     const { frames, session } = await handshake(env.port, 'connect', phone, env.identity.publicKey);
     const remote = client<RemoteContract>(frames, session!);
-    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" } });
+    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" } });
     expect((await remote.call('sessions.list', {})).prompts[0]!.input).toEqual({ command: "Elio's iPhone" });
     expect(env.server.list()).toMatchObject([{ deviceId, name: "Elio's iPhone" }]);
     await expect(remote.call('session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

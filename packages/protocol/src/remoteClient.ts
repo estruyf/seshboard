@@ -7,6 +7,7 @@ export { lineTransport, LineDecoder, type TextStream } from './lineTransport.ts'
 export type { Transport, WireMessage } from './wire.ts';
 export type * from './remote.ts';
 export type { CompanionStatus } from './companion.ts';
-export type { PermissionDecision, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+export type { Effort, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+export type { CatchUp, CatchUpNeedKind, CatchUpTests } from './catchUp.ts';
 export * from './remoteNoise.ts';
 export * from './remoteChannel.ts';

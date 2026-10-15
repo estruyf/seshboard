@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PermissionDecision, RemotePrompt } from '@switchboard/protocol/remote-client';
+import { DECLINED, promptKind, toolLabel } from '../lib/prompts.ts';
 import { editLines, toolSummary } from '../lib/transcript.ts';
+import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
+import { Markdown } from './Markdown.tsx';
 import { Button } from './ui.tsx';
-
-/** What the computer's card says when you decline (apps/ui PermissionCard). */
-const DECLINED = 'The user declined this action.';
 
 interface Question {
   question: string;
@@ -14,57 +15,105 @@ interface Question {
   options: Array<{ label: string; description?: string }>;
 }
 
+/** The panel's heading: what Claude asks, as the card on the computer says it. */
+export function promptTitle(prompt: RemotePrompt): string {
+  const kind = promptKind(prompt);
+  if (kind === 'question') return 'Claude has a question for you';
+  if (kind === 'plan') return 'Claude has a plan. Ready to start?';
+  return prompt.title ?? `Allow ${toolLabel(prompt.toolName)}?`;
+}
+
 /**
- * A prompt Claude waits on, with the same choices as the card on the computer: a tool to allow (once or always) or
- * deny, a question to answer, or a plan to start or keep working on. A pink frame: it needs you.
+ * The prompts a session waits on, docked above the message box so they never scroll away: a pink frame, "Claude needs
+ * you", and the same choices as the card on the computer. The chevron folds it to one line to read the conversation
+ * first; a new prompt opens it again. With more than one, "1 of 2" and arrows step through them.
  */
-export function PermissionCard({ prompt, client, onError }: { prompt: RemotePrompt; client: Client; onError: (message: string) => void }) {
+export function DockedPrompt({ prompts, client, sessionTitle, onGone }: { prompts: RemotePrompt[]; client: Client; sessionTitle: string | undefined; onGone: () => void }) {
+  const [index, setIndex] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const seen = useRef(new Set<string>());
+  const ids = prompts.map((p) => p.requestId).join(' ');
+
+  useEffect(() => {
+    if (prompts.some((p) => !seen.current.has(p.requestId))) setCollapsed(false);
+    for (const p of prompts) seen.current.add(p.requestId);
+    setIndex((i) => Math.min(i, Math.max(0, prompts.length - 1)));
+    setBusy(false);
+  }, [ids]);
+
+  const prompt = prompts[Math.min(index, prompts.length - 1)];
+  if (!prompt) return null;
+
   const respond = async (decision: PermissionDecision) => {
-    if (!client) return;
+    if (!client || busy) return;
     setBusy(true);
-    try {
-      await client.call('session.respond', { requestId: prompt.requestId, decision });
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "The answer didn't reach your computer.");
-      setBusy(false);
-    }
+    const result = await answer(client, prompt, decision, sessionTitle);
+    if (result === 'failed') setBusy(false);
+    if (result === 'gone') onGone();
   };
+  const disabled = busy || !client;
+
   return (
-    <section aria-label="Claude needs you" className="rounded-xl border-2 border-warn bg-card p-3 sm:p-4" data-remote-prompt>
-      {prompt.toolName === 'AskUserQuestion' ? (
-        <Questions prompt={prompt} busy={busy} respond={respond} />
-      ) : prompt.toolName === 'ExitPlanMode' ? (
-        <Plan prompt={prompt} busy={busy} respond={respond} />
-      ) : (
-        <ToolPrompt prompt={prompt} busy={busy} respond={respond} />
-      )}
+    <section aria-label="Claude needs you" className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId}>
+      <div className="mx-auto flex max-h-[min(55dvh,32rem)] w-full max-w-3xl flex-col rounded-xl border-2 border-warn bg-card">
+        <div className="flex shrink-0 items-center gap-2 py-1.5 pr-1.5 pl-3">
+          <span className="rounded-md bg-warn/12 px-1.5 py-0.5 text-meta font-semibold text-warn">Claude needs you</span>
+          {collapsed && <span className="min-w-0 flex-1 truncate text-ui font-semibold">{promptTitle(prompt)}</span>}
+          {!collapsed && <span className="flex-1" />}
+          {prompts.length > 1 && (
+            <span className="flex items-center text-meta text-muted tabular-nums" data-remote-prompt-pager>
+              <Button variant="quiet" size="md" aria-label="Previous prompt" disabled={index === 0} onClick={() => setIndex(index - 1)} className="px-1.5!">
+                <ChevronLeft className="size-4" aria-hidden />
+              </Button>
+              {index + 1} of {prompts.length}
+              <Button variant="quiet" size="md" aria-label="Next prompt" disabled={index >= prompts.length - 1} onClick={() => setIndex(index + 1)} className="px-1.5!">
+                <ChevronRight className="size-4" aria-hidden />
+              </Button>
+            </span>
+          )}
+          <Button variant="quiet" size="md" aria-label={collapsed ? 'Show the prompt' : 'Fold the prompt'} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)} className="px-2!" data-remote-prompt-fold>
+            <ChevronDown className={`size-4 transition-transform ${collapsed ? 'rotate-180' : ''}`} aria-hidden />
+          </Button>
+        </div>
+        {!collapsed && (
+          <div className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3">
+            {promptKind(prompt) === 'question' ? (
+              <Questions key={prompt.requestId} prompt={prompt} disabled={disabled} respond={respond} />
+            ) : promptKind(prompt) === 'plan' ? (
+              <Plan prompt={prompt} disabled={disabled} respond={respond} />
+            ) : (
+              <ToolPrompt prompt={prompt} disabled={disabled} respond={respond} />
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
 
-type Props = { prompt: RemotePrompt; busy: boolean; respond: (decision: PermissionDecision) => Promise<void> };
+type Props = { prompt: RemotePrompt; disabled: boolean; respond: (decision: PermissionDecision) => Promise<void> };
 
-function ToolPrompt({ prompt, busy, respond }: Props) {
+function ToolPrompt({ prompt, disabled, respond }: Props) {
   const diff = editLines(prompt.toolName, prompt.input);
   return (
-    <div className="flex flex-col gap-3">
-      <h2 className="text-title font-semibold">{prompt.title ?? `Allow ${prompt.toolName}?`}</h2>
+    <div className="flex flex-col gap-2">
+      <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>
       {prompt.description && <p className="text-ui text-muted">{prompt.description}</p>}
-      <pre className="max-h-60 overflow-auto rounded-lg bg-code p-2 font-mono text-meta whitespace-pre-wrap">
+      <pre className="max-h-48 overflow-auto rounded-lg bg-code p-2 font-mono text-meta whitespace-pre-wrap">
         {diff ? diff.map((line, i) => <div key={i} className={line.kind === '+' ? 'bg-diff-added' : 'bg-diff-removed'}>{`${line.kind} ${line.text}`}</div>) : toolSummary(prompt.toolName, prompt.input)}
       </pre>
-      {/* Stacked on a phone with Allow on top; in a row on a wider screen, Allow on the right as on the computer. */}
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button variant="danger" disabled={busy} onClick={() => void respond({ behavior: 'deny', message: DECLINED })}>
+      <div className="flex gap-2 pt-1">
+        {/* With Always allow, Deny and Allow take what their word needs and Always the rest, so its label fits a phone. */}
+        <Button variant="danger" disabled={disabled} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} className={prompt.alwaysLabel ? 'px-4!' : 'flex-1'} data-remote-deny>
           Deny
         </Button>
         {prompt.alwaysLabel && (
-          <Button disabled={busy} onClick={() => void respond({ behavior: 'allow', always: true })}>
-            {prompt.alwaysLabel}
+          <Button disabled={disabled} onClick={() => void respond({ behavior: 'allow', always: true })} className="min-w-0 flex-1 px-3!" data-remote-always>
+            <span className="truncate">{prompt.alwaysLabel}</span>
           </Button>
         )}
-        <Button variant="primary" disabled={busy} onClick={() => void respond({ behavior: 'allow' })}>
+        <Button variant="primary" disabled={disabled} onClick={() => void respond({ behavior: 'allow' })} className={prompt.alwaysLabel ? 'px-5!' : 'flex-[2]'} data-remote-allow>
           Allow
         </Button>
       </div>
@@ -72,7 +121,7 @@ function ToolPrompt({ prompt, busy, respond }: Props) {
   );
 }
 
-function Questions({ prompt, busy, respond }: Props) {
+function Questions({ prompt, disabled, respond }: Props) {
   const questions = ((prompt.input as { questions?: Question[] } | null)?.questions ?? []).filter((q) => q && typeof q.question === 'string');
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState<Record<string, string>>({});
@@ -88,8 +137,8 @@ function Questions({ prompt, busy, respond }: Props) {
     void respond({ behavior: 'allow', updatedInput: { ...(prompt.input as Record<string, never>), answers: result } });
   };
   return (
-    <div className="flex flex-col gap-4">
-      <h2 className="text-title font-semibold">Claude has a question for you</h2>
+    <div className="flex flex-col gap-3">
+      <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>
       {questions.map((q) => (
         <fieldset key={q.question} className="flex flex-col gap-2">
           <legend className="pb-1 text-body">{q.question}</legend>
@@ -117,11 +166,11 @@ function Questions({ prompt, busy, respond }: Props) {
           />
         </fieldset>
       ))}
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button disabled={busy} onClick={() => void respond({ behavior: 'deny', message: DECLINED })}>
+      <div className="flex gap-2">
+        <Button disabled={disabled} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} className="flex-1">
           Skip
         </Button>
-        <Button variant="primary" disabled={busy || !complete} onClick={submit}>
+        <Button variant="primary" disabled={disabled || !complete} onClick={submit} className="flex-[2]" data-remote-answer>
           Answer
         </Button>
       </div>
@@ -129,25 +178,22 @@ function Questions({ prompt, busy, respond }: Props) {
   );
 }
 
-function Plan({ prompt, busy, respond }: Props) {
+function Plan({ prompt, disabled, respond }: Props) {
   const plan = (prompt.input as { plan?: unknown } | null)?.plan;
-  const [feedback, setFeedback] = useState('');
   return (
-    <div className="flex flex-col gap-3">
-      <h2 className="text-title font-semibold">Claude has a plan. Ready to start?</h2>
-      {typeof plan === 'string' && <p className="max-h-80 overflow-auto rounded-lg bg-code p-3 text-ui whitespace-pre-wrap">{plan}</p>}
-      <textarea
-        value={feedback}
-        onChange={(event) => setFeedback(event.target.value)}
-        rows={2}
-        placeholder="What should change? (optional)"
-        className="field resize-none px-3 py-2 text-body [field-sizing:content]"
-      />
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button disabled={busy} onClick={() => void respond({ behavior: 'deny', message: feedback.trim() || DECLINED })}>
+    <div className="flex flex-col gap-2">
+      <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>
+      {typeof plan === 'string' && (
+        <div className="max-h-72 overflow-auto rounded-lg bg-code p-3">
+          <Markdown text={plan} />
+        </div>
+      )}
+      <p className="text-meta text-muted">To change it, say what in the message box below.</p>
+      <div className="flex gap-2">
+        <Button disabled={disabled} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} className="flex-1">
           Keep planning
         </Button>
-        <Button variant="primary" disabled={busy} onClick={() => void respond({ behavior: 'allow' })}>
+        <Button variant="primary" disabled={disabled} onClick={() => void respond({ behavior: 'allow' })} className="flex-[2]">
           Start
         </Button>
       </div>

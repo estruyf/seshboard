@@ -1092,6 +1092,91 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-needs-you-cards",
+      "name": "Remote: answer what Claude asks from the list",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-list-filters",
+      "name": "Remote: All, Needs you and Working chips, and search",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-connection-chip",
+      "name": "Remote: the computer's name and the connection in the list's header",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-docked-prompt",
+      "name": "Remote: Claude needs you, docked above the message box",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-tell-instead",
+      "name": "Remote: Or tell Claude what to do instead",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-markdown",
+      "name": "Remote: formatted answers, Copy on code blocks",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-folded-steps",
+      "name": "Remote: tool runs folded into one line",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-catch-up",
+      "name": "Remote: catch-up on a finished session",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-quick-replies",
+      "name": "Remote: Continue, Run the tests, Open a PR, Mark as read",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-session-menu",
+      "name": "Remote: Stop, Mark as read and Archive",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-changes",
+      "name": "Remote: Changes",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-commit",
+      "name": "Remote: Commit",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-new-session-options",
+      "name": "Remote: model, effort, mode and worktree in New session",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-queue-for-later",
+      "name": "Remote: Queue for later",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-model-mode-chips",
+      "name": "Remote: model and mode of a running session",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-notifications",
+      "name": "Remote: notifications",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-offline-help",
+      "name": "Remote: why the phone can't connect, and Help",
+      "page": "remote-access"
+    },
+    {
       "id": "project-tab:actions",
       "name": "Actions tab",
       "page": "projects/actions"
