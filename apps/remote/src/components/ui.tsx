@@ -2,43 +2,60 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import type { CompanionStatus } from '@switchboard/protocol/remote-client';
 
 /**
- * The few building blocks the phone needs, after the desktop's design system (AGENTS.md): one yellow primary action,
- * bordered secondary buttons, quiet icon buttons, and status colours that mean one thing each.
+ * The few building blocks the remote app needs, after the desktop's design system (AGENTS.md): one yellow primary
+ * action, bordered secondary buttons, quiet icon buttons, and status colours that mean one thing each. Touch targets
+ * are 44px on a phone and the desktop's sizes with a mouse.
  */
 
 type Variant = 'primary' | 'secondary' | 'quiet' | 'danger';
+type Size = 'md' | 'lg';
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-accent text-on-accent font-semibold',
-  secondary: 'border border-edge bg-card text-text',
-  quiet: 'text-muted active:bg-selected',
-  danger: 'border border-error/60 text-error',
+  primary: 'bg-accent text-on-accent font-semibold hover:brightness-95',
+  secondary: 'border border-edge bg-card text-text hover:bg-border/45',
+  quiet: 'text-muted hover:bg-border/50 hover:text-text active:bg-selected',
+  danger: 'border border-error/60 text-error hover:bg-error/10',
 };
 
-export function Button({ variant = 'secondary', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+const SIZES: Record<Size, string> = {
+  md: 'min-h-11 px-4 pointer-fine:min-h-7 pointer-fine:px-2.5',
+  lg: 'min-h-11 px-4 pointer-fine:min-h-8 pointer-fine:px-3.5',
+};
+
+export function Button({ variant = 'secondary', size = 'lg', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
   return (
     <button
       type="button"
       {...props}
-      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-ui disabled:opacity-50 ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-ui transition-colors disabled:pointer-events-none disabled:opacity-50 ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
     />
   );
 }
 
-/** A full-screen message: welcome, a broken link, a refused phone. */
+/** The small capitals over a group of rows, in the group's colour, with its count (the sidebar's SectionHeader). */
+export function SectionHeader({ id, label, count, tone = 'text-faint' }: { id?: string; label: string; count?: number; tone?: string }) {
+  return (
+    <h2 id={id} className={`flex items-center gap-1.5 px-4 pt-4 pb-1 text-meta font-semibold tracking-wide uppercase ${tone}`}>
+      {label}
+      {count !== undefined && <span className="font-normal text-faint tabular-nums">{count}</span>}
+    </h2>
+  );
+}
+
+/** A full-screen message: welcome, a broken link, a refused device. */
 export function Message({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) {
   return (
     <main className="safe-top safe-bottom mx-auto flex min-h-full max-w-md flex-col justify-center gap-4 px-6">
       <Logo />
       <h1 className="text-hero font-semibold">{title}</h1>
       <p className="text-body text-muted">{children}</p>
-      {actions && <div className="flex flex-col gap-2">{actions}</div>}
+      {actions && <div className="flex flex-col gap-2 sm:flex-row">{actions}</div>}
     </main>
   );
 }
 
-export function Logo() {
-  return <img src="/favicon.svg" alt="" className="size-10" />;
+export function Logo({ className = 'size-10' }: { className?: string }) {
+  return <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className={className} />;
 }
 
 /** The status colours of the sidebar (AGENTS.md, Status colours). */
@@ -52,6 +69,17 @@ export const STATUS_DOT: Record<CompanionStatus, string> = {
   stopped: 'bg-faint/50',
 };
 
+/** The 3px rail on a row: needs you, working and unread only, as in the sidebar. */
+export const STATUS_RAIL: Record<CompanionStatus, string> = {
+  'needs-you': 'border-warn',
+  working: 'border-accent-ink',
+  background: 'border-transparent',
+  error: 'border-transparent',
+  unread: 'border-unread',
+  idle: 'border-transparent',
+  stopped: 'border-transparent',
+};
+
 export const STATUS_LABEL: Record<CompanionStatus, string> = {
   'needs-you': 'Needs you',
   working: 'Working',
@@ -63,15 +91,5 @@ export const STATUS_LABEL: Record<CompanionStatus, string> = {
 };
 
 export function StatusDot({ status }: { status: CompanionStatus }) {
-  return <span aria-label={STATUS_LABEL[status]} className={`inline-block size-2.5 shrink-0 rounded-full ${STATUS_DOT[status]}`} />;
-}
-
-/** How long ago, in a few characters (`5m`, `2h`, `3d`). */
-export function age(at: number, now = Date.now()): string {
-  const minutes = Math.max(0, Math.round((now - at) / 60_000));
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
+  return <span role="img" aria-label={STATUS_LABEL[status]} className={`inline-block size-2 shrink-0 rounded-full ${STATUS_DOT[status]}`} />;
 }

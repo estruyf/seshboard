@@ -10,7 +10,7 @@ export function MessageView({ message, results }: { message: RemoteMessage; resu
   if (message.role === 'user') {
     const text = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
     return (
-      <div className="ml-8 rounded-xl border border-border bg-card px-3 py-2">
+      <div className="ml-8 rounded-xl border border-border bg-card px-3 py-2 sm:ml-16">
         {text && <p className="text-body whitespace-pre-wrap">{text}</p>}
         {message.blocks.some((b) => b.type === 'image') && <p className="text-meta text-faint">Image (on your computer)</p>}
         {message.device && <p className="pt-1 text-meta text-faint">From {message.device}</p>}

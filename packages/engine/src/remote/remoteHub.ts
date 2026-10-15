@@ -37,6 +37,10 @@ export interface RemoteProject {
   root: string;
   name: string;
   exists: boolean;
+  /** Added to Switchboard by hand; folders that only have Claude Code sessions are not offered to a phone. */
+  added: boolean;
+  /** Position in your project list (null: after the ordered ones, by name). */
+  order: number | null;
   defaults: ProjectDefaults;
 }
 
@@ -335,6 +339,14 @@ export class RemoteHub {
   }
 
   /** A phone may only touch the sessions it can see in its list. */
+  /** The projects New session offers, as the app's own list: the ones you added that still exist, in your order. */
+  private yourProjects(): RemoteProject[] {
+    return this.options
+      .projects()
+      .filter((p) => p.added && p.exists)
+      .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name));
+  }
+
   private checkSession(sessionId: string): void {
     if (!this.list().sessions.some((s) => s.id === sessionId)) throw new RpcError('NOT_FOUND', 'No such session');
   }
@@ -352,12 +364,7 @@ export class RemoteHub {
     };
     return {
       'sessions.list': () => this.list(),
-      'projects.list': () => ({
-        projects: this.options
-          .projects()
-          .filter((p) => p.exists)
-          .map((p) => ({ id: projectIdOf(p.root), name: p.name })),
-      }),
+      'projects.list': () => ({ projects: this.yourProjects().map((p) => ({ id: projectIdOf(p.root), name: p.name })) }),
       'transcript.get': async ({ sessionId, before, after, limit }) => {
         this.checkSession(sessionId);
         const page = transcriptPage(await this.options.readTranscript(sessionId), { before, after, limit });
@@ -403,7 +410,7 @@ export class RemoteHub {
         return {};
       },
       'session.create': async ({ projectId, prompt }) => {
-        const project = this.options.projects().find((p) => p.exists && projectIdOf(p.root) === projectId);
+        const project = this.yourProjects().find((p) => projectIdOf(p.root) === projectId);
         if (!project) throw new RpcError('NOT_FOUND', 'No such project');
         return this.options.create(project.root, prompt, project.defaults);
       },

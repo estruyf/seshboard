@@ -5,6 +5,7 @@ import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessage
 import type { Client } from './Connected.tsx';
 import { MessageView } from './MessageView.tsx';
 import { PermissionCard } from './PermissionCard.tsx';
+import { useFinePointer } from '../lib/media.ts';
 import { Button, STATUS_LABEL, StatusDot } from './ui.tsx';
 
 const PAGE = 50;
@@ -13,7 +14,7 @@ const PAGE = 50;
  * One session: its conversation (the last page, older pages on request, live updates), what Claude is writing, the
  * prompts it waits on, Up next, the message box and Stop. After a reconnect it resumes after the last message it has.
  */
-export function SessionView({ client, sessionId, sessions, banner, onBack }: { client: Client; sessionId: string; sessions: RemoteSessions; banner: ReactNode; onBack: () => void }) {
+export function SessionView({ client, sessionId, sessions, banner, onBack }: { client: Client; sessionId: string; sessions: RemoteSessions; banner: ReactNode; onBack: (() => void) | null }) {
   const session = sessions.sessions.find((s) => s.id === sessionId) ?? null;
   const prompts = sessions.prompts.filter((p) => p.sessionId === sessionId);
   const [messages, setMessages] = useState<RemoteMessage[]>([]);
@@ -66,22 +67,25 @@ export function SessionView({ client, sessionId, sessions, banner, onBack }: { c
 
   return (
     <div className="flex h-full flex-col">
-      <header className="safe-top flex items-center gap-2 border-b border-border bg-bg px-2 pb-2">
-        <Button variant="quiet" onClick={onBack} aria-label="Back" className="min-h-11 px-2">
-          <ChevronLeft className="size-5" aria-hidden />
-        </Button>
+      <header className={`safe-top flex items-center gap-2 border-b border-border bg-bg pb-2 pointer-fine:pb-2.5 ${onBack ? 'px-2' : 'px-5'}`}>
+        {onBack && (
+          <Button variant="quiet" onClick={onBack} aria-label="Back" className="px-2!">
+            <ChevronLeft className="size-5" aria-hidden />
+          </Button>
+        )}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-title font-semibold">{session?.title ?? 'Session'}</h1>
           {session && (
             <p className="flex items-center gap-1.5 truncate text-meta text-muted">
               <StatusDot status={session.status} />
               {STATUS_LABEL[session.status]} · {session.projectName}
+              {session.branch ? ` · ${session.branch}` : ''}
             </p>
           )}
         </div>
         {working && (
-          <Button variant="secondary" onClick={() => void client?.call('session.interrupt', { sessionId }).catch((e: Error) => setError(e.message))} className="min-h-9 px-3">
-            <Square className="size-3.5" aria-hidden fill="currentColor" />
+          <Button variant="secondary" size="md" onClick={() => void client?.call('session.interrupt', { sessionId }).catch((e: Error) => setError(e.message))} data-remote-stop>
+            <Square className="size-3" aria-hidden fill="currentColor" />
             Stop
           </Button>
         )}
@@ -93,12 +97,14 @@ export function SessionView({ client, sessionId, sessions, banner, onBack }: { c
         ))}
       </Transcript>
       {error && (
-        <p role="alert" className="flex items-start gap-2 bg-error/10 px-4 py-2 text-ui text-error">
-          <span className="flex-1">{error}</span>
-          <button type="button" aria-label="Dismiss" onClick={() => setError(null)}>
-            <X className="size-4" aria-hidden />
-          </button>
-        </p>
+        <div className="px-3 pt-2 sm:px-6">
+          <p role="alert" className="mx-auto flex w-full max-w-3xl items-start gap-2 rounded-lg bg-error/10 px-3 py-2 text-ui text-error">
+            <span className="flex-1">{error}</span>
+            <button type="button" aria-label="Dismiss" onClick={() => setError(null)}>
+              <X className="size-4" aria-hidden />
+            </button>
+          </p>
+        </div>
       )}
       {queue.length > 0 && <UpNext queue={queue} onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))} />}
       <Composer disabled={!client} working={working} onSend={(text) => client!.call('session.send', { sessionId, text, mode: 'queue' })} onError={setError} />
@@ -121,25 +127,27 @@ function Transcript({ messages, results, streaming, hasMore, onOlder, children }
         const el = event.currentTarget;
         atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       }}
-      className="flex-1 overflow-y-auto overscroll-contain px-4 py-3"
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 sm:px-6"
     >
-      {hasMore && (
-        <div className="pb-3 text-center">
-          <Button variant="quiet" onClick={onOlder} className="min-h-9">
-            Show earlier messages
-          </Button>
-        </div>
-      )}
-      <div className="flex flex-col gap-4">
-        {visibleMessages(messages).map((message) => (
-          <MessageView key={message.uuid} message={message} results={results} />
-        ))}
-        {streaming.kind && (
-          <p className={`text-body whitespace-pre-wrap ${streaming.kind === 'text' ? '' : 'text-muted italic'}`} aria-live="polite">
-            {streaming.kind === 'tool' ? `Running ${streaming.text}…` : streaming.text}
-          </p>
+      <div className="mx-auto w-full max-w-3xl">
+        {hasMore && (
+          <div className="pb-3 text-center">
+            <Button variant="quiet" size="md" onClick={onOlder}>
+              Show earlier messages
+            </Button>
+          </div>
         )}
-        {children}
+        <div className="flex flex-col gap-4">
+          {visibleMessages(messages).map((message) => (
+            <MessageView key={message.uuid} message={message} results={results} />
+          ))}
+          {streaming.kind && (
+            <p className={`text-body whitespace-pre-wrap ${streaming.kind === 'text' ? '' : 'text-muted italic'}`} aria-live="polite">
+              {streaming.kind === 'tool' ? `Running ${streaming.text}…` : streaming.text}
+            </p>
+          )}
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -147,18 +155,20 @@ function Transcript({ messages, results, streaming, hasMore, onOlder, children }
 
 function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: string) => void }) {
   return (
-    <section aria-label="Up next" className="border-t border-border px-4 py-2">
-      <h2 className="text-meta font-semibold tracking-wide text-faint uppercase">Up next</h2>
-      <ul>
-        {queue.map((item) => (
-          <li key={item.id} className="flex items-center gap-2 py-1">
-            <span className="min-w-0 flex-1 truncate text-ui">{item.text}</span>
-            <Button variant="quiet" aria-label="Remove from Up next" onClick={() => onRemove(item.id)} className="min-h-9 px-2">
-              <X className="size-4" aria-hidden />
-            </Button>
-          </li>
-        ))}
-      </ul>
+    <section aria-label="Up next" className="px-3 pt-2 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl px-1">
+        <h2 className="text-meta font-semibold tracking-wide text-faint uppercase">Up next</h2>
+        <ul>
+          {queue.map((item) => (
+            <li key={item.id} className="flex items-center gap-2 py-0.5">
+              <span className="min-w-0 flex-1 truncate text-ui">{item.text}</span>
+              <Button variant="quiet" size="md" aria-label="Remove from Up next" onClick={() => onRemove(item.id)} className="px-2!">
+                <X className="size-4" aria-hidden />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -167,6 +177,7 @@ function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: st
 function Composer({ disabled, working, onSend, onError }: { disabled: boolean; working: boolean; onSend: (text: string) => Promise<{ queued: boolean }>; onError: (message: string) => void }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const fine = useFinePointer();
   const send = async () => {
     const message = text.trim();
     if (!message || busy) return;
@@ -182,23 +193,33 @@ function Composer({ disabled, working, onSend, onError }: { disabled: boolean; w
   };
   return (
     <form
-      className="safe-bottom flex items-end gap-2 border-t border-border bg-bg px-3 pt-2"
+      className="safe-bottom px-3 pt-2 sm:px-6"
       onSubmit={(event) => {
         event.preventDefault();
         void send();
       }}
     >
-      <textarea
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        rows={1}
-        placeholder={working ? 'Add to Up next' : 'Message Claude'}
-        aria-label="Message"
-        className="max-h-40 min-h-11 flex-1 resize-none rounded-xl border border-edge bg-card px-3 py-2.5 text-body text-text [field-sizing:content]"
-      />
-      <Button type="submit" variant="primary" disabled={disabled || busy || !text.trim()} aria-label={working ? 'Add to Up next' : 'Send'} className="min-h-11 px-3">
-        <Send className="size-4" aria-hidden />
-      </Button>
+      <div className="mx-auto flex w-full max-w-3xl items-end gap-2 rounded-xl border border-edge bg-card p-1.5 pl-3 focus-within:border-accent-ink">
+        <textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer.
+            if (fine && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              void send();
+            }
+          }}
+          rows={1}
+          placeholder={working ? 'Add to Up next' : 'Message Claude'}
+          aria-label="Message"
+          data-remote-message
+          className="max-h-48 min-h-9 flex-1 resize-none bg-transparent py-2 text-body text-text outline-none [field-sizing:content] placeholder:text-faint pointer-fine:min-h-7 pointer-fine:py-1"
+        />
+        <Button type="submit" variant="primary" size="md" disabled={disabled || busy || !text.trim()} aria-label={working ? 'Add to Up next' : 'Send'} className="px-3!">
+          <Send className="size-4" aria-hidden />
+        </Button>
+      </div>
     </form>
   );
 }

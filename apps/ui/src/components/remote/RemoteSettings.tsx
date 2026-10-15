@@ -108,6 +108,24 @@ export function RemoteSettings() {
 
       <Devices status={status} onRevoke={(deviceId) => void client?.call('remote.revoke', { deviceId }).catch((e: Error) => setError(e.message))} />
 
+      <div className="grid gap-1.5" data-remote-port>
+        <TextSetting
+          label="Port"
+          placeholder=""
+          value={String(settings.port)}
+          attr="data-remote-port-input"
+          inset={false}
+          narrow
+          onSave={(value) => {
+            const port = Number(value);
+            if (!Number.isInteger(port) || port < 1024 || port > 65535) return setError('Use a port between 1024 and 65535.');
+            configure({ port });
+          }}
+        />
+        <p className="text-meta text-muted">
+          While Remote is on, Switchboard listens on <code className="font-mono text-text">http://127.0.0.1:{settings.port}</code>, and the tunnel forwards to it. With your own address, point your tunnel or proxy there. Changing the port restarts Remote.
+        </p>
+      </div>
       <p className="text-meta text-muted">
         The tunnel's address can be reached from anywhere, but only paired phones get in: every connection is checked with the phone's key and encrypted from the phone to this computer.
       </p>
@@ -165,12 +183,12 @@ function Devices({ status, onRevoke }: { status: RemoteStatus; onRevoke: (device
 }
 
 /** A text setting that saves on Enter or when it loses focus. */
-function TextSetting({ label, placeholder, value, attr, onSave }: { label: string; placeholder: string; value: string; attr: string; onSave(value: string): void }) {
+function TextSetting({ label, placeholder, value, attr, onSave, inset = true, narrow = false }: { label: string; placeholder: string; value: string; attr: string; onSave(value: string): void; inset?: boolean; narrow?: boolean }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const save = () => draft.trim() !== value && onSave(draft.trim());
   return (
-    <label className="flex items-center gap-2 pl-5.5" {...{ [attr]: true }}>
+    <label className={`flex items-center gap-2 ${inset ? 'pl-5.5' : ''}`} {...{ [attr]: true }}>
       <span className="shrink-0 text-ui text-muted">{label}</span>
       <input
         value={draft}
@@ -179,7 +197,7 @@ function TextSetting({ label, placeholder, value, attr, onSave }: { label: strin
         onChange={(event) => setDraft(event.target.value)}
         onBlur={save}
         onKeyDown={(event) => event.key === 'Enter' && save()}
-        className={field}
+        className={narrow ? `${field} max-w-24 flex-none` : field}
       />
     </label>
   );

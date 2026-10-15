@@ -31,7 +31,7 @@ export function PermissionCard({ prompt, client, onError }: { prompt: RemoteProm
     }
   };
   return (
-    <section aria-label="Claude needs you" className="rounded-xl border-2 border-warn bg-card p-3">
+    <section aria-label="Claude needs you" className="rounded-xl border-2 border-warn bg-card p-3 sm:p-4" data-remote-prompt>
       {prompt.toolName === 'AskUserQuestion' ? (
         <Questions prompt={prompt} busy={busy} respond={respond} />
       ) : prompt.toolName === 'ExitPlanMode' ? (
@@ -54,17 +54,18 @@ function ToolPrompt({ prompt, busy, respond }: Props) {
       <pre className="max-h-60 overflow-auto rounded-lg bg-code p-2 font-mono text-meta whitespace-pre-wrap">
         {diff ? diff.map((line, i) => <div key={i} className={line.kind === '+' ? 'bg-diff-added' : 'bg-diff-removed'}>{`${line.kind} ${line.text}`}</div>) : toolSummary(prompt.toolName, prompt.input)}
       </pre>
-      <div className="flex flex-col gap-2">
-        <Button variant="primary" disabled={busy} onClick={() => void respond({ behavior: 'allow' })}>
-          Allow
+      {/* Stacked on a phone with Allow on top; in a row on a wider screen, Allow on the right as on the computer. */}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button variant="danger" disabled={busy} onClick={() => void respond({ behavior: 'deny', message: DECLINED })}>
+          Deny
         </Button>
         {prompt.alwaysLabel && (
           <Button disabled={busy} onClick={() => void respond({ behavior: 'allow', always: true })}>
             {prompt.alwaysLabel}
           </Button>
         )}
-        <Button variant="danger" disabled={busy} onClick={() => void respond({ behavior: 'deny', message: DECLINED })}>
-          Deny
+        <Button variant="primary" disabled={busy} onClick={() => void respond({ behavior: 'allow' })}>
+          Allow
         </Button>
       </div>
     </div>
@@ -112,16 +113,16 @@ function Questions({ prompt, busy, respond }: Props) {
             value={other[q.question] ?? ''}
             onChange={(event) => setOther((current) => ({ ...current, [q.question]: event.target.value }))}
             placeholder={q.multiSelect ? 'Something else (optional)' : 'Or type your own answer'}
-            className="min-h-11 rounded-lg border border-edge bg-card px-3 text-body"
+            className="min-h-11 rounded-lg border border-edge bg-card px-3 text-body pointer-fine:min-h-8"
           />
         </fieldset>
       ))}
-      <div className="flex flex-col gap-2">
-        <Button variant="primary" disabled={busy || !complete} onClick={submit}>
-          Answer
-        </Button>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button disabled={busy} onClick={() => void respond({ behavior: 'deny', message: DECLINED })}>
           Skip
+        </Button>
+        <Button variant="primary" disabled={busy || !complete} onClick={submit}>
+          Answer
         </Button>
       </div>
     </div>
@@ -142,12 +143,12 @@ function Plan({ prompt, busy, respond }: Props) {
         placeholder="What should change? (optional)"
         className="rounded-lg border border-edge bg-card px-3 py-2 text-body"
       />
-      <div className="flex flex-col gap-2">
-        <Button variant="primary" disabled={busy} onClick={() => void respond({ behavior: 'allow' })}>
-          Start
-        </Button>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button disabled={busy} onClick={() => void respond({ behavior: 'deny', message: feedback.trim() || DECLINED })}>
           Keep planning
+        </Button>
+        <Button variant="primary" disabled={busy} onClick={() => void respond({ behavior: 'allow' })}>
+          Start
         </Button>
       </div>
     </div>

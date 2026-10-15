@@ -7,6 +7,9 @@ import { forgetPaired, loadPaired, savePaired } from './lib/storage.ts';
 
 type Screen = { kind: 'loading' } | Start;
 
+/** Read once, before anything takes it out of the address bar: StrictMode runs the effect twice in development, and the second run would see no link. */
+const openedWith = window.location.hash;
+
 /**
  * The remote app: reads the link it was opened with (then takes it out of the address bar, so a pairing secret
  * doesn't linger in the history), pairs or connects, and shows the sessions once connected.
@@ -15,8 +18,8 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
 
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash) history.replaceState(null, '', window.location.pathname);
+    const hash = openedWith;
+    if (window.location.hash) history.replaceState(null, '', window.location.pathname);
     void loadPaired()
       .catch(() => null)
       .then(async (paired) => {
@@ -43,7 +46,7 @@ export function App() {
     case 'welcome':
       return (
         <Message title="Switchboard Remote">
-          Follow and steer your Claude Code sessions from this phone. On your computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b>, click <b>Pair a phone</b> and scan the QR code with this phone's camera.
+          Follow and steer your Claude Code sessions from your phone or another computer. On your computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b>, click <b>Pair a phone</b> and scan the QR code with your phone's camera. On another computer, click <b>Copy link</b> under the code and open the link here.
         </Message>
       );
     case 'bad-link':

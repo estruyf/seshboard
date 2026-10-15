@@ -6,7 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### New
 
-- **Remote: your sessions on your phone.** Follow your sessions from your phone's browser, wherever you are: see which ones need you, read the conversation as it happens, allow or deny what Claude asks, answer its questions and plans, send a prompt or add it to Up next, stop a turn, and start a session in one of your projects. Turn it on in Settings › Remote, choose a tunnel (a Cloudflare quick tunnel, Tailscale, ngrok or your own address), click **Pair a phone** and scan the QR code. Your computer asks you to allow the phone, with a code to compare. Only phones you pair can connect, and everything is encrypted from your phone to your computer, so the tunnel can't read it. **Revoke** disconnects a phone at once.
+- **Remote: your sessions on your phone.** Follow your sessions from your phone's browser, wherever you are: see which ones need you, read the conversation as it happens, allow or deny what Claude asks, answer its questions and plans, send a prompt or add it to Up next, stop a turn, and start a session in one of your projects. Turn it on in Settings › Remote, choose a tunnel (a Cloudflare quick tunnel, Tailscale, ngrok or your own address), click **Pair a phone** and scan the QR code. Your computer asks you to allow the phone, with a code to compare. Only phones you pair can connect, and everything is encrypted from your phone to your computer, so the tunnel can't read it. **Revoke** disconnects a phone at once. It works in the browser of another computer too: click **Copy link** under the QR code. On a wide screen your sessions stay on the left, as in Switchboard, and New session offers the projects you added.
 
 ## [0.0.17] - 2026-10-14
 

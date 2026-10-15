@@ -1,9 +1,11 @@
+import { Check, Copy } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useEffect, useState } from 'react';
 import type { Contract, RemoteStatus, RpcClient } from '@switchboard/protocol/client';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Notice } from '../ui/Notice.tsx';
+import { useFlash } from '../ui/useFlash.ts';
 
 type Client = RpcClient<Contract>;
 
@@ -21,6 +23,21 @@ function QrImage({ url, label }: { url: string; label: string }) {
     };
   }, [url]);
   return <div className="mx-auto size-56 overflow-hidden rounded-lg">{src && <img src={src} alt={label} className="size-full" data-remote-qr />}</div>;
+}
+
+/** Copies the link the QR code holds, for opening the remote app in a browser on another computer. */
+function CopyLink({ url }: { url: string }) {
+  const [copied, flash] = useFlash(1500);
+  return (
+    <Button
+      className="mx-auto"
+      icon={copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+      onClick={() => void navigator.clipboard.writeText(url).then(() => flash('Copied'), () => {})}
+      data-remote-copy-link
+    >
+      {copied ? 'Copied' : 'Copy link'}
+    </Button>
+  );
 }
 
 function useCountdown(until: number | null): number {
@@ -68,7 +85,7 @@ export function PairDialog({ client, status, onClose }: { client: Client; status
   return (
     <Dialog
       title={request ? `Pair ${request.name}?` : 'Pair a phone'}
-      subtitle={request ? undefined : 'Scan the code with your phone’s camera.'}
+      subtitle={request ? undefined : 'Scan the code with your phone’s camera, or copy the link.'}
       width="sm"
       onClose={onClose}
       role={request ? 'alertdialog' : 'dialog'}
@@ -107,8 +124,9 @@ export function PairDialog({ client, status, onClose }: { client: Client; status
       ) : offer ? (
         <div className="grid gap-3">
           <QrImage url={offer.url} label="QR code to pair a phone" />
+          <CopyLink url={offer.url} />
           <p className="text-center text-meta text-muted">
-            Works once, for {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}. Your computer will ask you to allow the phone.
+            To use another computer instead, open the copied link in its browser. Works once, for {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}. Your computer will ask you to allow the phone.
           </p>
         </div>
       ) : null}
@@ -126,7 +144,12 @@ export function LinkDialog({ client, onClose }: { client: Client; onClose: () =>
   }, [client]);
   return (
     <Dialog title="Show the address to paired phones" subtitle="Scan it with a phone that is already paired, after the tunnel’s address changed." width="sm" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
-      {url && <QrImage url={url} label="QR code with this computer's address" />}
+      {url && (
+        <div className="grid gap-3">
+          <QrImage url={url} label="QR code with this computer's address" />
+          <CopyLink url={url} />
+        </div>
+      )}
       {error && <Notice tone="error">{error}</Notice>}
     </Dialog>
   );

@@ -885,7 +885,7 @@ export function createEngine(options: EngineOptions): Engine {
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
       archiveAfterDays: () => retention.archiveAfterDays,
       scope: () => sidebarScope,
-      projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, defaults: p.defaults })),
+      projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults })),
       readTranscript: (sessionId) => transcripts.read(sessionId),
       watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
       send: async (sessionId, text, mode) => {

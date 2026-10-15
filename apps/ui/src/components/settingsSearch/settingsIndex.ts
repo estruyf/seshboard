@@ -212,6 +212,7 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-remote-enabled]',
     },
     { id: 'remote-tunnel', page: 'remote', label: 'Reach this computer through', detail: 'Cloudflare quick tunnel, Tailscale, ngrok or your own address.', keywords: 'tunnel cloudflare cloudflared tailscale ngrok proxy address', target: '[data-remote-tunnel]' },
+    { id: 'remote-port', page: 'remote', label: 'Port', detail: 'The local port Remote listens on. Your tunnel forwards to it.', keywords: 'port 47615 listen local address forward tunnel', target: '[data-remote-port]' },
     { id: 'remote-pair', page: 'remote', label: 'Pair a phone', detail: 'Scan a QR code with your phone, then allow it here.', keywords: 'qr code pairing phone add device', target: '[data-remote-pair]' },
     { id: 'remote-devices', page: 'remote', label: 'Paired phones', detail: 'Revoke disconnects a phone at once.', keywords: 'revoke devices phones remove', target: '[data-remote-devices]', fallback: '[data-remote-pair]' },
 

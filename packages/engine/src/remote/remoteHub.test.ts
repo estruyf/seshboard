@@ -26,6 +26,9 @@ afterEach(() => {
 });
 
 const ROOT = '/work/web';
+const FIRST = '/work/api';
+const SEEN_ONLY = '/work/scratch';
+const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
 const SESSION = '11111111-1111-4111-8111-111111111111';
 const HIDDEN = '22222222-2222-4222-8222-222222222222';
 
@@ -70,7 +73,12 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     sources: () => ({ summaries: [summary(SESSION, true), summary(HIDDEN, false)], live: [], hosts: [], permissions }),
     archiveAfterDays: () => 7,
     scope: () => 'switchboard',
-    projects: () => [{ root: ROOT, name: 'Web', exists: true, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } }],
+    projects: () => [
+      { root: ROOT, name: 'Web', exists: true, added: true, order: null, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } },
+      // Only Claude Code sessions here, never added to Switchboard: a phone doesn't see it.
+      { root: SEEN_ONLY, name: 'Seen', exists: true, added: false, order: null, defaults: NO_DEFAULTS },
+      { root: FIRST, name: 'Api', exists: true, added: true, order: 0, defaults: NO_DEFAULTS },
+    ],
     readTranscript: async () => ['a', 'b', 'c'].map(message),
     watchTranscript: () => () => {},
     send: async (_id, text) => (sent.push(text), { messageUuid: 'm1', queued: false }),
@@ -154,7 +162,8 @@ describe('Remote hub', () => {
     expect(answered).toEqual(['r1']);
     await expect(remote.call('session.respond', { requestId: 'r-unknown', decision: { behavior: 'allow' } })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
-    expect(await remote.call('projects.list', {})).toEqual({ projects: [{ id: projectIdOf(ROOT), name: 'Web' }] });
+    expect(await remote.call('projects.list', {})).toEqual({ projects: [{ id: projectIdOf(FIRST), name: 'Api' }, { id: projectIdOf(ROOT), name: 'Web' }] });
+    await expect(remote.call('session.create', { projectId: projectIdOf(SEEN_ONLY), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test' });
     expect(created).toEqual([{ root: ROOT, prompt: 'add a test', model: 'opus' }]);
     await expect(remote.call('session.create', { projectId: projectIdOf('/elsewhere'), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

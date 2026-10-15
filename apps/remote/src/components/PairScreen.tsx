@@ -4,12 +4,15 @@ import { pairPhone } from '../lib/connection.ts';
 import type { Paired } from '../lib/link.ts';
 import { Button, Logo } from './ui.tsx';
 
-/** A guess at a name for the phone; it can be changed before pairing. */
+/** A guess at a name for the device; it can be changed before pairing. */
 function suggestedName(): string {
   const agent = navigator.userAgent;
   if (/iPhone/.test(agent)) return 'iPhone';
-  if (/iPad/.test(agent)) return 'iPad';
+  // iPadOS Safari says it's a Mac; only the touch screen gives it away.
+  if (/iPad/.test(agent) || (/Macintosh/.test(agent) && navigator.maxTouchPoints > 1)) return 'iPad';
   if (/Android/.test(agent)) return 'Android phone';
+  if (/Macintosh/.test(agent)) return 'Mac browser';
+  if (/Windows/.test(agent)) return 'Windows browser';
   return 'Phone';
 }
 
@@ -36,7 +39,7 @@ export function PairScreen({ link, replaces, onPaired }: { link: Extract<RemoteL
   return (
     <main className="safe-top safe-bottom mx-auto flex min-h-full max-w-md flex-col justify-center gap-5 px-6">
       <Logo />
-      <h1 className="text-hero font-semibold">Pair this phone</h1>
+      <h1 className="text-hero font-semibold">Pair with your computer</h1>
       {step.kind === 'name' && (
         <form
           className="flex flex-col gap-4"
@@ -45,9 +48,9 @@ export function PairScreen({ link, replaces, onPaired }: { link: Extract<RemoteL
             void pair();
           }}
         >
-          {replaces && <p className="rounded-lg bg-warn/10 p-3 text-ui text-text">This phone is paired with another computer. Pairing here replaces it.</p>}
+          {replaces && <p className="rounded-lg bg-warn/10 p-3 text-ui text-text">This device is paired with another computer. Pairing here replaces it.</p>}
           <label className="flex flex-col gap-1.5">
-            <span className="text-ui text-muted">Name this phone</span>
+            <span className="text-ui text-muted">Name this device</span>
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -77,7 +80,7 @@ export function PairScreen({ link, replaces, onPaired }: { link: Extract<RemoteL
       {step.kind === 'failed' && (
         <div className="flex flex-col gap-4" role="alert">
           <p className="text-body text-error">{step.message}</p>
-          <p className="text-ui text-muted">Click Pair a phone on your computer and scan the new QR code.</p>
+          <p className="text-ui text-muted">Click Pair a phone on your computer and scan the new QR code, or open its copied link.</p>
         </div>
       )}
     </main>
