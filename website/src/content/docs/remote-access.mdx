@@ -96,6 +96,12 @@ Switchboard listens on port 47615. If another app uses it, or you want another o
 
 **Paired phones** in Settings → Remote lists each phone with when it last connected, and **Connected now** while it is. **Revoke** disconnects a phone at once, and it can't connect again until you pair it again. A phone that doesn't connect for 30 days is removed. On the phone, **Forget this computer** in the **⋯** menu next to the computer's name removes the pairing from the phone.
 
+## Home
+
+The app opens on **Home**. At the top, a card says how many sessions need you, how many are working and how many finished today. Tap it to open the list. Under it, each Claude profile has a card with how much of its plan is used: a bar for the 5-hour window and one for the week, with when each resets. A bar turns orange from 60% and red from 85%. With one profile the section is called **Usage**, with more **Profiles**. The numbers come from your computer: they update when it checks, and each time you come back to the app. **New session** is at the bottom of the screen.
+
+To come back to Home from the list, tap the house button next to **Sessions**. The back gesture doesn't go between Home and the list: from a session, it goes back to the one you came from.
+
 ## The list
 
 The chip at the top right shows your computer's name with a green dot while your phone is connected. It turns orange with **Reconnecting…** while your phone tries again, and red with **Offline** when it stopped trying.
@@ -123,9 +129,15 @@ Claude's answers show headings, lists, links, code and tables, also while Claude
 
 When a session finished, it starts with its catch-up, as on your computer: how it ended, how long it takes to review, what Claude did, whether the tests passed, and how much changed. The conversation is folded under it: tap **Show the conversation** to read it.
 
-In a session that runs in Switchboard, the chips under the message box show its model and permission mode. Tap one to change it. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
+In a session that runs in Switchboard, the chips under the message box show its model, effort and permission mode. Tap one to change it. The effort chip only shows for a model that takes an effort; **Default** is the model's own. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
 
 To send images with a message, tap the image button next to the message box: your phone offers its camera and its photos. In a browser on a computer, you can also paste a screenshot or drop images on the message box. Each shows as a thumbnail above the box, with a button to remove it. A message takes up to four images. Your phone makes big photos smaller before it sends them.
+
+## Ask about this session
+
+The blue question mark in a session's header opens [Ask about this session](/sessions/ask/), as on your computer: ask Claude what changed, which files it touched or why it took an approach, while it keeps working. Nothing is added to the conversation. On a phone it opens as a sheet, in a wide window on the right, in the place of **Changes**.
+
+A new thread starts with four questions to tap. Follow-ups go with the earlier questions of their thread. **New thread** starts another, and **⋯** lists the earlier ones. The questions you asked on your computer are there too. Under an answer, **Copy** copies it and **Quote in message** puts it in the message box as a quote. Close Ask while Claude answers, and a blue dot on the button says when the answer is ready.
 
 ## Changes and Commit
 
@@ -138,19 +150,21 @@ The file button in a session's header, and **Changes** on its catch-up, open wha
 
 Pick a project from the row of tiles (swipe for more), then type what Claude should do. Under the box, chips show the project's defaults: the model, the effort, the permission mode, and **This folder** or **New worktree**. Tap one to change it for this session only.
 
+With [Auto model](/new-session/auto-model/) on in Settings › Conversation on your computer, the model list starts with **Auto**: Haiku reads your prompt and picks the model the session starts on, from the models you allowed. In the session, the model chip then says what it picked, such as **Auto · Sonnet**, until you pick another model. With Auto off, it isn't offered, and a project whose default is Auto starts on your default model.
+
 With more than one Claude profile, the first chip is the profile the session runs with: the project's own, else your default profile. Pick another for this session only. The other chips then show that profile's defaults, where the project sets none.
 
 While a session works in that project, **Queue for later** puts the prompt in Switchboard's queue instead. Start it from the queue on your computer.
 
 ## On a computer or a tablet
 
-In a wide window, such as the browser of another computer, your sessions stay on the left, as in Switchboard. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list.
+In a wide window, such as the browser of another computer, your sessions stay on the left, as in Switchboard. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list. The house button next to **Sessions** closes the open session and shows Home on the right.
 
 ### What needs you
 
 With no session open, the right side shows what needs you: how many sessions need you, how many are working and how many finished today. Under it, every prompt is a card, the oldest first, with everything you need to answer it there: **Deny**, **Always allow** when it's offered, and **Allow** for a command or an edit, the options of a question with **Skip** and **Answer**, and **Keep planning** and **Start** for a plan. **Open** opens its session.
 
-Below the cards, **Finished, ready to review** shows the sessions that finished and you haven't read, each with how long it takes to review, what Claude did, the tests, **Changes** and **Open**.
+Below the cards, **Finished, ready to review** shows the sessions that finished and you haven't read, each with how long it takes to review, what Claude did, the tests, **Changes** and **Open**. Then each Claude profile's plan usage, as on a phone's Home.
 
 ### Keys
 
@@ -175,13 +189,13 @@ Microsoft Edge keeps <Kbd keys="mod+shift+u" /> for Read aloud: use <Kbd keys="u
 
 ### Search and jump
 
-<Kbd keys="mod+k" />, or **Search or jump to…** at the top of the list, opens the search. Type a few letters of a session's title, its project or its branch. Sessions that need you come first. Under them, **New session in** a project that matches, and actions: **Next that needs you**, **New session**, **Turn on notifications**, **Mark all as read** and **Forget this computer**. Use the arrow keys and <Kbd keys="enter" /> to pick one.
+<Kbd keys="mod+k" />, or **Search or jump to…** at the top of the list, opens the search. Type a few letters of a session's title, its project or its branch. Sessions that need you come first. Under them, **New session in** a project that matches, and actions: **Next that needs you**, **New session**, **Go to Home**, **Turn on notifications**, **Mark all as read** and **Forget this computer**. Use the arrow keys and <Kbd keys="enter" /> to pick one.
 
 ### A session and its Changes
 
-The conversation keeps a comfortable reading width in the middle. The header shows the model and the permission mode (such as **Opus · Auto**), **Changes** with the number of files, and **Stop** while Claude works. The buttons of a prompt show their keys.
+The conversation keeps a comfortable reading width in the middle. The header shows the model and the permission mode (such as **Opus · Auto**), **Ask**, **Changes** with the number of files, and **Stop** while Claude works. The buttons of a prompt show their keys.
 
-In a window at least 1280 pixels wide, **Changes** opens on the right instead of over the conversation: the files, the diff of the one you pick, a commit message that starts with what you asked, **Ask Claude to fix…** and **Commit**. The browser remembers whether you had it open.
+In a window at least 1280 pixels wide, **Changes** opens on the right instead of over the conversation: the files, the diff of the one you pick, a commit message that starts with what you asked, **Ask Claude to fix…** and **Commit**. The browser remembers whether you had it open. **Ask** opens in the same place; close it and Changes comes back. Esc closes either.
 
 ### The browser tab
 

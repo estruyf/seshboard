@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Plus, Search, X } from 'lucide-react';
+import { House, Plus, Search, X } from 'lucide-react';
 import type { RemotePrompt, RemoteSession, RemoteSessions } from '@switchboard/protocol/remote-client';
 import type { ConnectionState } from '../lib/connection.ts';
 import { filterCounts, filterList, visibleFilter, type ListFilter } from '../lib/filter.ts';
@@ -65,6 +65,8 @@ export function SessionList({
   newOpen,
   onOpen,
   onNew,
+  onHome,
+  homeOpen = false,
   onHelp,
   onRefresh,
   onArchived,
@@ -82,6 +84,10 @@ export function SessionList({
   newOpen: boolean;
   onOpen: (sessionId: string) => void;
   onNew: () => void;
+  /** Goes to Home: the phone's own screen, or the view next to the sidebar on a wide screen. */
+  onHome: () => void;
+  /** Home is on screen (the wide layout): its button shows as pressed. */
+  homeOpen?: boolean;
   onHelp: () => void;
   onRefresh: () => void;
   /** A session was archived from its row: leave it if it is open. */
@@ -171,6 +177,9 @@ export function SessionList({
       <header className="safe-top sticky top-0 z-10 flex items-center gap-2 bg-inherit px-4 pb-2">
         <Logo className="size-6" />
         <h1 className="flex-1 text-title font-semibold">Sessions</h1>
+        <Button variant="quiet" size="md" aria-label="Home" title="Home" aria-current={homeOpen ? 'page' : undefined} onClick={onHome} className={`px-2! ${homeOpen ? 'bg-selected text-text' : ''}`} data-remote-home-button>
+          <House className="size-4" aria-hidden />
+        </Button>
         <ConnectionChip state={state} computer={computer} onHelp={onHelp} />
         {!wide && <MenuButton items={menu} />}
       </header>

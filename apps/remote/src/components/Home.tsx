@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Plus } from 'lucide-react';
-import type { CatchUp, PermissionDecision, RemotePrompt, RemoteSession, RemoteSessions } from '@switchboard/protocol/remote-client';
+import type { CatchUp, PermissionDecision, RemoteProfileUsage, RemotePrompt, RemoteSession, RemoteSessions } from '@switchboard/protocol/remote-client';
 import { catchUpChips, reviewLabel } from '../lib/catchUp.ts';
 import { age, homeHeadline, toReview } from '../lib/groups.ts';
 import { promptTag } from '../lib/prompts.ts';
@@ -8,6 +8,7 @@ import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
 import { PromptBody } from './PermissionCard.tsx';
 import { useNow } from './SessionList.tsx';
+import { UsageSection } from './Usage.tsx';
 import { useLeaving } from './useLeaving.ts';
 import { Button, Kbd, SectionHeader } from './ui.tsx';
 
@@ -16,10 +17,26 @@ export type OpenSession = (sessionId: string, options?: { changes?: boolean }) =
 
 /**
  * The right side of a wide screen while no session is open: what needs you. Every open prompt as a card, oldest
- * first, answered right here (A, D and ↩ too); then the finished sessions you haven't read, each with its catch-up.
- * J and K move through the cards (`Connected.tsx` has the keys).
+ * first, answered right here (A, D and ↩ too); then the finished sessions you haven't read, each with its catch-up;
+ * then each profile's plan usage. J and K move through the cards (`Connected.tsx` has the keys).
  */
-export function Home({ sessions, client, onOpen, onNew, onRefresh }: { sessions: RemoteSessions; client: Client; onOpen: OpenSession; onNew: () => void; onRefresh: () => void }) {
+export function Home({
+  sessions,
+  usage,
+  offline,
+  client,
+  onOpen,
+  onNew,
+  onRefresh,
+}: {
+  sessions: RemoteSessions;
+  usage: RemoteProfileUsage[] | null;
+  offline: boolean;
+  client: Client;
+  onOpen: OpenSession;
+  onNew: () => void;
+  onRefresh: () => void;
+}) {
   const now = useNow();
   const headline = homeHeadline(sessions.sessions, now);
   const leaving = useLeaving(sessions.prompts);
@@ -77,6 +94,8 @@ export function Home({ sessions, client, onOpen, onNew, onRefresh }: { sessions:
             </div>
           </section>
         )}
+
+        <UsageSection usage={usage} offline={offline} />
 
         <p className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 text-meta text-faint" aria-label="Keys">
           <span className="flex items-center gap-1">

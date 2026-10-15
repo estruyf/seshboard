@@ -119,7 +119,7 @@ WebSocket close codes: 4400 refused, 4403 unknown device, 4410 pairing closed, 4
 | `packages/engine/src/remote/webPush.ts` | Web Push without a library: the VAPID key pair and JWT, the payload encryption (checked against RFC 8291's example), sending |
 | `packages/engine/src/remote/pushEvents.ts` | When a phone gets a push (a prompt opens, a turn ends) and what it says |
 | `packages/engine/src/remote/computerName.ts` | The computer's name for the phone (macOS: the Sharing name) |
-| `apps/remote` | The remote app; `public/sw.js` is its service worker, which only shows notifications. On a wide screen (768px and more) the list is a sidebar next to the home view (`Home.tsx`), with the ⌘K palette (`Palette.tsx`, ranking in `lib/palette.ts`) and one key handler in `Connected.tsx` (`lib/keys.ts`) |
+| `apps/remote` | The remote app; `public/sw.js` is its service worker, which only shows notifications. A phone opens on Home (`PhoneHome.tsx`: what needs you and each profile's plan usage, `Usage.tsx`), which takes the list's place rather than stacking in the history. On a wide screen (768px and more) the list is a sidebar next to the home view (`Home.tsx`), with the ⌘K palette (`Palette.tsx`, ranking in `lib/palette.ts`) and one key handler in `Connected.tsx` (`lib/keys.ts`) |
 
 The remote contract is not the app's contract: remote handlers call engine functions one by one, so a new method in `contract.ts` never becomes reachable from a phone. A test lists its methods. A phone can only read or act on sessions its list shows (the sidebar's, outside Archived).
 
@@ -128,19 +128,21 @@ The remote contract is not the app's contract: remote handlers call engine funct
 | Method | What it does |
 |---|---|
 | `hello` | The first request: the app's version, the device, and the computer's name |
-| `sessions.list`, `projects.list` | The list (with `unread`, `pinned`, and a running session's model and mode) and the projects you added |
+| `sessions.list`, `projects.list` | The list (with `unread`, `pinned`, and a running session's model, effort and mode) and the projects you added |
 | `transcript.get`, `transcript.watch`, `transcript.unwatch` | A transcript's pages and live updates, for one session at a time |
 | `session.send`, `session.queue.remove`, `session.interrupt`, `session.respond` | Send or queue (with up to `REMOTE_MAX_IMAGES` images, each at most `REMOTE_IMAGE_BYTES` of base64), take from Up next, stop, answer a prompt |
 | `session.create`, `later.add` | Start a session, or queue one, in a project you added; `model`, `effort`, `permissionMode` and `worktree` left out are the project's defaults |
 | `session.markRead`, `session.setFlags` | Read, as opening it on the computer; pin or archive |
-| `session.setModel`, `session.setPermissionMode` | A running session's model and mode; modes are `default`, `acceptEdits`, `plan` and `auto` only |
-| `options.get` | New session's choices: the models, efforts, modes and each project's defaults |
+| `session.setModel`, `session.setEffort`, `session.setPermissionMode` | A running session's model, effort and mode; modes are `default`, `acceptEdits`, `plan` and `auto` only |
+| `options.get` | New session's choices: the models, efforts, modes, each project's defaults, and whether Auto model is on with the models it may pick (`model: 'auto'` then goes to `session.create` and `later.add` as is) |
+| `session.ask`, `session.askThreads` | Ask about this session, through the engine's `Asker` (read-only tools, nothing in the transcript), and the threads it keeps |
+| `usage.get` | Every profile's plan usage (its name and colour, never its account), the default first; from the engine's `UsageMonitor`, checked again when older than a minute or with `refresh` |
 | `catchup.get` | A session's catch-up, without paths outside its checkout |
 | `changes.get`, `changes.diff`, `changes.commit` | The session's uncommitted changes, one file's diff (at most 2,000 lines), and a commit of everything without a terminal (the last lines of the output when a hook fails) |
 | `push.key`, `push.subscribe`, `push.unsubscribe` | The engine's VAPID public key, and this device's subscription with its switches (Needs you, Finished) |
 | `device.visibility` | Whether the app is on the device's screen: no push while it is |
 
-Events: `sessions.changed`, and for the watched session `transcript.updated`, `session.stream`, `upNext.changed` and `catchup.changed`.
+Events: `sessions.changed`, `usage.changed` (a profile's new check), `session.ask` (to phones watching the session and to the phone that asked, until the answer ends), and for the watched session `transcript.updated`, `session.stream`, `upNext.changed` and `catchup.changed`.
 
 ### Push notifications
 

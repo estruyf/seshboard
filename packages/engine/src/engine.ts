@@ -17,6 +17,7 @@ import {
   type LogLevel,
   type ModelOption,
   type RpcServer,
+  type AskEvent,
   type SessionHostInfo,
   type SlashCommand,
   type SystemInfo,
@@ -273,6 +274,11 @@ export function createEngine(options: EngineOptions): Engine {
     if (name === 'catchup.changed') {
       const { sessionId, catchUp: card } = payload as { sessionId: string; catchUp: CatchUp | null };
       remote?.catchUpChanged(sessionId, card);
+    }
+    if (name === 'session.ask') remote?.askEvent(payload as AskEvent);
+    if (name === 'usage.changed') {
+      const { profileId, usage } = payload as { profileId: string; usage: UsageSnapshot | null };
+      remote?.usageChanged(profileId, usage);
     }
     if (name === 'memory.changed') memoryChangedHook();
   };
@@ -1054,8 +1060,14 @@ export function createEngine(options: EngineOptions): Engine {
       markRead: (sessionId) => sessions.markViewed(sessionId),
       setFlags: (sessionId, flags) => sessions.setFlags(sessionId, flags),
       setModel: (sessionId, model) => hosts.setModel(sessionId, model),
+      setEffort: (sessionId, effort) => hosts.setEffort(sessionId, effort),
       setPermissionMode: (sessionId, mode) => hosts.setPermissionMode(sessionId, mode),
       models: () => hosts.listModels(),
+      autoModel: () => ({ enabled: autoModel.enabled, allowed: [...autoModel.allowed] }),
+      usage: (profileId, refresh) => usageFor(profileId).get(refresh),
+      // `asker` is made further down; a phone can only ask once the engine is running.
+      ask: (sessionId, question, threadId, replaces) => asker.ask(sessionId, question, threadId, replaces),
+      askThreads: (sessionId) => asker.list(sessionId),
       catchUp: (sessionId) => catchUp.get(sessionId),
       changes: async (sessionId) => {
         const cwd = sessionCwd(sessionId);

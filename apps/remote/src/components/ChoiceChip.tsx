@@ -6,10 +6,14 @@ export interface ChoiceOption<T> {
   label: string;
   description?: string | undefined;
   dot?: string | undefined;
+  /** In front of the label instead of a dot (Auto's wand). */
+  icon?: ReactNode;
+  /** A line under it: Auto stands apart from the models. */
+  separatorAfter?: boolean;
 }
 
 /**
- * A quiet chip that shows a value (the model, "Effort: Medium") and opens a small list to pick another: the list is a
+ * A quiet chip that shows a value (the model, an effort with its gauge) and opens a small list to pick another: the list is a
  * listbox, arrow keys move, Enter picks, Escape and a tap outside close it. The mouse moves the same highlight as the
  * arrow keys (focus), so there is one row lit at a time; the chosen one has a check.
  */
@@ -23,10 +27,11 @@ export function ChoiceChip<T>({
   disabled,
   placement = 'below',
   hook,
+  spoken,
 }: {
   /** The full meaning, for screen readers and the list ("Effort"). */
   label: string;
-  /** What the chip shows ("Effort: Medium"). */
+  /** What the chip shows: only the value ("Medium"); `label` says what it is. */
   face: ReactNode;
   selected: T;
   options: ChoiceOption<T>[];
@@ -35,6 +40,8 @@ export function ChoiceChip<T>({
   disabled?: boolean;
   placement?: 'below' | 'above';
   hook?: string;
+  /** What a screen reader hears for the chip, when the face says more than the chosen option ("Model: Auto picked Sonnet"). */
+  spoken?: string;
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -63,7 +70,7 @@ export function ChoiceChip<T>({
         ref={button}
         type="button"
         disabled={disabled}
-        aria-label={`${label}: ${options.find((o) => o.value === selected)?.label ?? ''}`}
+        aria-label={spoken ?? `${label}: ${options.find((o) => o.value === selected)?.label ?? ''}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
@@ -98,7 +105,7 @@ export function ChoiceChip<T>({
         >
           {options.map((option, index) => {
             const isSelected = option.value === selected;
-            return (
+            return [
               <li
                 key={index}
                 role="option"
@@ -114,14 +121,15 @@ export function ChoiceChip<T>({
                 }}
                 className="flex min-h-11 shrink-0 cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 outline-none pointer-fine:min-h-8 pointer-fine:py-1.5 focus:bg-accent/15"
               >
-                {option.dot && <span aria-hidden className={`mt-1.5 size-2 shrink-0 rounded-full ${option.dot}`} />}
+                {option.icon ?? (option.dot && <span aria-hidden className={`mt-1.5 size-2 shrink-0 rounded-full ${option.dot}`} />)}
                 <span className="min-w-0 flex-1">
                   <span className="block text-ui">{option.label}</span>
                   {option.description && <span className="block text-meta text-muted">{option.description}</span>}
                 </span>
                 <Check aria-hidden className={`mt-0.5 size-3.5 shrink-0 text-accent-ink ${isSelected ? '' : 'invisible'}`} />
-              </li>
-            );
+              </li>,
+              option.separatorAfter && <li key={`${index}-line`} role="presentation" aria-hidden className="mx-2 my-1 shrink-0 border-t border-border" />,
+            ];
           })}
         </ul>
       )}

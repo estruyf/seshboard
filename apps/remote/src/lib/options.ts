@@ -1,4 +1,4 @@
-import type { Effort, PermissionMode, RemoteOptions, RemotePermissionMode, RemoteProfile } from '@switchboard/protocol/remote-client';
+import { AUTO_MODEL, AUTO_TIERS, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteSession } from '@switchboard/protocol/remote-client';
 
 /**
  * New session's choices on a phone, worded as on the computer (apps/ui `lib/modes.ts`, `newSession/route.ts`). Pure,
@@ -75,9 +75,11 @@ export function projectProfile(options: RemoteOptions | null, projectId: string 
 export function defaultChoice(options: RemoteOptions | null, projectId: string | null, profileId: string = projectProfile(options, projectId)): Choice {
   const project = options?.projects.find((p) => p.id === projectId)?.defaults;
   const profile = profilesOf(options).find((p) => p.id === profileId)?.defaults;
+  const model = project?.model ?? profile?.model ?? null;
   return {
     profileId,
-    model: project?.model ?? profile?.model ?? null,
+    // A default of Auto while Auto is off starts on the default model, as on the computer.
+    model: model === AUTO_MODEL && !autoOn(options) ? null : model,
     effort: project?.effort ?? profile?.effort ?? null,
     permissionMode: project?.permissionMode ?? profile?.permissionMode ?? 'default',
     worktree: project?.worktree ?? profile?.worktree ?? false,
@@ -102,6 +104,7 @@ export const isRemoteMode = (mode: PermissionMode): mode is RemotePermissionMode
 
 /** A model's name as the list has it ("Opus"); a full id the list doesn't know as written; null is the default. */
 export function modelLabel(models: RemoteOptions['models'], value: string | null): string {
+  if (value === AUTO_MODEL) return 'Auto';
   if (!value) return models.find((m) => m.value === 'default')?.displayName ?? 'Default model';
   const known = models.find((m) => m.value === value);
   if (known) return known.displayName;
@@ -111,3 +114,22 @@ export function modelLabel(models: RemoteOptions['models'], value: string | null
 
 /** Whether a model takes an effort (the default one does). */
 export const takesEffort = (models: RemoteOptions['models'], value: string | null) => !value || (models.find((m) => m.value === value)?.supportsEffort ?? true);
+
+/** Auto is on in Settings › Conversation (a Switchboard from before phones knew it says nothing: off). */
+export const autoOn = (options: RemoteOptions | null) => options?.auto?.enabled ?? false;
+
+/** "Sonnet or Opus", "Haiku, Sonnet or Opus": the models Auto may pick, in tier order. */
+export function tierList(tiers: readonly AutoTier[]): string {
+  const names = AUTO_TIERS.filter((t) => tiers.includes(t)).map(tierLabel);
+  return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`;
+}
+
+/** Auto's line in the model list, as on the computer. */
+export const autoDescription = (allowed: readonly AutoTier[]) => `Haiku reads your prompt and picks ${tierList(allowed)}. Picked once, when the session starts.`;
+
+/** What a running session's model chip says about Auto: "Auto" while it picks, then what it picked; null without Auto. */
+export function autoFace(auto: RemoteSession['auto']): string | null {
+  if (!auto) return null;
+  if (auto.choosing) return 'Auto';
+  return `Auto · ${auto.picked ? tierLabel(auto.picked) : 'Default model'}`;
+}

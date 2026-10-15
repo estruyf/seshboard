@@ -14,6 +14,7 @@ import {
   type RemoteSessionProfile,
   type RemoteSessionOptions,
   type RemoteSessions,
+  type SessionHostInfo,
   type TranscriptBlock,
   type TranscriptMessage,
 } from '@switchboard/protocol';
@@ -60,10 +61,19 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     unread: flags.get(s.id)?.unread ?? false,
     pinned: flags.get(s.id)?.pinned ?? false,
     model: running.get(s.id)?.model ?? null,
+    effort: running.get(s.id)?.effort ?? null,
     permissionMode: running.get(s.id)?.permissionMode ?? null,
     profile: profileOf(running.get(s.id)?.profileId ?? flags.get(s.id)?.profileId ?? live.get(s.id)?.profileId),
+    auto: autoOf(running.get(s.id)),
   }));
   return { sessions, prompts: promptsFor(sources.permissions ?? [], listed).map(remotePrompt) };
+}
+
+/** What Auto did for a running session, as its model chip shows it: nothing once you changed the model yourself. */
+export function autoOf(host: Pick<SessionHostInfo, 'autoPick' | 'autoChoosing'> | undefined): RemoteSession['auto'] {
+  if (host?.autoChoosing) return { picked: null, choosing: true };
+  const pick = host?.autoPick;
+  return pick && !pick.left ? { picked: pick.model, choosing: false } : null;
 }
 
 export const remotePrompt = (p: PermissionRequest): RemotePrompt => ({

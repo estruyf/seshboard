@@ -3,7 +3,7 @@ import { ChevronLeft, Search } from 'lucide-react';
 import type { RemoteOptions, RemoteProject, RemoteSession } from '@switchboard/protocol/remote-client';
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer } from '../lib/media.ts';
-import { changedFrom, defaultChoice, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
+import { autoOn, changedFrom, defaultChoice, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
 import { lastProject, rememberProject } from '../lib/storage.ts';
 import type { Client } from './Connected.tsx';
 import { EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip } from './OptionChips.tsx';
@@ -212,7 +212,7 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choices for this session">
                   <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} />
-                  <ModelChip options={options} value={choice.model} onPick={(model) => change({ model })} />
+                  <ModelChip options={options} value={choice.model} offerAuto={autoOn(options)} onPick={(model) => change({ model })} />
                   {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} />}
                   <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} />
                   <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} />

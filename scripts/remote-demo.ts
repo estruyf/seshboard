@@ -12,7 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CatchUp, GitChanges, PermissionRequest, SessionHostInfo, SessionSummary, TranscriptMessage, TranscriptUpdate } from '@switchboard/protocol';
+import type { AskThread, CatchUp, GitChanges, PermissionRequest, SessionHostInfo, SessionSummary, TranscriptMessage, TranscriptUpdate } from '@switchboard/protocol';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub } from '../packages/engine/src/remote/remoteHub.ts';
@@ -90,9 +90,11 @@ const hosts = (): SessionHostInfo[] =>
         sessionId: s.id,
         cwd: s.root,
         state: s.state === 'needs-you' && !permissions.some((p) => p.sessionId === s.id) ? 'idle' : s.state,
-        model: models.has(s.id) ? models.get(s.id) : 'opus',
+        model: models.has(s.id) ? models.get(s.id) : s.state === 'running' ? 'sonnet' : 'opus',
         permissionMode: modes.get(s.id) ?? 'default',
-        effort: 'medium',
+        effort: efforts.has(s.id) ? efforts.get(s.id) : 'medium',
+        // The working session started on Auto, which picked Sonnet, until you pick a model yourself.
+        autoPick: s.state === 'running' && !models.has(s.id) ? { model: 'sonnet' as const, reason: 'A focused change to one form', at: now, tokens: 420, allowed: ['haiku' as const, 'sonnet' as const, 'opus' as const] } : null,
         costUsd: 0,
         contextPercent: 20,
         contextTokens: null,
@@ -144,6 +146,7 @@ let permissions: PermissionRequest[] = [
 const archived = new Set<string>();
 const models = new Map<string, string | null>();
 const modes = new Map<string, string>();
+const efforts = new Map<string, SessionHostInfo['effort']>();
 let committed = false;
 
 const CHANGES: GitChanges = {
@@ -306,6 +309,42 @@ function streamReply(sessionId: string) {
   }, 120);
 }
 
+/** Ask about this session: the demo's threads per session, and a made-up answer that streams in. */
+const askThreads = new Map<string, AskThread[]>();
+const ASK_ANSWER = 'It changed **2 files**:\n\n- `src/webhooks/limit.ts`: a token bucket per endpoint, 60 requests a minute.\n- `src/webhooks/limit.test.ts`: tests for the limit and its reset.\n\nThe tests pass. Nothing else was touched.';
+
+function demoAsk(sessionId: string, question: string, threadId?: string): { threadId: string; id: string; at: number } {
+  const threads = askThreads.get(sessionId) ?? [];
+  askThreads.set(sessionId, threads);
+  const at = Date.now();
+  const id = `ask-${at}`;
+  let thread = threads.find((t) => t.id === threadId);
+  if (!thread) {
+    thread = { id: `thread-${at}`, title: question.slice(0, 80), createdAt: at, items: [] };
+    threads.unshift(thread);
+  }
+  const words = ASK_ANSWER.split(/(?<= )/);
+  let sent = 0;
+  const timer = setInterval(() => {
+    if (sent < words.length) {
+      hub.askEvent({ sessionId, threadId: thread.id, id, delta: words.slice(sent, sent + 3).join('') });
+      sent += 3;
+      return;
+    }
+    clearInterval(timer);
+    thread.items.push({ id, question, answer: ASK_ANSWER, at });
+    hub.askEvent({ sessionId, threadId: thread.id, id, done: true, answer: ASK_ANSWER });
+  }, 80);
+  return { threadId: thread.id, id, at };
+}
+
+/** Each demo profile's plan: the 5-hour window and the week, as Claude Code's /usage reports them. */
+const limit = (kind: string, percent: number, resetsInMinutes: number) => ({ kind, group: kind === 'session' ? 'session' : 'weekly', percent, resetsAt: now + resetsInMinutes * MINUTE, scope: null, severity: percent >= 85 ? 'critical' : percent >= 60 ? 'warning' : 'normal', isActive: true });
+const USAGE = {
+  default: { fetchedAt: now, limits: [limit('session', 44, 182), limit('weekly_all', 58, 122)], extraUsage: null },
+  work: { fetchedAt: now, limits: [limit('session', 91, 212), limit('weekly_all', 5, 60 * 24 * 5 + 4 * 60)], extraUsage: null },
+};
+
 const hub: RemoteHub = new RemoteHub({
   db: cache.db,
   appState,
@@ -344,13 +383,18 @@ const hub: RemoteHub = new RemoteHub({
     else if (flags.archived === false) archived.delete(sessionId);
   },
   setModel: async (sessionId, model) => void models.set(sessionId, model),
+  setEffort: async (sessionId, effort) => void efforts.set(sessionId, effort),
   setPermissionMode: async (sessionId, mode) => void modes.set(sessionId, mode),
+  autoModel: () => ({ enabled: true, allowed: ['haiku', 'sonnet', 'opus'] }),
   models: () => [
     { value: 'default', displayName: 'Default', description: 'Opus for planning, Sonnet for the rest', supportsEffort: true },
     { value: 'opus', displayName: 'Opus', description: 'Most capable for complex work', supportsEffort: true },
     { value: 'sonnet', displayName: 'Sonnet', description: 'Best for everyday tasks', supportsEffort: true },
     { value: 'haiku', displayName: 'Haiku', description: 'Fastest for quick answers', supportsEffort: false },
   ],
+  ask: (sessionId, question, threadId) => demoAsk(sessionId, question, threadId),
+  askThreads: (sessionId) => ({ threads: askThreads.get(sessionId) ?? [] }),
+  usage: async (profileId) => ({ usage: USAGE[profileId as keyof typeof USAGE] ?? null, error: null }),
   catchUp: (sessionId) => (sessionId === CATCH_UP.sessionId && !committed ? CATCH_UP : null),
   changes: async () => (committed ? { ...CHANGES, files: [] } : CHANGES),
   diff: async () => ({ diff: DIFF, truncated: false }),
