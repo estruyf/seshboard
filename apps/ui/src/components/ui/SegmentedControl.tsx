@@ -115,13 +115,13 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
             aria-label={segment.ariaLabel ?? (segment.iconOnly ? segment.label : undefined)}
             aria-keyshortcuts={segment.kbd ? ariaShortcut(storedShortcut(segment.kbd)) : undefined}
             data-tooltip={segment.tooltip ?? (segment.iconOnly ? segment.label : undefined)}
-            className={`relative flex h-full ${fill ? 'min-w-0 flex-1' : 'shrink-0'} items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 ${behind ? 'bg-selected/40 text-muted hover:text-text' : on ? 'bg-selected text-text' : 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text'}`}
+            className={`relative flex h-full ${fill ? 'min-w-0 flex-auto' : 'shrink-0'} items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 ${behind ? 'bg-selected/40 text-muted hover:text-text' : on ? 'bg-selected text-text' : 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text'}`}
             data-segment-front={on && segment.front !== undefined ? segment.front : undefined}
             {...aria}
             {...segment.data}
           >
             {segment.icon}
-            {!segment.iconOnly && <span>{segment.label}</span>}
+            {!segment.iconOnly && <span className={fill ? 'truncate' : undefined}>{segment.label}</span>}
             {segment.badge ? <span className="text-meta tabular-nums">{segment.badge}</span> : null}
             {segment.dot && <span className={`absolute top-1 right-1 size-1.5 rounded-full ${segment.dot === 'link' ? 'bg-link' : 'bg-ok'}`} aria-hidden />}
             {on && segment.front === true && <span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-accent-ink" aria-hidden />}
