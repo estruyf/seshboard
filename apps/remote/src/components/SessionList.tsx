@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Plus, Search, X } from 'lucide-react';
-import type { RemotePrompt, RemoteSessions } from '@switchboard/protocol/remote-client';
+import type { RemotePrompt, RemoteSession, RemoteSessions } from '@switchboard/protocol/remote-client';
 import type { ConnectionState } from '../lib/connection.ts';
 import { filterCounts, filterList, visibleFilter, type ListFilter } from '../lib/filter.ts';
 import { age, GROUP_LABEL, groupSessions, type SessionGroup } from '../lib/groups.ts';
 import type { Client } from './Connected.tsx';
 import { ConnectionChip } from './ConnectionStatus.tsx';
-import { MenuButton, type MenuItem } from './Menu.tsx';
+import { ContextMenu, MenuButton, menuPoint, type MenuItem, type MenuPoint } from './Menu.tsx';
 import { NeedsYouCard } from './NeedsYouCard.tsx';
 import { promptShort } from '../lib/prompts.ts';
+import { toast } from './Toasts.tsx';
 import { useLeaving } from './useLeaving.ts';
 import { Button, Kbd, Logo, PROFILE_RAIL, SectionHeader, STATUS_RAIL, StatusDot } from './ui.tsx';
 
@@ -49,6 +50,9 @@ export function useNow(): number {
  *
  * On a wide screen it is the sidebar: the search opens the palette, prompts are rows in Needs you (their cards are on
  * the home view), rows are the desktop's size, and New session sits at the bottom next to the `⋯` menu.
+ *
+ * A right-click on a row (a long press, where the browser allows it) has Mark as read and Archive, as the session's
+ * own `⋯` menu does.
  */
 export function SessionList({
   sessions,
@@ -63,6 +67,7 @@ export function SessionList({
   onNew,
   onHelp,
   onRefresh,
+  onArchived,
   top,
   wide = false,
   onPalette,
@@ -79,6 +84,8 @@ export function SessionList({
   onNew: () => void;
   onHelp: () => void;
   onRefresh: () => void;
+  /** A session was archived from its row: leave it if it is open. */
+  onArchived: (sessionId: string) => void;
   /** Above everything in the list: the offer to turn on notifications. */
   top?: ReactNode;
   /** The sidebar of the wide layout. */
@@ -105,6 +112,24 @@ export function SessionList({
   }, [sessions.prompts]);
   const byId = useMemo(() => new Map(sessions.sessions.map((s) => [s.id, s])), [sessions.sessions]);
   const offline = state.kind !== 'connected';
+  const [rowMenu, setRowMenu] = useState<{ session: RemoteSession; point: MenuPoint; row: HTMLElement } | null>(null);
+  const closeRowMenu = useCallback(() => setRowMenu(null), []);
+  const failed = () => toast("That didn't reach your computer.", { tone: 'error' });
+  const rowItems = (session: RemoteSession): MenuItem[] => [
+    { label: 'Mark as read', disabled: !client || !session.unread, onSelect: () => void client?.call('session.markRead', { sessionId: session.id }).catch(failed) },
+    {
+      label: 'Archive',
+      disabled: !client,
+      onSelect: () =>
+        void client
+          ?.call('session.setFlags', { sessionId: session.id, archived: true })
+          .then(() => {
+            toast('Archived', { detail: session.title });
+            onArchived(session.id);
+          })
+          .catch(failed),
+    },
+  ];
 
   const choose = (next: ListFilter) => {
     setChosen(next);
@@ -237,6 +262,17 @@ export function SessionList({
                     <button
                       type="button"
                       onClick={() => onOpen(session.id)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setRowMenu({ session, point: menuPoint(event, event.currentTarget), row: event.currentTarget });
+                      }}
+                      onKeyDown={(event) => {
+                        // Shift+F10 or the menu key, as a right-click (not every browser sends one for them).
+                        if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+                        event.preventDefault();
+                        setRowMenu({ session, point: menuPoint({ clientX: 0, clientY: 0 }, event.currentTarget), row: event.currentTarget });
+                      }}
+                      aria-haspopup="menu"
                       aria-current={selected ? 'page' : undefined}
                       data-remote-session={session.id}
                       data-remote-nav="row"
@@ -261,6 +297,7 @@ export function SessionList({
           </section>
         ))}
       </nav>
+      {rowMenu && <ContextMenu label={`Session “${rowMenu.session.title}”`} items={rowItems(rowMenu.session)} point={rowMenu.point} owner={rowMenu.row} onClose={closeRowMenu} />}
       <footer className={`safe-bottom border-t border-border bg-inherit pt-2 ${wide ? 'px-3' : 'px-4'}`}>
         <div className="flex items-center gap-1">
           <Button variant="primary" onClick={onNew} aria-pressed={newOpen} disabled={offline} className="flex-1" data-remote-new>

@@ -27,9 +27,6 @@ const PAGE = 50;
 /** The connection dropped while it was asked: the banner says so, not an error line. */
 const lostConnection = (error: unknown) => (error as { code?: string }).code === 'DISCONNECTED';
 
-/** What the quick replies send, in the order they show. */
-const QUICK_REPLIES = ['Continue', 'Run the tests', 'Open a PR'] as const;
-
 /**
  * One session: its conversation (the last page, older pages on request, live updates), what Claude is writing, the
  * prompts it waits on (docked above the message box), Up next and the message box. A finished session starts with its
@@ -164,7 +161,6 @@ export function SessionView({
   ];
   const open = prompts[0];
   const card = showsCatchUp(catchUp, working, Boolean(open)) ? catchUp : null;
-  const idle = !working && !open;
   const files = changes?.files.length ?? 0;
   const send = (text: string, images: RemoteImage[] = []) => client!.call('session.send', { sessionId, text, mode: 'queue', images }).then(() => setUnfolded(true));
   const askToFix = (path: string | null) => {
@@ -263,26 +259,6 @@ export function SessionView({
         )}
         {queue.length > 0 && <UpNext queue={queue} onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))} />}
         <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} />
-        {idle && session && (
-          <div className="px-3 pt-2 sm:px-6" role="group" aria-label="Quick replies">
-            <div className="scroll-row mx-auto flex w-full max-w-3xl gap-1.5">
-              {QUICK_REPLIES.map((reply) => (
-                <button key={reply} type="button" disabled={!client} onClick={() => void send(reply).catch(fail)} className="flex min-h-9 shrink-0 items-center rounded-full border border-edge px-3 text-ui hover:bg-border/45 disabled:opacity-50 pointer-fine:min-h-7" data-remote-quick={reply}>
-                  {reply}
-                </button>
-              ))}
-              <button
-                type="button"
-                disabled={!client}
-                onClick={() => void client?.call('session.markRead', { sessionId }).then(onLeave, fail)}
-                className="flex min-h-9 shrink-0 items-center rounded-full border border-edge px-3 text-ui text-muted hover:bg-border/45 disabled:opacity-50 pointer-fine:min-h-7"
-                data-remote-quick="read"
-              >
-                Mark as read
-              </button>
-            </div>
-          </div>
-        )}
         <Composer
           fill={fill}
           chips={
