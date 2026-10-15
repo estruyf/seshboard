@@ -112,7 +112,7 @@ import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteS
 /** Requests the session view answers, because the dialog or menu they open lives there. */
 export type SessionRequest = 'commit' | 'create-pr' | 'branch-menu' | 'edit-actions' | 'new-action' | 'side-ask' | 'side-show';
 /** Requests the New session view answers: they change its own choices. */
-export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up';
+export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up' | 'add-project';
 
 /** What commands do, implemented against the stores in `paletteApi.ts` (and faked in tests). */
 export interface PaletteApi {
@@ -372,7 +372,8 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'import-theme', title: 'Import theme…', group: 'general', icon: Upload, keywords: 'colours colors json file', when: always, run: (api) => api.importTheme() },
   { id: 'export-theme', title: 'Export current theme…', group: 'general', icon: Download, keywords: 'colours colors json file save', when: always, run: (api) => api.exportTheme() },
   { id: 'manage-projects', title: 'Manage projects', group: 'general', icon: FolderCog, keywords: 'folders defaults', when: (ctx) => ctx.view !== 'projects', run: (api) => api.manageProjects() },
-  { id: 'add-project', title: 'Add project…', group: 'general', icon: FolderPlus, keywords: 'folder', when: always, run: (api) => api.addProject() },
+  // In New session the project added is picked there too.
+  { id: 'add-project', title: 'Add project…', group: 'general', icon: FolderPlus, keywords: 'folder', when: always, run: (api, ctx) => (ctx.newSession ? api.newSessionRequest('add-project') : api.addProject()) },
   {
     id: 'worktrees-here',
     title: (ctx) => `Worktrees in ${ctx.currentProject?.name ?? 'this project'}`,
@@ -704,6 +705,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'close-other-panes', title: 'Close other panes', group: 'panes', shortcut: keysFor('pane.close-other'), icon: PanelsTopLeft, keywords: 'split tile only keep', when: panes, run: (api) => api.closeOtherPanes() },
 
   // New session is on screen
+
   { id: 'toggle-worktree', title: 'Toggle worktree', group: 'new-session', icon: FolderGit2, keywords: 'isolated checkout', when: (ctx) => !!ctx.newSession?.canWorktree, run: (api) => api.newSessionRequest('toggle-worktree') },
   { id: 'save-defaults', title: 'Save as project default', group: 'new-session', icon: Save, keywords: 'model effort mode', when: (ctx) => !!ctx.newSession?.canSaveDefaults, run: (api) => api.newSessionRequest('save-defaults') },
   { id: 'catch-up', title: 'Update from remote', group: 'new-session', icon: CloudDownload, keywords: 'git pull fetch sync latest', when: (ctx) => !!ctx.newSession?.canCatchUp, run: (api) => api.newSessionRequest('catch-up') },

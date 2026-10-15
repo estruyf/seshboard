@@ -55,6 +55,7 @@ export const sidebar = [
     items: ['settings', 'settings/sessions', 'settings/notifications', 'settings/claude-profiles', 'settings/updates', 'settings/backup'],
   },
   'vscode-companion',
+  'remote-access',
   'links',
   'troubleshooting',
   { label: 'Changelog', link: '/changelog/' },

@@ -4,7 +4,7 @@ Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working o
 
 ## Architecture
 
-Switchboard is an Electron app in four npm workspaces, plus its VS Code companion extension and its website:
+Switchboard is an Electron app in four npm workspaces, plus its VS Code companion extension, its website and the remote app for phones:
 
 | Path | What it is | Rules |
 |---|---|---|
@@ -13,6 +13,7 @@ Switchboard is an Electron app in four npm workspaces, plus its VS Code companio
 | `apps/desktop` | Electron main process, preload, and the engine entry | Main does what needs Electron: windows, menus, dialogs, notifications, the Trash, preferences. The preload is sandboxed and exposes `window.switchboard`. |
 | `apps/ui` | React 19 renderer, Tailwind 4, zustand | Talks to the engine only through the RPC client, and to main only through `window.switchboard`. |
 | `website` | The website and docs (Astro + Starlight), published to GitHub Pages by `website.yml` | Pages are MDX in `website/src/content/docs/`. Colours come from the app's `--sb-*` tokens (`website/src/styles/switchboard.css`); keys use `<Kbd shortcut="…">` from the shortcuts registry, which renders them for macOS and Windows (the reader picks in the header), and `<Os>`/`<OnlyOn>` hold words and passages that differ by platform. Every feature is listed in `website/src/content/features.json`, which a test checks against the palette commands, shortcuts, Settings sections and project tabs. |
+| `apps/remote` | The remote app (React, Tailwind), built into the website at `/remote/` | A paired phone's view of the sessions, over an end-to-end encrypted channel through a tunnel ([docs/remote-access.md](docs/remote-access.md)). Talks to the engine only through `@switchboard/protocol/remote-client` (no zod) and the remote contract, never the app's. Transcripts are rendered as text, never HTML. Pure logic (links, transcript merging) lives in `src/lib` with tests next to it. |
 | `apps/vscode-extension` | The VS Code companion, bundled with esbuild into `dist/extension.cjs` | Talks to the engine only over its Unix socket (`packages/engine/src/companion/`), through `@switchboard/protocol/companion-client` (no zod). Pure logic (payloads, exclusions, discovery, which session) lives in modules without `vscode` imports, with tests next to them. Released on its own (`release-vscode.yml`, tags `vscode-vX.Y.Z`); see [docs/vscode-companion.md](docs/vscode-companion.md). |
 
 The path of a feature is usually: add the request or event to `packages/protocol/src/contract.ts`, handle it in `packages/engine/src/engine.ts` (logic in a module next to it), and call it from the UI with `client.call(...)` / `client.on(...)`.
@@ -34,6 +35,7 @@ npm run check        # typecheck every package + unit tests (Vitest)
 npm run smoke        # build, launch the real app with a throwaway profile, drive the UI
 npm run screenshots  # retake the README screenshots in a made-up demo home folder
 npm run dev:vscode   # rebuild the VS Code companion on every change (F5 in VS Code runs it in a dev host)
+npm run dev:remote   # the remote app at http://localhost:5199/remote/ (start the app with SWITCHBOARD_REMOTE_APP_URL set to it)
 npm run website:dev  # the website and docs with hot reload
 npm run website:build          # build the website; fails on a broken internal link
 npm run website:screenshots    # retake the website's screenshots in a made-up demo home folder

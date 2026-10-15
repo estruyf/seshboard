@@ -1,0 +1,149 @@
+import { useEffect, useState, type ReactNode } from 'react';
+import { ChevronLeft, Search } from 'lucide-react';
+import type { RemoteProject, RemoteSession } from '@switchboard/protocol/remote-client';
+import { projectStatus, type TileTone } from '../lib/groups.ts';
+import { useFinePointer } from '../lib/media.ts';
+import type { Client } from './Connected.tsx';
+import { Button } from './ui.tsx';
+
+const TONE_DOT: Record<TileTone, string> = { 'needs-you': 'bg-warn', working: 'bg-accent-ink', idle: 'bg-faint' };
+const TONE_TEXT: Record<TileTone, string> = { 'needs-you': 'text-warn', working: 'text-accent-ink', idle: 'text-muted' };
+/** More than this and a filter field shows above the tiles. */
+const FILTER_FROM = 7;
+const START_KEYS = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘↵' : 'Ctrl+Enter';
+
+/**
+ * New session in one of your projects, the ones you added in Switchboard, with that project's defaults for model,
+ * effort and mode. The tiles say what's going on in each, as on the computer.
+ */
+export function NewSession({ client, sessions, banner, onBack, onStarted }: { client: Client; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; onStarted: (sessionId: string) => void }) {
+  const [projects, setProjects] = useState<RemoteProject[] | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fine = useFinePointer();
+
+  useEffect(() => {
+    if (!client) return;
+    void client.call('projects.list', {}).then(
+      ({ projects }) => {
+        setProjects(projects);
+        if (projects.length === 1) setProjectId(projects[0]!.id);
+      },
+      (e: Error) => setError(e.message),
+    );
+  }, [client]);
+
+  const ready = Boolean(client && projectId && prompt.trim() && !busy);
+  const start = async () => {
+    if (!ready) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim() });
+      onStarted(sessionId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The session didn't start.");
+      setBusy(false);
+    }
+  };
+
+  const now = Date.now();
+  const needle = filter.trim().toLowerCase();
+  const shown = projects?.filter((p) => !needle || p.name.toLowerCase().includes(needle) || p.id === projectId) ?? [];
+
+  return (
+    <div className="flex h-full flex-col">
+      <header className={`safe-top flex items-center gap-2 border-b border-border pb-2 pointer-fine:pb-2.5 ${onBack ? 'px-2' : 'px-5'}`}>
+        {onBack && (
+          <Button variant="quiet" onClick={onBack} aria-label="Back" className="px-2!">
+            <ChevronLeft className="size-5" aria-hidden />
+          </Button>
+        )}
+        <h1 className="text-title font-semibold">New session</h1>
+      </header>
+      {banner}
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-8">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+          <section aria-labelledby="pick-project" className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <h2 id="pick-project" className="flex-1 text-meta font-semibold tracking-wide text-faint uppercase">
+                Project
+              </h2>
+              {projects && projects.length >= FILTER_FROM && (
+                <label className="flex items-center gap-1.5 rounded-lg border border-edge bg-card px-2 focus-within:border-accent-ink">
+                  <Search className="size-3.5 text-faint" aria-hidden />
+                  <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter" aria-label="Filter projects" className="min-h-9 w-32 bg-transparent text-body outline-none placeholder:text-faint pointer-fine:min-h-7 pointer-fine:text-ui" />
+                </label>
+              )}
+            </div>
+            {projects === null && !error && <p className="text-ui text-muted">Loading projects…</p>}
+            {projects?.length === 0 && <p className="rounded-lg bg-sidebar p-3 text-ui text-muted">Add a project in Switchboard on your computer first. New sessions start in the projects you added there.</p>}
+            <div role="radiogroup" aria-labelledby="pick-project" className="grid gap-2 sm:grid-cols-2">
+              {shown.map((project) => {
+                const picked = projectId === project.id;
+                const status = projectStatus(project.id, sessions, now);
+                return (
+                  <button
+                    key={project.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={picked}
+                    onClick={() => setProjectId(project.id)}
+                    data-remote-project={project.id}
+                    className={`flex min-h-14 flex-col justify-center gap-0.5 rounded-xl border bg-card px-3 py-2 text-left transition-colors ${picked ? 'border-accent-ink ring-4 ring-accent/20' : 'border-edge hover:bg-border/45'}`}
+                  >
+                    <span className="truncate text-body font-medium">{project.name}</span>
+                    <span className={`flex items-center gap-1.5 text-meta ${TONE_TEXT[status.tone]}`}>
+                      <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[status.tone]}`} />
+                      {status.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {projects && projects.length > 0 && shown.length === 0 && <p className="text-ui text-muted">No project matches.</p>}
+          </section>
+
+          <form
+            className={`flex flex-col gap-2 rounded-xl border bg-card p-2 pl-3 focus-within:border-accent-ink ${projectId ? 'border-edge' : 'border-border'}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void start();
+            }}
+          >
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  void start();
+                }
+              }}
+              rows={4}
+              placeholder="What should Claude do?"
+              aria-label="What should Claude do?"
+              data-remote-new-prompt
+              className="min-h-24 resize-none bg-transparent py-1 text-body text-text outline-none [field-sizing:content] placeholder:text-faint"
+            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+              {!projectId && <span className="text-meta text-faint sm:mr-auto">Pick a project first.</span>}
+              <Button type="submit" variant="primary" disabled={!ready} data-remote-start className="w-full sm:w-auto">
+                Start session
+                {fine && <kbd className="font-sans text-meta font-normal opacity-70">{START_KEYS}</kbd>}
+              </Button>
+            </div>
+          </form>
+          {error && (
+            <p role="alert" className="rounded-lg bg-error/10 px-3 py-2 text-ui text-error">
+              {error}
+            </p>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}

@@ -1,5 +1,5 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon, Smartphone } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
@@ -11,6 +11,7 @@ import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
 import { useSidebar } from '../state/sidebarStore.ts';
 import { BackupSettings } from './backup/BackupSettings.tsx';
 import { CompanionSettings } from './companion/CompanionSettings.tsx';
+import { RemoteSettings } from './remote/RemoteSettings.tsx';
 import { EngineDiagnostics } from './EngineDiagnostics.tsx';
 import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
@@ -141,6 +142,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'profiles', label: 'Claude profiles', icon: Users },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
+  { id: 'remote', label: 'Remote', icon: Smartphone },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
   { id: 'about', label: 'About', icon: Info },
@@ -382,6 +384,15 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           description="The Switchboard extension for VS Code (also Cursor and Windsurf) sends what you're looking at in the editor to a session, as chips above the message box. Nothing goes to Claude until you send."
         >
           <CompanionSettings />
+        </Section>
+      );
+    case 'remote':
+      return (
+        <Section
+          title="Remote"
+          description="Follow your sessions from your phone, answer Claude when it needs you, and send prompts, wherever you are. Everything else stays on this computer."
+        >
+          <RemoteSettings />
         </Section>
       );
     case 'backup':
