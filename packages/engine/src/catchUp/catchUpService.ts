@@ -207,7 +207,7 @@ export class CatchUpService {
     const changes = cwd ? await this.options.changes(cwd).catch(() => null) : null;
     const exists = existsIn(changes?.root ?? cwd);
     let signals = signalsOf(turn, changes, cwd, false, exists);
-    let summary: Summary = fallbackSummary(turn, signals, outcome);
+    let summary: Summary = fallbackSummary(turn, signals, outcome, { reply: true });
     let source: CatchUp['source'] = 'fallback';
     if (this.options.useModel()) {
       const text = await this.options.summarize(this.options.profileOf(sessionId), sessionId, summaryInput(turn, signals)).catch(() => null);

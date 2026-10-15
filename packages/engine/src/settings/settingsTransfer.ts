@@ -55,6 +55,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   sidebarCollapsed: 'When the sidebar is collapsed',
   toolActivity: 'Tool activity',
   fileLinkClick: 'Clicking a file link',
+  promptOutline: 'Show prompt outline',
   confirmQuit: 'Ask before quitting',
   sessionScope: 'Sessions in the sidebar',
   startupView: 'On startup',

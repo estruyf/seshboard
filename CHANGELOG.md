@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### New
 
+- **Prompt outline.** A prompt outline beside the conversation: a mark for each of your prompts. Click one, or use **Previous prompt** and **Next prompt**, to jump back. Hover a mark to see the start of the prompt and when you sent it. The keys are ⌘⇧↑ and ⌘⇧↓ (Ctrl+Shift+↑ and Ctrl+Shift+↓ on Windows), and both are in the command palette. The outline shows from 3 prompts in a pane wide enough for it; turn it off with **Show prompt outline** in Settings › Conversation.
 - **Remote: change the effort of a running session.** Under the message box of a session that runs in Switchboard, a chip now shows its effort next to the model and mode. Tap it to pick **Low** to **Max**, or **Default** for the model's own. It shows only for a model that takes an effort. The effort chip now shows only the level with a gauge (**Medium**), and the chips wrap to a second line on a narrow phone instead of running off the screen.
 - **Remote: Auto model.** With Auto model on in Settings › Conversation, New session on your phone offers **Auto** first in the model list: Haiku reads your prompt and picks the model. A session Auto started shows what it picked on its model chip, such as **Auto · Sonnet**, until you pick another model.
 - **Remote: Ask about this session.** The blue question mark in a session's header asks Claude about the session from your phone, as on your computer: what changed, which files it touched, why it took this approach. Claude answers while it keeps working, and nothing is added to the conversation. Follow-ups, **New thread**, earlier threads, **Copy** and **Quote in message** work as in Switchboard, and the threads are the same on both. On a phone it opens as a sheet; in a wide window it sits on the right, in the place of Changes.
@@ -17,6 +18,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **Catch-up says what Claude said.** When Haiku doesn't write the catch-up (it is off, or it didn't answer in time), **What it did** starts with Claude's own account from the end of its reply, its opening sentence and the bold headings of a report, before the commands it ran. It used to list only the last few commands.
 - **Ask in the session's header.** The header's panel buttons now have **Ask** next to **Changes**, **Agents** and **Terminal**. It opens Ask on the right, brings it to the front when another panel is in front, or closes it. A blue dot on it says an answer is ready.
 - **Remote: Mark as read and Archive from the list.** Right-click a session in the list for **Mark as read** and **Archive**, without opening it. The quick replies above the message box (**Continue**, **Run the tests**, **Open a PR**, **Mark as read**) are gone: the session's **⋯** menu still has **Mark as read** and **Archive**.
 - **Message box: the model, effort and mode stay readable.** In a narrow window, the profile shrinks to its dot first, then the model drops its version, and the effort and mode labels go last.

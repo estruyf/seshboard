@@ -92,7 +92,7 @@ Off, no banner shows and Haiku is never called. You can still ask for one: run *
 
 ### What Haiku sees
 
-Haiku gets your prompt, Claude's last reply, a list of the tool calls (the tool, the file or command, and how it ended), the signals and the plan. It never sees what is in your files, a diff or your memory. Haiku has a few seconds; if it doesn't answer in time, the banner is written from the tool calls instead.
+Haiku gets your prompt, Claude's last reply, a list of the tool calls (the tool, the file or command, and how it ended), the signals and the plan. It never sees what is in your files, a diff or your memory. Haiku has a few seconds; if it doesn't answer in time, the banner is written without it: **What it did** starts with the opening sentence and the bold headings of Claude's last reply, followed by the tool calls ("Edited 6 files", "Ran npm run check").
 
 Each summary uses a few thousand Haiku tokens on the session's Claude profile, so it counts toward that plan. In [Usage](/usage/), they show as their own row, **Catch-up summaries**. The answers to **Why?** on a permission count there too.
 

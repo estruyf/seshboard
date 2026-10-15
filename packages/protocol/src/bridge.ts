@@ -166,6 +166,8 @@ export interface Preferences {
   toolActivity: ToolActivity;
   /** What a click on a file link in the conversation does (Settings › Conversation); Shift-click does the other. */
   fileLinkClick: FileLinkClick;
+  /** Settings › Conversation: "Show prompt outline", the rail beside the conversation with a mark for each of your prompts. */
+  promptOutline: boolean;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
   sessionScope: SessionScope;
@@ -216,6 +218,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarCollapsed: "minimal",
   toolActivity: "summary",
   fileLinkClick: "file-manager",
+  promptOutline: true,
   confirmQuit: true,
   sessionScope: "switchboard",
   startupView: "home",
@@ -348,6 +351,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   // An unknown value (a newer version's choice) is left out, so the default or the last good one stays.
   if (oneOf(["file-manager", "editor"] as const, raw.fileLinkClick))
     out.fileLinkClick = raw.fileLinkClick;
+  if (typeof raw.promptOutline === "boolean") out.promptOutline = raw.promptOutline;
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))
     out.sessionScope = raw.sessionScope;
