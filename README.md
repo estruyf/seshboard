@@ -55,7 +55,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - Follow what Claude does without the noise: each run of tool calls is one line ("Reading src/app.ts…", then "Ran 3 commands and edited 2 files"), and a click shows every step, with diffs, command output, to-do lists and subagent runs.
 - Images Claude reads or you attach are shown in the conversation.
 - Press **Esc** (or **Stop**) to stop Claude, **⇧Tab** to switch permission mode, and keep typing while it works: messages wait in **Up next** above the message box (edit, remove, reorder or **Send now** each one), or **Steer** Claude at its next step (Settings › Conversation picks what Enter does). **Stop session** under **⋯** in the header ends the Claude Code process; sending a message picks it up again.
-- **Side questions:** `/btw` and a question asks Claude about the session without adding it to the conversation, also while Claude works. The answer shows in a panel above the message box; `/btw` alone brings back earlier ones.
+- **Ask about this session:** the **Ask** button next to Send opens a panel on the right where you ask Claude about the session, also while it works. Claude answers from the conversation and the project, with read-only tools, and nothing is added to the conversation. Follow-ups stay in threads, and `/btw` and a question asks there too.
 - Change the model, permission mode and **effort** while a session runs, from the chips in the message box, and see how full the **context window** is under it. Click it for what fills it, like `/context`, and to compact the conversation.
 - **Agents** Claude starts, background ones included, are under **⋯** in the session header ("2 running"; a dot on **⋯** says some are); pick **Agents** to watch what each one is doing.
 - Continue any past session. If it's still open in a terminal, Switchboard offers to **fork** it instead, leaving the original untouched.
@@ -248,6 +248,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⇧↩ or ⌘⇧G | Previous match (in Find) |
 | ⇧-click | Open a file link the other way (on a file in the conversation; A click does what Settings › Conversation sets; this does the other) |
 | ⌘⇧D | Show or hide Changes |
+|  | Ask about this session (No key by default: use the Ask button next to Send, the command palette, or /btw) |
 | Esc | Restore the terminal (while it fills the view, outside the shell) |
 | ⌘K | Clear the terminal (in the terminal) |
 | ⌃C | Stop the action (in the terminal, while an action runs) |

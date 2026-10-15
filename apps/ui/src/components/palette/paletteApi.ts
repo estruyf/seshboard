@@ -6,6 +6,8 @@ import { useClaudeUpdate } from '../../state/claudeUpdateStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued, useLater } from '../../state/laterStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
+import { isAskOpen } from '../../state/askStore.ts';
+import { toggleChangesPanel } from '../../state/rightPanelStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { cleanUpWorktrees, openProject } from '../../state/projectPageStore.ts';
@@ -129,7 +131,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     checkTranscript: () => usePaletteBus.getState().showDialog({ kind: 'transcript-diagnosis', sessionId, title: session?.title ?? null }),
     toggleTerminal: () => owner && useTerminals.getState().togglePanel(owner),
     newTerminalTab: () => owner && call('open a terminal', (c) => openTerminal(c, owner, ctx.terminal.cwd, 'shell')),
-    toggleChanges: () => useOverlay.getState().toggleChanges(),
+    toggleChanges: () => toggleChangesPanel(isAskOpen(useSessions.getState().selectedId)),
     // After the palette's own close, so the Tools dialog isn't closed along with it.
     showTools: () => setTimeout(() => useOverlay.getState().show('tools')),
     openInEditor: () => cwd && void openIn(cwd).catch(failed('open the folder')),

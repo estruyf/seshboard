@@ -7,6 +7,8 @@ const HOUR = 3_600_000;
 
 /** The key of the Auto routing row: Haiku's calls that picked a model for new sessions. */
 export const AUTO_ROUTING_KEY = 'auto-routing';
+/** The key of the Side questions row: what Ask about this session used to answer. */
+export const SIDE_QUESTIONS_KEY = 'side-questions';
 
 /** `YYYY-MM-DD` of a moment in a time zone (UTC when the zone is unknown). */
 export function dayKeyFormatter(timeZone: string): (at: number) => string {
@@ -103,9 +105,12 @@ interface Group {
   models: Map<string, number>;
   /** Auto routing calls folded in. */
   picks: number;
+  /** Questions about a session folded in. */
+  asked: Set<string>;
 }
 
 interface Routed {
+  id: string;
   at: number;
   model: string;
   input: number;
@@ -146,7 +151,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   };
 
   const groups = new Map<string, Group>();
-  const newGroup = (key: string): Group => ({ key, tokens: empty(), turns: 0, fastTurns: 0, largestContext: 0, sessions: new Set(), models: new Map(), picks: 0 });
+  const newGroup = (key: string): Group => ({ key, tokens: empty(), turns: 0, fastTurns: 0, largestContext: 0, sessions: new Set(), models: new Map(), picks: 0, asked: new Set() });
   const totals = { tokens: empty(), sessions: new Set<string>(), turns: 0, fastTurns: 0, largestContext: 0 };
   const buckets = new Map<string, UsageBucket>();
   const bucketKey = (hour: number) => (bucket === 'hour' ? String(hour) : dayOf(hour));
@@ -182,18 +187,22 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   // Auto model's routing calls leave no transcript, so the scanner never sees them: they are kept apart and shown
   // as their own row (in Day, inside their day), so their tokens are never hidden.
   const routed = db
-    .prepare(`SELECT at, model, input, output, cache_read, cache_write FROM auto_routing WHERE scope = ? AND at >= ? AND at <= ? ${model ? 'AND model = ?' : ''}`)
+    .prepare(`SELECT id, at, model, input, output, cache_read, cache_write FROM auto_routing WHERE scope = ? AND at >= ? AND at <= ? ${model ? 'AND model = ?' : ''}`)
     .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Routed[];
-  for (const route of routed) {
-    const tokens: TokenCounts = { input: route.input, output: route.output, cacheRead: route.cache_read, cacheWrite: route.cache_write };
-    const hour = hourOf(route.at);
-    const key = groupBy === 'day' ? dayOf(hour) : AUTO_ROUTING_KEY;
+  // Ask about this session answers from a short-lived fork that leaves no transcript either: the same, as Side questions.
+  const asked = db
+    .prepare(`SELECT id, at, model, input, output, cache_read, cache_write FROM side_question_usage WHERE scope = ? AND at >= ? AND at <= ? ${model ? 'AND model = ?' : ''}`)
+    .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Routed[];
+  const addApart = (row: Routed, rowKey: string, count: (group: Group) => void) => {
+    const tokens: TokenCounts = { input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write };
+    const hour = hourOf(row.at);
+    const key = groupBy === 'day' ? dayOf(hour) : rowKey;
     let group = groups.get(key);
     if (!group) groups.set(key, (group = newGroup(key)));
     addTo(group.tokens, tokens);
     group.turns += 1;
-    group.picks += 1;
-    group.models.set(route.model, (group.models.get(route.model) ?? 0) + weightOf(tokens));
+    count(group);
+    group.models.set(row.model, (group.models.get(row.model) ?? 0) + weightOf(tokens));
     addTo(totals.tokens, tokens);
     totals.turns += 1;
     const b = buckets.get(bucketKey(hour));
@@ -201,7 +210,10 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
       addTo(b.tokens, tokens);
       b.turns += 1;
     }
-  }
+  };
+  for (const route of routed) addApart(route, AUTO_ROUTING_KEY, (group) => (group.picks += 1));
+  // One question can use more than one model: a row per model, `<question id>:<model>`.
+  for (const row of asked) addApart(row, SIDE_QUESTIONS_KEY, (group) => group.asked.add(row.id.slice(0, row.id.lastIndexOf(':'))));
   /** The model Auto picked for each session, for "· 4 by Auto" on the model rows. */
   const autoPicked =
     groupBy === 'model'
@@ -231,6 +243,9 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     const mainModel = [...g.models].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     if (g.key === AUTO_ROUTING_KEY && groupBy !== 'day') {
       return { key: g.key, label: 'Auto routing', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, largestContext: 0, share: share.share, measured: false, autoRouting: { picks: g.picks } };
+    }
+    if (g.key === SIDE_QUESTIONS_KEY && groupBy !== 'day') {
+      return { key: g.key, label: 'Side questions', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, largestContext: 0, share: share.share, measured: false, sideQuestions: { asked: g.asked.size } };
     }
     const base = { key: g.key, sessions: g.sessions.size, turns: g.turns, fastTurns: g.fastTurns, tokens: g.tokens, largestContext: g.largestContext, share: share.share, measured: share.measured };
     if (groupBy === 'session') {

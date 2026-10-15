@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinSideToken, SIDE_DESCRIPTION, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
+import { askFromBox, joinSideToken, SIDE_DESCRIPTION, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 
 const item = (name: string) => ({ value: `/${name}`, label: `/${name}`, detail: '' });
 const btw = { value: '/btw', label: '/btw', detail: SIDE_DESCRIPTION };
@@ -56,5 +56,18 @@ describe('/btw in the slash menu', () => {
 
   it('is left out when the query doesn’t match it', () => {
     expect(names(withSideCommand(commands, 'rev', btw))).toEqual(['/bug', '/batch', '/review']);
+  });
+});
+
+describe('the Ask button', () => {
+  it('asks what is in the box, and opens the panel when there is nothing to ask', () => {
+    expect(askFromBox('  Which files did it touch?\n')).toEqual({ kind: 'ask', question: 'Which files did it touch?' });
+    expect(askFromBox('')).toEqual({ kind: 'open' });
+    expect(askFromBox('   \n ')).toEqual({ kind: 'open' });
+  });
+
+  it('routes /btw and a question into the same ask, and a bare /btw to the panel', () => {
+    expect(askFromBox(splitSideToken('/btw What is left to do?').question)).toEqual({ kind: 'ask', question: 'What is left to do?' });
+    expect(askFromBox(splitSideToken('/btw ').question)).toEqual({ kind: 'open' });
   });
 });

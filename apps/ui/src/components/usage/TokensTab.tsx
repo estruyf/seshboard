@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, X, Zap } from 'lucide-react';
+import { MessageCircleQuestion, Search, X, Zap } from 'lucide-react';
 import type { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow } from '@switchboard/protocol/client';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useUsageView } from '../../state/usageViewStore.ts';
@@ -137,6 +137,24 @@ function AutoRoutingName({ model }: { model: string | null }) {
   );
 }
 
+/** The Side questions row's name: what Ask about this session used to answer (its fork leaves no transcript). */
+function SideQuestionsName({ model }: { model: string | null }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5" data-usage-side-questions>
+      <MessageCircleQuestion size={14} aria-hidden className="shrink-0 text-link" />
+      <span className="truncate font-medium">Side questions</span>
+      <span className="shrink-0 text-meta font-normal text-faint">· {modelName(model)}</span>
+    </span>
+  );
+}
+
+/** The name of a row whose tokens left no transcript (Auto routing, Side questions), or null for any other row. */
+function apartName(r: UsageRow): ReactNode | null {
+  if (r.autoRouting) return <AutoRoutingName model={r.model} />;
+  if (r.sideQuestions) return <SideQuestionsName model={r.model} />;
+  return null;
+}
+
 /** The columns for each grouping. Numbers are right-aligned in tabular figures. */
 function useColumns(groupBy: UsageGroup): Column[] {
   const projects = useProjects((s) => s.projects);
@@ -159,24 +177,32 @@ function useColumns(groupBy: UsageGroup): Column[] {
     { head: 'Cache read', width: '84px', align: 'right', cell: (r) => formatTokens(r.tokens.cacheRead), total: (rest) => formatTokens(rest.tokens.cacheRead) },
   ];
   const largest: Column = { head: 'Largest context', width: '76px', align: 'right', cell: (r) => formatTokens(r.largestContext) };
-  // The Auto routing row counts picks, not sessions.
-  const sessions: Column = { head: 'Sessions', width: '72px', align: 'right', cell: (r) => (r.autoRouting ? `${num(r.autoRouting.picks)} ${r.autoRouting.picks === 1 ? 'pick' : 'picks'}` : num(r.sessions)) };
+  // The Auto routing row counts picks, and Side questions questions, not sessions.
+  const sessions: Column = {
+    head: 'Sessions',
+    width: '72px',
+    align: 'right',
+    cell: (r) =>
+      r.autoRouting
+        ? `${num(r.autoRouting.picks)} ${r.autoRouting.picks === 1 ? 'pick' : 'picks'}`
+        : r.sideQuestions
+          ? `${num(r.sideQuestions.asked)} ${r.sideQuestions.asked === 1 ? 'question' : 'questions'}`
+          : num(r.sessions),
+  };
   if (groupBy === 'session') {
     return [
       {
         head: 'Session',
         width: 'minmax(160px,2fr)',
         cell: (r) =>
-          r.autoRouting ? (
-            <AutoRoutingName model={r.model} />
-          ) : (
+          apartName(r) ?? (
             <span className="flex min-w-0 items-center gap-2.5">
               {r.projectRoot && <ProjectIcon project={projects.get(r.projectRoot)} root={r.projectRoot} size={18} />}
               <span className="truncate font-medium">{r.label}</span>
             </span>
           ),
       },
-      { head: 'Project', width: 'minmax(90px,1fr)', cell: (r) => <span className="truncate text-muted">{r.autoRouting ? '' : nameOf(r.projectRoot)}</span> },
+      { head: 'Project', width: 'minmax(90px,1fr)', cell: (r) => <span className="truncate text-muted">{r.autoRouting || r.sideQuestions ? '' : nameOf(r.projectRoot)}</span> },
       { head: 'Model', width: '72px', cell: (r) => <ModelCell model={r.model} fastTurns={r.fastTurns} /> },
       ...tokens,
       largest,
@@ -189,9 +215,7 @@ function useColumns(groupBy: UsageGroup): Column[] {
         head: 'Project',
         width: 'minmax(180px,2fr)',
         cell: (r) =>
-          r.autoRouting ? (
-            <AutoRoutingName model={r.model} />
-          ) : (
+          apartName(r) ?? (
             <span className="flex min-w-0 items-center gap-2.5">
               {r.projectRoot && <ProjectIcon project={projects.get(r.projectRoot)} root={r.projectRoot} size={18} />}
               <span className="truncate font-medium">{nameOf(r.projectRoot)}</span>
@@ -210,9 +234,7 @@ function useColumns(groupBy: UsageGroup): Column[] {
         head: 'Model',
         width: 'minmax(160px,2fr)',
         cell: (r) =>
-          r.autoRouting ? (
-            <AutoRoutingName model={r.model} />
-          ) : (
+          apartName(r) ?? (
             <span className="flex items-center gap-1.5 font-medium">
               {modelName(r.model)}
               {r.byAuto ? (
@@ -259,7 +281,7 @@ function Breakdown({ data, profileId, period, onModel, model }: { data: UsageBre
   const virtualizer = useVirtualizer({ count: shown.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_HEIGHT, overscan: 8 });
   const noun = groupBy === 'session' ? 'sessions' : groupBy === 'project' ? 'projects' : groupBy === 'model' ? 'models' : 'days';
 
-  const rowAction = (row: UsageRow) => (row.autoRouting ? null : groupBy === 'session' ? open(row.sessionId) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
+  const rowAction = (row: UsageRow) => (row.autoRouting || row.sideQuestions ? null : groupBy === 'session' ? open(row.sessionId) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
   const renderRow = (row: UsageRow, style?: CSSProperties) => {
     const action = rowAction(row);
     const selected = groupBy === 'model' && row.model === model;

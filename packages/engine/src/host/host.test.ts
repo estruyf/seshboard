@@ -77,6 +77,11 @@ class FakeQuery {
       this.received.push({ text, ...(message.priority ? { priority: message.priority } : {}) });
       this.out.push({ type: 'system', subtype: 'init', session_id: sessionId, cwd: this.options.cwd, model: this.model, permissionMode: this.mode });
       state('running');
+      if (text.startsWith('<side-question>')) {
+        await this.answerSideQuestion(sessionId, text);
+        state('idle');
+        continue;
+      }
       if (text === 'crash') {
         this.out.fail(new Error('Claude Code process exited with code 1'));
         return;
@@ -140,11 +145,28 @@ class FakeQuery {
   async getContextUsage() {
     return { percentage: 12.4 };
   }
-  /** Side questions asked, with the history that came along. */
-  sideQuestions: Array<{ question: string; history: unknown }> = [];
-  async askSideQuestion(question: string, options?: { history?: unknown }) {
-    this.sideQuestions.push({ question, history: options?.history ?? [] });
-    return { response: `Side answer to ${question}`, synthetic: false };
+  /** What the PreToolUse hook decided for each tool a side question tried. */
+  hookDecisions: Array<{ tool: string; decision: string }> = [];
+  /**
+   * A side question: Claude tries to read a file and to write one (through the PreToolUse hook), says what it reads
+   * next (text the answer drops), then streams its answer. Each response repeats its usage on every block.
+   */
+  private async answerSideQuestion(sessionId: string, text: string) {
+    const hook = this.options.hooks?.PreToolUse?.[0]?.hooks[0];
+    for (const [tool, input] of [['Read', { file_path: '/work/app/README.md' }], ['Write', { file_path: '/work/app/x.txt', content: 'x' }]] as const) {
+      const out = (await hook?.({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input } as never, undefined, { signal: new AbortController().signal })) as { hookSpecificOutput?: { permissionDecision?: string } } | undefined;
+      this.hookDecisions.push({ tool, decision: out?.hookSpecificOutput?.permissionDecision ?? 'none' });
+    }
+    const usage = { input_tokens: 3, output_tokens: 20, cache_read_input_tokens: 5000, cache_creation_input_tokens: 100 };
+    const delta = (chunk: string) => this.out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text: chunk } } });
+    delta('Let me look.');
+    for (const block of [{ type: 'text', text: 'Let me look.' }, { type: 'tool_use', name: 'Read' }]) {
+      this.out.push({ type: 'assistant', parent_tool_use_id: null, session_id: sessionId, message: { id: 'msg-1', model: 'fake', usage, content: [block] } });
+    }
+    const question = text.split('\n').at(-1);
+    for (const chunk of ['Answer to ', question]) delta(chunk!);
+    this.out.push({ type: 'assistant', parent_tool_use_id: null, session_id: sessionId, message: { id: 'msg-2', model: 'fake', usage, content: [{ type: 'text', text: `Answer to ${question}` }] } });
+    this.out.push({ type: 'result', subtype: 'success', is_error: false, result: `Answer to ${question}`, session_id: sessionId });
   }
   close() {
     this.closed = true;
@@ -370,18 +392,20 @@ describe('HostManager', () => {
       t.manager.closeAll();
     });
 
-    it('answers a side question beside a running turn, without touching the turn, the queue or the transcript', async () => {
-      const t = setup();
+    it('answers a question about a running session from a fork, without touching the turn, the queue or the transcript', async () => {
+      const cwds: Record<string, string> = {};
+      const t = setup({ cwds });
       const id = await busy(t);
+      cwds[id] = '/w';
       await send(t, id, 'Then the docs');
+      await t.manager.setModel(id, 'opus');
       const infosBefore = t.infos.length;
       const messagesBefore = t.messages.length;
 
-      const history = [{ question: 'Earlier?', response: 'Yes' }];
-      await expect(t.manager.sideQuestion(id, 'Which flag?', history)).resolves.toEqual({ response: 'Side answer to Which flag?', synthetic: false });
-      // Asked on the session's own process, with the earlier exchanges, never as a message.
-      expect(t.queries).toHaveLength(1);
-      expect(t.queries[0]!.sideQuestions).toEqual([{ question: 'Which flag?', history }]);
+      await expect(t.manager.askAbout(id, '<side-question>\n</side-question>\n\nWhich flag?', () => {})).resolves.toMatchObject({ answer: 'Answer to Which flag?' });
+      // A fork of its own, on the session's model; the session's process never got it as a message.
+      expect(t.queries).toHaveLength(2);
+      expect(t.queries[1]!.options).toMatchObject({ resume: id, forkSession: true, persistSession: false, cwd: '/w', model: 'opus' });
       expect(t.queries[0]!.received).toEqual([{ text: 'bash:npm test' }]);
       expect(t.queries[0]!.interrupts).toBe(0);
       // No status, queue or transcript change came from it.
@@ -395,21 +419,32 @@ describe('HostManager', () => {
       t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
       await until(() => t.queries[0]!.received.length === 2);
       expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['bash:npm test', 'Then the docs']);
-      expect(t.messages.flatMap((m) => m.messages.map((x) => x.uuid))).toContain('a-allow');
       t.manager.closeAll();
     });
 
-    it('answers a side question for a session that is not running from a fork that writes nothing', async () => {
+    it('answers a question from a fork that writes nothing, with read-only tools, streaming, and its tokens', async () => {
       const t = setup({ cwds: { 'old-1': '/work/app' }, openElsewhere: ['old-1'] });
-      await expect(t.manager.sideQuestion('old-1', 'What changed?', [])).resolves.toMatchObject({ response: 'Side answer to What changed?' });
-      // Not resumed: a short-lived copy, even with the session open in another window.
+      const texts: unknown[] = [];
+      const result = await t.manager.askAbout('old-1', '<side-question>\nframing\n</side-question>\n\nWhat changed?', (text) => texts.push(text));
+      expect(result).toEqual({ answer: 'Answer to What changed?', usage: [{ model: 'fake', tokens: { input: 6, output: 40, cacheRead: 10_000, cacheWrite: 200 } }] });
+      // What came before the tool call is dropped; the answer streams after it.
+      expect(texts).toEqual([{ delta: 'Let me look.' }, { reset: true }, { delta: 'Answer to ' }, { delta: 'What changed?' }]);
+      // Not resumed: a short-lived fork that persists nothing, even with the session open in another window.
       expect(t.manager.has('old-1')).toBe(false);
       expect(t.queries).toHaveLength(1);
-      expect(t.queries[0]!.options).toMatchObject({ resume: 'old-1', forkSession: true, persistSession: false, cwd: '/work/app' });
-      expect(t.queries[0]!.options.sessionId).not.toBe('old-1');
-      expect(t.queries[0]!.received).toEqual([]);
-      expect(t.queries[0]!.closed).toBe(true);
-      expect(t.ephemeral.has(t.queries[0]!.options.sessionId!)).toBe(true);
+      const q = t.queries[0]!;
+      expect(q.options).toMatchObject({ resume: 'old-1', forkSession: true, persistSession: false, cwd: '/work/app', includePartialMessages: true });
+      expect(q.options.sessionId).not.toBe('old-1');
+      expect(q.options.tools).toBeUndefined();
+      // Reading goes through; anything else is denied by the hook.
+      expect(q.hookDecisions).toEqual([
+        { tool: 'Read', decision: 'allow' },
+        { tool: 'Write', decision: 'deny' },
+      ]);
+      await expect(q.options.canUseTool!('Edit', { file_path: 'x' }, {} as never)).resolves.toMatchObject({ behavior: 'deny' });
+      await expect(q.options.canUseTool!('Bash', { command: 'git diff HEAD~1' }, {} as never)).resolves.toMatchObject({ behavior: 'allow' });
+      expect(q.closed).toBe(true);
+      expect(t.ephemeral.has(q.options.sessionId!)).toBe(true);
       t.manager.closeAll();
     });
 

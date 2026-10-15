@@ -21,6 +21,8 @@ export default defineConfig({
   site,
   base,
   trailingSlash: 'always',
+  // Pages that moved: the old address still lands on the new one.
+  redirects: { '/sessions/side-questions/': '/sessions/ask/' },
   markdown: {
     // Runs before the links validator (which the plugin adds after these), so it checks the links as they ship.
     processor: satteri({ hastPlugins: [withBase(base)] }),

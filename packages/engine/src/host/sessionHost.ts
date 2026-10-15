@@ -20,7 +20,6 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
 import { InputQueue } from './inputQueue.ts';
-import { askSideQuestion, type SideAnswer, type SideExchange } from './sideQuestions.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** Starts the Claude Code process for a host. Real hosts use the SDK's `query()` (or a pre-warmed one). */
@@ -402,16 +401,6 @@ export class SessionHost {
       insertions: result.insertions ?? 0,
       deletions: result.deletions ?? 0,
     };
-  }
-
-  /**
-   * A side question on this process: Claude Code answers it beside the turn (if one runs), without tools, and writes
-   * nothing to the session. It isn't a message, so it never goes through the input, Up next or the status.
-   */
-  async askSideQuestion(question: string, history: SideExchange[]): Promise<SideAnswer> {
-    const query = await this.query;
-    if (!query) throw new Error('This session is not running');
-    return askSideQuestion(query, question, history);
   }
 
   async interrupt(): Promise<void> {

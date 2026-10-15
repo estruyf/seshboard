@@ -52,7 +52,7 @@ import { installedPlugins } from './host/capabilities.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
 import { LaterStore } from './later/laterStore.ts';
 import { UpNextStore } from './host/upNextStore.ts';
-import { SideQuestions, SideQuestionStore } from './host/sideQuestions.ts';
+import { Asker, AskStore } from './host/sideQuestions.ts';
 import { MemoryService, type MemoryTrashScope } from './memory/memoryService.ts';
 import { MemoryWatcher } from './memory/watcher.ts';
 import { MemorySearch, type IndexedFolder } from './memory/memorySearch.ts';
@@ -139,8 +139,8 @@ export interface EngineOptions {
    */
   stubRouter?: boolean;
   /**
-   * Side questions (`/btw`) answered with a made-up answer instead of asking Claude Code: the smoke test and the
-   * screenshots, which must never call a model. Never set in normal use.
+   * Questions about a session (Ask about this session, `/btw`) answered with a made-up answer instead of asking
+   * Claude Code: the smoke test and the screenshots, which must never call a model. Never set in normal use.
    */
   stubSideQuestions?: boolean;
 }
@@ -870,13 +870,18 @@ export function createEngine(options: EngineOptions): Engine {
       // Messages waiting in Up next keep their session, like a queued prompt does.
       queued: new Set([...sessionsWithQueuedPrompts(later.list()), ...upNext.all().map((q) => q.sessionId)]),
     });
-  // Side questions (/btw) are kept per session, apart from the transcript; answers go to every window.
-  const sideQuestionStore = new SideQuestionStore(cache.db);
-  const sideQuestions = new SideQuestions({
-    store: sideQuestionStore,
-    ask: (sessionId, question, history) => hosts.sideQuestion(sessionId, question, history),
-    emit: (event) => broadcast('session.btw', event),
-    claudeVersion: () => claudeUpdater.state.installedVersion,
+  // Questions about a session (Ask about this session, /btw) are kept per session, apart from the transcript;
+  // answers go to every window, and their tokens count on the session's profile.
+  const askStore = new AskStore(cache.db);
+  const asker = new Asker({
+    store: askStore,
+    ask: (sessionId, prompt, onText) => hosts.askAbout(sessionId, prompt, onText),
+    emit: (event) => broadcast('session.ask', event),
+    recordUsage: (sessionId, id, usage) => {
+      const profileId = sessionProfile(sessionId);
+      askStore.recordUsage(scopeOf(profiles.runtime(profileId).configDir), sessionId, id, Date.now(), usage);
+      broadcast('usage.tokens', { profileIds: [profileId], scan: null });
+    },
     stub: options.stubSideQuestions,
     log,
   });
@@ -895,7 +900,7 @@ export function createEngine(options: EngineOptions): Engine {
     sessions.forget(sessionId);
     hosts.forget(sessionId);
     upNext.save(sessionId, []);
-    sideQuestionStore.forget(sessionId);
+    askStore.forget(sessionId);
     owned.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);
@@ -1242,8 +1247,8 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.context': ({ sessionId }) => hosts.context(sessionId),
     // Answered beside whatever the session does: never through session.send, so never in its turn or Up next.
-    'session.btw': ({ sessionId, question }) => sideQuestions.ask(sessionId, question),
-    'session.btwList': ({ sessionId }) => sideQuestions.list(sessionId),
+    'session.ask': ({ sessionId, threadId, question, replaces }) => asker.ask(sessionId, question, threadId, replaces),
+    'session.askThreads': ({ sessionId }) => asker.list(sessionId),
     'session.setModel': async ({ sessionId, model }) => {
       await hosts.setModel(sessionId, model);
       return {};

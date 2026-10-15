@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, Blocks, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
@@ -70,8 +70,12 @@ import { FindBar } from './FindBar.tsx';
 import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
-import { SideQuestionChip, SideQuestionPanel } from '../sideQuestions/SideQuestionPanel.tsx';
-import { askSideQuestion, closeSideQuestion, dropSideChip, expandSideQuestion, loadSideQuestions, moveSideQuestion, openLatestSideQuestion, openSideQuestion, retrySideQuestion, useSessionSide } from '../../state/sideQuestionsStore.ts';
+import { AskPanel } from '../ask/AskPanel.tsx';
+import { rightPanel } from '../ask/askWidth.ts';
+import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
+import { itemCount } from '../../state/ask.ts';
+import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, useSessionAsk } from '../../state/askStore.ts';
+import { toggleChangesPanel, useRightPanel } from '../../state/rightPanelStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { TranscriptItem } from './TranscriptItem.tsx';
@@ -379,14 +383,26 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const changedCount = changesBase === 'uncommitted' && changes ? changes.files.length : 0;
   const showChanges = Boolean(changesOpen && active && cwd && isRepo);
   const changesExpanded = useChangesLayout((s) => s.expanded);
-  // The terminal docks below or on the right; the right side goes to Changes when both want it. Maximized, it
+  // Ask about this session shares the right side with Changes: both open, they are tabs (the last one picked in front).
+  const ask = useSessionAsk(sessionId);
+  const rightTab = useRightPanel((s) => s.tab);
+  const rightWidth = useRightPanel((s) => s.width);
+  const setRightWidth = useRightPanel((s) => s.setWidth);
+  const right = rightPanel(showChanges, ask.open, rightTab);
+  const toggleChangesHere = () => toggleChangesPanel(ask.open);
+  const rightTabs = (actions: ReactNode) => (
+    <RightPanelTabs tab={right.tab ?? 'changes'} onTab={useRightPanel.getState().setTab} counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask) }}>
+      {actions}
+    </RightPanelTabs>
+  );
+  // The terminal docks below or on the right; the right side goes to Changes or Ask when they want it. Maximized, it
   // takes the whole view: the conversation (and Changes) stay mounted but hidden.
   // Each pane shows its own session's terminal, so with two panes both can have one.
   const terminalShown = panelOpen;
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyWidth = useWidth(bodyRef);
   const bodyHeight = useHeight(bodyRef);
-  const terminalBlocked = rightBlocked(showChanges, bodyWidth);
+  const terminalBlocked = rightBlocked(right.tab, bodyWidth);
   const terminalDock = effectiveDock(useTerminals((s) => s.dock), terminalBlocked);
   const terminalMaximized = useTerminals((s) => s.maximizedFor.has(sessionId)) && terminalShown;
   // Docked below, the terminal takes the room of the footer under the message box: a ring in the box stands in for it.
@@ -404,7 +420,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       if (event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
       if (active && isShortcut(event, 'changes.toggle')) {
         event.preventDefault();
-        toggleChanges();
+        toggleChangesHere();
       }
       // ⌘F finds in this conversation (the terminal keeps its own keys).
       if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm')) {
@@ -758,24 +774,23 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     usePaletteBus.setState({ digest: { sessionId, prompts, lastUuid: before, lastReply } });
   }, [active, items, sessionId]);
   useEffect(() => () => usePaletteBus.setState((s) => (s.digest?.sessionId === sessionId ? { digest: null } : {})), [sessionId]);
-  // Side questions (/btw): read once per session, so the palette can count them and a bare /btw opens at once.
-  const side = useSessionSide(sessionId);
-  const sideChip = side.chip ? side.items.find((item) => item.id === side.chip) : undefined;
-  /** Bumped by the palette's Ask a side question…: the message box takes the /btw token. */
-  const [sideRequest, setSideRequest] = useState(0);
+  // Ask about this session: its threads are read once per session, so the panel opens on them at once.
   useEffect(() => {
-    if (client) void loadSideQuestions(client, sessionId).catch(() => {});
+    if (client) void loadAskThreads(client, sessionId).catch(() => {});
   }, [client, sessionId]);
-  const closeSide = () => {
-    closeSideQuestion(sessionId);
+  const closeAskHere = () => {
+    closeAsk(sessionId);
     useDrafts.getState().requestFocus(sessionId);
+  };
+  const askHere = async (question: string) => {
+    if (!client) throw new Error('Not connected to the engine');
+    await askAbout(client, sessionId, question);
   };
 
   // The palette's Switch branch… and Finish worktree… open the header's branch menu; Rewind… asks to undo since a message.
   useSessionRequests(active, (request) => {
     if (request.kind === 'branch-menu') setBranchMenuRequest((n) => n + 1);
-    else if (request.kind === 'side-ask') setSideRequest((n) => n + 1);
-    else if (request.kind === 'side-show') void openLatestSideQuestion(client, sessionId);
+    else if (request.kind === 'ask') void openAsk(client, sessionId);
     else if (request.kind === 'rewind' && request.arg) messageActions?.rewind(request.arg);
   });
 
@@ -798,8 +813,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (!ungated && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return false;
     const sentAt = Date.now();
     const result = await client.call('session.send', { sessionId, text, attachments, fork, ...(mode ? { mode } : {}) });
-    // A new message moves on from the last side answer: its chip goes.
-    dropSideChip(sessionId);
     // A queued message waits in Up next, so the conversation has nothing new to scroll to. The answer
     // can be well under way by now: if you scrolled up to read it, stay there.
     if (!result.queued && userScrollAt.current < sentAt) follow(true);
@@ -970,7 +983,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           className="no-drag"
           data-panel-toggles
           pressed={[...(changesOpen ? ['changes' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
-          onToggle={(panel) => (panel === 'changes' ? toggleChanges() : togglePanel(sessionId))}
+          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : togglePanel(sessionId))}
           segments={[
             ...(cwd && isRepo
               ? [
@@ -1316,23 +1329,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 />
               )}
               <UpNext queue={upNext} hold={upNextHold} actions={upNextActions} />
-              {/* The side question floats over the conversation, as wide as the message box, so the transcript never moves. */}
               <div className="relative">
-                {(side.open || sideChip) && (
-                  <div className="absolute inset-x-0 bottom-full z-10 mb-2 flex">
-                    {side.open ? (
-                      <SideQuestionPanel
-                        state={side}
-                        onClose={closeSide}
-                        onMove={(step) => moveSideQuestion(sessionId, step)}
-                        onExpand={() => expandSideQuestion(sessionId)}
-                        onRetry={(item) => client && void retrySideQuestion(client, sessionId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
-                      />
-                    ) : (
-                      sideChip && <SideQuestionChip item={sideChip} onOpen={() => openSideQuestion(sessionId, sideChip.id)} />
-                    )}
-                  </div>
-                )}
                 <Composer
                   draftKey={sessionId}
                   onDraftLoaded={onDraftLoaded}
@@ -1372,19 +1369,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       : undefined
                   }
                   onInterrupt={() => void client?.call('session.interrupt', { sessionId })}
-                  sideQuestions={{
-                    onAsk: async (question) => {
-                      if (!client) throw new Error('Not connected to the engine');
-                      await askSideQuestion(client, sessionId, question);
-                    },
-                    onBare: () => void openLatestSideQuestion(client, sessionId),
-                    request: sideRequest,
-                  }}
-                  onEscape={() => {
-                    if (!side.open) return false;
-                    closeSideQuestion(sessionId);
-                    return true;
-                  }}
+                  ask={{ onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready }}
                   onCycleMode={
                     activeHost ? () => void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) }) : undefined
                   }
@@ -1436,8 +1421,34 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           {terminalShown && terminalDock === 'bottom' && terminalPanel}
         </div>
         {terminalShown && terminalDock === 'right' && terminalPanel}
-        {showChanges && cwd && !terminalMaximized && (
-          <ChangesPanel cwd={cwd} changes={changes} base={changesBase} onBase={setChangesBase} onRefresh={refreshChanges} onClose={() => toggleChanges(false)} />
+        {right.tab === 'changes' && cwd && !terminalMaximized && (
+          <ChangesPanel
+            cwd={cwd}
+            changes={changes}
+            base={changesBase}
+            onBase={setChangesBase}
+            onRefresh={refreshChanges}
+            onClose={() => toggleChanges(false)}
+            tabs={right.tabs ? rightTabs : undefined}
+            shared={right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
+          />
+        )}
+        {right.tab === 'ask' && !terminalMaximized && (
+          <AskPanel
+            sessionId={sessionId}
+            state={ask}
+            working={working}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+            onAsk={askHere}
+            onRetry={(threadId, item) => client && void retryAsk(client, sessionId, threadId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
+            onQuote={(answer) => useDrafts.getState().requestQuote(sessionId, answer)}
+            onNewThread={() => newAskThread(sessionId)}
+            onPickThread={(threadId) => pickAskThread(sessionId, threadId)}
+            onClose={closeAskHere}
+            disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
+          />
         )}
       </div>
     </div>

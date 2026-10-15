@@ -34,15 +34,16 @@ describe('effectiveDock', () => {
 });
 
 describe('rightBlocked', () => {
-  it('is taken by the Changes panel', () => {
-    expect(rightBlocked(true, 1600)).toBe('changes');
+  it('is taken by the Changes or Ask panel', () => {
+    expect(rightBlocked('changes', 1600)).toBe('changes');
+    expect(rightBlocked('ask', 1600)).toBe('ask');
   });
   it('is too narrow when the view cannot fit the panel and the conversation', () => {
-    expect(rightBlocked(false, PANEL_MIN_WIDTH + CHAT_MIN_WIDTH - 1)).toBe('narrow');
-    expect(rightBlocked(false, PANEL_MIN_WIDTH + CHAT_MIN_WIDTH)).toBeNull();
+    expect(rightBlocked(null, PANEL_MIN_WIDTH + CHAT_MIN_WIDTH - 1)).toBe('narrow');
+    expect(rightBlocked(null, PANEL_MIN_WIDTH + CHAT_MIN_WIDTH)).toBeNull();
   });
   it('is free before the view is measured', () => {
-    expect(rightBlocked(false, null)).toBeNull();
+    expect(rightBlocked(null, null)).toBeNull();
   });
 });
 

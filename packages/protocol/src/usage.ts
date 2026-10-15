@@ -72,6 +72,8 @@ export const UsageRow = z.object({
   measured: z.boolean(),
   /** The Auto routing row: Haiku's calls that picked a model, and how many there were. */
   autoRouting: z.object({ picks: z.number() }).optional(),
+  /** The Side questions row: what Ask about this session used, and how many questions were answered. */
+  sideQuestions: z.object({ asked: z.number() }).optional(),
   /** A model row: how many of its sessions Auto picked it for. */
   byAuto: z.number().optional(),
 });

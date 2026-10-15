@@ -398,4 +398,39 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX side_questions_session ON side_questions (session_id, at);
   `,
+
+  // v24: Ask about this session. Questions about a session come in threads (a thread's earlier questions go along
+  // with each follow-up), and a failed one is kept with its error. Earlier side questions become one thread per
+  // session. Each answer's tokens are kept too, since the short-lived process that answers leaves no transcript for
+  // the Usage scanner. All of it is user data: keep it when rebuilding.
+  `
+  CREATE TABLE ask_threads (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX ask_threads_session ON ask_threads (session_id, created_at);
+  ALTER TABLE side_questions ADD COLUMN thread_id TEXT;
+  ALTER TABLE side_questions ADD COLUMN error TEXT;
+  WITH first AS (
+    SELECT session_id, question, MIN(at) AS at FROM side_questions GROUP BY session_id
+  )
+  INSERT INTO ask_threads (id, session_id, title, created_at)
+    SELECT 'btw-' || session_id, session_id, CASE WHEN length(question) > 80 THEN substr(question, 1, 79) || '…' ELSE question END, at FROM first;
+  UPDATE side_questions SET thread_id = 'btw-' || session_id;
+  CREATE INDEX side_questions_thread ON side_questions (thread_id, at);
+  CREATE TABLE side_question_usage (
+    id          TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    session_id  TEXT,
+    at          INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    input       INTEGER NOT NULL,
+    output      INTEGER NOT NULL,
+    cache_read  INTEGER NOT NULL,
+    cache_write INTEGER NOT NULL
+  );
+  CREATE INDEX side_question_usage_scope_at ON side_question_usage (scope, at);
+  `,
 ];

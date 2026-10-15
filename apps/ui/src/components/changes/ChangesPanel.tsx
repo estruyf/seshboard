@@ -1,6 +1,6 @@
 import { trashName } from '../../lib/platform.ts';
 import { ChevronRight, ExternalLink, Maximize2, Minimize2, RefreshCw, Undo2, WrapText, X } from 'lucide-react';
-import { memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { joinPath, type ChangedFile, type ChangesBase, type GitChanges } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -150,6 +150,8 @@ export function ChangesPanel({
   onBase,
   onRefresh,
   onClose,
+  tabs,
+  shared,
 }: {
   cwd: string;
   changes: GitChanges | null;
@@ -157,6 +159,10 @@ export function ChangesPanel({
   onBase(base: ChangesBase): void;
   onRefresh(): void;
   onClose(): void;
+  /** Ask is open too: this row of tabs goes on top, with the close button on its right. */
+  tabs?: (actions: ReactNode) => ReactNode;
+  /** Ask is open too: the two share the right side's width. */
+  shared?: { width: number; setWidth(width: number): void };
 }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -166,8 +172,10 @@ export function ChangesPanel({
   const [error, setError] = useState<string | null>(null);
   const wrap = useOverlay((s) => s.diffWrap);
   const toggleWrap = useOverlay((s) => s.toggleDiffWrap);
-  const width = useChangesLayout((s) => s.width);
-  const setWidth = useChangesLayout((s) => s.setWidth);
+  const ownWidth = useChangesLayout((s) => s.width);
+  const setOwnWidth = useChangesLayout((s) => s.setWidth);
+  const width = shared?.width ?? ownWidth;
+  const setWidth = shared?.setWidth ?? setOwnWidth;
   const expanded = useChangesLayout((s) => s.expanded);
   const toggleExpanded = useChangesLayout((s) => s.toggleExpanded);
   const files = changes?.files ?? [];
@@ -268,6 +276,7 @@ export function ChangesPanel({
           data-changes-resize
         />
       )}
+      {tabs?.(<Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />)}
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
         {/* Arrow keys move between the two, like any radio group; only the chosen one is a Tab stop. */}
         <SegmentedControl
@@ -314,7 +323,7 @@ export function ChangesPanel({
           data-changes-expand
         />
         <Button variant="quiet" size="sm" iconOnly icon={<RefreshCw size={12} />} onClick={onRefresh} data-tooltip="Check git for changes again" aria-label="Refresh changes" />
-        <Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />
+        {!tabs && <Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />}
       </div>
 
       {(error ?? changes?.error) && (

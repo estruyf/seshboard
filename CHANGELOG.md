@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **Ask about this session.** An **Ask** button next to Send opens a panel on the right where you ask Claude about the session: what changed so far, which files it touched, why it took this approach. Claude answers from the conversation and the project while it keeps working, and can read files, search and look at git, but never changes anything. Nothing reaches the conversation: no message, no Up next, no unread state or notification. With text in the message box, **Ask** asks that text. Follow-ups go with the earlier questions of their thread, **New thread** starts another, and **Earlier threads** opens the last 20. **Quote in message** puts an answer in the message box as a quote. Close the panel while Claude answers and a blue dot on **Ask** says when the answer is ready. With Changes open too, the two share the right side as tabs. This replaces the side question panel above the message box; `/btw` and a question now asks in this panel, and its tokens show in Usage as **Side questions**.
+
 ## [0.0.17] - 2026-10-14
 
 ### New

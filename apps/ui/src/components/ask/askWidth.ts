@@ -1,0 +1,35 @@
+/** The Ask panel's width limits: room for a question bubble and an answer at the minimum, as Changes keeps for its list. */
+export const ASK_DEFAULT_WIDTH = 380;
+export const ASK_MIN_WIDTH = 300;
+/** The most of the window the panel may take. */
+export const ASK_MAX_SHARE = 0.7;
+/** How far one ← or → press moves the panel's edge. */
+export const ASK_KEY_STEP = 24;
+
+/**
+ * Rounds and clamps a dragged or stored width for a window `windowWidth` wide. Anything that isn't a finite number
+ * falls back to the default; a window too small for the minimum still gets the minimum.
+ */
+export function clampAskWidth(width: number, windowWidth: number): number {
+  const max = Math.max(ASK_MIN_WIDTH, Math.floor(windowWidth * ASK_MAX_SHARE));
+  const value = Number.isFinite(width) && width > 0 ? width : ASK_DEFAULT_WIDTH;
+  return Math.round(Math.min(Math.max(value, ASK_MIN_WIDTH), max));
+}
+
+/** The width after a resize key: ← widens the panel (its edge is on the left), → narrows it. Null for other keys. */
+export function askWidthForKey(key: string, width: number, windowWidth: number): number | null {
+  const step = key === 'ArrowLeft' ? ASK_KEY_STEP : key === 'ArrowRight' ? -ASK_KEY_STEP : null;
+  return step === null ? null : clampAskWidth(width + step, windowWidth);
+}
+
+/** Which of the two the right side shows: both open share it as tabs, on the one picked last. */
+export type RightTab = 'changes' | 'ask';
+
+/** What the right side shows: nothing, one panel, or both as tabs with `tab` in front. */
+export function rightPanel(changes: boolean, ask: boolean, tab: RightTab): { tab: RightTab | null; tabs: boolean } {
+  if (changes && ask) return { tab, tabs: true };
+  return { tab: changes ? 'changes' : ask ? 'ask' : null, tabs: false };
+}
+
+/** A stored tab, or Changes for anything else. */
+export const readTab = (value: string | null): RightTab => (value === 'ask' ? 'ask' : 'changes');

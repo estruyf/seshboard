@@ -1,11 +1,11 @@
 /*
- * The `/btw` token at the start of the message box: while it is there, the box asks a side question instead of
+ * The `/btw` token at the start of the message box: while it is there, the box asks about the session instead of
  * sending a message. Pure helpers, so the rules can be tested without React.
  */
 
 export const SIDE_COMMAND = 'btw';
 export const SIDE_TOKEN = `/${SIDE_COMMAND}`;
-export const SIDE_DESCRIPTION = 'Ask a side question. Not added to the conversation.';
+export const SIDE_DESCRIPTION = 'Ask about this session. Not added to the conversation.';
 
 /**
  * Text that starts with `/btw ` (typed, or a draft kept with the token): the token and the question after it.
@@ -46,4 +46,13 @@ export function sideKey(
   if (!box.token) return null;
   if (key.key === 'Backspace' && box.selectionStart === 0 && box.selectionEnd === 0 && !key.metaKey && !key.altKey && !key.ctrlKey) return 'untoken';
   return box.sends ? 'ask' : null;
+}
+
+/**
+ * What the Ask button (and Enter with the token) does with the message box: with a question in it, ask that (and
+ * empty the box); with nothing to ask, open the panel. The token without a question opens it too, and goes.
+ */
+export function askFromBox(text: string): { kind: 'ask'; question: string } | { kind: 'open' } {
+  const question = text.trim();
+  return question ? { kind: 'ask', question } : { kind: 'open' };
 }

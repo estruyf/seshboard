@@ -18,7 +18,6 @@ const SESSION: PaletteSession = {
   waiting: null,
   prompts: 0,
   hasReply: false,
-  sideQuestions: 0,
 };
 
 /** Home, connected, nothing open: the context every test changes a little. */
@@ -196,14 +195,14 @@ describe('when(): a session is open', () => {
     expect(talked).toEqual(expect.arrayContaining(['fork', 'rewind', 'copy-last-reply']));
   });
 
-  it('asks a side question in an open session, and shows earlier ones with their count once there are some', () => {
-    expect(ids(context())).not.toContain('side-question');
-    expect(ids(inSession())).toContain('side-question');
-    expect(ids(inSession())).not.toContain('side-questions');
-    const asked = inSession({ sideQuestions: 3 });
-    const show = visibleCommands(asked).find((c) => c.id === 'side-questions')!;
-    expect(titleOf(show, asked)).toBe('Show side questions');
-    expect(hintOf(show, asked)).toBe('3');
+  it('asks about the session in an open session, through the Ask panel', () => {
+    expect(ids(context())).not.toContain('ask-session');
+    expect(ids(inSession())).toContain('ask-session');
+    expect(ids(inSession({}, { connected: false }))).not.toContain('ask-session');
+    const api = { sessionRequest: vi.fn() } as unknown as PaletteApi;
+    const ctx = inSession();
+    visibleCommands(ctx).find((c) => c.id === 'ask-session')!.run!(api, ctx);
+    expect(api.sessionRequest).toHaveBeenCalledWith('ask');
   });
 
   it('stops Claude only while it runs here, and goes to what it waits for', () => {
