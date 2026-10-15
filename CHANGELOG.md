@@ -24,6 +24,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Random characters at the prompt of a terminal.** Switching to a terminal tab or session could type text like `11;rgb:1111/1111/1b1b` and `1R8;81R` into the shell. They were answers to questions programs asked a while ago, which the terminal sent again when it showed its history. They are no longer sent.
 
+### Fixed
+
+- **Notifications that don't come through on a newer Mac.** Newer versions of macOS no longer let Switchboard see that notifications are off, so Settings › Notifications never said so. Next to **Send a test notification** it now asks "Nothing showed up?" and has **Open System Settings** to check.
+
 ## [0.0.17] - 2026-10-14
 
 ### New
