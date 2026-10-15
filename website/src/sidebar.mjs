@@ -14,6 +14,7 @@ export const sidebar = [
     items: [
       'sessions/sidebar',
       'sessions/states',
+      'sessions/catch-up',
       'sessions/conversation',
       'sessions/side-questions',
       'sessions/home',

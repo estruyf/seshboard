@@ -7,6 +7,7 @@ const HOME: ShortcutContext = {
   session: false,
   running: false,
   pending: null,
+  catchUp: null,
   selection: 0,
   split: false,
   behind: false,
@@ -122,7 +123,7 @@ describe('All and Here', () => {
     const layout = sheetLayout({ ctx: HOME, mode: 'all', query: '', actions: [] });
     expect(sections(layout)).toEqual([
       ['general', 'sessions'],
-      ['session', 'composer', 'permissions', 'actions'],
+      ['session', 'composer', 'permissions', 'catch-up', 'actions'],
     ]);
     expect(row(layout, 'claude.stop')!.available).toBe(false);
     expect(row(layout, 'session.new')!.available).toBe(true);

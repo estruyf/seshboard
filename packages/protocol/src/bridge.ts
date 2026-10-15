@@ -90,6 +90,8 @@ export type NewSessionMode = "last" | "default" | "acceptEdits" | "plan" | "auto
 export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["last", "default", "acceptEdits", "plan", "auto"];
 /** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
 export type WhileWorking = "queue" | "steer";
+/** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
+export type SidebarSort = "recent" | "quickest";
 
 /** At the focus limit: ask first and allow going over (`nudge`), or wait until a session is finished (`strict`). */
 export type FocusMode = "nudge" | "strict";
@@ -187,6 +189,13 @@ export interface Preferences {
   whileWorking: WhileWorking;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
+  /**
+   * Settings › Conversation: "Write catch-up summaries with Haiku". On, a finished session shows the catch-up banner and
+   * Haiku writes its lines (and explains a permission when you ask why); off, there is no banner and no Haiku call.
+   */
+  catchUpSummaries: boolean;
+  /** The sidebar's order (its Recent | Quickest to unblock control). */
+  sidebarSort: SidebarSort;
   githubStar: GithubStar;
   /** Settings › Notifications: system notifications, separate from the sounds. */
   notifications: NotificationPrefs;
@@ -215,6 +224,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
+  catchUpSummaries: true,
+  sidebarSort: "recent",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
   sounds: DEFAULT_SOUNDS,
@@ -367,6 +378,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.whileWorking = raw.whileWorking;
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
+  if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
+  if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
+    out.sidebarSort = raw.sidebarSort;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
     out.githubStar = raw.githubStar;
   // Before notifications and sounds had a card each, Show notifications was a plain switch.

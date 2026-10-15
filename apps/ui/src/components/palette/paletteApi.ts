@@ -1,6 +1,7 @@
 import { fileManagerName } from '../../lib/platform.ts';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useBackup } from '../../state/backupStore.ts';
+import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { useClaudeUpdate } from '../../state/claudeUpdateStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -19,6 +20,7 @@ import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { ownerSession } from '../terminal/appTerminal.ts';
 import { useThemes } from '../../state/themeStore.ts';
+import { useWhy } from '../../state/whyStore.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -101,6 +103,20 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     setFocusLimit: (on) => usePreferences.getState().update({ focusLimit: on ? lastLimit() : null }),
 
     renameSession: () => session && usePaletteBus.getState().showDialog({ kind: 'rename-session', sessionId, title: session.title }),
+    showCatchUp: () => {
+      const card = useCatchUp.getState().cards.get(sessionId);
+      if (card) useCatchUp.getState().setCollapsed(card, false);
+    },
+    showWhy: () => {
+      const request = [...useHosts.getState().permissions.values()].filter((p) => p.sessionId === sessionId).sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (request && useWhy.getState().open?.requestId !== request.requestId) useWhy.getState().toggle(sessionId, request.requestId);
+    },
+    buildCatchUp: () =>
+      call('catch up on this session', async (c) => {
+        const { catchUp } = await c.call('catchup.build', { sessionId });
+        useCatchUp.getState().set(sessionId, catchUp);
+        useCatchUp.getState().setCollapsed(catchUp, false);
+      }),
     setFlags: (change) => {
       const apply = () => call('change the session', (c) => c.call('sessions.setFlags', { sessionId, ...change }));
       // Archiving a session with an unsent message asks first.

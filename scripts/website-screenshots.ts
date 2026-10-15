@@ -443,6 +443,8 @@ class Tour {
 type Screen = { name: string; take(t: Tour): Promise<void> };
 
 const HERO = 'Add dark mode toggle';
+/** The finished session the catch-up pictures open (its catch-up comes with the demo, `demoCatchUps`). */
+const CATCH_UP = 'Refactor auth middleware';
 const WORKING = 'Fix rounding';
 const NEEDS_YOU = 'Upgrade Stripe';
 
@@ -560,6 +562,34 @@ const screens: Screen[] = [
       await t.shot('side-question');
       await t.click(`${pane} [data-btw-close]`);
       await t.gone(`${pane} [data-btw-panel]`, 'the side question panel did not close');
+    },
+  },
+  {
+    name: 'catch-up-banner',
+    async take(t) {
+      await t.openSession(CATCH_UP);
+      // Read sessions show the strip; Show catch-up opens the banner.
+      await t.need('[data-current-session] [data-catchup-strip]', 'the catch-up strip did not show');
+      await t.shot('catch-up-strip', { clip: '[data-current-session] [data-catchup-strip]', pad: 12 });
+      await t.click('[data-current-session] [data-catchup-show]');
+      await t.need('[data-current-session] [data-catchup-banner]', 'the catch-up banner did not open');
+      await t.shot('catch-up-banner');
+      await t.click('[data-current-session] [data-catchup-details-toggle]');
+      await t.need('[data-current-session] [data-catchup-details]', 'Details did not open');
+      await t.shot('catch-up-banner-details', { clip: '[data-current-session] [data-catchup-banner]', pad: 12 });
+      // Folded again, so the session opens on its strip in the other screens.
+      await t.click('[data-current-session] [data-catchup-collapse]');
+      await t.need('[data-current-session] [data-catchup-strip]', 'the banner did not fold into the strip');
+    },
+  },
+  {
+    name: 'sidebar-quickest',
+    async take(t) {
+      await t.home();
+      await t.click('[data-sort-quick]');
+      await t.need('[data-session-group="review"]', 'Quickest to unblock did not group the sessions');
+      await t.shot('sidebar-quickest', { clip: '[data-sidebar-state]' });
+      await t.click('[data-sort-recent]');
     },
   },
   {
@@ -731,7 +761,8 @@ const screens: Screen[] = [
     async take(t) {
       await t.click('[data-open-settings]');
       await t.click('[data-settings-section="conversation"]');
-      await t.need('[data-auto-model-settings]', 'Settings › Conversation has no Auto model block');
+      // Below Catch-up on the page: bring it into view for its picture.
+      await (await t.need('[data-auto-model-settings]', 'Settings › Conversation has no Auto model block')).evaluate((el) => el.scrollIntoView({ block: 'center' }));
       await t.shot('auto-model-settings', { clip: '[data-auto-model-settings]', pad: 16 });
       await t.click('[data-close-settings]');
     },
@@ -1116,6 +1147,7 @@ function demoUsage(world: DemoWorld): string {
         },
       ],
       autoPicks: demoAutoPicks(world, now),
+      catchUps: demoCatchUps(world, now),
     }),
   );
   return file;
@@ -1150,6 +1182,46 @@ function demoAutoPicks(world: DemoWorld, now: number) {
     picks.push({ configDir: personal, sessionId: null, pick: p, routingModel: 'claude-haiku-5-5', tokens: tokens(p.tokens - 38) });
   }
   return picks;
+}
+
+/**
+ * Catch-up cards for some of the finished demo sessions, as if their turns had just ended (the engine stores them,
+ * SWITCHBOARD_DEMO_USAGE): one ready to commit, one with a file outside what was asked, one with failing tests.
+ */
+function demoCatchUps(world: DemoWorld, now: number) {
+  const of = (title: string) => world.history[title]!.id;
+  const card = (title: string, ask: string, ago: number, patch: Record<string, unknown>) => ({
+    sessionId: of(title),
+    turnId: `demo-${of(title)}`,
+    generatedAt: now - ago,
+    source: 'model',
+    state: 'finished',
+    ask,
+    skipped: [],
+    ...patch,
+  });
+  return [
+    card(CATCH_UP, 'Split the auth middleware into session and API-key checks, they are tangled together right now.', 4 * 60_000, {
+      did: ['Split the auth middleware into a session check and an API-key check', 'Each route now picks the check it needs', 'Removed the old combined middleware', 'Added 6 tests for the two checks'],
+      skipped: ['Left the admin routes on the old check for now'],
+      need: { kind: 'commit', title: 'Commit the changes', text: 'Tests pass and every change stays in src/middleware. Ready to commit.' },
+      signals: { tests: { state: 'passed', passed: 14, failed: 0, command: 'npm test' }, diff: { files: 6, add: 120, del: 40 }, outOfScope: [], scope: 'src/middleware', plan: 'followed' },
+      reviewMinutes: 3,
+    }),
+    card('Write a getting started guide', 'Write a getting started guide for the docs site: install, first request, and where to go next.', 30 * 60_000, {
+      did: ['Wrote the getting started guide', 'Linked it from the sidebar under Start here'],
+      need: { kind: 'review', title: 'Review the changes', text: '1 file outside src/content/docs. Look at it before you commit.' },
+      signals: { tests: { state: 'notRun' }, diff: { files: 2, add: 64, del: 3 }, outOfScope: ['astro.config.mjs'], scope: 'src/content/docs', plan: null },
+      reviewMinutes: 2,
+    }),
+    card('Add CSV export to the reports endpoint', 'Let /reports return CSV when the client asks for text/csv.', 2 * 3_600_000, {
+      did: ['Let GET /reports answer with CSV for Accept: text/csv', 'Streamed the rows instead of building the whole file'],
+      skipped: ['2 of 9 tests fail'],
+      need: { kind: 'reply', title: 'Decide about the failing tests', text: '2 of 9 tests fail. Tell Claude how to go on.' },
+      signals: { tests: { state: 'failed', passed: 7, failed: 2, command: 'npm test' }, diff: { files: 3, add: 80, del: 10 }, outOfScope: [], scope: null, plan: null },
+      reviewMinutes: 4,
+    }),
+  ];
 }
 
 // ---------------------------------------------------------------------------------------------------------

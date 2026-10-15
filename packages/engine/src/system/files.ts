@@ -9,7 +9,8 @@ const CACHE_MS = 30_000;
 /** How long a folder outside git may be walked for one listing. */
 const WALK_BUDGET_MS = 1_500;
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'out', 'build', '.next', '.turbo', '.cache', 'coverage', '.venv', '__pycache__']);
-const HOME_SKIP_DIRS = new Set(['Library', 'Desktop', 'Documents', 'Downloads', 'Pictures', 'Movies', 'Music']);
+/** Folders in the home folder that are huge, or that macOS guards with a privacy prompt. */
+export const HOME_SKIP_DIRS = new Set(['Library', 'Desktop', 'Documents', 'Downloads', 'Pictures', 'Movies', 'Music']);
 
 function gitFiles(cwd: string): Promise<string[] | null> {
   return new Promise((resolve) => {

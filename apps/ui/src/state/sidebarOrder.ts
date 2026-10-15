@@ -1,5 +1,6 @@
 import type { SessionRowData } from './sessionsStore.ts';
-import { buildSessionList, groupSessions, rowStatus, type RowStatus, type SessionGroup } from './sidebarRows.ts';
+import type { SidebarSort } from '@switchboard/protocol/bridge';
+import { buildSessionList, groupsFor, quickestGroups, rowStatus, type QuickInfo, type RowStatus, type SessionGroup } from './sidebarRows.ts';
 
 /** A permission or question a session waits on, as far as the rail's tooltip and the needs-you pill care. */
 export interface WaitingRequest {
@@ -10,16 +11,16 @@ export interface WaitingRequest {
 }
 
 /**
- * The sidebar's sections and their sessions, in the order it lists them: Needs you, Working, Pinned,
- * Today, Yesterday, Earlier. Archived sessions are left out. The minimal rail,
- * ⌃⇥ and ⌘P all read this, so the order never differs between them.
+ * The sidebar's sections and their sessions, in the order it lists them: Needs you, Working, Pinned, Today, Yesterday,
+ * Earlier (Recent), or Needs review, Read, Still working (Quickest to unblock). Archived sessions are left out. The
+ * minimal rail, ⌃⇥ and ⌘P all read this, so the order never differs between them.
  */
 export function sidebarGroups(
   rows: readonly SessionRowData[],
-  options: { now: number; archiveAfterDays: number; search?: string; project?: string | null },
+  options: { now: number; archiveAfterDays: number; search?: string; project?: string | null; sort?: SidebarSort; quick?: ReadonlyMap<string, QuickInfo> },
 ): { group: SessionGroup; rows: SessionRowData[] }[] {
   const { active } = buildSessionList(rows, { search: options.search ?? '', project: options.project ?? null, now: options.now, archiveAfterDays: options.archiveAfterDays });
-  return groupSessions(active, options.now);
+  return groupsFor(active, options.now, options.sort, options.quick);
 }
 
 /** The sessions of `sidebarGroups`, one after the other. */
@@ -36,14 +37,16 @@ export function stepSession(order: readonly string[], currentId: string | null, 
   return order[(index + direction + order.length) % order.length]!;
 }
 
-/** The next session that needs you after the current one, wrapping; the current one when it is the only one; null when nothing waits. */
-export function nextNeedsYou(order: readonly SessionRowData[], currentId: string | null): string | null {
-  const waiting = order.filter((row) => rowStatus(row) === 'needs-you').map((row) => row.id);
-  if (waiting.length === 0) return null;
-  const index = currentId ? order.findIndex((row) => row.id === currentId) : -1;
-  // The first waiting session below the current one, else the first from the top.
-  const after = order.slice(index + 1).find((row) => waiting.includes(row.id));
-  return after?.id ?? waiting[0]!;
+/**
+ * ⌘⇧U: the next session that needs you after the current one, in Quickest to unblock order whatever the sidebar shows
+ * (waiting for you first, then finished and unread, quickest review first), wrapping. The current one when it is the
+ * only one; null when nothing needs you.
+ */
+export function nextNeedsYou(rows: readonly SessionRowData[], currentId: string | null, quick: ReadonlyMap<string, QuickInfo> = new Map()): string | null {
+  const needs = quickestGroups(rows, quick).find((g) => g.group === 'review')?.rows.map((row) => row.id) ?? [];
+  if (needs.length === 0) return null;
+  const index = currentId ? needs.indexOf(currentId) : -1;
+  return needs[(index + 1) % needs.length]!;
 }
 
 /** When each waiting session started waiting: its oldest open request, else when it last changed. */

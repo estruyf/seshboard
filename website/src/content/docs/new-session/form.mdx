@@ -27,11 +27,21 @@ When you left a prompt unsent in New session, the **+** button carries a small p
 The view opens with the heading *Where do we start?* and your first four projects as tiles. Each tile shows the project's icon, its name and what is going on there: <Pill tone="needs-you">1 needs you</Pill>, <Pill tone="working">2 working</Pill>, or how long it has been idle.
 
 - Press <Kbd shortcut="new-session.pick" /> to pick a tile by its number. This works wherever focus is, also while you type the prompt.
-- The fifth tile, **+N more projects**, opens the full list with a filter field: type a few letters of a name, or an absolute path to use any folder. Typing a letter while a tile has focus opens the list filtered by it.
-- **Other folder…** (the last tile in the full list, or the fifth tile when you have four projects or fewer) opens the system folder dialog.
+- **Filter**, at the right of the *Project* heading, opens all projects with a filter field. With more than four projects, the fifth tile, **+N more**, does the same. Type a few letters of a name; the field shows how many match, such as "2 of 9". Typing a letter while a tile has focus opens the list filtered by it. <Kbd keys="enter" /> picks the highlighted project, the arrow keys move.
 - **Quick question**, under the tiles, starts without a project. See [Quick questions](/new-session/quick-questions/).
 
 The order of the tiles follows *Project order* in [Settings → General](/settings/#general): *Recent* (the ones you used last first) or *Your order*. New session remembers the last project you picked and opens on it next time. A project you filtered the sidebar to is picked first.
+
+### Add a folder
+
+Adding a folder takes one step. The folder becomes a project and is picked right away. A folder that already is a project is only picked.
+
+- **Add project…**, at the right of the *Project* heading, opens the same **Add project** dialog as [Projects](/projects/projects-view/#add-a-project): the folders you have used Claude Code in, and **Choose folder…** for any other. The project you add is picked here, and you stay in New session. With the list open, the button sits next to the filter field. In the command palette, *Add project…* does the same while New session is open.
+- Type a path in the filter field: one that starts with <Os mac="~/ or /" windows="~\ or a drive, such as C:\" />. The field turns into a path field and lists the folders in it, with the branch of the ones that are git repositories. The rest of the first folder shows faintly after what you typed: <Kbd keys="tab" /> takes it, and <Kbd keys="tab" /> on a whole folder name goes into it. <Kbd keys="enter" /> on a folder (its row says **Add and start here**) adds it and picks it. Hidden folders show when you type a dot.
+- When a name matches none of your projects, the list shows the folders Claude Code already has sessions for that aren't projects yet. <Kbd keys="enter" /> adds the highlighted one. The last row, **Choose a folder…**, opens the folder dialog.
+- Drag a folder from <Os mac="Finder" windows="File Explorer" /> onto the projects and drop it. Files, or several items at once, are not added.
+
+Without any projects yet, one wide tile, **Add project…**, opens the same dialog. You can also start typing a path there.
 
 When you pick a folder that isn't one of your projects yet, a checkbox under the message box, **Add &lt;folder&gt; to your projects**, adds it when the session starts. Leave it ticked to find the folder in New session next time.
 

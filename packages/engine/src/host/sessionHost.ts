@@ -45,6 +45,8 @@ export interface HostEvents {
   commandsChanged?(): void;
   /** Up next changed: the whole list with its images, to keep it when the app quits or the session stops. */
   queue?(sessionId: string, messages: StoredUpNext[]): void;
+  /** Claude's turn ended (its `result`): finished, or stopped with an error, with Claude Code's message. */
+  turnEnded?(sessionId: string, outcome: { ok: boolean; error: string | null }): void;
 }
 
 export interface HostConfig {
@@ -80,6 +82,15 @@ export function failureMessage(message: string, claudePath: string | undefined):
 }
 
 const STATE_FROM_SDK: Record<string, HostState> = { running: 'running', requires_action: 'needs-you', idle: 'idle' };
+
+/** How a turn ended, from its `result`: Claude Code's first error, or its text when it flagged the result as one. */
+export function resultOutcome(message: Extract<SDKMessage, { type: 'result' }>): { ok: boolean; error: string | null } {
+  if (message.subtype === 'success' && !message.is_error) return { ok: true, error: null };
+  const errors = (message as { errors?: unknown }).errors;
+  const first = Array.isArray(errors) ? errors.find((e): e is string => typeof e === 'string' && e.trim() !== '') : undefined;
+  const text = message.subtype === 'success' ? message.result : undefined;
+  return { ok: false, error: (first ?? text ?? null)?.trim().slice(0, 300) || null };
+}
 const STREAM_FLUSH_MS = 30;
 
 export function buildOptions(config: HostConfig, log: HostEvents['log']): Options {
@@ -553,6 +564,7 @@ export class SessionHost {
         this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd });
         void this.refreshContext();
         this.events.usageHint?.();
+        this.events.turnEnded?.(this.sessionId, resultOutcome(message));
         return;
       case 'rate_limit_event':
         this.events.rateLimit?.(this.sessionId, message.rate_limit_info);

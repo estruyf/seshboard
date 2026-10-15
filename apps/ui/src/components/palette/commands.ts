@@ -15,6 +15,7 @@ import {
   BellRing,
   Blocks,
   Brain,
+  CircleHelp,
   CloudDownload,
   Code,
   ChevronsDown,
@@ -44,6 +45,7 @@ import {
   ListChecks,
   ListEnd,
   ListPlus,
+  NotebookText,
   PencilLine,
   Maximize2,
   MessageSquare,
@@ -110,7 +112,7 @@ import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteS
 /** Requests the session view answers, because the dialog or menu they open lives there. */
 export type SessionRequest = 'commit' | 'create-pr' | 'branch-menu' | 'edit-actions' | 'new-action' | 'side-ask' | 'side-show';
 /** Requests the New session view answers: they change its own choices. */
-export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up';
+export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up' | 'add-project';
 
 /** What commands do, implemented against the stores in `paletteApi.ts` (and faked in tests). */
 export interface PaletteApi {
@@ -150,6 +152,12 @@ export interface PaletteApi {
   exportTheme(): void;
   setFocusLimit(on: boolean): void;
   renameSession(): void;
+  /** Opens the session's catch-up from its strip (or for a read session). */
+  showCatchUp(): void;
+  /** Makes the catch-up for the session's last finished turn now, and shows it. */
+  buildCatchUp(): void;
+  /** Opens "Why Claude asks" beside the session for its oldest open permission or question. */
+  showWhy(): void;
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
   compact(): void;
   copyLastReply(): void;
@@ -364,7 +372,8 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'import-theme', title: 'Import theme…', group: 'general', icon: Upload, keywords: 'colours colors json file', when: always, run: (api) => api.importTheme() },
   { id: 'export-theme', title: 'Export current theme…', group: 'general', icon: Download, keywords: 'colours colors json file save', when: always, run: (api) => api.exportTheme() },
   { id: 'manage-projects', title: 'Manage projects', group: 'general', icon: FolderCog, keywords: 'folders defaults', when: (ctx) => ctx.view !== 'projects', run: (api) => api.manageProjects() },
-  { id: 'add-project', title: 'Add project…', group: 'general', icon: FolderPlus, keywords: 'folder', when: always, run: (api) => api.addProject() },
+  // In New session the project added is picked there too.
+  { id: 'add-project', title: 'Add project…', group: 'general', icon: FolderPlus, keywords: 'folder', when: always, run: (api, ctx) => (ctx.newSession ? api.newSessionRequest('add-project') : api.addProject()) },
   {
     id: 'worktrees-here',
     title: (ctx) => `Worktrees in ${ctx.currentProject?.name ?? 'this project'}`,
@@ -522,6 +531,25 @@ export const COMMANDS: PaletteCommand[] = [
   },
 
   // A session is open
+  { id: 'show-catch-up', title: 'Show catch-up', group: 'session', shortcut: 'space', icon: NotebookText, keywords: 'briefing summary what happened review', when: (ctx) => session(ctx)?.catchUp === 'strip', run: (api) => api.showCatchUp() },
+  {
+    id: 'build-catch-up',
+    title: 'Catch up on this session',
+    group: 'session',
+    icon: NotebookText,
+    keywords: 'briefing summary what happened review recap',
+    when: (ctx) => ctx.connected && indexed(ctx) && session(ctx)?.catchUp === null && !session(ctx)?.running,
+    run: (api) => api.buildCatchUp(),
+  },
+  {
+    id: 'why-request',
+    title: 'Why is Claude asking?',
+    group: 'session',
+    icon: CircleHelp,
+    keywords: 'permission question explain reason allow deny',
+    when: (ctx) => session(ctx)?.waiting != null,
+    run: (api) => api.showWhy(),
+  },
   { id: 'rename-session', title: 'Rename session…', group: 'session', icon: Pencil, keywords: 'title name', when: indexed, run: (api) => api.renameSession() },
   {
     id: 'pin',
@@ -677,6 +705,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'close-other-panes', title: 'Close other panes', group: 'panes', shortcut: keysFor('pane.close-other'), icon: PanelsTopLeft, keywords: 'split tile only keep', when: panes, run: (api) => api.closeOtherPanes() },
 
   // New session is on screen
+
   { id: 'toggle-worktree', title: 'Toggle worktree', group: 'new-session', icon: FolderGit2, keywords: 'isolated checkout', when: (ctx) => !!ctx.newSession?.canWorktree, run: (api) => api.newSessionRequest('toggle-worktree') },
   { id: 'save-defaults', title: 'Save as project default', group: 'new-session', icon: Save, keywords: 'model effort mode', when: (ctx) => !!ctx.newSession?.canSaveDefaults, run: (api) => api.newSessionRequest('save-defaults') },
   { id: 'catch-up', title: 'Update from remote', group: 'new-session', icon: CloudDownload, keywords: 'git pull fetch sync latest', when: (ctx) => !!ctx.newSession?.canCatchUp, run: (api) => api.newSessionRequest('catch-up') },

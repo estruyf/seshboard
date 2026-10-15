@@ -14,6 +14,7 @@ import { CompanionSettings } from './companion/CompanionSettings.tsx';
 import { RemoteSettings } from './remote/RemoteSettings.tsx';
 import { EngineDiagnostics } from './EngineDiagnostics.tsx';
 import { AutoModelSettings } from './session/AutoModelSettings.tsx';
+import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
@@ -277,6 +278,9 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 className="shrink-0"
               />
             </div>
+          </Section>
+          <Section title="Catch-up">
+            <CatchUpSettings />
           </Section>
           <Section title="Auto model" description="Haiku reads the first prompt of a new session and picks the model it starts on. Picked once; after that, Auto only suggests.">
             <AutoModelSettings />
