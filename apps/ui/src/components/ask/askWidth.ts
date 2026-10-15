@@ -22,14 +22,19 @@ export function askWidthForKey(key: string, width: number, windowWidth: number):
   return step === null ? null : clampAskWidth(width + step, windowWidth);
 }
 
-/** Which of the two the right side shows: both open share it as tabs, on the one picked last. */
-export type RightTab = 'changes' | 'ask';
+/** The panels that can share the right side. */
+export type RightTab = 'changes' | 'ask' | 'agents';
+/** Their order as tabs. */
+export const RIGHT_TABS: readonly RightTab[] = ['changes', 'ask', 'agents'];
 
-/** What the right side shows: nothing, one panel, or both as tabs with `tab` in front. */
-export function rightPanel(changes: boolean, ask: boolean, tab: RightTab): { tab: RightTab | null; tabs: boolean } {
-  if (changes && ask) return { tab, tabs: true };
-  return { tab: changes ? 'changes' : ask ? 'ask' : null, tabs: false };
+/**
+ * What the right side shows: nothing, one panel, or several as tabs with `tab` in front (the one picked last, or the
+ * first open one when that isn't open). `open` lists the open panels in tab order.
+ */
+export function rightPanel(isOpen: Record<RightTab, boolean>, tab: RightTab): { tab: RightTab | null; tabs: boolean; open: RightTab[] } {
+  const open = RIGHT_TABS.filter((id) => isOpen[id]);
+  return { tab: open.includes(tab) ? tab : (open[0] ?? null), tabs: open.length > 1, open };
 }
 
 /** A stored tab, or Changes for anything else. */
-export const readTab = (value: string | null): RightTab => (value === 'ask' ? 'ask' : 'changes');
+export const readTab = (value: string | null): RightTab => (value === 'ask' || value === 'agents' ? value : 'changes');

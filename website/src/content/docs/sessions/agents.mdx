@@ -1,0 +1,34 @@
+---
+title: Agents
+description: See the agents Claude started in a session in a panel next to the conversation, with what each one is doing, asked and reported.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+
+When Claude starts agents, the **Agents** panel shows them next to the conversation. Leave it open while you keep talking to Claude in the main chat.
+
+## Open the panel
+
+- Press <Kbd shortcut="agents.toggle" />, or use the **Agents** button in the header. It appears once the session has started an agent, and shows how many are running.
+- Click the name of an agent in the list of background tasks above the message box. Shell commands and other tasks in that list have nothing to open.
+- Open an agent's call in the conversation and press **Open in Agents panel**.
+- Choose **Agents** under **⋯**, or *Toggle agents* in the command palette.
+
+The panel is a tab next to Changes and Ask. With more than one open, their tabs sit at the top, and the Agents tab counts the agents that are running. They share one width: drag the left edge, or use the arrow keys on it.
+
+The header buttons show which panel is in front: with more than one open, the button of the one you see has a bar under its icon, and the others are paler. Click a paler one to bring it to the front, and the one in front to hide it. The panel behind comes back when you hide the one in front.
+
+## The list
+
+**Active** lists the agents that are running, **Finished** the ones that are done, newest first. Each row shows what the agent is doing, its type and how long it ran. Click a section's title to fold it. Press <Kbd keys="arrowup" /> or <Kbd keys="arrowdown" /> on a row to move to the next one.
+
+## The agent you picked
+
+Under the list you see:
+
+- **Prompt:** what Claude asked the agent to do. It is folded; click to read it.
+- **Report:** what the agent reported back, once it is done.
+- **Working** or **Work:** what the agent does, step by step, as it happens.
+- **Stop**, for a background agent that is still running. It stops that agent and leaves Claude and the other agents alone. An agent that Claude waits for can't be stopped on its own: stop Claude's turn instead.
+
+<Kbd keys="escape" /> closes the panel when it has the focus.

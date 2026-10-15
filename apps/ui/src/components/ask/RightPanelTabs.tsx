@@ -2,27 +2,39 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import { CountBadge } from '../ui/Pill.tsx';
 import type { RightTab } from './askWidth.ts';
 
-const TABS: Array<{ id: RightTab; label: string }> = [
-  { id: 'changes', label: 'Changes' },
-  { id: 'ask', label: 'Ask' },
-];
+const LABELS: Record<RightTab, string> = { changes: 'Changes', ask: 'Ask', agents: 'Agents' };
 
 /**
- * The top of the right side while Changes and Ask are both open: a tab for each, with its count (changed files, the
- * questions in the thread on screen), and the front panel's buttons on the right. ← → move between the tabs.
+ * The top of the right side while two or more panels are open (Changes, Ask, Agents): a tab for each, with its count
+ * (changed files, the questions in the thread on screen, agents running), and the front panel's buttons on the right.
+ * ← → move between the tabs.
  */
-export function RightPanelTabs({ tab, onTab, counts, children }: { tab: RightTab; onTab(tab: RightTab): void; counts: Record<RightTab, number>; children?: ReactNode }) {
+export function RightPanelTabs({
+  tab,
+  open,
+  onTab,
+  counts,
+  children,
+}: {
+  tab: RightTab;
+  /** The open panels, in tab order. */
+  open: readonly RightTab[];
+  onTab(tab: RightTab): void;
+  counts: Record<RightTab, number>;
+  children?: ReactNode;
+}) {
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
-    const next: RightTab = tab === 'changes' ? 'ask' : 'changes';
+    const at = open.indexOf(tab);
+    const next = open[(at + (event.key === 'ArrowRight' ? 1 : open.length - 1)) % open.length]!;
     onTab(next);
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-right-tab="${next}"][aria-selected="true"]`)?.focus());
   };
   return (
     <div className="flex h-10 shrink-0 items-end gap-2 border-b border-border pr-3 pl-1.5" data-right-tabs>
       <div role="tablist" aria-label="Right panel" className="-mb-px flex min-w-0 gap-1" onKeyDown={onKey}>
-        {TABS.map(({ id, label }) => {
+        {open.map((id) => {
           const active = id === tab;
           return (
             <button
@@ -35,7 +47,7 @@ export function RightPanelTabs({ tab, onTab, counts, children }: { tab: RightTab
               className={`flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 text-ui ${active ? 'border-accent-ink font-semibold text-text' : 'border-transparent text-muted hover:text-text'}`}
               data-right-tab={id}
             >
-              {label}
+              {LABELS[id]}
               <CountBadge count={counts[id]} />
             </button>
           );

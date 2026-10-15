@@ -21,6 +21,12 @@ export interface Segment<T extends string> {
   disabled?: boolean;
   /** Toggle mode only: the segment opens a panel, so it says `aria-expanded` instead of `aria-pressed`. */
   expanded?: boolean;
+  /**
+   * Toggle mode, for segments that share one place (side panels that are tabs of the same area): of the ones that are
+   * on, `true` is the one showing (an accent bar under it) and `false` one that is on but behind it (softer).
+   * Leave it out when the segment is on its own.
+   */
+  front?: boolean;
   /** data- hooks for the segment's button. */
   data?: Record<`data-${string}`, string | boolean | undefined>;
 }
@@ -90,6 +96,7 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
     >
       {segments.map((segment, index) => {
         const on = isOn(segment);
+        const behind = on && segment.front === false;
         const aria =
           props.mode === 'radio'
             ? { role: 'radio', 'aria-checked': on, tabIndex: index === tabStop ? 0 : -1 }
@@ -108,7 +115,8 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
             aria-label={segment.ariaLabel ?? (segment.iconOnly ? segment.label : undefined)}
             aria-keyshortcuts={segment.kbd ? ariaShortcut(storedShortcut(segment.kbd)) : undefined}
             data-tooltip={segment.tooltip ?? (segment.iconOnly ? segment.label : undefined)}
-            className={`relative flex h-full ${fill ? 'min-w-0 flex-1' : 'shrink-0'} items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 ${on ? 'bg-selected text-text' : 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text'}`}
+            className={`relative flex h-full ${fill ? 'min-w-0 flex-1' : 'shrink-0'} items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 ${behind ? 'bg-selected/40 text-muted hover:text-text' : on ? 'bg-selected text-text' : 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text'}`}
+            data-segment-front={on && segment.front !== undefined ? segment.front : undefined}
             {...aria}
             {...segment.data}
           >
@@ -116,6 +124,7 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
             {!segment.iconOnly && <span>{segment.label}</span>}
             {segment.badge ? <span className="text-meta tabular-nums">{segment.badge}</span> : null}
             {segment.dot && <span className="absolute top-1 right-1 size-1.5 rounded-full bg-ok" aria-hidden />}
+            {on && segment.front === true && <span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-accent-ink" aria-hidden />}
           </button>
         );
       })}
