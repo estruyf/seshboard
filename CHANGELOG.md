@@ -10,6 +10,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Remote: see that Claude is working.** While a session works, the end of its conversation shows three dots, how long the turn has taken and what Claude is doing (**Thinking**, **Using Bash**), as on your computer. A working session's dot pulses in the list and the header.
 - **Remote: answers formatted as they arrive.** Headings, lists, code and tables show formatted while Claude is still writing, as on your computer, instead of as plain text until the answer is done.
 
+### Changed
+
+- **Remote: Mark as read and Archive from the list.** Right-click a session in the list for **Mark as read** and **Archive**, without opening it. The quick replies above the message box (**Continue**, **Run the tests**, **Open a PR**, **Mark as read**) are gone: the session's **⋯** menu still has **Mark as read** and **Archive**.
+
 ### Fixed
 
 - **Remote: the row under the pointer lights up in lists.** In the model, effort, mode and worktree lists and the **⋯** menu, the row you point at is now highlighted (it barely showed in dark mode), and the chosen one has a check.

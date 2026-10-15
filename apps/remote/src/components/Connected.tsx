@@ -309,6 +309,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       onNew={() => startNew()}
       onHelp={() => setHelp(true)}
       onRefresh={refresh}
+      onArchived={(sessionId) => sessionId === currentId && leave()}
       top={offering && !stripOffer ? <PushOffer client={client} onDone={() => setOffer(false)} /> : null}
       wide={wide}
       onPalette={() => setPalette(true)}
