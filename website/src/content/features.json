@@ -1142,8 +1142,8 @@
       "page": "remote-access"
     },
     {
-      "id": "feature:remote-quick-replies",
-      "name": "Remote: Continue, Run the tests, Open a PR, Mark as read",
+      "id": "feature:remote-row-menu",
+      "name": "Remote: Mark as read and Archive from a session's right-click menu",
       "page": "remote-access"
     },
     {
