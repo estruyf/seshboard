@@ -893,12 +893,14 @@ async function runLiveSessionStep(win: BrowserWindow, cwd: string): Promise<stri
   const shot = async (name: string) => writeFileSync(join(smokeOutDir!, name), (await win.webContents.capturePage()).toPNG());
   await click('[data-new-session]');
   // Pick the sandbox in the folder picker: open it, filter by the path, choose the match.
-  await click('[data-folder-select]');
+  await openFolderFilter(win);
   if (!(await waitInPage(win, "document.querySelector('[data-folder-list] input')", 3_000))) return 'folder picker did not open';
+  // A typed path lists the folder; choosing it adds it to the throwaway profile's projects and picks it.
+  const suggestion = `document.querySelector(${JSON.stringify(`[data-path-suggestion=${JSON.stringify(cwd)}]`)})`;
   await setFieldValue(win, '[data-folder-list] input', cwd);
-  if (!(await waitInPage(win, `document.querySelector('[data-folder-option=${JSON.stringify(JSON.stringify(cwd)).slice(1, -1)}]')`, 5_000))) return 'folder not offered';
+  if (!(await waitInPage(win, suggestion, 5_000))) return 'folder not offered';
   await shot('folder-picker.png');
-  await win.webContents.executeJavaScript(`document.querySelector('[data-folder-option=${JSON.stringify(JSON.stringify(cwd)).slice(1, -1)}]').click()`);
+  await win.webContents.executeJavaScript(`${suggestion}.click()`);
   await click('[data-model-select]');
   if (!(await waitInPage(win, "document.querySelector('[data-menu=\"model\"] [data-choice=\"haiku\"]')", 3_000))) return 'Haiku not offered in the model menu';
   await click('[data-menu="model"] [data-choice="haiku"]');
@@ -3980,6 +3982,88 @@ async function runNewSessionStep(win: BrowserWindow): Promise<string> {
   return `ok: ${hint}; git: ${catchUp}`;
 }
 
+/** Opens New session's filter field as a person does: a tile has focus and a letter is typed (it starts the filter). */
+function openFolderFilter(win: BrowserWindow): Promise<unknown> {
+  return win.webContents.executeJavaScript(`(() => {
+    const tile = document.querySelector('[data-new-session-view] [data-folder-select] button');
+    tile?.focus();
+    tile?.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true }));
+  })()`);
+}
+
+/**
+ * Adding a project in New session is one step. Add project… in the header opens the Add project dialog over New
+ * session, and closing it without adding changes nothing. In a new temporary folder (with one folder inside): a typed path lists folders, the faint rest of the name and Tab complete it, Tab again goes inside, a
+ * missing folder says so, and ↩ adds the folder as a project and picks it. A dragged file is refused. Only the
+ * throwaway profile's project list changes: the project is removed again and New session goes back to its folder.
+ */
+async function runAddFolderStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const field = '[data-folder-list] input';
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-add-')));
+  mkdirSync(join(dir, 'inner'));
+  const suggestion = (path: string) => one(`[data-path-suggestion=${JSON.stringify(path)}]`);
+  pressKey(win, 'N', ['meta']);
+  if (!(await waitInPage(win, `${one('[data-new-session-view] [data-add-folder]')} && ${one('[data-folder-select]')}`, 3_000))) return 'New session has no Add project… in the Project header';
+  // The remembered folder arrives a moment after the view opens.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const before = (await js(`${one('[data-folder-select]')}.dataset.value`)) as string;
+
+  // Add project…: onboarding's dialog, over New session; Done without adding leaves the folder as it was.
+  await js(`${one('[data-new-session-view] [data-add-folder]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-add-project-dialog]')} && ${one('[data-new-session-view]')}`, 3_000))) return 'Add project… did not open the Add project dialog';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `!${one('[data-add-project-dialog]')} && ${one('[data-new-session-view]')} && ${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(before)}`, 3_000))) return 'closing the Add project dialog left New session or changed its folder';
+
+  // A file dragged over the projects: the overlay refuses it, and goes when the drag ends.
+  await js(`(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(['x'], 'notes.txt', { type: 'text/plain' }));
+    document.querySelector('[data-project-header]').dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }));
+  })()`);
+  if (!(await waitInPage(win, `${one('[data-folder-drop]')}?.dataset.folderDrop === 'refused' && ${one('[data-folder-drop]')}.innerText.includes('Drop one folder')`, 2_000))) return 'a dragged file did not show "Drop one folder"';
+  await js("window.dispatchEvent(new DragEvent('dragend'))");
+  if (!(await waitInPage(win, `!${one('[data-folder-drop]')}`, 2_000))) return 'the drop overlay stayed after the drag ended';
+
+  await js(`${one('[data-new-session-view] [data-filter-projects]')}.click()`);
+  if (!(await waitInPage(win, `${one(field)} && document.activeElement === ${one(field)}`, 3_000))) return 'Filter did not open the filter field';
+  // The start of the folder's name: the rest shows faint, Tab takes it, Tab again goes inside.
+  const partial = dir.slice(0, -3);
+  await setFieldValue(win, field, partial);
+  if (!(await waitInPage(win, `${suggestion(dir)} && ${one('[data-path-ghost]')}?.innerText.endsWith(${JSON.stringify(dir.slice(-3))})`, 3_000))) return `typing ${partial} did not offer the folder with its rest`;
+  pressKey(win, 'Tab');
+  if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(dir)}`, 2_000))) return `Tab did not complete the folder (${String(await js(`${one(field)}.value`))})`;
+  pressKey(win, 'Tab');
+  if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(`${dir}/`)} && ${suggestion(join(dir, 'inner'))} && ${suggestion(dir)}`, 3_000))) return 'Tab on a whole folder did not list what is inside';
+  await setFieldValue(win, field, `${dir}/no-such-folder`);
+  if (!(await waitInPage(win, one('[data-path-missing]'), 3_000))) return 'a missing folder did not say so';
+
+  // ↩ on the folder: added as a project and picked (no "Add to your projects" box under the message box).
+  await setFieldValue(win, field, dir);
+  if (!(await waitInPage(win, `${suggestion(dir)}?.dataset.active === 'true' && ${suggestion(dir)}.innerText.includes('Add and start here')`, 3_000))) return 'the folder row did not offer Add and start here';
+  pressKey(win, 'Return');
+  const added = `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(dir)} && ${one(`[data-folder-option=${JSON.stringify(dir)}]`)} && !${one('[data-add-as-project]')}`;
+  if (!(await waitInPage(win, added, 5_000))) return `↩ did not add and pick the folder (${String(await js(`${one('[data-folder-select]')}?.dataset.value`))})`;
+
+  // Clean up: off the throwaway profile's projects again, and New session back on its folder.
+  await js(`${one('[data-open-projects]')}.click()`);
+  const row = one(`[data-project-row=${JSON.stringify(dir)}] [data-project-more-button]`);
+  if (!(await waitInPage(win, row, 3_000))) return 'the added folder is not in Projects';
+  await js(`${row}.click()`);
+  if (!(await waitInPage(win, one('[role=menu] [data-remove-project]'), 2_000))) return "no Remove in the project's ⋯ menu";
+  await js(`${one('[role=menu] [data-remove-project]')}.click()`);
+  if (!(await waitInPage(win, one('[data-confirm]'), 3_000))) return 'no confirmation before removing';
+  await js(`${one('[data-confirm]')}.click()`);
+  if (!(await waitInPage(win, `!${one(`[data-project-row=${JSON.stringify(dir)}]`)}`, 3_000))) return 'the project was not removed';
+  if (before) {
+    openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
+    if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(before)}`, 5_000))) return 'New session did not go back to its folder';
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return 'ok: Add project… opened the Add project dialog and Esc left New session as it was, a refused file drop, Filter opened the field, ghost text and Tab, Tab into a folder, a missing folder, ↩ added and picked it; removed again';
+}
+
 /**
  * Quick question, read-only: ⌘⇧N opens New session with Quick question picked, which hides every git option
  * (where, branch, worktree, Add to projects) and keeps the model, effort and mode chips, in a mode that asks.
@@ -4046,13 +4130,10 @@ async function runQuickQuestionStep(win: BrowserWindow): Promise<string> {
 
   // Picking a project from Quick question (the folder New session had; the throwaway profile may have none yet).
   if (before) {
-    if (!(await js(`!!${optionFor(before)}`))) {
-      await js("document.querySelector('[data-folder-select]').click()");
-      if (!(await waitInPage(win, "document.querySelector('[data-folder-list] input')", 3_000))) return 'could not open the folder list from Quick question';
-      await setFieldValue(win, '[data-folder-list] input', before);
-      await waitInPage(win, optionFor(before), 3_000);
-    }
-    await js(`${optionFor(before)}?.click()`);
+    // A tile when it is a project; otherwise a link picks it, since a typed path would add it to the projects (and the
+    // throwaway profile must have none until the projects step).
+    if (await js(`!!${optionFor(before)}`)) await js(`${optionFor(before)}.click()`);
+    else openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
     if (!(await waitInPage(win, `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(before)} && !document.querySelector('[data-route-question]')`, 3_000))) {
       return 'could not pick a project again from Quick question';
     }
@@ -6360,6 +6441,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
+  // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
+  await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));

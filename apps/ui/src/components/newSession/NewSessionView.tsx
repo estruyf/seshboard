@@ -4,6 +4,7 @@ import { AUTO_MODEL, type ContextItem, type ImageAttachment, type LaterDraft, ty
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
+import { AddProjectDialog } from '../projects/AddProjectDialog.tsx';
 import { routeHint } from './route.ts';
 import { filterBranches } from '../worktree/branchMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
@@ -50,6 +51,7 @@ import { CatchUpButton } from '../git/CatchUpButton.tsx';
 import { UsageBand } from '../UsageBand.tsx';
 import { linkNoticeText } from './linkNotice.ts';
 import { activityByProject, latestBranches, orderProjects, pickUpRows, tileStatus } from './projectTiles.ts';
+import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote, freshBase } from './trayLabels.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
 import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices, type GlobalChoices } from './choices.ts';
@@ -124,6 +126,8 @@ export function NewSessionView() {
   /** The link named no folder: rather than guess, the folder is left empty and the picker opens. */
   const [linkNoFolder, setLinkNoFolder] = useState(false);
   const [pickerRequest, setPickerRequest] = useState(0);
+  /** Add project…: the dialog onboarding uses, here picking what it adds. */
+  const [addingProject, setAddingProject] = useState(false);
   /** An `autostart` link's prompt, sent as soon as its folder and the project's defaults are in place. */
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   /** An `autostart` link is waiting: its choices never take the permission mode you last picked (see `linkStartingChoices`). */
@@ -488,9 +492,18 @@ export function NewSessionView() {
     if (!isQuestionsFolder(folder, questionsDir)) persist(globals, folder);
   };
 
+  /** Adds a folder as a project and selects it; a folder that is already a project is only selected. */
+  const addFolder = async (folder: string) => {
+    if (client && addOrSelect(folder, projects) === 'add' && !isQuestionsFolder(folder, questionsDir)) {
+      // A folder that can't be added (gone since) is still selected: New session says what is wrong with it.
+      await client.call('projects.add', { path: folder }).then(reloadProjects, () => {});
+    }
+    changeFolder(folder);
+  };
+  /** The system folder dialog, and the folder chosen there is added and selected. Cancelling changes nothing. */
   const chooseFolder = async () => {
     const picked = await window.switchboard?.pickFolder(cwd ?? undefined);
-    if (picked) changeFolder(picked);
+    if (picked) await addFolder(picked);
   };
 
   const canWorktree = options.git && (inspection?.isGitRepo ?? false);
@@ -539,6 +552,7 @@ export function NewSessionView() {
     else if (paletteRequest.kind === 'save-defaults' && unsaved) void saveAsProjectDefault();
     else if (paletteRequest.kind === 'add-to-queue' && canQueue) void parkInQueue(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext }).catch(() => {});
     else if (paletteRequest.kind === 'catch-up' && canCatchUp) setCatchUpRequest((n) => n + 1);
+    else if (paletteRequest.kind === 'add-project') setAddingProject(true);
   }, [paletteRequest]);
 
   const pickUp = useMemo(() => (cwd ? pickUpRows(rows, cwd, Date.now(), archiveAfterDays) : []), [rows, cwd, archiveAfterDays]);
@@ -832,10 +846,14 @@ export function NewSessionView() {
             branches={folderBranches}
             statusOf={statusOf}
             onChange={changeFolder}
+            onAdd={(folder) => void addFolder(folder)}
+            onAddProject={() => setAddingProject(true)}
             onChooseOther={() => void chooseFolder()}
             shortcuts={view === 'new'}
             openRequest={pickerRequest}
           />
+
+          {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onDone={(root) => root && changeFolder(root)} />}
 
           {/* At the focus limit: what is going, with Open, and a way to park this idea. Start asks first (Nudge) or waits (Strict). */}
           {atLimit && (

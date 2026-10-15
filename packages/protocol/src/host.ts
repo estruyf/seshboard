@@ -201,6 +201,16 @@ export const ProjectInspection = z.object({
 });
 export type ProjectInspection = z.infer<typeof ProjectInspection>;
 
+/** A folder offered while typing a path in New session (`fs.folders`). */
+export const FolderEntry = z.object({
+  name: z.string(),
+  path: z.string(),
+  /** The folder is the top of a git checkout. */
+  isGit: z.boolean(),
+  branch: z.string().nullable(),
+});
+export type FolderEntry = z.infer<typeof FolderEntry>;
+
 export const EditorInfo = z.object({
   id: z.string(),
   name: z.string(),

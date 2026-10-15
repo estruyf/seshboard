@@ -78,19 +78,15 @@ describe('project tiles', () => {
     expect(quickTiles(recent, null)).toEqual(['/a', '/b', '/c', '/d']);
   });
 
-  it('filter by name or path, and offer a typed path', () => {
+  it('filter by name or path', () => {
     const names = new Map([['/u/me/switchboard', 'Switchboard'], ['/u/me/demo-time', 'Demo Time']]);
     const nameOf = (root: string) => names.get(root) ?? root;
     const all = [...names.keys()];
     expect(filterFolders(all, '', nameOf, '/u/me')).toEqual(all);
     expect(filterFolders(all, 'demo', nameOf, '/u/me')).toEqual(['/u/me/demo-time']);
-    expect(filterFolders(all, '/tmp/x/', nameOf, '/u/me')).toEqual(['/tmp/x']);
-    // Windows: a drive path is a typed path too; its root keeps the separator after the drive letter.
-    expect(filterFolders(all, 'E:\\repos\\app\\', nameOf, '/u/me')).toEqual(['E:\\repos\\app']);
-    expect(filterFolders(all, 'E:\\', nameOf, '/u/me')).toEqual(['E:\\']);
-    expect(filterFolders(all, 'E:/', nameOf, '/u/me')).toEqual(['E:/']);
-    expect(filterFolders(all, 'E:/repos/', nameOf, '/u/me')).toEqual(['E:/repos']);
-    expect(filterFolders(all, 'repos\\app', nameOf, '/u/me')).toEqual([]);
+    expect(filterFolders(all, '~/sw', nameOf, '/u/me')).toEqual(['/u/me/switchboard']);
+    // A typed path is no longer offered here: path mode lists real folders instead (pathInput.ts).
+    expect(filterFolders(all, '/tmp/x/', nameOf, '/u/me')).toEqual([]);
   });
 
   it('list the sessions to pick up: waiting and working first, archived ones left out', () => {

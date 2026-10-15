@@ -12,6 +12,7 @@ import {
   PermissionMode,
   PermissionRequest,
   ProjectInspection,
+  FolderEntry,
   RewindResult,
   ContextUsage,
   QueuedMessage,
@@ -432,6 +433,15 @@ export const contract = {
     'questions.folder': { params: z.object({}), result: z.object({ path: AbsolutePath }) },
     /** Whether `path` is a folder (`exists` is false for a file, with `isFile` set) and the git checkout it is in. */
     'projects.inspect': { params: z.object({ path: AbsolutePath }), result: ProjectInspection },
+    /**
+     * The folders in `path` (absolute, `~` or `~/…`) whose name starts with `prefix`, ignoring case: folders only,
+     * sorted by name, at most 50, hidden ones only for a prefix that starts with a dot. `here` is `path` itself, null
+     * when it is not a folder. Unreadable folders are left out; nothing here is an error. For typing a path in New session.
+     */
+    'fs.folders': {
+      params: z.object({ path: z.string().min(1).max(1024), prefix: z.string().max(255).default('') }),
+      result: z.object({ here: FolderEntry.nullable(), folders: z.array(FolderEntry) }),
+    },
     /** Fuzzy file search for @-mentions (git-tracked and untracked-but-not-ignored files). */
     'files.search': {
       params: z.object({ cwd: AbsolutePath, query: z.string().max(500), limit: z.number().int().min(1).max(200).default(50) }),
