@@ -1,5 +1,5 @@
 import { trashName } from '../../lib/platform.ts';
-import { ChevronRight, ExternalLink, Maximize2, Minimize2, RefreshCw, Undo2, WrapText, X } from 'lucide-react';
+import { ChevronRight, ExternalLink, Maximize2, Minimize2, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
 import { memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { joinPath, type ChangedFile, type ChangesBase, type GitChanges } from '@switchboard/protocol/client';
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Notice } from '../ui/Notice.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { CHANGES_DEFAULT_WIDTH, CHANGES_MAX_SHARE, CHANGES_MIN_WIDTH, changesWidthForKey, clampChangesWidth } from './changesWidth.ts';
 
@@ -152,6 +153,7 @@ export function ChangesPanel({
   onClose,
   tabs,
   shared,
+  outside = [],
 }: {
   cwd: string;
   changes: GitChanges | null;
@@ -163,6 +165,8 @@ export function ChangesPanel({
   tabs?: (actions: ReactNode) => ReactNode;
   /** Ask is open too: the two share the right side's width. */
   shared?: { width: number; setWidth(width: number): void };
+  /** Files the last turn changed outside the plan (its catch-up), relative to the checkout: tinted, with a notice. */
+  outside?: readonly string[];
 }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -179,6 +183,7 @@ export function ChangesPanel({
   const expanded = useChangesLayout((s) => s.expanded);
   const toggleExpanded = useChangesLayout((s) => s.toggleExpanded);
   const files = changes?.files ?? [];
+  const outsideSet = useMemo(() => new Set(outside), [outside]);
   const added = files.reduce((n, f) => n + f.additions, 0);
   const removed = files.reduce((n, f) => n + f.deletions, 0);
   const editable = base === 'uncommitted';
@@ -326,6 +331,11 @@ export function ChangesPanel({
         {!tabs && <Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />}
       </div>
 
+      {outside.length > 0 && (
+        <Notice tone="caution" icon={<TriangleAlert size={13} aria-hidden />} className="m-2" data-changes-outside>
+          {outside.length === 1 ? '1 file outside the plan' : `${outside.length} files outside the plan`}
+        </Notice>
+      )}
       {(error ?? changes?.error) && (
         <p role="alert" className="border-b border-border px-3 py-2 text-meta text-error">
           {error ?? changes?.error}
@@ -345,7 +355,7 @@ export function ChangesPanel({
             const name = file.path.slice(slash + 1);
             const diffId = `${idBase}-diff-${index}`;
             return (
-              <div key={file.path} className="border-b border-border" data-changed-file={file.path}>
+              <div key={file.path} className={`border-b border-border ${outsideSet.has(file.path) ? 'bg-caution/10' : ''}`} data-changed-file={file.path} data-outside-plan={outsideSet.has(file.path) || undefined}>
                 <div className="group flex h-8 items-center gap-2 pr-2 pl-1.5 text-ui hover:bg-border/30">
                   {editable && (
                     <Checkbox

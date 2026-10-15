@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { quickInfoOf, useCatchUp } from './catchUpStore.ts';
 import { useHosts } from './hostsStore.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { useProjects } from './projectsStore.ts';
@@ -29,12 +30,13 @@ export const useHud = create<HudState>()((set) => ({
  * The sessions in the sidebar's order, as ⌃⇥ walks them. With the sidebar open, the list you see (its
  * search and project filter apply); minimal or closed, every session in scope, as the rail shows them.
  */
-function currentOrder() {
+export function currentOrder() {
   const { sessions, live, filter } = useSessions.getState();
-  const scope = usePreferences.getState().prefs.sessionScope;
+  const { sessionScope: scope, archiveAfterDays, sidebarSort: sort } = usePreferences.getState().prefs;
   const rows = toRows(sessions, live, useHosts.getState().hosts).filter((row) => inScope(row, scope));
   const open = useSidebar.getState().state === 'open';
-  return sidebarOrder(sidebarGroups(rows, { now: Date.now(), archiveAfterDays: usePreferences.getState().prefs.archiveAfterDays, search: open ? filter : '', project: open ? useProjects.getState().filter : null }));
+  const quick = quickInfoOf(useCatchUp.getState().cards);
+  return sidebarOrder(sidebarGroups(rows, { now: Date.now(), archiveAfterDays, search: open ? filter : '', project: open ? useProjects.getState().filter : null, sort, quick }));
 }
 
 function land(id: string, order: readonly { id: string }[]) {
@@ -55,11 +57,11 @@ export function goToAdjacentSession(direction: 1 | -1): void {
   if (id) land(id, order);
 }
 
-/** ⌘⇧U: the next session that needs you. With nothing waiting it stays put and the HUD says so. */
+/** ⌘⇧U: the next session that needs you, quickest to unblock first. With nothing waiting it stays put and the HUD says so. */
 export function goToNextNeedsYou(): void {
   const order = currentOrder();
   const { selectedId, view } = useSessions.getState();
-  const id = nextNeedsYou(order, view === 'session' ? selectedId : null);
+  const id = nextNeedsYou(order, view === 'session' ? selectedId : null, quickInfoOf(useCatchUp.getState().cards));
   if (id) land(id, order);
   else useHud.getState().show({ kind: 'note', text: 'Nothing needs you' });
 }

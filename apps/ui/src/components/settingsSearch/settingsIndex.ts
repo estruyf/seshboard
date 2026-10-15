@@ -110,6 +110,14 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'while working queue steer message send busy up next',
       target: '[data-while-working]',
     },
+    {
+      id: 'catchup-summaries',
+      page: 'conversation',
+      label: 'Write catch-up summaries with Haiku',
+      detail: 'A short briefing when a session finishes, and a plain answer to Why? on a permission.',
+      keywords: 'catch-up briefing banner summary what happened review why permission model tokens',
+      target: '[data-catchup-summaries]',
+    },
     { id: 'auto-model', page: 'conversation', label: 'Auto model', detail: 'Shows Auto in the model menu. Haiku reads only your prompt, never your files or memory.', keywords: 'automatic routing pick choose', target: '[data-auto-model-enabled]' },
     { id: 'auto-model-allowed', page: 'conversation', label: 'Models it can pick', detail: 'Haiku, Sonnet and Opus. At least one.', keywords: 'auto model', target: '[data-auto-model-allowed]' },
     { id: 'auto-model-lean', page: 'conversation', label: 'When in doubt', detail: 'Which way to lean on a close call: Cheaper, Balanced or Stronger.', keywords: 'auto model cost', target: '[data-auto-model-lean]' },
@@ -201,6 +209,20 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-companion-settings]',
     },
     { id: 'companion-install', page: 'vscode', label: 'Visual Studio Marketplace', detail: 'Install the Switchboard extension.', keywords: 'install download extension open vsx cursor windsurf', target: '[data-companion-link="marketplace"]' },
+
+    // Remote
+    {
+      id: 'remote-enabled',
+      page: 'remote',
+      label: 'Allow access from my phone',
+      detail: "Follow your sessions, answer Claude and send prompts from your phone's browser. Only phones you pair here can connect.",
+      keywords: 'phone mobile remote access iphone android tunnel',
+      target: '[data-remote-enabled]',
+    },
+    { id: 'remote-tunnel', page: 'remote', label: 'Reach this computer through', detail: 'Cloudflare quick tunnel, Tailscale, ngrok or your own address.', keywords: 'tunnel cloudflare cloudflared tailscale ngrok proxy address', target: '[data-remote-tunnel]' },
+    { id: 'remote-port', page: 'remote', label: 'Port', detail: 'The local port Remote listens on. Your tunnel forwards to it.', keywords: 'port 47615 listen local address forward tunnel', target: '[data-remote-port]' },
+    { id: 'remote-pair', page: 'remote', label: 'Pair a phone', detail: 'Scan a QR code with your phone, then allow it here.', keywords: 'qr code pairing phone add device', target: '[data-remote-pair]' },
+    { id: 'remote-devices', page: 'remote', label: 'Paired phones', detail: 'Revoke disconnects a phone at once.', keywords: 'revoke devices phones remove', target: '[data-remote-devices]', fallback: '[data-remote-pair]' },
 
     // Backup
     { id: 'backup-export', page: 'backup', label: 'Export settings', detail: 'Choose what to include and save it to a file.', keywords: 'backup save move another computer', target: '[data-backup-export]' },

@@ -1,7 +1,8 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { Archive, ArchiveRestore, Check, Ellipsis, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2 } from 'lucide-react';
-import type { SidebarStyle } from '@switchboard/protocol/bridge';
+import { Archive, ArchiveRestore, Check, Ellipsis, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2, TriangleAlert } from 'lucide-react';
+import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
+import type { CatchUp } from '@switchboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
 import { newSessionDraftTooltip, PenBadge } from '../drafts/PenBadge.tsx';
@@ -9,6 +10,8 @@ import { openUnsentList } from '../drafts/UnsentList.tsx';
 import { openDraft, useNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
+import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
+import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
@@ -67,6 +70,9 @@ const rowHeight = (row: SidebarListRow, style: SidebarStyle) =>
 const sectionOfHeader = (row: SidebarListRow): SectionKey | null => (row.kind === 'queue-header' ? 'queue' : row.kind === 'group' && isSectionKey(row.group) ? row.group : null);
 
 /** The 3px rail at a row's left edge: only the states that ask for a look get one. */
+/** A row's review time from its catch-up: none without one, or when it needs nothing from you. */
+export const reviewOf = (card: CatchUp | undefined) => (card && card.need.kind !== 'none' ? card.reviewMinutes : null);
+
 const AGE_TONE: Partial<Record<Exclude<RowStatus, null>, string>> = { 'needs-you': 'text-warn', running: 'text-accent-ink', unread: 'text-unread' };
 
 /** The selection sheet's actions: three to a row in the sidebar's width, so they keep less padding than a button usually has. */
@@ -79,7 +85,7 @@ const pickButton = 'min-w-0 px-1.5!';
  */
 function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow, { kind: 'group' | 'queue-header' }>; selectAll: ReactNode; onToggle(section: SectionKey, all: boolean): void }) {
   const section = sectionOfHeader(row);
-  const status = row.kind === 'group' && (row.group === 'needs-you' || row.group === 'working') ? row.group : null;
+  const status = row.kind === 'group' && (row.group === 'needs-you' || row.group === 'working') ? row.group : row.kind === 'group' && row.group === 'still-working' ? 'working' : null;
   const summary = headerSummary(row);
   const queue = row.kind === 'queue-header';
   const label = queue ? 'Queue' : GROUP_LABEL[row.group];
@@ -224,6 +230,8 @@ export const SessionRow = memo(function SessionRow({
   tabbable,
   waitingFor,
   draft,
+  review = null,
+  outside = false,
   onClick,
   onTogglePick,
   onMenu,
@@ -246,6 +254,10 @@ export const SessionRow = memo(function SessionRow({
   waitingFor: string | null;
   /** The start of an unsent message typed here (one that counts), or null. */
   draft: string | null;
+  /** Minutes its catch-up says a review takes, or null without one (or when it needs nothing from you). */
+  review?: number | null;
+  /** Its last turn changed files outside the plan (or what you asked for). */
+  outside?: boolean;
   onClick(event: MouseEvent, data: SessionRowData): void;
   onTogglePick(id: string): void;
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
@@ -283,6 +295,14 @@ export const SessionRow = memo(function SessionRow({
   const pin = data.pinned && <Pin size={11} className="shrink-0 text-faint" aria-hidden />;
   // An unsent message: a pen in the same corner, never in a status colour.
   const pen = draft !== null && <PencilLine size={11} className="shrink-0 text-faint" aria-hidden data-row-pen />;
+  // Files changed outside the plan: worth a look before anything else is done with it.
+  const warning = outside && (
+    <span className="flex shrink-0 text-caution" data-tooltip="Files outside the plan" aria-label="Files outside the plan" role="img" data-row-outside>
+      <TriangleAlert size={12} aria-hidden />
+    </span>
+  );
+  // What it needs from you and how long that takes, from its catch-up: "needs you · ~1 min", "~2 min to review".
+  const reviewText = review === null || status === 'running' ? null : status === 'needs-you' ? `needs you · ~${review} min` : `~${review} min to review`;
   const icon = (size: number) =>
     picking ? (
       <PickBox on={picked} size={size} onToggle={() => onTogglePick(data.id)} />
@@ -350,6 +370,7 @@ export const SessionRow = memo(function SessionRow({
         <span className={`min-w-0 flex-1 truncate text-body ${titleTone}`}>{data.title}</span>
         {pin}
         {pen}
+        {warning}
         {status ? <StatusIcon status={status} /> : age}
       </button>
     );
@@ -365,11 +386,17 @@ export const SessionRow = memo(function SessionRow({
         <span className="flex shrink-0 items-center gap-1">
           {pin}
           {pen}
+          {warning}
           {age}
         </span>
       </span>
       <span className="flex h-4 min-w-0 items-center gap-1.5 text-meta text-faint">
-        {waitingFor ? (
+        {reviewText ? (
+          <span className="min-w-0 flex-1 truncate" data-row-review={review}>
+            {!filtered && `${projectName} · `}
+            <span className={status === 'needs-you' ? 'font-medium text-warn' : ''}>{reviewText}</span>
+          </span>
+        ) : waitingFor ? (
           <span className="min-w-0 flex-1 truncate font-medium text-warn">{waitingFor}</span>
         ) : draft !== null && status !== 'needs-you' && status !== 'running' ? (
           // Nothing going on: the draft takes the line. Needs you and Working keep theirs; only the pen shows then.
@@ -459,6 +486,9 @@ export function Sidebar() {
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const updatePrefs = usePreferences((s) => s.update);
+  const sort = usePreferences((s) => s.prefs.sidebarSort);
+  const catchUps = useCatchUp((s) => s.cards);
+  const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   const width = useSidebar((s) => s.width);
   // Unsent messages: a pen (and the draft's start) on their rows, the count in the footer, a pen on + for New session's.
   const unsent = useUnsent();
@@ -485,8 +515,8 @@ export function Sidebar() {
   const archivedAt = archivedPlacement(archived.length, { open: archivedOpen, searching });
   const listSelected = listView === 'session' ? selectedId : null;
   const rows = useMemo(
-    () => buildListRows(active, archived, { now, archivedOpen: archivedAt === 'list', queue: { entries: queueEntries, ready: queueReady }, closed, selectedId: listSelected }),
-    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected],
+    () => buildListRows(active, archived, { now, archivedOpen: archivedAt === 'list', queue: { entries: queueEntries, ready: queueReady }, closed, selectedId: listSelected, sort, quick }),
+    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick],
   );
   const queueMenus = useQueueMenu(queue.rows);
   const drag = useQueueDrag();
@@ -884,6 +914,21 @@ export function Sidebar() {
         </span>
       </div>
 
+      {/* The order: by time and state, or what takes least to unblock first. */}
+      <div className="px-3 pb-1.5">
+        <SegmentedControl<SidebarSort>
+          mode="radio"
+          label="Sort sessions"
+          value={sort}
+          onChange={(sidebarSort) => updatePrefs({ sidebarSort })}
+          fill
+          className="no-drag"
+          segments={[
+            { value: 'recent', label: 'Recent', tooltip: 'What needs you, what is working, then by time', data: { 'data-sort-recent': true } },
+            { value: 'quickest', label: 'Quickest to unblock', tooltip: 'What needs you or a review first, the quickest at the top', data: { 'data-sort-quick': true } },
+          ]}
+        />
+      </div>
       <ProjectFilter counts={counts} />
       {noProjects && (
         <div className="mx-3 mb-2 grid justify-items-start gap-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-ui" data-sidebar-onboarding>
@@ -976,6 +1021,8 @@ export function Sidebar() {
                       tabbable={row.data.id === tabStopId}
                       waitingFor={rowStatus(row.data) === 'needs-you' ? waitingLabel(waitingTool.get(row.data.id)?.tool ?? null) : null}
                       draft={draftPreviews.get(row.data.id) ?? null}
+                      review={reviewOf(catchUps.get(row.data.id))}
+                      outside={(catchUps.get(row.data.id)?.signals.outOfScope.length ?? 0) > 0}
                       onClick={rowClick}
                       onTogglePick={togglePicked}
                       onMenu={sessionMenu}

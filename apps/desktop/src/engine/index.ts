@@ -30,6 +30,16 @@ const trash = (paths: string[], scope: TrashScope) =>
 
 const appVersion = argValue('--app-version') ?? '0.0.0';
 
+/** Remote's key, from main, which keeps it in the system's keychain (see main/remoteIdentity.ts). */
+let nextIdentityId = 1;
+const pendingIdentity = new Map<number, (secret: Uint8Array | null) => void>();
+const remoteIdentity = () =>
+  new Promise<Uint8Array | null>((resolve) => {
+    const id = nextIdentityId++;
+    pendingIdentity.set(id, resolve);
+    process.parentPort.postMessage({ type: 'remote-identity', id });
+  });
+
 /** The website's screenshots give the demo logins plan numbers (SWITCHBOARD_DEMO_USAGE, a JSON file). */
 function demoUsage(): DemoUsage | undefined {
   const file = process.env.SWITCHBOARD_DEMO_USAGE;
@@ -47,6 +57,11 @@ const engine = createEngine({
   trash,
   // The VS Code companion connects over a socket; SWITCHBOARD_NO_COMPANION=1 leaves it closed.
   ...(process.env.SWITCHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion } }),
+  // Remote, for a paired phone. SWITCHBOARD_REMOTE_APP_URL points it at a development build of the remote app
+  // (`npm run dev:remote`); SWITCHBOARD_NO_REMOTE=1 leaves it out.
+  ...(process.env.SWITCHBOARD_NO_REMOTE === '1'
+    ? {}
+    : { remote: { appVersion, identity: remoteIdentity, ...(process.env.SWITCHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SWITCHBOARD_REMOTE_APP_URL } : {}) } }),
   // The smoke test points the Claude Code check at a mock registry and must never run an update.
   claudeUpdates: { allowUpdate: process.env.SWITCHBOARD_NO_CLAUDE_UPDATE !== '1' },
   onLog: (entry) => console.error(`[engine] ${entry.level}: ${entry.message}`),
@@ -54,6 +69,7 @@ const engine = createEngine({
   // The smoke test and the screenshots: Auto model picks without calling a model.
   stubRouter: process.env.SWITCHBOARD_STUB_ROUTER === '1',
   stubSideQuestions: process.env.SWITCHBOARD_STUB_BTW === '1',
+  stubCatchUp: process.env.SWITCHBOARD_STUB_CATCHUP === '1',
 });
 
 // One misbehaving session must never take the whole engine (and every other session) down.
@@ -69,11 +85,23 @@ process.parentPort.on('message', (event) => {
     engine.setAutoModel(sanitizeAutoModel(data.prefs) ?? DEFAULT_AUTO_MODEL);
     return;
   }
+  // Settings › Conversation › Catch-up's "Write catch-up summaries with Haiku".
+  if (data?.type === 'catchUp') {
+    engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
+    return;
+  }
   // Settings › Sessions, from main's preferences (sent at start and after each change).
   if (data?.type === 'retention') {
     const archiveAfterDays = clampDays(data.archiveAfterDays, ARCHIVE_AFTER_DAYS) ?? ARCHIVE_AFTER_DAYS.default;
     const afterDays = clampDays(data.deleteArchived?.afterDays, DELETE_AFTER_DAYS) ?? DELETE_AFTER_DAYS.default;
     engine.setRetention({ archiveAfterDays, deleteArchived: { enabled: data.deleteArchived?.enabled === true, afterDays } });
+    return;
+  }
+  if (data?.type === 'remote-identity-result' && typeof data.id === 'number') {
+    const secret = (data as { secret?: unknown }).secret;
+    const bytes = typeof secret === 'string' ? new Uint8Array(Buffer.from(secret, 'base64')) : null;
+    pendingIdentity.get(data.id)?.(bytes?.length === 32 ? bytes : null);
+    pendingIdentity.delete(data.id);
     return;
   }
   if (data?.type === 'trash-result' && typeof data.id === 'number') {

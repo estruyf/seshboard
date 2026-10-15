@@ -104,6 +104,8 @@ export interface ComposerProps {
    * it (an answer came in while the panel was closed).
    */
   ask?: { onAsk(question: string): Promise<void>; onOpen(): void; open: boolean; ready: boolean };
+  /** Escape in the box, before it stops Claude: true when something used it (Reply in the catch-up leaves the box). */
+  onEscape?(): boolean;
 }
 
 /** What the message was made of: the typed text and the context chips that `promptWithContext` put together. */
@@ -548,6 +550,11 @@ export function Composer(props: ComposerProps) {
         applyRecall(recall);
         return;
       }
+    }
+    // Something else (leaving Reply) takes Escape first; it only stops Claude when nothing did.
+    if (event.key === 'Escape' && props.onEscape?.()) {
+      event.preventDefault();
+      return;
     }
     // ⇧↵ on a list item starts the next one; ` on a selection wraps it as code.
     if (editKey(event, setText)) return;

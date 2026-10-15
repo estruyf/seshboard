@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { LiveSession, SessionHostInfo, SessionsChanged, SessionsSnapshot, SessionSummary } from '@switchboard/protocol/client';
 import { hostAsLive, isActiveHost } from './hostsStore.ts';
-import { mergeSessionChanges } from './sessionChanges.ts';
+import { mergeSessionChanges, patchedSessions } from './sessionChanges.ts';
 import * as panes from './paneState.ts';
 import { leafIds, type Tile } from './tiling.ts';
 import { useTilingArea } from './tilingArea.ts';
@@ -11,7 +11,7 @@ import { toast } from './toastStore.ts';
 /** `project` is one project's page (`useProjectPage` says which); `projects` is the list of them. */
 export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage';
 /** The pages of Settings, listed in its own sidebar. */
-export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'conversation' | 'notifications' | 'focus' | 'profiles' | 'memory' | 'vscode' | 'backup' | 'diagnostics' | 'about';
+export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'conversation' | 'notifications' | 'focus' | 'profiles' | 'memory' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
 
 /** Shown when there is no room for another pane (a session opened beside, or a pane dropped where it doesn't fit). */
 const NO_ROOM = 'There is no room for that. Make the window larger or close a pane first.';
@@ -57,6 +57,11 @@ interface SessionsState {
   /** Applies `sessions.changed` events, oldest first, in one update (a burst of them arrives batched). */
   applyChanged(changes: readonly SessionsChanged[]): void;
   setLive(live: LiveSession[]): void;
+  /**
+   * Changes a session's summary here at once, ahead of the engine's `sessions.changed` (Mark as read, Archive), so the
+   * focus counter and the sidebar follow the click right away. The engine's next update replaces it.
+   */
+  patchSummary(id: string, patch: Partial<Pick<SessionSummary, 'unread' | 'viewedAt' | 'archivedAt'>>): void;
   /** Shows a session in the active pane (or focuses the pane already showing it). */
   select(id: string | null): void;
   /** Opens a session in a new pane next to the active one (`planOpen`); with no room, says so in a toast instead. */
@@ -123,6 +128,7 @@ export const useSessions = create<SessionsState>()((set) => ({
     if (changes.length > 0) set((state) => mergeSessionChanges(state, changes));
   },
   setLive: (live) => set({ live: new Map(live.map((l) => [l.sessionId, l])) }),
+  patchSummary: (id, patch) => set((state) => ({ sessions: patchedSessions(state.sessions, id, patch) })),
   select: (id) => set((s) => ({ ...apply(s, panes.showSession(now(s), id)), view: 'session' })),
   openBeside: (id) => {
     const out = panes.openBeside(now(useSessions.getState()), id, useTilingArea.getState().size);

@@ -66,7 +66,7 @@ export function buttonClass({ variant, size, iconOnly, filled, selected, segment
   return `inline-flex items-center justify-center gap-1.5 ${corners} text-ui whitespace-nowrap disabled:opacity-50 ${box} ${tone}`;
 }
 
-export type PillTone = 'default' | 'muted' | 'accent' | 'ok' | 'warn' | 'caution' | 'link' | 'count';
+export type PillTone = 'default' | 'muted' | 'accent' | 'ok' | 'warn' | 'caution' | 'error' | 'link' | 'count';
 
 const PILL_TONE: Record<Exclude<PillTone, 'count'>, string> = {
   default: 'border-border text-text',
@@ -78,6 +78,8 @@ const PILL_TONE: Record<Exclude<PillTone, 'count'>, string> = {
   warn: 'border-warn/40 bg-warn/10 text-warn',
   // Something to look at before it goes (uncommitted files in a worktree).
   caution: 'border-caution/40 bg-caution/10 text-caution',
+  // Something that failed (tests in a catch-up).
+  error: 'border-error/40 bg-error/10 text-error',
   // Something that lives elsewhere and is still open (a pull request).
   link: 'border-link/40 bg-link/10 text-link',
 };

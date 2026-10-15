@@ -32,6 +32,7 @@ import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { isActiveHost, useHosts } from './state/hostsStore.ts';
 import { useLaterSync } from './state/laterStore.ts';
+import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useAskSync } from './state/askStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
@@ -218,6 +219,7 @@ export function App() {
   usePreferencesSync();
   useThemesSync();
   useLaterSync();
+  useCatchUpSync();
   useUpNextSync();
   useAskSync();
   useQueueToasts();

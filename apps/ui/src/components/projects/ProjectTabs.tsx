@@ -5,6 +5,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { formatShortcut } from '../../lib/shortcuts.ts';
 import { useBranchRows } from '../../state/branchesStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { useCatchUp } from '../../state/catchUpStore.ts';
 import { openProject, type ProjectTab } from '../../state/projectPageStore.ts';
 import { useProfile, useProfiles } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -22,7 +23,7 @@ import { ACTION_ICON } from '../actions/actionIcon.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { QueuedInProject } from '../queue/QueuedInProject.tsx';
-import { SessionRow } from '../sidebar/Sidebar.tsx';
+import { reviewOf, SessionRow } from '../sidebar/Sidebar.tsx';
 import { useSessionMenu } from '../sidebar/useSessionMenu.tsx';
 import { useProjectActions } from '../sidebar/ProjectMenu.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -205,6 +206,7 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
   const rows = useProjectSessionRows(root);
   const now = useNow();
   const permissions = useHosts((s) => s.permissions);
+  const catchUps = useCatchUp((s) => s.cards);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const groups = useMemo(() => sidebarGroups(rows, { now, archiveAfterDays, project: root }), [rows, now, archiveAfterDays, root]);
   const archived = useMemo(() => buildSessionList(rows, { search: '', project: root, now, archiveAfterDays }).archived, [rows, now, archiveAfterDays, root]);
@@ -229,6 +231,8 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
       tabbable
       waitingFor={rowStatus(data) === 'needs-you' ? waitingLabel(waitingTool.get(data.id) ?? null) : null}
       draft={null}
+      review={reviewOf(catchUps.get(data.id))}
+      outside={(catchUps.get(data.id)?.signals.outOfScope.length ?? 0) > 0}
       onClick={(event, clicked) => (event.altKey ? useSessions.getState().openBeside(clicked.id) : useSessions.getState().select(clicked.id))}
       onTogglePick={() => {}}
       onMenu={menus.openSessionMenu}

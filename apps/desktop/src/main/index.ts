@@ -9,6 +9,7 @@ import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboar
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { EngineProcess } from './engineProcess.ts';
+import { remoteIdentity } from './remoteIdentity.ts';
 import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
@@ -65,6 +66,8 @@ if (scripted) {
   process.env.SWITCHBOARD_STUB_ROUTER = '1';
   // Ask about this session (and /btw) gets a made-up answer, so nothing here asks a model.
   process.env.SWITCHBOARD_STUB_BTW = '1';
+  // Catch-up cards are written from the tool calls, never by a model.
+  process.env.SWITCHBOARD_STUB_CATCHUP = '1';
 }
 
 // The single-instance lock belongs to the data folder. Development builds keep their own ("Switchboard Dev"), so
@@ -152,11 +155,13 @@ function updatePreferences(patch: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.preferencesChanged, next);
 }
 
-/** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting) and Auto model. */
+/** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting), Auto model and catch-up summaries. */
 function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived });
   // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
   engine?.sendStanding({ type: 'autoModel', prefs: prefs.autoModel });
+  // Settings › Conversation › Catch-up: whether Haiku writes the summaries.
+  engine?.sendStanding({ type: 'catchUp', summaries: prefs.catchUpSummaries });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -305,6 +310,15 @@ function openSession(sessionId: string): void {
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
   const request = message as { type?: unknown; id?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown } | null;
+  // Remote's key, only asked for once Remote is on (so the keychain is left alone otherwise).
+  if (request?.type === 'remote-identity' && typeof request.id === 'number') {
+    try {
+      return { type: 'remote-identity-result', id: request.id, secret: remoteIdentity(app.getPath('userData')) };
+    } catch (error) {
+      console.error('[main] Remote key unavailable', error);
+      return { type: 'remote-identity-result', id: request.id, secret: null };
+    }
+  }
   if (request?.type !== 'trash' || typeof request.id !== 'number' || !Array.isArray(request.paths)) return undefined;
   // Always answer: the engine waits for a reply to every trash request.
   try {
@@ -883,12 +897,14 @@ async function runLiveSessionStep(win: BrowserWindow, cwd: string): Promise<stri
   const shot = async (name: string) => writeFileSync(join(smokeOutDir!, name), (await win.webContents.capturePage()).toPNG());
   await click('[data-new-session]');
   // Pick the sandbox in the folder picker: open it, filter by the path, choose the match.
-  await click('[data-folder-select]');
+  await openFolderFilter(win);
   if (!(await waitInPage(win, "document.querySelector('[data-folder-list] input')", 3_000))) return 'folder picker did not open';
+  // A typed path lists the folder; choosing it adds it to the throwaway profile's projects and picks it.
+  const suggestion = `document.querySelector(${JSON.stringify(`[data-path-suggestion=${JSON.stringify(cwd)}]`)})`;
   await setFieldValue(win, '[data-folder-list] input', cwd);
-  if (!(await waitInPage(win, `document.querySelector('[data-folder-option=${JSON.stringify(JSON.stringify(cwd)).slice(1, -1)}]')`, 5_000))) return 'folder not offered';
+  if (!(await waitInPage(win, suggestion, 5_000))) return 'folder not offered';
   await shot('folder-picker.png');
-  await win.webContents.executeJavaScript(`document.querySelector('[data-folder-option=${JSON.stringify(JSON.stringify(cwd)).slice(1, -1)}]').click()`);
+  await win.webContents.executeJavaScript(`${suggestion}.click()`);
   await click('[data-model-select]');
   if (!(await waitInPage(win, "document.querySelector('[data-menu=\"model\"] [data-choice=\"haiku\"]')", 3_000))) return 'Haiku not offered in the model menu';
   await click('[data-menu="model"] [data-choice="haiku"]');
@@ -3970,6 +3986,88 @@ async function runNewSessionStep(win: BrowserWindow): Promise<string> {
   return `ok: ${hint}; git: ${catchUp}`;
 }
 
+/** Opens New session's filter field as a person does: a tile has focus and a letter is typed (it starts the filter). */
+function openFolderFilter(win: BrowserWindow): Promise<unknown> {
+  return win.webContents.executeJavaScript(`(() => {
+    const tile = document.querySelector('[data-new-session-view] [data-folder-select] button');
+    tile?.focus();
+    tile?.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true }));
+  })()`);
+}
+
+/**
+ * Adding a project in New session is one step. Add project… in the header opens the Add project dialog over New
+ * session, and closing it without adding changes nothing. In a new temporary folder (with one folder inside): a typed path lists folders, the faint rest of the name and Tab complete it, Tab again goes inside, a
+ * missing folder says so, and ↩ adds the folder as a project and picks it. A dragged file is refused. Only the
+ * throwaway profile's project list changes: the project is removed again and New session goes back to its folder.
+ */
+async function runAddFolderStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const field = '[data-folder-list] input';
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-add-')));
+  mkdirSync(join(dir, 'inner'));
+  const suggestion = (path: string) => one(`[data-path-suggestion=${JSON.stringify(path)}]`);
+  pressKey(win, 'N', ['meta']);
+  if (!(await waitInPage(win, `${one('[data-new-session-view] [data-add-folder]')} && ${one('[data-folder-select]')}`, 3_000))) return 'New session has no Add project… in the Project header';
+  // The remembered folder arrives a moment after the view opens.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const before = (await js(`${one('[data-folder-select]')}.dataset.value`)) as string;
+
+  // Add project…: onboarding's dialog, over New session; Done without adding leaves the folder as it was.
+  await js(`${one('[data-new-session-view] [data-add-folder]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-add-project-dialog]')} && ${one('[data-new-session-view]')}`, 3_000))) return 'Add project… did not open the Add project dialog';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `!${one('[data-add-project-dialog]')} && ${one('[data-new-session-view]')} && ${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(before)}`, 3_000))) return 'closing the Add project dialog left New session or changed its folder';
+
+  // A file dragged over the projects: the overlay refuses it, and goes when the drag ends.
+  await js(`(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(['x'], 'notes.txt', { type: 'text/plain' }));
+    document.querySelector('[data-project-header]').dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }));
+  })()`);
+  if (!(await waitInPage(win, `${one('[data-folder-drop]')}?.dataset.folderDrop === 'refused' && ${one('[data-folder-drop]')}.innerText.includes('Drop one folder')`, 2_000))) return 'a dragged file did not show "Drop one folder"';
+  await js("window.dispatchEvent(new DragEvent('dragend'))");
+  if (!(await waitInPage(win, `!${one('[data-folder-drop]')}`, 2_000))) return 'the drop overlay stayed after the drag ended';
+
+  await js(`${one('[data-new-session-view] [data-filter-projects]')}.click()`);
+  if (!(await waitInPage(win, `${one(field)} && document.activeElement === ${one(field)}`, 3_000))) return 'Filter did not open the filter field';
+  // The start of the folder's name: the rest shows faint, Tab takes it, Tab again goes inside.
+  const partial = dir.slice(0, -3);
+  await setFieldValue(win, field, partial);
+  if (!(await waitInPage(win, `${suggestion(dir)} && ${one('[data-path-ghost]')}?.innerText.endsWith(${JSON.stringify(dir.slice(-3))})`, 3_000))) return `typing ${partial} did not offer the folder with its rest`;
+  pressKey(win, 'Tab');
+  if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(dir)}`, 2_000))) return `Tab did not complete the folder (${String(await js(`${one(field)}.value`))})`;
+  pressKey(win, 'Tab');
+  if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(`${dir}/`)} && ${suggestion(join(dir, 'inner'))} && ${suggestion(dir)}`, 3_000))) return 'Tab on a whole folder did not list what is inside';
+  await setFieldValue(win, field, `${dir}/no-such-folder`);
+  if (!(await waitInPage(win, one('[data-path-missing]'), 3_000))) return 'a missing folder did not say so';
+
+  // ↩ on the folder: added as a project and picked (no "Add to your projects" box under the message box).
+  await setFieldValue(win, field, dir);
+  if (!(await waitInPage(win, `${suggestion(dir)}?.dataset.active === 'true' && ${suggestion(dir)}.innerText.includes('Add and start here')`, 3_000))) return 'the folder row did not offer Add and start here';
+  pressKey(win, 'Return');
+  const added = `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(dir)} && ${one(`[data-folder-option=${JSON.stringify(dir)}]`)} && !${one('[data-add-as-project]')}`;
+  if (!(await waitInPage(win, added, 5_000))) return `↩ did not add and pick the folder (${String(await js(`${one('[data-folder-select]')}?.dataset.value`))})`;
+
+  // Clean up: off the throwaway profile's projects again, and New session back on its folder.
+  await js(`${one('[data-open-projects]')}.click()`);
+  const row = one(`[data-project-row=${JSON.stringify(dir)}] [data-project-more-button]`);
+  if (!(await waitInPage(win, row, 3_000))) return 'the added folder is not in Projects';
+  await js(`${row}.click()`);
+  if (!(await waitInPage(win, one('[role=menu] [data-remove-project]'), 2_000))) return "no Remove in the project's ⋯ menu";
+  await js(`${one('[role=menu] [data-remove-project]')}.click()`);
+  if (!(await waitInPage(win, one('[data-confirm]'), 3_000))) return 'no confirmation before removing';
+  await js(`${one('[data-confirm]')}.click()`);
+  if (!(await waitInPage(win, `!${one(`[data-project-row=${JSON.stringify(dir)}]`)}`, 3_000))) return 'the project was not removed';
+  if (before) {
+    openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
+    if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(before)}`, 5_000))) return 'New session did not go back to its folder';
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return 'ok: Add project… opened the Add project dialog and Esc left New session as it was, a refused file drop, Filter opened the field, ghost text and Tab, Tab into a folder, a missing folder, ↩ added and picked it; removed again';
+}
+
 /**
  * Quick question, read-only: ⌘⇧N opens New session with Quick question picked, which hides every git option
  * (where, branch, worktree, Add to projects) and keeps the model, effort and mode chips, in a mode that asks.
@@ -4036,13 +4134,10 @@ async function runQuickQuestionStep(win: BrowserWindow): Promise<string> {
 
   // Picking a project from Quick question (the folder New session had; the throwaway profile may have none yet).
   if (before) {
-    if (!(await js(`!!${optionFor(before)}`))) {
-      await js("document.querySelector('[data-folder-select]').click()");
-      if (!(await waitInPage(win, "document.querySelector('[data-folder-list] input')", 3_000))) return 'could not open the folder list from Quick question';
-      await setFieldValue(win, '[data-folder-list] input', before);
-      await waitInPage(win, optionFor(before), 3_000);
-    }
-    await js(`${optionFor(before)}?.click()`);
+    // A tile when it is a project; otherwise a link picks it, since a typed path would add it to the projects (and the
+    // throwaway profile must have none until the projects step).
+    if (await js(`!!${optionFor(before)}`)) await js(`${optionFor(before)}.click()`);
+    else openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
     if (!(await waitInPage(win, `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(before)} && !document.querySelector('[data-route-question]')`, 3_000))) {
       return 'could not pick a project again from Quick question';
     }
@@ -4636,6 +4731,75 @@ async function runUsageViewStep(win: BrowserWindow): Promise<string> {
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000))) return 'Esc did not leave the Usage view';
   return `ok: opened from ${opened[0]} for ${profile}, ${limits} limit card(s), every period, ${openedSession}, Esc went back`;
+}
+
+/**
+ * The catch-up on the smoke session, made from its transcript with the stubbed summary (no model is called): the
+ * palette's Catch up on this session opens the banner over the conversation; Space opens Details and Esc closes Details,
+ * then folds the banner into the strip, and Space opens it again; a key pressed in the message box stays there; the
+ * sidebar's Quickest to unblock groups the sessions. Read-only: nothing is committed, archived, marked read or sent.
+ */
+async function runCatchUpStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const has = (selector: string) => js(`!!document.querySelector(${JSON.stringify(selector)})`) as Promise<boolean>;
+  if (!smokeSessionId) return 'failed: no smoke session was opened';
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const banner = `${view} [data-catchup-banner]`;
+  const strip = `${view} [data-catchup-strip]`;
+  const blur = () => js('document.activeElement?.blur?.(); true');
+  const transcriptShown = `getComputedStyle(document.querySelector('${view} [data-transcript]')).display !== 'none'`;
+  await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-transcript-item]')`, 5_000))) return 'failed: the smoke session did not open';
+
+  if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return '⌘K did not open the commands';
+  await setFieldValue(win, '[data-palette-input]', 'Catch up on this session');
+  if (!(await waitInPage(win, "document.querySelector('[data-palette-command=\"build-catch-up\"]')", 3_000))) {
+    await closePalette(win);
+    // A catch-up made earlier in the run (or one the session already had) shows its strip instead.
+    if (!(await has(strip))) return 'the palette did not offer Catch up on this session';
+    await js(`document.querySelector('${strip} [data-catchup-show]').click()`);
+  } else await js("document.querySelector('[data-palette-command=\"build-catch-up\"]').click()");
+  if (!(await waitInPage(win, `document.querySelector('${banner}')`, 15_000))) {
+    const toast = (await js("document.querySelector('[data-toast]')?.innerText ?? ''")) as string;
+    if (/no finished turn/i.test(toast)) return 'ok: skipped, the smoke session has no finished turn to catch up on';
+    return `the catch-up banner did not open${toast ? ` (${toast.replace(/\s+/g, ' ')})` : ''}`;
+  }
+  if (!(await has(`${banner} [data-catchup-primary]`))) return 'the banner has no primary action';
+  if (!(await waitInPage(win, transcriptShown, 2_000))) return 'the banner hid the conversation';
+  await shot(win, 'catch-up-banner.png');
+  const need = await js(`document.querySelector('${banner}').dataset.catchupNeed`);
+
+  await blur();
+  // Esc closes the nearest thing first: the Changes panel (an earlier step may have left it open), then the banner.
+  const changesOpen = await has('[data-changes-panel]');
+  if (changesOpen) {
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!document.querySelector('[data-changes-panel]') && document.querySelector('${banner}')`, 3_000))) return 'Esc did not close the Changes panel before the banner';
+  }
+  pressKey(win, 'Space');
+  if (!(await waitInPage(win, `document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Space did not open the banner’s Details';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `document.querySelector('${banner}') && !document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Esc did not close Details first';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `document.querySelector('${strip}') && !document.querySelector('${banner}')`, 3_000))) return 'Esc did not fold the banner into the strip';
+  pressKey(win, 'Space');
+  if (!(await waitInPage(win, `document.querySelector('${banner}')`, 3_000))) return 'Space did not open the banner again';
+
+  // In the message box, keys are the message box's: Esc there leaves the banner alone.
+  await js(`document.querySelector('${view} [data-composer]')?.focus(); true`);
+  pressKey(win, 'Escape');
+  // A fixed wait, only to show that nothing happened.
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  if (!(await has(banner))) return 'Esc in the message box folded the banner';
+  await blur();
+
+  await js("document.querySelector('[data-sort-quick]')?.click()");
+  const grouped = await waitInPage(win, "document.querySelector('[data-session-group=\"review\"], [data-session-group=\"read\"], [data-session-group=\"still-working\"]') && !document.querySelector('[data-session-group=\"today\"], [data-session-group=\"pinned\"], [data-queue-header]')", 3_000);
+  if (grouped) await shot(win, 'sidebar-quickest.png');
+  await js("document.querySelector('[data-sort-recent]')?.click()");
+  if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
+  if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
+  return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Space opened Details, Esc closed Details then folded the banner, Space opened it again, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
 }
 
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
@@ -6333,6 +6497,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('unsent messages', () => runUnsentStep(win));
   await step('search', () => runSearchStep(win));
   await step('command palette', () => runPaletteStep(win));
+  await step('catch-up: banner, strip, keys and Quickest to unblock', () => runCatchUpStep(win));
   await step('shortcuts sheet', () => runShortcutsStep(win));
   await step('tools', () => runToolsStep(win));
   await step('split panes', () => runSplitStep(win));
@@ -6380,6 +6545,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
+  // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
+  await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));

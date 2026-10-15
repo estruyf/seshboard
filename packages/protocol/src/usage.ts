@@ -74,6 +74,8 @@ export const UsageRow = z.object({
   autoRouting: z.object({ picks: z.number() }).optional(),
   /** The Side questions row: what Ask about this session used, and how many questions were answered. */
   sideQuestions: z.object({ asked: z.number() }).optional(),
+  /** The Catch-up summaries row: Haiku's calls that wrote the briefings on finished turns, and how many there were. */
+  catchUpSummaries: z.object({ calls: z.number() }).optional(),
   /** A model row: how many of its sessions Auto picked it for. */
   byAuto: z.number().optional(),
 });

@@ -8,6 +8,7 @@ import claudeCodeUpdates from '../updates/ClaudeCodeUpdates.tsx?raw';
 import focusSettings from '../focus/FocusSettings.tsx?raw';
 import notificationsSettings from '../notifications/NotificationsSettings.tsx?raw';
 import sessionsSettings from '../sessions/SessionsSettings.tsx?raw';
+import remoteSettings from '../remote/RemoteSettings.tsx?raw';
 import { settingsIndex } from './settingsIndex.ts';
 
 const entries = settingsIndex();
@@ -45,6 +46,7 @@ describe('the settings index', () => {
       ...rowLabels(notificationsSettings, ['CardHeader', 'Row']),
       ...rowLabels(sessionsSettings, ['Toggle', 'SettingRow']),
       ...rowLabels(backupSettings, ['Row']),
+      ...rowLabels(remoteSettings, ['Toggle']),
     ];
     expect(rows.length).toBeGreaterThan(10);
     expect(rows.filter((label) => !labels.has(label))).toEqual([]);

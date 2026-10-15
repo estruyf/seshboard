@@ -12,12 +12,16 @@
     "./theme-format": "./src/themeFormat.ts",
     "./color": "./src/color.ts",
     "./companion-client": "./src/companionClient.ts",
-    "./paths": "./src/paths.ts"
+    "./paths": "./src/paths.ts",
+    "./remote-client": "./src/remoteClient.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
     "zod": "^4.6.5"
   }
 }

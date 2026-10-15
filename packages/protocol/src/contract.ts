@@ -12,6 +12,7 @@ import {
   PermissionMode,
   PermissionRequest,
   ProjectInspection,
+  FolderEntry,
   RewindResult,
   ContextUsage,
   QueuedMessage,
@@ -47,10 +48,12 @@ import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from '.
 import { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from './later.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
+import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
 import { CompanionTarget } from './companion.ts';
+import { RemoteSettings, RemoteStatus } from './remote.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
 import { KEEP_REASONS } from './retention.ts';
 import { ExportCandidate, HealthFinding, LoadEntry, MemoryHit, MemoryImportPreview, MemoryList, PersonalMemory, SectionCopy, SharePreview, ShareTarget } from './memory.ts';
@@ -439,6 +442,15 @@ export const contract = {
     'questions.folder': { params: z.object({}), result: z.object({ path: AbsolutePath }) },
     /** Whether `path` is a folder (`exists` is false for a file, with `isFile` set) and the git checkout it is in. */
     'projects.inspect': { params: z.object({ path: AbsolutePath }), result: ProjectInspection },
+    /**
+     * The folders in `path` (absolute, `~` or `~/…`) whose name starts with `prefix`, ignoring case: folders only,
+     * sorted by name, at most 50, hidden ones only for a prefix that starts with a dot. `here` is `path` itself, null
+     * when it is not a folder. Unreadable folders are left out; nothing here is an error. For typing a path in New session.
+     */
+    'fs.folders': {
+      params: z.object({ path: z.string().min(1).max(1024), prefix: z.string().max(255).default('') }),
+      result: z.object({ here: FolderEntry.nullable(), folders: z.array(FolderEntry) }),
+    },
     /** Fuzzy file search for @-mentions (git-tracked and untracked-but-not-ignored files). */
     'files.search': {
       params: z.object({ cwd: AbsolutePath, query: z.string().max(500), limit: z.number().int().min(1).max(200).default(50) }),
@@ -783,6 +795,21 @@ export const contract = {
     },
     /** Whether the companion socket is listening, and how many editors are connected to it. */
     'companion.status': { params: z.object({}), result: z.object({ listening: z.boolean(), clients: z.number(), error: z.string().nullable() }) },
+
+    // --- Remote: follow and steer sessions from a phone (docs/remote-access.md) --------------------------------
+    'remote.status': { params: z.object({}), result: RemoteStatus },
+    /** Changes Settings › Remote; the server starts, restarts or stops to match. */
+    'remote.configure': { params: RemoteSettings.partial(), result: RemoteStatus },
+    /** Pair a phone: the link for the QR code (good for one use and two minutes). */
+    'remote.pair.start': { params: z.object({}), result: z.object({ url: z.string(), expiresAt: z.number() }) },
+    /** A link for phones already paired, with the engine's current address (a tunnel that got a new one). */
+    'remote.connectLink': { params: z.object({}), result: z.object({ url: z.string() }) },
+    /** The pairing dialog was closed: the QR code stops working, and a phone waiting for Allow is denied. */
+    'remote.pair.cancel': { params: z.object({}), result: z.object({}) },
+    /** Allow or Deny for the phone waiting with this request's code. */
+    'remote.pair.decide': { params: z.object({ requestId: z.string().min(1).max(100), allow: z.boolean() }), result: z.object({}) },
+    /** Revoke: the device can't connect any more, and its open connections close at once. */
+    'remote.revoke': { params: z.object({ deviceId: z.string().min(1).max(100) }), result: z.object({}) },
     /**
      * Continues a session in an editor's Claude Code extension: stops it here and waits for its process to exit,
      * opens its folder in the editor, then the session in the extension (it only resumes sessions of the folder
@@ -957,6 +984,22 @@ export const contract = {
       result: SectionCopy,
     },
 
+    // --- Catch-up ------------------------------------------------------------------------------
+    /** A session's catch-up: the briefing on its last turn (null when it has none, or a new turn started since). */
+    'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
+    /** Every session's catch-up, for the sidebar's review times (a window that just connected); `catchup.changed` follows each change. */
+    'catchup.list': { params: z.object({}), result: z.object({ catchUps: z.array(CatchUp) }) },
+    /**
+     * Makes the catch-up for a session's last finished turn now, from its transcript (also for a session that ran in a
+     * terminal), and sends it with `catchup.changed`. NOT_FOUND without a finished turn; SESSION_BUSY while Claude works.
+     */
+    'catchup.build': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp }) },
+    /**
+     * Why the session asks for an open permission or question: the turn so far and, with summaries on, Haiku's plain
+     * explanation (6 seconds at most). The same request answers from memory the second time. NOT_FOUND once it is answered.
+     */
+    'catchup.why': { params: z.object({ sessionId: SessionId, requestId: z.string() }), result: z.object({ why: RequestWhy }) },
+
     // --- Claude Code updates -----------------------------------------------------------------
     'claudeUpdate.get': { params: z.object({}), result: ClaudeUpdateState },
     /** Compares the installed Claude Code with the newest on its channel now. The result arrives through `claudeUpdate.changed`. */
@@ -1017,6 +1060,12 @@ export const contract = {
     'companion.context': z.object({ deliveryId: z.string(), target: CompanionTarget, items: ContextItems, reveal: z.boolean() }),
     /** The companion asked to show a session (its status bar item): select it and bring the window forward. */
     'companion.reveal': z.object({ sessionId: z.string() }),
+    /** A session's catch-up was made, refreshed or cleared (null: a new message or turn started). */
+    'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
+    /** Settings › Remote changed: listening, devices, connections, pairing. */
+    'remote.changed': RemoteStatus,
+    /** A prompt or an answer to a permission prompt came from a paired phone, for its label in the conversation. */
+    'remote.fromDevice': z.object({ sessionId: z.string(), messageUuid: z.string().nullable(), requestId: z.string().nullable(), device: z.string() }),
     /** A project's memory or instruction files changed (`root` null: the personal folder): list them again. */
     'memory.changed': z.object({ root: z.string().nullable() }),
   },

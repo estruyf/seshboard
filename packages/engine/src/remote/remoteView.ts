@@ -1,0 +1,92 @@
+import { createHash } from 'node:crypto';
+import type { PermissionRequest, RemoteBlock, RemoteMessage, RemotePrompt, RemoteSession, RemoteSessions, TranscriptBlock, TranscriptMessage } from '@switchboard/protocol';
+import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
+
+/**
+ * What a phone sees, made from what the engine knows: pure functions, so what leaves the computer is easy to check.
+ * Paths stay on the computer: a project is an opaque id and a name.
+ */
+
+/** A project's id for phones: stable, and says nothing about where it is. */
+export const projectIdOf = (root: string) => createHash('sha256').update(`switchboard-remote:${root}`).digest('hex').slice(0, 16);
+
+/** The most sessions a phone lists. */
+export const REMOTE_SESSION_LIMIT = 100;
+
+export interface ListOptions {
+  archiveAfterDays: number;
+  scope: 'switchboard' | 'all';
+  /** The names projects go by (custom names), by root. */
+  projectNames: ReadonlyMap<string, string>;
+  now?: number;
+}
+
+/** The sidebar's sessions (needs you first, then working, then the most recent) and their prompts. */
+export function remoteSessions(sources: SessionSources, options: ListOptions): RemoteSessions {
+  const all = companionSessions(sources, { scope: options.scope, archiveAfterDays: options.archiveAfterDays, ...(options.now ? { now: options.now } : {}) });
+  const listed = sessionsFor(all, [], REMOTE_SESSION_LIMIT);
+  const sessions: RemoteSession[] = listed.map((s) => ({
+    id: s.id,
+    title: s.title,
+    projectId: projectIdOf(s.projectRoot),
+    projectName: options.projectNames.get(s.projectRoot) ?? lastSegment(s.projectRoot),
+    branch: s.branch,
+    status: s.status,
+    updatedAt: s.updatedAt,
+  }));
+  return { sessions, prompts: promptsFor(sources.permissions ?? [], listed).map(remotePrompt) };
+}
+
+export const remotePrompt = (p: PermissionRequest): RemotePrompt => ({
+  requestId: p.requestId,
+  sessionId: p.sessionId,
+  toolName: p.toolName,
+  input: p.input,
+  title: p.title,
+  description: p.description,
+  alwaysLabel: p.alwaysLabel,
+  createdAt: p.createdAt,
+});
+
+const lastSegment = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+
+function remoteBlock(block: TranscriptBlock): RemoteBlock {
+  switch (block.type) {
+    case 'tool_result':
+      // The images a tool returned stay on the computer.
+      return { type: 'tool_result', toolUseId: block.toolUseId, isError: block.isError, text: block.text, truncated: block.truncated };
+    case 'image':
+      return { type: 'image' };
+    default:
+      return block;
+  }
+}
+
+export const remoteMessage = (message: TranscriptMessage, device?: string): RemoteMessage => ({
+  uuid: message.uuid,
+  role: message.role,
+  timestamp: message.timestamp,
+  parentToolUseId: message.parentToolUseId,
+  blocks: message.blocks.map(remoteBlock),
+  ...(device ? { device } : {}),
+});
+
+/**
+ * A page of a transcript. `after` resumes after a message the phone has (`reset` when it is gone, with the last
+ * page instead); `before` pages back; neither gives the last `limit` messages.
+ */
+export function transcriptPage(messages: readonly TranscriptMessage[], { before, after, limit }: { before?: string | undefined; after?: string | undefined; limit: number }) {
+  if (after !== undefined) {
+    const index = messages.findIndex((m) => m.uuid === after);
+    if (index !== -1) {
+      const rest = messages.slice(index + 1);
+      return { messages: rest.slice(0, limit), hasMore: rest.length > limit, reset: false };
+    }
+    const page = messages.slice(-limit);
+    return { messages: page, hasMore: messages.length > page.length, reset: true };
+  }
+  const end = before === undefined ? messages.length : messages.findIndex((m) => m.uuid === before);
+  if (end === -1) return { messages: [], hasMore: false, reset: true };
+  const start = Math.max(0, end - limit);
+  return { messages: messages.slice(start, end), hasMore: start > 0, reset: false };
+}

@@ -399,7 +399,43 @@ export const migrations: readonly string[] = [
   CREATE INDEX side_questions_session ON side_questions (session_id, at);
   `,
 
-  // v24: Ask about this session. Questions about a session come in threads (a thread's earlier questions go along
+  // v24: Remote, the phones you paired. Only their public keys: a copy of the database gives nobody access. Your
+  // own choices, not derived from ~/.claude: keep them when rebuilding.
+  `
+  CREATE TABLE remote_devices (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    public_key   TEXT NOT NULL UNIQUE,
+    created_at   INTEGER NOT NULL,
+    last_seen_at INTEGER,
+    revoked_at   INTEGER
+  );
+  `,
+
+  // v25: Catch-up, the briefing on each session's latest turn (one per session, replaced by the next turn), and the
+  // tokens its Haiku summaries used. Summaries run with `persistSession: false`, so no transcript holds those tokens and
+  // the Usage scanner never sees them; this is their only record.
+  `
+  CREATE TABLE catchup (
+    session_id TEXT PRIMARY KEY,
+    turn_id    TEXT NOT NULL,
+    json       TEXT NOT NULL
+  );
+  CREATE TABLE catchup_usage (
+    id          TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    at          INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    session_id  TEXT,
+    input       INTEGER NOT NULL,
+    output      INTEGER NOT NULL,
+    cache_read  INTEGER NOT NULL,
+    cache_write INTEGER NOT NULL
+  );
+  CREATE INDEX catchup_usage_scope_at ON catchup_usage (scope, at);
+  `,
+
+  // v26: Ask about this session. Questions about a session come in threads (a thread's earlier questions go along
   // with each follow-up), and a failed one is kept with its error. Earlier side questions become one thread per
   // session. Each answer's tokens are kept too, since the short-lived process that answers leaves no transcript for
   // the Usage scanner. All of it is user data: keep it when rebuilding.

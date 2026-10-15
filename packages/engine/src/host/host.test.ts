@@ -207,6 +207,7 @@ function setup(
   const permissions: PermissionRequest[] = [];
   const resolved: string[] = [];
   const created: string[] = [];
+  const turns: Array<{ sessionId: string; ok: boolean; error: string | null }> = [];
   const warmups: Array<{ options: Options; closed: boolean }> = [];
   const ephemeral = new Set<string>();
   const sdk: SdkRuntime = {
@@ -249,6 +250,7 @@ function setup(
     onPermission: (r) => permissions.push(r),
     onPermissionResolved: (id) => resolved.push(id),
     onCreated: (id) => created.push(id),
+    onTurnEnd: (sessionId, outcome) => turns.push({ sessionId, ...outcome }),
     sessionSettings: opts.settings,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
@@ -256,7 +258,7 @@ function setup(
     ephemeral,
     log: () => {},
   });
-  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral, upNextEvents };
+  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral, upNextEvents, turns };
 }
 
 /** Up next kept in memory, as the engine keeps it in SQLite. */
@@ -288,6 +290,17 @@ describe('HostManager', () => {
     // The Working list orders by when you last sent a message.
     expect(t.infos.at(-1)!.promptedAt).toBeGreaterThanOrEqual(t.infos.at(-1)!.startedAt);
     await expect(t.manager.commands(id, undefined, 'default')).resolves.toEqual([{ name: 'review', description: 'Review the diff', argumentHint: '' }]);
+    t.manager.closeAll();
+  });
+
+  it('reports each turn\'s end, finished or failed, for its catch-up', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    await until(() => t.turns.length === 1);
+    expect(t.turns).toEqual([{ sessionId: id, ok: true, error: null }]);
+    await t.manager.send({ sessionId: id, text: 'fail', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(t.turns[1]).toMatchObject({ sessionId: id, ok: false });
     t.manager.closeAll();
   });
 

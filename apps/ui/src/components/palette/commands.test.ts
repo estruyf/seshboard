@@ -16,6 +16,7 @@ const SESSION: PaletteSession = {
   host: null,
   running: false,
   waiting: null,
+  catchUp: null,
   prompts: 0,
   hasReply: false,
 };

@@ -10,6 +10,7 @@ import { hourOf, parseUsageLine } from './transcriptUsage.ts';
 import { breakdown, periodRange, type SessionLookup } from './usageQuery.ts';
 import { scopeOf, UsageScanner } from './usageScanner.ts';
 import { RoutingStore } from '../autoModel/router.ts';
+import { CatchUpUsageStore } from '../catchUp/catchUpStore.ts';
 
 let dir: string;
 let cache: CacheDatabase;
@@ -264,6 +265,22 @@ describe('breakdown', () => {
       ['2026-10-12', 4],
       ['2026-10-11', 1],
     ]);
+  });
+
+  it('shows catch-up summaries as their own row, next to Auto routing', async () => {
+    const scope = await seeded();
+    const tokens = { input: 900, output: 120, cacheRead: 0, cacheWrite: 0 };
+    const summaries = new CatchUpUsageStore(cache.db);
+    summaries.record({ id: 'c1', scope, at: Date.UTC(2026, 9, 12, 8), model: 'claude-haiku-5-5', sessionId: 'known', tokens });
+    summaries.record({ id: 'c2', scope, at: Date.UTC(2026, 9, 12, 9), model: 'claude-haiku-5-5', sessionId: 'known', tokens });
+    summaries.record({ id: 'c3', scope: 'elsewhere', at: Date.UTC(2026, 9, 12, 9), model: 'claude-haiku-5-5', sessionId: 'known', tokens });
+    new RoutingStore(cache.db).record({ id: 'r1', scope, at: Date.UTC(2026, 9, 12, 8), model: 'claude-haiku-5-5', picked: 'sonnet', tokens });
+    const range = periodRange('week', now, 'UTC');
+    const result = breakdown(cache.db, { scope, period: 'week', ...range, groupBy: 'session', model: null, timeZone: 'UTC' }, lookup);
+    const row = result.rows.find((r) => r.catchUpSummaries);
+    expect(row).toMatchObject({ key: 'catch-up-summaries', label: 'Catch-up summaries', sessionId: null, turns: 2, catchUpSummaries: { calls: 2 }, tokens: { input: 1_800, output: 240 } });
+    expect(result.rows.find((r) => r.autoRouting)?.autoRouting).toEqual({ picks: 1 });
+    expect(result.rows.reduce((sum, r) => sum + r.share, 0)).toBeCloseTo(1);
   });
 
   it('narrows to one model, and counts hours for the 24-hour period', async () => {

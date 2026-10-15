@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { MessageCircleQuestion, Search, X, Zap } from 'lucide-react';
+import { MessageCircleQuestion, NotebookText, Search, X, Zap } from 'lucide-react';
 import type { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow } from '@switchboard/protocol/client';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useUsageView } from '../../state/usageViewStore.ts';
@@ -148,10 +148,22 @@ function SideQuestionsName({ model }: { model: string | null }) {
   );
 }
 
-/** The name of a row whose tokens left no transcript (Auto routing, Side questions), or null for any other row. */
+/** The Catch-up summaries row's name: the calls Haiku made to write the briefings on finished turns (no transcript either). */
+function CatchUpSummariesName({ model }: { model: string | null }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5" data-usage-catchup-summaries>
+      <NotebookText size={13} className="shrink-0 text-muted" aria-hidden />
+      <span className="truncate font-medium">Catch-up summaries</span>
+      <span className="shrink-0 text-meta font-normal text-faint">· {modelName(model)}</span>
+    </span>
+  );
+}
+
+/** The name of a row whose tokens left no transcript (Auto routing, Side questions, Catch-up summaries), or null for any other row. */
 function apartName(r: UsageRow): ReactNode | null {
   if (r.autoRouting) return <AutoRoutingName model={r.model} />;
   if (r.sideQuestions) return <SideQuestionsName model={r.model} />;
+  if (r.catchUpSummaries) return <CatchUpSummariesName model={r.model} />;
   return null;
 }
 
@@ -177,7 +189,7 @@ function useColumns(groupBy: UsageGroup): Column[] {
     { head: 'Cache read', width: '84px', align: 'right', cell: (r) => formatTokens(r.tokens.cacheRead), total: (rest) => formatTokens(rest.tokens.cacheRead) },
   ];
   const largest: Column = { head: 'Largest context', width: '76px', align: 'right', cell: (r) => formatTokens(r.largestContext) };
-  // The Auto routing row counts picks, and Side questions questions, not sessions.
+  // The Auto routing row counts picks, Side questions questions and the catch-up row summaries, not sessions.
   const sessions: Column = {
     head: 'Sessions',
     width: '72px',
@@ -187,6 +199,8 @@ function useColumns(groupBy: UsageGroup): Column[] {
         ? `${num(r.autoRouting.picks)} ${r.autoRouting.picks === 1 ? 'pick' : 'picks'}`
         : r.sideQuestions
           ? `${num(r.sideQuestions.asked)} ${r.sideQuestions.asked === 1 ? 'question' : 'questions'}`
+        : r.catchUpSummaries
+          ? `${num(r.catchUpSummaries.calls)} ${r.catchUpSummaries.calls === 1 ? 'summary' : 'summaries'}`
           : num(r.sessions),
   };
   if (groupBy === 'session') {
@@ -202,7 +216,7 @@ function useColumns(groupBy: UsageGroup): Column[] {
             </span>
           ),
       },
-      { head: 'Project', width: 'minmax(90px,1fr)', cell: (r) => <span className="truncate text-muted">{r.autoRouting || r.sideQuestions ? '' : nameOf(r.projectRoot)}</span> },
+      { head: 'Project', width: 'minmax(90px,1fr)', cell: (r) => <span className="truncate text-muted">{r.autoRouting || r.sideQuestions || r.catchUpSummaries ? '' : nameOf(r.projectRoot)}</span> },
       { head: 'Model', width: '72px', cell: (r) => <ModelCell model={r.model} fastTurns={r.fastTurns} /> },
       ...tokens,
       largest,
@@ -281,7 +295,7 @@ function Breakdown({ data, profileId, period, onModel, model }: { data: UsageBre
   const virtualizer = useVirtualizer({ count: shown.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_HEIGHT, overscan: 8 });
   const noun = groupBy === 'session' ? 'sessions' : groupBy === 'project' ? 'projects' : groupBy === 'model' ? 'models' : 'days';
 
-  const rowAction = (row: UsageRow) => (row.autoRouting || row.sideQuestions ? null : groupBy === 'session' ? open(row.sessionId) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
+  const rowAction = (row: UsageRow) => (row.autoRouting || row.sideQuestions || row.catchUpSummaries ? null : groupBy === 'session' ? open(row.sessionId) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
   const renderRow = (row: UsageRow, style?: CSSProperties) => {
     const action = rowAction(row);
     const selected = groupBy === 'model' && row.model === model;
