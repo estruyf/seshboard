@@ -266,7 +266,7 @@ export const TranscriptItem = memo(function TranscriptItem({
             )}
             {/* Your prompts render as Markdown too, so code and code blocks are styled. */}
             {item.text && (
-              <ClampedPrompt itemKey={item.key} className="text-body [&_p]:whitespace-pre-wrap [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+              <ClampedPrompt itemKey={item.key} className="text-body [overflow-wrap:anywhere] [&_p]:whitespace-pre-wrap [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
                 <Markdown text={item.text} />
               </ClampedPrompt>
             )}

@@ -16,7 +16,9 @@ A fast macOS desktop control surface for Claude Code: start sessions, see what's
 
 **Non-goals (v1)**
 - Support for other agents (Codex, Cursor and so on). That's t3code's job.
-- A mobile app, web UI, or remote access. **Desktop only.**
+- A mobile app or a web UI. The desktop app is the product; the one exception is **Remote** (below).
+
+**Remote (in progress, #93).** Follow and steer sessions from a paired phone's browser, from anywhere: the session list, the live transcript, sending a prompt, answering a permission prompt, stopping a turn, starting a session in a known project. The engine listens on `127.0.0.1` behind a tunnel (Cloudflare, Tailscale, ngrok or your own), and the phone app is served from Switchboard's site. Pairing needs you at the computer, and every connection is a Noise handshake with the key from the QR code, encrypted end to end through the tunnel. Phase 2: Cloudflare Access in front of a named tunnel (the engine serving the remote app on that hostname) and push notifications. Design, threat model and phase 2: [docs/remote-access.md](docs/remote-access.md).
 - Reimplementing Claude Code. We drive the real thing.
 
 ---
@@ -349,7 +351,7 @@ Mods such as [claude-stats-mod](https://github.com/estruyf/claude-stats-mod) dra
 |---|---|
 | Shell | **Electron** |
 | Language & UI | **TypeScript (strict) + React 19** across every package |
-| Scope | **Desktop only** (macOS first), with no remote, web or mobile |
+| Scope | **Desktop** (macOS first), with no web or mobile app; a paired phone can follow and steer sessions through **Remote** |
 | Workspace | **Current folder by default**, with an optional **new worktree**, matching Claude Code |
 | Name | **Switchboard** (working name) |
 | Project actions | **In MVP.** Shell or prompt actions, personal + optional `.switchboard.json`, shown in the toolbar and palette |

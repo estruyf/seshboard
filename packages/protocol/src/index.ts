@@ -28,3 +28,6 @@ export * from './memory.ts';
 export * from './memoryText.ts';
 export * from './sideQuestions.ts';
 export * from './sideQuestionConstants.ts';
+export * from './remote.ts';
+export * from './remoteNoise.ts';
+export * from './remoteChannel.ts';
