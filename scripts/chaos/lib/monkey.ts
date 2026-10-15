@@ -78,7 +78,7 @@ export const PALETTE_WORDS = [
   'New session', 'Quick question', 'Go to', 'Next session', 'Toggle sidebar', 'Minimize sidebar', 'Home', 'Usage', 'Search', 'Settings',
   'Compact', 'Large', 'Appearance', 'Theme', 'Projects', 'Worktrees', 'Branches', 'Memory', 'Clean up', 'Rename', 'Reload skills',
   'Export settings', 'Diagnostics', 'Shortcuts', 'Focus', 'Notifications', 'Sounds', 'Unsent', 'Queue', 'Pin', 'Archive', 'Fork',
-  'Rewind', 'Model', 'Effort', 'Mode', 'Side question', 'Copy', 'Terminal', 'Changes', 'Tools', 'Close', 'Delete', 'Stop', 'Commit',
+  'Rewind', 'Model', 'Effort', 'Mode', 'Ask about', 'Copy', 'Terminal', 'Changes', 'Tools', 'Close', 'Delete', 'Stop', 'Commit',
   'Pull request', 'Sync', 'Switch branch', 'Stage all', 'Revert all', 'Finish worktree', 'Edit actions', 'Run:', 'Dock', 'Maximize',
   'Other pane', 'Worktree', 'Save defaults', 'Update from remote', 'Remember', 'Check transcript', 'Add context',
 ];

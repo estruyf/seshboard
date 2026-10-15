@@ -22,7 +22,7 @@ export function AppTerminalFrame({ view, children }: { view: TerminalView; child
   const frameRef = useRef<HTMLDivElement>(null);
   const width = useWidth(frameRef);
   // Nothing else wants the right side here: only a narrow window keeps the terminal below.
-  const blocked = rightBlocked(false, width);
+  const blocked = rightBlocked(null, width);
   const dock = effectiveDock(useTerminals((s) => s.dock), blocked);
   const projectRoot = useProjectPage((s) => s.root);
   const newSessionCwd = useComposerTargets((s) => activeComposer(s.boxes, 'new', null)?.cwd ?? null);

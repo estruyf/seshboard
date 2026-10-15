@@ -1,4 +1,4 @@
-import { ImagePlus, MessageCircleDashed, Paperclip } from 'lucide-react';
+import { ImagePlus, MessageCircleQuestion, Paperclip } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { joinPath, MAX_SIDE_QUESTION_LENGTH, type ContextItem, type ImageAttachment, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -13,7 +13,7 @@ import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { onFirstLine, onLastLine, textareaRows } from './caretLine.ts';
 import { appendQuote, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
-import { joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
+import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
 import { useAttachments } from './useAttachments.ts';
 import { ariaKeysFor, formatKeys, keysFor, localizeKeys, matches, type ShortcutId } from '../../lib/shortcuts.ts';
@@ -97,12 +97,14 @@ export interface ComposerProps {
   onInterrupt?(): void;
   onCycleMode?(): void;
   /**
-   * Side questions (/btw): the slash menu offers `/btw`, and `/btw ` at the start of the box becomes a token. While
-   * it is there, Enter asks (`onAsk`) right away, even while Claude works, and never sends or queues a message;
-   * Enter with no question is `onBare`. `request` changing puts the token in the box and focuses it (the palette).
+   * Ask about this session: the Ask button before Send or Stop, and `/btw`. With text in the box, Ask asks it
+   * (`onAsk`) right away, even while Claude works, and never sends or queues a message; with an empty box it opens
+   * the panel (`onOpen`). The slash menu offers `/btw`, and `/btw ` at the start of the box becomes a token: Enter
+   * then asks what follows it, and a bare `/btw` opens the panel. `open` presses the button; `ready` puts a dot on
+   * it (an answer came in while the panel was closed).
    */
-  sideQuestions?: { onAsk(question: string): Promise<void>; onBare(): void; request?: number };
-  /** Escape in the box, before it stops Claude: true when something used it (the side question panel closed). */
+  ask?: { onAsk(question: string): Promise<void>; onOpen(): void; open: boolean; ready: boolean };
+  /** Escape in the box, before it stops Claude: true when something used it (Reply in the catch-up leaves the box). */
   onEscape?(): boolean;
 }
 
@@ -145,11 +147,11 @@ export function Composer(props: ComposerProps) {
   const client = connection.status === 'connected' ? connection.client : null;
   const [saved] = useState(() => (props.draftKey === undefined ? undefined : useDrafts.getState().drafts[props.draftKey]));
   // A draft kept with the side question token comes back as the token and its question.
-  const [initial] = useState(() => (props.sideQuestions ? splitSideToken(saved?.text ?? '') : { token: false, question: saved?.text ?? '' }));
+  const [initial] = useState(() => (props.ask ? splitSideToken(saved?.text ?? '') : { token: false, question: saved?.text ?? '' }));
   const [text, setText] = useState(initial.question);
-  /** The `/btw` token is at the start of the box: Enter asks a side question. */
+  /** The `/btw` token is at the start of the box: Enter asks about the session. */
   const [sideToken, setSideToken] = useState(initial.token);
-  const side = props.sideQuestions;
+  const side = props.ask;
   /** Text from a draft or a preset: `/btw ` at its start becomes the token. */
   const loadText = (value: string): string => {
     const split = side ? splitSideToken(value) : { token: false, question: value };
@@ -332,17 +334,6 @@ export function Composer(props: ComposerProps) {
     el.focus();
   }, [props.focusRequest, props.disabledReason]);
 
-  // The palette's Ask a side question…: the token goes in front of what is in the box, and the box takes focus.
-  const sideRequest = side?.request;
-  const lastSideRequest = useRef(sideRequest);
-  useEffect(() => {
-    if (sideRequest === lastSideRequest.current) return;
-    lastSideRequest.current = sideRequest;
-    setSideToken(true);
-    closePalette();
-    caretToEnd(true);
-  }, [sideRequest]);
-
   /** `withToken`: the side question token is in the box, where commands and files don't apply. */
   const updatePalette = (value: string, caret: number, withToken = sideToken) => {
     // Any edit makes an earlier file search stale, whatever this one turns out to be.
@@ -447,20 +438,24 @@ export function Composer(props: ComposerProps) {
   };
 
   /**
-   * Asks what follows the token as a side question: right away, also while Claude works, and never as a message
-   * or into Up next. Without a question it opens the latest side question. Images and context stay in the box.
+   * Asks what is in the box (after the token, if it is there) about the session: right away, also while Claude
+   * works, and never as a message or into Up next. With nothing to ask it opens the panel. Images and context stay
+   * in the box.
    */
   const ask = async () => {
     if (!side || sending || props.disabledReason) return;
     const sentText = text;
-    const question = text.trim();
-    if (!question) {
-      setSideToken(false);
-      setText('');
-      side.onBare();
+    const action = askFromBox(text);
+    if (action.kind === 'open') {
+      if (sideToken) {
+        setSideToken(false);
+        setText('');
+      }
+      side.onOpen();
       return;
     }
-    if (question.length > MAX_SIDE_QUESTION_LENGTH) return setNotice(`A side question can be up to ${MAX_SIDE_QUESTION_LENGTH.toLocaleString('en-US')} characters. Shorten it, or send it as a message.`);
+    const { question } = action;
+    if (question.length > MAX_SIDE_QUESTION_LENGTH) return setNotice(`A question about the session can be up to ${MAX_SIDE_QUESTION_LENGTH.toLocaleString('en-US')} characters. Shorten it, or send it as a message.`);
     setSending(true);
     setNotice(null);
     closePalette();
@@ -556,7 +551,7 @@ export function Composer(props: ComposerProps) {
         return;
       }
     }
-    // The side question panel closes first; Escape only stops Claude when nothing else took it.
+    // Something else (leaving Reply) takes Escape first; it only stops Claude when nothing did.
     if (event.key === 'Escape' && props.onEscape?.()) {
       event.preventDefault();
       return;
@@ -566,7 +561,7 @@ export function Composer(props: ComposerProps) {
     const other = props.others?.find((o) => matches(event.nativeEvent, o.shortcut));
     const send = other ? null : submitKey(event.nativeEvent, props.secondary?.shortcut);
     if (sideKey(event, { token: sideToken, selectionStart: el.selectionStart, selectionEnd: el.selectionEnd, sends: !!(other || send) }) === 'ask') {
-      // Every way of sending asks instead: a side question never queues, steers or stops Claude.
+      // Every way of sending asks instead: a question about the session never queues, steers or stops Claude.
       event.preventDefault();
       void ask();
     } else if (other) {
@@ -705,8 +700,8 @@ export function Composer(props: ComposerProps) {
             made the conversation above taller for a moment, and the browser clamped its scroll position. */}
         <div className="flex items-start gap-2">
           {sideToken && (
-            <span className="mt-px inline-flex shrink-0 items-center gap-1 rounded-md bg-link/12 px-1.5 py-0.5 font-mono text-ui text-link" data-btw-token data-tooltip="Side question: not added to the conversation. Backspace takes it out.">
-              <MessageCircleDashed size={12} aria-hidden />
+            <span className="mt-px inline-flex shrink-0 items-center gap-1 rounded-md bg-link/12 px-1.5 py-0.5 font-mono text-ui text-link" data-btw-token data-tooltip="Ask about this session: not added to the conversation. Backspace takes it out.">
+              <MessageCircleQuestion size={12} aria-hidden />
               {SIDE_TOKEN}
             </span>
           )}
@@ -718,7 +713,7 @@ export function Composer(props: ComposerProps) {
             rows={1}
             disabled={disabled}
             placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : props.placeholder)}
-            aria-label={sideToken ? 'Side question for Claude' : 'Message to Claude'}
+            aria-label={sideToken ? 'Question about this session' : 'Message to Claude'}
             aria-describedby={`${ids}-hint`}
             aria-keyshortcuts={props.running && props.onInterrupt ? ariaKeysFor('claude.stop') : undefined}
             // While the / or @ list is open, ↑ ↓ move through it without leaving the box.
@@ -769,7 +764,7 @@ export function Composer(props: ComposerProps) {
               {props.controls}
               {/* The keys still get read out with the message box; the chips take the hint's place on screen. */}
               <span id={`${ids}-hint`} className="sr-only">
-                {sideToken ? 'Enter asks a side question. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
+                {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
               </span>
             </div>
           ) : (
@@ -791,14 +786,26 @@ export function Composer(props: ComposerProps) {
             {/* Without chips the hint line holds the left; the attach buttons stay on the right. */}
             {!props.controls && attach}
             {props.meter}
-            {sideToken ? (
-              <>
-                <span className="text-meta text-muted @max-[860px]:hidden">Not added to the conversation</span>
-                <Button variant="side" size="lg" icon={<MessageCircleDashed size={14} aria-hidden />} onClick={() => void ask()} disabled={disabled || sending} data-composer-ask>
-                  {sending ? 'Asking…' : 'Ask'}
+            {side && (
+              <span className="relative flex">
+                <Button
+                  variant="side"
+                  size="lg"
+                  selected={side.open}
+                  aria-pressed={side.open}
+                  icon={<MessageCircleQuestion size={14} aria-hidden />}
+                  onClick={() => void ask()}
+                  disabled={disabled || sending}
+                  data-tooltip="Ask about this session. Not added to the conversation."
+                  data-ask-button={side.open ? 'open' : ''}
+                >
+                  Ask
                 </Button>
-              </>
-            ) : (
+                {side.ready && !side.open && <span className="pointer-events-none absolute -top-1 -right-1 size-2 rounded-full bg-link ring-2 ring-card" data-ask-ready aria-hidden />}
+                {side.ready && !side.open && <span className="sr-only">An answer is ready</span>}
+              </span>
+            )}
+            {sideToken ? null : (
               <>
                 {props.running && props.onInterrupt && (
                   <Button size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow onClick={props.onInterrupt} data-tooltip={`Stop Claude (${formatKeys(keysFor('claude.stop'))})`} data-composer-stop>

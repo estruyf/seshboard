@@ -4,7 +4,7 @@ import { buttonClass, type ButtonSize, type ButtonVariant } from './buttonStyles
 import { Kbd } from './Kbd.tsx';
 
 interface BaseProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  /** `primary`: the one yellow action per area. `secondary` (default): Cancel, Close, Choose…. `quiet`: toolbar icons and inline controls. `danger`: deletes or reverts. `side`: Ask for a side question (/btw), in blue. */
+  /** `primary`: the one yellow action per area. `secondary` (default): Cancel, Close, Choose…. `quiet`: toolbar icons and inline controls. `danger`: deletes or reverts. `side`: Ask about this session, outlined in blue (`filled` for the panel's send button). */
   variant?: ButtonVariant;
   /** `sm` 24px, `md` 28px (toolbars, dialogs), `lg` 32px (cards, the message box, a view's main action). */
   size?: ButtonSize;
@@ -16,11 +16,14 @@ interface BaseProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   shortcut?: ShortcutId;
   /** Hide the shortcut in a narrow pane, where the label alone has to fit. */
   kbdHideNarrow?: boolean;
-  /** Danger only: the solid red button that confirms a destructive dialog. */
+  /** Danger: the solid red button that confirms a destructive dialog. Side: the solid blue send button of the Ask panel. */
   filled?: boolean;
+  /** A circle rather than a rounded square (with `iconOnly`). */
+  round?: boolean;
   /**
    * Quiet: shown as pressed or current (an open panel, the view you're on); set `aria-pressed` or `aria-current` yourself.
    * Secondary: highlighted from the keyboard, as the last choice under a list (Add project's Choose folder…).
+   * Side: pressed, while the Ask panel is open.
    */
   selected?: boolean;
   /** Only for `SplitButton`: which half of it this is. */
@@ -36,7 +39,7 @@ type ButtonProps = (BaseProps & { iconOnly: true; 'aria-label': string }) | (Bas
  * Every button in the app. Variants and sizes follow AGENTS.md (Design system); `className` is for
  * layout around it (`ml-auto`, `w-full`, `min-w-0`), not for changing its look.
  */
-export function Button({ variant = 'secondary', size = 'md', icon, iconOnly = false, kbd: keys, shortcut, kbdHideNarrow = false, filled = false, selected = false, segment, className = '', type = 'button', children, ...rest }: ButtonProps) {
+export function Button({ variant = 'secondary', size = 'md', icon, iconOnly = false, kbd: keys, shortcut, kbdHideNarrow = false, filled = false, selected = false, round = false, segment, className = '', type = 'button', children, ...rest }: ButtonProps) {
   const kbd = shortcut ? keysFor(shortcut) : keys;
   const glyphs = kbd ? shortcutGlyphs(kbd) : null;
   const label = rest['aria-label'];
@@ -48,7 +51,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, iconOnly = fa
       {...rest}
       data-tooltip={tooltip}
       data-selected={selected && variant === 'secondary' ? true : undefined}
-      className={`${buttonClass({ variant, size, iconOnly, filled, selected, segment })} ${className}`}
+      className={`${buttonClass({ variant, size, iconOnly, filled, selected, segment, round })} ${className}`}
     >
       {icon}
       {/* For an icon-only button: decoration such as a status dot, not a label. */}

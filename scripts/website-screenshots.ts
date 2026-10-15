@@ -448,7 +448,7 @@ const CATCH_UP = 'Refactor auth middleware';
 const WORKING = 'Fix rounding';
 const NEEDS_YOU = 'Upgrade Stripe';
 
-/** The side question for its picture has been asked (in the first colour scheme). */
+/** The questions for the Ask panel's picture have been asked (in the first colour scheme). */
 let sideAsked = false;
 
 const screens: Screen[] = [
@@ -548,20 +548,28 @@ const screens: Screen[] = [
     },
   },
   {
-    // A side question (/btw) about the session Claude is working in, answered by the engine's stub (never a model).
-    // The first picture asks it; the second opens it again with a bare /btw, so both show the same panel.
-    name: 'side-question',
+    // Ask about this session, next to the session Claude is working in, answered by the engine's stub (never a
+    // model). The first picture asks a question from the message box and a follow-up in the panel; the second opens
+    // the panel again on the same thread.
+    name: 'ask-panel',
     async take(t) {
       await t.openSession(WORKING);
       const pane = '[data-current-session]';
-      await t.q(`${pane} [data-composer]`).fill(sideAsked ? '/btw ' : '/btw Why were the totals off by a cent?');
-      await t.need(`${pane} [data-btw-token]`, '"/btw " did not become the token');
-      await t.click(`${pane} [data-composer-ask]`, 'no Ask button with the token');
-      await t.need(`${pane} [data-btw-panel] [data-btw-answer="done"]`, 'the side answer did not come in', 15_000);
-      sideAsked = true;
-      await t.shot('side-question');
-      await t.click(`${pane} [data-btw-close]`);
-      await t.gone(`${pane} [data-btw-panel]`, 'the side question panel did not close');
+      if (!sideAsked) {
+        await t.q(`${pane} [data-composer]`).fill('Why were the totals off by a cent?');
+        await t.click(`${pane} [data-ask-button]`, 'no Ask button next to Send');
+        await t.need(`${pane} [data-ask-panel] [data-ask-item="done"]`, 'the answer did not come in', 15_000);
+        await t.q(`${pane} [data-ask-field]`).fill('Which test covers it?');
+        await t.q(`${pane} [data-ask-field]`).press('Enter');
+        await t.until(`document.querySelectorAll('${pane} [data-ask-item="done"]').length === 2`, 'the follow-up did not get its answer', 15_000);
+        sideAsked = true;
+      } else {
+        await t.click(`${pane} [data-ask-button]`, 'no Ask button next to Send');
+        await t.until(`document.querySelectorAll('${pane} [data-ask-item="done"]').length === 2`, 'the panel did not open on the thread');
+      }
+      await t.shot('ask-panel');
+      await t.click(`${pane} [data-ask-close]`);
+      await t.gone(`${pane} [data-ask-panel]`, 'the Ask panel did not close');
     },
   },
   {

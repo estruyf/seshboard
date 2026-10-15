@@ -1,6 +1,6 @@
 /**
  * c. Input fuzzing: the fuzz strings in every text field (message box, New session, palette, Go to, Search, the
- * sidebar's search, Rename, Settings search, Find, /btw), long text around MAX_PROMPT_LENGTH typed and pasted, and
+ * sidebar's search, Rename, Settings search, Find, /btw, the Ask panel's field), long text around MAX_PROMPT_LENGTH typed and pasted, and
  * `@` and `/` typed fast and deleted.
  */
 import { expensiveChecks } from '../lib/checks.ts';
@@ -95,6 +95,18 @@ export const fuzz: Phase = async (c) => {
         return !!(await openSessionByTitle(c, 'Add dark mode'));
       },
       selector: '[data-current-session] [data-composer]',
+      submit: 'Enter',
+    },
+    {
+      name: 'ask',
+      open: async () => {
+        await closeAll(c);
+        if (!(await openSessionByTitle(c, 'Add dark mode'))) return false;
+        if (await c.page.locator('[data-current-session] [data-ask-panel]').count()) return true;
+        await c.page.locator('[data-current-session] [data-ask-button]').first().click({ timeout: 3_000 });
+        return true;
+      },
+      selector: '[data-current-session] [data-ask-field]',
       submit: 'Enter',
     },
   ];

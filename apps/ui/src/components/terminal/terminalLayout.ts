@@ -44,14 +44,14 @@ export function panelSizeForKey(dock: TerminalDock, key: string, size: number, w
 }
 
 /** Why the terminal can't dock on the right just now, or null when it can. */
-export type RightBlocked = 'changes' | 'narrow' | null;
+export type RightBlocked = 'changes' | 'ask' | 'narrow' | null;
 
 /**
- * Whether the right side is free: the Changes panel also lives there (the two never stack), and the session
- * view must fit the panel's minimum next to a usable conversation. `viewWidth` null: not measured yet.
+ * Whether the right side is free: the Changes and Ask panels also live there (they never stack with the terminal),
+ * and the session view must fit the panel's minimum next to a usable conversation. `viewWidth` null: not measured yet.
  */
-export function rightBlocked(changesOnRight: boolean, viewWidth: number | null): RightBlocked {
-  if (changesOnRight) return 'changes';
+export function rightBlocked(onRight: 'changes' | 'ask' | null, viewWidth: number | null): RightBlocked {
+  if (onRight) return onRight;
   if (viewWidth !== null && viewWidth < PANEL_MIN_WIDTH + CHAT_MIN_WIDTH) return 'narrow';
   return null;
 }

@@ -19,10 +19,18 @@ describe('buttonClass', () => {
     expect(c).toEqual(expect.arrayContaining(['bg-error', 'text-white']));
     expect(c).not.toContain('btn-secondary');
   });
-  it('fills the side question button in the link blue, never the accent', () => {
+  it('outlines the Ask button in the link blue, never the accent, and presses it with a stronger blue', () => {
     const c = classes(buttonClass(look({ variant: 'side', size: 'lg' })));
-    expect(c).toEqual(expect.arrayContaining(['bg-link', 'text-bg', 'font-semibold']));
-    expect(c.some((x) => x.includes('accent'))).toBe(false);
+    expect(c).toEqual(expect.arrayContaining(['border', 'border-link/55', 'text-link']));
+    expect(c.some((x) => x.includes('accent') || x.startsWith('bg-'))).toBe(false);
+    const pressed = classes(buttonClass(look({ variant: 'side', size: 'lg', selected: true })));
+    expect(pressed).toEqual(expect.arrayContaining(['border-link', 'bg-link/15', 'text-link']));
+    expect(pressed.some((x) => x.includes('accent'))).toBe(false);
+  });
+  it('fills the Ask panel’s round send button in the link blue', () => {
+    const c = classes(buttonClass(look({ variant: 'side', size: 'sm', iconOnly: true, filled: true, round: true })));
+    expect(c).toEqual(expect.arrayContaining(['bg-link', 'text-bg', 'rounded-full', 'size-6']));
+    expect(c).not.toContain('rounded-md');
   });
   it('sizes by height, or as a square when icon-only', () => {
     expect(classes(buttonClass(look({ size: 'sm' })))).toContain('h-6');

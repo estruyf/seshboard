@@ -197,14 +197,9 @@
       "page": "settings/notifications"
     },
     {
-      "id": "palette:side-question",
-      "name": "Ask a side question…",
-      "page": "sessions/side-questions"
-    },
-    {
-      "id": "palette:side-questions",
-      "name": "Show side questions",
-      "page": "sessions/side-questions"
+      "id": "palette:ask-session",
+      "name": "Ask about this session",
+      "page": "sessions/ask"
     },
     {
       "id": "palette:sounds-on",
@@ -665,6 +660,11 @@
       "id": "shortcut:changes.toggle",
       "name": "changes.toggle",
       "page": "command-palette"
+    },
+    {
+      "id": "shortcut:ask.open",
+      "name": "ask.open",
+      "page": "sessions/ask"
     },
     {
       "id": "shortcut:claude.stop",
@@ -1222,9 +1222,34 @@
       "page": "sessions/archived"
     },
     {
+      "id": "feature:ask-button",
+      "name": "Ask button next to Send",
+      "page": "sessions/ask"
+    },
+    {
+      "id": "feature:ask-changes-tabs",
+      "name": "Changes and Ask as tabs on the right",
+      "page": "sessions/ask"
+    },
+    {
       "id": "feature:ask-claude-to-commit",
       "name": "Ask Claude to commit",
       "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:ask-quote",
+      "name": "Quote in message from an answer",
+      "page": "sessions/ask"
+    },
+    {
+      "id": "feature:ask-ready-dot",
+      "name": "Dot on Ask when an answer is ready",
+      "page": "sessions/ask"
+    },
+    {
+      "id": "feature:ask-threads",
+      "name": "Ask threads: follow-ups, New thread, Earlier threads",
+      "page": "sessions/ask"
     },
     {
       "id": "feature:auto-archive",
@@ -1254,6 +1279,11 @@
     {
       "id": "feature:auto-routing-usage",
       "name": "Auto routing in Usage",
+      "page": "usage"
+    },
+    {
+      "id": "feature:side-questions-usage",
+      "name": "Side questions in Usage",
       "page": "usage"
     },
     {
@@ -3063,8 +3093,8 @@
     },
     {
       "id": "slash:btw",
-      "name": "/btw side questions",
-      "page": "sessions/side-questions"
+      "name": "/btw asks about the session",
+      "page": "sessions/ask"
     }
   ]
 }

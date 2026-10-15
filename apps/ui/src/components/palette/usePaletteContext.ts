@@ -20,8 +20,6 @@ import { isActive } from '../../state/sidebarRows.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { parentSplit } from '../../state/tiling.ts';
 import { neighbour, type Way } from '../../state/tilingGeometry.ts';
-import { browsable, EMPTY_SIDE } from '../../state/sideQuestions.ts';
-import { useSideQuestions } from '../../state/sideQuestionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { activeComposer, useComposerTargets } from '../../state/composerTargets.ts';
@@ -108,7 +106,6 @@ export function usePaletteContext(): PaletteContext {
   const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : selectedId ? 'session' : 'home';
   const id = view === 'session' ? selectedId : null;
 
-  const sides = useSideQuestions((s) => s.sessions);
   const catchUps = useCatchUp((s) => s.cards);
   const collapsedCatchUps = useCatchUp((s) => s.collapsed);
   const session = useMemo<PaletteSession | null>(() => {
@@ -137,9 +134,8 @@ export function usePaletteContext(): PaletteContext {
       catchUp: showOf({ card: catchUps.get(id) ?? null, enabled: prefs.catchUpSummaries, summary, host, live: live.get(id) ?? null, permissions: waitingOn, collapsed: collapsedCatchUps }),
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
-      sideQuestions: browsable(sides.get(id) ?? EMPTY_SIDE),
     };
-  }, [id, sessions, live, hosts, permissions, models, digest, sides, catchUps, collapsedCatchUps, prefs.catchUpSummaries]);
+  }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries]);
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);
