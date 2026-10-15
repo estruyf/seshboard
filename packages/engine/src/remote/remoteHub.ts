@@ -41,6 +41,7 @@ import {
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
 import { DeviceStore, type RemoteDevice } from './devices.ts';
+import { checkAttachments, promptWithFiles, pruneRemoteFiles, saveRemoteFiles } from './remoteFiles.ts';
 import { Pairing } from './pairing.ts';
 import { RemoteServer } from './remoteServer.ts';
 import { nextFreePort } from './freePort.ts';
@@ -96,6 +97,8 @@ export interface RemoteHubOptions {
   computerName?: () => string;
   /** The remote app (`REMOTE_APP_URL`; a development build can point at its own). */
   appUrl?: string;
+  /** Where files sent with a message are kept (`remoteFiles.ts`). */
+  filesDir: string;
   /**
    * Remote's identity key, which main keeps in the system's keychain. Asked for only once Remote is on, so the
    * keychain is never touched for people who don't use it; null when the keychain can't be used.
@@ -115,7 +118,7 @@ export interface RemoteHubOptions {
   interrupt(sessionId: string): Promise<void>;
   respond(requestId: string, decision: PermissionDecision): void;
   /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
-  create(root: string, prompt: string, choice: SessionChoice): Promise<{ sessionId: string }>;
+  create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
   /** Puts a prompt in the queue (Later) for `root`. */
   queue(root: string, prompt: string, choice: SessionChoice): { id: string };
   /** As opening the session on the computer: no longer unread. */
@@ -218,6 +221,7 @@ export class RemoteHub {
 
   /** Starts Remote when it was on when the app quit. */
   start(): Promise<void> {
+    pruneRemoteFiles(this.options.filesDir);
     return this.apply();
   }
 
@@ -363,6 +367,11 @@ export class RemoteHub {
 
   /** One change at a time: the switch can be flipped faster than the server starts. */
   private apply(): Promise<void> {
+    // A tunnel still starting is stopped now, not after it gave its address: turning Remote off works at once.
+    if (this.tunnelState.state === 'starting') {
+      this.generation++;
+      this.tunnel?.stop();
+    }
     this.applying = this.applying.then(() => this.applyNow()).catch((error) => this.options.log('error', `Remote: ${(error as Error).message}`));
     return this.applying;
   }
@@ -596,9 +605,10 @@ export class RemoteHub {
         if (this.watches.get(phone)?.sessionId === sessionId) unwatch(phone);
         return {};
       },
-      'session.send': async ({ sessionId, text, mode, images }) => {
+      'session.send': async ({ sessionId, text, mode, images, files }) => {
         this.checkSession(sessionId);
-        const sent = await this.options.send(sessionId, text, mode, images);
+        checkAttachments(images, files);
+        const sent = await this.options.send(sessionId, promptWithFiles(text, saveRemoteFiles(this.options.filesDir, files)), mode, images);
         if (!sent.queued) label(sessionId, sent.messageUuid);
         this.options.onFromDevice?.({ sessionId, messageUuid: sent.queued ? null : sent.messageUuid, requestId: null, device: device.name });
         return { queued: sent.queued };
@@ -620,9 +630,11 @@ export class RemoteHub {
         this.options.onFromDevice?.({ sessionId: prompt.sessionId, messageUuid: null, requestId, device: device.name });
         return {};
       },
-      'session.create': async ({ projectId, prompt, ...options }) => {
+      'session.create': async ({ projectId, prompt, images, files, ...options }) => {
         const project = this.project(projectId);
-        return this.options.create(project.root, prompt, sessionChoice(options, project.defaults, this.profileFor(project, options.profileId)));
+        checkAttachments(images, files);
+        const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId));
+        return this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
       },
       'later.add': ({ projectId, prompt, ...options }) => {
         const project = this.project(projectId);

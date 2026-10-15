@@ -33,6 +33,8 @@ export const Computer = z.object({
   retryAt: z.number().nullable(),
   /** The other computer's Switchboard version, once connected. */
   version: z.string().nullable(),
+  /** What it takes beyond what every version does (`REMOTE_FEATURE_ATTACHMENTS`), once connected. */
+  features: z.array(z.string()),
   /** When it was last connected, while it is not ("Last seen 2h ago"); null while connected, or not since this app started. */
   lastSeen: z.number().nullable(),
 });

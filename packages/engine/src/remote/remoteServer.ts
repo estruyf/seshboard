@@ -18,6 +18,7 @@ import {
   type RemoteContract,
   type RpcServer,
   REMOTE_DESKTOP_ORIGIN,
+  REMOTE_FEATURE_ATTACHMENTS,
 } from '@switchboard/protocol';
 import { computerName } from './computerName.ts';
 import type { DeviceKind, DeviceStore, RemoteDevice } from './devices.ts';
@@ -242,7 +243,7 @@ export class RemoteServer {
       transport,
       {
         ...this.options.handlers(known),
-        hello: () => ({ app: { version: this.options.appVersion }, device: { id: known.id, name: known.name }, computer: { name: this.computerName() } }),
+        hello: () => ({ app: { version: this.options.appVersion }, device: { id: known.id, name: known.name }, computer: { name: this.computerName() }, features: [REMOTE_FEATURE_ATTACHMENTS] }),
       },
       { onUnexpectedError: (method, error) => this.options.log('error', `Remote ${method} failed: ${error instanceof Error ? error.message : String(error)}`) },
     );

@@ -169,7 +169,7 @@ const CLIENT_VERSION = '1';
 
 export type LinkState =
   | { kind: 'connecting' }
-  | { kind: 'connected'; name: string; version: string }
+  | { kind: 'connected'; name: string; version: string; features: string[] }
   /** `retryAt`: when it tries again by itself. */
   | { kind: 'offline'; failure: LinkFailure; retryAt: number }
   /** That computer no longer knows this one: it stops trying until it is paired again. */
@@ -273,7 +273,8 @@ export class ComputerLink {
       const hello = await client.call('hello', { client: { version: CLIENT_VERSION } });
       if (!current()) return;
       this.attempt = 0;
-      this.set({ kind: 'connected', name: hello.computer.name, version: hello.app.version });
+      // An older Switchboard there says no features.
+      this.set({ kind: 'connected', name: hello.computer.name, version: hello.app.version, features: hello.features ?? [] });
       const code = await socket.closed;
       if (!current()) return;
       this.drop();

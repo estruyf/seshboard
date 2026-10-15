@@ -14,12 +14,14 @@ import { OVERLAY_SELECTOR } from '../session/permissionKeys.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { ClampedPrompt } from '../transcript/ClampedPrompt.tsx';
 import { WorkingDots } from '../transcript/ActivityGroup.tsx';
+import { DropOverlay } from '../composer/Attachments.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
 import { ComputerPrompt } from './ComputerPrompt.tsx';
 import { applyStream, applyUpdate, awayBanner, NOT_STREAMING, prependMessages, remoteItems, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
+import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { RemoteText } from './RemoteText.tsx';
 import { remoteSessionEntries } from './remoteActions.ts';
 
@@ -136,7 +138,7 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
   const items = remoteItems(messages);
 
   return (
-    <div className="@container flex h-full min-h-0 flex-col" data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id}>
+    <div className="@container flex h-full min-h-0 flex-col" data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
       {/* The 2px line along the top is an inset shadow, so nothing moves. */}
       <header className="drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 shadow-[inset_0_2px_0_var(--sb-remote)] @max-[860px]:gap-2 @max-[860px]:px-4" data-remote-header>
         <SidebarToggle />
@@ -354,23 +356,29 @@ function ToolRun({ tools }: { tools: RemoteTool[] }) {
 
 /**
  * The message box, in the local layout: the computer's chip where the profile chip is, model and mode as read-only
- * chips when that computer says them, Stop while Claude works, and a `remote` border. Text only: images and files
- * can't go to another computer from here.
+ * chips when that computer says them, Stop while Claude works, and a `remote` border. Images and files go with the
+ * message (`RemoteAttachments.tsx`): files only to a computer whose Switchboard takes them.
  */
 function RemoteComposer({ client, computer, session, working, onSent, onStop }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; working: boolean; onSent(): void; onStop(): void }) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
   const connected = computer.state === 'connected';
   const name = computer.name;
+  const attachments = useRemoteAttachments({ computer, rootRef: root, disabledReason: connected ? null : `${name} is not connected` });
+  // A prompt is always needed, as on the phone: images and files go with it.
+  const hasMessage = !!draft.trim();
   const send = () => {
     const text = draft.trim();
-    if (!text || sending || !connected) return;
+    if (!hasMessage || sending || attachments.reading || !connected) return;
     setSending(true);
     onSent();
-    void callComputer(client, computer.id, 'session.send', { sessionId: session.id, text, mode: 'queue', images: [] })
+    const { images, files } = attachments;
+    void callComputer(client, computer.id, 'session.send', { sessionId: session.id, text, mode: 'queue', images, ...(files.length ? { files } : {}) })
       .then(
         ({ queued }) => {
           setDraft('');
+          attachments.clear();
           if (queued) toast('Added to Up next', { icon: 'queue', body: `Claude is working on ${name}. It goes next.` });
         },
         (e: Error) => toast(e.message),
@@ -388,11 +396,14 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   };
   const placeholder = !connected ? `${name} is not connected` : working ? `Message Claude on ${name} (queued until this turn ends)` : `Message Claude on ${name}`;
   return (
-    <div className={`rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${connected ? 'border-remote/45' : 'border-border'}`} data-remote-composer>
+    <div ref={root} className={`relative rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${connected ? 'border-remote/45' : 'border-border'}`} data-remote-composer>
+      <DropOverlay drop={attachments.drop} />
+      <RemoteAttachmentList state={attachments} className="mb-2" />
       <textarea
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
+        onPaste={attachments.onPaste}
         rows={1}
         disabled={!connected}
         placeholder={placeholder}
@@ -403,6 +414,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
       />
       <div className="mt-1.5 flex items-center justify-between gap-2">
         <div className="-ml-1.5 flex min-w-0 flex-1 items-center gap-1">
+          <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
           <ComputerChip name={name} size="header" offline={!connected} data-tooltip={`Claude runs on ${name}, with its Claude profile.`} />
           {session.model && (
             <span className="truncate px-1.5 text-ui text-muted" data-tooltip={`Model: ${session.model}`} data-remote-model>
@@ -423,7 +435,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
               Stop
             </Button>
           )}
-          <Button variant="primary" size="lg" iconOnly icon={<ArrowUp size={15} aria-hidden />} aria-label={working ? 'Add to Up next' : 'Send'} disabled={!connected || sending || !draft.trim()} onClick={send} data-computer-send />
+          <Button variant="primary" size="lg" iconOnly icon={<ArrowUp size={15} aria-hidden />} aria-label={working ? 'Add to Up next' : 'Send'} disabled={!connected || sending || attachments.reading || !hasMessage} onClick={send} data-computer-send />
         </div>
       </div>
     </div>
