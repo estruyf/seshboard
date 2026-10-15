@@ -105,6 +105,24 @@ Hover a code block in Claude's reply for its buttons:
 
 Use the save button on an image, right-click it and choose **Save image…**, or press <Kbd keys="mod+s" /> while it is open full size.
 
+## Go back to a prompt
+
+In a long conversation, the prompt outline takes you back to what you asked. It is a thin rail on the right of the conversation, with a mark for each of your prompts. The mark of the prompt at the top of the view is highlighted, and it moves as you scroll.
+
+<Screenshot name="prompt-outline" alt="The prompt outline on the right of the conversation: a mark for each prompt, the current one highlighted, and a card with the start of a prompt, its number and time, and the keys for the previous and next prompt" />
+
+- **Hover** a mark to see the start of the prompt, when you sent it and the images it had.
+- **Click** a mark to scroll to its prompt. The prompt lands at the top of the view with a short highlight.
+- **Previous prompt** (<Kbd shortcut="transcript.prompt-previous" />) goes to the prompt before. When you have scrolled down inside a long prompt, it goes back to the start of that prompt first.
+- **Next prompt** (<Kbd shortcut="transcript.prompt-next" />) goes to the prompt after. From the last prompt, it goes to the end of the conversation.
+- Both are in the command palette, as *Previous prompt* and *Next prompt*.
+
+With the keyboard, <Kbd keys="tab" /> reaches the rail after the conversation. <Kbd keys="arrowup|arrowdown" /> move between the marks, <Kbd keys="enter" /> or <Kbd keys="space" /> scrolls to the prompt, and <Kbd keys="home" /> and <Kbd keys="end" /> go to the first and the last.
+
+Only your own prompts get a mark: not `/` commands, messages still in **Up next** or prompts Claude gave its agents. The rail shows from 3 prompts, in a pane at least 600 pixels wide, so it hides when panes are side by side and narrow. The keys work also when the rail is hidden. They don't work in a text field with text in it, where they select to the start or the end of the text; in an empty message box they do.
+
+To hide the rail, turn off **Show prompt outline** in [Settings, Conversation](/settings/#conversation).
+
 ## Change the model, mode and effort
 
 The chips under the message box show the session's settings. Click one to change it while the session runs:
@@ -185,4 +203,5 @@ Click the **×** in the header (or *Close session* in the command palette) to go
 ## Settings
 
 - [Settings, Conversation](/settings/#conversation): **Summarised** (the default) shows each run of tool calls as one line; **Every step** shows each tool call as its own card.
+- **Show prompt outline** (on by default) shows the rail of your prompts beside the conversation.
 - Each project's defaults for model, effort and mode are on its [Settings tab](/projects/settings/).

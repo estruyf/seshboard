@@ -87,6 +87,8 @@ import { MessageActionsContext, messageUuid, type MessageActions } from './messa
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { TranscriptItem } from './TranscriptItem.tsx';
 import { useTranscript } from './useTranscript.ts';
+import { PromptOutline } from './PromptOutline.tsx';
+import { currentPrompt, isPrompt, LAND_OFFSET, MIN_PROMPTS, MIN_WIDTH, nextPrompt, outlinePrompts, previousPrompt, promptKeysBlocked, type OutlinePrompt } from './promptOutline.ts';
 import { startNewSession } from '../newSession/startSession.ts';
 import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
@@ -486,6 +488,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         setFindQuery((q) => q ?? '');
         setFindFocus((n) => n + 1);
       }
+      // ⌘⇧↑ / ⌘⇧↓ move between your prompts, also with the rail hidden. Not in the terminal, nor in a field with
+      // text, where they select to the start or the end.
+      const promptStep = isShortcut(event, 'transcript.prompt-previous') ? -1 : isShortcut(event, 'transcript.prompt-next') ? 1 : 0;
+      if (active && promptStep !== 0 && !(event.target as HTMLElement | null)?.closest?.('.xterm') && !promptKeysBlocked(document.activeElement as HTMLElement | null)) {
+        event.preventDefault();
+        stepPrompt(promptStep);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -564,6 +573,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     syncAway();
     // Rows mount and unmount while scrolling; their matches need highlighting again.
     if (findQuery !== null) schedulePaint();
+    if (showOutline) scheduleCurrent();
   };
   // Scrolling up stops following at once, before the scroll lands: the next token would pull it back.
   const leaveEnd = () => {
@@ -619,6 +629,107 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (tailRef.current) observer.observe(tailRef.current);
     return () => observer.disconnect();
   }, []);
+
+  // The prompt outline: a mark for each of your prompts beside the conversation, and ⌘⇧↑ / ⌘⇧↓ to move between them.
+  // The list only changes when a prompt comes or goes, so the rail doesn't redraw for every new line from Claude.
+  const promptList = useRef<OutlinePrompt[]>([]);
+  const prompts = useMemo(() => {
+    const next = outlinePrompts(renderItems);
+    const was = promptList.current;
+    if (next.length === was.length && next.every((p, i) => p.key === was[i]!.key && p.index === was[i]!.index)) return was;
+    return (promptList.current = next);
+  }, [renderItems]);
+  const showOutlinePref = usePreferences((s) => s.prefs.promptOutline);
+  const transcriptWidth = useWidth(scrollRef);
+  const showOutline = showOutlinePref && prompts.length >= MIN_PROMPTS && (transcriptWidth ?? 0) >= MIN_WIDTH && status === 'ready' && !terminalMaximized;
+  /** Where each prompt's row starts, from the virtualizer: measured, or estimated for rows not rendered yet. */
+  const promptStarts = () => {
+    virtualizer.getTotalSize(); // brings the measurements up to date
+    return prompts.map((p) => virtualizer.measurementsCache[p.index]?.start ?? 0);
+  };
+  // The rail's positions follow the measurements, at most once a frame.
+  const [outlineMeasure, setOutlineMeasure] = useState<{ starts: number[]; total: number; gutter: number }>({ starts: [], total: 0, gutter: 0 });
+  useEffect(() => {
+    if (!showOutline) return;
+    const frame = requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      const starts = promptStarts();
+      const total = virtualizer.getTotalSize();
+      // The scrollbar's width: the rail sits just left of it.
+      const gutter = el ? el.offsetWidth - el.clientWidth : 0;
+      setOutlineMeasure((was) => (was.total === total && was.gutter === gutter && was.starts.length === starts.length && was.starts.every((s, i) => s === starts[i]) ? was : { starts, total, gutter }));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showOutline, prompts, totalSize, transcriptWidth, virtualizer]);
+  // A jump that couldn't bring its prompt to the top (near the end) still makes it the current one, until you scroll.
+  const pinnedPrompt = useRef<{ index: number; top: number } | null>(null);
+  const findCurrentPrompt = () => {
+    const el = scrollRef.current;
+    if (!el || prompts.length === 0) return -1;
+    const pinned = pinnedPrompt.current;
+    if (pinned && pinned.index < prompts.length && Math.abs(el.scrollTop - pinned.top) <= 2) return pinned.index;
+    pinnedPrompt.current = null;
+    return currentPrompt(promptStarts(), el.scrollTop);
+  };
+  const [currentMark, setCurrentMark] = useState(-1);
+  const currentFrame = useRef(0);
+  const scheduleCurrent = () => {
+    cancelAnimationFrame(currentFrame.current);
+    currentFrame.current = requestAnimationFrame(() => setCurrentMark(findCurrentPrompt()));
+  };
+  useEffect(() => {
+    if (showOutline) scheduleCurrent();
+  }, [showOutline, outlineMeasure]);
+  useEffect(() => () => cancelAnimationFrame(currentFrame.current), []);
+  // The prompt a jump landed on: a short accent ring on it (none with reduced motion, see styles.css).
+  const [landingKey, setLandingKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!landingKey) return;
+    const timer = setTimeout(() => setLandingKey(null), 1_200);
+    return () => clearTimeout(timer);
+  }, [landingKey]);
+  /** Scrolls so prompt `index` (of `prompts`) sits LAND_OFFSET below the top of the view. Stops following the end. */
+  const jumpToPrompt = (index: number) => {
+    const el = scrollRef.current;
+    const prompt = prompts[index];
+    if (!el || !prompt) return;
+    follow(false);
+    // Sets scrollTop itself, like following the end does: scrollToIndex keeps chasing its target and fights a scroll.
+    const place = () => {
+      const start = promptStarts()[index];
+      if (start === undefined) return;
+      el.scrollTop = Math.max(0, start - LAND_OFFSET);
+      pinnedPrompt.current = { index, top: el.scrollTop };
+    };
+    place();
+    setCurrentMark(index);
+    // The rows around it are measured once they render: settle on the exact spot over the next frames.
+    requestAnimationFrame(() => {
+      place();
+      requestAnimationFrame(place);
+    });
+    // A second jump to the same prompt plays the ring again.
+    setLandingKey(null);
+    requestAnimationFrame(() => setLandingKey(prompt.key));
+  };
+  const jumpRef = useRef(jumpToPrompt);
+  jumpRef.current = jumpToPrompt;
+  const onOutlineJump = useCallback((index: number) => jumpRef.current(index), []);
+  /** Previous prompt (-1) or Next prompt (1); from the last prompt, Next goes to the end. */
+  const stepPrompt = (direction: 1 | -1) => {
+    const el = scrollRef.current;
+    if (!el || prompts.length === 0 || terminalMaximized) return;
+    const starts = promptStarts();
+    const current = findCurrentPrompt();
+    const target = direction === 1 ? nextPrompt(starts, el.scrollTop, current) : previousPrompt(starts, el.scrollTop, current);
+    if (target === 'end') jumpToLatest();
+    else if (target !== null) jumpToPrompt(target);
+  };
+  // Another session in this pane starts at its end, with nothing pinned.
+  useEffect(() => {
+    pinnedPrompt.current = null;
+    setLandingKey(null);
+  }, [sessionId]);
 
   // Search opened this session at a message: scroll there once it's loaded, and highlight it briefly.
   const focusMessage = useOverlay((s) => (s.focusMessage?.sessionId === sessionId ? s.focusMessage.messageUuid : null));
@@ -825,7 +936,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     let lastReply: string | null = null;
     for (const item of items) {
       const uuid = messageUuid(item.key);
-      if (item.kind === 'user' && !item.subagent && uuid !== before) prompts.push({ uuid, text: item.text, at: item.at, before });
+      if (isPrompt(item) && uuid !== before) prompts.push({ uuid, text: item.text, at: item.at, before });
       if (item.kind === 'text' && !item.subagent) lastReply = item.text;
       before = uuid;
     }
@@ -850,6 +961,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (request.kind === 'branch-menu') setBranchMenuRequest((n) => n + 1);
     else if (request.kind === 'ask') void openAsk(client, sessionId);
     else if (request.kind === 'rewind' && request.arg) messageActions?.rewind(request.arg);
+    else if (request.kind === 'prompt-previous') stepPrompt(-1);
+    else if (request.kind === 'prompt-next') stepPrompt(1);
   });
 
   /**
@@ -1190,6 +1303,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <PromptExpansionContext.Provider value={promptExpansion}>
           <MessageMenuContext.Provider value={remember.openMenu}>
           <FileLinksProvider cwd={cwd}>
+            {/* The conversation, and the prompt outline beside it in the gutter (outside the scroll, so it stays put). */}
+            <div className={`relative min-h-0 flex-1 flex-col ${terminalMaximized ? 'hidden' : 'flex'}`} data-transcript-area>
             <div
               ref={scrollRef}
               onScroll={() => (onScroll(), remember.handlers.onScroll())}
@@ -1245,7 +1360,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       data-transcript-item
                       data-item-kind={renderItems[row.index]!.kind}
                       ref={virtualizer.measureElement}
-                      className={`absolute inset-x-6 pt-3 ${row.key === highlightKey ? 'search-highlight' : ''}`}
+                      className={`absolute inset-x-6 pt-3 ${row.key === highlightKey ? 'search-highlight' : ''} ${row.key === landingKey ? 'prompt-landing' : ''}`}
                       style={{ transform: `translateY(${row.start}px)` }}
                     >
                       {autoPick && row.index === firstAnswer && <AutoPickLine sessionId={sessionId} pick={autoPick} />}
@@ -1280,6 +1395,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   </div>
                 </div>
               )}
+            </div>
+            {showOutline && (
+              <PromptOutline prompts={prompts} starts={outlineMeasure.starts} total={outlineMeasure.total} current={currentMark} right={outlineMeasure.gutter} onJump={onOutlineJump} />
+            )}
             </div>
           </FileLinksProvider>
           </MessageMenuContext.Provider>

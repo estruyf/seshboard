@@ -248,6 +248,8 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘F | Find in the conversation |
 | ↩ or ⌘G | Next match (in Find) |
 | ⇧↩ or ⌘⇧G | Previous match (in Find) |
+| ⌘⇧↑ | Previous prompt (Not in a text field that has text, where it selects to the start) |
+| ⌘⇧↓ | Next prompt (After the last prompt, it goes to the end of the conversation) |
 | ⇧-click | Open a file link the other way (on a file in the conversation; A click does what Settings › Conversation sets; this does the other) |
 | ⌘⇧D | Show or hide Changes |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |

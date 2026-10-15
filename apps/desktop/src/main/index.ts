@@ -3489,6 +3489,62 @@ async function runLongPromptStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * The prompt outline, read-only: a session with at least 4 prompts has a mark for each beside the conversation, a
+ * click on a mark brings its prompt to the top of the view, and Next prompt (⌘⇧↓) moves the current mark on. Uses
+ * the open session when it has 4 prompts, else the first of the newest sessions that aren't running that has, and
+ * goes back to the open session afterwards.
+ */
+async function runPromptOutlineStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const markCount = `document.querySelectorAll('${view} [data-prompt-outline] [data-prompt-mark]').length`;
+  const back = smokeSessionId;
+  let borrowed: string | null = null;
+  try {
+    if (!(await waitInPage(win, `${markCount} >= 4`, 1_500))) {
+      const running = await runningSessions();
+      if (!running) return 'failed: could not ask the engine which sessions are running, so none is safe to open';
+      const rows = (await js("[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId)")) as string[];
+      for (const id of [...new Set(rows)].filter((id) => id !== back && !running.ids.has(id)).slice(0, 10)) {
+        await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+        if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000))) continue;
+        if (await waitInPage(win, `${markCount} >= 4`, 1_000)) {
+          borrowed = id;
+          break;
+        }
+      }
+      if (!borrowed) return 'ok: no session with 4 prompts among the newest (the demo home has one: npm run smoke:demo)';
+    }
+    const count = (await js(markCount)) as number;
+    const label = (await js(`document.querySelector('${view} [data-prompt-outline]').getAttribute('aria-label')`)) as string;
+    if (label !== 'Your prompts') return `the rail is labelled ${JSON.stringify(label)}`;
+
+    // A click on the second mark: its prompt lands 24px below the top of the view (or as far as the end lets it).
+    const row = (await js(`document.querySelector('${view} [data-prompt-mark="1"]').dataset.promptRow`)) as string;
+    await js(`document.querySelector('${view} [data-prompt-mark="1"]').click()`);
+    const offset = `(() => { const el = document.querySelector('${view} [data-transcript]'); const row = el.querySelector('[data-transcript-item][data-index="${row}"]'); return row ? Math.round(row.getBoundingClientRect().top - el.getBoundingClientRect().top) : null; })()`;
+    const atEnd = `(() => { const el = document.querySelector('${view} [data-transcript]'); return el.scrollHeight - el.scrollTop - el.clientHeight < 2; })()`;
+    if (!(await waitInPage(win, `(() => { const top = ${offset}; return top !== null && (Math.abs(top - 24) <= 3 || (${atEnd} && top >= 0)); })()`, 3_000))) {
+      return `the second prompt is not at the top after a click on its mark (${await js(offset)}px from the top)`;
+    }
+    if (!(await waitInPage(win, `!!document.querySelector('${view} [data-prompt-mark="1"][data-current][aria-current="true"]')`, 2_000))) return 'the clicked mark is not the current one';
+
+    // Next prompt (⌘⇧↓), with focus outside any text field: the third mark is the current one.
+    await js('document.activeElement?.blur?.()');
+    pressKey(win, 'Down', ['meta', 'shift']);
+    if (!(await waitInPage(win, `!!document.querySelector('${view} [data-prompt-mark="2"][data-current]')`, 3_000))) {
+      return `Next prompt did not move the current mark to the third prompt (current: ${await js(`document.querySelector('${view} [data-prompt-mark][data-current]')?.dataset.promptMark ?? 'none'`)})`;
+    }
+    return `ok: ${count} marks${borrowed ? ' (in another session with more prompts)' : ''}, a click brought the second prompt to the top, Next prompt moved the current mark to the third`;
+  } finally {
+    if (borrowed && back) {
+      await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+      await waitInPage(win, `document.querySelector('[data-current-session="${back}"] [data-transcript-item]')`, 5_000);
+    } else await js(`document.querySelector('${view} [data-jump-to-latest]')?.click()`);
+  }
+}
+
+/**
  * Every message has a Copy button (Markdown for Claude's replies, which also have Copy as rich text), and the text
  * of prompts, commands and replies can be selected. Read-only: it doesn't click Copy, which would replace the clipboard.
  */
@@ -6490,6 +6546,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
   await step('long prompts', () => runLongPromptStep(win));
+  await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('remember this', () => runRememberStep(win));

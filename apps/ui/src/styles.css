@@ -512,6 +512,29 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
   }
 }
 
+/* A prompt the prompt outline jumped to: a 2px accent ring that fades out. No ring with reduced motion. */
+.prompt-landing [data-prompt-bubble] {
+  animation: prompt-landing 1.2s ease-out;
+}
+@keyframes prompt-landing {
+  from {
+    box-shadow: 0 0 0 2px var(--sb-accent);
+  }
+  to {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prompt-landing [data-prompt-bubble] {
+    animation: none;
+  }
+}
+
+/* The prompt outline's marks draw their focus ring around the mark itself, not around the rail-wide hit area. */
+html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
+  outline: none;
+}
+
 /* A setting Settings' search jumped to: the same glow, on its row. */
 .setting-flash {
   animation: search-highlight 2.5s ease-out;

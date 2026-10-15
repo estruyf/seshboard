@@ -95,6 +95,14 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-tool-activity]',
     },
     {
+      id: 'prompt-outline',
+      page: 'conversation',
+      label: 'Show prompt outline',
+      detail: 'A thin rail beside the conversation with a mark for each of your prompts. Click a mark to go back to it.',
+      keywords: 'outline prompts rail marks minimap jump previous next long conversation navigate',
+      target: '[data-prompt-outline-setting]',
+    },
+    {
       id: 'file-link-click',
       page: 'conversation',
       label: 'Clicking a file link',

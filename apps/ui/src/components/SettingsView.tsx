@@ -235,6 +235,13 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 </Choice>
               ))}
             </RadioGroup>
+            <Toggle
+              label="Show prompt outline"
+              detail="A thin rail beside the conversation with a mark for each of your prompts. Click a mark to go back to it."
+              checked={prefs.promptOutline}
+              attr="data-prompt-outline-setting"
+              onChange={(promptOutline) => update({ promptOutline })}
+            />
           </Section>
           <Section title="File links">
             <div className="flex items-center justify-between gap-4" data-setting-row>
