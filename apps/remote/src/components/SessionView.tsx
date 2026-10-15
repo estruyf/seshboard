@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, ImagePlus, Send, Square, X } from 'lucide-react';
+import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, ImagePlus, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
 import { REMOTE_MAX_IMAGES, type CatchUp, type QueuedMessage, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions } from '@switchboard/protocol/remote-client';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { transcriptItems } from '../lib/steps.ts';
@@ -13,16 +13,22 @@ import { CatchUpCard } from './CatchUpCard.tsx';
 import { ChangesSheet, CommitSheet, type ChangesState } from './ChangesSheet.tsx';
 import { useNow } from './SessionList.tsx';
 import { MenuButton, type MenuItem } from './Menu.tsx';
-import { ModeChip, ModelChip } from './OptionChips.tsx';
+import { EffortChip, ModeChip, ModelChip } from './OptionChips.tsx';
 import { DockedPrompt } from './PermissionCard.tsx';
 import { toast } from './Toasts.tsx';
 import { useFinePointer, useMedia } from '../lib/media.ts';
 import { addReason, imageFiles, toImage } from '../lib/images.ts';
-import { MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT } from '../lib/options.ts';
+import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, takesEffort } from '../lib/options.ts';
 import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
+import { AskPanel, AskSheet } from './AskPanel.tsx';
+import { closeAsk, openAsk, useSessionAsk } from './askStore.ts';
+import { withQuote } from '../lib/ask.ts';
 import { Button, STATUS_LABEL, StatusDot } from './ui.tsx';
 
 const PAGE = 50;
+
+/** What goes in the message box: Ask Claude to fix… replaces what is there, Quote in message adds to it. */
+type Fill = { text: string; id: number; quote?: boolean };
 
 /** The connection dropped while it was asked: the banner says so, not an error line. */
 const lostConnection = (error: unknown) => (error as { code?: string }).code === 'DISCONNECTED';
@@ -65,15 +71,17 @@ export function SessionView({
   const [error, setError] = useState<string | null>(null);
   const [catchUp, setCatchUp] = useState<CatchUp | null>(null);
   const [changes, setChanges] = useState<ChangesState | null>(null);
+  const ask = useSessionAsk(sessionId);
   /** At 1280px and wider Changes is a panel on the right (remembered in this browser); below that, a sheet. */
   const panelFits = useMedia('(min-width: 1280px)') && wide;
   const [panel, setPanel] = useState(() => (initialChanges || panelWasOpen()));
-  const panelOpen = panelFits && panel;
+  /** Ask takes the right side while it is open; Changes comes back when it closes. */
+  const panelOpen = panelFits && panel && !ask.open;
   const [sheet, setSheet] = useState<'changes' | 'commit' | null>(() => (initialChanges && !(wide && window.matchMedia('(min-width: 1280px)').matches) ? 'changes' : null));
   const [unfolded, setUnfolded] = useState(false);
   /** The turn committed from here, so its card says Committed. */
   const [committed, setCommitted] = useState<string | null>(null);
-  const [fill, setFill] = useState<{ text: string; id: number } | null>(null);
+  const [fill, setFill] = useState<Fill | null>(null);
   const [options, setOptions] = useState<RemoteOptions | null>(null);
   const now = useNow();
   const lastUuid = useRef<string | undefined>(undefined);
@@ -171,20 +179,34 @@ export function SessionView({
     setPanel(open);
     rememberPanel(open);
   };
-  const openChanges = () => (panelFits ? showPanel(!panelOpen) : setSheet('changes'));
+  const openChanges = () => {
+    if (!panelFits) return setSheet('changes');
+    if (ask.open) closeAsk(sessionId);
+    showPanel(ask.open || !panelOpen);
+  };
+  const toggleAsk = () => (ask.open ? closeAsk(sessionId) : openAsk(client, sessionId));
+  // Ask belongs to the session on screen: leaving it closes the sheet or panel (an answer still coming keeps coming).
+  useEffect(() => () => closeAsk(sessionId), [sessionId]);
+  const quote = (answer: string) => {
+    // On a phone the sheet covers the message box: it goes, so you see the quote land.
+    if (!panelFits) closeAsk(sessionId);
+    setFill({ text: answer, id: Date.now(), quote: true });
+  };
   // Esc closes the panel once nothing over it (the palette, a sheet, a menu) took the key.
+  const askPanel = panelFits && ask.open;
   useEffect(() => {
-    if (!panelOpen) return;
+    if (!panelOpen && !askPanel) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[role=dialog],[role=menu]')) return;
       event.preventDefault();
-      showPanel(false);
+      if (askPanel) closeAsk(sessionId);
+      else showPanel(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [panelOpen]);
+  }, [panelOpen, askPanel, sessionId]);
   const stop = () => void client?.call('session.interrupt', { sessionId }).catch(fail);
-  const modelAndMode = running && options && session ? `${modelLabel(options.models, session.model)} · ${MODE_SHORT[session.permissionMode!]}` : null;
+  const modelAndMode = running && options && session ? `${autoFace(session.auto) ?? modelLabel(options.models, session.model)} · ${MODE_SHORT[session.permissionMode!]}` : null;
 
   return (
     <div className="flex h-full">
@@ -220,6 +242,20 @@ export function SessionView({
               {modelAndMode}
             </span>
           )}
+          <Button
+            variant="quiet"
+            size="md"
+            onClick={toggleAsk}
+            aria-pressed={ask.open}
+            aria-label={ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session'}
+            title="Ask about this session"
+            className={`relative px-2! text-link! ${ask.open ? 'bg-link/15' : ''}`}
+            data-remote-ask
+          >
+            <MessageCircleQuestion className="size-4" aria-hidden />
+            {wide && <span>Ask</span>}
+            {ask.ready && <span aria-hidden className="absolute top-1 right-1 size-2 rounded-full bg-link ring-2 ring-bg" data-remote-ask-ready />}
+          </Button>
           {(files > 0 || (wide && changes)) && (
             <Button variant="quiet" size="md" onClick={openChanges} aria-pressed={panelOpen || undefined} aria-label={`Changes, ${files} ${files === 1 ? 'file' : 'files'}`} className={`px-2! ${panelOpen ? 'bg-selected text-text!' : ''}`} data-remote-changes>
               <FileDiff className="size-4" aria-hidden />
@@ -264,7 +300,11 @@ export function SessionView({
           chips={
             running && options && session ? (
               <>
-                <ModelChip options={options} value={session.model} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
+                <ModelChip options={options} value={session.model} auto={session.auto} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
+                {/* Only from a Switchboard that sends the effort, and for a model that takes one. */}
+                {session.effort !== undefined && takesEffort(options.models, session.model) && (
+                  <EffortChip options={options} value={session.effort} placement="above" disabled={!client} onPick={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)} />
+                )}
                 <ModeChip options={options} value={session.permissionMode!} placement="above" disabled={!client} onPick={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)} />
               </>
             ) : null
@@ -286,6 +326,8 @@ export function SessionView({
           onError={setError}
         />
       </div>
+      {ask.open && !panelFits && <AskSheet client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
+      {askPanel && <AskPanel client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
       {sheet === 'changes' && <ChangesSheet client={client} sessionId={sessionId} changes={changes} onClose={() => setSheet(null)} onAsk={askToFix} onCommit={() => setSheet('commit')} />}
       {panelOpen && (
         <ChangesPanel
@@ -483,8 +525,8 @@ function Composer({
   onSend,
   onError,
 }: {
-  /** Text to put in the box and focus it (Ask Claude to fix…); a new `id` each time. */
-  fill: { text: string; id: number } | null;
+  /** Text to put in the box and focus it (Ask Claude to fix…), or to quote at its end; a new `id` each time. */
+  fill: Fill | null;
   /** The running session's model and mode, under the box. */
   chips: ReactNode;
   disabled: boolean;
@@ -528,11 +570,15 @@ function Composer({
   }, [fine]);
   useEffect(() => {
     if (!fill) return;
-    setText(fill.text);
+    const next = fill.quote ? withQuote(box.current?.value ?? '', fill.text) : fill.text;
+    setText(next);
     const el = box.current;
     el?.focus();
     // After React has put the text in: the caret at its end, ready to say what to fix.
-    requestAnimationFrame(() => el?.setSelectionRange(fill.text.length, fill.text.length));
+    requestAnimationFrame(() => {
+      el?.setSelectionRange(next.length, next.length);
+      if (el) el.scrollTop = el.scrollHeight;
+    });
   }, [fill]);
   const send = async () => {
     const message = text.trim();
@@ -636,7 +682,8 @@ function Composer({
           <Send className="size-4" aria-hidden />
         </Button>
       </div>
-      {chips && <div className="mx-auto flex w-full max-w-3xl gap-1.5 pt-1.5">{chips}</div>}
+      {/* Wraps on a narrow phone rather than scrolling: a scrolling row would clip the lists that open above the chips. */}
+      {chips && <div className="mx-auto flex w-full max-w-3xl flex-wrap gap-1.5 pt-1.5">{chips}</div>}
     </form>
   );
 }

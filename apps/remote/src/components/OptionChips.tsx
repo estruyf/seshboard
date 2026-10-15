@@ -1,6 +1,6 @@
-import { FolderGit2, Folder } from 'lucide-react';
-import type { Effort, PermissionMode, RemoteOptions, RemotePermissionMode } from '@switchboard/protocol/remote-client';
-import { EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, profilesOf, projectProfile } from '../lib/options.ts';
+import { FolderGit2, Folder, Gauge, WandSparkles } from 'lucide-react';
+import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteSession } from '@switchboard/protocol/remote-client';
+import { autoDescription, autoFace, EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, profilesOf, projectProfile } from '../lib/options.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
 
 /** The chips for a session's choices (AGENTS.md, Message box chips): the value only, the full meaning in the label. */
@@ -30,19 +30,48 @@ export function ProfileChip({ options, projectId, value, onPick }: { options: Re
   );
 }
 
-export function ModelChip({ options, value, onPick, disabled, placement }: { options: RemoteOptions; value: string | null; onPick: (model: string | null) => void; disabled?: boolean; placement?: 'above' | 'below' }) {
-  const known = options.models.some((m) => m.value === value);
+/** Auto's wand, on the chip and in the list. */
+const Wand = ({ className = 'size-3.5' }: { className?: string }) => <WandSparkles className={`${className} shrink-0 text-accent-ink`} aria-hidden />;
+
+/**
+ * The model. New session offers Auto first while it is on in Settings (`offerAuto`): Haiku picks the model from the
+ * first prompt. A running session's chip says what Auto picked (`auto`) until you pick a model yourself; Auto isn't
+ * in its list, as on the computer, because it only picks once, when a session starts.
+ */
+export function ModelChip({
+  options,
+  value,
+  onPick,
+  disabled,
+  placement,
+  offerAuto = false,
+  auto,
+}: {
+  options: RemoteOptions;
+  value: string | null;
+  onPick: (model: string | null) => void;
+  disabled?: boolean;
+  placement?: 'above' | 'below';
+  offerAuto?: boolean;
+  auto?: RemoteSession['auto'];
+}) {
+  const known = options.models.some((m) => m.value === value) || (offerAuto && value === AUTO_MODEL);
+  const picked = autoFace(auto);
+  const isAuto = Boolean(picked) || value === AUTO_MODEL;
   // The list's own "default" stands for no model chosen.
   const listDefault = options.models.some((m) => m.value === 'default') ? 'default' : null;
   return (
     <ChoiceChip
       label="Model"
-      face={modelLabel(options.models, value)}
+      face={picked ?? modelLabel(options.models, value)}
+      icon={isAuto ? <Wand /> : undefined}
+      spoken={picked ? `Model: ${picked.replace(' · ', ' picked ')}` : undefined}
       selected={value ?? listDefault ?? DEFAULT}
       disabled={disabled}
       placement={placement}
       hook="model"
       options={[
+        ...(offerAuto ? [{ value: AUTO_MODEL, label: 'Auto', description: autoDescription(options.auto?.allowed ?? []), icon: <Wand className="mt-0.5 size-3.5" />, separatorAfter: true }] : []),
         // The default (null) only when the list has no "default" of its own.
         ...(listDefault ? [] : [{ value: DEFAULT, label: 'Default model', description: 'What Switchboard starts sessions with' }]),
         ...(value && !known ? [{ value, label: modelLabel(options.models, value) }] : []),
@@ -53,13 +82,15 @@ export function ModelChip({ options, value, onPick, disabled, placement }: { opt
   );
 }
 
-export function EffortChip({ options, value, onPick, disabled }: { options: RemoteOptions; value: Effort | null; onPick: (effort: Effort | null) => void; disabled?: boolean }) {
+export function EffortChip({ options, value, onPick, disabled, placement }: { options: RemoteOptions; value: Effort | null; onPick: (effort: Effort | null) => void; disabled?: boolean; placement?: 'above' | 'below' }) {
   return (
     <ChoiceChip<Effort | typeof DEFAULT>
       label="Effort"
-      face={`Effort: ${value ? EFFORT_LABEL[value].toLowerCase() : 'default'}`}
+      face={value ? EFFORT_LABEL[value] : 'Default'}
+      icon={<Gauge className="size-3.5 text-muted" aria-hidden />}
       selected={value ?? DEFAULT}
       disabled={disabled}
+      placement={placement}
       hook="effort"
       options={[{ value: DEFAULT, label: 'Default', description: "The model's own" }, ...options.efforts.map((e) => ({ value: e, label: EFFORT_LABEL[e] }))]}
       onPick={(picked) => onPick(picked === DEFAULT ? null : picked)}

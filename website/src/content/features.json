@@ -1183,7 +1183,7 @@
     },
     {
       "id": "feature:remote-new-session-options",
-      "name": "Remote: model, effort, mode and worktree in New session",
+      "name": "Remote: model (also Auto), effort, mode and worktree in New session",
       "page": "remote-access"
     },
     {
@@ -1193,7 +1193,7 @@
     },
     {
       "id": "feature:remote-model-mode-chips",
-      "name": "Remote: model and mode of a running session",
+      "name": "Remote: model, effort and mode of a running session",
       "page": "remote-access"
     },
     {
@@ -1204,6 +1204,16 @@
     {
       "id": "feature:remote-home",
       "name": "Remote: what needs you on a wide screen, and Finished, ready to review",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-ask",
+      "name": "Remote: Ask about this session",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-usage-home",
+      "name": "Remote: Home with each profile's plan usage, and the Home button",
       "page": "remote-access"
     },
     {

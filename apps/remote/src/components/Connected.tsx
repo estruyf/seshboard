@@ -21,10 +21,14 @@ import { ConnectionBanner, OfflineHelp } from './ConnectionStatus.tsx';
 import type { MenuItem } from './Menu.tsx';
 import { toast, Toasts } from './Toasts.tsx';
 import { NotificationsSheet, PushOffer, PushStrip, shouldOffer } from './Notifications.tsx';
+import { PhoneHome } from './PhoneHome.tsx';
+import { useUsage } from './Usage.tsx';
+import { useAskSync } from './askStore.ts';
 import { currentSupport, loadPrefs, offered, resync, turnOff, turnOn } from '../lib/push.ts';
 import { Button, Message } from './ui.tsx';
 
-export type Route = { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean } | { kind: 'new'; projectId?: string };
+/** `home` and `list` are the two roots: one at a time on a phone, the same view on a wide screen. */
+export type Route = { kind: 'home' } | { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean } | { kind: 'new'; projectId?: string };
 
 /** An answer from a notification's Deny or Allow (public/sw.js), sent once connected if the prompt is still open. */
 interface NotificationAnswer {
@@ -34,15 +38,15 @@ interface NotificationAnswer {
 }
 
 /**
- * Connected to the paired computer: the session list, a session, or New session. On a phone one at a time, each step
- * forward a history entry so the back gesture goes back; on a wide screen the list stays on the left, as the sidebar
- * does on the computer.
+ * Connected to the paired computer: Home, the session list, a session, or New session. On a phone one at a time,
+ * opening on Home, each step forward a history entry so the back gesture goes back; on a wide screen the list stays on
+ * the left, as the sidebar does on the computer, with Home next to it while no session is open.
  */
 export function Connected({ paired, openSession, onForget, onPaired }: { paired: Paired; openSession: string | null; onForget: () => void; onPaired: (paired: Paired) => void }) {
   const [state, setState] = useState<ConnectionState>({ kind: 'connecting', attempt: 0 });
   const connection = useRef<Connection | null>(null);
   const [sessions, setSessions] = useState<RemoteSessions>(cachedSessions);
-  const [route, setRoute] = useState<Route>({ kind: 'list' });
+  const [route, setRoute] = useState<Route>({ kind: 'home' });
   const [help, setHelp] = useState(false);
   const [notifications, setNotifications] = useState(false);
   const [offer, setOffer] = useState(() => shouldOffer(offered()));
@@ -70,6 +74,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const client = state.kind === 'connected' ? state.client : null;
   const computer = (state.kind === 'connected' && state.computerName) || paired.computerName || '';
   const needsYou = sessions.sessions.filter((s) => s.status === 'needs-you').length;
+  const usage = useUsage(client);
+  useAskSync(client);
 
   // Keep the computer's name, so the offline help can name it after a reload.
   useEffect(() => {
@@ -154,6 +160,14 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     history.replaceState({ kind: 'list' }, '');
     setRoute({ kind: 'list' });
   };
+  const atRoot = route.kind === 'home' || route.kind === 'list';
+  /** Home or the list in the root's place, without a history entry: they are not steps of each other. */
+  const root = (kind: 'home' | 'list') => {
+    history.replaceState({ kind }, '');
+    setRoute({ kind });
+  };
+  /** Home: from the list on a phone, from anywhere on a wide screen (where it is the view next to the sidebar). */
+  const goHome = () => (wide || atRoot ? root('home') : back());
 
 
   const forget = async () => {
@@ -168,11 +182,11 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     { label: 'Forget this computer', danger: true, onSelect: () => void forget() },
   ];
   const banner = <ConnectionBanner state={state} computer={computer} onHelp={() => setHelp(true)} onRetry={retryNow} />;
-  const startNew = (projectId?: string) => (wide && route.kind !== 'list' ? (history.replaceState({ kind: 'new', projectId }, ''), setRoute({ kind: 'new', projectId })) : go({ kind: 'new', projectId }));
+  const startNew = (projectId?: string) => (wide && !atRoot ? (history.replaceState({ kind: 'new', projectId }, ''), setRoute({ kind: 'new', projectId })) : go({ kind: 'new', projectId }));
   /** On a wide screen, picking another session replaces the open one rather than stacking up history. */
   const showSession: OpenSession = (sessionId, options = {}) => {
     const next: Route = { kind: 'session', sessionId, ...(options.changes ? { changes: true } : {}) };
-    if (wide && route.kind !== 'list') {
+    if (wide && !atRoot) {
       history.replaceState(next, '');
       setRoute(next);
     } else go(next);
@@ -206,7 +220,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       setKeysOpen(true);
     } else if (action === 'down' || action === 'up') {
       event.preventDefault();
-      moveFocus(action === 'down' ? 1 : -1, route.kind === 'list');
+      moveFocus(action === 'down' ? 1 : -1, atRoot);
     } else if (action === 'allow' || action === 'deny') {
       if (pressPrompt(action, route.kind === 'session')) event.preventDefault();
     } else if (action === 'open') {
@@ -237,6 +251,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const paletteActions: PaletteAction[] = [
     ...(nextId ? [{ id: 'next', title: 'Next that needs you' }] : []),
     { id: 'new', title: 'New session' },
+    { id: 'home', title: 'Go to Home' },
     ...(currentSupport() === 'ready' && !loadPrefs().on ? [{ id: 'notify', title: 'Turn on notifications' }] : []),
     ...(sessions.sessions.some((s) => s.unread) ? [{ id: 'read-all', title: 'Mark all as read' }] : []),
     { id: 'forget', title: 'Forget this computer' },
@@ -251,6 +266,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         return;
       case 'action:new':
         return startNew();
+      case 'action:home':
+        return goHome();
       case 'action:notify':
         if (client)
           void turnOn(client).then(
@@ -307,10 +324,12 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       newOpen={route.kind === 'new'}
       onOpen={(sessionId) => showSession(sessionId)}
       onNew={() => startNew()}
+      onHome={goHome}
+      homeOpen={wide && atRoot}
       onHelp={() => setHelp(true)}
       onRefresh={refresh}
       onArchived={(sessionId) => sessionId === currentId && leave()}
-      top={offering && !stripOffer ? <PushOffer client={client} onDone={() => setOffer(false)} /> : null}
+      top={offering && !stripOffer && route.kind !== 'home' ? <PushOffer client={client} onDone={() => setOffer(false)} /> : null}
       wide={wide}
       onPalette={() => setPalette(true)}
     />
@@ -328,7 +347,23 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   if (!wide)
     return (
       <>
-        {main ?? list}
+        {main ??
+          (route.kind === 'home' ? (
+            <PhoneHome
+              sessions={sessions}
+              usage={usage}
+              state={state}
+              banner={banner}
+              computer={computer}
+              menu={menu}
+              top={offering ? <PushOffer client={client} onDone={() => setOffer(false)} /> : null}
+              onSessions={() => root('list')}
+              onNew={() => startNew()}
+              onHelp={() => setHelp(true)}
+            />
+          ) : (
+            list
+          ))}
         {overlays}
       </>
     );
@@ -340,17 +375,17 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       <div className="flex min-w-0 flex-1 flex-col">
         {offering && stripOffer && <PushStrip client={client} onDone={() => setOffer(false)} />}
         {banner}
-        <div className="min-h-0 flex-1">{main ?? <Home sessions={sessions} client={client} onOpen={showSession} onNew={() => startNew()} onRefresh={refresh} />}</div>
+        <div className="min-h-0 flex-1">{main ?? <Home sessions={sessions} usage={usage} offline={state.kind !== 'connected'} client={client} onOpen={showSession} onNew={() => startNew()} onRefresh={refresh} />}</div>
       </div>
       {overlays}
     </div>
   );
 }
 
-/** A history entry's route (a sheet adds its own entry on top of one). */
+/** A history entry's route (a sheet adds its own entry on top of one). The first entry, with none yet, is Home. */
 function routeOf(state: unknown): Route {
   const route = state as Route | null;
-  return route && (route.kind === 'session' || route.kind === 'new') ? route : { kind: 'list' };
+  return route && (route.kind === 'session' || route.kind === 'new' || route.kind === 'list') ? route : { kind: 'home' };
 }
 
 /** The last list, for this tab: shown greyed out while offline, also after a reload. */

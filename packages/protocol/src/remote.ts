@@ -3,10 +3,13 @@ import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
-import { Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { AutoTierSchema, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
+import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
+import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { REMOTE_IMAGE_BYTES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
+import { UsageSnapshot } from './usage.ts';
 
 /**
  * Remote's contracts: what a paired phone may ask the engine, and the one request of a phone that is pairing. They
@@ -38,11 +41,18 @@ export const RemoteSession = z.object({
   /** Finished since you last looked, on any device: the title shows in bold. */
   unread: z.boolean(),
   pinned: z.boolean(),
-  /** While it runs in Switchboard: its model and permission mode, for the chips in the message box. */
+  /** While it runs in Switchboard: its model, effort and permission mode, for the chips in the message box. */
   model: z.string().nullable(),
+  /** Null: the model's own. Left out by a Switchboard from before a phone could change it. */
+  effort: Effort.nullable().optional(),
   permissionMode: PermissionMode.nullable(),
   /** The Claude profile (login) it runs with; null while there is only one profile (the app shows none then), or not known. */
   profile: RemoteSessionProfile.nullable(),
+  /**
+   * Auto picked the model it started on, until you change the model: what it picked (null: picking failed, the default
+   * model), or `choosing` while it still picks. Null without Auto; left out by a Switchboard from before phones knew it.
+   */
+  auto: z.object({ picked: AutoTierSchema.nullable(), choosing: z.boolean() }).nullable().optional(),
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 
@@ -138,6 +148,11 @@ export const RemoteOptions = z.object({
   profiles: z.array(RemoteProfile),
   /** The profile of projects without one of their own. */
   defaultProfileId: z.string(),
+  /**
+   * Auto model (Settings › Conversation): when on, New session offers Auto, and Haiku picks one of `allowed` from the
+   * first prompt. Off, a default of Auto starts on the default model. Left out by a Switchboard from before phones knew it.
+   */
+  auto: z.object({ enabled: z.boolean(), allowed: z.array(AutoTierSchema) }).optional(),
   projects: z.array(
     z.object({
       id: ProjectId,
@@ -163,6 +178,18 @@ export type RemotePushSubscription = z.infer<typeof RemotePushSubscription>;
 /** An image a phone sends with a message: the app's attachment, smaller. */
 export const RemoteImage = ImageAttachment.extend({ data: z.string().min(1).max(REMOTE_IMAGE_BYTES) });
 export type RemoteImage = z.infer<typeof RemoteImage>;
+
+/**
+ * A Claude profile's plan usage, for the remote app's Home: its name and colour (never its account), the 5-hour and
+ * weekly windows, and why there are no numbers when the last check failed.
+ */
+export const RemoteProfileUsage = z.object({
+  profile: RemoteSessionProfile,
+  /** Null without a claude.ai plan, or before the first check. */
+  usage: UsageSnapshot.nullable(),
+  error: z.string().nullable(),
+});
+export type RemoteProfileUsage = z.infer<typeof RemoteProfileUsage>;
 
 /** The most lines `changes.diff` returns. */
 export const REMOTE_DIFF_LINES = 2_000;
@@ -213,15 +240,39 @@ export const remoteContract = {
     'session.create': { params: z.object({ projectId: ProjectId, prompt: Prompt }).extend(RemoteSessionOptions.shape), result: z.object({ sessionId: z.string() }) },
     /** Puts a prompt in Switchboard's queue (Later) for a project, to start when you choose. */
     'later.add': { params: z.object({ projectId: ProjectId, prompt: Prompt }).extend(RemoteSessionOptions.shape), result: z.object({ id: z.string() }) },
+    /**
+     * Ask about this session, as on the computer: Claude answers from the conversation and the project with read-only
+     * tools, beside a turn in progress, and nothing reaches the conversation. Without `threadId` it starts a new thread.
+     * The answer comes through `session.ask` events with the returned ids.
+     */
+    'session.ask': {
+      params: z.object({
+        sessionId: SessionId,
+        threadId: z.string().max(100).optional(),
+        question: z.string().trim().min(1).max(MAX_SIDE_QUESTION_LENGTH),
+        /** A failed question in the thread that this asks again: it goes, and this one takes its place at the end. */
+        replaces: z.string().max(100).optional(),
+      }),
+      result: z.object({ threadId: z.string(), id: z.string(), at: z.number() }),
+    },
+    /** The questions kept for a session, newest thread first. */
+    'session.askThreads': { params: z.object({ sessionId: SessionId }), result: AskThreadList },
     /** Marks a session read, as opening it on the computer does. */
     'session.markRead': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Pins or archives a session; an archived one leaves the phone's list. */
     'session.setFlags': { params: z.object({ sessionId: SessionId, pinned: z.boolean().optional(), archived: z.boolean().optional() }), result: z.object({}) },
     /** The model of a running session (null: the default). */
     'session.setModel': { params: z.object({ sessionId: SessionId, model: z.string().min(1).max(200).nullable() }), result: z.object({}) },
+    /** The effort of a running session (null: the model's own). */
+    'session.setEffort': { params: z.object({ sessionId: SessionId, effort: Effort.nullable() }), result: z.object({}) },
     'session.setPermissionMode': { params: z.object({ sessionId: SessionId, mode: RemotePermissionMode }), result: z.object({}) },
     /** New session's choices. */
     'options.get': { params: z.object({}), result: RemoteOptions },
+    /**
+     * Plan usage of every Claude profile, the default first. From the computer's last check when it is less than a
+     * minute old; `refresh` checks now. `usage.changed` follows each new check.
+     */
+    'usage.get': { params: z.object({ refresh: z.boolean().default(false) }), result: z.object({ profiles: z.array(RemoteProfileUsage) }) },
     /** The catch-up of a session's last turn, without paths outside its project. */
     'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
     /** What changed in the session's checkout (its worktree when it has one), not committed yet. */
@@ -255,6 +306,10 @@ export const remoteContract = {
     'transcript.updated': RemoteTranscriptUpdate,
     'session.stream': StreamDelta,
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
+    /** An answer to Ask about this session coming in, and its end: for the session the phone watches, and for questions it asked. */
+    'session.ask': AskEvent,
+    /** A profile's plan usage changed (a new check on the computer). */
+    'usage.changed': z.object({ profileId: z.string(), usage: UsageSnapshot.nullable() }),
     /** The catch-up of the session the phone watches changed. */
     'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
   },

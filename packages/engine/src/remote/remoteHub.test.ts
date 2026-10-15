@@ -23,7 +23,7 @@ import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { RemoteHub } from './remoteHub.ts';
-import { capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 import { APP_ORIGIN, client, handshake } from './testPhone.ts';
 
 const cleanups: Array<() => void> = [];
@@ -137,9 +137,18 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     markRead: (sessionId) => void calls.push(`read ${sessionId}`),
     setFlags: (sessionId, flags) => void calls.push(`flags ${sessionId} ${JSON.stringify(flags)}`),
     setModel: async (sessionId, model) => void calls.push(`model ${sessionId} ${model}`),
+    setEffort: async (sessionId, effort) => void calls.push(`effort ${sessionId} ${effort}`),
     setPermissionMode: async (sessionId, mode) => void calls.push(`mode ${sessionId} ${mode}`),
+    autoModel: () => ({ enabled: true, allowed: ['sonnet', 'opus'] }),
     models: () => [{ value: 'opus', resolvedModel: 'claude-opus-x', displayName: 'Opus', description: 'Most capable', supportsEffort: true }],
+    usage: async (profileId, refresh) => {
+      calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
+      if (profileId === 'work') return { usage: null, error: 'Not logged in' };
+      return { usage: { fetchedAt: 1, limits: [{ kind: 'session', group: 'session', percent: 44, resetsAt: 2, scope: null, severity: 'normal', isActive: true }], extraUsage: null }, error: null };
+    },
     catchUp: () => card,
+    ask: (sessionId, question, threadId) => (calls.push(`ask ${sessionId} ${question} ${threadId ?? 'new'}`), { threadId: threadId ?? 't1', id: `q${calls.length}`, at: 5 }),
+    askThreads: () => ({ threads: [{ id: 't1', title: 'Why?', createdAt: 1, items: [{ id: 'q0', question: 'Why?', answer: 'Because.', at: 1 }] }] }),
     changes: async () => listChanges(repo, 'uncommitted'),
     diff: async (_id, path) => fileDiff(repo, 'uncommitted', path),
     commit: async (_id, message) => commitAll(repo, message, {}),
@@ -247,6 +256,10 @@ describe('Remote hub', () => {
     const { remote } = await pair(hub, port);
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'a', effort: 'high', permissionMode: 'plan', worktree: true });
     expect(created[0]!.choice).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true, baseRef: 'fresh' });
+    // Auto goes through as it is: the engine routes it, or starts on the default model with Auto off.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'auto', model: 'auto' });
+    expect(created.at(-1)!.model).toBe('auto');
+    created.pop();
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'b', model: null });
     expect(created[1]!.choice).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'default', worktree: false, baseRef: 'fresh' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'c', permissionMode: 'bypassPermissions' as never })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
@@ -263,6 +276,7 @@ describe('Remote hub', () => {
     expect(options.models).toEqual([{ value: 'opus', displayName: 'Opus', description: 'Most capable', supportsEffort: true }]);
     expect(options.modes).toEqual(['default', 'acceptEdits', 'plan', 'auto']);
     expect(options.efforts).toContain('medium');
+    expect(options.auto).toEqual({ enabled: true, allowed: ['sonnet', 'opus'] });
     expect(options.projects.find((p) => p.id === projectIdOf(ROOT))).toEqual({ id: projectIdOf(ROOT), profileId: null, defaults: { model: 'opus', effort: null, permissionMode: null, worktree: null } });
     expect(options.projects.find((p) => p.id === projectIdOf(FIRST))?.profileId).toBe('work');
     expect(options.profiles).toEqual([
@@ -273,19 +287,22 @@ describe('Remote hub', () => {
     expect(JSON.stringify(options)).not.toContain(ROOT);
   });
 
-  it('marks read, archives, and changes the model and mode only of sessions in the list', async () => {
+  it('marks read, archives, and changes the model, effort and mode only of sessions in the list', async () => {
     const { hub, port, on, calls } = await setup();
     await on();
     const { remote } = await pair(hub, port);
     await remote.call('session.markRead', { sessionId: SESSION });
     await remote.call('session.setFlags', { sessionId: SESSION, archived: true });
     await remote.call('session.setModel', { sessionId: SESSION, model: 'sonnet' });
+    await remote.call('session.setEffort', { sessionId: SESSION, effort: 'high' });
+    await remote.call('session.setEffort', { sessionId: SESSION, effort: null });
     await remote.call('session.setPermissionMode', { sessionId: SESSION, mode: 'auto' });
-    expect(calls).toEqual([`read ${SESSION}`, `flags ${SESSION} {"archived":true}`, `model ${SESSION} sonnet`, `mode ${SESSION} auto`]);
+    expect(calls).toEqual([`read ${SESSION}`, `flags ${SESSION} {"archived":true}`, `model ${SESSION} sonnet`, `effort ${SESSION} high`, `effort ${SESSION} null`, `mode ${SESSION} auto`]);
     for (const call of [
       remote.call('session.markRead', { sessionId: HIDDEN }),
       remote.call('session.setFlags', { sessionId: HIDDEN, pinned: true }),
       remote.call('session.setModel', { sessionId: HIDDEN, model: null }),
+      remote.call('session.setEffort', { sessionId: HIDDEN, effort: 'low' }),
       remote.call('catchup.get', { sessionId: HIDDEN }),
       remote.call('changes.get', { sessionId: HIDDEN }),
     ])
@@ -300,6 +317,46 @@ describe('Remote hub', () => {
     const { catchUp } = await remote.call('catchup.get', { sessionId: SESSION });
     expect(catchUp?.signals.outOfScope).toEqual(['src/x.ts']);
     expect(catchUp?.need.title).toBe('Commit the changes');
+  });
+
+  it('gives every profile\'s plan usage, the default first, and tells phones when it changes', async () => {
+    const { hub, port, on, calls } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const { profiles } = await remote.call('usage.get', { refresh: true });
+    expect(profiles.map((p) => [p.profile, p.usage?.limits[0]?.percent ?? null, p.error])).toEqual([
+      [{ id: 'default', name: 'Personal', color: 'yellow' }, 44, null],
+      [{ id: 'work', name: 'Work', color: 'blue' }, null, 'Not logged in'],
+    ]);
+    expect(calls).toEqual(['usage default refresh', 'usage work refresh']);
+    const heard: string[] = [];
+    remote.on('usage.changed', (event) => heard.push(event.profileId));
+    hub.usageChanged('gone', null);
+    hub.usageChanged('work', null);
+    await until(() => heard.length > 0);
+    expect(heard).toEqual(['work']);
+  });
+
+  it('asks about a session in the list, and sends the answer to the phone that asked and to phones watching it', async () => {
+    const { hub, port, on, calls } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    expect((await remote.call('session.askThreads', { sessionId: SESSION })).threads[0]?.items[0]?.answer).toBe('Because.');
+    await expect(remote.call('session.ask', { sessionId: HIDDEN, question: 'Why?' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    const asked = await remote.call('session.ask', { sessionId: SESSION, question: 'What changed?', threadId: 't1' });
+    expect(calls).toEqual(['ask ' + SESSION + ' What changed? t1']);
+    const heard: string[] = [];
+    remote.on('session.ask', (event) => heard.push(`${event.id}:${event.delta ?? (event.done ? 'done' : '')}`));
+    // Not watching the session: only its own question's answer comes, until it ends.
+    hub.askEvent({ sessionId: SESSION, threadId: 't1', id: asked.id, delta: 'Two files.' });
+    hub.askEvent({ sessionId: SESSION, threadId: 't1', id: 'other', delta: 'Not for you.' });
+    hub.askEvent({ sessionId: SESSION, threadId: 't1', id: asked.id, done: true, answer: 'Two files.' });
+    hub.askEvent({ sessionId: SESSION, threadId: 't1', id: asked.id, delta: 'Late.' });
+    // Watching it: every answer in it.
+    await remote.call('transcript.watch', { sessionId: SESSION });
+    hub.askEvent({ sessionId: SESSION, threadId: 't2', id: 'from-the-computer', delta: 'Hi.' });
+    await until(() => heard.length >= 3);
+    expect(heard).toEqual([`${asked.id}:Two files.`, `${asked.id}:done`, 'from-the-computer:Hi.']);
   });
 
   it('lists changes, diffs only listed files with a cap, and commits without a terminal', async () => {
@@ -453,6 +510,16 @@ describe('Remote hub', () => {
 });
 
 describe('what a phone sees', () => {
+  it('shows what Auto picked until you change the model, and that it is still choosing', () => {
+    const pick = { model: 'sonnet' as const, reason: 'A small change', at: 1, tokens: 10, allowed: ['haiku' as const, 'sonnet' as const] };
+    expect(autoOf({ autoChoosing: true, autoPick: null })).toEqual({ picked: null, choosing: true });
+    expect(autoOf({ autoPick: pick })).toEqual({ picked: 'sonnet', choosing: false });
+    expect(autoOf({ autoPick: { ...pick, model: null } })).toEqual({ picked: null, choosing: false });
+    expect(autoOf({ autoPick: { ...pick, left: true } })).toBeNull();
+    expect(autoOf({})).toBeNull();
+    expect(autoOf(undefined)).toBeNull();
+  });
+
   it('cuts a long diff to its first lines', () => {
     expect(capDiff({ diff: 'a\nb\nc', truncated: false }, 2)).toEqual({ diff: 'a\nb', truncated: true });
     expect(capDiff({ diff: 'a\nb', truncated: false }, 2)).toEqual({ diff: 'a\nb', truncated: false });

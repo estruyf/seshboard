@@ -30,6 +30,10 @@ import {
   type RemoteImage,
   type ModelOption,
   type PermissionMode,
+  type UsageSnapshot,
+  type AutoTier,
+  type AskEvent,
+  type AskThreadList,
   Effort,
   REMOTE_DIFF_LINES,
 } from '@switchboard/protocol';
@@ -116,9 +120,17 @@ export interface RemoteHubOptions {
   markRead(sessionId: string): void;
   setFlags(sessionId: string, flags: { pinned?: boolean; archived?: boolean }): void;
   setModel(sessionId: string, model: string | null): Promise<void>;
+  setEffort(sessionId: string, effort: Effort | null): Promise<void>;
   setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void>;
   models(): ModelOption[];
+  /** Settings › Conversation › Auto model: whether New session offers Auto, and the models it may pick. */
+  autoModel(): { enabled: boolean; allowed: AutoTier[] };
+  /** A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). */
+  usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
   catchUp(sessionId: string): CatchUp | null;
+  /** Ask about this session, as on the computer: the answer comes through `askEvent`. */
+  ask(sessionId: string, question: string, threadId: string | undefined, replaces: string | undefined): { threadId: string; id: string; at: number };
+  askThreads(sessionId: string): AskThreadList;
   /** What changed in the session's checkout, uncommitted; null when it has no folder. */
   changes(sessionId: string): Promise<GitChanges | null>;
   diff(sessionId: string, path: string): Promise<{ diff: string; truncated: boolean }>;
@@ -173,6 +185,8 @@ export class RemoteHub {
   private readonly turnEnds = new TurnEnds();
   /** Finished turns waiting for their catch-up before their push goes out. */
   private readonly finishing = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Questions a phone asked that are still answering, by id: their answer reaches it also after it left the session. */
+  private readonly askedBy = new Map<string, Set<HandlerContext<RemoteContract>>>();
   /** Messages sent from a phone, by session, for the label (kept while the engine runs). */
   private readonly sentFrom = new Map<string, Map<string, string>>();
   private applying: Promise<void> = Promise.resolve();
@@ -276,6 +290,20 @@ export class RemoteHub {
 
   upNextChanged(sessionId: string, queue: QueuedMessage[]): void {
     for (const [phone, watch] of this.watches) if (watch.sessionId === sessionId) phone.emit('upNext.changed', { sessionId, queue });
+  }
+
+  /** An answer to Ask about this session: to phones watching the session, and to the one that asked. */
+  askEvent(event: AskEvent): void {
+    const phones = new Set(this.askedBy.get(event.id));
+    for (const [phone, watch] of this.watches) if (watch.sessionId === event.sessionId) phones.add(phone);
+    for (const phone of phones) phone.emit('session.ask', event);
+    if (event.done) this.askedBy.delete(event.id);
+  }
+
+  /** A profile's plan usage changed: every phone hears it, for its Home. */
+  usageChanged(profileId: string, usage: UsageSnapshot | null): void {
+    if (!this.server.listening || !this.options.profiles().profiles.some((p) => p.id === profileId)) return;
+    this.server.each((rpc) => rpc.emit('usage.changed', { profileId, usage }));
   }
 
   /** A session's catch-up changed: phones watching it get the new one, and a finished turn's push goes out with it. */
@@ -596,6 +624,12 @@ export class RemoteHub {
         this.sessionsChanged();
         return {};
       },
+      'session.setEffort': async ({ sessionId, effort }) => {
+        this.checkSession(sessionId);
+        await this.options.setEffort(sessionId, effort);
+        this.sessionsChanged();
+        return {};
+      },
       'session.setPermissionMode': async ({ sessionId, mode }) => {
         this.checkSession(sessionId);
         await this.options.setPermissionMode(sessionId, mode);
@@ -610,12 +644,37 @@ export class RemoteHub {
           modes: ['default', 'acceptEdits', 'plan', 'auto'],
           profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults) })),
           defaultProfileId: defaultId,
+          auto: this.options.autoModel(),
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),
             profileId: p.profileId && profiles.some((profile) => profile.id === p.profileId) ? p.profileId : null,
             defaults: remoteDefaults(p.defaults),
           })),
         };
+      },
+      'usage.get': async ({ refresh }) => {
+        const { profiles, defaultId } = this.options.profiles();
+        const ordered = [...profiles].sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
+        return {
+          profiles: await Promise.all(
+            ordered.map(async (p) => {
+              const result = await this.options.usage(p.id, refresh).catch((error: Error) => ({ usage: null, error: error.message }));
+              return { profile: { id: p.id, name: p.name, color: p.color }, ...result };
+            }),
+          ),
+        };
+      },
+      'session.ask': ({ sessionId, question, threadId, replaces }, phone) => {
+        this.checkSession(sessionId);
+        const asked = this.options.ask(sessionId, question, threadId, replaces);
+        // The answer starts after this returns, and follows this phone wherever it goes in the app.
+        this.askedBy.set(asked.id, new Set([phone]));
+        phone.onDispose(() => this.askedBy.get(asked.id)?.delete(phone));
+        return asked;
+      },
+      'session.askThreads': ({ sessionId }) => {
+        this.checkSession(sessionId);
+        return this.options.askThreads(sessionId);
       },
       'catchup.get': ({ sessionId }) => {
         this.checkSession(sessionId);
