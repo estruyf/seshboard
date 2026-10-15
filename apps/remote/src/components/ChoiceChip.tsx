@@ -112,7 +112,7 @@ export function ChoiceChip<T>({
                     pick(option);
                   }
                 }}
-                className="flex min-h-11 cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 outline-none pointer-fine:min-h-8 pointer-fine:py-1.5 focus:bg-accent/15"
+                className="flex min-h-11 shrink-0 cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 outline-none pointer-fine:min-h-8 pointer-fine:py-1.5 focus:bg-accent/15"
               >
                 {option.dot && <span aria-hidden className={`mt-1.5 size-2 shrink-0 rounded-full ${option.dot}`} />}
                 <span className="min-w-0 flex-1">
