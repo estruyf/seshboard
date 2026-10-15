@@ -23,6 +23,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **The list above the message box stays open.** When you open the background tasks or Claude's task list above the message box, it is still open when you come back to the session after going to another one or hiding it.
 - **Random characters at the prompt of a terminal.** Switching to a terminal tab or session could type text like `11;rgb:1111/1111/1b1b` and `1R8;81R` into the shell. They were answers to questions programs asked a while ago, which the terminal sent again when it showed its history. They are no longer sent.
 
 ### Fixed
