@@ -772,6 +772,8 @@ const screens: Screen[] = [
     name: 'auto-model-session',
     async take(t) {
       await t.openSession(HERO);
+      // The pick shows above the first answer, which a long session leaves out of view: jump to the first prompt.
+      await t.click('[data-current-session] [data-prompt-mark="0"]', 'the prompt outline has no first prompt');
       await t.need('[data-auto-pick-line="opus"]', 'the session did not show what Auto picked');
       await t.click('[data-auto-why]');
       await t.need('[data-auto-popover]', 'Why did not open the popover');
