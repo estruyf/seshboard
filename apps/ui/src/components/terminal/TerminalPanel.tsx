@@ -286,7 +286,7 @@ export function TerminalPanel({
             disabled={!right && rightBlocked !== null}
             aria-label={right ? 'Dock below' : 'Dock right'}
             data-tooltip={
-              right ? 'Dock below' : rightBlocked === 'changes' ? 'Close Changes to dock the terminal on the right' : rightBlocked === 'ask' ? 'Close Ask to dock the terminal on the right' : rightBlocked === 'narrow' ? 'Too narrow to dock on the right: widen the window' : 'Dock right'
+              right ? 'Dock below' : rightBlocked === 'changes' ? 'Close Changes to dock the terminal on the right' : rightBlocked === 'ask' ? 'Close Ask to dock the terminal on the right' : rightBlocked === 'agents' ? 'Close Agents to dock the terminal on the right' : rightBlocked === 'narrow' ? 'Too narrow to dock on the right: widen the window' : 'Dock right'
             }
             data-terminal-dock={dock}
           />

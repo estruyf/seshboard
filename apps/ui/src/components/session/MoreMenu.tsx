@@ -1,5 +1,5 @@
 import { Bot, Code, Ellipsis, Pencil, Sparkles, Square, Stethoscope } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
@@ -14,8 +14,6 @@ import { ProfileDot } from '../profiles/ProfileBadge.tsx';
 import { sessionMemoryEntries, useSessionMemories } from '../memory/sessionMemories.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { Button } from '../ui/Button.tsx';
-import type { DisplayItem } from '../transcript/displayItems.ts';
-import { AgentsDialog, useAgentRuns } from '../transcript/AgentsDialog.tsx';
 
 const MENU_WIDTH = 260;
 
@@ -30,8 +28,8 @@ export function MoreMenu({
   sessionId,
   actions,
   cwd,
-  items,
-  sessionOpen,
+  agents,
+  onAgents,
   profileId,
   title,
   onStop,
@@ -39,9 +37,10 @@ export function MoreMenu({
   sessionId: string;
   actions: ActionsMenu;
   cwd: string | null;
-  items: readonly DisplayItem[];
-  /** The session is open somewhere (here or another Claude Code window), so agents can still be running. */
-  sessionOpen: boolean;
+  /** How many agents Claude started in this session, and how many of them still run. */
+  agents: { total: number; running: number };
+  /** Shows the Agents panel (or brings it to the front). */
+  onAgents(): void;
   profileId: string | null;
   /** The session's title; null while it has no transcript to keep a new one in. */
   title: string | null;
@@ -50,9 +49,7 @@ export function MoreMenu({
 }) {
   const menu = useMenu();
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const { agents, running } = useAgentRuns(items, sessionOpen);
-  const [agentsOpen, setAgentsOpen] = useState(false);
-  const closeAgents = useCallback(() => setAgentsOpen(false), []);
+  const { total, running } = agents;
   const [renaming, setRenaming] = useState(false);
   const multipleProfiles = useMultipleProfiles();
   const profile = useProfile(profileId);
@@ -120,9 +117,9 @@ export function MoreMenu({
     {
       label: 'Agents',
       icon: <Bot size={13} />,
-      hint: running ? `${running} running` : agents.length ? `${agents.length} finished` : 'None',
-      disabled: agents.length === 0,
-      onSelect: () => setAgentsOpen(true),
+      hint: running ? `${running} running` : total ? `${total} finished` : 'None',
+      disabled: total === 0,
+      onSelect: onAgents,
       data: { 'data-agents-button': true },
     },
     {
@@ -177,7 +174,6 @@ export function MoreMenu({
       </Button>
       {menu.at && <Menu x={menu.at.x} y={menu.at.y} width={MENU_WIDTH} entries={entries} onClose={menu.close} label="More" />}
       {renaming && title !== null && <RenameSessionDialog sessionId={sessionId} title={title} onClose={() => setRenaming(false)} />}
-      {agentsOpen && <AgentsDialog agents={agents} running={running} sessionId={sessionId} cwd={cwd} onClose={closeAgents} />}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   BellOff,
   BellRing,
   Blocks,
+  Bot,
   Brain,
   CircleHelp,
   CloudDownload,
@@ -169,6 +170,7 @@ export interface PaletteApi {
   toggleTerminal(): void;
   newTerminalTab(): void;
   toggleChanges(): void;
+  toggleAgents(): void;
   showTools(): void;
   openInEditor(): void;
   revealInFinder(): void;
@@ -606,6 +608,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'check-transcript', title: 'Check transcript…', group: 'session', icon: Stethoscope, keywords: 'diagnose empty missing messages error debug compacted', when: (ctx) => session(ctx) !== null && ctx.connected, run: (api) => api.checkTranscript() },
   { id: 'toggle-terminal', title: 'Toggle terminal', group: 'session', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: (ctx) => session(ctx) !== null, run: (api) => api.toggleTerminal() },
   { id: 'new-terminal-tab', title: 'New terminal tab', group: 'session', icon: Plus, keywords: 'shell', when: (ctx) => withCwd(ctx) && ctx.connected, run: (api) => api.newTerminalTab() },
+  { id: 'toggle-agents', title: 'Toggle agents', group: 'session', shortcut: keysFor('agents.toggle'), icon: Bot, keywords: 'subagents background panel', when: hasSession, run: (api) => api.toggleAgents() },
   { id: 'toggle-changes', title: 'Toggle changes', group: 'session', shortcut: keysFor('changes.toggle'), icon: FileDiff, keywords: 'diff git panel', when: inGit, run: (api) => api.toggleChanges() },
   { id: 'tools', title: 'Tools: MCP servers, skills, agents, plugins', group: 'session', icon: Blocks, keywords: 'mcp extensions capabilities', when: withCwd, run: (api) => api.showTools() },
   { id: 'open-in-editor', title: 'Open folder in editor', group: 'session', shortcut: keysFor('editor.open'), icon: Code, keywords: 'vscode cursor', when: withCwd, run: (api) => api.openInEditor() },

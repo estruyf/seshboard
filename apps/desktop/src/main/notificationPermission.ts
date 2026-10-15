@@ -3,6 +3,9 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { NotificationPermission } from '@switchboard/protocol/bridge';
 
+// macOS 26 stopped updating com.apple.ncprefs, so on a newer Mac this answers `unknown` and the page shows a hint instead.
+// To know for sure, a native addon could ask UNUserNotificationCenter.getNotificationSettings from inside the app.
+
 /** macOS's "Allow notifications" switch for an app: a bit in its `flags` in the Notifications preferences. */
 const ALLOW_NOTIFICATIONS = 2 ** 25;
 

@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, Blocks, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
+import { ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -60,6 +60,8 @@ import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
 import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
+import { agentForTask } from './agentRuns.ts';
+import { useAgentRuns } from './useAgentRuns.ts';
 import { backgroundSummary } from './backgroundTasks.ts';
 import { PromptExpansionContext, type PromptExpansion } from './ClampedPrompt.tsx';
 import { buildDisplayItems, groupActivity, type RenderItem } from './displayItems.ts';
@@ -70,11 +72,13 @@ import { FindBar } from './FindBar.tsx';
 import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
+import { AgentsPanel } from '../agents/AgentsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
 import { rightPanel } from '../ask/askWidth.ts';
 import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, useSessionAsk } from '../../state/askStore.ts';
+import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
 import { toggleChangesPanel, useRightPanel } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
@@ -385,6 +389,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const showTodos = todos.some((t) => t.status !== 'completed') && (live !== null || activeHost !== null);
   const backgroundTasks = activeHost?.backgroundTasks ?? [];
   const backgroundOpen = openStrip === 'background' && backgroundTasks.length > 0;
+  const stopTask = async (taskId: string) => {
+    try {
+      await client!.call('session.stopTask', { sessionId, taskId });
+    } catch (error) {
+      setActionError(`Could not stop the task: ${(error as Error).message}`);
+      throw error;
+    }
+  };
   /** The Claude profile (account) the session bills to. */
   const profileId = activeHost?.profileId ?? summary?.profileId ?? registryLive?.profileId ?? null;
   // Project actions: called once here (it listens for their shortcuts and owns their dialogs), then
@@ -417,10 +429,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const rightTab = useRightPanel((s) => s.tab);
   const rightWidth = useRightPanel((s) => s.width);
   const setRightWidth = useRightPanel((s) => s.setWidth);
-  const right = rightPanel(showChanges, ask.open, rightTab);
-  const toggleChangesHere = () => toggleChangesPanel(ask.open);
+  // Agents joins them: the agents Claude started in this session, with the running ones counted on their tab.
+  const { agents, running: agentsRunning } = useAgentRuns(items, live !== null);
+  const agentsState = useSessionAgents(sessionId);
+  const showAgents = Boolean(agentsState.open && active);
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents }, rightTab);
+  // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
+  const changesFront = right.tabs && showChanges ? right.tab === 'changes' : undefined;
+  const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
+  const toggleChangesHere = () => toggleChangesPanel(ask.open || showAgents);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open);
   const rightTabs = (actions: ReactNode) => (
-    <RightPanelTabs tab={right.tab ?? 'changes'} onTab={useRightPanel.getState().setTab} counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask) }}>
+    <RightPanelTabs tab={right.tab ?? 'changes'} open={right.open} onTab={useRightPanel.getState().setTab} counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask), agents: agentsRunning }}>
       {actions}
     </RightPanelTabs>
   );
@@ -451,6 +471,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       if (active && isShortcut(event, 'changes.toggle')) {
         event.preventDefault();
         toggleChangesHere();
+      }
+      if (active && isShortcut(event, 'agents.toggle')) {
+        event.preventDefault();
+        toggleAgentsHere();
       }
       // ⌘F finds in this conversation (the terminal keeps its own keys).
       if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm')) {
@@ -1013,8 +1037,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           label="Panels"
           className="no-drag"
           data-panel-toggles
-          pressed={[...(changesOpen ? ['changes' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
-          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : togglePanel(sessionId))}
+          pressed={[...(changesOpen ? ['changes' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
+          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'agents' ? toggleAgentsHere() : togglePanel(sessionId))}
           segments={[
             ...(cwd && isRepo
               ? [
@@ -1024,11 +1048,30 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     icon: <FileDiff size={14} aria-hidden />,
                     iconOnly: true,
                     badge: changedCount,
-                    tooltip: `${changesOpen ? 'Hide' : 'Show'} changed files (${formatKeys(keysFor('changes.toggle'))})`,
-                    ariaLabel: `${changesOpen ? 'Hide' : 'Show'} changed files${changedCount ? `, ${changedCount} changed` : ''} (${formatKeys(keysFor('changes.toggle'))})`,
+                    tooltip: `${changesFront === false ? 'Bring changed files to the front' : changesOpen ? 'Hide changed files' : 'Show changed files'} (${formatKeys(keysFor('changes.toggle'))})`,
+                    ariaLabel: `${changesFront === false ? 'Bring changed files to the front' : changesOpen ? 'Hide changed files' : 'Show changed files'}${changedCount ? `, ${changedCount} changed` : ''} (${formatKeys(keysFor('changes.toggle'))})`,
                     kbd: keysFor('changes.toggle'),
-                    expanded: changesOpen && active,
+                    front: changesFront,
+                    expanded: changesOpen && active && changesFront !== false,
                     data: { 'data-toggle-changes': true },
+                  },
+                ]
+              : []),
+            // Only a session that has started agents has this; the panel stays reachable while it is open.
+            ...(agents.length > 0 || agentsState.open
+              ? [
+                  {
+                    value: 'agents' as const,
+                    label: 'Agents',
+                    icon: <Bot size={14} aria-hidden />,
+                    iconOnly: true,
+                    badge: agentsRunning,
+                    tooltip: `${agentsFront === false ? 'Bring agents to the front' : agentsState.open ? 'Hide agents' : 'Show agents'} (${formatKeys(keysFor('agents.toggle'))})${agentsRunning ? ` · ${agentsRunning} running` : ''}`,
+                    ariaLabel: `${agentsFront === false ? 'Bring agents to the front' : agentsState.open ? 'Hide agents' : 'Show agents'}${agentsRunning ? `, ${agentsRunning} running` : ''} (${formatKeys(keysFor('agents.toggle'))})`,
+                    kbd: keysFor('agents.toggle'),
+                    front: agentsFront,
+                    expanded: showAgents && agentsFront !== false,
+                    data: { 'data-toggle-agents': true },
                   },
                 ]
               : []),
@@ -1067,8 +1110,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           sessionId={sessionId}
           actions={actionsMenu}
           cwd={cwd}
-          items={items}
-          sessionOpen={live !== null}
+          agents={{ total: agents.length, running: agentsRunning }}
+          onAgents={() => openAgents(sessionId)}
           profileId={profileId}
           title={summary ? title : null}
           onStop={activeHost ? () => void client?.call('session.close', { sessionId }) : null}
@@ -1324,14 +1367,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     <BackgroundTaskList
                       id={backgroundId}
                       tasks={backgroundTasks}
-                      onStop={async (taskId) => {
-                        try {
-                          await client!.call('session.stopTask', { sessionId, taskId });
-                        } catch (error) {
-                          setActionError(`Could not stop the task: ${(error as Error).message}`);
-                          throw error;
-                        }
-                      }}
+                      onStop={stopTask}
+                      agentFor={(task) => agentForTask(task, agents)}
+                      onOpenAgent={(run) => openAgents(sessionId, run.item.id)}
                     />
                   )}
                 </div>
@@ -1498,6 +1536,21 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onPickThread={(threadId) => pickAskThread(sessionId, threadId)}
             onClose={closeAskHere}
             disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
+          />
+        )}
+        {!whyRequest && right.tab === 'agents' && !terminalMaximized && (
+          <AgentsPanel
+            sessionId={sessionId}
+            cwd={cwd}
+            runs={agents}
+            tasks={backgroundTasks}
+            picked={agentsState.picked}
+            onPick={(agent) => pickAgent(sessionId, agent)}
+            onStop={stopTask}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+            onClose={() => closeAgents(sessionId)}
           />
         )}
       </div>
