@@ -185,13 +185,13 @@ export class ComputerHub {
     const base = { id: computer.id, name: computer.name, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null };
     switch (state.kind) {
       case 'connected':
-        return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, lastSeen: null };
+        return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, features: state.features, lastSeen: null };
       case 'connecting':
-        return { ...base, state: 'connecting', message: null, retryAt: null, version: null };
+        return { ...base, state: 'connecting', message: null, retryAt: null, version: null, features: [] };
       case 'offline':
-        return { ...base, state: 'offline', message: offlineMessage(state.failure, computer.name), retryAt: state.retryAt, version: null };
+        return { ...base, state: 'offline', message: offlineMessage(state.failure, computer.name), retryAt: state.retryAt, version: null, features: [] };
       case 'unpaired':
-        return { ...base, state: 'unpaired', message: `${computer.name} no longer knows this computer. Pair it again.`, retryAt: null, version: null };
+        return { ...base, state: 'unpaired', message: `${computer.name} no longer knows this computer. Pair it again.`, retryAt: null, version: null, features: [] };
     }
   }
 

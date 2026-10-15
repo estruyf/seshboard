@@ -7,6 +7,11 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### New
 
 - **Other computers in the same app.** Sessions on your other computers show in the same sidebar and view, marked with the computer's name. New session can start on another computer. A remote session sits in the same groups as yours, with a violet chip that names its computer and a badge on its project icon. It opens in the normal session view, with a violet line along the top and **on mystic** in the header. What only works on that computer, such as the terminal and Changes, stays in its place, disabled, and says why. Under **Where do we start?**, **Run on** picks This Mac or a paired computer: its projects become the tiles, and **Start on mystic** starts the session there. The **Computers** strip at the bottom of the sidebar, and **Show sessions from** in the project menu, show one computer's sessions or hide them. The command palette has **New session on mystic…** and **Show only mystic** for each connected computer. Search and ⌘⇧U (Ctrl+Shift+U on Windows) include remote sessions. When a computer goes offline, its sessions stay, dimmed, with when it was last seen.
+- **Images and files for another computer.** A session on another computer, and New session with **Run on** set to it, take images and files: click the paperclip button, or paste or drop them on the message box. A message takes up to four images and four files, about 2.7 MB in all. Files are saved on that computer and the message mentions them by path, so Claude reads them there. Sending files needs this version of Switchboard on both computers.
+
+### Fixed
+
+- **Remote turns off while its tunnel is starting.** Turning Remote off in Settings › Remote stopped nothing until the tunnel gave its address, up to 30 seconds. It now stops the tunnel at once.
 
 ## [0.0.19] - 2026-10-15
 

@@ -355,6 +355,7 @@ const hub: RemoteHub = new RemoteHub({
   appState,
   appVersion: 'demo',
   appUrl: APP_URL,
+  filesDir: join(dir, 'remote-files'),
   computerName: () => process.env.SWITCHBOARD_DEMO_NAME ?? "Elio's iMac",
   identity: async () => new Uint8Array(readFileSync(keyFile)),
   sources: () => ({ summaries: summaries().filter((s) => !archived.has(s.id)), live: [], hosts: hosts(), permissions }),

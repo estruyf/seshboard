@@ -22,7 +22,7 @@ On your phone you can:
 - start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of Claude profile, model, effort, mode and worktree;
 - get a notification when a session needs you or finishes.
 
-Everything else stays on your computer: the terminal, pushing and pull requests, memory, settings, managing profiles and attachments.
+Everything else stays on your computer: the terminal, pushing and pull requests, memory, settings, managing profiles and file attachments.
 
 ## How it works
 
@@ -255,6 +255,15 @@ Click a row to open the session in the normal view. A violet line runs along the
 What only works on that computer stays in its place, but is off: **Changes**, the terminal, opening the folder in your editor, pull requests and file links. Point at one to see why, for example *Terminal is on mystic. Not available from here.* Nothing in another computer's conversation runs on yours: only web links open.
 
 Right-click a remote session for **Open**, **Pin**, **Archive**, **Copy title** and **New session in** its project. Rename and delete it on the computer it runs on.
+
+### Send images and files
+
+To send images or files with a message, click the paperclip button under the message box, or paste or drop them on it. Images show as thumbnails and files as chips with their size, each with a button to remove it. A message still needs some text.
+
+- A message takes up to four images and four files, and about 2.7 MB in all. Big images are made smaller first, as on a phone.
+- Files are saved on the other computer, in Switchboard's data folder, and the message mentions each one by its path there, so Claude reads it itself. Switchboard removes them after 30 days.
+- An older Switchboard on the other computer only takes images in a session, and nothing in New session. Point at the paperclip to see what it takes. Update Switchboard there to send files too.
+- Folders can't be sent. Drop the files in a folder instead.
 
 ### Filter by computer
 

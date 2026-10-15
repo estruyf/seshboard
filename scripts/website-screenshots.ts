@@ -1159,8 +1159,16 @@ const screens: Screen[] = [
         await t.click(`[data-run-on-option="${computerId}"]`);
         await t.need('[data-remote-new-session] [data-remote-project]', 'Run on mystic showed no projects');
         await t.click('[data-remote-new-session] [data-remote-project]');
-        await t.page.fill('[data-remote-new-session] textarea', 'Add rate limits to the webhook endpoints');
+        await t.page.fill('[data-remote-new-session] textarea', 'Add rate limits to the webhook endpoints, as in the spec');
+        // An image and a file to send with it: a screenshot of the docs' own, and a made-up spec.
+        await t.page.setInputFiles('[data-remote-new-session] [data-remote-attach-input]', [
+          { name: 'rate-limits.png', mimeType: 'image/png', buffer: readFileSync(join(outDir, 'code-block-dark.png')) },
+          { name: 'webhook-limits.md', mimeType: 'text/markdown', buffer: Buffer.from('# Webhook limits\n\n100 requests a minute per key.\n') },
+        ]);
+        await t.need('[data-remote-new-session] [data-remote-file]', 'the attached file did not show');
+        await t.need('[data-remote-new-session] [data-attachments] img', 'the attached image did not show');
         await t.shot('computers-new-session');
+        for (let i = 0; i < 2; i++) await t.click('[data-remote-new-session] [data-remote-attachments] button[aria-label^="Remove"]');
         await t.page.fill('[data-remote-new-session] textarea', '');
         await t.click('[data-run-on-option="local"]');
       });

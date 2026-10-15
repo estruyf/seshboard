@@ -1028,6 +1028,7 @@ export function createEngine(options: EngineOptions): Engine {
       appState,
       appVersion: options.remote.appVersion,
       ...(options.remote.appUrl ? { appUrl: options.remote.appUrl } : {}),
+      filesDir: join(options.dataDir, 'remote-files'),
       identity: options.remote.identity,
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
       archiveAfterDays: () => retention.archiveAfterDays,
@@ -1044,11 +1045,11 @@ export function createEngine(options: EngineOptions): Engine {
       dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
       interrupt: (sessionId) => hosts.interrupt(sessionId),
       respond: (requestId, decision) => hosts.respond(requestId, decision),
-      create: (root, prompt, choice) =>
+      create: (root, prompt, choice, images) =>
         createSession({
           cwd: root,
           prompt,
-          attachments: [],
+          attachments: images,
           model: choice.model,
           permissionMode: choice.permissionMode,
           effort: choice.effort,

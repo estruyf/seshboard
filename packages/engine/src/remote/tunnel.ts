@@ -106,6 +106,8 @@ export class Tunnel {
   private child: ChildProcess | null = null;
   private stopped = false;
   private exitListener: ((message: string) => void) | null = null;
+  /** Rejects `start` while it waits for the address, so stopping a tunnel that is starting doesn't leave it hanging. */
+  private cancel: (() => void) | null = null;
 
   constructor(private readonly options: TunnelOptions) {}
 
@@ -122,6 +124,10 @@ export class Tunnel {
         reject(new Error(`${NAMES[tool]} didn't give an address in time. ${tunnelError(output)}`));
         this.stop();
       }, this.options.timeoutMs ?? START_TIMEOUT_MS);
+      this.cancel = () => {
+        clearTimeout(timer);
+        reject(new Error(`${NAMES[tool]} was stopped before it gave an address.`));
+      };
       const read = (chunk: Buffer) => {
         // Only the tail matters, for the address and for an error.
         output = (output + chunk.toString('utf8')).slice(-20_000);
@@ -129,6 +135,7 @@ export class Tunnel {
         address = tunnelAddress(tool, output);
         if (address) {
           clearTimeout(timer);
+          this.cancel = null;
           resolve(address);
         }
       };
@@ -155,6 +162,8 @@ export class Tunnel {
 
   stop(): void {
     this.stopped = true;
+    this.cancel?.();
+    this.cancel = null;
     this.child?.kill();
     this.child = null;
   }
