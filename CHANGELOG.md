@@ -20,6 +20,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Remote: notifications.** Your phone can tell you when a session needs you or finishes, also when the page is closed. Turn them on from the card after pairing, or from **Notifications** in the **⋯** menu. On an iPhone, add Switchboard Remote to your Home Screen first.
 - **Remote: why your phone can't connect.** Instead of one line of text, your phone says what it thinks happened (the tunnel's address changed, the computer is asleep), keeps showing the last list, and **Help** says what to do.
 
+### Fixed
+
+- **Random characters at the prompt of a terminal.** Switching to a terminal tab or session could type text like `11;rgb:1111/1111/1b1b` and `1R8;81R` into the shell. They were answers to questions programs asked a while ago, which the terminal sent again when it showed its history. They are no longer sent.
+
 ## [0.0.17] - 2026-10-14
 
 ### New

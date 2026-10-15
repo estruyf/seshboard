@@ -122,6 +122,9 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
     });
 
     let disposed = false;
+    // The replay holds queries (background color, cursor position) that programs asked long ago. xterm answers them again,
+    // and those answers must not reach the shell, which would show them as typed text.
+    let replaying = false;
     const offData = client.on('terminal.data', (message) => {
       if (message.id === id) term.write(message.data);
     });
@@ -129,14 +132,17 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
       .call('terminal.attach', { id })
       .then(({ replay }) => {
         if (disposed) return;
-        term.write(replay);
+        replaying = true;
+        term.write(replay, () => (replaying = false));
         // The replay may show the cursor again (a shell prompt does).
         if (exitedRef.current) term.write(HIDE_CURSOR);
         fit.fit();
         void client.call('terminal.resize', { id, cols: term.cols, rows: term.rows }).catch(() => {});
       })
       .catch((error: Error) => term.write(`\r\n\x1b[31m${error.message}\x1b[0m\r\n`));
-    const input = term.onData((data) => void client.call('terminal.write', { id, data }).catch(() => {}));
+    const input = term.onData((data) => {
+      if (!replaying) void client.call('terminal.write', { id, data }).catch(() => {});
+    });
 
     // Follow the panel's size; tell the process its new dimensions (debounced while dragging).
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
