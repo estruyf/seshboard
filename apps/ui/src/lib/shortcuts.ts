@@ -664,6 +664,14 @@ export const SHORTCUTS = [
     when: inSession,
   },
   {
+    id: "agents.toggle",
+    keys: ["mod+shift+k"],
+    action: "Show or hide Agents",
+    section: "session",
+    when: inSession,
+    note: "The agents Claude started in this session, beside the conversation",
+  },
+  {
     id: "ask.open",
     keys: [],
     action: "Ask about this session",

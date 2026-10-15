@@ -45,13 +45,14 @@ export const useRightPanel = create<RightPanelLayout>()((set) => ({
 }));
 
 /**
- * ⌘⇧D, the header's Changes button and Toggle changes: Changes waiting behind the Ask tab comes to the front;
- * otherwise it opens (in front) or closes. It never closes Ask. `askOpen`: Ask is open in the session it is for.
+ * ⌘⇧D, the header's Changes button and Toggle changes: Changes waiting behind another tab comes to the front;
+ * otherwise it opens (in front) or closes. It never closes Ask or Agents. `othersOpen`: Ask or Agents is open in the
+ * session it is for.
  */
-export function toggleChangesPanel(askOpen: boolean): void {
+export function toggleChangesPanel(othersOpen: boolean): void {
   const overlay = useOverlay.getState();
   const panel = useRightPanel.getState();
-  if (overlay.changesOpen && askOpen && panel.tab === 'ask') return panel.setTab('changes');
+  if (overlay.changesOpen && othersOpen && panel.tab !== 'changes') return panel.setTab('changes');
   if (!overlay.changesOpen) panel.setTab('changes');
   overlay.toggleChanges();
 }

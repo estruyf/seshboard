@@ -21,13 +21,25 @@ describe('Ask panel width', () => {
 });
 
 describe('the right panel', () => {
-  it('shows tabs only when Changes and Ask are both open, on the tab picked last', () => {
-    expect(rightPanel(true, true, 'ask')).toEqual({ tab: 'ask', tabs: true });
-    expect(rightPanel(true, true, 'changes')).toEqual({ tab: 'changes', tabs: true });
-    expect(rightPanel(true, false, 'ask')).toEqual({ tab: 'changes', tabs: false });
-    expect(rightPanel(false, true, 'changes')).toEqual({ tab: 'ask', tabs: false });
-    expect(rightPanel(false, false, 'ask')).toEqual({ tab: null, tabs: false });
+  const open = (changes: boolean, ask: boolean, agents = false) => ({ changes, ask, agents });
+
+  it('shows tabs only when more than one panel is open, on the tab picked last', () => {
+    expect(rightPanel(open(true, true), 'ask')).toEqual({ tab: 'ask', tabs: true, open: ['changes', 'ask'] });
+    expect(rightPanel(open(true, true), 'changes')).toEqual({ tab: 'changes', tabs: true, open: ['changes', 'ask'] });
+    expect(rightPanel(open(true, false), 'ask')).toEqual({ tab: 'changes', tabs: false, open: ['changes'] });
+    expect(rightPanel(open(false, true), 'changes')).toEqual({ tab: 'ask', tabs: false, open: ['ask'] });
+    expect(rightPanel(open(false, false), 'ask')).toEqual({ tab: null, tabs: false, open: [] });
+  });
+
+  it('puts Agents with the others, and falls back to the first open one when the picked tab is closed', () => {
+    expect(rightPanel(open(true, true, true), 'agents')).toEqual({ tab: 'agents', tabs: true, open: ['changes', 'ask', 'agents'] });
+    expect(rightPanel(open(false, true, true), 'changes')).toEqual({ tab: 'ask', tabs: true, open: ['ask', 'agents'] });
+    expect(rightPanel(open(false, false, true), 'ask')).toEqual({ tab: 'agents', tabs: false, open: ['agents'] });
+  });
+
+  it('reads a stored tab', () => {
     expect(readTab('ask')).toBe('ask');
+    expect(readTab('agents')).toBe('agents');
     expect(readTab(null)).toBe('changes');
     expect(readTab('junk')).toBe('changes');
   });

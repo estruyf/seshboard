@@ -1,3 +1,6 @@
+import { Bot } from 'lucide-react';
+import { openAgents } from '../../state/agentsPanelStore.ts';
+import { Button } from '../ui/Button.tsx';
 import { DiffView } from './DiffView.tsx';
 import type { DisplayItem } from './displayItems.ts';
 import { SubagentRun } from './SubagentRun.tsx';
@@ -26,7 +29,18 @@ export function ToolImages({ item, sessionId }: { item: ToolItem; sessionId: str
  * `withDiffAndImages` adds the diff and images, which tool cards already show outside this.
  */
 export function ToolDetails({ item, cwd, sessionId, withDiffAndImages = false }: { item: ToolItem; cwd: string | null; sessionId: string; withDiffAndImages?: boolean }) {
-  if (isAgentTool(item)) return <SubagentRun sessionId={sessionId} toolUseId={item.id} running={item.result === null} cwd={cwd} />;
+  if (isAgentTool(item)) {
+    return (
+      <div className="grid gap-1.5">
+        <div>
+          <Button variant="quiet" size="sm" icon={<Bot size={12} aria-hidden />} onClick={() => openAgents(sessionId, item.id)} data-open-in-agents>
+            Open in Agents panel
+          </Button>
+        </div>
+        <SubagentRun sessionId={sessionId} toolUseId={item.id} running={item.result === null} cwd={cwd} />
+      </div>
+    );
+  }
   if (item.name === 'TodoWrite') return <TodoList todos={parseTodos(item.input)} />;
   const hunks = editHunks(item);
   const failed = item.result?.isError ?? false;
