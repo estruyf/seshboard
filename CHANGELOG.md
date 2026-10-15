@@ -18,6 +18,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **Catch-up says what Claude said.** When Haiku doesn't write the catch-up (it is off, or it didn't answer in time), **What it did** starts with Claude's own account from the end of its reply, its opening sentence and the bold headings of a report, before the commands it ran. It used to list only the last few commands.
 - **Ask in the session's header.** The header's panel buttons now have **Ask** next to **Changes**, **Agents** and **Terminal**. It opens Ask on the right, brings it to the front when another panel is in front, or closes it. A blue dot on it says an answer is ready.
 - **Remote: Mark as read and Archive from the list.** Right-click a session in the list for **Mark as read** and **Archive**, without opening it. The quick replies above the message box (**Continue**, **Run the tests**, **Open a PR**, **Mark as read**) are gone: the session's **⋯** menu still has **Mark as read** and **Archive**.
 - **Message box: the model, effort and mode stay readable.** In a narrow window, the profile shrinks to its dot first, then the model drops its version, and the effort and mode labels go last.
