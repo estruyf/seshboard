@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
@@ -9,7 +10,7 @@ import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboar
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { EngineProcess } from './engineProcess.ts';
-import { remoteIdentity } from './remoteIdentity.ts';
+import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
@@ -311,11 +312,12 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
-  const request = message as { type?: unknown; id?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown } | null;
-  // Remote's key, only asked for once Remote is on (so the keychain is left alone otherwise).
+  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown } | null;
+  // Remote's keys, only asked for once Remote is on or another computer is paired (so the keychain is left alone otherwise).
   if (request?.type === 'remote-identity' && typeof request.id === 'number') {
     try {
-      return { type: 'remote-identity-result', id: request.id, secret: remoteIdentity(app.getPath('userData')) };
+      const key = request.key === 'device' ? 'device' : 'identity';
+      return { type: 'remote-identity-result', id: request.id, secret: scripted ? throwawayRemoteKey(key) : remoteIdentity(app.getPath('userData'), key) };
     } catch (error) {
       console.error('[main] Remote key unavailable', error);
       return { type: 'remote-identity-result', id: request.id, secret: null };
@@ -2811,6 +2813,71 @@ async function checkClaudeUpdates(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-claude-update-toast] [data-toast-close]').click()");
   if (!(await waitInPage(win, "!document.querySelector('[data-claude-update-toast]')", 3_000))) return 'Dismiss did not hide the toast';
   return `ok: v${installed} installed, v999.0.0 offered (${how}), toast shown and dismissed`;
+}
+
+/**
+ * Settings › Remote: with Remote off and nothing paired, the three setup steps; then My own address and Turn on
+ * Remote, and the status card (Running, or the port in use when another Switchboard has it, fixed with Use port …);
+ * Change… and Advanced open; a made-up device (written straight into the throwaway profile's cache, so no phone is
+ * needed) is renamed in place, and its Revoke asks first and Escape cancels. Remote is turned off again.
+ */
+async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const key = (keyCode: string) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  };
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000))) return 'Settings has no Remote section';
+  await click('[data-settings-section="remote"]');
+  if (!(await waitInPage(win, "document.querySelectorAll('[data-remote-setup] [data-remote-step]').length === 3", 5_000))) return 'Remote off with nothing paired did not show the three steps';
+  await shot(win, 'remote-setup.png');
+
+  // A paired device, made up: only its row is needed, never a connection.
+  const db = new DatabaseSync(join(app.getPath('userData'), 'cache.sqlite'));
+  try {
+    db.prepare('INSERT OR REPLACE INTO remote_devices (id, name, kind, public_key, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)').run('smoke-device', 'Smoke phone', 'phone', `smoke-${Date.now()}`, Date.now() - 3 * 86_400_000, Date.now() - 6 * 3_600_000);
+  } finally {
+    db.close();
+  }
+
+  await click('[data-remote-tunnel-option="custom"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-custom-url] input')", 3_000))) return 'My own address showed no Address field';
+  await setFieldValue(win, '[data-remote-custom-url] input', 'https://smoke.example.com');
+  await click('[data-remote-turn-on]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-status][role=status]')", 10_000))) return 'Turn on Remote showed no status card';
+  let title = (await js("document.querySelector('[data-remote-status]').dataset.remoteStatusTitle")) as string;
+  // Another Switchboard on this computer may have the port: the card's own fix moves to a free one.
+  if (title.startsWith('Port ')) {
+    await click('[data-remote-action="use-port"]');
+    if (!(await waitInPage(win, "!document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle.startsWith('Port ')", 10_000))) return `Use port didn't help: ${title}`;
+    title = `${title}, then ${(await js("document.querySelector('[data-remote-status]').dataset.remoteStatusTitle")) as string}`;
+  }
+  if (!(await waitInPage(win, `document.querySelector('[data-remote-device="smoke-device"]')`, 5_000))) return 'the made-up device is not in Paired devices';
+  await shot(win, 'remote-running.png');
+
+  await click('[data-remote-change-connection]');
+  if (!(await waitInPage(win, "document.querySelectorAll('[data-remote-connection] [role=radio]').length === 4", 3_000))) return 'Change… did not open the four choices';
+  if (await js("document.querySelector('[data-remote-advanced-toggle]').getAttribute('aria-expanded') === 'false'")) await click('[data-remote-advanced-toggle]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-port-input]') && document.querySelector('[data-remote-security]')", 3_000))) return 'Advanced did not show the port and the security note';
+  await shot(win, 'remote-open.png');
+
+  await click('[data-remote-device="smoke-device"] [data-remote-rename]');
+  if (!(await waitInPage(win, "document.activeElement?.matches('[data-rename-field]')", 3_000))) return 'Rename did not focus the name';
+  await win.webContents.insertText('Smoke tablet');
+  key('Return');
+  if (!(await waitInPage(win, `document.querySelector('[data-remote-device="smoke-device"]')?.innerText.includes('Smoke tablet')`, 5_000))) return 'the new name did not come back from the engine';
+
+  await click('[data-remote-device="smoke-device"] [data-remote-revoke]');
+  if (!(await waitInPage(win, "document.activeElement?.closest('[data-confirm-strip]')", 3_000))) return 'Revoke did not ask first with Cancel focused';
+  key('Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-confirm-strip]') && document.activeElement?.matches('[data-remote-revoke]')", 3_000))) return "Escape did not cancel Revoke and give focus back to the row's Revoke";
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) return 'Escape in the confirm closed Settings';
+
+  await click('[data-remote-enabled]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-off-card]')", 5_000))) return 'turned off with a paired device, the page did not say Remote is off';
+  return `ok: three steps, status card "${title}", Change… and Advanced opened, device renamed, Revoke asked and Escape cancelled, turned off`;
 }
 
 /**
@@ -6614,6 +6681,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
+  await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   rendering = (await js(

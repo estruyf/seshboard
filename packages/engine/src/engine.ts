@@ -80,7 +80,7 @@ import { CatchUpStore, CatchUpUsageStore } from './catchUp/catchUpStore.ts';
 import { stubAnswer, Summarizer } from './catchUp/summary.ts';
 import { ProjectRegistry, type FolderActivity } from './projects/projectRegistry.ts';
 import { QuestionsFolder } from './questions/questionsFolder.ts';
-import { createAppStateStore } from './db/appState.ts';
+import { createAppStateStore, type JsonValue } from './db/appState.ts';
 import { ConfigDirLane } from './profiles/configDirLane.ts';
 import { AccountWatcher } from './profiles/accountWatcher.ts';
 import { ProfileStore, type ProfileRuntime } from './profiles/profileStore.ts';
@@ -97,6 +97,7 @@ import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
 import { RemoteHub } from './remote/remoteHub.ts';
+import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { listFolders } from './system/folders.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
@@ -147,9 +148,10 @@ export interface EngineOptions {
    * Remote, a paired phone following and steering sessions (docs/remote-access.md). `appUrl` is the remote app's
    * address (the website's by default). `identity` asks main for Remote's key, which it keeps in the system's
    * keychain; only called once Remote is on. Off when left out (tests); nothing listens until Settings › Remote
-   * turns it on.
+   * turns it on. `deviceKey` asks main for this app's own key for other computers (Other computers), kept the same
+   * way; only called once one is paired. Without it, this app can't pair with another computer.
    */
-  remote?: { appVersion: string; appUrl?: string; identity(): Promise<Uint8Array | null> };
+  remote?: { appVersion: string; appUrl?: string; identity(): Promise<Uint8Array | null>; deviceKey?(): Promise<Uint8Array | null> };
   /**
    * Plan usage to report per config folder instead of asking Claude Code, with its % history: the website's
    * screenshots, whose made-up logins have no plan. Never set in normal use.
@@ -249,6 +251,8 @@ export function createEngine(options: EngineOptions): Engine {
   let companion: CompanionHub | null = null;
   /** Remote, when this engine offers it. */
   let remote: RemoteHub | null = null;
+  /** Other computers this app paired with, when this engine can keep a key for them. */
+  let computers: ComputerHub | null = null;
   /** The sidebar's scope in the window that reported focus last, so a phone lists what the sidebar lists. */
   let sidebarScope: 'switchboard' | 'all' = 'switchboard';
   /** Set once the clean-up of archived sessions exists: it first runs after the first full scan. */
@@ -1104,6 +1108,17 @@ export function createEngine(options: EngineOptions): Engine {
     void remote.start();
   }
 
+  if (options.remote?.deviceKey) {
+    computers = new ComputerHub({
+      db: cache.db,
+      deviceKey: options.remote.deviceKey,
+      onStatus: (status) => broadcast('computers.changed', status),
+      onEvent: (event) => broadcast('computers.event', event),
+      log,
+    });
+    void computers.start().catch((error: Error) => log('warn', `Other computers: ${error.message}`));
+  }
+
   // --- Archived sessions: Settings › Sessions -------------------------------------------------------------------
   /** Main sends the settings when the engine starts and after each change; until then, the defaults (deleting off). */
   let retention: RetentionPolicy = DEFAULT_RETENTION;
@@ -1231,6 +1246,10 @@ export function createEngine(options: EngineOptions): Engine {
     settingTimer.unref?.();
   };
 
+  const requireComputers = () => {
+    if (!computers) throw new RpcError('UNAVAILABLE', 'Other computers are not available in this build');
+    return computers;
+  };
   const requireRemote = () => {
     if (!remote) throw new RpcError('UNAVAILABLE', 'Remote is not available in this build');
     return remote;
@@ -2192,6 +2211,28 @@ export function createEngine(options: EngineOptions): Engine {
       requireRemote().revoke(deviceId);
       return {};
     },
+    'remote.rename': ({ deviceId, name }) => {
+      requireRemote().rename(deviceId, name);
+      return {};
+    },
+    'computers.status': () => computers?.status() ?? { available: false, computers: [], pairing: null },
+    'computers.add': async ({ link }) => {
+      await requireComputers().add(link);
+      return {};
+    },
+    'computers.cancelPairing': () => {
+      computers?.cancelPairing();
+      return {};
+    },
+    'computers.forget': ({ id }) => {
+      requireComputers().forget(id);
+      return {};
+    },
+    'computers.retry': ({ id }) => {
+      requireComputers().retry(id);
+      return {};
+    },
+    'computers.call': async ({ computerId, method, params }) => (await requireComputers().call(computerId, method, params)) as JsonValue,
     'claudeUpdate.get': () => claudeUpdater.state,
     'claudeUpdate.check': () => {
       void claudeUpdater.check();
@@ -2278,6 +2319,7 @@ export function createEngine(options: EngineOptions): Engine {
       clearTimeout(settingTimer);
       companion?.stop();
       remote?.stop();
+      computers?.stop();
       memoryWatcher.close();
       clearTimeout(memorySyncTimer);
       clearTimeout(startupMemorySync);

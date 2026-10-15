@@ -121,10 +121,10 @@ The engine runs separately from the window. If it stops, Switchboard starts it a
 
 ## Remote: the phone can't connect
 
-- **The status in Settings → Remote isn't Running.** It says why: the tunnel's tool isn't installed, it stopped (Switchboard tries again by itself), or port 47615 is used by another app.
+- **The card in Settings → Remote doesn't say Running.** It says why, with the fix as a button: install the tunnel's tool or use Cloudflare instead, use the next free port, or try again (Switchboard also tries again by itself when the tunnel stops).
 - **Tailscale fails to start.** `tailscale serve` needs HTTPS certificates turned on for your tailnet, in Tailscale's admin console under DNS. The message in Settings → Remote says where.
 - **ngrok connects on the computer but not on the phone.** ngrok's free plan can put a warning page in front of the address. Use Cloudflare or Tailscale.
-- **The phone says it can't reach your computer** after a Cloudflare quick tunnel restarted: the address changed. Click **Show the address to paired phones** and scan it.
+- **The phone says it can't reach your computer** after a Cloudflare quick tunnel restarted: the address changed. The card says **Address changed**: click **Reconnect a paired device** and scan it.
 - **The phone says to pair again.** The phone was revoked, wasn't used for 30 days, or Switchboard's key changed (for example after moving to another computer). Pair it again.
 
 ## Your data

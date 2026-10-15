@@ -15,6 +15,7 @@
 import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { DatabaseSync } from 'node:sqlite';
 import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { _electron, type ElectronApplication, type Locator, type Page } from 'playwright-core';
@@ -1057,6 +1058,38 @@ const screens: Screen[] = [
       await t.settle();
       await t.shot('settings-notifications');
       await t.click('[data-sounds-toggle]');
+      await t.click('[data-close-settings]');
+    },
+  },
+  {
+    // Remote on with your own address (no tunnel tool needed) and two made-up devices written into the throwaway
+    // profile's cache: the status card, Paired devices, the folded Connection and Other computers. Turned off after.
+    name: 'settings-remote',
+    async take(t) {
+      const userData = await t.app.evaluate(({ app }) => app.getPath('userData'));
+      const db = new DatabaseSync(join(userData, 'cache.sqlite'));
+      try {
+        const insert = db.prepare('INSERT OR REPLACE INTO remote_devices (id, name, kind, public_key, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)');
+        insert.run('demo-phone', "Sam's iPhone", 'phone', 'demo-phone-key', Date.now() - 12 * DAY, Date.now() - 6 * 60 * 60 * 1000);
+        insert.run('demo-laptop', 'Studio laptop', 'browser', 'demo-laptop-key', Date.now() - 3 * DAY, Date.now() - 2 * DAY);
+      } finally {
+        db.close();
+      }
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="remote"]');
+      await t.need('[data-remote-off-card]', 'Settings › Remote did not say Remote is off');
+      await t.click('[data-remote-tunnel-option="custom"]');
+      await t.page.fill('[data-remote-custom-url] input', 'https://remote.example.com');
+      await t.click('[data-remote-save-connection]');
+      await t.click('[data-remote-turn-on]');
+      await t.need('[data-remote-status]', 'Turn on showed no status card');
+      // Switchboard itself may have Remote's port on this Mac: the card's own fix moves to a free one.
+      await t.settle();
+      if (await t.page.locator('[data-remote-action="use-port"]').count()) await t.click('[data-remote-action="use-port"]');
+      await t.until(`document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle === 'Running'`, 'Remote did not say Running');
+      await t.settle();
+      await t.shot('settings-remote');
+      await t.click('[data-remote-enabled]');
       await t.click('[data-close-settings]');
     },
   },

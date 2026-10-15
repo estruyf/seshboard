@@ -110,7 +110,7 @@ export function PairScreen({ link, replaces, onPaired, onLink }: { link: Extract
       {step.kind === 'failed' && (
         <div className="flex flex-col gap-4" role="alert">
           <p className="text-body text-error">{step.message}</p>
-          <p className="text-ui text-muted">Click Pair a phone on your computer and scan the new QR code, or open or paste its copied link.</p>
+          <p className="text-ui text-muted">Click Pair a device on your computer and scan the new QR code, or open or paste its copied link.</p>
           <LinkEntry onLink={onLink} />
         </div>
       )}

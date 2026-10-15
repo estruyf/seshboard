@@ -41,6 +41,7 @@ import { inWorktree } from '../worktree/branchMenu.ts';
 import { ProjectFilter } from './ProjectMenu.tsx';
 import { sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
+import { ComputersDock } from '../computers/ComputersDock.tsx';
 import { StatusIcon } from './StatusIcon.tsx';
 import { ARCHIVE, useSessionMenu, type FlagChange } from './useSessionMenu.tsx';
 import { formatKeys, keysFor, matches, modKey } from '../../lib/shortcuts.ts';
@@ -1103,6 +1104,8 @@ export function Sidebar() {
           <ArchivedHeader count={archived.length} open={false} onToggle={toggleArchivedSection} onMenu={(at) => setMenu(archivedMenu(at))} />
         </div>
       )}
+
+      <ComputersDock />
 
       <StarOnGithub sessions={all.length} />
 

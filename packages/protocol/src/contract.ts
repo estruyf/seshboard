@@ -54,7 +54,8 @@ import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
 import { CompanionTarget } from './companion.ts';
-import { RemoteSettings, RemoteStatus } from './remote.ts';
+import { DeviceName, RemoteSettings, RemoteStatus } from './remote.ts';
+import { ComputerEvent, ComputerMethodSchema, ComputersStatus } from './computers.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
 import { KEEP_REASONS } from './retention.ts';
 import { ExportCandidate, HealthFinding, LoadEntry, MemoryHit, MemoryImportPreview, MemoryList, PersonalMemory, SectionCopy, SharePreview, ShareTarget } from './memory.ts';
@@ -808,7 +809,7 @@ export const contract = {
     'remote.status': { params: z.object({}), result: RemoteStatus },
     /** Changes Settings › Remote; the server starts, restarts or stops to match. */
     'remote.configure': { params: RemoteSettings.partial(), result: RemoteStatus },
-    /** Pair a phone: the link for the QR code (good for one use and two minutes). */
+    /** Pair a device: the link for the QR code (good for one use and two minutes). */
     'remote.pair.start': { params: z.object({}), result: z.object({ url: z.string(), expiresAt: z.number() }) },
     /** A link for phones already paired, with the engine's current address (a tunnel that got a new one). */
     'remote.connectLink': { params: z.object({}), result: z.object({ url: z.string() }) },
@@ -818,6 +819,30 @@ export const contract = {
     'remote.pair.decide': { params: z.object({ requestId: z.string().min(1).max(100), allow: z.boolean() }), result: z.object({}) },
     /** Revoke: the device can't connect any more, and its open connections close at once. */
     'remote.revoke': { params: z.object({ deviceId: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Renames a paired device (Settings › Remote, Rename); `remote.changed` follows with the new name. */
+    'remote.rename': { params: z.object({ deviceId: z.string().min(1).max(100), name: DeviceName }), result: z.object({}) },
+
+    // --- Other computers: this app paired with Remote on another computer (docs/remote-access.md) -------------------
+    'computers.status': { params: z.object({}), result: ComputersStatus },
+    /**
+     * A link copied from another computer's Pair a device: pairs with it (the progress and the code to compare come
+     * with `computers.changed`). A link from Reconnect a paired device tells a paired computer's new address.
+     */
+    'computers.add': { params: z.object({ link: z.string().trim().min(1).max(2_000) }), result: z.object({}) },
+    /** Stops pairing (the other computer's question goes away with the connection). */
+    'computers.cancelPairing': { params: z.object({}), result: z.object({}) },
+    /** Forgets a paired computer here (that computer still lists this one until you revoke it there). */
+    'computers.forget': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Try again now to reach a computer that is offline. */
+    'computers.retry': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /**
+     * A request to another computer, in its remote contract (`COMPUTER_METHODS`). That computer checks the params;
+     * the result is its, unchecked here: show it as text, as the remote app does. UNAVAILABLE while not connected.
+     */
+    'computers.call': {
+      params: z.object({ computerId: z.string().min(1).max(100), method: ComputerMethodSchema, params: z.json() }),
+      result: z.json(),
+    },
     /**
      * Continues a session in an editor's Claude Code extension: stops it here and waits for its process to exit,
      * opens its folder in the editor, then the session in the extension (it only resumes sessions of the folder
@@ -1078,6 +1103,10 @@ export const contract = {
     'remote.changed': RemoteStatus,
     /** A prompt or an answer to a permission prompt came from a paired phone, for its label in the conversation. */
     'remote.fromDevice': z.object({ sessionId: z.string(), messageUuid: z.string().nullable(), requestId: z.string().nullable(), device: z.string() }),
+    /** Paired computers: their connections and pairing. */
+    'computers.changed': ComputersStatus,
+    /** An event from a connected computer (`sessions.changed`, `transcript.updated`, `session.stream`, …). */
+    'computers.event': ComputerEvent,
     /** A project's memory or instruction files changed (`root` null: the personal folder): list them again. */
     'memory.changed': z.object({ root: z.string().nullable() }),
   },

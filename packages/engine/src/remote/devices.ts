@@ -2,12 +2,22 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import { toBase64Url } from '@switchboard/protocol';
 
-/** A phone that was paired, as Settings › Remote lists it. */
+/**
+ * What a paired device is, for its icon in Settings › Remote: a phone's browser, a computer's browser, or Switchboard
+ * on another computer (`REMOTE_DESKTOP_ORIGIN`). Told from the socket's origin and user agent when it paired: a label,
+ * never what lets it in.
+ */
+export type DeviceKind = 'phone' | 'browser' | 'computer';
+
+/** A phone (or another computer) that was paired, as Settings › Remote lists it. */
 export interface RemoteDevice {
   id: string;
   name: string;
+  kind: DeviceKind;
   createdAt: number;
   lastSeenAt: number | null;
+  /** The engine's address it last connected through; null before its first connection. */
+  lastAddress: string | null;
 }
 
 /** A device that hasn't connected for this long is refused, as if revoked, and leaves the list. */
@@ -16,6 +26,8 @@ export const DEVICE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 interface Row {
   id: string;
   name: string;
+  kind: string;
+  last_address: string | null;
   public_key: string;
   created_at: number;
   last_seen_at: number | null;
@@ -27,7 +39,7 @@ interface Row {
  * key is refused, and can't be paired again by accident under its old id) but leaves the list.
  */
 export class DeviceStore {
-  private readonly statements: Record<'list' | 'byKey' | 'insert' | 'touch' | 'revoke' | 'retireKey', StatementSync>;
+  private readonly statements: Record<'list' | 'byKey' | 'insert' | 'touch' | 'rename' | 'revoke' | 'retireKey', StatementSync>;
 
   constructor(
     db: DatabaseSync,
@@ -36,8 +48,9 @@ export class DeviceStore {
     this.statements = {
       list: db.prepare('SELECT * FROM remote_devices WHERE revoked_at IS NULL ORDER BY created_at'),
       byKey: db.prepare('SELECT * FROM remote_devices WHERE public_key = ?'),
-      insert: db.prepare('INSERT INTO remote_devices (id, name, public_key, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL)'),
-      touch: db.prepare('UPDATE remote_devices SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL'),
+      insert: db.prepare('INSERT INTO remote_devices (id, name, kind, public_key, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)'),
+      touch: db.prepare('UPDATE remote_devices SET last_seen_at = ?, last_address = COALESCE(?, last_address) WHERE id = ? AND revoked_at IS NULL'),
+      rename: db.prepare('UPDATE remote_devices SET name = ? WHERE id = ? AND revoked_at IS NULL'),
       revoke: db.prepare('UPDATE remote_devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL'),
       retireKey: db.prepare("UPDATE remote_devices SET public_key = public_key || ':revoked:' || id WHERE id = ?"),
     };
@@ -49,7 +62,7 @@ export class DeviceStore {
   }
 
   /** Stores a device after Allow on the Mac. A key that was revoked before can be paired again, as a new device. */
-  add(name: string, publicKey: Uint8Array): RemoteDevice {
+  add(name: string, publicKey: Uint8Array, kind: DeviceKind = 'phone'): RemoteDevice {
     const key = toBase64Url(publicKey);
     const existing = this.statements.byKey.get(key) as unknown as Row | undefined;
     const at = this.now();
@@ -60,8 +73,8 @@ export class DeviceStore {
       this.statements.retireKey.run(existing.id);
     }
     const id = randomUUID();
-    this.statements.insert.run(id, name, key, at, at);
-    return { id, name, createdAt: at, lastSeenAt: at };
+    this.statements.insert.run(id, name, kind, key, at, at);
+    return { id, name, kind, createdAt: at, lastSeenAt: at, lastAddress: null };
   }
 
   /** The device with this key, when it may connect (paired, not revoked, not expired). */
@@ -71,8 +84,14 @@ export class DeviceStore {
     return toDevice(row);
   }
 
-  touch(id: string): void {
-    this.statements.touch.run(this.now(), id);
+  /** It connected now, through `address` (the engine's public address then; null keeps the one it had). */
+  touch(id: string, address: string | null = null): void {
+    this.statements.touch.run(this.now(), address, id);
+  }
+
+  /** True when the device is paired and now has this name. */
+  rename(id: string, name: string): boolean {
+    return Number(this.statements.rename.run(name, id).changes) > 0;
   }
 
   /** True when the device was paired and is now revoked. */
@@ -89,4 +108,4 @@ export class DeviceStore {
   }
 }
 
-const toDevice = (row: Row): RemoteDevice => ({ id: row.id, name: row.name, createdAt: row.created_at, lastSeenAt: row.last_seen_at });
+const toDevice = (row: Row): RemoteDevice => ({ id: row.id, name: row.name, kind: row.kind === 'computer' || row.kind === 'browser' ? row.kind : 'phone', createdAt: row.created_at, lastSeenAt: row.last_seen_at, lastAddress: row.last_address ?? null });

@@ -133,7 +133,7 @@ export const engineSocketUrl = (address: string) => `${address.replace(/^http/, 
 /**
  * What the remote app's link carries, after `#`. A fragment is never sent in a request, so the website that serves
  * the app never sees the engine's address, its key or the pairing secret.
- *  - `p.<engine key>.<secret>.<engine address>`: Pair a phone (the QR code in Settings › Remote);
+ *  - `p.<engine key>.<secret>.<engine address>`: Pair a device (the QR code in Settings › Remote);
  *  - `c.<engine key>.<engine address>`: a paired phone learns the engine's new address (a tunnel that restarted).
  */
 export type RemoteLink =

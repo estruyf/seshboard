@@ -51,7 +51,7 @@ function useCountdown(until: number | null): number {
 }
 
 /**
- * Pair a phone: the QR code (one use, two minutes), then "Pair <name>?" with the code the phone shows, and Allow or
+ * Pair a device: the QR code (one use, two minutes), then "Pair <name>?" with the code the phone shows, and Allow or
  * Deny. Closing the dialog closes pairing: the QR code stops working and a waiting phone is denied.
  */
 export function PairDialog({ client, status, onClose }: { client: Client; status: RemoteStatus; onClose: () => void }) {
@@ -84,7 +84,7 @@ export function PairDialog({ client, status, onClose }: { client: Client; status
 
   return (
     <Dialog
-      title={request ? `Pair ${request.name}?` : 'Pair a phone'}
+      title={request ? `Pair ${request.name}?` : 'Pair a device'}
       subtitle={request ? undefined : 'Scan the code with your phone’s camera, or copy the link.'}
       width="sm"
       onClose={onClose}
@@ -123,7 +123,7 @@ export function PairDialog({ client, status, onClose }: { client: Client; status
         </div>
       ) : offer ? (
         <div className="grid gap-3">
-          <QrImage url={offer.url} label="QR code to pair a phone" />
+          <QrImage url={offer.url} label="QR code to pair a device" />
           <CopyLink url={offer.url} />
           <p className="text-center text-meta text-muted">
             To use another computer instead, open the copied link in its browser. Works once, for {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}. Your computer will ask you to allow the phone.
@@ -135,7 +135,7 @@ export function PairDialog({ client, status, onClose }: { client: Client; status
   );
 }
 
-/** For phones already paired: the tunnel's new address, without a secret. Scanning it doesn't pair anything. */
+/** Reconnect a paired device: the tunnel's new address, without a secret. Scanning it doesn't pair anything. */
 export function LinkDialog({ client, onClose }: { client: Client; onClose: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +143,7 @@ export function LinkDialog({ client, onClose }: { client: Client; onClose: () =>
     void client.call('remote.connectLink', {}).then(({ url }) => setUrl(url), (e: Error) => setError(e.message));
   }, [client]);
   return (
-    <Dialog title="Show the address to paired phones" subtitle="Scan it with a phone that is already paired, after the tunnel’s address changed." width="sm" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
+    <Dialog title="Reconnect a paired device" subtitle="Scan it with a device that is already paired. It picks up the new address." width="sm" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
       {url && (
         <div className="grid gap-3">
           <QrImage url={url} label="QR code with this computer's address" />

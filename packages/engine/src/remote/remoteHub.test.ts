@@ -505,7 +505,62 @@ describe('Remote hub', () => {
     await new Promise((r) => taken.once('listening', r));
     cleanups.push(() => taken.close());
     await on();
-    expect(hub.status().problem).toEqual({ kind: 'port-in-use', port });
+    const { problem } = hub.status();
+    expect(problem).toMatchObject({ kind: 'port-in-use', port });
+    // The next port that was free, for Use port …
+    const suggested = (problem as { suggestedPort: number | null }).suggestedPort;
+    expect(suggested).toBeGreaterThan(port);
+    await hub.configure({ port: suggested! });
+    expect(hub.status().problem).toBeNull();
+  });
+
+  it('renames a paired device, and says when it is gone', async () => {
+    const { hub, port, on } = await setup();
+    await on();
+    await pair(hub, port);
+    const device = hub.status().devices[0]!;
+    // The test's socket sends no user agent: a computer's browser, as far as the server can tell.
+    expect(device.kind).toBe('browser');
+    hub.rename(device.id, "Elio's iPhone");
+    expect(hub.status().devices[0]!.name).toBe("Elio's iPhone");
+    hub.revoke(device.id);
+    expect(() => hub.rename(device.id, 'Again')).toThrow(/no longer paired/);
+  });
+
+  it('says when a quick tunnel came back at an address no paired device has used yet', async () => {
+    let runs = 0;
+    const { hub, port, on } = await setup({ tunnel: () => fakeTunnel(`console.error('https://run-${++runs}.trycloudflare.com'); setInterval(() => {}, 1000)`) });
+    await on();
+    // Nobody paired yet: nothing to reconnect.
+    expect(hub.status()).toMatchObject({ address: 'https://run-1.trycloudflare.com', addressChanged: false });
+    const { url } = hub.startPairing();
+    const link = parseRemoteLink(new URL(url).hash);
+    if (link?.kind !== 'pair') throw new Error('Not a pairing link');
+    const phone = generateKeyPair();
+    const pairing = await handshake(port, 'pair', phone, link.enginePublicKey, pskFromSecret(link.secret));
+    const asked = client<RemotePairContract>(pairing.frames, pairing.session!).call('pair.request', { name: 'Phone' });
+    await until(() => hub.status().pairing.request !== null);
+    hub.decidePairing(hub.status().pairing.request!.id, true);
+    await asked;
+    pairing.ws.close();
+    const connect = async () => {
+      const connected = await handshake(port, 'connect', phone, link.enginePublicKey);
+      await client<RemoteContract>(connected.frames, connected.session!).call('hello', { client: { version: '1' } });
+      return connected;
+    };
+    (await connect()).ws.close();
+    expect(hub.status().addressChanged).toBe(false);
+
+    // The tunnel restarts with a new address: the phone still knows the old one.
+    await hub.configure({});
+    expect(hub.status()).toMatchObject({ address: 'https://run-2.trycloudflare.com', addressChanged: true });
+    // It connected through the new one (Reconnect a paired device): nothing to say any more.
+    (await connect()).ws.close();
+    await until(() => !hub.status().addressChanged);
+
+    // An address that never changes: never.
+    await hub.configure({ tunnel: 'custom', customUrl: 'https://remote.example.com' });
+    expect(hub.status().addressChanged).toBe(false);
   });
 });
 

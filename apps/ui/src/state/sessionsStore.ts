@@ -8,8 +8,11 @@ import { useTilingArea } from './tilingArea.ts';
 import type { DropTarget, Way } from './tilingGeometry.ts';
 import { toast } from './toastStore.ts';
 
-/** `project` is one project's page (`useProjectPage` says which); `projects` is the list of them. */
-export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage';
+/**
+ * `project` is one project's page (`useProjectPage` says which); `projects` is the list of them; `computer` is another
+ * computer's sessions (`useComputers` says which).
+ */
+export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'computer';
 /** The pages of Settings, listed in its own sidebar. */
 export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'conversation' | 'notifications' | 'focus' | 'profiles' | 'memory' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
 

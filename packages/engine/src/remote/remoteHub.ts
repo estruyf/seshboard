@@ -36,12 +36,14 @@ import {
   type AskThreadList,
   Effort,
   REMOTE_DIFF_LINES,
+  REMOTE_DESKTOP_ORIGIN,
 } from '@switchboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
 import { DeviceStore, type RemoteDevice } from './devices.ts';
 import { Pairing } from './pairing.ts';
 import { RemoteServer } from './remoteServer.ts';
+import { nextFreePort } from './freePort.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, type VapidKeys } from './webPush.ts';
@@ -204,7 +206,9 @@ export class RemoteHub {
       pairing: this.pairing,
       appVersion: options.appVersion,
       ...(options.computerName ? { computerName: options.computerName } : {}),
-      origins: [new URL(this.appUrl).origin],
+      // Switchboard on another computer pairs and connects as a phone does (docs/remote-access.md, Other computers).
+      origins: [new URL(this.appUrl).origin, REMOTE_DESKTOP_ORIGIN],
+      address: () => this.address,
       cloudflare: () => this.settings.tunnel === 'cloudflare',
       log: options.log,
       handlers: (device) => this.handlers(device),
@@ -229,8 +233,21 @@ export class RemoteHub {
       problem: this.problem,
       devices: this.devices.list(),
       connections: this.server.list(),
+      addressChanged: this.addressChanged(),
       pairing: this.pairing.state(),
     };
+  }
+
+  /**
+   * A quick tunnel's new address hasn't reached any paired device: one connected before through another address, and
+   * none has connected through this one since. Only for tunnels whose address changes when they start.
+   */
+  private addressChanged(): boolean {
+    const { tunnel, ngrokDomain } = this.settings;
+    const changes = tunnel === 'cloudflare' || (tunnel === 'ngrok' && !ngrokDomain);
+    if (!changes || this.tunnelState.state !== 'running' || !this.address) return false;
+    const seen = this.devices.list().flatMap((device) => (device.lastAddress ? [device.lastAddress] : []));
+    return seen.length > 0 && !seen.includes(this.address);
   }
 
   /** Changes Settings › Remote and starts, restarts or stops the server and the tunnel to match. */
@@ -241,7 +258,7 @@ export class RemoteHub {
     return this.status();
   }
 
-  /** Pair a phone: the link for the QR code, with the engine's address and a secret for one use. */
+  /** Pair a device: the link for the QR code, with the engine's address and a secret for one use. */
   startPairing(): { url: string; expiresAt: number } {
     const { identity, address } = this.reachable();
     const { secret, expiresAt } = this.pairing.start();
@@ -260,6 +277,11 @@ export class RemoteHub {
 
   decidePairing(requestId: string, allow: boolean): void {
     if (!this.pairing.decide(requestId, allow)) throw new RpcError('NOT_FOUND', 'That phone is no longer waiting');
+  }
+
+  rename(deviceId: string, name: string): void {
+    if (!this.devices.rename(deviceId, name)) throw new RpcError('NOT_FOUND', 'That device is no longer paired');
+    this.statusChanged();
   }
 
   revoke(deviceId: string): void {
@@ -363,7 +385,7 @@ export class RemoteHub {
       await this.server.start(port);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      this.problem = code === 'EADDRINUSE' ? { kind: 'port-in-use', port } : { kind: 'failed', message: (error as Error).message };
+      this.problem = code === 'EADDRINUSE' ? { kind: 'port-in-use', port, suggestedPort: await nextFreePort(port) } : { kind: 'failed', message: (error as Error).message };
       return this.statusChanged();
     }
     if (generation === this.generation) await this.startTunnel(generation);

@@ -5,7 +5,7 @@ import { newPairingSecret, pskFromSecret } from '@switchboard/protocol';
 export const PAIRING_OFFER_MS = 2 * 60 * 1000;
 /** How long the Mac waits for Allow or Deny. */
 export const PAIRING_CONFIRM_MS = 60 * 1000;
-/** Failed pairing handshakes before pairing closes until you click Pair a phone again. */
+/** Failed pairing handshakes before pairing closes until you click Pair a device again. */
 export const PAIRING_MAX_FAILURES = 5;
 
 /** A phone that proved it scanned the QR code and waits for Allow on the Mac. */
@@ -32,7 +32,7 @@ interface Waiting {
 }
 
 /**
- * Pairing, one phone at a time: Pair a phone makes a secret that is good for one use and two minutes (closing the
+ * Pairing, one device at a time: Pair a device makes a secret that is good for one use and two minutes (closing the
  * dialog cancels it), and a phone that proves it has it waits for Allow on the Mac with a matching code.
  */
 export class Pairing {

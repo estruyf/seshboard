@@ -7,7 +7,7 @@ import { generateKeyPair, pairingCode, pskFromSecret, RpcError, type FrameSocket
 import { openCacheDatabase } from '../db/database.ts';
 import { DeviceStore } from './devices.ts';
 import { Pairing, PAIRING_MAX_FAILURES, type PairingState } from './pairing.ts';
-import { Backoff, clientAddress, CLOSE, decodePath, RemoteServer } from './remoteServer.ts';
+import { Backoff, clientAddress, CLOSE, decodePath, deviceKind, RemoteServer } from './remoteServer.ts';
 import { APP_ORIGIN, client, handshake, open } from './testPhone.ts';
 
 const cleanups: Array<() => void> = [];
@@ -231,5 +231,14 @@ describe('request paths', () => {
     expect(decodePath('/a%2f..%2fb')).toBeNull();
     expect(decodePath('/a%5c..%5cb')).toBeNull();
     expect(decodePath('/%00')).toBeNull();
+  });
+});
+
+describe('a paired device\'s kind', () => {
+  it('tells Switchboard on another computer, a phone and a computer\'s browser apart', () => {
+    expect(deviceKind('switchboard-desktop://switchboard', undefined)).toBe('computer');
+    expect(deviceKind(APP_ORIGIN, 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148')).toBe('phone');
+    expect(deviceKind(APP_ORIGIN, 'Mozilla/5.0 (Linux; Android 15) Mobile Safari/537.36')).toBe('phone');
+    expect(deviceKind(APP_ORIGIN, 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15')).toBe('browser');
   });
 });

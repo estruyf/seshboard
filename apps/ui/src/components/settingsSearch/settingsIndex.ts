@@ -231,14 +231,27 @@ export function settingsIndex(): SettingEntry[] {
       id: 'remote-enabled',
       page: 'remote',
       label: 'Allow access from my phone',
-      detail: "Follow your sessions, answer Claude and send prompts from your phone's browser. Only phones you pair here can connect.",
-      keywords: 'phone mobile remote access iphone android tunnel',
+      detail: 'Follow your sessions from your phone or another browser, answer Claude and send prompts. Only devices you pair get in.',
+      keywords: 'phone mobile remote access iphone android tunnel turn on off switch status running',
       target: '[data-remote-enabled]',
     },
-    { id: 'remote-tunnel', page: 'remote', label: 'Reach this computer through', detail: 'Cloudflare quick tunnel, Tailscale, ngrok or your own address.', keywords: 'tunnel cloudflare cloudflared tailscale ngrok proxy address', target: '[data-remote-tunnel]' },
-    { id: 'remote-port', page: 'remote', label: 'Port', detail: 'The local port Remote listens on. Your tunnel forwards to it.', keywords: 'port 47615 listen local address forward tunnel', target: '[data-remote-port]' },
-    { id: 'remote-pair', page: 'remote', label: 'Pair a phone', detail: 'Scan a QR code with your phone, then allow it here.', keywords: 'qr code pairing phone add device', target: '[data-remote-pair]' },
-    { id: 'remote-devices', page: 'remote', label: 'Paired phones', detail: 'Revoke disconnects a phone at once.', keywords: 'revoke devices phones remove', target: '[data-remote-devices]', fallback: '[data-remote-pair]' },
+    { id: 'remote-pair', page: 'remote', label: 'Pair a device', detail: 'Scan a QR code with your phone, or open the link in another browser.', keywords: 'pair a phone qr code pairing add device browser', target: '[data-remote-action="pair"]', fallback: '[data-remote-settings]' },
+    { id: 'remote-devices', page: 'remote', label: 'Paired devices', detail: 'Your phones, browsers and computers. Revoke disconnects one at once.', keywords: 'paired phones revoke devices remove browsers', target: '[data-remote-devices]', fallback: '[data-remote-settings]' },
+    { id: 'remote-rename', page: 'remote', label: 'Rename a device', detail: 'Give a paired device a name you recognise.', keywords: 'rename name device phone label', target: '[data-remote-devices]', fallback: '[data-remote-settings]' },
+    { id: 'remote-reconnect', page: 'remote', label: 'Reconnect a paired device', detail: 'After a quick tunnel restarted with a new address.', keywords: 'show the address to paired phones new address changed tunnel restarted', target: '[data-remote-link]', fallback: '[data-remote-settings]' },
+    { id: 'remote-tunnel', page: 'remote', label: 'Connection', detail: 'Cloudflare quick tunnel, Tailscale, ngrok or your own address.', keywords: 'reach this computer through tunnel cloudflare cloudflared tailscale ngrok proxy address change', target: '[data-remote-connection]', fallback: '[data-remote-settings]' },
+    { id: 'remote-port', page: 'remote', label: 'Advanced › Port', detail: 'The local port Remote listens on. Your tunnel forwards to it.', keywords: 'port 47615 listen local address forward tunnel advanced security', target: '[data-remote-advanced]', fallback: '[data-remote-settings]' },
+
+    // Other computers
+    {
+      id: 'computers-link',
+      page: 'remote',
+      label: 'Other computers',
+      detail: "Paste the link from another computer's Pair a device to follow its sessions from here.",
+      keywords: 'another computer mac pc remote pair connect link machine sessions',
+      target: '[data-remote-computers]',
+    },
+    { id: 'computers-list', page: 'remote', label: 'Paired computers', detail: 'Open its sessions, or Remove it.', keywords: 'forget remove computers machines offline open', target: '[data-computers-list]', fallback: '[data-remote-computers]' },
 
     // Backup
     { id: 'backup-export', page: 'backup', label: 'Export settings', detail: 'Choose what to include and save it to a file.', keywords: 'backup save move another computer', target: '[data-backup-export]' },

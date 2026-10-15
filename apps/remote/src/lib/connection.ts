@@ -107,7 +107,7 @@ export class RefusedError extends Error {
       code === CLOSE.unknownDevice
         ? 'Your computer no longer knows this phone. Pair it again.'
         : code === CLOSE.pairingClosed
-          ? 'This QR code was used or has expired. Click Pair a phone on your computer again.'
+          ? 'This QR code was used or has expired. Click Pair a device on your computer again.'
           : code === CLOSE.version
             ? 'Switchboard on your computer and this page are different versions. Update Switchboard.'
             : 'Your computer refused the connection.',

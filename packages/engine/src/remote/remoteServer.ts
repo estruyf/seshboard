@@ -17,9 +17,10 @@ import {
   type NoiseSession,
   type RemoteContract,
   type RpcServer,
+  REMOTE_DESKTOP_ORIGIN,
 } from '@switchboard/protocol';
 import { computerName } from './computerName.ts';
-import type { DeviceStore, RemoteDevice } from './devices.ts';
+import type { DeviceKind, DeviceStore, RemoteDevice } from './devices.ts';
 import type { Pairing } from './pairing.ts';
 
 /** A paired phone connected now. */
@@ -46,6 +47,8 @@ export interface RemoteServerOptions {
    * WebSocket and a page can't fake it, so another site open on the phone or this computer can't reach the engine.
    */
   origins: readonly string[];
+  /** The engine's public address now, kept with each device that connects (to tell when a new one hasn't reached it). */
+  address?: () => string | null;
   /** The tunnel is Cloudflare's, which sets `CF-Connecting-IP` itself (other tunnels pass it on from the client). */
   cloudflare?: () => boolean;
   log(level: 'info' | 'warn' | 'error', message: string): void;
@@ -177,10 +180,11 @@ export class RemoteServer {
       socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
       return;
     }
-    this.sockets.handleUpgrade(request, socket, head, (ws) => this.accept(ws, address));
+    this.sockets.handleUpgrade(request, socket, head, (ws) => this.accept(ws, address, deviceKind(origin, request.headers['user-agent'])));
   }
 
-  private accept(ws: WebSocket, address: string): void {
+  /** `kind`: what pairs, from the socket's origin; only a label in Settings › Remote, never what lets it in. */
+  private accept(ws: WebSocket, address: string, kind: DeviceKind): void {
     this.pending.add(ws);
     const timer = setTimeout(() => ws.terminate(), this.options.helloTimeoutMs ?? 5_000);
     ws.on('close', () => {
@@ -194,7 +198,7 @@ export class RemoteServer {
         if (hello.reason !== 'version') this.backoff.failed(address);
         return ws.close(hello.reason === 'version' ? CLOSE.version : CLOSE.refused);
       }
-      if (hello.mode === 'pair') this.pair(ws, address, hello.message1);
+      if (hello.mode === 'pair') this.pair(ws, address, hello.message1, kind);
       else this.connect(ws, address, hello.message1);
     });
   }
@@ -226,7 +230,7 @@ export class RemoteServer {
         // Revoked between the handshake and now: Revoke only closes connections it can see, which this wasn't yet.
         if (!this.options.devices.find(phoneKey)) return ws.close(CLOSE.unknownDevice);
         this.backoff.succeeded(address);
-        this.options.devices.touch(known.id);
+        this.options.devices.touch(known.id, this.options.address?.() ?? null);
         this.pending.delete(ws);
         this.connections.set(ws, { deviceId: known.id, name: known.name, since: Date.now(), rpc });
         this.connectionsChanged();
@@ -248,7 +252,7 @@ export class RemoteServer {
     });
   }
 
-  private pair(ws: WebSocket, address: string, message1: Uint8Array): void {
+  private pair(ws: WebSocket, address: string, message1: Uint8Array, kind: DeviceKind): void {
     const pairing = this.options.pairing;
     const psk = pairing.psk();
     if (!psk) return ws.close(CLOSE.pairingClosed);
@@ -286,7 +290,7 @@ export class RemoteServer {
         asked = true;
         const allowed = await pairing.ask(name, pairingCode(session.handshakeHash));
         if (!allowed) throw new RpcError('DENIED', 'Pairing was not allowed on the computer');
-        const device = this.options.devices.add(name, phoneKey);
+        const device = this.options.devices.add(name, phoneKey, kind);
         this.options.log('info', `Remote: paired ${name}`);
         return { deviceId: device.id };
       },
@@ -327,6 +331,12 @@ function toBytes(data: unknown): Uint8Array {
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
   const buffer = data as Buffer;
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+}
+
+/** What pairs, for its icon: Switchboard on another computer, a phone's browser, or a computer's browser. */
+export function deviceKind(origin: string, userAgent: string | undefined): DeviceKind {
+  if (origin === REMOTE_DESKTOP_ORIGIN) return 'computer';
+  return /Mobi|iPhone|iPad|iPod|Android/i.test(userAgent ?? '') ? 'phone' : 'browser';
 }
 
 /** The path of a request, without its query, or null when it can't be read or climbs out (`..`). */

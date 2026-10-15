@@ -485,4 +485,21 @@ export const migrations: readonly string[] = [
     attempts   INTEGER NOT NULL DEFAULT 0
   );
   `,
+
+  // v28: Other computers. This app paired with Remote on another computer, as a phone does: that computer's public
+  // key, address and the id it gave this one (this app's own device key stays in the system's keychain). And whether a
+  // device paired here is a phone or another computer, for Settings › Remote, and the address each one last connected
+  // through (to tell when a quick tunnel's new address hasn't reached them). Your own choices: keep them.
+  `
+  CREATE TABLE remote_computers (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    engine_key TEXT NOT NULL UNIQUE,
+    address    TEXT NOT NULL,
+    device_id  TEXT NOT NULL,
+    paired_at  INTEGER NOT NULL
+  );
+  ALTER TABLE remote_devices ADD COLUMN kind TEXT NOT NULL DEFAULT 'phone';
+  ALTER TABLE remote_devices ADD COLUMN last_address TEXT;
+  `,
 ];

@@ -386,13 +386,21 @@ export const RemoteStatus = z.object({
   /** Why Remote isn't running when it should. */
   problem: z
     .discriminatedUnion('kind', [
-      z.object({ kind: z.literal('port-in-use'), port: z.number() }),
+      /** `suggestedPort`: the next port that was free when Remote tried to start (null: none nearby). */
+      z.object({ kind: z.literal('port-in-use'), port: z.number(), suggestedPort: z.number().nullable().default(null) }),
       z.object({ kind: z.literal('tool-missing'), tunnel: RemoteTunnel }),
       z.object({ kind: z.literal('failed'), message: z.string() }),
     ])
     .nullable(),
-  devices: z.array(z.object({ id: z.string(), name: z.string(), createdAt: z.number(), lastSeenAt: z.number().nullable() })),
+  /** Paired devices: phones, browsers on a computer, and Switchboard on other computers. */
+  devices: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(['phone', 'browser', 'computer']).default('phone'), createdAt: z.number(), lastSeenAt: z.number().nullable() })),
   connections: z.array(z.object({ deviceId: z.string(), name: z.string(), since: z.number() })),
+  /**
+   * The tunnel came back with a new address that no paired device has used yet: a quick tunnel restarted (Cloudflare,
+   * or ngrok without a domain). Settings › Remote then offers Reconnect a paired device. Never for an address that
+   * stays the same (your own, ngrok with a domain, Tailscale).
+   */
+  addressChanged: z.boolean().default(false),
   pairing: z.object({
     offer: z.object({ expiresAt: z.number() }).nullable(),
     request: z.object({ id: z.string(), name: z.string(), code: z.string(), expiresAt: z.number() }).nullable(),

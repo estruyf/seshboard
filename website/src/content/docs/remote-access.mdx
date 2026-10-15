@@ -4,6 +4,7 @@ description: Follow your sessions from your phone, answer Claude when it needs y
 ---
 
 import Kbd from '../../components/Kbd.astro';
+import Screenshot from '../../components/Screenshot.astro';
 import OnlyOn from '../../components/OnlyOn.astro';
 import Os from '../../components/Os.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -25,13 +26,26 @@ Everything else stays on your computer: the terminal, pushing and pull requests,
 
 ## How it works
 
-Switchboard on your computer listens on `127.0.0.1`, port 47615 unless you change it under **Port** in Settings → Remote. Only your computer can reach that address. A **tunnel** gives it an `https://` address your phone can reach from anywhere. The page on your phone is the remote app at `switchboard.struyfconsulting.com/remote/`, and it connects to your computer through the tunnel.
+Switchboard on your computer listens on `127.0.0.1`, port 47615 unless you change it under **Advanced** → **Port** in Settings → Remote. Only your computer can reach that address. A **tunnel** gives it an `https://` address your phone can reach from anywhere. The page on your phone is the remote app at `switchboard.struyfconsulting.com/remote/`, and it connects to your computer through the tunnel.
 
-Only phones you pair can get in. Each phone has its own key, every connection checks that key and your computer's, and everything is encrypted from your phone to your computer. The tunnel carries your messages, but it can't read or change them.
+Only devices you pair can get in. Each one has its own key, every connection checks that key and your computer's, and everything is encrypted from your phone to your computer. The tunnel carries your messages, but it can't read or change them.
+
+## Settings → Remote
+
+<Screenshot name="settings-remote" alt="Settings on Remote: the switch next to the title, a green card that says Running with the address and Pair a device, two paired devices with Rename and Revoke, the connection My own address with Change…, Advanced folded, and Other computers with a field for a link" />
+
+Settings → Remote (<Kbd shortcut="settings" />) shows first what you open it for:
+
+- **The status card** says whether Remote works: **Running** with the address and who is connected, or what is wrong with the fix as a button. **Install Tailscale** or **Use Cloudflare instead** when a tool is missing, **Use port 47616** when another app has the port, **Try again** and **Show details** when it can't start.
+- **Paired devices**, each with when it last connected, **Rename** and **Revoke**.
+- **Connection**: the tunnel and its address. **Change…** opens the choices, and nothing changes until **Save and restart**.
+- **Advanced**: the port, and how Remote keeps others out.
+
+With Remote off and nothing paired, the page shows three steps instead: choose a tunnel, **Turn on Remote**, then pair a device.
 
 ## Choose a tunnel
 
-In **Settings → Remote** (<Kbd shortcut="settings" />), choose how your phone reaches this computer. Switchboard starts the tunnel when you turn Remote on and stops it when you turn Remote off or quit.
+Under **Connection** in Settings → Remote, click **Change…** to choose how your phone reaches this computer. Switchboard starts the tunnel when you turn Remote on and stops it when you turn Remote off or quit.
 
 | Tunnel | Needs | Address |
 |---|---|---|
@@ -40,7 +54,7 @@ In **Settings → Remote** (<Kbd shortcut="settings" />), choose how your phone 
 | **ngrok** | `ngrok` installed and signed in to your account | Stays the same with your ngrok domain |
 | **My own address** | A tunnel or proxy you run yourself, forwarding to `http://127.0.0.1` and your port (47615 by default) | Yours |
 
-**Tailscale** is the most private: only your own devices on your tailnet can reach the address. With the others, anyone who has the address can reach Remote, but only paired phones get past it.
+**Tailscale** is the most private: only your own devices on your tailnet can reach the address. With the others, anyone who has the address can reach Remote, but only paired devices get past it.
 
 ### Cloudflare with your own domain
 
@@ -64,13 +78,13 @@ Install `cloudflared` or `ngrok` with Homebrew (`brew install cloudflared`, `bre
 Install `cloudflared` or `ngrok` with winget (`winget install Cloudflare.cloudflared`, `winget install ngrok.ngrok`). Switchboard finds them where winget puts them, in Program Files and on your PATH. Tailscale's installer from tailscale.com works as it is.
 </OnlyOn>
 
-## Pair a phone
+## Pair a device
 
 <Steps>
 
-1. In **Settings → Remote**, turn on **Allow access from my phone** and choose a tunnel. Wait until the status says **Running**.
+1. In **Settings → Remote**, choose a tunnel and click **Turn on Remote**. Wait until the card says **Running**.
 
-2. Click **Pair a phone**. Switchboard shows a QR code. It works once, for two minutes.
+2. Click **Pair a device**. Switchboard shows a QR code. It works once, for two minutes.
 
 3. Scan it with your phone's camera. Your phone opens the remote app and asks for a name for the phone.
 
@@ -85,22 +99,22 @@ To use Remote in the browser of another computer instead, click **Copy link** un
 Your phone shows your sessions. Add it to your home screen to open it like an app. Next time it connects by itself.
 
 <Aside type="note" title="On an iPhone or iPad">
-Switchboard Remote on your Home Screen keeps its own pairing, apart from Safari's, and has no address bar. So pair it from there: after you scan the QR code, don't tap **Pair** in Safari. Tap **Copy link**, then Share and **Add to Home Screen**. Open Switchboard Remote from your Home Screen, tap **Paste** and pair. The link works once, for two minutes: if it runs out, click **Pair a phone** again, scan the new code and paste its link.
+Switchboard Remote on your Home Screen keeps its own pairing, apart from Safari's, and has no address bar. So pair it from there: after you scan the QR code, don't tap **Pair** in Safari. Tap **Copy link**, then Share and **Add to Home Screen**. Open Switchboard Remote from your Home Screen, tap **Paste** and pair. The link works once, for two minutes: if it runs out, click **Pair a device** again, scan the new code and paste its link.
 </Aside>
 
-A link from your computer also works pasted in: in Switchboard Remote without a pairing, paste it under **Link from your computer** and tap **Open link**. This works for a link from **Show the address to paired phones** too.
+A link from your computer also works pasted in: in Switchboard Remote without a pairing, paste it under **Link from your computer** and tap **Open link**. This works for a link from **Reconnect a paired device** too.
 
 <Aside type="tip" title="When the address changes">
-A Cloudflare quick tunnel gets a new address each time it starts. Your phone doesn't have to pair again: click **Show the address to paired phones** in Settings → Remote and scan that code. It holds no secret and pairs nothing.
+A Cloudflare quick tunnel, or ngrok without a domain, gets a new address each time it starts. When no paired device has used the new one yet, the card says **Address changed**. Your devices don't have to pair again: click **Reconnect a paired device** and scan that code with one of them. It holds no secret and pairs nothing. The same button is under **Advanced**.
 </Aside>
 
 ## Change the port
 
-Switchboard listens on port 47615. If another app uses it, or you want another one, change **Port** in Settings → Remote to a number from 1024 to 65535. Remote restarts on the new port. With **My own address**, point your tunnel at the new port too.
+Switchboard listens on port 47615. If another app uses it, the card says so and offers the next free port. To pick one yourself, open **Advanced** in Settings → Remote and change **Port** to a number from 1024 to 65535. Remote restarts on the new port. With **My own address**, point your tunnel at the new port too.
 
-## Paired phones and Revoke
+## Paired devices, Rename and Revoke
 
-**Paired phones** in Settings → Remote lists each phone with when it last connected, and **Connected now** while it is. **Revoke** disconnects a phone at once, and it can't connect again until you pair it again. A phone that doesn't connect for 30 days is removed. On the phone, **Forget this computer** in the **⋯** menu next to the computer's name removes the pairing from the phone.
+**Paired devices** in Settings → Remote lists your phones, browsers and other computers, each with when it last connected and **Connected now** while it is. **Rename** changes a device's name in place: <Kbd keys="enter" /> saves, <Kbd keys="escape" /> cancels. **Revoke** asks first, then disconnects the device at once, and it can't connect again until you pair it again. A device that doesn't connect for 30 days is removed. On the phone, **Forget this computer** in the **⋯** menu next to the computer's name removes the pairing from the phone.
 
 ## Home
 
@@ -219,11 +233,23 @@ A notification goes from your computer to your browser's push service (Apple's, 
 
 Tap a notification to open its session. In Chrome, Edge and Firefox on a computer, a notification about a command or an edit also has **Deny** and **Allow**. They open Switchboard Remote, which answers once it's connected, and says **Already answered** if you, or someone else, answered first.
 
+## Other computers
+
+Switchboard on another computer can pair with this one as a phone does, and show its sessions next to yours. Claude keeps running on the computer that has the session; you follow and steer it from the other one.
+
+1. On the computer that runs the sessions, turn Remote on, click **Pair a device**, then **Copy link**.
+2. On the other computer, open Settings → Remote (or *Connect to another computer…* in the command palette), paste the link under **Other computers** and click **Connect**.
+3. Both computers show the same 6 digits. Click **Allow** on the first one if they match.
+
+The paired computer shows under **Other computers** at the bottom of the sidebar, with how many of its sessions need you. Click it for its sessions: open one to read the conversation as it happens, answer what Claude asks, send a message or add it to Up next, and **Stop** a turn. The terminal, files and pushing stay on the computer that runs the session.
+
+When the computer's tunnel gets a new address, click **Reconnect a paired device** on it, **Copy link**, and paste that link under **Other computers** too. **Open** shows a computer's sessions, and **Remove** takes it off this list. To stop a computer from reaching yours, **Revoke** it under **Paired devices** on yours.
+
 ## When your phone can't connect
 
 A line under the header says why, when your phone can tell:
 
-- **Its tunnel address changed**: a Cloudflare quick tunnel got a new address. Click **Show the address to paired phones** in Settings → Remote and scan that code, or use a tunnel whose address stays the same.
+- **Its tunnel address changed**: a Cloudflare quick tunnel got a new address. Click **Reconnect a paired device phones** in Settings → Remote and scan that code, or use a tunnel whose address stays the same.
 - **Is it asleep or offline?**: nothing answers. Wake your computer, or check its network.
 - **Is Switchboard running, with Remote on?**: the address answers, but Switchboard doesn't.
 
@@ -236,5 +262,5 @@ A line under the header says why, when your phone can tell:
 - Messages you send from your phone show **From *your phone*** under them on the phone.
 - Scrolled up in a conversation, **Jump to latest** takes you back down. It says **New messages** when something arrived below.
 - The chip and the offline help use your computer's name, which you set in <Os mac="System Settings → General → About → Name" windows="Settings → System → About → Rename this PC" />.
-- Pairing is closed after five wrong attempts, until you click **Pair a phone** again.
+- Pairing is closed after five wrong attempts, until you click **Pair a device** again.
 - Your phone keeps its key in the browser, for this site only. Someone with your unlocked phone can use Remote until you revoke it.

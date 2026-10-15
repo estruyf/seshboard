@@ -60,11 +60,11 @@ export function App() {
         <Message title="Switchboard Remote" actions={<LinkEntry onLink={(fragment) => void open(fragment)} />}>
           {STANDALONE ? (
             <>
-              Follow and steer your Claude Code sessions from your phone. On your computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b> and click <b>Pair a phone</b>. Scan the QR code with your phone's camera, tap <b>Copy link</b> on the page that opens, and paste the link here.
+              Follow and steer your Claude Code sessions from your phone. On your computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b> and click <b>Pair a device</b>. Scan the QR code with your phone's camera, tap <b>Copy link</b> on the page that opens, and paste the link here.
             </>
           ) : (
             <>
-              Follow and steer your Claude Code sessions from your phone or another computer. On your computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b>, click <b>Pair a phone</b> and scan the QR code with your phone's camera. On another computer, click <b>Copy link</b> under the code and paste the link here.
+              Follow and steer your Claude Code sessions from your phone or another computer. On your computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b>, click <b>Pair a device</b> and scan the QR code with your phone's camera. On another computer, click <b>Copy link</b> under the code and paste the link here.
             </>
           )}
         </Message>
@@ -78,7 +78,7 @@ export function App() {
     case 'other-computer':
       return (
         <Message title="Pair this phone first" actions={<LinkEntry onLink={(fragment) => void open(fragment)} />}>
-          This link is for a computer this phone isn't paired with. Click Pair a phone in Settings › Remote on that computer and scan its QR code, or paste its link here.
+          This link is for a computer this phone isn't paired with. Click Pair a device in Settings › Remote on that computer and scan its QR code, or paste its link here.
         </Message>
       );
     case 'pair':

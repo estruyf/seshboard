@@ -82,8 +82,8 @@ The prologue binds the handshake to Switchboard, the version and the mode (`swit
 
 The QR codes open the remote app with everything after `#`, which a browser never sends in a request, so the site never sees it. The app takes it out of the address bar at once.
 
-- `#p.<engine key>.<secret>.<engine address>`: **Pair a phone**.
-- `#c.<engine key>.<engine address>`: **Show the address to paired phones**, after a quick tunnel got a new address. No secret: it only tells a phone paired with that key where the computer is now.
+- `#p.<engine key>.<secret>.<engine address>`: **Pair a device**.
+- `#c.<engine key>.<engine address>`: **Reconnect a paired device**, after a quick tunnel got a new address. No secret: it only tells a phone paired with that key where the computer is now.
 
 The engine address must be `https://` (or `http://` on `localhost`/`127.0.0.1`, for development).
 
@@ -91,7 +91,7 @@ A link can also be pasted in (`LinkEntry`, `pastedLink`): on the welcome screen,
 
 ### Pairing: `Noise_IKpsk2_25519_ChaChaPoly_SHA256`
 
-- **Pair a phone** makes a 128-bit secret, good for one use and two minutes. Closing the dialog cancels it.
+- **Pair a device** makes a 128-bit secret, good for one use and two minutes. Closing the dialog cancels it.
 - The phone makes its X25519 device key and keeps it in IndexedDB, on the remote app's origin.
 - The phone already knows the engine's static key (`IK`), and the secret (stretched to 32 bytes with SHA-256) is the pre-shared key (`psk2`). The phone knows the engine is real once the second message decrypts; the engine knows the phone scanned the code once the phone's first frame decrypts. Only then is the secret used up, and only then may the phone ask `pair.request` with its name.
 - Both sides show 6 digits from the handshake hash. Someone in the middle would see other digits.
@@ -155,6 +155,34 @@ The payload is the kind, the session id, its title and project, and one line; a 
 Where the browser shows buttons (`Notification.maxActions`: Chrome, Edge and Firefox on a computer), a tool prompt's notification has **Deny** and **Allow**. The answer is never in a URL, so a link can't answer for you: the service worker posts it to a page that is open, or opens one and keeps the answer (and itself, through `waitUntil`) until that page asks for it with `take-answer`, for at most 30 seconds. The page answers only after a fresh `sessions.list` shows the prompt still open, and says "Already answered" otherwise.
 
 Nothing listens until Remote is on: off by default, and started at launch (with its tunnel) only when it was on when the app quit.
+
+## Settings › Remote
+
+The page is laid out for daily use: the switch on the title's row, a status card (`apps/ui/src/components/remote/remoteStatusView.ts` picks its title, line and buttons from `RemoteStatus`, and its tests cover every state), Paired devices, the Connection (folded once Remote runs; a draft until **Save and restart**), and Advanced (the port and the security note). With Remote off and nothing paired, three setup steps replace it.
+
+- **The fix for each problem**: a `port-in-use` problem carries `suggestedPort`, the next port free when Remote tried (`freePort.ts`), for **Use port …**; a missing tool offers its download page and Cloudflare instead.
+- **Rename**: `remote.rename` stores a device's name (`DeviceName`, 1 to 60 characters).
+- **What a device is**, for its icon: `kind` is `computer` for `REMOTE_DESKTOP_ORIGIN`, else `phone` or `browser` from the user agent when it paired. A label, never what lets it in.
+- **Address changed**: each device keeps the engine's address it last connected through (`last_address`). `RemoteStatus.addressChanged` is true while a quick tunnel (Cloudflare, ngrok without a domain) runs at an address no paired device has used yet, so the card offers **Reconnect a paired device** (the connect link) only when it is needed.
+- **Scripted runs** (the smoke test, the screenshots, a driven app) get throwaway keys made in memory instead of the keychain's (`throwawayRemoteKey`), since they use throwaway profiles and some point HOME at a made-up folder.
+
+## Other computers
+
+Switchboard on another computer pairs with Remote as a phone does, and shows its sessions next to the local ones. The engine is the client (`packages/engine/src/remote/computerLink.ts`): the same pairing link (pasted, not scanned), the same `Noise_IKpsk2` and `Noise_IK` handshakes, framing and remote contract, from Node with `ws`. Nothing about what a paired device may do changes: the other computer is one more device in Settings › Remote, limited to `remoteContract`, and **Revoke** cuts it off.
+
+- **One device key per install**, made the first time it pairs, kept like the identity key (`safeStorage`, `remote-device.bin`; `apps/desktop/src/main/remoteIdentity.ts`). `remote_computers` (migration v28) has the other computers' public keys, addresses and the ids they gave this one, never a secret.
+- **Origin.** It sends `REMOTE_DESKTOP_ORIGIN`, which the server accepts next to the remote app's. A browser page can't send it, so it doesn't widen what a website can reach; it isn't a lock either (any program can send any `Origin`). The handshake is. The server stores a device paired from that origin with `kind: 'computer'`, for its icon in Settings › Remote.
+- **Connection.** One per paired computer, kept by the engine: a ping every 20 seconds notices a computer that went to sleep, and it reconnects with backoff up to a minute, without giving up. Close code 4403 stops it (`unpaired`).
+- **The windows** reach a computer only through `computers.call`, with `COMPUTER_METHODS`: the remote contract without `hello`, push and `device.visibility`. The other computer validates the params; the results are shown as text (`components/computers/RemoteText.tsx`: no file links, no Run, no images loaded). Its events come as `computers.event`.
+- **No loops.** A computer only ever serves its own sessions; the ones it shows from another computer are not in its list, so pairing both ways shows each computer's own sessions once.
+- **Not built yet:** New session on the other computer (the "Run on" choice, with projects matched by their git remote), Changes and Commit, Ask, plan usage, images, notifications for its sessions, and more than one window watching different sessions there (the remote contract watches one transcript per connection).
+
+| Where | What |
+|---|---|
+| `packages/protocol/src/computers.ts`, `computerConstants.ts` | The status schemas, the methods a window may call, the origin |
+| `packages/engine/src/remote/computerLink.ts` | Dialing, pairing, the connection and its backoff |
+| `packages/engine/src/remote/computerHub.ts`, `computerStore.ts` | Paired computers, their state and wording, passing calls and events on |
+| `apps/ui/src/components/computers/` | Settings › Other computers, the sidebar dock, the Computer view |
 
 ## Known limits
 

@@ -30,14 +30,14 @@ const trash = (paths: string[], scope: TrashScope) =>
 
 const appVersion = argValue('--app-version') ?? '0.0.0';
 
-/** Remote's key, from main, which keeps it in the system's keychain (see main/remoteIdentity.ts). */
+/** Remote's keys, from main, which keeps them in the system's keychain (see main/remoteIdentity.ts). */
 let nextIdentityId = 1;
 const pendingIdentity = new Map<number, (secret: Uint8Array | null) => void>();
-const remoteIdentity = () =>
+const remoteKey = (key: 'identity' | 'device') => () =>
   new Promise<Uint8Array | null>((resolve) => {
     const id = nextIdentityId++;
     pendingIdentity.set(id, resolve);
-    process.parentPort.postMessage({ type: 'remote-identity', id });
+    process.parentPort.postMessage({ type: 'remote-identity', id, key });
   });
 
 /** The website's screenshots give the demo logins plan numbers (SWITCHBOARD_DEMO_USAGE, a JSON file). */
@@ -61,7 +61,7 @@ const engine = createEngine({
   // (`npm run dev:remote`); SWITCHBOARD_NO_REMOTE=1 leaves it out.
   ...(process.env.SWITCHBOARD_NO_REMOTE === '1'
     ? {}
-    : { remote: { appVersion, identity: remoteIdentity, ...(process.env.SWITCHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SWITCHBOARD_REMOTE_APP_URL } : {}) } }),
+    : { remote: { appVersion, identity: remoteKey('identity'), deviceKey: remoteKey('device'), ...(process.env.SWITCHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SWITCHBOARD_REMOTE_APP_URL } : {}) } }),
   // The smoke test points the Claude Code check at a mock registry and must never run an update.
   claudeUpdates: { allowUpdate: process.env.SWITCHBOARD_NO_CLAUDE_UPDATE !== '1' },
   onLog: (entry) => console.error(`[engine] ${entry.level}: ${entry.message}`),

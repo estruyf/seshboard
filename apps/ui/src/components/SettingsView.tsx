@@ -413,14 +413,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
         </Section>
       );
     case 'remote':
-      return (
-        <Section
-          title="Remote"
-          description="Follow your sessions from your phone, answer Claude when it needs you, and send prompts, wherever you are. Everything else stays on this computer."
-        >
-          <RemoteSettings />
-        </Section>
-      );
+      // Its own header: the switch sits on the title's row.
+      return <RemoteSettings />;
     case 'backup':
       return (
         <Section

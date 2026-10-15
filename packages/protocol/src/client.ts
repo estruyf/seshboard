@@ -38,3 +38,5 @@ export * from './sideQuestionConstants.ts';
 export type * from './catchUp.ts';
 export * from './catchUpRules.ts';
 export type * from './remote.ts';
+export type * from './computers.ts';
+export * from './computerConstants.ts';

@@ -41,7 +41,7 @@ describe('pairing', () => {
     expect(first).not.toEqual(second);
   });
 
-  it('closes after too many failures, until Pair a phone is clicked again', () => {
+  it('closes after too many failures, until Pair a device is clicked again', () => {
     const { pairing } = make();
     pairing.start();
     for (let i = 0; i < PAIRING_MAX_FAILURES - 1; i++) pairing.failed();

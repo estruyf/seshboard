@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import { guardMemoryEdits } from './memoryStore.ts';
 import { emptyHistory, record, step, type NavHistory, type NavPlace } from './navHistory.ts';
+import { useComputers } from './computersStore.ts';
 import { useProjectPage } from './projectPageStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -24,6 +25,10 @@ function currentPlace(): NavPlace {
     }
     case 'usage':
       return { view: 'usage', profileId: useUsageView.getState().profileId };
+    case 'computer': {
+      const { openId, sessionId } = useComputers.getState();
+      return openId ? { view: 'computer', computerId: openId, sessionId } : { view: 'session', layout: s.layout, active: s.selectedId };
+    }
     default:
       return { view: s.view };
   }
@@ -34,6 +39,7 @@ const sessionExists = (id: string) => useSessions.getState().sessions.has(id) ||
 function usable(place: NavPlace): boolean {
   if (place.view === 'session') return place.layout === null || leafIds(place.layout).some(sessionExists);
   if (place.view === 'project') return useProjects.getState().projects.has(place.root);
+  if (place.view === 'computer') return useComputers.getState().status?.computers.some((c) => c.id === place.computerId) ?? false;
   return true;
 }
 
@@ -59,6 +65,9 @@ function show(place: NavPlace) {
       break;
     case 'usage':
       openUsage(place.profileId);
+      break;
+    case 'computer':
+      useComputers.getState().open(place.computerId, place.sessionId);
       break;
     default:
       useSessions.getState().setView(place.view);
@@ -100,10 +109,13 @@ export function startRecording(): () => void {
   const stopProject = useProjectPage.subscribe(note);
   // The Usage view's profile is part of its place.
   const stopUsage = useUsageView.subscribe(note);
+  // So is the computer and session of the Computer view.
+  const stopComputers = useComputers.subscribe(note);
   return () => {
     stopSessions();
     stopProject();
     stopUsage();
+    stopComputers();
   };
 }
 
