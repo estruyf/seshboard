@@ -8,6 +8,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Images and files in the remote app.** New session in the remote app takes images and files, and a session takes files next to images: tap the paperclip button, or paste or drop them on the message box. A message takes up to four images and four files, about 2.7 MB in all. Sending files, and images with a new session, needs this version of Switchboard on your computer. Queue for later doesn't take attachments.
 
+### Fixed
+
+- **Remote with Tailscale on macOS.** With Switchboard started from the Dock, turning Remote on with Tailscale failed with "The Tailscale GUI failed to start" (Tailscale.CLIError error 3), even though Tailscale was running. Switchboard now runs the Tailscale app as its command-line tool.
+
 ## [0.0.20] - 2026-10-15
 
 ### New
