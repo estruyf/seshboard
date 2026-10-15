@@ -20,6 +20,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Remote: notifications.** Your phone can tell you when a session needs you or finishes, also when the page is closed. Turn them on from the card after pairing, or from **Notifications** in the **⋯** menu. On an iPhone, add Switchboard Remote to your Home Screen first.
 - **Remote: why your phone can't connect.** Instead of one line of text, your phone says what it thinks happened (the tunnel's address changed, the computer is asleep), keeps showing the last list, and **Help** says what to do.
 
+### Fixed
+
+- **The list above the message box stays open.** When you open the background tasks or Claude's task list above the message box, it is still open when you come back to the session after going to another one or hiding it.
+
 ## [0.0.17] - 2026-10-14
 
 ### New

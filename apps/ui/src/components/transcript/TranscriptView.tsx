@@ -76,6 +76,7 @@ import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, useSessionAsk } from '../../state/askStore.ts';
 import { toggleChangesPanel, useRightPanel } from '../../state/rightPanelStore.ts';
+import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { TranscriptItem } from './TranscriptItem.tsx';
@@ -363,7 +364,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   }, [items]);
   // The task list and the background tasks start folded into their pills (the pills say how far
   // along, and how many); one opens below them at a time.
-  const [openStrip, setOpenStrip] = useState<'todos' | 'background' | null>(null);
+  // Per session, so the strip is as you left it when you come back to the session.
+  const openStrip = useTaskStrip((s) => s.open.get(sessionId)) ?? null;
   const todosOpen = openStrip === 'todos';
   const todosId = useId();
   const backgroundId = useId();
@@ -1283,7 +1285,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                           tone="muted"
                           selected={todosOpen}
                           icon={<ListTodo size={12} aria-hidden />}
-                          onClick={() => setOpenStrip((o) => (o === 'todos' ? null : 'todos'))}
+                          onClick={() => useTaskStrip.getState().toggle(sessionId, 'todos')}
                           aria-expanded={todosOpen}
                           aria-controls={todosOpen ? todosId : undefined}
                           data-tooltip={todosOpen ? 'Hide Claude’s task list' : 'Show Claude’s task list'}
@@ -1301,7 +1303,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                           shrink
                           selected={backgroundOpen}
                           icon={<LoaderCircle size={11} className="shrink-0 animate-[spin_2s_linear_infinite]" aria-hidden />}
-                          onClick={() => setOpenStrip((o) => (o === 'background' ? null : 'background'))}
+                          onClick={() => useTaskStrip.getState().toggle(sessionId, 'background')}
                           aria-expanded={backgroundOpen}
                           aria-controls={backgroundOpen ? backgroundId : undefined}
                           data-tooltip={backgroundOpen ? 'Hide what runs in the background' : 'Show what runs in the background'}
