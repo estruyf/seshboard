@@ -50,6 +50,7 @@ import { useProjects, useProjectsSync } from './state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from './state/sessionNav.ts';
 import { useSidebar, useSidebarSync } from './state/sidebarStore.ts';
 import { useTerminals, useTerminalsSync } from './state/terminalsStore.ts';
+import { toggleTerminalPanel } from './state/rightPanelStore.ts';
 import { AppTerminalFrame } from './components/terminal/AppTerminalFrame.tsx';
 import { terminalOwner, type TerminalView } from './components/terminal/appTerminal.ts';
 import { useUpdatesSync } from './state/updatesStore.ts';
@@ -155,7 +156,7 @@ function useShortcuts() {
         const owner = currentTerminalOwner();
         if (!owner) return;
         event.preventDefault();
-        useTerminals.getState().togglePanel(owner);
+        toggleTerminalPanel(owner);
       } else if (PANE_KEYS.some(([id]) => matches(event, id))) {
         // The panes' keys work with more than one pane open, and in the session view (Settings sits over it, inert).
         const sessions = useSessions.getState();

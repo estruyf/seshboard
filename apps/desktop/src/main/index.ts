@@ -1391,19 +1391,25 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${PANEL_BOX}.width === ${wide.width}`, 2_000))) return `failed: ← on the handle did not widen the panel again (${(await box())?.width}px)`;
   await shot(win, 'terminal-right-light.png');
 
-  // Changes also wants the right side: the terminal docks below until it closes.
+  // Changes also lives on the right: the terminal stays there as a tab, behind Changes until you pick it.
   let changes = 'no Changes button (not a git checkout)';
   if (await js("document.querySelector('[data-current-session] [data-toggle-changes]') !== null")) {
     await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
-    if (!(await waitInPage(win, "document.querySelector('[data-changes-panel]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'bottom' && document.querySelector('[data-terminal-dock]').disabled", 3_000))) {
-      return 'failed: with Changes open the terminal did not fall back to docking below';
+    if (!(await waitInPage(win, `document.querySelector('[data-changes-panel]') && !document.querySelector('[data-terminal-panel]') && document.querySelector('[data-right-tab="terminal"][aria-selected="false"]')`, 3_000))) {
+      return 'failed: with Changes open the terminal did not wait behind it as a tab';
     }
     await shot(win, 'terminal-with-changes.png');
-    await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
-    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right'", 3_000))) {
-      return 'failed: closing Changes did not put the terminal back on the right';
+    await js(`document.querySelector('[data-right-tab="terminal"]').click()`);
+    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right' && document.querySelector('[data-terminal-panel] [data-right-tabs]')", 3_000))) {
+      return 'failed: the Terminal tab did not bring the terminal to the front on the right';
     }
-    changes = 'docked below while Changes was open, back on the right after';
+    // Behind the terminal, the Changes button brings Changes to the front first; the second click closes it.
+    await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
+    await js("document.querySelector('[data-current-session] [data-toggle-changes]').click()");
+    if (!(await waitInPage(win, "!document.querySelector('[data-changes-panel]') && !document.querySelector('[data-right-tabs]') && document.querySelector('[data-terminal-panel]')?.dataset.terminalDockSide === 'right'", 3_000))) {
+      return 'failed: closing Changes did not leave the terminal alone on the right';
+    }
+    changes = 'a tab next to Changes on the right, alone there again after';
   }
 
   // Maximize: the button, then Esc from it; ⌘⇧J twice.
