@@ -312,7 +312,6 @@ export function SessionList({
           <Button variant="primary" onClick={onNew} aria-pressed={newOpen} disabled={offline} className="flex-1" data-remote-new>
             <Plus className="size-4" aria-hidden />
             New session
-            {wide && <Kbd shortcut="n" tone="on-accent" />}
           </Button>
           {wide && <MenuButton items={menu} side="above" />}
         </div>

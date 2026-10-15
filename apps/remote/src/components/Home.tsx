@@ -57,7 +57,6 @@ export function Home({
             <Button variant="primary" size="md" onClick={onNew} disabled={!client} className="ml-auto self-center">
               <Plus className="size-4" aria-hidden />
               New session
-              <Kbd shortcut="n" tone="on-accent" />
             </Button>
           )}
         </div>
