@@ -23,7 +23,7 @@ import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { RemoteHub } from './remoteHub.ts';
-import { capDiff, projectIdOf, remoteCatchUp, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 import { APP_ORIGIN, client, handshake } from './testPhone.ts';
 
 const cleanups: Array<() => void> = [];
@@ -41,7 +41,7 @@ const PUSH = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256
 const HIDDEN = '22222222-2222-4222-8222-222222222222';
 
 const summary = (id: string, inApp: boolean): SessionSummary =>
-  ({ id, title: 'Fix the login form', customTitle: null, cwd: ROOT, projectRoot: ROOT, gitBranch: 'main', worktree: null, updatedAt: Date.now(), unread: false, pinned: false, archivedAt: null, restoredAt: null, inApp }) as unknown as SessionSummary;
+  ({ id, title: 'Fix the login form', customTitle: null, cwd: ROOT, projectRoot: ROOT, gitBranch: 'main', worktree: null, updatedAt: Date.now(), unread: false, pinned: false, archivedAt: null, restoredAt: null, inApp, profileId: 'work' }) as unknown as SessionSummary;
 
 const message = (uuid: string): TranscriptMessage => ({ uuid, role: 'user', timestamp: 1, parentToolUseId: null, model: null, blocks: [{ type: 'text', text: uuid }] });
 
@@ -114,11 +114,18 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     archiveAfterDays: () => 7,
     scope: () => 'switchboard',
     projects: () => [
-      { root: ROOT, name: 'Web', exists: true, added: true, order: null, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } },
+      { root: ROOT, name: 'Web', exists: true, added: true, order: null, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null }, profileId: null },
       // Only Claude Code sessions here, never added to Switchboard: a phone doesn't see it.
-      { root: SEEN_ONLY, name: 'Seen', exists: true, added: false, order: null, defaults: NO_DEFAULTS },
-      { root: FIRST, name: 'Api', exists: true, added: true, order: 0, defaults: NO_DEFAULTS },
+      { root: SEEN_ONLY, name: 'Seen', exists: true, added: false, order: null, defaults: NO_DEFAULTS, profileId: null },
+      { root: FIRST, name: 'Api', exists: true, added: true, order: 0, defaults: NO_DEFAULTS, profileId: 'work' },
     ],
+    profiles: () => ({
+      profiles: [
+        { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } },
+        { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, workspace: 'worktree', baseRef: null } },
+      ],
+      defaultId: 'default',
+    }),
     readTranscript: async () => ['a', 'b', 'c'].map(message),
     watchTranscript: () => () => {},
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
@@ -202,7 +209,7 @@ describe('Remote hub', () => {
 
     const list = await remote.call('sessions.list', {});
     expect(list.sessions.map((s) => s.id)).toEqual([SESSION]);
-    expect(list.sessions[0]).toMatchObject({ projectName: 'Web', projectId: projectIdOf(ROOT) });
+    expect(list.sessions[0]).toMatchObject({ projectName: 'Web', projectId: projectIdOf(ROOT), profile: { id: 'work', name: 'Work', color: 'blue' } });
     expect(JSON.stringify(list)).not.toContain(ROOT);
     expect(list.prompts[0]).not.toHaveProperty('blockedPath');
 
@@ -239,19 +246,30 @@ describe('Remote hub', () => {
     await on();
     const { remote } = await pair(hub, port);
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'a', effort: 'high', permissionMode: 'plan', worktree: true });
-    expect(created[0]!.choice).toEqual({ model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true, baseRef: 'fresh' });
+    expect(created[0]!.choice).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true, baseRef: 'fresh' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'b', model: null });
-    expect(created[1]!.choice).toEqual({ model: null, effort: null, permissionMode: 'default', worktree: false, baseRef: 'fresh' });
+    expect(created[1]!.choice).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'default', worktree: false, baseRef: 'fresh' });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'c', permissionMode: 'bypassPermissions' as never })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    // Another profile for this session brings its defaults, under the project's own.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'd', profileId: 'work' });
+    expect(created[2]!.choice).toEqual({ profileId: 'work', model: 'opus', effort: 'high', permissionMode: 'default', worktree: true, baseRef: 'fresh' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'e', profileId: 'gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // A project linked to a profile runs with it, and its defaults.
     expect(await remote.call('later.add', { projectId: projectIdOf(FIRST), prompt: 'later', permissionMode: 'acceptEdits' })).toEqual({ id: 'later-1' });
-    expect(queued).toEqual([{ root: FIRST, prompt: 'later', choice: { model: null, effort: null, permissionMode: 'acceptEdits', worktree: false, baseRef: 'fresh' } }]);
+    expect(queued).toEqual([{ root: FIRST, prompt: 'later', choice: { profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'acceptEdits', worktree: true, baseRef: 'fresh' } }]);
     await expect(remote.call('later.add', { projectId: projectIdOf(SEEN_ONLY), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
     const options = await remote.call('options.get', {});
     expect(options.models).toEqual([{ value: 'opus', displayName: 'Opus', description: 'Most capable', supportsEffort: true }]);
     expect(options.modes).toEqual(['default', 'acceptEdits', 'plan', 'auto']);
     expect(options.efforts).toContain('medium');
-    expect(options.projects.find((p) => p.id === projectIdOf(ROOT))?.defaults).toEqual({ model: 'opus', effort: null, permissionMode: null, worktree: false });
+    expect(options.projects.find((p) => p.id === projectIdOf(ROOT))).toEqual({ id: projectIdOf(ROOT), profileId: null, defaults: { model: 'opus', effort: null, permissionMode: null, worktree: null } });
+    expect(options.projects.find((p) => p.id === projectIdOf(FIRST))?.profileId).toBe('work');
+    expect(options.profiles).toEqual([
+      { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, worktree: null } },
+      { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, worktree: true } },
+    ]);
+    expect(options.defaultProfileId).toBe('default');
     expect(JSON.stringify(options)).not.toContain(ROOT);
   });
 
@@ -446,10 +464,22 @@ describe('what a phone sees', () => {
     expect(remoteCatchUp(null)).toBeNull();
   });
 
-  it('takes the project\'s defaults for what the phone leaves out', () => {
+  it('names a session\'s profile only with more than one', () => {
+    const sources = { summaries: [summary(SESSION, true)], live: [], hosts: [] };
+    const base = { archiveAfterDays: 7, scope: 'switchboard' as const, projectNames: new Map<string, string>() };
+    const work = { id: 'work', name: 'Work', color: 'blue' as const };
+    expect(remoteSessions(sources, { ...base, profiles: [work] }).sessions[0]!.profile).toBeNull();
+    expect(remoteSessions(sources, { ...base, profiles: [{ id: 'default', name: 'Personal', color: 'yellow' }, work] }).sessions[0]!.profile).toEqual(work);
+  });
+
+  it('takes the project\'s defaults, then the profile\'s, for what the phone leaves out', () => {
     const defaults = { model: 'opus', effort: 'low' as const, permissionMode: 'acceptEdits' as const, workspace: 'worktree' as const, baseRef: 'head' as const, branch: null };
-    expect(sessionChoice({}, defaults)).toEqual({ model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head' });
-    expect(sessionChoice({ model: null, effort: null, permissionMode: 'plan', worktree: false }, defaults)).toEqual({ model: null, effort: null, permissionMode: 'plan', worktree: false, baseRef: 'head' });
+    const none = { id: 'default', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } };
+    expect(sessionChoice({}, defaults, none)).toEqual({ profileId: 'default', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head' });
+    expect(sessionChoice({ model: null, effort: null, permissionMode: 'plan', worktree: false }, defaults, none)).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false, baseRef: 'head' });
+    const work = { id: 'work', defaults: { model: 'sonnet', effort: 'high' as const, permissionMode: 'plan' as const, workspace: 'current' as const, baseRef: 'fresh' as const } };
+    expect(sessionChoice({}, NO_DEFAULTS, work)).toEqual({ profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'plan', worktree: false, baseRef: 'fresh' });
+    expect(sessionChoice({}, defaults, work)).toEqual({ profileId: 'work', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head' });
   });
 });
 

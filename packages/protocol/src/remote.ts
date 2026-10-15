@@ -4,6 +4,7 @@ import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
 import { Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { REMOTE_IMAGE_BYTES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
 
@@ -18,8 +19,13 @@ const SessionId = z.string().min(1).max(200);
 const Prompt = z.string().trim().min(1).max(MAX_PROMPT_LENGTH);
 /** A project as the phone knows it: an opaque id, never its path. */
 const ProjectId = z.string().regex(/^[a-f0-9]{16}$/);
+const ProfileId = z.string().min(1).max(100);
 /** The name a phone gives itself while pairing ("Elio's iPhone"). */
 export const DeviceName = z.string().trim().min(1).max(60);
+
+/** A Claude profile as a session row shows it: its colour and name. */
+export const RemoteSessionProfile = z.object({ id: z.string(), name: z.string(), color: ProfileColor });
+export type RemoteSessionProfile = z.infer<typeof RemoteSessionProfile>;
 
 export const RemoteSession = z.object({
   id: z.string(),
@@ -35,6 +41,8 @@ export const RemoteSession = z.object({
   /** While it runs in Switchboard: its model and permission mode, for the chips in the message box. */
   model: z.string().nullable(),
   permissionMode: PermissionMode.nullable(),
+  /** The Claude profile (login) it runs with; null while there is only one profile (the app shows none then), or not known. */
+  profile: RemoteSessionProfile.nullable(),
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 
@@ -99,8 +107,10 @@ export type RemoteTranscriptUpdate = z.infer<typeof RemoteTranscriptUpdate>;
 export const RemotePermissionMode = z.enum(['default', 'acceptEdits', 'plan', 'auto']);
 export type RemotePermissionMode = z.infer<typeof RemotePermissionMode>;
 
-/** What a phone may choose for a new session; anything left out is the project's default. */
+/** What a phone may choose for a new session; anything left out is the project's default, then its profile's. */
 export const RemoteSessionOptions = z.object({
+  /** The Claude profile to run with, for this session only; left out: the project's, else the default. */
+  profileId: ProfileId.optional(),
   model: z.string().min(1).max(200).nullable().optional(),
   effort: Effort.nullable().optional(),
   permissionMode: RemotePermissionMode.optional(),
@@ -109,15 +119,31 @@ export const RemoteSessionOptions = z.object({
 });
 export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 
-/** New session's choices: the models and efforts, and each project's defaults (null: Switchboard's own default). */
+/** A project's or a profile's defaults for new sessions (null: not set there). */
+export const RemoteDefaults = z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean().nullable() });
+export type RemoteDefaults = z.infer<typeof RemoteDefaults>;
+
+/** A Claude profile (login) as a phone knows it: its name and colour, never its folder or account. */
+export const RemoteProfile = z.object({ id: z.string(), name: z.string(), color: ProfileColor, defaults: RemoteDefaults });
+export type RemoteProfile = z.infer<typeof RemoteProfile>;
+
+/**
+ * New session's choices: the models, efforts and profiles, and each project's profile and defaults. A new session
+ * takes the project's defaults, then its profile's, then Switchboard's own.
+ */
 export const RemoteOptions = z.object({
   models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })),
   efforts: z.array(Effort),
   modes: z.array(RemotePermissionMode),
+  profiles: z.array(RemoteProfile),
+  /** The profile of projects without one of their own. */
+  defaultProfileId: z.string(),
   projects: z.array(
     z.object({
       id: ProjectId,
-      defaults: z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean() }),
+      /** The project's own profile (null: the default). */
+      profileId: z.string().nullable(),
+      defaults: RemoteDefaults,
     }),
   ),
 });

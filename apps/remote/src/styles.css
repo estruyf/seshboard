@@ -32,6 +32,14 @@
   --sb-popover: #ffffff;
   --sb-overlay-border: #d1d5da;
   --sb-overlay-shadow: 0 2px 6px rgb(21 24 31 / 0.08), 0 12px 32px -4px rgb(21 24 31 / 0.2);
+  /* Claude profile colours (dots that tell accounts apart). */
+  --sb-profile-yellow: #b08300;
+  --sb-profile-blue: #1f6feb;
+  --sb-profile-green: #1a7f37;
+  --sb-profile-purple: #8250df;
+  --sb-profile-red: #cf222e;
+  --sb-profile-orange: #d1600a;
+  --sb-profile-gray: #6e7781;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -61,6 +69,13 @@
     --sb-popover: #2a3244;
     --sb-overlay-border: #414861;
     --sb-overlay-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 10px rgb(0 0 0 / 0.35), 0 16px 40px -6px rgb(0 0 0 / 0.7);
+    --sb-profile-yellow: #ffd43b;
+    --sb-profile-blue: #74c0fc;
+    --sb-profile-green: #51cf66;
+    --sb-profile-purple: #b197fc;
+    --sb-profile-red: #ff8787;
+    --sb-profile-orange: #ffa94d;
+    --sb-profile-gray: #9ba4b7;
   }
 }
 
@@ -87,6 +102,13 @@
   --color-code: var(--sb-code-bg);
   --color-diff-added: var(--sb-diff-added);
   --color-diff-removed: var(--sb-diff-removed);
+  --color-profile-yellow: var(--sb-profile-yellow);
+  --color-profile-blue: var(--sb-profile-blue);
+  --color-profile-green: var(--sb-profile-green);
+  --color-profile-purple: var(--sb-profile-purple);
+  --color-profile-red: var(--sb-profile-red);
+  --color-profile-orange: var(--sb-profile-orange);
+  --color-profile-gray: var(--sb-profile-gray);
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, Menlo, monospace;
   /* The desktop's scale with a mouse; one step up on a touch screen (see the --sb-text-* values below). */

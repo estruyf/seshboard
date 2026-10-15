@@ -1,11 +1,34 @@
 import { FolderGit2, Folder } from 'lucide-react';
 import type { Effort, PermissionMode, RemoteOptions, RemotePermissionMode } from '@switchboard/protocol/remote-client';
-import { EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel } from '../lib/options.ts';
+import { EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, profilesOf, projectProfile } from '../lib/options.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
 
 /** The chips for a session's choices (AGENTS.md, Message box chips): the value only, the full meaning in the label. */
 
 const DEFAULT = '__default__';
+
+/**
+ * The Claude profile (login) a new session runs with, as on the computer: only with more than one profile. The
+ * project's own (or the default) says so in the list.
+ */
+export function ProfileChip({ options, projectId, value, onPick }: { options: RemoteOptions; projectId: string; value: string; onPick: (profileId: string) => void }) {
+  const profiles = profilesOf(options);
+  if (profiles.length < 2) return null;
+  const current = profiles.find((p) => p.id === value);
+  const base = projectProfile(options, projectId);
+  const own = Boolean(options.projects.find((p) => p.id === projectId)?.profileId);
+  return (
+    <ChoiceChip
+      label="Claude profile"
+      face={current?.name ?? 'Profile'}
+      icon={<span aria-hidden className={`size-2 rounded-full ${current ? PROFILE_DOT[current.color] : 'bg-faint'}`} />}
+      selected={value}
+      hook="profile"
+      options={profiles.map((p) => ({ value: p.id, label: p.id === base ? `${p.name} (${own ? 'project' : 'default'})` : p.name, dot: PROFILE_DOT[p.color] }))}
+      onPick={onPick}
+    />
+  );
+}
 
 export function ModelChip({ options, value, onPick, disabled, placement }: { options: RemoteOptions; value: string | null; onPick: (model: string | null) => void; disabled?: boolean; placement?: 'above' | 'below' }) {
   const known = options.models.some((m) => m.value === value);

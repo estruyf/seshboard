@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react';
-import type { CompanionStatus } from '@switchboard/protocol/remote-client';
+import type { CompanionStatus, RemoteSessionProfile } from '@switchboard/protocol/remote-client';
 import { keys } from '../lib/platform.ts';
 
 /**
@@ -88,6 +88,20 @@ export const STATUS_RAIL: Record<CompanionStatus, string> = {
   unread: 'border-unread',
   idle: 'border-transparent',
   stopped: 'border-transparent',
+};
+
+/**
+ * With more than one Claude profile, a row's rail is its profile's colour instead (as in Switchboard's sidebar), so
+ * you see whose account a session uses at a glance; the status still shows in the dot, the age and the group.
+ */
+export const PROFILE_RAIL: Record<RemoteSessionProfile['color'], string> = {
+  yellow: 'border-profile-yellow',
+  blue: 'border-profile-blue',
+  green: 'border-profile-green',
+  purple: 'border-profile-purple',
+  red: 'border-profile-red',
+  orange: 'border-profile-orange',
+  gray: 'border-profile-gray',
 };
 
 export const STATUS_LABEL: Record<CompanionStatus, string> = {

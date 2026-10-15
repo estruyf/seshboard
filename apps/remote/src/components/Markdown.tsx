@@ -1,16 +1,44 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { parseMarkdown, type Block, type Inline } from '../lib/markdown.ts';
+import { healMarkdown, splitBlocks } from '../lib/streamingMarkdown.ts';
 import { toast } from './Toasts.tsx';
+
+const PROSE = 'markdown flex min-w-0 flex-col gap-2 text-body break-words';
 
 /**
  * Claude's text with its markdown: headings, emphasis, lists, links, code and tables, drawn as React elements from
  * `parseMarkdown`, so nothing in a transcript ever becomes HTML. No syntax highlighting, to keep the app small.
  */
 export function Markdown({ text, className = '' }: { text: string; className?: string }) {
-  const blocks = useMemo(() => parseMarkdown(text), [text]);
-  return <div className={`markdown flex min-w-0 flex-col gap-2 text-body break-words ${className}`}>{blocks.map((block, i) => <BlockView key={i} block={block} />)}</div>;
+  return (
+    <div className={`${PROSE} ${className}`}>
+      <Blocks text={text} />
+    </div>
+  );
 }
+
+/**
+ * Text Claude is still writing, formatted as it arrives, as on the computer: split into top-level blocks so only the
+ * last one is parsed again per delta, and that one has its unclosed markers (`**bold`, `` `code ``, half a link)
+ * closed so they never show raw.
+ */
+export const StreamingMarkdown = memo(function StreamingMarkdown({ text }: { text: string }) {
+  const parts = useMemo(() => splitBlocks(text), [text]);
+  return (
+    <div className={PROSE}>
+      {parts.map((part, i) => (
+        // Blocks only ever grow at the end, so the index is a stable key.
+        <Blocks key={i} text={i === parts.length - 1 ? healMarkdown(part) : part} />
+      ))}
+    </div>
+  );
+});
+
+const Blocks = memo(function Blocks({ text }: { text: string }) {
+  const blocks = useMemo(() => parseMarkdown(text), [text]);
+  return blocks.map((block, i) => <BlockView key={i} block={block} />);
+});
 
 function BlockView({ block }: { block: Block }) {
   switch (block.type) {

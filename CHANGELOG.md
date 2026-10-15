@@ -4,6 +4,15 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **Remote: pick the Claude profile.** With more than one profile, New session on your phone shows the profile a session runs with (the project's own, else your default) as the first chip. Pick another for this session only, and the other chips show its defaults. In the list, each session's left edge has its profile's colour, as in Switchboard's sidebar, and a session's header shows its profile.
+- **Remote: answers formatted as they arrive.** Headings, lists, code and tables show formatted while Claude is still writing, as on your computer, instead of as plain text until the answer is done.
+
+### Fixed
+
+- **Remote: the row under the pointer lights up in lists.** In the model, effort, mode and worktree lists and the **⋯** menu, the row you point at is now highlighted (it barely showed in dark mode), and the chosen one has a check.
+
 ## [0.0.18] - 2026-10-15
 
 ### New

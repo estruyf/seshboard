@@ -11,6 +11,8 @@ import {
   type HandlerContext,
   type KeyPair,
   type PermissionDecision,
+  type ProfileColor,
+  type ProfileDefaults,
   type ProjectDefaults,
   type RemoteSessions,
   type RemoteStatus,
@@ -39,7 +41,7 @@ import { RemoteServer } from './remoteServer.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, type VapidKeys } from './webPush.ts';
-import { capDiff, projectIdOf, remoteCatchUp, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { capDiff, projectIdOf, remoteCatchUp, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
 /** The engine's VAPID key pair, made the first time a phone asks for it. */
@@ -68,6 +70,16 @@ export interface RemoteProject {
   /** Position in your project list (null: after the ordered ones, by name). */
   order: number | null;
   defaults: ProjectDefaults;
+  /** The project's own Claude profile (null: the default). */
+  profileId: string | null;
+}
+
+/** A Claude profile as Remote needs it: no folder, no account. */
+export interface RemoteHubProfile {
+  id: string;
+  name: string;
+  color: ProfileColor;
+  defaults: ProfileDefaults;
 }
 
 export interface RemoteHubOptions {
@@ -88,6 +100,8 @@ export interface RemoteHubOptions {
   /** The sidebar's scope, so the phone lists what the sidebar lists. */
   scope(): 'switchboard' | 'all';
   projects(): RemoteProject[];
+  /** Every Claude profile, and the one projects without their own use. */
+  profiles(): { profiles: RemoteHubProfile[]; defaultId: string };
   readTranscript(sessionId: string): Promise<TranscriptMessage[]>;
   watchTranscript(sessionId: string, listener: (update: TranscriptUpdate) => void): () => void;
   send(sessionId: string, text: string, mode: SendMode, images: RemoteImage[]): Promise<{ messageUuid: string; queued: boolean }>;
@@ -466,7 +480,7 @@ export class RemoteHub {
 
   private list(): RemoteSessions {
     const projectNames = new Map(this.options.projects().map((p) => [p.root, p.name]));
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames });
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles });
   }
 
   /** The projects New session offers, as the app's own list: the ones you added that still exist, in your order. */
@@ -481,6 +495,16 @@ export class RemoteHub {
     const project = this.yourProjects().find((p) => projectIdOf(p.root) === projectId);
     if (!project) throw new RpcError('NOT_FOUND', 'No such project');
     return project;
+  }
+
+  /** The profile a new session in `project` runs with: the one the phone chose, else the project's, else the default. */
+  private profileFor(project: RemoteProject, chosen: string | undefined): RemoteHubProfile {
+    const { profiles, defaultId } = this.options.profiles();
+    const find = (id: string | null | undefined) => (id ? profiles.find((p) => p.id === id) : undefined);
+    if (chosen && !find(chosen)) throw new RpcError('NOT_FOUND', 'That Claude profile no longer exists');
+    const profile = find(chosen) ?? find(project.profileId) ?? find(defaultId) ?? profiles[0];
+    if (!profile) throw new RpcError('NOT_FOUND', 'No Claude profile');
+    return profile;
   }
 
   /** A phone may only touch the sessions it can see in its list. */
@@ -548,11 +572,11 @@ export class RemoteHub {
       },
       'session.create': async ({ projectId, prompt, ...options }) => {
         const project = this.project(projectId);
-        return this.options.create(project.root, prompt, sessionChoice(options, project.defaults));
+        return this.options.create(project.root, prompt, sessionChoice(options, project.defaults, this.profileFor(project, options.profileId)));
       },
       'later.add': ({ projectId, prompt, ...options }) => {
         const project = this.project(projectId);
-        return this.options.queue(project.root, prompt, sessionChoice(options, project.defaults));
+        return this.options.queue(project.root, prompt, sessionChoice(options, project.defaults, this.profileFor(project, options.profileId)));
       },
       'session.markRead': ({ sessionId }) => {
         this.checkSession(sessionId);
@@ -578,15 +602,21 @@ export class RemoteHub {
         this.sessionsChanged();
         return {};
       },
-      'options.get': () => ({
-        models: this.options.models().map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })),
-        efforts: [...Effort.options],
-        modes: ['default', 'acceptEdits', 'plan', 'auto'],
-        projects: this.yourProjects().map((p) => ({
-          id: projectIdOf(p.root),
-          defaults: { model: p.defaults.model, effort: p.defaults.effort, permissionMode: p.defaults.permissionMode, worktree: p.defaults.workspace === 'worktree' },
-        })),
-      }),
+      'options.get': () => {
+        const { profiles, defaultId } = this.options.profiles();
+        return {
+          models: this.options.models().map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })),
+          efforts: [...Effort.options],
+          modes: ['default', 'acceptEdits', 'plan', 'auto'],
+          profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults) })),
+          defaultProfileId: defaultId,
+          projects: this.yourProjects().map((p) => ({
+            id: projectIdOf(p.root),
+            profileId: p.profileId && profiles.some((profile) => profile.id === p.profileId) ? p.profileId : null,
+            defaults: remoteDefaults(p.defaults),
+          })),
+        };
+      },
       'catchup.get': ({ sessionId }) => {
         this.checkSession(sessionId);
         return { catchUp: remoteCatchUp(this.options.catchUp(sessionId)) };

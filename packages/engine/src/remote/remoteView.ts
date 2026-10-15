@@ -5,11 +5,13 @@ import {
   type Effort,
   type PermissionMode,
   type PermissionRequest,
+  type ProfileDefaults,
   type ProjectDefaults,
   type RemoteBlock,
   type RemoteMessage,
   type RemotePrompt,
   type RemoteSession,
+  type RemoteSessionProfile,
   type RemoteSessionOptions,
   type RemoteSessions,
   type TranscriptBlock,
@@ -33,6 +35,8 @@ export interface ListOptions {
   scope: 'switchboard' | 'all';
   /** The names projects go by (custom names), by root. */
   projectNames: ReadonlyMap<string, string>;
+  /** Every Claude profile; a session names its own only when there is more than one. */
+  profiles?: readonly RemoteSessionProfile[];
   now?: number;
 }
 
@@ -42,6 +46,9 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
   const listed = sessionsFor(all, [], REMOTE_SESSION_LIMIT);
   const flags = new Map(sources.summaries.map((s) => [s.id, s]));
   const running = new Map(sources.hosts.filter((h) => h.state !== 'closed' && h.state !== 'error').map((h) => [h.sessionId, h]));
+  const live = new Map(sources.live.map((l) => [l.sessionId, l]));
+  const profiles = options.profiles && options.profiles.length > 1 ? new Map(options.profiles.map(({ id, name, color }) => [id, { id, name, color }])) : null;
+  const profileOf = (id: string | null | undefined) => (profiles && id ? (profiles.get(id) ?? null) : null);
   const sessions: RemoteSession[] = listed.map((s) => ({
     id: s.id,
     title: s.title,
@@ -54,6 +61,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     pinned: flags.get(s.id)?.pinned ?? false,
     model: running.get(s.id)?.model ?? null,
     permissionMode: running.get(s.id)?.permissionMode ?? null,
+    profile: profileOf(running.get(s.id)?.profileId ?? flags.get(s.id)?.profileId ?? live.get(s.id)?.profileId),
   }));
   return { sessions, prompts: promptsFor(sources.permissions ?? [], listed).map(remotePrompt) };
 }
@@ -133,8 +141,9 @@ export function capDiff(diff: { diff: string; truncated: boolean }, lines: numbe
   return { diff: all.slice(0, lines).join('\n'), truncated: true };
 }
 
-/** What a new session from a phone starts with: what the phone chose, else the project's default. */
+/** What a new session from a phone starts with: what the phone chose, else the project's default, then its profile's. */
 export interface SessionChoice {
+  profileId: string;
   model: string | null;
   effort: Effort | null;
   permissionMode: PermissionMode;
@@ -142,12 +151,22 @@ export interface SessionChoice {
   baseRef: 'fresh' | 'head';
 }
 
-export function sessionChoice(options: RemoteSessionOptions, defaults: ProjectDefaults): SessionChoice {
+export function sessionChoice(options: RemoteSessionOptions, project: ProjectDefaults, profile: { id: string; defaults: ProfileDefaults }): SessionChoice {
+  const workspace = project.workspace ?? profile.defaults.workspace;
   return {
-    model: options.model !== undefined ? options.model : defaults.model,
-    effort: options.effort !== undefined ? options.effort : defaults.effort,
-    permissionMode: options.permissionMode ?? defaults.permissionMode ?? 'default',
-    worktree: options.worktree ?? defaults.workspace === 'worktree',
-    baseRef: defaults.baseRef ?? 'fresh',
+    profileId: profile.id,
+    model: options.model !== undefined ? options.model : (project.model ?? profile.defaults.model),
+    effort: options.effort !== undefined ? options.effort : (project.effort ?? profile.defaults.effort),
+    permissionMode: options.permissionMode ?? project.permissionMode ?? profile.defaults.permissionMode ?? 'default',
+    worktree: options.worktree ?? workspace === 'worktree',
+    baseRef: project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
   };
 }
+
+/** A project's or a profile's defaults as a phone gets them. */
+export const remoteDefaults = (defaults: ProfileDefaults) => ({
+  model: defaults.model,
+  effort: defaults.effort,
+  permissionMode: defaults.permissionMode,
+  worktree: defaults.workspace === null ? null : defaults.workspace === 'worktree',
+});

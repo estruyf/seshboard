@@ -9,7 +9,8 @@ export type MenuItem =
 
 /**
  * The `⋯` menu (AGENTS.md, Buttons: what people use less often): a quiet icon button and a small list under it. Arrow
- * keys move, Escape and a tap outside close it, focus goes back to the button.
+ * keys move, and so does the mouse (one row lit at a time); Escape and a tap outside close it, focus goes back to the
+ * button.
  */
 export function MenuButton({ label = 'More', items, align = 'right', side = 'below' }: { label?: string; items: MenuItem[]; align?: 'left' | 'right'; side?: 'above' | 'below' }) {
   const [open, setOpen] = useState(false);
@@ -75,7 +76,8 @@ export function MenuButton({ label = 'More', items, align = 'right', side = 'bel
                   setOpen(false);
                   item.onSelect();
                 }}
-                className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-left text-ui outline-none pointer-fine:min-h-8 focus-visible:bg-border/50 enabled:hover:bg-border/45 aria-disabled:opacity-50 ${item.danger ? 'text-error' : 'text-text'}`}
+                onPointerMove={(event) => event.pointerType === 'mouse' && !item.disabled && event.currentTarget !== document.activeElement && event.currentTarget.focus({ preventScroll: true })}
+                className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-left text-ui outline-none pointer-fine:min-h-8 focus:bg-accent/15 aria-disabled:opacity-50 ${item.danger ? 'text-error' : 'text-text'}`}
               >
                 <span className="flex-1">{item.label}</span>
                 {item.hint && <span className="text-meta text-faint">{item.hint}</span>}

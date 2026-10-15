@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 
 export interface ChoiceOption<T> {
   value: T;
@@ -10,7 +10,8 @@ export interface ChoiceOption<T> {
 
 /**
  * A quiet chip that shows a value (the model, "Effort: Medium") and opens a small list to pick another: the list is a
- * listbox, arrow keys move, Enter picks, Escape and a tap outside close it.
+ * listbox, arrow keys move, Enter picks, Escape and a tap outside close it. The mouse moves the same highlight as the
+ * arrow keys (focus), so there is one row lit at a time; the chosen one has a check.
  */
 export function ChoiceChip<T>({
   label,
@@ -104,19 +105,21 @@ export function ChoiceChip<T>({
                 tabIndex={-1}
                 aria-selected={isSelected}
                 onClick={() => pick(option)}
+                onPointerMove={(event) => event.pointerType === 'mouse' && event.currentTarget !== document.activeElement && event.currentTarget.focus({ preventScroll: true })}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
                     pick(option);
                   }
                 }}
-                className={`flex min-h-11 cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 outline-none pointer-fine:min-h-8 pointer-fine:py-1.5 focus-visible:bg-border/50 hover:bg-border/45 ${isSelected ? 'bg-selected' : ''}`}
+                className="flex min-h-11 cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 outline-none pointer-fine:min-h-8 pointer-fine:py-1.5 focus:bg-accent/15"
               >
                 {option.dot && <span aria-hidden className={`mt-1.5 size-2 shrink-0 rounded-full ${option.dot}`} />}
                 <span className="min-w-0 flex-1">
                   <span className="block text-ui">{option.label}</span>
                   {option.description && <span className="block text-meta text-muted">{option.description}</span>}
                 </span>
+                <Check aria-hidden className={`mt-0.5 size-3.5 shrink-0 text-accent-ink ${isSelected ? '' : 'invisible'}`} />
               </li>
             );
           })}

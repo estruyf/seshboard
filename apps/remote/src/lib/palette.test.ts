@@ -14,6 +14,7 @@ const session = (id: string, title: string, change: Partial<RemoteSession> = {})
   pinned: false,
   model: null,
   permissionMode: null,
+  profile: null,
   ...change,
 });
 

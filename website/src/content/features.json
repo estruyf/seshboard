@@ -1222,6 +1222,16 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-profile",
+      "name": "Remote: the Claude profile of a new session, in the list and in a session's header",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-streaming-markdown",
+      "name": "Remote: answers formatted while Claude writes them",
+      "page": "remote-access"
+    },
+    {
       "id": "project-tab:actions",
       "name": "Actions tab",
       "page": "projects/actions"

@@ -6,6 +6,7 @@ import { transcriptItems } from '../lib/steps.ts';
 import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessages, resultsByCall, type Streaming } from '../lib/transcript.ts';
 import type { Client } from './Connected.tsx';
 import { ItemView } from './MessageView.tsx';
+import { StreamingMarkdown } from './Markdown.tsx';
 import { answer } from './answer.ts';
 import { CatchUpCard } from './CatchUpCard.tsx';
 import { ChangesSheet, CommitSheet, type ChangesState } from './ChangesSheet.tsx';
@@ -16,7 +17,7 @@ import { DockedPrompt } from './PermissionCard.tsx';
 import { toast } from './Toasts.tsx';
 import { useFinePointer, useMedia } from '../lib/media.ts';
 import { addReason, imageFiles, toImage } from '../lib/images.ts';
-import { MODE_DOT, MODE_SHORT, modelLabel } from '../lib/options.ts';
+import { MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT } from '../lib/options.ts';
 import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
 import { Button, STATUS_LABEL, StatusDot } from './ui.tsx';
 
@@ -125,6 +126,7 @@ export function SessionView({
   useEffect(() => {
     if (client && running && !options) void client.call('options.get', {}).then(setOptions, () => {});
   }, [client, running, options]);
+  const profile = session?.profile ?? null;
 
   const turnEnded = status !== 'working';
   useEffect(loadChanges, [client, sessionId, turnEnded, catchUp?.turnId]);
@@ -203,6 +205,15 @@ export function SessionView({
                 <StatusDot status={session.status} />
                 {STATUS_LABEL[session.status]} · {session.projectName}
                 {session.branch ? ` · ${session.branch}` : ''}
+                {profile && (
+                  <>
+                    {' · '}
+                    <span className="inline-flex items-center gap-1" title={`Claude profile: ${profile.name}`} data-remote-profile>
+                      <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${PROFILE_DOT[profile.color]}`} />
+                      {profile.name}
+                    </span>
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -403,10 +414,17 @@ function Transcript({
                 {items.map((item, index) => (
                   <ItemView key={item.key} item={item} results={results} live={working && index === items.length - 1} />
                 ))}
-                {streaming.kind && (
-                  <p className={`text-body whitespace-pre-wrap ${streaming.kind === 'text' ? '' : 'text-muted italic'}`} aria-live="polite">
-                    {streaming.kind === 'tool' ? `Running ${streaming.text}…` : streaming.text}
-                  </p>
+                {streaming.kind === 'text' ? (
+                  <div data-remote-streaming>
+                    <StreamingMarkdown text={streaming.text} />
+                    <span className="mt-0.5 block h-3.5 w-1.5 animate-pulse bg-accent-ink" aria-hidden />
+                  </div>
+                ) : (
+                  streaming.kind && (
+                    <p className="text-body whitespace-pre-wrap text-muted italic" aria-live="polite">
+                      {streaming.kind === 'tool' ? `Running ${streaming.text}…` : streaming.text}
+                    </p>
+                  )
                 )}
               </div>
             </>

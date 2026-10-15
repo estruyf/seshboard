@@ -3,10 +3,10 @@ import { ChevronLeft, Search } from 'lucide-react';
 import type { RemoteOptions, RemoteProject, RemoteSession } from '@switchboard/protocol/remote-client';
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer } from '../lib/media.ts';
-import { changedFrom, defaultChoice, takesEffort, type Choice } from '../lib/options.ts';
+import { changedFrom, defaultChoice, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
 import { lastProject, rememberProject } from '../lib/storage.ts';
 import type { Client } from './Connected.tsx';
-import { EffortChip, ModeChip, ModelChip, WorkspaceChip } from './OptionChips.tsx';
+import { EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip } from './OptionChips.tsx';
 import { toast } from './Toasts.tsx';
 import { Button, Kbd } from './ui.tsx';
 
@@ -20,8 +20,8 @@ const DRAFT = 'switchboard-remote:new-draft';
 /**
  * New session in one of your projects, the ones you added in Switchboard. The tiles (one row that scrolls sideways)
  * say what's going on in each, most recent first; the project you last started in (or the one with the newest session)
- * is picked for you, so most of the time you only type. Under the prompt, the project's defaults for model, effort,
- * mode and worktree as chips, to change for this session only. Queue for later puts it in Switchboard's queue instead,
+ * is picked for you, so most of the time you only type. Under the prompt, the project's profile (with more than one)
+ * and its defaults for model, effort, mode and worktree as chips, to change for this session only. Queue for later puts it in Switchboard's queue instead,
  * while the project has a session working.
  */
 export function NewSession({ client, sessions, banner, onBack, onStarted, initialProject = null }: { client: Client; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
@@ -69,7 +69,9 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
     if (fine) box.current?.focus();
   };
 
-  const defaults = defaultChoice(options, projectId);
+  // Another profile brings its defaults, under the project's own and what you changed.
+  const baseProfile = projectProfile(options, projectId);
+  const defaults = defaultChoice(options, projectId, changes.profileId ?? baseProfile);
   const choice: Choice = { ...defaults, ...changes };
   const change = (next: Partial<Choice>) => setChanges((current) => ({ ...current, ...next }));
   const ready = Boolean(client && projectId && prompt.trim() && !busy);
@@ -78,7 +80,7 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
     setBusy(true);
     setError(null);
     try {
-      const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults) });
+      const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults, baseProfile) });
       rememberProject(projectId!);
       sessionStorage.removeItem(DRAFT);
       onStarted(sessionId);
@@ -92,7 +94,7 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
     setBusy(true);
     setError(null);
     try {
-      await client!.call('later.add', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults) });
+      await client!.call('later.add', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults, baseProfile) });
       toast('Queued for later', { detail: `In ${picked?.name ?? 'the project'}. Start it from the queue in Switchboard.` });
       sessionStorage.removeItem(DRAFT);
       setPrompt('');
@@ -209,6 +211,7 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
             {options && picked && (
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choices for this session">
+                  <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} />
                   <ModelChip options={options} value={choice.model} onPick={(model) => change({ model })} />
                   {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} />}
                   <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} />

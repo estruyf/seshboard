@@ -18,10 +18,10 @@ On your phone you can:
 - send a prompt, or add one to Up next while Claude works, and remove it again;
 - see what a finished session did, look at its changes and commit them;
 - stop Claude's turn, mark a session as read or archive it;
-- start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of model, effort, mode and worktree;
+- start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of Claude profile, model, effort, mode and worktree;
 - get a notification when a session needs you or finishes.
 
-Everything else stays on your computer: the terminal, pushing and pull requests, memory, settings and attachments.
+Everything else stays on your computer: the terminal, pushing and pull requests, memory, settings, managing profiles and attachments.
 
 ## How it works
 
@@ -101,15 +101,15 @@ What Claude asks shows first, as cards with a pink frame, the oldest first:
 
 Tap anywhere else on a card to open its session. If someone answered first, on your computer or another phone, the phone says **Already answered**.
 
-Below the cards are your sessions by group: working, today, yesterday and earlier. Sessions you haven't read have a bold title. **New session** is at the bottom of the screen.
+Below the cards are your sessions by group: working, today, yesterday and earlier. Sessions you haven't read have a bold title. With more than one Claude profile, each session's left edge has its profile's colour, as in Switchboard's sidebar. **New session** is at the bottom of the screen.
 
 ## A session
 
-The header shows the session's status, project and branch. The **⋯** menu has **Stop** while Claude works, **Mark as read** and **Archive**. Opening a session marks it as read, as on your computer.
+The header shows the session's status, project and branch, and with more than one Claude profile, the profile it runs with. The **⋯** menu has **Stop** while Claude works, **Mark as read** and **Archive**. Opening a session marks it as read, as on your computer.
 
 When Claude needs you, the question stays above the message box, so it doesn't scroll away: **Claude needs you**, what it asks, and **Deny**, **Always allow** when it's offered, and **Allow**. The arrow folds it to one line while you read the conversation. With more than one, **1 of 2** and the arrows step through them. While it's open, the message box says **Or tell Claude what to do instead**: what you send there says no, with your message as the reason.
 
-Claude's answers show headings, lists, links, code and tables. Code blocks have **Copy**. A run of tool calls is one line, such as **6 steps · edited 3 files, ran 2 commands**: tap it to see each step. The run Claude is working on stays open.
+Claude's answers show headings, lists, links, code and tables, also while Claude is still writing them. Code blocks have **Copy**. A run of tool calls is one line, such as **6 steps · edited 3 files, ran 2 commands**: tap it to see each step. The run Claude is working on stays open.
 
 When a session finished, it starts with its catch-up, as on your computer: how it ended, how long it takes to review, what Claude did, whether the tests passed, and how much changed. The conversation is folded under it: tap **Show the conversation** to read it. Above the message box, **Continue**, **Run the tests** and **Open a PR** send that message, and **Mark as read** goes back to the list.
 
@@ -127,6 +127,8 @@ The file button in a session's header, and **Changes** on its catch-up, open wha
 ## New session
 
 Pick a project from the row of tiles (swipe for more), then type what Claude should do. Under the box, chips show the project's defaults: the model, the effort, the permission mode, and **This folder** or **New worktree**. Tap one to change it for this session only.
+
+With more than one Claude profile, the first chip is the profile the session runs with: the project's own, else your default profile. Pick another for this session only. The other chips then show that profile's defaults, where the project sets none.
 
 While a session works in that project, **Queue for later** puts the prompt in Switchboard's queue instead. Start it from the queue on your computer.
 

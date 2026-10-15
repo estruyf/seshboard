@@ -23,10 +23,17 @@ const MINUTE = 60_000;
 const now = Date.now();
 
 const PROJECTS = [
-  { root: '/demo/tideline', name: 'tideline' },
-  { root: '/demo/harbor-api', name: 'harbor-api' },
-  { root: '/demo/lighthouse', name: 'lighthouse' },
+  { root: '/demo/tideline', name: 'tideline', profileId: null },
+  { root: '/demo/harbor-api', name: 'harbor-api', profileId: 'work' },
+  { root: '/demo/lighthouse', name: 'lighthouse', profileId: null },
 ];
+const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null };
+const PROFILES = [
+  { id: 'default', name: 'Personal', color: 'yellow' as const, defaults: NO_DEFAULTS },
+  { id: 'work', name: 'Work', color: 'blue' as const, defaults: { ...NO_DEFAULTS, workspace: 'worktree' as const } },
+];
+/** The profile a demo session runs with: its project's. */
+const profileOf = (root: string) => PROJECTS.find((p) => p.root === root)?.profileId ?? 'default';
 
 interface DemoSession {
   id: string;
@@ -72,7 +79,7 @@ const summaries = (): SessionSummary[] =>
         viewedAt: null,
         unread: !read.has(s.id) && (s.unread ?? false),
         inApp: true,
-        profileId: 'default',
+        profileId: profileOf(s.root),
       }) as SessionSummary,
   );
 
@@ -95,7 +102,7 @@ const hosts = (): SessionHostInfo[] =>
         promptedAt: null,
         queue: [],
         queueHold: null,
-        profileId: 'default',
+        profileId: profileOf(s.root),
         backgroundTasks: [],
       }) as unknown as SessionHostInfo,
   );
@@ -264,6 +271,41 @@ const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
 const appState = createAppStateStore(cache.db);
 const watchers = new Map<string, Set<(update: TranscriptUpdate) => void>>();
 
+/** The answer to a message from the phone, written a few words at a time as Claude would, then put in the transcript. */
+const REPLY = [
+  '## Done',
+  '',
+  'I changed **two files** and ran the tests:',
+  '',
+  '- `src/limit.ts`: the bucket refills every *second*',
+  '- `src/limit.test.ts`: a test for the `429` answer',
+  '',
+  '| File | Lines |',
+  '| --- | --- |',
+  '| limit.ts | +12 −3 |',
+  '| limit.test.ts | +28 |',
+  '',
+  '```ts',
+  'export const REFILL_MS = 1_000;',
+  '```',
+  '',
+  'See [the docs](https://switchboard.struyfconsulting.com/) for more.',
+].join('\n');
+function streamReply(sessionId: string) {
+  const words = REPLY.split(/(?<=\s)/);
+  let at = 0;
+  const timer = setInterval(() => {
+    if (at < words.length) {
+      hub.stream({ sessionId, kind: 'text', text: words.slice(at, at + 2).join('') });
+      at += 2;
+      return;
+    }
+    clearInterval(timer);
+    for (const listener of watchers.get(sessionId) ?? []) listener({ sessionId, mode: 'append', messages: [text(`reply-${Date.now()}`, 'assistant', REPLY, 0)], error: null } as TranscriptUpdate);
+    hub.stream({ sessionId, kind: 'clear', text: '' });
+  }, 120);
+}
+
 const hub: RemoteHub = new RemoteHub({
   db: cache.db,
   appState,
@@ -274,7 +316,8 @@ const hub: RemoteHub = new RemoteHub({
   sources: () => ({ summaries: summaries().filter((s) => !archived.has(s.id)), live: [], hosts: hosts(), permissions }),
   archiveAfterDays: () => 30,
   scope: () => 'switchboard',
-  projects: () => PROJECTS.map((p, order) => ({ ...p, exists: true, added: true, order, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null } })),
+  projects: () => PROJECTS.map((p, order) => ({ ...p, exists: true, added: true, order, defaults: { ...NO_DEFAULTS, branch: null } })),
+  profiles: () => ({ profiles: PROFILES, defaultId: 'default' }),
   readTranscript: async (sessionId) => transcript(sessionId),
   watchTranscript: (sessionId, listener) => {
     const set = watchers.get(sessionId) ?? new Set();
@@ -284,6 +327,7 @@ const hub: RemoteHub = new RemoteHub({
   send: async (sessionId, message) => {
     const uuid = `sent-${Date.now()}`;
     for (const listener of watchers.get(sessionId) ?? []) listener({ sessionId, mode: 'append', messages: [text(uuid, 'user', message, 0)], error: null } as TranscriptUpdate);
+    streamReply(sessionId);
     return { messageUuid: uuid, queued: false };
   },
   dequeue: () => {},

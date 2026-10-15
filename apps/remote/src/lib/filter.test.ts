@@ -14,6 +14,7 @@ const session = (id: string, status: RemoteSession['status'], extra: Partial<Rem
   pinned: false,
   model: null,
   permissionMode: null,
+  profile: null,
   ...extra,
 });
 const prompt = (sessionId: string, createdAt: number): RemotePrompt => ({ requestId: `r-${sessionId}`, sessionId, toolName: 'Bash', input: { command: 'ls' }, title: null, description: null, alwaysLabel: null, createdAt });

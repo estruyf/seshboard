@@ -962,7 +962,8 @@ export function createEngine(options: EngineOptions): Engine {
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
       archiveAfterDays: () => retention.archiveAfterDays,
       scope: () => sidebarScope,
-      projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults })),
+      projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),
+      profiles: () => ({ profiles: profiles.exportEntries(), defaultId: profiles.defaultId() }),
       readTranscript: (sessionId) => transcripts.read(sessionId),
       watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
       send: async (sessionId, text, mode, images) => {
@@ -982,11 +983,11 @@ export function createEngine(options: EngineOptions): Engine {
           permissionMode: choice.permissionMode,
           effort: choice.effort,
           worktree: choice.worktree ? { name: randomWorktreeName(), baseRef: choice.baseRef } : null,
-          profileId: null,
+          profileId: choice.profileId,
           checkoutBranch: null,
         }),
       queue: (root, prompt, choice) => {
-        const item = later.add({ cwd: root, prompt, model: choice.model, effort: choice.effort, permissionMode: choice.permissionMode, workspace: choice.worktree ? 'worktree' : 'current', baseRef: choice.baseRef }, {});
+        const item = later.add({ cwd: root, prompt, model: choice.model, effort: choice.effort, permissionMode: choice.permissionMode, workspace: choice.worktree ? 'worktree' : 'current', baseRef: choice.baseRef, profileId: choice.profileId }, {});
         laterChanged();
         return { id: item.id };
       },

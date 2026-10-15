@@ -1,4 +1,4 @@
-import type { Effort, PermissionMode, RemoteOptions, RemotePermissionMode } from '@switchboard/protocol/remote-client';
+import type { Effort, PermissionMode, RemoteOptions, RemotePermissionMode, RemoteProfile } from '@switchboard/protocol/remote-client';
 
 /**
  * New session's choices on a phone, worded as on the computer (apps/ui `lib/modes.ts`, `newSession/route.ts`). Pure,
@@ -43,22 +43,54 @@ export const MODE_DOT: Record<PermissionMode, string> = {
 
 export const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 
-/** What a new session starts with: the project's defaults until you change one, for this session only. */
+/** The dot of a Claude profile's colour, as a theme colour. */
+export const PROFILE_DOT: Record<RemoteProfile['color'], string> = {
+  yellow: 'bg-profile-yellow',
+  blue: 'bg-profile-blue',
+  green: 'bg-profile-green',
+  purple: 'bg-profile-purple',
+  red: 'bg-profile-red',
+  orange: 'bg-profile-orange',
+  gray: 'bg-profile-gray',
+};
+
+/** What a new session starts with: the project's defaults, then its profile's, until you change one, for this session only. */
 export interface Choice {
+  profileId: string;
   model: string | null;
   effort: Effort | null;
   permissionMode: PermissionMode;
   worktree: boolean;
 }
 
-export function defaultChoice(options: RemoteOptions | null, projectId: string | null): Choice {
-  const defaults = options?.projects.find((p) => p.id === projectId)?.defaults;
-  return { model: defaults?.model ?? null, effort: defaults?.effort ?? null, permissionMode: defaults?.permissionMode ?? 'default', worktree: defaults?.worktree ?? false };
+/** The profiles, also from a computer whose Switchboard doesn't send them yet. */
+export const profilesOf = (options: RemoteOptions | null): RemoteProfile[] => options?.profiles ?? [];
+
+/** The profile a new session in the project runs with unless you pick another: the project's, else the default. */
+export function projectProfile(options: RemoteOptions | null, projectId: string | null): string {
+  return options?.projects.find((p) => p.id === projectId)?.profileId ?? options?.defaultProfileId ?? 'default';
 }
 
-/** Only what differs from the project's defaults goes to the computer, so a default changed meanwhile still applies. */
-export function changedFrom(choice: Choice, defaults: Choice): { model?: string | null; effort?: Effort | null; permissionMode?: RemotePermissionMode; worktree?: boolean } {
+/** The project's defaults, then those of the profile (the project's own unless you picked another). */
+export function defaultChoice(options: RemoteOptions | null, projectId: string | null, profileId: string = projectProfile(options, projectId)): Choice {
+  const project = options?.projects.find((p) => p.id === projectId)?.defaults;
+  const profile = profilesOf(options).find((p) => p.id === profileId)?.defaults;
   return {
+    profileId,
+    model: project?.model ?? profile?.model ?? null,
+    effort: project?.effort ?? profile?.effort ?? null,
+    permissionMode: project?.permissionMode ?? profile?.permissionMode ?? 'default',
+    worktree: project?.worktree ?? profile?.worktree ?? false,
+  };
+}
+
+/**
+ * Only what differs from the defaults goes to the computer, so a default changed meanwhile still applies; the profile
+ * only when it isn't the project's (`projectProfileId`).
+ */
+export function changedFrom(choice: Choice, defaults: Choice, projectProfileId: string = defaults.profileId): { profileId?: string; model?: string | null; effort?: Effort | null; permissionMode?: RemotePermissionMode; worktree?: boolean } {
+  return {
+    ...(choice.profileId !== projectProfileId ? { profileId: choice.profileId } : {}),
     ...(choice.model !== defaults.model ? { model: choice.model } : {}),
     ...(choice.effort !== defaults.effort ? { effort: choice.effort } : {}),
     ...(choice.permissionMode !== defaults.permissionMode && isRemoteMode(choice.permissionMode) ? { permissionMode: choice.permissionMode } : {}),

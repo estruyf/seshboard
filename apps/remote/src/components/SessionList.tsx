@@ -10,7 +10,7 @@ import { MenuButton, type MenuItem } from './Menu.tsx';
 import { NeedsYouCard } from './NeedsYouCard.tsx';
 import { promptShort } from '../lib/prompts.ts';
 import { useLeaving } from './useLeaving.ts';
-import { Button, Kbd, Logo, SectionHeader, STATUS_RAIL, StatusDot } from './ui.tsx';
+import { Button, Kbd, Logo, PROFILE_RAIL, SectionHeader, STATUS_RAIL, StatusDot } from './ui.tsx';
 
 const GROUP_TONE: Record<SessionGroup, string> = {
   'needs-you': 'text-warn',
@@ -240,7 +240,9 @@ export function SessionList({
                       aria-current={selected ? 'page' : undefined}
                       data-remote-session={session.id}
                       data-remote-nav="row"
-                      className={`flex w-full items-center gap-2.5 border-l-[3px] text-left transition-colors focus-visible:-outline-offset-2 ${wide ? 'min-h-11 px-3 py-1' : 'min-h-14 px-4 py-2 pointer-fine:min-h-12'} ${STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
+                      data-remote-profile={session.profile?.id}
+                      title={session.profile ? `Claude profile: ${session.profile.name}` : undefined}
+                      className={`flex w-full items-center gap-2.5 border-l-[3px] text-left transition-colors focus-visible:-outline-offset-2 ${wide ? 'min-h-11 px-3 py-1' : 'min-h-14 px-4 py-2 pointer-fine:min-h-12'} ${session.profile ? PROFILE_RAIL[session.profile.color] : STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
                     >
                       <StatusDot status={session.status} />
                       <span className="min-w-0 flex-1">
