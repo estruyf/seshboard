@@ -1,0 +1,52 @@
+import { describe, expect, it } from 'vitest';
+import type { RemoteSession } from '@switchboard/protocol/remote-client';
+import { age, groupSessions, projectStatus, startOfDay } from './groups.ts';
+
+const NOW = new Date(2026, 9, 15, 14, 0).getTime();
+const HOUR = 3_600_000;
+const session = (id: string, status: RemoteSession['status'], updatedAt: number, projectId = 'aaaaaaaaaaaaaaaa'): RemoteSession => ({ id, title: id, projectId, projectName: 'Web', branch: null, status, updatedAt });
+
+describe('groupSessions', () => {
+  it('puts what needs you and what works first, then the rest by calendar day, newest first', () => {
+    const today = startOfDay(NOW);
+    const groups = groupSessions(
+      [
+        session('old', 'idle', today - 3 * 24 * HOUR),
+        session('morning', 'unread', today + HOUR),
+        session('noon', 'idle', today + 4 * HOUR),
+        session('last-night', 'idle', today - HOUR),
+        session('asks', 'needs-you', today - 5 * 24 * HOUR),
+        session('busy', 'working', today),
+      ],
+      NOW,
+    );
+    expect(groups.map((g) => [g.group, g.sessions.map((s) => s.id)])).toEqual([
+      ['needs-you', ['asks']],
+      ['working', ['busy']],
+      ['today', ['noon', 'morning']],
+      ['yesterday', ['last-night']],
+      ['earlier', ['old']],
+    ]);
+  });
+
+  it('leaves out empty sections', () => {
+    expect(groupSessions([session('a', 'idle', NOW)], NOW).map((g) => g.group)).toEqual(['today']);
+    expect(groupSessions([], NOW)).toEqual([]);
+  });
+});
+
+describe('projectStatus', () => {
+  const p = 'bbbbbbbbbbbbbbbb';
+  it('says how many need you first, then how many work, else how long it has been quiet', () => {
+    expect(projectStatus(p, [session('a', 'needs-you', NOW, p), session('b', 'needs-you', NOW, p), session('c', 'working', NOW, p)], NOW)).toEqual({ tone: 'needs-you', label: '2 needs you' });
+    expect(projectStatus(p, [session('c', 'working', NOW, p)], NOW)).toEqual({ tone: 'working', label: '1 working' });
+    expect(projectStatus(p, [session('d', 'idle', NOW - 2 * HOUR, p), session('e', 'needs-you', NOW, 'other')], NOW)).toEqual({ tone: 'idle', label: 'Idle · 2h' });
+    expect(projectStatus(p, [], NOW)).toEqual({ tone: 'idle', label: 'No recent sessions' });
+  });
+});
+
+describe('age', () => {
+  it('is short', () => {
+    expect([age(NOW, NOW), age(NOW - 5 * 60_000, NOW), age(NOW - 3 * HOUR, NOW), age(NOW - 50 * HOUR, NOW)]).toEqual(['now', '5m', '3h', '2d']);
+  });
+});

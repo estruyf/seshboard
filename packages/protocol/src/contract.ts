@@ -52,6 +52,7 @@ import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
 import { CompanionTarget } from './companion.ts';
+import { RemoteSettings, RemoteStatus } from './remote.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
 import { KEEP_REASONS } from './retention.ts';
 import { ExportCandidate, HealthFinding, LoadEntry, MemoryHit, MemoryImportPreview, MemoryList, PersonalMemory, SectionCopy, SharePreview, ShareTarget } from './memory.ts';
@@ -785,6 +786,21 @@ export const contract = {
     },
     /** Whether the companion socket is listening, and how many editors are connected to it. */
     'companion.status': { params: z.object({}), result: z.object({ listening: z.boolean(), clients: z.number(), error: z.string().nullable() }) },
+
+    // --- Remote: follow and steer sessions from a phone (docs/remote-access.md) --------------------------------
+    'remote.status': { params: z.object({}), result: RemoteStatus },
+    /** Changes Settings › Remote; the server starts, restarts or stops to match. */
+    'remote.configure': { params: RemoteSettings.partial(), result: RemoteStatus },
+    /** Pair a phone: the link for the QR code (good for one use and two minutes). */
+    'remote.pair.start': { params: z.object({}), result: z.object({ url: z.string(), expiresAt: z.number() }) },
+    /** A link for phones already paired, with the engine's current address (a tunnel that got a new one). */
+    'remote.connectLink': { params: z.object({}), result: z.object({ url: z.string() }) },
+    /** The pairing dialog was closed: the QR code stops working, and a phone waiting for Allow is denied. */
+    'remote.pair.cancel': { params: z.object({}), result: z.object({}) },
+    /** Allow or Deny for the phone waiting with this request's code. */
+    'remote.pair.decide': { params: z.object({ requestId: z.string().min(1).max(100), allow: z.boolean() }), result: z.object({}) },
+    /** Revoke: the device can't connect any more, and its open connections close at once. */
+    'remote.revoke': { params: z.object({ deviceId: z.string().min(1).max(100) }), result: z.object({}) },
     /**
      * Continues a session in an editor's Claude Code extension: stops it here and waits for its process to exit,
      * opens its folder in the editor, then the session in the extension (it only resumes sessions of the folder
@@ -1019,6 +1035,10 @@ export const contract = {
     'companion.context': z.object({ deliveryId: z.string(), target: CompanionTarget, items: ContextItems, reveal: z.boolean() }),
     /** The companion asked to show a session (its status bar item): select it and bring the window forward. */
     'companion.reveal': z.object({ sessionId: z.string() }),
+    /** Settings › Remote changed: listening, devices, connections, pairing. */
+    'remote.changed': RemoteStatus,
+    /** A prompt or an answer to a permission prompt came from a paired phone, for its label in the conversation. */
+    'remote.fromDevice': z.object({ sessionId: z.string(), messageUuid: z.string().nullable(), requestId: z.string().nullable(), device: z.string() }),
     /** A project's memory or instruction files changed (`root` null: the personal folder): list them again. */
     'memory.changed': z.object({ root: z.string().nullable() }),
   },
