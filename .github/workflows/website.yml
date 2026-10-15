@@ -1,5 +1,5 @@
 # Builds the website (website/, Astro + Starlight) and publishes it to GitHub Pages at
-# https://switchboard.struyfconsulting.com/. Pull requests that touch the site, the UI (the shortcuts page is
+# https://switchboard.struyfconsulting.com/, with the remote app (apps/remote) at /remote/. Pull requests that touch the site, the UI (the shortcuts page is
 # built from its registry) or the changelog only build it, so a broken link or a missing screenshot fails there.
 name: Website
 
@@ -8,6 +8,8 @@ on:
     branches: [main]
     paths:
       - "website/**"
+      - "apps/remote/**"
+      - "packages/protocol/src/remote*.ts"
       - "apps/ui/src/lib/shortcuts.ts"
       - "CHANGELOG.md"
       - "docs/videos/**"
@@ -15,6 +17,8 @@ on:
   pull_request:
     paths:
       - "website/**"
+      - "apps/remote/**"
+      - "packages/protocol/src/remote*.ts"
       - "apps/ui/**"
       - "CHANGELOG.md"
       - ".github/workflows/website.yml"
@@ -41,9 +45,9 @@ jobs:
           node-version: 24
           cache: npm
 
-      # Only the website's dependencies: the site needs none of Electron's.
+      # Only the website's dependencies and the remote app's (built into the site at /remote/): none of Electron's.
       - name: Install
-        run: npm ci --workspace @switchboard/website --include-workspace-root
+        run: npm ci --workspace @switchboard/website --workspace @switchboard/remote --workspace @switchboard/protocol --include-workspace-root
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
 

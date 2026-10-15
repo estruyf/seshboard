@@ -398,4 +398,17 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX side_questions_session ON side_questions (session_id, at);
   `,
+
+  // v24: Remote, the phones you paired. Only their public keys: a copy of the database gives nobody access. Your
+  // own choices, not derived from ~/.claude: keep them when rebuilding.
+  `
+  CREATE TABLE remote_devices (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    public_key   TEXT NOT NULL UNIQUE,
+    created_at   INTEGER NOT NULL,
+    last_seen_at INTEGER,
+    revoked_at   INTEGER
+  );
+  `,
 ];

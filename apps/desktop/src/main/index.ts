@@ -9,6 +9,7 @@ import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboar
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { EngineProcess } from './engineProcess.ts';
+import { remoteIdentity } from './remoteIdentity.ts';
 import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
@@ -305,6 +306,15 @@ function openSession(sessionId: string): void {
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
   const request = message as { type?: unknown; id?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown } | null;
+  // Remote's key, only asked for once Remote is on (so the keychain is left alone otherwise).
+  if (request?.type === 'remote-identity' && typeof request.id === 'number') {
+    try {
+      return { type: 'remote-identity-result', id: request.id, secret: remoteIdentity(app.getPath('userData')) };
+    } catch (error) {
+      console.error('[main] Remote key unavailable', error);
+      return { type: 'remote-identity-result', id: request.id, secret: null };
+    }
+  }
   if (request?.type !== 'trash' || typeof request.id !== 'number' || !Array.isArray(request.paths)) return undefined;
   // Always answer: the engine waits for a reply to every trash request.
   try {

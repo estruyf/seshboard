@@ -1,0 +1,11 @@
+{
+  "name": "Switchboard Remote",
+  "short_name": "Switchboard",
+  "description": "Follow and steer your Claude Code sessions in Switchboard from your phone.",
+  "start_url": "/remote/",
+  "scope": "/remote/",
+  "display": "standalone",
+  "background_color": "#15181f",
+  "theme_color": "#15181f",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

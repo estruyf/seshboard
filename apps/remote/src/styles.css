@@ -1,0 +1,130 @@
+@import 'tailwindcss';
+
+/*
+ * The desktop app's tokens (apps/ui/src/styles.css, Demo Time), so the phone looks like Switchboard: the same surfaces,
+ * text and status colours (needs you `warn`, working `accent-ink`, background `ok`, unread `unread`). It follows the
+ * phone's light or dark mode. Themes stay on the computer.
+ */
+:root {
+  color-scheme: light dark;
+  --sb-bg: #ffffff;
+  --sb-sidebar: #f4f6fa;
+  --sb-card: #ffffff;
+  --sb-border: #e1e4e8;
+  --sb-edge: #d1d5da;
+  --sb-text: #202736;
+  --sb-muted: #505869;
+  --sb-faint: #687082;
+  --sb-accent: #ffd43b;
+  --sb-accent-ink: #916c00;
+  --sb-on-accent: #15181f;
+  --sb-link: #005cc5;
+  --sb-ok: #00806f;
+  --sb-warn: #d1186b;
+  --sb-error: #d73a49;
+  --sb-unread: #005cc5;
+  --sb-selected: color-mix(in srgb, var(--sb-text) 10%, transparent);
+  --sb-code-bg: #f4f6fa;
+  --sb-diff-added: #00806f1f;
+  --sb-diff-removed: #d73a491f;
+  --sb-focus-ring: #916c008c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sb-bg: #15181f;
+    --sb-sidebar: #202736;
+    --sb-card: #202736;
+    --sb-border: #2d3142;
+    --sb-edge: #414861;
+    --sb-text: #d9dbe1;
+    --sb-muted: #9ba4b7;
+    --sb-faint: #8b94a6;
+    --sb-accent: #ffd43b;
+    --sb-accent-ink: #ffd43b;
+    --sb-on-accent: #15181f;
+    --sb-link: #74c0fc;
+    --sb-ok: #51cf66;
+    --sb-warn: #ed217c;
+    --sb-error: #ff6b6b;
+    --sb-unread: #74c0fc;
+    --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
+    --sb-code-bg: #202736;
+    --sb-diff-added: #51cf661f;
+    --sb-diff-removed: #ff6b6b1f;
+    --sb-focus-ring: #ffd43b8c;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--sb-bg);
+  --color-sidebar: var(--sb-sidebar);
+  --color-card: var(--sb-card);
+  --color-border: var(--sb-border);
+  --color-edge: var(--sb-edge);
+  --color-text: var(--sb-text);
+  --color-muted: var(--sb-muted);
+  --color-faint: var(--sb-faint);
+  --color-accent: var(--sb-accent);
+  --color-accent-ink: var(--sb-accent-ink);
+  --color-on-accent: var(--sb-on-accent);
+  --color-link: var(--sb-link);
+  --color-ok: var(--sb-ok);
+  --color-warn: var(--sb-warn);
+  --color-error: var(--sb-error);
+  --color-unread: var(--sb-unread);
+  --color-selected: var(--sb-selected);
+  --color-code: var(--sb-code-bg);
+  --color-diff-added: var(--sb-diff-added);
+  --color-diff-removed: var(--sb-diff-removed);
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, Menlo, monospace;
+  /* The desktop's scale, one step up for a phone held at arm's length. Fields stay at 16px so iOS doesn't zoom in. */
+  --text-meta: 12px;
+  --text-meta--line-height: 1.45;
+  --text-ui: 14px;
+  --text-ui--line-height: 1.45;
+  --text-body: 16px;
+  --text-body--line-height: 1.55;
+  --text-title: 17px;
+  --text-title--line-height: 1.35;
+  --text-hero: 22px;
+  --text-hero--line-height: 1.3;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--sb-bg);
+  color: var(--sb-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--sb-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Room for the notch and the home indicator in a home-screen app. */
+.safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+.safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}

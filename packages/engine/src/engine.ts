@@ -37,6 +37,8 @@ import {
   DEFAULT_AUTO_MODEL,
   type AutoModelPrefs,
   type AutoPick,
+  type QueuedMessage,
+  type StreamDelta,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -86,6 +88,7 @@ import { TranscriptHub } from './sessions/transcriptHub.ts';
 import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
+import { RemoteHub } from './remote/remoteHub.ts';
 import { FileIndex } from './system/files.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
 import { detectTerminalFont } from './system/terminalFont.ts';
@@ -128,6 +131,13 @@ export interface EngineOptions {
    * is made (the temporary folder by default).
    */
   companion?: { appVersion: string; socketParent?: string };
+  /**
+   * Remote, a paired phone following and steering sessions (docs/remote-access.md). `appUrl` is the remote app's
+   * address (the website's by default). `identity` asks main for Remote's key, which it keeps in the system's
+   * keychain; only called once Remote is on. Off when left out (tests); nothing listens until Settings › Remote
+   * turns it on.
+   */
+  remote?: { appVersion: string; appUrl?: string; identity(): Promise<Uint8Array | null> };
   /**
    * Plan usage to report per config folder instead of asking Claude Code, with its % history: the website's
    * screenshots, whose made-up logins have no plan. Never set in normal use.
@@ -209,6 +219,10 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** The VS Code companion's socket, when this engine listens for it. */
   let companion: CompanionHub | null = null;
+  /** Remote, when this engine offers it. */
+  let remote: RemoteHub | null = null;
+  /** The sidebar's scope in the window that reported focus last, so a phone lists what the sidebar lists. */
+  let sidebarScope: 'switchboard' | 'all' = 'switchboard';
   /** Set once the clean-up of archived sessions exists: it first runs after the first full scan. */
   let scanCompleteHook: () => void = () => {};
   /** Set once memory search exists: every memory change (Switchboard's or a watcher's) re-indexes the files that changed. */
@@ -216,7 +230,16 @@ export function createEngine(options: EngineOptions): Engine {
   let memorySyncTimer: ReturnType<typeof setTimeout> | undefined;
   const broadcast: RpcServer<Contract>['emit'] = (name, payload) => {
     for (const server of servers) server.emit(name, payload);
-    if (name === 'sessions.changed' || name === 'sessions.live' || name === 'session.host' || name === 'session.permission' || name === 'session.permissionResolved') companion?.sessionsChanged();
+    if (name === 'sessions.changed' || name === 'sessions.live' || name === 'session.host' || name === 'session.permission' || name === 'session.permissionResolved') {
+      companion?.sessionsChanged();
+      remote?.sessionsChanged();
+    }
+    // Phones only hear these for the session they watch.
+    if (name === 'session.stream') remote?.stream(payload as StreamDelta);
+    if (name === 'upNext.changed') {
+      const { sessionId, queue } = payload as { sessionId: string; queue: QueuedMessage[] };
+      remote?.upNextChanged(sessionId, queue);
+    }
     if (name === 'memory.changed') memoryChangedHook();
   };
 
@@ -852,6 +875,46 @@ export function createEngine(options: EngineOptions): Engine {
     void companion.start();
   }
 
+  if (options.remote) {
+    remote = new RemoteHub({
+      db: cache.db,
+      appState,
+      appVersion: options.remote.appVersion,
+      ...(options.remote.appUrl ? { appUrl: options.remote.appUrl } : {}),
+      identity: options.remote.identity,
+      sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
+      archiveAfterDays: () => retention.archiveAfterDays,
+      scope: () => sidebarScope,
+      projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, defaults: p.defaults })),
+      readTranscript: (sessionId) => transcripts.read(sessionId),
+      watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
+      send: async (sessionId, text, mode) => {
+        const sent = await hosts.send({ sessionId, text, attachments: [], fork: false, mode });
+        if (sent.sessionId === sessionId) sessions.wake(sessionId);
+        return { messageUuid: sent.messageUuid, queued: sent.queued };
+      },
+      dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
+      interrupt: (sessionId) => hosts.interrupt(sessionId),
+      respond: (requestId, decision) => hosts.respond(requestId, decision),
+      create: (root, prompt, defaults) =>
+        createSession({
+          cwd: root,
+          prompt,
+          attachments: [],
+          model: defaults.model,
+          permissionMode: defaults.permissionMode ?? 'default',
+          effort: defaults.effort,
+          worktree: null,
+          profileId: null,
+          checkoutBranch: null,
+        }),
+      onStatus: (status) => broadcast('remote.changed', status),
+      onFromDevice: (event) => broadcast('remote.fromDevice', event),
+      log,
+    });
+    void remote.start();
+  }
+
   // --- Archived sessions: Settings › Sessions -------------------------------------------------------------------
   /** Main sends the settings when the engine starts and after each change; until then, the defaults (deleting off). */
   let retention: RetentionPolicy = DEFAULT_RETENTION;
@@ -970,6 +1033,11 @@ export function createEngine(options: EngineOptions): Engine {
     clearTimeout(settingTimer);
     settingTimer = setTimeout(cleanupInBackground, 5_000);
     settingTimer.unref?.();
+  };
+
+  const requireRemote = () => {
+    if (!remote) throw new RpcError('UNAVAILABLE', 'Remote is not available in this build');
+    return remote;
   };
 
   const handlers: Handlers<Contract> = {
@@ -1873,6 +1941,7 @@ export function createEngine(options: EngineOptions): Engine {
       return result;
     },
     'companion.focus': ({ sessionId, scope }, context) => {
+      sidebarScope = scope;
       companion?.focus(context, sessionId, scope);
       return {};
     },
@@ -1881,6 +1950,22 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'companion.status': () => companion?.status() ?? { listening: false, clients: 0, error: null },
+    'remote.status': () => requireRemote().status(),
+    'remote.configure': (change) => requireRemote().configure(change),
+    'remote.pair.start': () => requireRemote().startPairing(),
+    'remote.connectLink': () => requireRemote().connectLink(),
+    'remote.pair.cancel': () => {
+      remote?.cancelPairing();
+      return {};
+    },
+    'remote.pair.decide': ({ requestId, allow }) => {
+      requireRemote().decidePairing(requestId, allow);
+      return {};
+    },
+    'remote.revoke': ({ deviceId }) => {
+      requireRemote().revoke(deviceId);
+      return {};
+    },
     'claudeUpdate.get': () => claudeUpdater.state,
     'claudeUpdate.check': () => {
       void claudeUpdater.check();
@@ -1960,6 +2045,7 @@ export function createEngine(options: EngineOptions): Engine {
       clearInterval(dailyCleanup);
       clearTimeout(settingTimer);
       companion?.stop();
+      remote?.stop();
       memoryWatcher.close();
       clearTimeout(memorySyncTimer);
       clearTimeout(startupMemorySync);

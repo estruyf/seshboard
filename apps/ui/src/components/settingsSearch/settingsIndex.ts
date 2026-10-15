@@ -202,6 +202,19 @@ export function settingsIndex(): SettingEntry[] {
     },
     { id: 'companion-install', page: 'vscode', label: 'Visual Studio Marketplace', detail: 'Install the Switchboard extension.', keywords: 'install download extension open vsx cursor windsurf', target: '[data-companion-link="marketplace"]' },
 
+    // Remote
+    {
+      id: 'remote-enabled',
+      page: 'remote',
+      label: 'Allow access from my phone',
+      detail: "Follow your sessions, answer Claude and send prompts from your phone's browser. Only phones you pair here can connect.",
+      keywords: 'phone mobile remote access iphone android tunnel',
+      target: '[data-remote-enabled]',
+    },
+    { id: 'remote-tunnel', page: 'remote', label: 'Reach this computer through', detail: 'Cloudflare quick tunnel, Tailscale, ngrok or your own address.', keywords: 'tunnel cloudflare cloudflared tailscale ngrok proxy address', target: '[data-remote-tunnel]' },
+    { id: 'remote-pair', page: 'remote', label: 'Pair a phone', detail: 'Scan a QR code with your phone, then allow it here.', keywords: 'qr code pairing phone add device', target: '[data-remote-pair]' },
+    { id: 'remote-devices', page: 'remote', label: 'Paired phones', detail: 'Revoke disconnects a phone at once.', keywords: 'revoke devices phones remove', target: '[data-remote-devices]', fallback: '[data-remote-pair]' },
+
     // Backup
     { id: 'backup-export', page: 'backup', label: 'Export settings', detail: 'Choose what to include and save it to a file.', keywords: 'backup save move another computer', target: '[data-backup-export]' },
     { id: 'backup-import', page: 'backup', label: 'Import settings', detail: 'See what a file would change before anything happens. Your current settings are backed up first.', keywords: 'restore backup', target: '[data-backup-import]' },
