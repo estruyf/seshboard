@@ -102,7 +102,7 @@ function Questions({ prompt, busy, respond }: Props) {
                 role={q.multiSelect ? 'checkbox' : 'radio'}
                 aria-checked={picked}
                 onClick={() => toggle(q, option.label)}
-                className={`rounded-lg border px-3 py-2 text-left ${picked ? 'border-accent-ink bg-accent/15' : 'border-edge'}`}
+                className={`rounded-lg border px-3 py-2 text-left transition-colors ${picked ? 'border-accent-ink bg-accent/15' : 'border-edge hover:border-faint hover:bg-border/45 active:bg-selected'}`}
               >
                 <span className="block text-body">{option.label}</span>
                 {option.description && <span className="block text-meta text-muted">{option.description}</span>}
@@ -113,7 +113,7 @@ function Questions({ prompt, busy, respond }: Props) {
             value={other[q.question] ?? ''}
             onChange={(event) => setOther((current) => ({ ...current, [q.question]: event.target.value }))}
             placeholder={q.multiSelect ? 'Something else (optional)' : 'Or type your own answer'}
-            className="min-h-11 rounded-lg border border-edge bg-card px-3 text-body pointer-fine:min-h-8"
+            className="field min-h-11 px-3 text-body pointer-fine:min-h-8"
           />
         </fieldset>
       ))}
@@ -141,7 +141,7 @@ function Plan({ prompt, busy, respond }: Props) {
         onChange={(event) => setFeedback(event.target.value)}
         rows={2}
         placeholder="What should change? (optional)"
-        className="rounded-lg border border-edge bg-card px-3 py-2 text-body"
+        className="field resize-none px-3 py-2 text-body [field-sizing:content]"
       />
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button disabled={busy} onClick={() => void respond({ behavior: 'deny', message: feedback.trim() || DECLINED })}>

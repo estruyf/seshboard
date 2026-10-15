@@ -73,7 +73,7 @@ export function SessionList({
                       onClick={() => onOpen(session.id)}
                       aria-current={selected ? 'page' : undefined}
                       data-remote-session={session.id}
-                      className={`flex w-full items-start gap-2.5 border-l-[3px] px-4 py-2.5 text-left pointer-fine:py-2 ${STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
+                      className={`flex w-full items-start gap-2.5 border-l-[3px] px-4 py-2.5 text-left transition-colors focus-visible:-outline-offset-2 pointer-fine:py-2 ${STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
                     >
                       <span className="mt-[7px] pointer-fine:mt-[6px]">
                         <StatusDot status={session.status} />

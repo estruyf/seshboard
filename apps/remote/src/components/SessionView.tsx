@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronLeft, Send, Square, X } from 'lucide-react';
+import { ArrowDown, ChevronLeft, Send, Square, X } from 'lucide-react';
 import type { QueuedMessage, RemoteMessage, RemoteSessions } from '@switchboard/protocol/remote-client';
 import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessages, resultsByCall, visibleMessages, type Streaming } from '../lib/transcript.ts';
 import type { Client } from './Connected.tsx';
@@ -100,9 +100,9 @@ export function SessionView({ client, sessionId, sessions, banner, onBack }: { c
         <div className="px-3 pt-2 sm:px-6">
           <p role="alert" className="mx-auto flex w-full max-w-3xl items-start gap-2 rounded-lg bg-error/10 px-3 py-2 text-ui text-error">
             <span className="flex-1">{error}</span>
-            <button type="button" aria-label="Dismiss" onClick={() => setError(null)}>
+            <Button variant="quiet" size="md" aria-label="Dismiss" onClick={() => setError(null)} className="-my-1 -mr-2 px-2! text-error!">
               <X className="size-4" aria-hidden />
-            </button>
+            </Button>
           </p>
         </div>
       )}
@@ -112,43 +112,63 @@ export function SessionView({ client, sessionId, sessions, banner, onBack }: { c
   );
 }
 
-/** The conversation, kept scrolled to the end while you are at the end. */
+/**
+ * The conversation, kept scrolled to the end while you are at the end. Scrolled up to read, a button takes you back
+ * down, and says when something new arrived below.
+ */
 function Transcript({ messages, results, streaming, hasMore, onOlder, children }: { messages: RemoteMessage[]; results: ReturnType<typeof resultsByCall>; streaming: Streaming; hasMore: boolean; onOlder: () => void; children: ReactNode }) {
   const scroller = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
+  const [away, setAway] = useState(false);
+  const [missed, setMissed] = useState(false);
+  const last = messages.at(-1)?.uuid;
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && atEnd.current) el.scrollTop = el.scrollHeight;
   });
+  useEffect(() => {
+    if (!atEnd.current && last) setMissed(true);
+  }, [last]);
+  const toEnd = () => scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' });
   return (
-    <div
-      ref={scroller}
-      onScroll={(event) => {
-        const el = event.currentTarget;
-        atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      }}
-      className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 sm:px-6"
-    >
-      <div className="mx-auto w-full max-w-3xl">
-        {hasMore && (
-          <div className="pb-3 text-center">
-            <Button variant="quiet" size="md" onClick={onOlder}>
-              Show earlier messages
-            </Button>
-          </div>
-        )}
-        <div className="flex flex-col gap-4">
-          {visibleMessages(messages).map((message) => (
-            <MessageView key={message.uuid} message={message} results={results} />
-          ))}
-          {streaming.kind && (
-            <p className={`text-body whitespace-pre-wrap ${streaming.kind === 'text' ? '' : 'text-muted italic'}`} aria-live="polite">
-              {streaming.kind === 'tool' ? `Running ${streaming.text}…` : streaming.text}
-            </p>
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={scroller}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          setAway(!atEnd.current);
+          if (atEnd.current) setMissed(false);
+        }}
+        className="h-full overflow-y-auto overscroll-contain px-4 py-3 sm:px-6"
+      >
+        <div className="mx-auto w-full max-w-3xl">
+          {hasMore && (
+            <div className="pb-3 text-center">
+              <Button variant="quiet" size="md" onClick={onOlder}>
+                Show earlier messages
+              </Button>
+            </div>
           )}
-          {children}
+          <div className="flex flex-col gap-4">
+            {visibleMessages(messages).map((message) => (
+              <MessageView key={message.uuid} message={message} results={results} />
+            ))}
+            {streaming.kind && (
+              <p className={`text-body whitespace-pre-wrap ${streaming.kind === 'text' ? '' : 'text-muted italic'}`} aria-live="polite">
+                {streaming.kind === 'tool' ? `Running ${streaming.text}…` : streaming.text}
+              </p>
+            )}
+            {children}
+          </div>
         </div>
       </div>
+      {away && (
+        <Button size="md" onClick={toEnd} data-remote-jump className={`absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-md ${missed ? 'border-accent-ink!' : ''}`}>
+          <ArrowDown className="size-4" aria-hidden />
+          {missed ? 'New messages' : 'Jump to latest'}
+        </Button>
+      )}
     </div>
   );
 }
@@ -178,6 +198,11 @@ function Composer({ disabled, working, onSend, onError }: { disabled: boolean; w
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const fine = useFinePointer();
+  const box = useRef<HTMLTextAreaElement>(null);
+  // With a keyboard, the box is ready to type in when the session opens; on a phone the keyboard waits for a tap.
+  useEffect(() => {
+    if (fine) box.current?.focus({ preventScroll: true });
+  }, [fine]);
   const send = async () => {
     const message = text.trim();
     if (!message || busy) return;
@@ -199,8 +224,9 @@ function Composer({ disabled, working, onSend, onError }: { disabled: boolean; w
         void send();
       }}
     >
-      <div className="mx-auto flex w-full max-w-3xl items-end gap-2 rounded-xl border border-edge bg-card p-1.5 pl-3 focus-within:border-accent-ink">
+      <div className="mx-auto flex w-full max-w-3xl items-end gap-2 rounded-xl border border-edge bg-card p-1.5 pl-3 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20">
         <textarea
+          ref={box}
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {

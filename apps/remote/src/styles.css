@@ -126,9 +126,39 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-:focus-visible {
-  outline: 2px solid var(--sb-focus-ring);
-  outline-offset: 2px;
+/*
+ * In the base layer so utilities win: a field inside a framed box (`outline-none`) shows its focus on the frame, not
+ * as a second ring inside it. Tailwind 4 gives buttons the arrow; clickable controls get the pointer back.
+ */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+  }
+  :is(button, [role='button'], [role='checkbox'], [role='radio'], summary, label[for]) {
+    cursor: pointer;
+  }
+  :is(button, [role='button'], [role='checkbox'], [role='radio']):is(:disabled, [aria-disabled='true']) {
+    cursor: not-allowed;
+  }
+}
+
+/* A text field: a bordered box whose frame turns yellow, with a faint 4px ring, while you type in it. */
+@utility field {
+  border: 1px solid var(--sb-edge);
+  border-radius: 0.5rem;
+  background: var(--sb-card);
+  color: var(--sb-text);
+  outline: none;
+  transition: border-color 120ms, box-shadow 120ms;
+  &::placeholder {
+    color: var(--sb-faint);
+  }
+  &:focus,
+  &:focus-within {
+    border-color: var(--sb-accent-ink);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--sb-accent) 20%, transparent);
+  }
 }
 
 /* Room for the notch and the home indicator in a home-screen app. */

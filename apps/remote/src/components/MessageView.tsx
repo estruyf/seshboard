@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import type { RemoteMessage } from '@switchboard/protocol/remote-client';
 import { editLines, toolSummary, type resultsByCall } from '../lib/transcript.ts';
 
@@ -50,8 +51,9 @@ function ToolRun({ name, input, result }: { name: string; input: unknown; result
   const diff = editLines(name, input);
   return (
     <div className="text-ui">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-baseline gap-2 py-1 text-left">
-        <span className={`font-semibold ${result?.isError ? 'text-error' : 'text-muted'}`}>{name}</span>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-border/45">
+        <Chevron open={open} />
+        <span className={`font-semibold ${result?.isError ? 'text-error' : 'text-muted group-hover:text-text'}`}>{name}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-meta text-faint">{toolSummary(name, input)}</span>
       </button>
       {open && (
@@ -78,10 +80,16 @@ function Collapsible({ label, body, tone }: { label: string; body: string; tone:
   const [open, setOpen] = useState(false);
   return (
     <div className="text-ui">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="py-1 text-faint">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="-mx-1.5 flex items-center gap-2 rounded-md px-1.5 py-1 text-faint hover:bg-border/45 hover:text-muted">
+        <Chevron open={open} />
         {label}
       </button>
       {open && <p className={`whitespace-pre-wrap ${tone}`}>{body}</p>}
     </div>
   );
+}
+
+/** Says a row opens, and turns when it is open. */
+function Chevron({ open }: { open: boolean }) {
+  return <ChevronRight aria-hidden className={`size-3.5 shrink-0 text-faint transition-transform ${open ? 'rotate-90' : ''}`} />;
 }

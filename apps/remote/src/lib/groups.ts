@@ -53,6 +53,34 @@ export function projectStatus(projectId: string, sessions: readonly RemoteSessio
   return { tone: 'idle', label: last ? `Idle · ${age(last, now)}` : 'No recent sessions' };
 }
 
+/** When each project last had a session, by project id. */
+function lastActivity(sessions: readonly RemoteSession[]): Map<string, number> {
+  const last = new Map<string, number>();
+  for (const s of sessions) last.set(s.projectId, Math.max(last.get(s.projectId) ?? 0, s.updatedAt));
+  return last;
+}
+
+/** Projects by their latest session, newest first (the computer's default order); projects without any keep their order after those. */
+export function recentProjects<P extends { id: string }>(projects: readonly P[], sessions: readonly RemoteSession[]): P[] {
+  const last = lastActivity(sessions);
+  return projects
+    .map((project, index) => ({ project, index, at: last.get(project.id) ?? 0 }))
+    .sort((a, b) => b.at - a.at || a.index - b.index)
+    .map((p) => p.project);
+}
+
+/**
+ * The project New session starts with, so most of the time you only type: the one you last started a session in from
+ * this device, else the one with the newest session, else the only one. Null when there's nothing to go on.
+ */
+export function suggestedProject(projects: readonly { id: string }[], sessions: readonly RemoteSession[], lastUsed: string | null): string | null {
+  if (lastUsed && projects.some((p) => p.id === lastUsed)) return lastUsed;
+  if (projects.length === 1) return projects[0]!.id;
+  const last = lastActivity(sessions);
+  const newest = recentProjects(projects, sessions)[0];
+  return newest && last.has(newest.id) ? newest.id : null;
+}
+
 /** How long ago, in a few characters (`5m`, `2h`, `3d`). */
 export function age(at: number, now: number): string {
   const minutes = Math.max(0, Math.round((now - at) / 60_000));

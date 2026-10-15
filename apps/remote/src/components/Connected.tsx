@@ -33,6 +33,12 @@ export function Connected({ paired, onForget }: { paired: Paired; onForget: () =
   }, [connection]);
 
   const client = state.kind === 'connected' ? state.client : null;
+  const needsYou = sessions.sessions.filter((s) => s.status === 'needs-you').length;
+
+  // The tab's title counts what waits on you, so it shows from another tab or the app switcher.
+  useEffect(() => {
+    document.title = needsYou > 0 ? `(${needsYou}) Switchboard Remote` : 'Switchboard Remote';
+  }, [needsYou]);
 
   useEffect(() => {
     if (!client) return;
@@ -92,7 +98,7 @@ export function Connected({ paired, onForget }: { paired: Paired; onForget: () =
       <aside className="flex w-80 shrink-0 flex-col border-r border-border bg-sidebar lg:w-[340px]">{list}</aside>
       <div className="flex min-w-0 flex-1 flex-col">
         {banner}
-        <div className="min-h-0 flex-1">{main ?? <Pick needsYou={sessions.sessions.filter((s) => s.status === 'needs-you').length} onNew={startNew} />}</div>
+        <div className="min-h-0 flex-1">{main ?? <Pick needsYou={needsYou} onNew={startNew} />}</div>
       </div>
     </div>
   );

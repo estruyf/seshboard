@@ -11,10 +11,10 @@ type Variant = 'primary' | 'secondary' | 'quiet' | 'danger';
 type Size = 'md' | 'lg';
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-accent text-on-accent font-semibold hover:brightness-95',
-  secondary: 'border border-edge bg-card text-text hover:bg-border/45',
-  quiet: 'text-muted hover:bg-border/50 hover:text-text active:bg-selected',
-  danger: 'border border-error/60 text-error hover:bg-error/10',
+  primary: 'bg-accent text-on-accent font-semibold enabled:hover:brightness-95 enabled:active:brightness-90',
+  secondary: 'border border-edge bg-card text-text enabled:hover:bg-border/45 enabled:active:bg-selected',
+  quiet: 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text enabled:active:bg-selected',
+  danger: 'border border-error/60 text-error enabled:hover:bg-error/10 enabled:active:bg-error/15',
 };
 
 const SIZES: Record<Size, string> = {
@@ -27,7 +27,7 @@ export function Button({ variant = 'secondary', size = 'lg', className = '', ...
     <button
       type="button"
       {...props}
-      className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-ui transition-colors disabled:pointer-events-none disabled:opacity-50 ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-ui transition-colors disabled:opacity-50 ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
     />
   );
 }

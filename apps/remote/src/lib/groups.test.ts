@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteSession } from '@switchboard/protocol/remote-client';
-import { age, groupSessions, projectStatus, startOfDay } from './groups.ts';
+import { age, groupSessions, projectStatus, recentProjects, startOfDay, suggestedProject } from './groups.ts';
 
 const NOW = new Date(2026, 9, 15, 14, 0).getTime();
 const HOUR = 3_600_000;
@@ -48,5 +48,29 @@ describe('projectStatus', () => {
 describe('age', () => {
   it('is short', () => {
     expect([age(NOW, NOW), age(NOW - 5 * 60_000, NOW), age(NOW - 3 * HOUR, NOW), age(NOW - 50 * HOUR, NOW)]).toEqual(['now', '5m', '3h', '2d']);
+  });
+});
+
+describe('recentProjects', () => {
+  it('puts projects with the newest session first and keeps the order of the others', () => {
+    const projects = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+    const sessions = [session('1', 'idle', NOW - 2 * HOUR, 'c'), session('2', 'idle', NOW - HOUR, 'b'), session('3', 'idle', NOW - 3 * HOUR, 'b')];
+    expect(recentProjects(projects, sessions).map((p) => p.id)).toEqual(['b', 'c', 'a', 'd']);
+  });
+});
+
+describe('suggestedProject', () => {
+  const projects = [{ id: 'a' }, { id: 'b' }];
+  it('takes the project last used from this device', () => {
+    expect(suggestedProject(projects, [session('1', 'idle', NOW, 'b')], 'a')).toBe('a');
+  });
+  it('falls back to the project with the newest session when the last one is gone', () => {
+    expect(suggestedProject(projects, [session('1', 'idle', NOW, 'b')], 'removed')).toBe('b');
+  });
+  it('takes the only project', () => {
+    expect(suggestedProject([{ id: 'a' }], [], null)).toBe('a');
+  });
+  it('picks nothing without anything to go on', () => {
+    expect(suggestedProject(projects, [], null)).toBeNull();
   });
 });

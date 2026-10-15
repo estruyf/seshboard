@@ -38,3 +38,22 @@ export async function loadPaired(): Promise<Paired | null> {
 export const savePaired = (paired: Paired) => run('readwrite', (store) => store.put(paired, KEY)).then(() => undefined);
 
 export const forgetPaired = () => run('readwrite', (store) => store.delete(KEY)).then(() => undefined);
+
+/** The project this device last started a session in, so New session can start there again. Not secret: localStorage. */
+const LAST_PROJECT = 'switchboard-remote:last-project';
+
+export function lastProject(): string | null {
+  try {
+    return localStorage.getItem(LAST_PROJECT);
+  } catch {
+    return null;
+  }
+}
+
+export function rememberProject(projectId: string): void {
+  try {
+    localStorage.setItem(LAST_PROJECT, projectId);
+  } catch {
+    // Private browsing without storage: New session just suggests from the sessions.
+  }
+}

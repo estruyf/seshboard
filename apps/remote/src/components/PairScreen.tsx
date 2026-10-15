@@ -56,7 +56,8 @@ export function PairScreen({ link, replaces, onPaired }: { link: Extract<RemoteL
               onChange={(event) => setName(event.target.value)}
               maxLength={60}
               autoComplete="off"
-              className="min-h-11 rounded-lg border border-edge bg-card px-3 text-body text-text"
+              enterKeyHint="go"
+              className="field min-h-11 px-3 text-body pointer-fine:min-h-8"
             />
           </label>
           <p className="text-ui text-muted">Your computer will ask you to allow it, with a code to compare.</p>
