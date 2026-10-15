@@ -81,7 +81,7 @@ import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
-import { toggleChangesPanel, useRightPanel } from '../../state/rightPanelStore.ts';
+import { toggleChangesPanel, toggleTerminalPanel, useRightPanel } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
@@ -297,7 +297,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const { status, messages, error: readError, retry: retryRead } = useTranscript(sessionId);
   // The terminal panel belongs to this session's view: another session doesn't show it.
   const panelOpen = useTerminals((s) => s.openFor.has(sessionId));
-  const togglePanel = useTerminals((s) => s.togglePanel);
   const terminalCount = useTerminals((s) => [...s.terminals.values()].filter((t) => t.sessionId === sessionId && t.exitCode === null).length);
 
   // Setup and project actions open their own terminal tab: show it as soon as one starts.
@@ -437,30 +436,43 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const { agents, running: agentsRunning } = useAgentRuns(items, live !== null);
   const agentsState = useSessionAgents(sessionId);
   const showAgents = Boolean(agentsState.open && active);
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents }, rightTab);
-  // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
-  const changesFront = right.tabs && showChanges ? right.tab === 'changes' : undefined;
-  const askFront = right.tabs && ask.open ? right.tab === 'ask' : undefined;
-  const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
-  const toggleChangesHere = () => toggleChangesPanel(ask.open || showAgents);
-  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents);
-  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open);
-  const rightTabs = (actions: ReactNode) => (
-    <RightPanelTabs tab={right.tab ?? 'changes'} open={right.open} onTab={useRightPanel.getState().setTab} counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask), agents: agentsRunning }}>
-      {actions}
-    </RightPanelTabs>
-  );
-  // The terminal docks below or on the right; the right side goes to Changes or Ask when they want it. Maximized, it
-  // takes the whole view: the conversation (and Changes) stay mounted but hidden.
-  // Each pane shows its own session's terminal, so with two panes both can have one.
+  // The terminal docks below or on the right. On the right it is a tab like the others, so opening Changes, Ask or
+  // Agents next to it keeps it there. Maximized, it takes the whole view: the conversation (and the other panels) stay
+  // mounted but hidden. Each pane shows its own session's terminal, so with two panes both can have one.
   const terminalShown = panelOpen;
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyWidth = useWidth(bodyRef);
   const bodyHeight = useHeight(bodyRef);
   // "Why?" takes the whole right side while it is open.
-  const terminalBlocked = rightBlocked(whyRequest ? 'changes' : right.tab, bodyWidth);
+  const terminalBlocked = rightBlocked(whyRequest ? 'changes' : null, bodyWidth);
   const terminalDock = effectiveDock(useTerminals((s) => s.dock), terminalBlocked);
   const terminalMaximized = useTerminals((s) => s.maximizedFor.has(sessionId)) && terminalShown;
+  const terminalOnRight = terminalShown && terminalDock === 'right' && !terminalMaximized;
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, terminal: terminalOnRight }, rightTab);
+  // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
+  const changesFront = right.tabs && showChanges ? right.tab === 'changes' : undefined;
+  const askFront = right.tabs && ask.open ? right.tab === 'ask' : undefined;
+  const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
+  const terminalFront = right.tabs && terminalOnRight ? right.tab === 'terminal' : undefined;
+  const toggleChangesHere = () => toggleChangesPanel(ask.open || showAgents || terminalOnRight);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || terminalOnRight);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || terminalOnRight);
+  const rightTabs = (actions: ReactNode) => (
+    <RightPanelTabs
+      tab={right.tab ?? 'changes'}
+      open={right.open}
+      onTab={useRightPanel.getState().setTab}
+      counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask), agents: agentsRunning, terminal: terminalCount }}
+    >
+      {actions}
+    </RightPanelTabs>
+  );
+  // The terminal coming to the right (opened, or docked there) comes to the front, as a panel opened there does.
+  const terminalWasOnRight = useRef(terminalOnRight);
+  useEffect(() => {
+    if (terminalOnRight && !terminalWasOnRight.current) useRightPanel.getState().setTab('terminal');
+    terminalWasOnRight.current = terminalOnRight;
+  }, [terminalOnRight]);
   // Docked below, the terminal takes the room of the footer under the message box: a ring in the box stands in for it.
   const foldFooter = terminalShown && terminalDock === 'bottom' && !terminalMaximized;
   const usageLines = useUsageLines(profileId);
@@ -1084,7 +1096,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
     <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${terminalDock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
-      <TerminalPanel sessionId={sessionId} cwd={cwd} projectRoot={options.projectActions ? projectRoot : null} home={home} dock={terminalDock} rightBlocked={terminalBlocked} viewWidth={bodyWidth} viewHeight={bodyHeight} />
+      <TerminalPanel
+        sessionId={sessionId}
+        cwd={cwd}
+        projectRoot={options.projectActions ? projectRoot : null}
+        home={home}
+        dock={terminalDock}
+        rightBlocked={terminalBlocked}
+        viewWidth={bodyWidth}
+        viewHeight={bodyHeight}
+        tabs={terminalOnRight && right.tabs ? rightTabs : undefined}
+        shared={terminalOnRight && right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
+      />
     </Suspense>
   );
 
@@ -1157,7 +1180,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           className="no-drag"
           data-panel-toggles
           pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
-          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : togglePanel(sessionId))}
+          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : toggleTerminalPanel(sessionId))}
           segments={[
             ...(cwd && isRepo
               ? [
@@ -1213,10 +1236,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               icon: <SquareTerminal size={14} aria-hidden />,
               iconOnly: true,
               dot: terminalCount > 0,
-              tooltip: `${panelOpen ? 'Hide' : 'Show'} terminal (${formatKeys(keysFor('terminal.toggle'))})${terminalCount ? ` · ${terminalCount} running` : ''}`,
-              ariaLabel: `${panelOpen ? 'Hide' : 'Show'} terminal${terminalCount ? `, ${terminalCount} running` : ''} (${formatKeys(keysFor('terminal.toggle'))})`,
+              tooltip: `${terminalFront === false ? 'Bring the terminal to the front' : panelOpen ? 'Hide terminal' : 'Show terminal'} (${formatKeys(keysFor('terminal.toggle'))})${terminalCount ? ` · ${terminalCount} running` : ''}`,
+              ariaLabel: `${terminalFront === false ? 'Bring the terminal to the front' : panelOpen ? 'Hide terminal' : 'Show terminal'}${terminalCount ? `, ${terminalCount} running` : ''} (${formatKeys(keysFor('terminal.toggle'))})`,
               kbd: keysFor('terminal.toggle'),
-              expanded: panelOpen,
+              front: terminalFront,
+              expanded: panelOpen && terminalFront !== false,
               data: { 'data-toggle-terminal': true },
             },
           ]}
@@ -1277,7 +1301,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
 
       <div ref={bodyRef} className="flex min-h-0 flex-1">
         {/* An expanded Changes panel takes the whole view; the conversation stays mounted (scroll position, drafts) but hidden. */}
-        <div className={`relative min-w-0 flex-1 flex-col ${(showChanges && !whyRequest && changesExpanded && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
+        <div className={`relative min-w-0 flex-1 flex-col ${(right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
           {findQuery !== null && !terminalMaximized && (
             <FindBar
               query={findQuery}
@@ -1645,7 +1669,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           </div>
           {terminalShown && terminalDock === 'bottom' && terminalPanel}
         </div>
-        {terminalShown && terminalDock === 'right' && terminalPanel}
+        {/* Behind another tab on the right, the terminal steps out; its shells keep running and it comes back as it was. */}
+        {terminalShown && terminalDock === 'right' && (!terminalOnRight || right.tab === 'terminal') && terminalPanel}
         {whyRequest && !terminalMaximized && <WhyPanel request={whyRequest} cwd={cwd} />}
         {!whyRequest && right.tab === 'changes' && cwd && !terminalMaximized && (
           <ChangesPanel

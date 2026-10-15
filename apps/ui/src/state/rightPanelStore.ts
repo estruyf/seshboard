@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { clampAskWidth, readTab, type RightTab } from '../components/ask/askWidth.ts';
 import { useOverlay } from './overlayStore.ts';
+import { useTerminals } from './terminalsStore.ts';
 
 const TAB_KEY = 'ui.rightPanelTab';
 const WIDTH_KEY = 'ui.askWidth';
@@ -21,7 +22,7 @@ const write = (key: string, value: string) => {
   }
 };
 
-/** The right side's tab (when Changes and Ask are both open) and the Ask panel's width, per window. */
+/** The right side's tab (when two or more of its panels are open) and the Ask panel's width, per window. */
 interface RightPanelLayout {
   tab: RightTab;
   /** The Ask panel's width, also of both panels as tabs. */
@@ -55,4 +56,14 @@ export function toggleChangesPanel(othersOpen: boolean): void {
   if (overlay.changesOpen && othersOpen && panel.tab !== 'changes') return panel.setTab('changes');
   if (!overlay.changesOpen) panel.setTab('changes');
   overlay.toggleChanges();
+}
+
+/**
+ * ⌘J, the header's Terminal button and Toggle terminal: a terminal docked right and waiting behind another tab comes to
+ * the front; otherwise it opens or closes. `owner`: the session, or the window's own terminal.
+ */
+export function toggleTerminalPanel(owner: string): void {
+  const behind = document.querySelector(`[data-current-session="${CSS.escape(owner)}"] [data-right-tab="terminal"][aria-selected="false"]`);
+  if (behind) return useRightPanel.getState().setTab('terminal');
+  useTerminals.getState().togglePanel(owner);
 }
