@@ -10,7 +10,7 @@ import { PromptBody } from './PermissionCard.tsx';
 import { useNow } from './SessionList.tsx';
 import { UsageSection } from './Usage.tsx';
 import { useLeaving } from './useLeaving.ts';
-import { Button, Kbd, SectionHeader } from './ui.tsx';
+import { Button, SectionHeader } from './ui.tsx';
 
 /** How a card opens its session: on its own, or with Changes open. */
 export type OpenSession = (sessionId: string, options?: { changes?: boolean }) => void;
@@ -57,7 +57,6 @@ export function Home({
             <Button variant="primary" size="md" onClick={onNew} disabled={!client} className="ml-auto self-center">
               <Plus className="size-4" aria-hidden />
               New session
-              <Kbd shortcut="n" tone="on-accent" />
             </Button>
           )}
         </div>
@@ -96,25 +95,6 @@ export function Home({
         )}
 
         <UsageSection usage={usage} offline={offline} />
-
-        <p className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 text-meta text-faint" aria-label="Keys">
-          <span className="flex items-center gap-1">
-            <Kbd shortcut="j" tone="cap" />
-            <Kbd shortcut="k" tone="cap" /> move
-          </span>
-          <span className="flex items-center gap-1">
-            <Kbd shortcut="a" tone="cap" /> allow
-          </span>
-          <span className="flex items-center gap-1">
-            <Kbd shortcut="d" tone="cap" /> deny
-          </span>
-          <span className="flex items-center gap-1">
-            <Kbd shortcut="enter" tone="cap" /> open
-          </span>
-          <span className="flex items-center gap-1">
-            <Kbd shortcut="?" tone="cap" /> all shortcuts
-          </span>
-        </p>
       </div>
     </main>
   );
