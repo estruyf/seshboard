@@ -1,4 +1,4 @@
-import { MessageCircleQuestion } from 'lucide-react';
+import { MessageCircleQuestion, Monitor } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ProjectIcon as Icon, ProjectInfo } from '@switchboard/protocol/client';
 import { basename } from '../lib/format.ts';
@@ -64,10 +64,28 @@ export function useProjectColor(project: ProjectInfo | undefined, root: string |
   return (key && sampled?.key === key ? sampled.color : null) ?? fallback;
 }
 
-/** A project's icon: its image, its emoji, or its first letter on a coloured tile. Quick questions have their own, in neutral colours. */
-export function ProjectIcon({ project, root, size = 14 }: { project: ProjectInfo | undefined; root: string; size?: number }) {
-  const question = useProjects((s) => isQuestionsFolder(root, s.questionsDir));
-  const name = project?.name ?? basename(root);
+/**
+ * A project's icon: its image, its emoji, or its first letter on a coloured tile. Quick questions have their own, in
+ * neutral colours. `remote` marks a project on another computer (named by `name`, its `root` is only a key): a 13px
+ * badge with a monitor at the bottom right, on every session or project from there.
+ */
+export function ProjectIcon({ project, root, size = 14, name: given, remote = false }: { project: ProjectInfo | undefined; root: string; size?: number; name?: string; remote?: boolean }) {
+  if (remote) {
+    return (
+      <span className="relative flex shrink-0" data-remote-badge>
+        <ProjectTile project={undefined} root={root} size={size} name={given} />
+        <span className="absolute -right-1 -bottom-1 flex size-[13px] items-center justify-center rounded-[4px] bg-sidebar text-remote ring-1 ring-sidebar" aria-hidden>
+          <Monitor size={9} strokeWidth={2.5} />
+        </span>
+      </span>
+    );
+  }
+  return <ProjectTile project={project} root={root} size={size} name={given} />;
+}
+
+function ProjectTile({ project, root, size, name: given }: { project: ProjectInfo | undefined; root: string; size: number; name?: string }) {
+  const question = useProjects((s) => given === undefined && isQuestionsFolder(root, s.questionsDir));
+  const name = given ?? project?.name ?? basename(root);
   // Corners scale with the icon, so large ones read as tiles rather than squares.
   const box = { width: size, height: size, borderRadius: Math.max(3, Math.round(size * 0.22)) };
   if (question) {

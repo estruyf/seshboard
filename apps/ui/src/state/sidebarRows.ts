@@ -7,6 +7,8 @@ import type { SectionKey } from './sidebarSections.ts';
 export type RowStatus = 'needs-you' | 'running' | 'error' | 'unread' | 'background' | 'idle' | null;
 
 export function rowStatus(row: SessionRowData): RowStatus {
+  // Another computer says how its sessions are (`remoteRowStatus`).
+  if (row.remote) return row.remote.status;
   if (row.live?.status === 'needs-you') return 'needs-you';
   if (row.live?.status === 'running') return 'running';
   if (row.error) return 'error';
@@ -53,6 +55,8 @@ export function rowListing(row: SessionRowData): ListingState {
  * then the days count from there.
  */
 export function isActive(row: SessionRowData, now: number, archiveAfterDays: number): boolean {
+  // Another computer only lists what its own sidebar does, outside Archived.
+  if (row.remote) return true;
   return listedInMainList(rowListing(row), now, archiveAfterDays);
 }
 
@@ -81,7 +85,9 @@ export interface SessionListOptions {
 
 const matches = (row: SessionRowData, needle: string) =>
   row.title.toLowerCase().includes(needle) ||
-  row.projectRoot.toLowerCase().includes(needle) ||
+  (row.remote
+    ? row.remote.projectName.toLowerCase().includes(needle) || row.remote.computerName.toLowerCase().includes(needle)
+    : row.projectRoot.toLowerCase().includes(needle)) ||
   (row.branch?.toLowerCase().includes(needle) ?? false);
 
 /** Splits sessions into the main list (pinned first, then newest) and the archived list (newest first). */

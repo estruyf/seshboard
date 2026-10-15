@@ -14,3 +14,6 @@ export const trashName = (platform = currentPlatform()) => (platform === 'win32'
 
 /** How to get a file back from there: from Finder on macOS, from the Recycle Bin itself on Windows. */
 export const restoreFrom = (platform = currentPlatform()) => (platform === 'darwin' ? 'from Finder' : 'from there');
+
+/** This computer, next to the paired ones (the Computers strip, Run on): "This Mac", or "This PC" on Windows. */
+export const thisComputerName = (platform = currentPlatform()) => (platform === 'darwin' ? 'This Mac' : 'This PC');

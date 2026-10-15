@@ -57,7 +57,7 @@ import { useUpdatesSync } from './state/updatesStore.ts';
 import { useClaudeUpdateSync } from './state/claudeUpdateStore.ts';
 import { useHostsSync } from './state/useHostsSync.ts';
 import { useComputersSync } from './state/useComputersSync.ts';
-import { ComputerView } from './components/computers/ComputerView.tsx';
+import { RemoteView } from './components/computers/RemoteView.tsx';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
@@ -258,8 +258,8 @@ export function App() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col" inert={view === 'settings'}>
         {behind === 'usage' ? (
           <UsageView />
-        ) : behind === 'computer' ? (
-          <ComputerView />
+        ) : behind === 'remote' ? (
+          <RemoteView />
         ) : behind === 'projects' ? (
           <ProjectManagerView />
         ) : behind === 'project' ? (

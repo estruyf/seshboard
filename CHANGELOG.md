@@ -2,6 +2,12 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### New
+
+- **Other computers in the same app.** Sessions on your other computers show in the same sidebar and view, marked with the computer's name. New session can start on another computer. A remote session sits in the same groups as yours, with a violet chip that names its computer and a badge on its project icon. It opens in the normal session view, with a violet line along the top and **on mystic** in the header. What only works on that computer, such as the terminal and Changes, stays in its place, disabled, and says why. Under **Where do we start?**, **Run on** picks This Mac or a paired computer: its projects become the tiles, and **Start on mystic** starts the session there. The **Computers** strip at the bottom of the sidebar, and **Show sessions from** in the project menu, show one computer's sessions or hide them. The command palette has **New session on mystic…** and **Show only mystic** for each connected computer. Search and ⌘⇧U (Ctrl+Shift+U on Windows) include remote sessions. When a computer goes offline, its sessions stay, dimmed, with when it was last seen.
+
 ## [0.0.19] - 2026-10-15
 
 ### New

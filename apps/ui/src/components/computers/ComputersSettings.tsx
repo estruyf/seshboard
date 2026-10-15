@@ -42,7 +42,7 @@ export function ComputersSettings() {
           {computers.map((computer) => (
             <ListRow
               key={computer.id}
-              attrs={{ 'data-computer': computer.id }}
+              attrs={{ 'data-computer': computer.id, 'data-computer-state': computer.state }}
               icon={<Monitor size={16} aria-hidden />}
               name={computer.name}
               status={
@@ -58,7 +58,7 @@ export function ComputersSettings() {
                       Try again
                     </Button>
                   )}
-                  <Button size="sm" variant="quiet" onClick={() => useComputers.getState().open(computer.id)} data-computer-open>
+                  <Button size="sm" variant="quiet" onClick={() => useComputers.getState().openPage(computer.id)} data-computer-open>
                     Open
                   </Button>
                   <Button ref={(el) => void removeButtons.current.set(computer.id, el)} size="sm" variant="quiet" className={dangerQuiet} aria-expanded={removing === computer.id} onClick={() => setRemoving(computer.id)} data-computer-forget>

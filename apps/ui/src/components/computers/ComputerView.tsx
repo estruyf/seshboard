@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Monitor, RefreshCw } from 'lucide-react';
-import type { Computer, RemoteSessions } from '@switchboard/protocol/client';
+import { Monitor, Plus, RefreshCw } from 'lucide-react';
+import type { Computer } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
-import { computerLine, sessionGroups } from './computerSessions.ts';
-import { ComputerSession } from './ComputerSession.tsx';
+import { computerLine } from './computerSessions.ts';
+import { newSessionOn } from './remoteActions.ts';
 
 /** Ticks while a computer is offline, so "Trying again in 30s" counts down. */
 function useNow(active: boolean): number {
@@ -21,15 +21,16 @@ function useNow(active: boolean): number {
 }
 
 /**
- * Another computer's sessions, through its Remote (docs/remote-access.md, Other computers): the list as its sidebar
- * groups it, and the session you open, which you follow, answer and steer from here. Claude runs on that computer.
+ * A paired computer's page, for when its sessions can't be in the sidebar: it has none, it is still connecting, it
+ * is offline, or it has to be paired again (docs/remote-access.md, Other computers). Its chip in the sidebar's
+ * Computers strip opens it then. `missing`: the remote session that was open is no longer listed there; `starting`: New
+ * session just started it there, and its list doesn't have it yet.
  */
-export function ComputerView() {
+export function ComputerView({ computerId, missing = false, starting = false }: { computerId: string | null; missing?: boolean; starting?: boolean }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
-  const computer = useComputers((s) => s.status?.computers.find((c) => c.id === s.openId) ?? null);
-  const list = useComputers((s) => (s.openId ? (s.lists.get(s.openId) ?? null) : null));
-  const sessionId = useComputers((s) => s.sessionId);
+  const computer = useComputers((s) => s.status?.computers.find((c) => c.id === computerId) ?? null);
+  const list = useComputers((s) => (computerId ? (s.lists.get(computerId) ?? null) : null));
   const now = useNow(computer?.state === 'offline');
 
   if (!computer) {
@@ -43,13 +44,11 @@ export function ComputerView() {
     );
   }
 
-  const session = list?.sessions.find((s) => s.id === sessionId) ?? null;
-
   return (
     <div className="flex h-full min-h-0 flex-col" data-computer-view={computer.id}>
-      <header className="drag flex h-13 shrink-0 items-center gap-3 border-b border-border px-6">
+      <header className="drag flex h-13 shrink-0 items-center gap-3 border-b border-border px-6 shadow-[inset_0_2px_0_var(--sb-remote)]">
         <SidebarToggle />
-        <Monitor size={16} aria-hidden className="shrink-0 text-muted" />
+        <Monitor size={16} aria-hidden className="shrink-0 text-remote" />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-title font-semibold">{computer.name}</h1>
           <p className={`truncate text-meta ${computer.state === 'connected' ? 'text-muted' : 'text-caution'}`} data-computer-state={computer.state}>
@@ -66,57 +65,25 @@ export function ComputerView() {
             Pair again
           </Button>
         )}
-      </header>
-      <div className="flex min-h-0 flex-1">
-        <SessionList computer={computer} list={list} selected={sessionId} />
-        {client && session ? (
-          <ComputerSession key={session.id} client={client} computer={computer} session={session} prompts={list?.prompts.filter((p) => p.sessionId === session.id) ?? []} />
-        ) : (
-          <div className="flex flex-1 items-center justify-center p-6">
-            <p className="max-w-sm text-center text-ui text-muted">
-              {list ? `Open a session to follow it here. Claude keeps running on ${computer.name}.` : computer.state === 'connected' ? 'Loading the sessions…' : `The sessions show once ${computer.name} is connected.`}
-            </p>
-          </div>
+        {computer.state === 'connected' && (
+          <Button variant="primary" className="no-drag" icon={<Plus size={14} aria-hidden />} onClick={() => newSessionOn(computer.id)} data-computer-new-session>
+            New session on {computer.name}
+          </Button>
         )}
+      </header>
+      <div className="flex flex-1 items-center justify-center p-6">
+        <p className="max-w-sm text-center text-ui text-muted" data-computer-empty>
+          {starting ? `Starting the session on ${computer.name}…` : emptyLine(computer, list !== null && list.sessions.length > 0, missing)}
+        </p>
       </div>
     </div>
   );
 }
 
-function SessionList({ computer, list, selected }: { computer: Computer; list: RemoteSessions | null; selected: string | null }) {
-  const groups = sessionGroups(list);
-  const asking = new Set(list?.prompts.map((p) => p.sessionId));
-  return (
-    <nav className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-border bg-sidebar py-2" aria-label={`Sessions on ${computer.name}`} data-computer-sessions>
-      {list && groups.length === 0 && <p className="px-4 py-2 text-ui text-muted">No sessions.</p>}
-      {groups.map((group) => (
-        <div key={group.key} className="grid">
-          <p className="px-4 pt-2.5 pb-1 text-meta font-medium text-faint">{group.label}</p>
-          {group.sessions.map((session) => {
-            const current = session.id === selected;
-            const tone = asking.has(session.id) || session.status === 'needs-you' ? 'bg-warn' : session.status === 'working' ? 'bg-accent-ink animate-pulse' : session.status === 'error' ? 'bg-error' : null;
-            return (
-              <button
-                key={session.id}
-                type="button"
-                aria-current={current ? 'page' : undefined}
-                onClick={() => useComputers.getState().selectSession(session.id)}
-                className={`mx-2 grid gap-0.5 rounded-lg px-2.5 py-1.5 text-left ${current ? 'bg-selected' : 'hover:bg-border/45'}`}
-                data-computer-session-row={session.id}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span aria-hidden className={`size-2 shrink-0 rounded-full ${tone ?? ''}`} />
-                  <span className={`min-w-0 flex-1 truncate text-ui ${session.unread ? 'font-semibold' : ''}`}>{session.title}</span>
-                </span>
-                <span className="truncate pl-4 text-meta text-muted">
-                  {session.projectName}
-                  {session.branch && ` · ${session.branch}`}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ))}
-    </nav>
-  );
+function emptyLine(computer: Computer, hasSessions: boolean, missing: boolean): string {
+  if (missing) return `This session is no longer listed on ${computer.name}. It may be archived there.`;
+  if (computer.state === 'unpaired') return `${computer.name} no longer knows this computer. Pair it again in Settings › Remote.`;
+  if (computer.state !== 'connected') return `Its sessions show in the sidebar once ${computer.name} is connected.`;
+  if (hasSessions) return `Its sessions are in the sidebar, marked with ${computer.name}. Claude keeps running there.`;
+  return `No sessions on ${computer.name} yet. Start one here, and Claude runs there.`;
 }

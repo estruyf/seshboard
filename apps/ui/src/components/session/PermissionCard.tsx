@@ -63,7 +63,7 @@ function ownsShortcuts(card: HTMLElement): boolean {
   return (session ?? document).querySelector('[data-permission-request]') === card;
 }
 
-interface Shortcuts {
+export interface Shortcuts {
   allow(): void;
   deny(): void;
   pick?(index: number): void;
@@ -75,7 +75,7 @@ interface Shortcuts {
  * the window in the capture phase so it runs before the message box, whose Escape would otherwise
  * stop Claude instead of answering the card.
  */
-function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind, optionCount: number, busy: boolean, shortcuts: Shortcuts) {
+export function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind, optionCount: number, busy: boolean, shortcuts: Shortcuts) {
   const latest = useRef({ shortcuts, optionCount, busy });
   useEffect(() => {
     latest.current = { shortcuts, optionCount, busy };
@@ -105,7 +105,7 @@ function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind
 }
 
 /** "Waiting 2m", refreshed every half minute. */
-function Waiting({ since }: { since: number }) {
+export function Waiting({ since }: { since: number }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
@@ -155,7 +155,7 @@ function Header({ icon, title, titleId, createdAt, sub, request }: { icon: React
 }
 
 /** The always-visible "no, do this instead" field; Enter in it denies with what you typed. */
-function FeedbackField({ value, onChange, onSubmit, busy }: { value: string; onChange(value: string): void; onSubmit(): void; busy: boolean }) {
+export function FeedbackField({ value, onChange, onSubmit, busy }: { value: string; onChange(value: string): void; onSubmit(): void; busy: boolean }) {
   return (
     <input
       value={value}
@@ -174,7 +174,7 @@ function FeedbackField({ value, onChange, onSubmit, busy }: { value: string; onC
   );
 }
 
-function DenyButton({ label, busy, onClick }: { label: string; busy: boolean; onClick(): void }) {
+export function DenyButton({ label, busy, onClick }: { label: string; busy: boolean; onClick(): void }) {
   return (
     <Button variant="quiet" size="lg" disabled={busy} onClick={onClick} shortcut="permission.deny" data-permission-deny className="ml-auto">
       {label}
@@ -182,7 +182,7 @@ function DenyButton({ label, busy, onClick }: { label: string; busy: boolean; on
   );
 }
 
-function ErrorLine({ error }: { error: string | null }) {
+export function ErrorLine({ error }: { error: string | null }) {
   return error ? (
     <p className="text-ui text-error" role="alert">
       {error}
@@ -297,7 +297,7 @@ interface Question {
 }
 
 /** One answer as a row with its number key. Single choice rows are radios, multi-select rows checkboxes. */
-function OptionRow({
+export function OptionRow({
   n,
   label,
   description,

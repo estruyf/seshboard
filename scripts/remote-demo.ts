@@ -8,6 +8,11 @@
  *
  * Nothing here touches ~/.claude or a real project: the database and the key live in a folder in the temp folder (so a
  * paired browser stays paired across runs), and every answer only changes the demo world.
+ *
+ * The smoke test runs it as a second computer for the app (Other computers): `SWITCHBOARD_DEMO_DIR` puts the database
+ * and key in a throwaway folder, `SWITCHBOARD_DEMO_NAME` names the computer, `PORT` picks the port, and the line
+ * `pairing-link: …` is the link to paste. A pairing link is good for two minutes, so with `SWITCHBOARD_DEMO_LINK_FILE`
+ * a fresh one is written there every minute. New session there adds a session with the prompt as its title.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -266,7 +271,7 @@ function transcript(sessionId: string): TranscriptMessage[] {
   ];
 }
 
-const dir = join(tmpdir(), 'switchboard-remote-demo');
+const dir = process.env.SWITCHBOARD_DEMO_DIR ?? join(tmpdir(), 'switchboard-remote-demo');
 mkdirSync(dir, { recursive: true });
 const keyFile = join(dir, 'identity.key');
 if (!existsSync(keyFile)) writeFileSync(keyFile, crypto.getRandomValues(new Uint8Array(32)));
@@ -350,7 +355,7 @@ const hub: RemoteHub = new RemoteHub({
   appState,
   appVersion: 'demo',
   appUrl: APP_URL,
-  computerName: () => "Elio's iMac",
+  computerName: () => process.env.SWITCHBOARD_DEMO_NAME ?? "Elio's iMac",
   identity: async () => new Uint8Array(readFileSync(keyFile)),
   sources: () => ({ summaries: summaries().filter((s) => !archived.has(s.id)), live: [], hosts: hosts(), permissions }),
   archiveAfterDays: () => 30,
@@ -375,7 +380,13 @@ const hub: RemoteHub = new RemoteHub({
     permissions = permissions.filter((p) => p.requestId !== requestId);
     hub.sessionsChanged();
   },
-  create: async () => ({ sessionId: SESSIONS[3]!.id }),
+  // A new session in the demo world, working, titled with its prompt.
+  create: async (root, prompt) => {
+    const id = crypto.randomUUID();
+    SESSIONS.unshift({ id, title: prompt.split('\n')[0]!.slice(0, 80), root, branch: 'main', minutesAgo: 0, state: 'running' });
+    setTimeout(() => hub.sessionsChanged(), 0);
+    return { sessionId: id };
+  },
   queue: () => ({ id: `later-${Date.now()}` }),
   markRead: (sessionId) => void read.add(sessionId),
   setFlags: (sessionId, flags) => {
@@ -410,6 +421,16 @@ const hub: RemoteHub = new RemoteHub({
 await hub.configure({ enabled: true, port: PORT });
 const { url } = hub.startPairing();
 console.log(`\nA browser paired before connects by itself at ${APP_URL}. To pair one, open this link (good for two minutes):\n\n  ${url}\n`);
+// For scripts (the smoke test pairs the app with it).
+console.log(`pairing-link: ${url}`);
+const linkFile = process.env.SWITCHBOARD_DEMO_LINK_FILE;
+if (linkFile) writeFileSync(linkFile, url);
+const renew = linkFile
+  ? setInterval(() => {
+      // Not while a pairing waits for Allow.
+      if (!hub.status().pairing.request) writeFileSync(linkFile, hub.startPairing().url);
+    }, 60_000)
+  : null;
 
 // Allow every phone that asks, as you would click Allow on the computer.
 const allow = setInterval(() => {
@@ -422,6 +443,7 @@ const allow = setInterval(() => {
 
 const stop = () => {
   clearInterval(allow);
+  if (renew) clearInterval(renew);
   hub.stop();
   cache.close();
   process.exit(0);

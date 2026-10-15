@@ -8,8 +8,10 @@
  * (npm run smoke:demo), since a runner's home folder has no ~/.claude.
  */
 import { spawn } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDemoWorld, linkClaude, type DemoWorld } from './screenshot-demo.ts';
 
@@ -57,12 +59,31 @@ if (process.platform !== 'win32') {
   childEnv.SWITCHBOARD_GH = fakeGh;
 }
 
+// A second computer for Other computers: the real Remote hub over made-up sessions (scripts/remote-demo.ts), in a
+// throwaway folder on a free port. It writes a fresh pairing link to a file, which the smoke step pastes when it gets
+// there (a link is good for two minutes; the run is longer).
+const freePort = await new Promise<number>((resolve) => {
+  const server = createServer().listen(0, '127.0.0.1', () => {
+    const { port } = server.address() as { port: number };
+    server.close(() => resolve(port));
+  });
+});
+const computerDir = mkdtempSync(join(tmpdir(), 'switchboard-smoke-computer-'));
+const computerLink = join(computerDir, 'link.txt');
+const otherComputer = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(appDir, '..', '..', 'scripts', 'remote-demo.ts')], {
+  env: { ...process.env, SWITCHBOARD_DEMO_DIR: computerDir, SWITCHBOARD_DEMO_NAME: 'Smoke Mac', SWITCHBOARD_DEMO_LINK_FILE: computerLink, PORT: String(freePort) },
+  stdio: 'ignore',
+});
+childEnv.SWITCHBOARD_SMOKE_COMPUTER_LINK = computerLink;
+
 const child = spawn(command, packaged ? [] : [appDir], {
   env: { ...childEnv, SWITCHBOARD_SMOKE_OUT: outDir, ELECTRON_ENABLE_LOGGING: '0' },
   stdio: 'inherit',
 });
 
 const code: number = await new Promise((resolve) => child.on('exit', (c) => resolve(c ?? 1)));
+otherComputer.kill();
+rmSync(computerDir, { recursive: true, force: true, maxRetries: 5 });
 if (world) {
   world.stop();
   rmSync(world.home, { recursive: true, force: true, maxRetries: 5 });

@@ -32,6 +32,7 @@ const TOKEN_HELP: Partial<Record<(typeof THEME_TOKENS)[number], string>> = {
   warn: 'Needs you: a permission or a question.',
   unread: 'Finished, unread.',
   memory: 'Claude Code memory: MEMORY.md in What loads here, memory pills.',
+  remote: 'Things on another computer: its chips, badges and the line over its sessions. Readable on bg, sidebar and card.',
   accent: 'The yellow fill in Demo Time: primary buttons and tints.',
   'accent-ink': 'The accent as text, icons, dots and spinners: readable on bg.',
   'on-accent': 'Text on an accent fill.',

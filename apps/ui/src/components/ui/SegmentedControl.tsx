@@ -110,12 +110,18 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
               buttons.current[index] = el;
             }}
             type="button"
-            disabled={segment.disabled}
-            onClick={() => (props.mode === 'radio' ? props.onChange(segment.value) : props.onToggle(segment.value))}
+            // A disabled segment with a reason stays hoverable (a disabled button gets no pointer events), so its tooltip can say why.
+            disabled={segment.disabled && !segment.tooltip}
+            aria-disabled={segment.disabled || undefined}
+            onClick={() => {
+              if (segment.disabled) return;
+              if (props.mode === 'radio') props.onChange(segment.value);
+              else props.onToggle(segment.value);
+            }}
             aria-label={segment.ariaLabel ?? (segment.iconOnly ? segment.label : undefined)}
             aria-keyshortcuts={segment.kbd ? ariaShortcut(storedShortcut(segment.kbd)) : undefined}
             data-tooltip={segment.tooltip ?? (segment.iconOnly ? segment.label : undefined)}
-            className={`relative flex h-full ${fill ? 'min-w-0 flex-auto' : 'shrink-0'} items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 ${behind ? 'bg-selected/40 text-muted hover:text-text' : on ? 'bg-selected text-text' : 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text'}`}
+            className={`relative flex h-full ${fill ? 'min-w-0 flex-auto' : 'shrink-0'} items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 aria-disabled:cursor-default aria-disabled:opacity-50 ${behind ? 'bg-selected/40 text-muted hover:text-text' : on ? 'bg-selected text-text' : 'text-muted enabled:not-aria-disabled:hover:bg-border/50 enabled:not-aria-disabled:hover:text-text'}`}
             data-segment-front={on && segment.front !== undefined ? segment.front : undefined}
             {...aria}
             {...segment.data}

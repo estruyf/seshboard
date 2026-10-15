@@ -105,6 +105,10 @@ describe('Other computers', () => {
     await expect(a.hub.call(id, 'session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     // B checks the params itself.
     await expect(a.hub.call(id, 'session.create', { projectId: '../etc', prompt: 'hi' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    // New session's choices go through to that computer; a mode that never asks is refused there.
+    await expect(a.hub.call(id, 'session.create', { projectId: '0123456789abcdef', prompt: 'hi', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(a.hub.call(id, 'session.create', { projectId: '0123456789abcdef', prompt: 'hi', permissionMode: 'bypassPermissions' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    expect(status.computers[0]!.lastSeen).toBeNull();
 
     b.server.each((rpc) => rpc.emit('sessions.changed', { sessions: [], prompts: [] }));
     await a.until(() => a.events.length > 0);
@@ -170,8 +174,11 @@ describe('Other computers', () => {
     b.answerNext(true);
     await a.hub.add(b.pairLink());
     await a.until((s) => s.computers[0]?.state === 'connected');
+    const before = Date.now();
     b.server.stop();
     const status = await a.until((s) => s.computers[0]?.state === 'offline' && s.computers[0].retryAt !== null);
+    // When it was last there, for "Last seen 2h ago".
+    expect(status.computers[0]!.lastSeen).toBeGreaterThanOrEqual(before);
     expect(status.computers[0]!.message).toMatch(/^(Lost the connection to Studio Mac\.|Nothing answers at Studio Mac’s address)/);
     await expect(a.hub.call(status.computers[0]!.id, 'sessions.list', {})).rejects.toMatchObject({ code: 'UNAVAILABLE' });
   });

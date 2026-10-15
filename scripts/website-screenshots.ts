@@ -12,11 +12,12 @@
  *
  * Usage: npm run website:screenshots [-- --only home,palette]   (--only takes the setup, then just those)
  */
-import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { createServer } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
-import { homedir, userInfo } from 'node:os';
+import { homedir, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { _electron, type ElectronApplication, type Locator, type Page } from 'playwright-core';
 import sharp from 'sharp';
@@ -435,6 +436,54 @@ class Tour {
     const buffer = await sharp(path).png({ compressionLevel: 9, effort: 10, adaptiveFiltering: true }).toBuffer();
     writeFileSync(path, buffer);
     console.log(`  ${name}-${this.scheme}.png`);
+  }
+}
+
+/**
+ * Another computer named "mystic" for the Other computers pictures: the real Remote hub over the made-up sessions of
+ * scripts/remote-demo.ts, in a throwaway folder on a free port. It pairs through Settings › Remote as a person would,
+ * `take` runs, then the computer is removed and the hub stopped, so no other picture shows it.
+ */
+async function withComputer(t: Tour, take: (computerId: string) => Promise<void>): Promise<void> {
+  const port = await new Promise<number>((resolve) => {
+    const server = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
+  const dir = mkdtempSync(join(tmpdir(), 'switchboard-shots-computer-'));
+  const linkFile = join(dir, 'link.txt');
+  const hub = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(root, 'scripts', 'remote-demo.ts')], {
+    env: { ...process.env, SWITCHBOARD_DEMO_DIR: dir, SWITCHBOARD_DEMO_NAME: 'mystic', SWITCHBOARD_DEMO_LINK_FILE: linkFile, PORT: String(port) },
+    stdio: 'ignore',
+  });
+  try {
+    const started = Date.now();
+    while (!existsSync(linkFile)) {
+      if (Date.now() - started > 20_000) throw new Error('the demo computer wrote no pairing link');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    await t.click('[data-open-settings]');
+    await t.click('[data-settings-section="remote"]');
+    await t.page.fill('[data-computers-link]', readFileSync(linkFile, 'utf8').trim());
+    await t.click('[data-computers-add]');
+    await t.need('[data-computer][data-computer-state="connected"]', 'the demo computer did not connect', 20_000);
+    const computerId = (await t.page.getAttribute('[data-computer]', 'data-computer'))!;
+    await t.click('[data-close-settings]');
+    await t.need('[data-session-list] [data-remote-row]', 'no remote session in the sidebar');
+    await take(computerId);
+  } finally {
+    await t.home().catch(() => {});
+    await t.click('[data-open-settings]').catch(() => {});
+    await t.click('[data-settings-section="remote"]').catch(() => {});
+    if (await t.page.locator('[data-computer-forget]').count()) {
+      await t.click('[data-computer-forget]');
+      await t.click('[data-confirm-strip] [data-confirm]');
+      await t.gone('[data-computer]', 'the demo computer was not removed').catch(() => {});
+    }
+    await t.click('[data-close-settings]').catch(() => {});
+    hub.kill();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
   }
 }
 
@@ -1093,6 +1142,28 @@ const screens: Screen[] = [
       await t.shot('settings-remote');
       await t.click('[data-remote-enabled]');
       await t.click('[data-close-settings]');
+    },
+  },
+  {
+    // Other computers: a paired computer's sessions in the sidebar with its chips and the Computers strip, one of them
+    // open with the violet line, and New session with Run on set to it. Nothing is started there.
+    name: 'computers',
+    async take(t) {
+      await withComputer(t, async (computerId) => {
+        await t.shot('computers-sidebar', { clip: '[data-sidebar-state]' });
+        await t.click(`[data-session-list] [data-remote-row="${computerId}"]`);
+        await t.need('[data-remote-header]', 'the remote session did not open');
+        await t.need('[data-transcript] [data-prompt-bubble]', 'the remote conversation did not load');
+        await t.shot('computers-session');
+        await t.click('[data-new-session]');
+        await t.click(`[data-run-on-option="${computerId}"]`);
+        await t.need('[data-remote-new-session] [data-remote-project]', 'Run on mystic showed no projects');
+        await t.click('[data-remote-new-session] [data-remote-project]');
+        await t.page.fill('[data-remote-new-session] textarea', 'Add rate limits to the webhook endpoints');
+        await t.shot('computers-new-session');
+        await t.page.fill('[data-remote-new-session] textarea', '');
+        await t.click('[data-run-on-option="local"]');
+      });
     },
   },
   ...(['general', 'theme', 'sidebar', 'conversation', 'focus', 'profiles', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
