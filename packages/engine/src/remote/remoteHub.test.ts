@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,7 @@ import {
   parseRemoteLink,
   pskFromSecret,
   REMOTE_IMAGE_BYTES,
+  REMOTE_MAX_FILES,
   REMOTE_MAX_IMAGES,
   type CatchUp,
   type PermissionRequest,
@@ -74,7 +75,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   const sent: string[] = [];
   const sentImages: RemoteImage[][] = [];
   const answered: string[] = [];
-  const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice }> = [];
+  const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[] }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
   const calls: string[] = [];
   // The session's checkout: a real repository with one change.
@@ -109,6 +110,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     appState,
     appVersion: '1.2.3',
     appUrl: `${APP_ORIGIN}/remote/`,
+    filesDir: join(dir, 'remote-files'),
     identity: async () => identity,
     sources: () => ({ summaries: [summary(SESSION, true), summary(HIDDEN, false)], live: [], hosts: [], permissions }),
     archiveAfterDays: () => 7,
@@ -132,7 +134,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     dequeue: () => {},
     interrupt: async () => {},
     respond: (requestId) => void answered.push(requestId),
-    create: async (root, prompt, choice) => (created.push({ root, prompt, model: choice.model, choice }), { sessionId: 'new' }),
+    create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
     markRead: (sessionId) => void calls.push(`read ${sessionId}`),
     setFlags: (sessionId, flags) => void calls.push(`flags ${sessionId} ${JSON.stringify(flags)}`),
@@ -233,6 +235,15 @@ describe('Remote hub', () => {
     await expect(remote.call('session.send', { sessionId: SESSION, text: 'look', images: Array(REMOTE_MAX_IMAGES + 1).fill(image) })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     await expect(remote.call('session.send', { sessionId: SESSION, text: 'look', images: [{ ...image, data: 'a'.repeat(REMOTE_IMAGE_BYTES + 1) }] })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(sentImages).toHaveLength(2);
+    // Files are kept on this computer and mentioned by path; together with the images they must fit one message.
+    await remote.call('session.send', { sessionId: SESSION, text: 'read these', files: [{ name: 'notes.txt', data: 'aGVsbG8=' }, { name: 'notes.txt', data: 'd29ybGQ=' }] });
+    const mentions = [...sent.at(-1)!.matchAll(/@"([^"]+)"|@(\S+)/g)].map((m) => m[1] ?? m[2]!);
+    expect(sent.at(-1)!.startsWith('read these\n\n@')).toBe(true);
+    expect(mentions.map((path) => readFileSync(path, 'utf8'))).toEqual(['hello', 'world']);
+    expect(mentions[1]).toMatch(/notes \(2\)\.txt$/);
+    await expect(remote.call('session.send', { sessionId: SESSION, text: 'x', files: [{ name: '../escape.txt', data: 'aGVsbG8=' }] })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    const big = 'a'.repeat(REMOTE_IMAGE_BYTES);
+    await expect(remote.call('session.send', { sessionId: SESSION, text: 'x', images: [{ ...image, data: big }], files: [...Array(REMOTE_MAX_FILES - 1).fill({ name: 'big.bin', data: big }), { name: 'one.txt', data: 'aGVsbG8=' }] })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
 
     await remote.call('session.respond', { requestId: 'r1', decision: { behavior: 'allow' } });
     expect(answered).toEqual(['r1']);
@@ -241,7 +252,9 @@ describe('Remote hub', () => {
     expect(await remote.call('projects.list', {})).toEqual({ projects: [{ id: projectIdOf(FIRST), name: 'Api' }, { id: projectIdOf(ROOT), name: 'Web' }] });
     await expect(remote.call('session.create', { projectId: projectIdOf(SEEN_ONLY), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test' });
-    expect(created).toMatchObject([{ root: ROOT, prompt: 'add a test', model: 'opus' }]);
+    expect(created).toMatchObject([{ root: ROOT, prompt: 'add a test', model: 'opus', images: [] }]);
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'match this', images: [image], files: [{ name: 'spec.pdf', data: 'aGVsbG8=' }] });
+    expect(created.at(-1)).toMatchObject({ images: [image], prompt: expect.stringMatching(/^match this\n\n@\S+spec\.pdf$/) });
     await expect(remote.call('session.create', { projectId: projectIdOf('/elsewhere'), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
     expect(hub.status().connections).toMatchObject([{ name: 'Phone' }]);
@@ -455,6 +468,18 @@ describe('Remote hub', () => {
     hub.revoke(hub.status().devices[0]!.id);
     await connected.closed;
     expect(hub.status().devices).toEqual([]);
+  });
+
+  it('turns off at once while the tunnel is still starting', async () => {
+    const { hub, on } = await setup({ tunnel: () => fakeTunnel('setInterval(() => {}, 1000)') });
+    const starting = on();
+    await until(() => hub.status().tunnel.state === 'starting');
+    const started = Date.now();
+    await hub.configure({ enabled: false });
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(hub.status()).toMatchObject({ settings: { enabled: false }, address: null, tunnel: { state: 'off' }, problem: null });
+    await starting;
+    expect(hub.status().tunnel.state).toBe('off');
   });
 
   it('starts the tunnel again when it stops by itself', async () => {

@@ -70,6 +70,10 @@ The encryption is done in the app with audited pure-JS primitives (`@noble/curve
 
 A phone sends images with `session.send`, never on their own. The remote app redraws each as a JPEG of at most 2,000px on its longest side at 0.8, and smaller or rougher until it fits `REMOTE_IMAGE_BYTES` (`apps/remote/src/lib/images.ts`), so four fit in one RPC line (the engine takes lines up to 4 MB, `remoteServer.ts`). The frame limit stays as it is: the channel already splits a long line into 60,000-byte frames and the line transport puts it back together.
 
+### Files
+
+Another computer (`computers/RemoteAttachments.tsx`) also sends files with `session.send` and `session.create`, as they are: up to `REMOTE_MAX_FILES`, with the images at most `REMOTE_ATTACHMENT_BYTES` of base64 together so the line stays under 4 MB (`checkAttachments` refuses more). The engine writes them to a folder of their own per message under `<dataDir>/remote-files` (`remoteFiles.ts`), with names that can't leave it, and adds them to the prompt as a line of `@` mentions, as the message box does with dropped files: Claude reads them itself. Folders older than 30 days go when Remote starts. `session.create` takes images too. `hello` says `features: ['attachments']`; the windows send files, and images to `session.create`, only to a computer that says it, since an older one drops unknown params without a word.
+
 ### Framing (`remoteChannel.ts`)
 
 1. The phone's first WebSocket frame: `0x53`, the protocol version, the mode (1 pair, 2 connect), then Noise's first message.
@@ -132,7 +136,7 @@ The remote contract is not the app's contract: remote handlers call engine funct
 | `hello` | The first request: the app's version, the device, and the computer's name |
 | `sessions.list`, `projects.list` | The list (with `unread`, `pinned`, and a running session's model, effort and mode) and the projects you added |
 | `transcript.get`, `transcript.watch`, `transcript.unwatch` | A transcript's pages and live updates, for one session at a time |
-| `session.send`, `session.queue.remove`, `session.interrupt`, `session.respond` | Send or queue (with up to `REMOTE_MAX_IMAGES` images, each at most `REMOTE_IMAGE_BYTES` of base64), take from Up next, stop, answer a prompt |
+| `session.send`, `session.queue.remove`, `session.interrupt`, `session.respond` | Send or queue (with up to `REMOTE_MAX_IMAGES` images, each at most `REMOTE_IMAGE_BYTES` of base64, and up to `REMOTE_MAX_FILES` files), take from Up next, stop, answer a prompt |
 | `session.create`, `later.add` | Start a session, or queue one, in a project you added; `model`, `effort`, `permissionMode` and `worktree` left out are the project's defaults |
 | `session.markRead`, `session.setFlags` | Read, as opening it on the computer; pin or archive |
 | `session.setModel`, `session.setEffort`, `session.setPermissionMode` | A running session's model, effort and mode; modes are `default`, `acceptEdits`, `plan` and `auto` only |
@@ -177,8 +181,8 @@ Switchboard on another computer pairs with Remote as a phone does, and shows its
 - **No loops.** A computer only ever serves its own sessions; the ones it shows from another computer are not in its list, so pairing both ways shows each computer's own sessions once.
 - **One sidebar.** Each computer's last `sessions.list` becomes rows of the normal sidebar (`apps/ui/src/state/remoteRows.ts`), with the same status rules as that computer's list (an open prompt is needs you), in the same groups, search, ⌃⇥ and ⌘⇧U. A remote row's id is `remote:<computer>:<session>` (`remoteSelection.ts`), and a remote session is opened as `{ computerId, sessionId }` in the `remote` main view, never in the panes. A row only offers what the contract has: Open, Pin and Archive (`session.setFlags`), Copy title, and New session in its project. An offline computer keeps its last list, dimmed, and `lastSeen` (from the hub: when its connection last ended) says since when; a forgotten computer's rows go. The Computers strip and "Show sessions from" filter by computer, per window.
 - **The same session view** (`RemoteSessionView.tsx`): the local header, column, permission card (with its keys) and message box, with the computer's chip and a 2px violet line. The transcript stays `RemoteText`; consecutive tool calls fold into one line (`toolsSummary`). Changes, the terminal, the editor and pull requests are disabled, with the reason as a tooltip.
-- **New session on another computer** (`RemoteNewSession.tsx`): Run on picks the computer; its `projects.list` gives the tiles, `session.create` starts the session, and model, effort, mode and worktree show only when `options.get` answers (an older Switchboard there has no `options.get`, so the start sends only the project and the prompt). Folders there can't be picked, images aren't sent, and Quick question, the queue and the focus limit are this computer's.
-- **Not built yet:** Changes and Commit, Ask, plan usage, images, notifications for its sessions, projects matched across computers, and more than one window watching different sessions there (the remote contract watches one transcript per connection).
+- **New session on another computer** (`RemoteNewSession.tsx`): Run on picks the computer; its `projects.list` gives the tiles, `session.create` starts the session, and model, effort, mode and worktree show only when `options.get` answers (an older Switchboard there has no `options.get`, so the start sends only the project and the prompt). Images and files go with the prompt to a computer whose `hello` has `attachments` (see Files). Folders there can't be picked, and Quick question, the queue and the focus limit are this computer's.
+- **Not built yet:** Changes and Commit, Ask, plan usage, notifications for its sessions, projects matched across computers, and more than one window watching different sessions there (the remote contract watches one transcript per connection).
 
 | Where | What |
 |---|---|

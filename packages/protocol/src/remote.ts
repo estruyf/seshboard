@@ -8,7 +8,7 @@ import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
-import { REMOTE_IMAGE_BYTES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
+import { REMOTE_ATTACHMENT_BYTES, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
 import { UsageSnapshot } from './usage.ts';
 
 /**
@@ -179,6 +179,13 @@ export type RemotePushSubscription = z.infer<typeof RemotePushSubscription>;
 export const RemoteImage = ImageAttachment.extend({ data: z.string().min(1).max(REMOTE_IMAGE_BYTES) });
 export type RemoteImage = z.infer<typeof RemoteImage>;
 
+/** A file sent with a message, as it is: its name (no folders) and its bytes in base64. */
+export const RemoteFile = z.object({
+  name: z.string().trim().min(1).max(200).regex(/^[^/\\]+$/, 'A file name without folders'),
+  data: z.string().min(1).max(REMOTE_ATTACHMENT_BYTES),
+});
+export type RemoteFile = z.infer<typeof RemoteFile>;
+
 /**
  * A Claude profile's plan usage, for the remote app's Home: its name and colour (never its account), the 5-hour and
  * weekly windows, and why there are no numbers when the last check failed.
@@ -207,6 +214,8 @@ export const remoteContract = {
         device: z.object({ id: z.string(), name: z.string() }),
         /** What people call the computer ("Elio's iMac"), for the connection chip and the offline help. */
         computer: z.object({ name: z.string() }),
+        /** What it takes beyond what every version does (`REMOTE_FEATURE_ATTACHMENTS`); missing from an older one. */
+        features: z.array(z.string().max(50)).max(50).default([]),
       }),
     },
     'sessions.list': { params: z.object({}), result: RemoteSessions },
@@ -227,9 +236,18 @@ export const remoteContract = {
     /** From now on, `transcript.updated` for this session (one at a time per phone; watching another stops this one). */
     'transcript.watch': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     'transcript.unwatch': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
-    /** Sends a prompt, or queues it while Claude is working (`mode`, as on the Mac), with images pasted, dropped or photographed. */
+    /**
+     * Sends a prompt, or queues it while Claude is working (`mode`, as on the Mac), with images pasted, dropped or
+     * photographed, and files (`REMOTE_FEATURE_ATTACHMENTS`), which the prompt mentions by their path on the computer.
+     */
     'session.send': {
-      params: z.object({ sessionId: SessionId, text: Prompt, mode: SendMode.default('queue'), images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]) }),
+      params: z.object({
+        sessionId: SessionId,
+        text: Prompt,
+        mode: SendMode.default('queue'),
+        images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
+        files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
+      }),
       result: z.object({ queued: z.boolean() }),
     },
     'session.queue.remove': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
@@ -237,7 +255,18 @@ export const remoteContract = {
     /** Answers a permission prompt, question or plan. NOT_FOUND when it was already answered. */
     'session.respond': { params: z.object({ requestId: z.string().min(1).max(200), decision: PermissionDecision }), result: z.object({}) },
     /** A new session in a project Switchboard knows. What it leaves out of the options is the project's default. */
-    'session.create': { params: z.object({ projectId: ProjectId, prompt: Prompt }).extend(RemoteSessionOptions.shape), result: z.object({ sessionId: z.string() }) },
+    'session.create': {
+      params: z
+        .object({
+          projectId: ProjectId,
+          prompt: Prompt,
+          /** With `REMOTE_FEATURE_ATTACHMENTS`, as `session.send` takes them. */
+          images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
+          files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
+        })
+        .extend(RemoteSessionOptions.shape),
+      result: z.object({ sessionId: z.string() }),
+    },
     /** Puts a prompt in Switchboard's queue (Later) for a project, to start when you choose. */
     'later.add': { params: z.object({ projectId: ProjectId, prompt: Prompt }).extend(RemoteSessionOptions.shape), result: z.object({ id: z.string() }) },
     /**

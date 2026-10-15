@@ -7,3 +7,14 @@
  */
 export const REMOTE_MAX_IMAGES = 4;
 export const REMOTE_IMAGE_BYTES = 900_000;
+
+/**
+ * Files a message takes besides its images (a PDF, a log, a spreadsheet), sent as they are: the other computer keeps
+ * them in its data folder and the prompt mentions them by path. A message's images and files take at most
+ * `REMOTE_ATTACHMENT_BYTES` of base64 together, so the line stays under the channel's 4 MB.
+ */
+export const REMOTE_MAX_FILES = 4;
+export const REMOTE_ATTACHMENT_BYTES = 3_600_000;
+
+/** In `hello`'s `features`: `session.send` takes files, and `session.create` images and files. */
+export const REMOTE_FEATURE_ATTACHMENTS = 'attachments';

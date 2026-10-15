@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { Computer, Contract, Effort, RemoteOptions, RemotePermissionMode, RemoteProject, RpcClient } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
@@ -7,6 +7,7 @@ import { useComputers } from '../../state/computersStore.ts';
 import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { toast } from '../../state/toastStore.ts';
+import { DropOverlay } from '../composer/Attachments.tsx';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { RunOnSwitch } from '../newSession/RunOnSwitch.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -16,6 +17,7 @@ import { Kbd } from '../ui/Kbd.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { callComputer } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
+import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { remoteProjectTiles, type RemoteTile } from './remoteNewSession.ts';
 
 /** Tiles before "+N more on …": the fifth place is that tile. */
@@ -39,8 +41,9 @@ const NO_CHOICES: Choices = { model: null, effort: null, permissionMode: null, w
  * New session with another computer picked in Run on (docs/remote-access.md, Other computers): that computer's projects
  * as tiles (⌘1 to ⌘9 still pick), the route tray with its chip, and Start, which asks it to start the session with
  * `session.create` and opens it here. Model, effort, mode and where only show when that computer answers
- * `options.get` (an older Switchboard doesn't). Folders there can't be picked from here, images can't be sent yet, and
- * Quick question, the queue and the focus limit are this computer's.
+ * `options.get` (an older Switchboard doesn't). Images and files go with the prompt when that computer takes them
+ * (`RemoteAttachments.tsx`). Folders there can't be picked from here, and Quick question, the queue and the focus limit
+ * are this computer's.
  */
 export function RemoteNewSession({ client, computer }: { client: RpcClient<Contract> | null; computer: Computer }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
@@ -53,8 +56,10 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const picked = useRunOn((s) => s.projects[computer.id] ?? null);
   const list = useComputers((s) => s.lists.get(computer.id) ?? null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const composer = useRef<HTMLDivElement>(null);
   const name = computer.name;
   const connected = computer.state === 'connected';
+  const attachments = useRemoteAttachments({ computer, rootRef: composer, newSession: true, disabledReason: connected ? null : `${name} is not connected` });
 
   useEffect(() => {
     if (!client || !connected) return;
@@ -109,18 +114,23 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
 
   const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : !project ? 'Choose a project first' : !prompt.trim() ? 'Type a message first' : null;
   const start = async () => {
-    if (blocked || starting || !client || !project) return;
+    if (blocked || starting || attachments.reading || !client || !project) return;
     setStarting(true);
+    const { images, files } = attachments;
     try {
       const { sessionId } = await callComputer(client, computer.id, 'session.create', {
         projectId: project.id,
         prompt: prompt.trim(),
+        // Only a computer that takes them gets these: an older one would drop them without a word.
+        ...(images.length ? { images } : {}),
+        ...(files.length ? { files } : {}),
         ...(options && choices.model !== null ? { model: choices.model } : {}),
         ...(options && choices.effort !== null ? { effort: choices.effort } : {}),
         ...(options && choices.permissionMode !== null ? { permissionMode: choices.permissionMode } : {}),
         ...(options && choices.worktree !== null ? { worktree: choices.worktree } : {}),
       });
       setPrompt('');
+      attachments.clear();
       useComputers.getState().openSession({ computerId: computer.id, sessionId }, { starting: true });
     } catch (e) {
       toast((e as Error).message, { body: `It didn’t start on ${name}.` });
@@ -135,17 +145,9 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       void start();
     }
   };
-  // Images and files stay on this computer for now.
-  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    if ([...event.clipboardData.items].some((item) => item.kind === 'file')) {
-      event.preventDefault();
-      toast(`Images can’t go to ${name} yet`, { body: 'Send the text, and add the image on that computer.' });
-    }
-  };
-
   const keys = comboPresses(shortcutById('new-session.pick').keys[0]!);
   return (
-    <div className="flex h-full min-h-0 flex-col" data-remote-new-session={computer.id}>
+    <div className="flex h-full min-h-0 flex-col" data-remote-new-session={computer.id} data-drop-zone>
       <div className="drag flex h-13 shrink-0 items-center justify-between px-4">
         <SidebarToggle />
       </div>
@@ -214,13 +216,15 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                 </>
               )}
             </div>
-            <div className="rounded-xl rounded-t-none border border-remote/45 bg-card px-3 pt-2.5 pb-2 shadow-sm" data-remote-composer>
+            <div ref={composer} className="relative rounded-xl rounded-t-none border border-remote/45 bg-card px-3 pt-2.5 pb-2 shadow-sm" data-remote-composer>
+              <DropOverlay drop={attachments.drop} />
+              <RemoteAttachmentList state={attachments} className="mb-2 px-1 pt-1" />
               <textarea
                 ref={box}
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
                 onKeyDown={onKeyDown}
-                onPaste={onPaste}
+                onPaste={attachments.onPaste}
                 rows={1}
                 autoFocus
                 disabled={!connected}
@@ -231,6 +235,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
               />
               <div className="mt-1.5 flex items-center justify-between gap-2">
                 <div className="-ml-1.5 flex min-w-0 flex-1 items-center gap-0.5">
+                  <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
                   {options && project && (
                     <>
                       <span className="flex items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Claude runs with ${name}’s Claude profile`}>
@@ -271,7 +276,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                   )}
                 </div>
                 <span className="flex" data-tooltip={!starting ? (blocked ?? undefined) : undefined}>
-                  <Button variant="primary" size="lg" shortcut="new-session.start" disabled={!!blocked || starting} onClick={() => void start()} className="disabled:pointer-events-none" data-composer-submit data-remote-start>
+                  <Button variant="primary" size="lg" shortcut="new-session.start" disabled={!!blocked || starting || attachments.reading} onClick={() => void start()} className="disabled:pointer-events-none" data-composer-submit data-remote-start>
                     {starting ? 'Starting…' : `Start on ${name}`}
                   </Button>
                 </span>
