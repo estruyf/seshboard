@@ -36,7 +36,7 @@ export function imageFiles<F extends { type: string }>(files: readonly F[], coun
 }
 
 /** Base64 of a blob, without the `data:` prefix. */
-async function base64(blob: Blob): Promise<string> {
+export async function base64(blob: Blob): Promise<string> {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = '';
   for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
