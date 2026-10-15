@@ -1,4 +1,4 @@
-import { CircleHelp, ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
+import { Check, CircleHelp, ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { PermissionDecision, PermissionRequest } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -9,6 +9,7 @@ import { CheckMark } from '../ui/Checkbox.tsx';
 import { RadioGroup } from '../ui/Radio.tsx';
 import { toolSummary } from '../transcript/toolSummary.ts';
 import { cardKeyAction, OVERLAY_SELECTOR, waitingLabel, type CardKind, type KeyTarget } from './permissionKeys.ts';
+import { nextOpenQuestion } from './questionFlow.ts';
 
 /** Sends the answer; resolves to whether the engine took it (a failure shows under the card). */
 type Respond = (decision: PermissionDecision) => Promise<boolean>;
@@ -359,6 +360,34 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
 
   const final = (q: Question) => [...(answers[q.question] ?? []), ...(other[q.question]?.trim() ? [other[q.question]!.trim()] : [])];
   const complete = questions.every((q) => final(q).length > 0);
+
+  const nextUnanswered = (from: number) => nextOpenQuestion(questions.map((q) => final(q).length > 0), from);
+  /** One way to answer, for a click and a number key. A single choice that is the first answer moves on; changing an answer, or a multi-select, stays. */
+  const choose = (qi: number, q: Question, label: string) => {
+    const first = final(q).length === 0;
+    toggle(q, label);
+    setStep(qi);
+    const next = !q.multiSelect && first ? nextUnanswered(qi) : undefined;
+    if (next !== undefined) setStep(next);
+  };
+  /** Enter, and Enter in the answer field: on to the next open question, or send when none is left. */
+  const advance = () => {
+    const next = nextUnanswered(Math.min(step, last));
+    if (next !== undefined) setStep(next);
+    else submit();
+  };
+
+  // Bring the question you move on to into view, when it isn't (a tall card scrolls with the conversation).
+  const fieldsets = useRef<Array<HTMLFieldSetElement | null>>([]);
+  const moved = useRef(false);
+  useEffect(() => {
+    if (!moved.current) {
+      moved.current = true;
+      return;
+    }
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    fieldsets.current[Math.min(step, last)]?.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }, [step, last]);
   const submit = () => {
     if (!complete) return;
     const result = Object.fromEntries(questions.map((q) => [q.question, final(q).join(', ')]));
@@ -372,11 +401,9 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
     pick: (index) => {
       const option = current?.options[index];
       if (!current || !option) return;
-      toggle(current, option.label);
-      // A single choice is the whole answer to that question; go on to the next one.
-      if (!current.multiSelect && step < last) setStep(step + 1);
+      choose(Math.min(step, last), current, option.label);
     },
-    enter: () => (step < last ? setStep(step + 1) : submit()),
+    enter: advance,
   });
 
   return (
@@ -385,7 +412,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
       aria-labelledby={titleId}
       onSubmit={(e) => {
         e.preventDefault();
-        submit();
+        advance();
       }}
     >
       <Header request={request} icon={<MessageCircleQuestion size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
@@ -400,19 +427,32 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
             checked={picked.includes(option.label)}
             multi={q.multiSelect ?? false}
             tabbable={picked.length === 0 && i === 0}
-            onSelect={() => {
-              setStep(qi);
-              toggle(q, option.label);
-            }}
+            onSelect={() => choose(qi, q, option.label)}
           />
         ));
-        // With several questions, the ones the number keys don't answer right now step back a little.
-        const dimmed = questions.length > 1 && qi !== step;
+        // With several questions, a rail and a counter mark the one the number keys answer now. Questions you have answered
+        // fade back (hover or focus brings them back); the ones still to come stay fully readable, as you read ahead.
+        const several = questions.length > 1;
+        const isCurrent = several && qi === step;
+        const answered = final(q).length > 0;
         return (
-          <fieldset key={q.question} className={`grid gap-1.5 ${dimmed ? 'opacity-75' : ''}`} onFocus={() => setStep(qi)}>
+          <fieldset
+            key={q.question}
+            ref={(el) => void (fieldsets.current[qi] = el)}
+            className={`grid gap-1.5 transition-opacity ${several ? `border-l-2 pl-3 ${isCurrent ? 'border-accent-ink' : 'border-border'}` : ''} ${several && answered && !isCurrent ? 'opacity-60 focus-within:opacity-100 hover:opacity-100' : ''}`}
+            data-question-current={several ? isCurrent : undefined}
+            onFocus={() => setStep(qi)}
+          >
             <legend className="mb-1.5 text-body font-medium">
+              {several && <span className={`mr-2 text-meta tabular-nums ${isCurrent ? 'font-semibold text-accent-ink' : 'text-muted'}`}>{`${qi + 1} of ${questions.length}`}</span>}
               {q.header && <span className="mr-2 rounded bg-border/70 px-1.5 py-0.5 text-meta text-muted uppercase">{q.header}</span>}
               {q.question}
+              {several && answered && (
+                <span className="ml-2 inline-flex items-center gap-0.5 align-middle text-meta font-normal text-ok">
+                  <Check size={12} aria-hidden />
+                  Answered
+                </span>
+              )}
             </legend>
             {q.multiSelect ? (
               rows
@@ -428,6 +468,13 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
               aria-label={`Your own answer to: ${q.question}`}
               className="h-8 rounded-md border border-border bg-bg px-2.5 text-ui outline-none placeholder:text-faint focus:border-accent-ink/60"
             />
+            {isCurrent && q.multiSelect && nextUnanswered(qi) !== undefined && (
+              <div>
+                <Button type="button" variant="quiet" size="sm" onClick={advance} data-question-next>
+                  Next question
+                </Button>
+              </div>
+            )}
           </fieldset>
         );
       })}
@@ -437,7 +484,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
         </Button>
         {current && current.options.length > 0 && !busy && (
           <span className="text-meta text-muted">
-            {`Press 1${current.options.length > 1 ? ` to ${Math.min(9, current.options.length)}` : ''} to pick, Enter for ${step < last ? 'the next question' : 'send'}`}
+            {`Press 1${current.options.length > 1 ? ` to ${Math.min(9, current.options.length)}` : ''} to pick, Enter for ${nextUnanswered(Math.min(step, last)) !== undefined ? 'the next question' : 'send'}`}
           </span>
         )}
         <DenyButton label="Skip" busy={busy} onClick={skip} />

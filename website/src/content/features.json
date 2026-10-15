@@ -612,6 +612,11 @@
       "page": "terminal-changes-git/terminal"
     },
     {
+      "id": "palette:toggle-agents",
+      "name": "Toggle agents",
+      "page": "sessions/agents"
+    },
+    {
       "id": "palette:toggle-changes",
       "name": "Toggle changes",
       "page": "terminal-changes-git/changes"
@@ -660,6 +665,11 @@
       "id": "shortcut:changes.toggle",
       "name": "changes.toggle",
       "page": "command-palette"
+    },
+    {
+      "id": "shortcut:agents.toggle",
+      "name": "agents.toggle",
+      "page": "sessions/agents"
     },
     {
       "id": "shortcut:ask.open",
@@ -1307,9 +1317,24 @@
       "page": "new-session/queue"
     },
     {
-      "id": "feature:agents-dialog",
-      "name": "Agents",
-      "page": "sessions/conversation"
+      "id": "feature:agents-panel",
+      "name": "Agents panel",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "feature:agents-from-background-tasks",
+      "name": "Open an agent from the background tasks list",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "feature:agents-stop",
+      "name": "Stop a background agent from the panel",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "feature:agents-open-from-conversation",
+      "name": "Open in Agents panel, from an agent's call",
+      "page": "sessions/agents"
     },
     {
       "id": "feature:always-allow",
