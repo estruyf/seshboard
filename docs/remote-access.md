@@ -87,6 +87,8 @@ The QR codes open the remote app with everything after `#`, which a browser neve
 
 The engine address must be `https://` (or `http://` on `localhost`/`127.0.0.1`, for development).
 
+A link can also be pasted in (`LinkEntry`, `pastedLink`): on the welcome screen, after a bad link or a failed pairing. iOS gives a Home Screen app its own storage, apart from Safari's, and no address bar, so a pairing done in Safari never reaches it. In Safari on iOS, the pairing screen offers **Copy link** (the same `#p.…` link) to pair the Home Screen app instead.
+
 ### Pairing: `Noise_IKpsk2_25519_ChaChaPoly_SHA256`
 
 - **Pair a phone** makes a 128-bit secret, good for one use and two minutes. Closing the dialog cancels it.

@@ -25,6 +25,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Remote: pair the app on your Home Screen.** On an iPhone, Switchboard Remote on the Home Screen didn't share Safari's pairing and had no address bar, so it could not pair. It now has a field to paste a link from your computer, with **Paste** and **Open link**. When you scan the QR code in Safari, **Copy link** copies the pairing link for the Home Screen app.
 - **Remote: the row under the pointer lights up in lists.** In the model, effort, mode and worktree lists and the **⋯** menu, the row you point at is now highlighted (it barely showed in dark mode), and the chosen one has a check.
 
 ## [0.0.18] - 2026-10-15
