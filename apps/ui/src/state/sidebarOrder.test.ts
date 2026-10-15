@@ -100,6 +100,25 @@ describe('nextNeedsYou', () => {
   it('stays on the only waiting session', () => {
     expect(nextNeedsYou([row('a', NOW, { live: live('needs-you') }), row('b', NOW)], 'a')).toBe('a');
   });
+
+  it('walks what needs you quickest to unblock first, finished and unread after waiting, whatever the sidebar shows', () => {
+    const list = [
+      row('long-review', NOW - HOUR, { unread: true }),
+      row('waiting', NOW - 3 * HOUR, { live: live('needs-you') }),
+      row('read', NOW),
+      row('quick-review', NOW - 2 * HOUR, { unread: true }),
+    ];
+    const quick = new Map([
+      ['long-review', { reviewMinutes: 9, testsFailed: false }],
+      ['quick-review', { reviewMinutes: 2, testsFailed: false }],
+    ]);
+    expect(nextNeedsYou(list, null, quick)).toBe('waiting');
+    expect(nextNeedsYou(list, 'waiting', quick)).toBe('quick-review');
+    expect(nextNeedsYou(list, 'quick-review', quick)).toBe('long-review');
+    expect(nextNeedsYou(list, 'long-review', quick)).toBe('waiting');
+    // From a session that needs nothing, the quickest first.
+    expect(nextNeedsYou(list, 'read', quick)).toBe('waiting');
+  });
 });
 
 describe('needsYouPill', () => {

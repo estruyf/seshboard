@@ -1,7 +1,8 @@
-import { ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
+import { CircleHelp, ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { PermissionDecision, PermissionRequest } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { useWhy } from '../../state/whyStore.ts';
 import { Markdown } from '../transcript/Markdown.tsx';
 import { Button } from '../ui/Button.tsx';
 import { CheckMark } from '../ui/Checkbox.tsx';
@@ -90,6 +91,8 @@ function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind
       if (action.type === 'enter' && !s.enter) return;
       event.preventDefault();
       event.stopPropagation();
+      // Esc closes "Why Claude asks" before it says no.
+      if (action.type === 'deny' && useWhy.getState().open?.sessionId === card.dataset.permissionSession) return useWhy.getState().close();
       if (action.type === 'allow') s.allow();
       else if (action.type === 'deny') s.deny();
       else if (action.type === 'pick') s.pick?.(action.index);
@@ -111,7 +114,28 @@ function Waiting({ since }: { since: number }) {
   return label ? <span className="shrink-0 text-meta font-medium text-warn">{label}</span> : null;
 }
 
-function Header({ icon, title, titleId, createdAt, sub }: { icon: ReactNode; title: string; titleId: string; createdAt: number; sub?: string | null }) {
+/** "Why?": opens or closes the side panel that explains the request. */
+function WhyButton({ request }: { request: PermissionRequest }) {
+  const open = useWhy((s) => s.open?.requestId === request.requestId);
+  return (
+    <Button
+      variant="quiet"
+      size="sm"
+      icon={<CircleHelp size={13} aria-hidden />}
+      selected={open}
+      aria-expanded={open}
+      aria-label="Why is Claude asking?"
+      data-tooltip="Why is Claude asking?"
+      onClick={() => useWhy.getState().toggle(request.sessionId, request.requestId)}
+      className="shrink-0"
+      data-permission-why
+    >
+      Why?
+    </Button>
+  );
+}
+
+function Header({ icon, title, titleId, createdAt, sub, request }: { icon: ReactNode; title: string; titleId: string; createdAt: number; sub?: string | null; request: PermissionRequest }) {
   return (
     <div className="flex items-center gap-2.5">
       <span className="flex size-6.5 shrink-0 items-center justify-center rounded-md bg-warn/15 text-warn" aria-hidden>
@@ -124,6 +148,7 @@ function Header({ icon, title, titleId, createdAt, sub }: { icon: ReactNode; tit
         {sub && <p className="text-meta text-muted">{sub}</p>}
       </div>
       <Waiting since={createdAt} />
+      <WhyButton request={request} />
     </div>
   );
 }
@@ -210,6 +235,7 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
   return (
     <div className="grid gap-2.5">
       <Header
+        request={request}
         icon={command !== undefined ? <SquareTerminal size={15} /> : <ShieldQuestion size={15} />}
         title={permissionTitle(request, cwd)}
         titleId={titleId}
@@ -221,7 +247,8 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
       ) : (
         detail && <p className="truncate rounded-lg border border-border bg-bg px-3 py-2 font-mono text-ui text-muted">{detail}</p>
       )}
-      {request.description && <p className="text-ui text-muted">{request.description}</p>}
+      {/* Claude Code often describes a command with the command itself: it shows once, above. */}
+      {request.description && request.description.trim() !== command?.trim() && <p className="text-ui text-muted">{request.description}</p>}
       {request.decisionReason && <p className="text-meta text-muted">{request.decisionReason}</p>}
       <button
         type="button"
@@ -361,7 +388,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
         submit();
       }}
     >
-      <Header icon={<MessageCircleQuestion size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
+      <Header request={request} icon={<MessageCircleQuestion size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
       {questions.map((q, qi) => {
         const picked = answers[q.question] ?? [];
         const rows = q.options.map((option, i) => (
@@ -437,7 +464,7 @@ function PlanApproval({ request, titleId, cardRef }: CardProps) {
   useCardShortcuts(cardRef, 'plan', 0, busy, { allow: () => void approveWithEdits(), deny: keepPlanning });
   return (
     <div className="grid gap-2.5">
-      <Header icon={<ClipboardList size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
+      <Header request={request} icon={<ClipboardList size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
       <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-border bg-bg px-3 py-2">
         <Markdown text={plan} />
       </div>
@@ -471,6 +498,7 @@ export function PermissionCard({ request, cwd }: { request: PermissionRequest; c
       // The margin keeps the 4px ring inside the scrolling list that holds the cards.
       className="rounded-xl border border-warn/55 bg-[color-mix(in_oklab,var(--color-warn)_5%,var(--color-card))] px-4 py-3 ring-4 ring-warn/10"
       data-permission-request
+      data-permission-session={request.sessionId}
     >
       {request.toolName === 'AskUserQuestion' ? (
         <AskUserQuestion request={request} titleId={titleId} cardRef={cardRef} />

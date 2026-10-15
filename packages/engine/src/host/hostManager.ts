@@ -89,6 +89,8 @@ export interface HostManagerDeps {
   upNext?: { list(sessionId: string): StoredUpNext[]; all(): Array<{ sessionId: string; queue: QueuedMessage[] }>; save(sessionId: string, messages: readonly StoredUpNext[]): void };
   /** A session's Up next changed (running or not), for windows showing it. */
   onUpNext?: (sessionId: string, queue: QueuedMessage[]) => void;
+  /** A session's turn ended: finished, or stopped with an error. */
+  onTurnEnd?: (sessionId: string, outcome: { ok: boolean; error: string | null }) => void;
 }
 
 /** Command lists differ per folder (project commands) and per profile (user commands, skills, plugins). */
@@ -777,6 +779,7 @@ export class HostManager {
         // onInfo stores this session's new list right after.
         commandsChanged: () => this.forgetCommands(config.profileId),
         queue: (sessionId, messages) => this.saveQueue(sessionId, messages),
+        turnEnded: (sessionId, outcome) => this.deps.onTurnEnd?.(sessionId, outcome),
       },
       startQuery,
     );

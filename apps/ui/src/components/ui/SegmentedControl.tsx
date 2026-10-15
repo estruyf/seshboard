@@ -31,6 +31,8 @@ interface Common<T extends string> {
   segments: readonly Segment<T>[];
   /** `sm` 24px (inside a panel's header), `md` 28px (the session header). */
   size?: 'sm' | 'md';
+  /** As wide as its container, the segments sharing the width (the sidebar's Recent | Quickest to unblock). */
+  fill?: boolean;
   className?: string;
   'data-tooltip'?: string;
   [data: `data-${string}`]: unknown;
@@ -59,7 +61,7 @@ const HEIGHT = { sm: 'h-6', md: 'h-7' } as const;
  * independent switches (`aria-pressed`, or `aria-expanded` for a segment that opens a panel).
  */
 export function SegmentedControl<T extends string>(props: RadioProps<T> | ToggleProps<T>) {
-  const { label, segments, size = 'md', className = '', mode } = props;
+  const { label, segments, size = 'md', fill = false, className = '', mode } = props;
   const rest = Object.fromEntries(Object.entries(props).filter(([key]) => key.startsWith('data-')));
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const isOn = (segment: Segment<T>) => (props.mode === 'radio' ? props.value === segment.value : props.pressed.includes(segment.value));
@@ -83,7 +85,7 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
       aria-label={label}
       onKeyDown={onKeyDown}
       // The edge keeps the track visible where card and background are the same colour (white in light mode).
-      className={`inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-card p-0.5 shadow-[inset_0_0_0_1px_var(--sb-overlay-border)] ${HEIGHT[size]} ${size === 'sm' ? 'text-meta' : 'text-ui'} ${className}`}
+      className={`${fill ? 'flex w-full' : 'inline-flex shrink-0'} items-center gap-0.5 rounded-lg bg-card p-0.5 shadow-[inset_0_0_0_1px_var(--sb-overlay-border)] ${HEIGHT[size]} ${size === 'sm' ? 'text-meta' : 'text-ui'} ${className}`}
       {...rest}
     >
       {segments.map((segment, index) => {
@@ -106,7 +108,7 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
             aria-label={segment.ariaLabel ?? (segment.iconOnly ? segment.label : undefined)}
             aria-keyshortcuts={segment.kbd ? ariaShortcut(storedShortcut(segment.kbd)) : undefined}
             data-tooltip={segment.tooltip ?? (segment.iconOnly ? segment.label : undefined)}
-            className={`relative flex h-full shrink-0 items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 ${on ? 'bg-selected text-text' : 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text'}`}
+            className={`relative flex h-full ${fill ? 'min-w-0 flex-1' : 'shrink-0'} items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 ${on ? 'bg-selected text-text' : 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text'}`}
             {...aria}
             {...segment.data}
           >

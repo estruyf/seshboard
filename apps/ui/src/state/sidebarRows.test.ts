@@ -3,7 +3,7 @@ import type { LaterItem, LiveSession, SessionHostInfo } from '@switchboard/proto
 import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
 import { useTilingArea } from './tilingArea.ts';
 import type { QueueEntry } from './queue.ts';
-import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startOfDay, startupSession, waitingLabel } from './sidebarRows.ts';
+import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, quickestGroups, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startOfDay, startupSession, waitingLabel } from './sidebarRows.ts';
 import { closedSections, DEFAULT_SECTIONS, parseSections, toggleAllSections } from './sidebarSections.ts';
 
 const NOW = Date.UTC(2026, 9, 5, 12);
@@ -294,6 +294,52 @@ describe('buildListRows', () => {
     expect(shape(buildListRows([waiting, active[1]!], [], { now: NOW, archivedOpen: false, queue }))).toEqual(['[needs-you 1 first]', 'ask', '[queue 2 open]', 'queue:Monthly export', 'queue:Speaker notes', '[today 1]', 'a']);
     expect(shape(buildListRows([], [], { now: NOW, archivedOpen: false, queue }))).toEqual(['[queue 2 open first]', 'queue:Monthly export', 'queue:Speaker notes']);
     expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, queue: { entries: [], ready: 0 } }))).toEqual(['[working 1 first]', 'busy', '[today 2]', 'a', 'b']);
+  });
+
+  it('in Quickest to unblock, ranks what needs you, then what you read, then what still works, without the Queue or Pinned', () => {
+    const quick = new Map([
+      ['slow', { reviewMinutes: 5, testsFailed: false }],
+      ['fast', { reviewMinutes: 2, testsFailed: false }],
+      ['fast-failing', { reviewMinutes: 2, testsFailed: true }],
+      ['ask', { reviewMinutes: 1, testsFailed: false }],
+    ]);
+    const list = [
+      row('read-old', { updatedAt: NOW - 3 * HOUR }),
+      row('slow', { unread: true }),
+      row('fast-failing', { unread: true, updatedAt: NOW - 10 * 60_000 }),
+      row('pin', { pinned: true }),
+      row('no-card', { unread: true }),
+      row('busy', { live: live('running') }),
+      row('fast', { unread: true }),
+      row('ask', { live: live('needs-you') }),
+      row('failed', { error: true }),
+    ];
+    expect(quickestGroups(list, quick).map((g) => [g.group, g.rows.map((r) => r.id)])).toEqual([
+      // Waiting for you first; then by review time, failing tests last among equals, and sessions without a card after.
+      ['review', ['ask', 'fast', 'fast-failing', 'slow', 'no-card', 'failed']],
+      ['read', ['pin', 'read-old']],
+      ['still-working', ['busy']],
+    ]);
+    expect(shape(buildListRows(list, [], { now: NOW, archivedOpen: false, queue: queueOf('Idea'), sort: 'quickest', quick }))).toEqual([
+      '[review 6 first]',
+      'ask',
+      'fast',
+      'fast-failing',
+      'slow',
+      'no-card',
+      'failed',
+      '[read 2]',
+      'pin',
+      'read-old',
+      '[still-working 1]',
+      'busy',
+    ]);
+  });
+
+  it('never closes Needs review, and says nothing on Still working’s closed header', () => {
+    const list = [row('a', { unread: true }), row('b', { live: live('running') })];
+    const rows = buildListRows(list, [], { now: NOW, archivedOpen: false, sort: 'quickest', closed: new Set(['still-working']) });
+    expect(shape(rows)).toEqual(['[review 1 first]', 'a', '[still-working 1 closed]']);
   });
 
   it('never offers queued prompts to Select all', () => {

@@ -80,6 +80,12 @@ import { startNewSession } from '../newSession/startSession.ts';
 import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
 import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
+import { CatchUpSlot } from '../catchUp/CatchUp.tsx';
+import { replyPlaceholder } from '../catchUp/catchUpModel.ts';
+import { useCatchUp } from '../../state/catchUpStore.ts';
+import { useCatchUpShow } from '../../state/catchUpShow.ts';
+import { useWhy } from '../../state/whyStore.ts';
+import { WhyPanel } from '../session/WhyPanel.tsx';
 
 const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', sdk: 'SDK', app: 'Switchboard', unknown: '' } as const;
 
@@ -321,13 +327,27 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const projectRoot = summary?.projectRoot ?? registryLive?.projectRoot ?? null;
   const project = useProjects((s) => (projectRoot ? s.projects.get(projectRoot) : undefined));
 
+  // The catch-up: a briefing on the last turn, as a banner over the conversation.
+  const { card: catchUp, show: catchUpShow } = useCatchUpShow(sessionId);
+  const replying = useCatchUp((s) => s.replying === sessionId);
+  // When you opened this session: a catch-up made before that is what you came back to.
+  const openedAt = useRef({ sessionId, at: Date.now() });
+  if (openedAt.current.sessionId !== sessionId) openedAt.current = { sessionId, at: Date.now() };
+  /**
+   * Opening a session with a catch-up doesn't mark it read: Mark as read, or anything that ends what it needs, does. A
+   * card made while you were looking (you watched the turn end) is no news, so the session is read as usual then.
+   */
+  const keepUnread = catchUp !== null && catchUpShow !== null && catchUp.generatedAt < openedAt.current.at;
+
   // Looking at a session marks it read, also while new output keeps arriving.
   const unread = summary?.unread ?? false;
   useEffect(() => {
-    if (!client || !unread) return;
+    if (!client || !unread || keepUnread) return;
     const timer = setTimeout(() => void client.call('sessions.markViewed', { sessionId }).catch(() => {}), 600);
     return () => clearTimeout(timer);
-  }, [client, sessionId, unread, summary?.updatedAt]);
+  }, [client, sessionId, unread, summary?.updatedAt, keepUnread]);
+  // Reply put you in the message box: another session isn't a reply to this one.
+  useEffect(() => () => useCatchUp.setState((s) => (s.replying === sessionId ? { replying: null } : {})), [sessionId]);
 
   // The latest task list, pinned above the composer while there's still work on it.
   const todos = useMemo(() => {
@@ -378,6 +398,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The badge on the Changes button counts uncommitted files only (the panel can compare with a branch too).
   const changedCount = changesBase === 'uncommitted' && changes ? changes.files.length : 0;
   const showChanges = Boolean(changesOpen && active && cwd && isRepo);
+  // "Why is Claude asking?" on a permission card: its panel takes the Changes panel's place while it is open.
+  const whyOpen = useWhy((s) => s.open);
+  const whyRequest = active && whyOpen?.sessionId === sessionId ? (permissions.find((p) => p.requestId === whyOpen.requestId) ?? null) : null;
+  // Answered (here, in a terminal or by a hook): the panel goes with the request.
+  useEffect(() => {
+    if (whyOpen?.sessionId === sessionId && !permissions.some((p) => p.requestId === whyOpen.requestId)) useWhy.getState().close();
+  }, [whyOpen, permissions, sessionId]);
   const changesExpanded = useChangesLayout((s) => s.expanded);
   // The terminal docks below or on the right; the right side goes to Changes when both want it. Maximized, it
   // takes the whole view: the conversation (and Changes) stay mounted but hidden.
@@ -386,7 +413,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyWidth = useWidth(bodyRef);
   const bodyHeight = useHeight(bodyRef);
-  const terminalBlocked = rightBlocked(showChanges, bodyWidth);
+  const terminalBlocked = rightBlocked(showChanges || whyRequest !== null, bodyWidth);
   const terminalDock = effectiveDock(useTerminals((s) => s.dock), terminalBlocked);
   const terminalMaximized = useTerminals((s) => s.maximizedFor.has(sessionId)) && terminalShown;
   // Docked below, the terminal takes the room of the footer under the message box: a ring in the box stands in for it.
@@ -798,6 +825,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (!ungated && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return false;
     const sentAt = Date.now();
     const result = await client.call('session.send', { sessionId, text, attachments, fork, ...(mode ? { mode } : {}) });
+    if (useCatchUp.getState().replying === sessionId) useCatchUp.getState().setReplying(null);
     // A new message moves on from the last side answer: its chip goes.
     dropSideChip(sessionId);
     // A queued message waits in Up next, so the conversation has nothing new to scroll to. The answer
@@ -1058,7 +1086,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
 
       <div ref={bodyRef} className="flex min-h-0 flex-1">
         {/* An expanded Changes panel takes the whole view; the conversation stays mounted (scroll position, drafts) but hidden. */}
-        <div className={`relative min-w-0 flex-1 flex-col ${(showChanges && changesExpanded && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
+        <div className={`relative min-w-0 flex-1 flex-col ${(showChanges && !whyRequest && changesExpanded && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
           {findQuery !== null && !terminalMaximized && (
             <FindBar
               query={findQuery}
@@ -1068,6 +1096,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               onStep={stepFind}
               onClose={closeFind}
               focusNonce={findFocus}
+            />
+          )}
+          {catchUp && catchUpShow && !terminalMaximized && (
+            <CatchUpSlot
+              card={catchUp}
+              show={catchUpShow}
+              cwd={cwd}
+              changes={changes}
+              active={active}
+              changesOpen={showChanges}
             />
           )}
           <MessageActionsContext.Provider value={messageActions}>
@@ -1343,7 +1381,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   cwd={cwd}
                   commands={commands}
                   running={running}
-                  placeholder={running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
+                  placeholder={replying && !running ? replyPlaceholder(title) : running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
                   submitLabel={openElsewhere ? 'Fork and send' : undefined}
                   dropHint={status === 'ready' && messages.length === 0}
                   disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
@@ -1381,8 +1419,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     request: sideRequest,
                   }}
                   onEscape={() => {
-                    if (!side.open) return false;
-                    closeSideQuestion(sessionId);
+                    if (side.open) {
+                      closeSideQuestion(sessionId);
+                      return true;
+                    }
+                    // Esc after Reply leaves the message box and goes back to the catch-up.
+                    if (useCatchUp.getState().replying !== sessionId) return false;
+                    useCatchUp.getState().setReplying(null);
+                    (document.activeElement as HTMLElement | null)?.blur();
                     return true;
                   }}
                   onCycleMode={
@@ -1436,8 +1480,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           {terminalShown && terminalDock === 'bottom' && terminalPanel}
         </div>
         {terminalShown && terminalDock === 'right' && terminalPanel}
-        {showChanges && cwd && !terminalMaximized && (
-          <ChangesPanel cwd={cwd} changes={changes} base={changesBase} onBase={setChangesBase} onRefresh={refreshChanges} onClose={() => toggleChanges(false)} />
+        {whyRequest && !terminalMaximized && <WhyPanel request={whyRequest} cwd={cwd} />}
+        {showChanges && !whyRequest && cwd && !terminalMaximized && (
+          <ChangesPanel cwd={cwd} changes={changes} base={changesBase} onBase={setChangesBase} onRefresh={refreshChanges} onClose={() => toggleChanges(false)} outside={catchUp?.signals.outOfScope} />
         )}
       </div>
     </div>

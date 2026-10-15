@@ -17,6 +17,7 @@ import {
   type LogLevel,
   type ModelOption,
   type RpcServer,
+  type SessionHostInfo,
   type SlashCommand,
   type SystemInfo,
   type PrError,
@@ -37,6 +38,7 @@ import {
   DEFAULT_AUTO_MODEL,
   type AutoModelPrefs,
   type AutoPick,
+  type CatchUp,
   type QueuedMessage,
   type StreamDelta,
 } from '@switchboard/protocol';
@@ -70,6 +72,9 @@ import { UsageMonitor } from './host/usageMonitor.ts';
 import { UsageInsights } from './usage/usageInsights.ts';
 import { scopeOf } from './usage/usageScanner.ts';
 import { ModelRouter, RoutingStore, stubRoute } from './autoModel/router.ts';
+import { CatchUpService } from './catchUp/catchUpService.ts';
+import { CatchUpStore, CatchUpUsageStore } from './catchUp/catchUpStore.ts';
+import { stubAnswer, Summarizer } from './catchUp/summary.ts';
 import { ProjectRegistry, type FolderActivity } from './projects/projectRegistry.ts';
 import { QuestionsFolder } from './questions/questionsFolder.ts';
 import { createAppStateStore } from './db/appState.ts';
@@ -154,6 +159,11 @@ export interface EngineOptions {
    * screenshots, which must never call a model. Never set in normal use.
    */
   stubSideQuestions?: boolean;
+  /**
+   * Catch-up summaries made up from the tool calls instead of asking Haiku: the smoke test and the screenshots, which
+   * must never call a model. Never set in normal use.
+   */
+  stubCatchUp?: boolean;
 }
 
 /** See `EngineOptions.demoUsage`. */
@@ -165,6 +175,8 @@ export interface DemoUsage {
   }>;
   /** Auto model's picks and routing calls for the demo sessions (`sessionId` null: a call whose session isn't in the demo). */
   autoPicks?: Array<{ configDir: string; sessionId: string | null; pick: AutoPick; routingModel: string; tokens: TokenCounts }>;
+  /** Catch-up cards for the demo sessions, as if their turns had just finished. */
+  catchUps?: CatchUp[];
 }
 
 /** What one run of the clean-up of archived sessions did. */
@@ -186,6 +198,8 @@ export interface Engine {
   setRetention(policy: RetentionPolicy): void;
   /** Settings › Conversation › Auto model, from main. */
   setAutoModel(prefs: AutoModelPrefs): void;
+  /** Settings › Conversation › Catch-up: write the summaries with Haiku (else from the tool calls), from main. */
+  setCatchUpSummaries(enabled: boolean): void;
   /** Runs the clean-up of archived sessions now (it also runs on launch and daily). Null when deleting is off. */
   deleteArchivedNow(): Promise<ArchivedCleanup | null>;
   close(): void;
@@ -525,12 +539,23 @@ export function createEngine(options: EngineOptions): Engine {
     onInfo: (info) => {
       if (info.state === 'idle') transcripts.settled(info.sessionId);
       broadcast('session.host', info);
+      catchUpOnInfo(info);
     },
     onStream: (delta) => broadcast('session.stream', delta),
-    onMessages: (id, messages, held) => transcripts.pushLive(id, messages, held),
+    onMessages: (id, messages, held) => {
+      transcripts.pushLive(id, messages, held);
+      catchUp.messages(id, messages);
+    },
     onClosed: (id) => transcripts.dropHeld(id),
-    onPermission: (request) => broadcast('session.permission', request),
-    onPermissionResolved: (requestId, sessionId) => broadcast('session.permissionResolved', { requestId, sessionId }),
+    onPermission: (request) => {
+      broadcast('session.permission', request);
+      quietly(catchUp.permission(request));
+    },
+    onPermissionResolved: (requestId, sessionId) => {
+      broadcast('session.permissionResolved', { requestId, sessionId });
+      quietly(catchUp.permissionResolved(requestId, sessionId));
+    },
+    onTurnEnd: (sessionId, outcome) => quietly(catchUp.turnEnded(sessionId, outcome)),
     onCreated: (id) => {
       owned.add(id);
       markOwned.run(id, Date.now());
@@ -563,6 +588,47 @@ export function createEngine(options: EngineOptions): Engine {
     },
     log,
   });
+
+  // --- Catch-up -----------------------------------------------------------------------------------------------------
+  /** Main sends Settings › Conversation › Catch-up's "Write catch-up summaries with Haiku" at start and after each change. */
+  let catchUpSummaries = true;
+  const catchUpUsage = new CatchUpUsageStore(cache.db);
+  const summarizer = new Summarizer({
+    sdk,
+    env: envFor,
+    claudePath: async () => (await claude)?.path,
+    ephemeral,
+    // The call ran on the session's profile, so its tokens count on that login's usage.
+    record: (profileId, entry) => {
+      catchUpUsage.record({ ...entry, scope: scopeOf(profiles.runtime(profileId).configDir) });
+      broadcast('usage.tokens', { profileIds: [profileId], scan: null });
+    },
+    log,
+    ...(options.stubCatchUp ? { stub: stubAnswer } : {}),
+  });
+  const catchUpStore = new CatchUpStore(cache.db);
+  for (const card of options.demoUsage?.catchUps ?? []) catchUpStore.save(card);
+  const catchUp = new CatchUpService({
+    store: catchUpStore,
+    transcript: (id) => source.messages(id),
+    cwd: (id) => hosts.list().hosts.find((h) => h.sessionId === id)?.cwd ?? sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null,
+    profileOf: sessionProfile,
+    changes: (cwd) => listChanges(cwd, 'uncommitted').catch(() => null),
+    summarize: (profileId, sessionId, input, system) => summarizer.ask(profileId, sessionId, input, system),
+    useModel: () => catchUpSummaries,
+    emit: (sessionId, card) => broadcast('catchup.changed', { sessionId, catchUp: card }),
+    log,
+  });
+  /** A failed card is only a missing briefing: never let it reach the session. */
+  const quietly = (work: Promise<unknown>) => void work.catch((error: unknown) => log('warn', `Catch-up failed: ${error instanceof Error ? error.message : String(error)}`));
+  /** The state each session this app runs was last in, to see a turn end in a crash (no `result` comes then). */
+  const hostStates = new Map<string, SessionHostInfo['state']>();
+  const catchUpOnInfo = (info: SessionHostInfo) => {
+    const before = hostStates.get(info.sessionId);
+    hostStates.set(info.sessionId, info.state);
+    if (info.state === 'error' && (before === 'running' || before === 'needs-you')) quietly(catchUp.turnEnded(info.sessionId, { ok: false, error: info.error }));
+    if (info.state === 'closed' || info.state === 'error') catchUp.closed(info.sessionId);
+  };
 
   /** Windows attached to each terminal's output. */
   const terminalViewers = new Map<string, Set<HandlerContext<Contract>>>();
@@ -958,6 +1024,7 @@ export function createEngine(options: EngineOptions): Engine {
     await toTrash(paths, { configDir: profiles.runtime(sessionProfile(sessionId)).configDir });
     sessions.forget(sessionId);
     hosts.forget(sessionId);
+    catchUp.forget(sessionId);
     upNext.save(sessionId, []);
     sideQuestionStore.forget(sessionId);
     owned.delete(sessionId);
@@ -1258,6 +1325,8 @@ export function createEngine(options: EngineOptions): Engine {
     'hosts.list': () => hosts.list(),
     'session.create': createSession,
     'session.send': async (params) => {
+      // Send now stops the turn first: its end is yours, not news.
+      if (params.mode === 'now') catchUp.interrupt(params.sessionId);
       const sent = await hosts.send(params);
       if (sent.sessionId === params.sessionId) sessions.wake(params.sessionId);
       return sent;
@@ -1268,6 +1337,7 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'session.queue.sendNow': async ({ sessionId, id }) => {
+      catchUp.interrupt(sessionId);
       await hosts.sendQueuedNow(sessionId, id);
       sessions.wake(sessionId);
       return {};
@@ -1293,6 +1363,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.rewind': ({ sessionId, messageUuid, dryRun }) => hosts.rewind(sessionId, messageUuid, dryRun),
     'session.interrupt': async ({ sessionId }) => {
+      catchUp.interrupt(sessionId);
       await hosts.interrupt(sessionId);
       return {};
     },
@@ -1952,6 +2023,22 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'companion.status': () => companion?.status() ?? { listening: false, clients: 0, error: null },
+    'catchup.get': ({ sessionId }) => ({ catchUp: catchUp.get(sessionId) }),
+    'catchup.list': () => ({ catchUps: catchUp.list() }),
+    'catchup.build': async ({ sessionId }) => {
+      scanLive();
+      const host = hosts.list().hosts.find((h) => h.sessionId === sessionId);
+      const busy = host ? host.state === 'running' || host.state === 'starting' : liveList().some((l) => l.sessionId === sessionId && l.status === 'running');
+      if (busy) throw new RpcError('SESSION_BUSY', 'Claude is still working in this session.');
+      const card = await catchUp.build(sessionId);
+      if (!card) throw new RpcError('NOT_FOUND', 'This session has no finished turn to catch up on.');
+      return { catchUp: card };
+    },
+    'catchup.why': async ({ sessionId, requestId }) => {
+      const why = await catchUp.why(sessionId, requestId);
+      if (!why) throw new RpcError('NOT_FOUND', 'This request was already answered.');
+      return { why };
+    },
     'remote.status': () => requireRemote().status(),
     'remote.configure': (change) => requireRemote().configure(change),
     'remote.pair.start': () => requireRemote().startPairing(),
@@ -2041,6 +2128,9 @@ export function createEngine(options: EngineOptions): Engine {
     setRetention,
     setAutoModel: (prefs) => {
       autoModel = prefs;
+    },
+    setCatchUpSummaries: (enabled) => {
+      catchUpSummaries = enabled;
     },
     deleteArchivedNow: runCleanup,
     close() {

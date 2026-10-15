@@ -66,6 +66,8 @@ if (scripted) {
   process.env.SWITCHBOARD_STUB_ROUTER = '1';
   // Side questions (/btw) get a made-up answer, so nothing here asks a model.
   process.env.SWITCHBOARD_STUB_BTW = '1';
+  // Catch-up cards are written from the tool calls, never by a model.
+  process.env.SWITCHBOARD_STUB_CATCHUP = '1';
 }
 
 // The single-instance lock belongs to the data folder. Development builds keep their own ("Switchboard Dev"), so
@@ -153,11 +155,13 @@ function updatePreferences(patch: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.preferencesChanged, next);
 }
 
-/** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting) and Auto model. */
+/** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting), Auto model and catch-up summaries. */
 function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived });
   // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
   engine?.sendStanding({ type: 'autoModel', prefs: prefs.autoModel });
+  // Settings › Conversation › Catch-up: whether Haiku writes the summaries.
+  engine?.sendStanding({ type: 'catchUp', summaries: prefs.catchUpSummaries });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -4729,6 +4733,75 @@ async function runUsageViewStep(win: BrowserWindow): Promise<string> {
   return `ok: opened from ${opened[0]} for ${profile}, ${limits} limit card(s), every period, ${openedSession}, Esc went back`;
 }
 
+/**
+ * The catch-up on the smoke session, made from its transcript with the stubbed summary (no model is called): the
+ * palette's Catch up on this session opens the banner over the conversation; Space opens Details and Esc closes Details,
+ * then folds the banner into the strip, and Space opens it again; a key pressed in the message box stays there; the
+ * sidebar's Quickest to unblock groups the sessions. Read-only: nothing is committed, archived, marked read or sent.
+ */
+async function runCatchUpStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const has = (selector: string) => js(`!!document.querySelector(${JSON.stringify(selector)})`) as Promise<boolean>;
+  if (!smokeSessionId) return 'failed: no smoke session was opened';
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const banner = `${view} [data-catchup-banner]`;
+  const strip = `${view} [data-catchup-strip]`;
+  const blur = () => js('document.activeElement?.blur?.(); true');
+  const transcriptShown = `getComputedStyle(document.querySelector('${view} [data-transcript]')).display !== 'none'`;
+  await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-transcript-item]')`, 5_000))) return 'failed: the smoke session did not open';
+
+  if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return '⌘K did not open the commands';
+  await setFieldValue(win, '[data-palette-input]', 'Catch up on this session');
+  if (!(await waitInPage(win, "document.querySelector('[data-palette-command=\"build-catch-up\"]')", 3_000))) {
+    await closePalette(win);
+    // A catch-up made earlier in the run (or one the session already had) shows its strip instead.
+    if (!(await has(strip))) return 'the palette did not offer Catch up on this session';
+    await js(`document.querySelector('${strip} [data-catchup-show]').click()`);
+  } else await js("document.querySelector('[data-palette-command=\"build-catch-up\"]').click()");
+  if (!(await waitInPage(win, `document.querySelector('${banner}')`, 15_000))) {
+    const toast = (await js("document.querySelector('[data-toast]')?.innerText ?? ''")) as string;
+    if (/no finished turn/i.test(toast)) return 'ok: skipped, the smoke session has no finished turn to catch up on';
+    return `the catch-up banner did not open${toast ? ` (${toast.replace(/\s+/g, ' ')})` : ''}`;
+  }
+  if (!(await has(`${banner} [data-catchup-primary]`))) return 'the banner has no primary action';
+  if (!(await waitInPage(win, transcriptShown, 2_000))) return 'the banner hid the conversation';
+  await shot(win, 'catch-up-banner.png');
+  const need = await js(`document.querySelector('${banner}').dataset.catchupNeed`);
+
+  await blur();
+  // Esc closes the nearest thing first: the Changes panel (an earlier step may have left it open), then the banner.
+  const changesOpen = await has('[data-changes-panel]');
+  if (changesOpen) {
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!document.querySelector('[data-changes-panel]') && document.querySelector('${banner}')`, 3_000))) return 'Esc did not close the Changes panel before the banner';
+  }
+  pressKey(win, 'Space');
+  if (!(await waitInPage(win, `document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Space did not open the banner’s Details';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `document.querySelector('${banner}') && !document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Esc did not close Details first';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `document.querySelector('${strip}') && !document.querySelector('${banner}')`, 3_000))) return 'Esc did not fold the banner into the strip';
+  pressKey(win, 'Space');
+  if (!(await waitInPage(win, `document.querySelector('${banner}')`, 3_000))) return 'Space did not open the banner again';
+
+  // In the message box, keys are the message box's: Esc there leaves the banner alone.
+  await js(`document.querySelector('${view} [data-composer]')?.focus(); true`);
+  pressKey(win, 'Escape');
+  // A fixed wait, only to show that nothing happened.
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  if (!(await has(banner))) return 'Esc in the message box folded the banner';
+  await blur();
+
+  await js("document.querySelector('[data-sort-quick]')?.click()");
+  const grouped = await waitInPage(win, "document.querySelector('[data-session-group=\"review\"], [data-session-group=\"read\"], [data-session-group=\"still-working\"]') && !document.querySelector('[data-session-group=\"today\"], [data-session-group=\"pinned\"], [data-queue-header]')", 3_000);
+  if (grouped) await shot(win, 'sidebar-quickest.png');
+  await js("document.querySelector('[data-sort-recent]')?.click()");
+  if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
+  if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
+  return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Space opened Details, Esc closed Details then folded the banner, Space opened it again, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
+}
+
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
   pressKey(win, keyCode, modifiers);
   return waitInPage(win, `${PALETTE_MODE} === ${JSON.stringify(mode)} && document.activeElement?.matches('[data-palette-input]')`, 3_000);
@@ -6394,6 +6467,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('unsent messages', () => runUnsentStep(win));
   await step('search', () => runSearchStep(win));
   await step('command palette', () => runPaletteStep(win));
+  await step('catch-up: banner, strip, keys and Quickest to unblock', () => runCatchUpStep(win));
   await step('shortcuts sheet', () => runShortcutsStep(win));
   await step('tools', () => runToolsStep(win));
   await step('split panes', () => runSplitStep(win));

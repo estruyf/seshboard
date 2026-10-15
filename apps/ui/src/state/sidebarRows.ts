@@ -1,4 +1,4 @@
-import { archivedSince as archivedSinceOf, listedInMainList, type ListingState, type SessionScope, type StartupView } from '@switchboard/protocol/bridge';
+import { archivedSince as archivedSinceOf, listedInMainList, type ListingState, type SessionScope, type SidebarSort, type StartupView } from '@switchboard/protocol/bridge';
 import type { QueueEntry } from './queue.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import type { SectionKey } from './sidebarSections.ts';
@@ -103,8 +103,11 @@ export function buildSessionList(
   return { active, archived };
 }
 
-/** The sections of the main list, in the order they show: what needs attention first, then pinned, then by time. */
-export type SessionGroup = 'needs-you' | 'working' | 'pinned' | 'today' | 'yesterday' | 'earlier';
+/**
+ * The sections of the main list, in the order they show. Recent: what needs attention first, then pinned, then by time.
+ * Quickest to unblock: what needs you or a review (quickest first), then what you've read, then what is still working.
+ */
+export type SessionGroup = 'needs-you' | 'working' | 'pinned' | 'today' | 'yesterday' | 'earlier' | 'review' | 'read' | 'still-working';
 
 export const GROUP_LABEL: Record<SessionGroup, string> = {
   'needs-you': 'Needs you',
@@ -113,6 +116,9 @@ export const GROUP_LABEL: Record<SessionGroup, string> = {
   today: 'Today',
   yesterday: 'Yesterday',
   earlier: 'Earlier',
+  review: 'Needs review · quickest first',
+  read: 'Read',
+  'still-working': 'Still working',
 };
 
 const GROUP_ORDER: readonly SessionGroup[] = ['needs-you', 'working', 'pinned', 'today', 'yesterday', 'earlier'];
@@ -169,6 +175,51 @@ export function groupSessions(active: readonly SessionRowData[], now: number): {
   });
 }
 
+/** What the quickest-to-unblock order needs to know of a session's catch-up. */
+export interface QuickInfo {
+  reviewMinutes: number;
+  testsFailed: boolean;
+}
+
+/** Where a row stands in the quickest-to-unblock order: waiting for you, finished and unread (or failed), read, working. */
+function quickTier(row: SessionRowData): 0 | 1 | 2 | 3 {
+  const status = rowStatus(row);
+  if (status === 'needs-you') return 0;
+  if (status === 'running' || status === 'background') return 3;
+  if (status === 'unread' || status === 'error') return 1;
+  return 2;
+}
+
+/**
+ * The main list as Quickest to unblock ranks it: sessions waiting for you, then finished ones you haven't read, each by
+ * how long their review takes (failing tests last among equal times, a session without a catch-up after those with one),
+ * then the ones you've read (newest first), then those still working (in the order you started them). The Queue and
+ * Pinned only show in Recent: here pinned sessions are ranked like the rest.
+ */
+export function quickestGroups(active: readonly SessionRowData[], quick: ReadonlyMap<string, QuickInfo>): { group: SessionGroup; rows: SessionRowData[] }[] {
+  const minutes = (row: SessionRowData) => quick.get(row.id)?.reviewMinutes ?? (quickTier(row) === 0 ? 1 : Number.POSITIVE_INFINITY);
+  const review = active.filter((row) => quickTier(row) <= 1);
+  review.sort(
+    (a, b) =>
+      quickTier(a) - quickTier(b) ||
+      minutes(a) - minutes(b) ||
+      Number(quick.get(a.id)?.testsFailed ?? false) - Number(quick.get(b.id)?.testsFailed ?? false) ||
+      b.updatedAt - a.updatedAt,
+  );
+  const read = active.filter((row) => quickTier(row) === 2).sort((a, b) => b.updatedAt - a.updatedAt);
+  const working = active.filter((row) => quickTier(row) === 3).sort(byWorkingSince);
+  return [
+    { group: 'review' as const, rows: review },
+    { group: 'read' as const, rows: read },
+    { group: 'still-working' as const, rows: working },
+  ].filter((g) => g.rows.length > 0);
+}
+
+/** The main list's sections in the chosen order. */
+export function groupsFor(active: readonly SessionRowData[], now: number, sort: SidebarSort = 'recent', quick: ReadonlyMap<string, QuickInfo> = new Map()) {
+  return sort === 'quickest' ? quickestGroups(active, quick) : groupSessions(active, now);
+}
+
 /**
  * One row of the virtualised sidebar list: a session, a section header, the queue's header and its items,
  * the "+N hidden" line under a closed section's kept row, or the Archived header (only while it's in the list).
@@ -191,6 +242,9 @@ export interface ListRowOptions {
   closed?: ReadonlySet<SectionKey>;
   /** The open session: its row stays under its section's header even while the section is closed. */
   selectedId?: string | null;
+  /** The order (Recent by default) and, for Quickest to unblock, each session's review time. */
+  sort?: SidebarSort;
+  quick?: ReadonlyMap<string, QuickInfo>;
 }
 
 /**
@@ -201,7 +255,8 @@ export interface ListRowOptions {
 export function buildListRows(active: readonly SessionRowData[], archived: readonly SessionRowData[], options: ListRowOptions): SidebarListRow[] {
   const list: SidebarListRow[] = [];
   const closed = options.closed ?? new Set<SectionKey>();
-  const queue = options.queue;
+  // The Queue only shows in Recent.
+  const queue = options.sort === 'quickest' ? undefined : options.queue;
   const pushQueue = () => {
     if (!queue || queue.entries.length === 0) return;
     const open = !closed.has('queue');
@@ -209,13 +264,13 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
     if (open) for (const entry of queue.entries) list.push({ kind: 'queue', entry });
   };
   let queued = false;
-  for (const { group, rows } of groupSessions(active, options.now)) {
+  for (const { group, rows } of groupsFor(active, options.now, options.sort, options.quick)) {
     // The queue goes under Working, or where Working would be.
     if (!queued && group !== 'needs-you' && group !== 'working') {
       pushQueue();
       queued = true;
     }
-    const open = group === 'needs-you' || !closed.has(group);
+    const open = group === 'needs-you' || group === 'review' || !closed.has(group);
     const unread = rows.filter((row) => rowStatus(row) === 'unread').length;
     list.push({ kind: 'group', group, count: rows.length, first: list.length === 0, open, unread });
     if (open) {
@@ -261,7 +316,7 @@ export function archivedRevealTop(headerTop: number, view: { scrollTop: number; 
 /** What a closed (or the Queue's) header says next to its count, in the state's colour: "1 ready", "2 unread". */
 export function headerSummary(row: Extract<SidebarListRow, { kind: 'group' | 'queue-header' }>): { text: string; tone: 'ok' | 'unread' } | null {
   if (row.kind === 'queue-header') return row.ready > 0 ? { text: `${row.ready} ready`, tone: 'ok' } : null;
-  if (row.open || row.group === 'working' || row.group === 'needs-you' || row.unread === 0) return null;
+  if (row.open || row.group === 'working' || row.group === 'still-working' || row.group === 'needs-you' || row.group === 'review' || row.unread === 0) return null;
   return { text: `${row.unread} unread`, tone: 'unread' };
 }
 

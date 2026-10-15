@@ -28,6 +28,8 @@ export interface PaletteSession {
   running: boolean;
   /** What it is waiting for. */
   waiting: 'question' | 'permission' | null;
+  /** How its catch-up shows: in full (the card or the banner), folded into the strip, or not at all. */
+  catchUp: 'full' | 'strip' | null;
   /** Your prompts in it (to fork from or rewind to). */
   prompts: number;
   /** Claude has replied at least once (Copy last reply). */

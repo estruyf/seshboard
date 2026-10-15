@@ -15,6 +15,7 @@ import {
   BellRing,
   Blocks,
   Brain,
+  CircleHelp,
   CloudDownload,
   Code,
   ChevronsDown,
@@ -44,6 +45,7 @@ import {
   ListChecks,
   ListEnd,
   ListPlus,
+  NotebookText,
   PencilLine,
   Maximize2,
   MessageSquare,
@@ -150,6 +152,12 @@ export interface PaletteApi {
   exportTheme(): void;
   setFocusLimit(on: boolean): void;
   renameSession(): void;
+  /** Opens the session's catch-up from its strip (or for a read session). */
+  showCatchUp(): void;
+  /** Makes the catch-up for the session's last finished turn now, and shows it. */
+  buildCatchUp(): void;
+  /** Opens "Why Claude asks" beside the session for its oldest open permission or question. */
+  showWhy(): void;
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
   compact(): void;
   copyLastReply(): void;
@@ -523,6 +531,25 @@ export const COMMANDS: PaletteCommand[] = [
   },
 
   // A session is open
+  { id: 'show-catch-up', title: 'Show catch-up', group: 'session', shortcut: 'space', icon: NotebookText, keywords: 'briefing summary what happened review', when: (ctx) => session(ctx)?.catchUp === 'strip', run: (api) => api.showCatchUp() },
+  {
+    id: 'build-catch-up',
+    title: 'Catch up on this session',
+    group: 'session',
+    icon: NotebookText,
+    keywords: 'briefing summary what happened review recap',
+    when: (ctx) => ctx.connected && indexed(ctx) && session(ctx)?.catchUp === null && !session(ctx)?.running,
+    run: (api) => api.buildCatchUp(),
+  },
+  {
+    id: 'why-request',
+    title: 'Why is Claude asking?',
+    group: 'session',
+    icon: CircleHelp,
+    keywords: 'permission question explain reason allow deny',
+    when: (ctx) => session(ctx)?.waiting != null,
+    run: (api) => api.showWhy(),
+  },
   { id: 'rename-session', title: 'Rename session…', group: 'session', icon: Pencil, keywords: 'title name', when: indexed, run: (api) => api.renameSession() },
   {
     id: 'pin',
