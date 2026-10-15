@@ -1,4 +1,5 @@
 import type { RemoteContract, RpcClient } from '@switchboard/protocol/remote-client';
+import { STANDALONE } from './platform.ts';
 import { DEFAULT_PREFS, isIosAgent, keyBytes, parsePrefs, pushSupport, sameBytes, type PushPrefs, type PushSupport } from './pushSupport.ts';
 
 /**
@@ -15,13 +16,12 @@ export function registerWorker(): void {
 }
 
 export function currentSupport(): PushSupport {
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
   return pushSupport({
     serviceWorker: 'serviceWorker' in navigator,
     pushManager: 'PushManager' in window,
     notification: 'Notification' in window,
     ios: isIosAgent(navigator.userAgent, navigator.maxTouchPoints),
-    standalone,
+    standalone: STANDALONE,
     permission: 'Notification' in window ? Notification.permission : 'default',
   });
 }

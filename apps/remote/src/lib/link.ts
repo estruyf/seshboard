@@ -38,6 +38,16 @@ export function startFrom(hash: string, paired: Paired | null): Start {
   return { kind: 'connect', paired: { ...paired, address: link.address } };
 }
 
+/**
+ * The link in what was pasted: a whole link (`https://…/remote/#p.…`), or only what follows its `#`. A Home Screen app
+ * on an iPhone has no address bar and keeps its own pairing, apart from Safari's, so it pairs from a pasted link.
+ */
+export function pastedLink(text: string): string {
+  const trimmed = text.trim();
+  const hash = trimmed.indexOf('#');
+  return hash >= 0 ? trimmed.slice(hash + 1) : trimmed;
+}
+
 /** Waits before trying to reconnect: quickly at first, then up to 30 seconds. */
 export function reconnectDelay(attempt: number): number {
   return Math.min(30_000, 500 * 2 ** Math.max(0, attempt));
