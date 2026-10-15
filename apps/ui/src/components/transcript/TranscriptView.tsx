@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
+import { ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -79,7 +79,7 @@ import { AskPanel } from '../ask/AskPanel.tsx';
 import { rightPanel } from '../ask/askWidth.ts';
 import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
 import { itemCount } from '../../state/ask.ts';
-import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, useSessionAsk } from '../../state/askStore.ts';
+import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
 import { toggleChangesPanel, useRightPanel } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
@@ -438,8 +438,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents }, rightTab);
   // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
   const changesFront = right.tabs && showChanges ? right.tab === 'changes' : undefined;
+  const askFront = right.tabs && ask.open ? right.tab === 'ask' : undefined;
   const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
   const toggleChangesHere = () => toggleChangesPanel(ask.open || showAgents);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents);
   const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open);
   const rightTabs = (actions: ReactNode) => (
     <RightPanelTabs tab={right.tab ?? 'changes'} open={right.open} onTab={useRightPanel.getState().setTab} counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask), agents: agentsRunning }}>
@@ -1035,14 +1037,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             )}
           </div>
         </div>
-        {/* Changes | Terminal: the two side panels as one compact, icon-only segmented control. */}
+        {/* Changes | Ask | Agents | Terminal: the side panels as one compact, icon-only segmented control. */}
         <SegmentedControl
           mode="toggle"
           label="Panels"
           className="no-drag"
           data-panel-toggles
-          pressed={[...(changesOpen ? ['changes' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
-          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'agents' ? toggleAgentsHere() : togglePanel(sessionId))}
+          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
+          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : togglePanel(sessionId))}
           segments={[
             ...(cwd && isRepo
               ? [
@@ -1061,6 +1063,19 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   },
                 ]
               : []),
+            {
+              value: 'ask' as const,
+              label: 'Ask',
+              icon: <MessageCircleQuestion size={14} aria-hidden />,
+              iconOnly: true,
+              // An answer came in while the panel was closed.
+              dot: ask.ready && !ask.open ? 'link' : false,
+              tooltip: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ' · An answer is ready' : ''}`,
+              ariaLabel: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ', an answer is ready' : ''}`,
+              front: askFront,
+              expanded: ask.open && askFront !== false,
+              data: { 'data-toggle-ask': true },
+            },
             // Only a session that has started agents has this; the panel stays reachable while it is open.
             ...(agents.length > 0 || agentsState.open
               ? [

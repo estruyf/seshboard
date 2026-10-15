@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { AskEvent } from '@switchboard/protocol/client';
 import type { EngineClient as Client } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
+import { agentsToggleStep } from './agentsPanel.ts';
 import { useRightPanel } from './rightPanelStore.ts';
 import { closed, currentThread, EMPTY_ASK, newThread, opened, pickedThread, withAsked, withEvent, withoutItem, withThreads, type SessionAsk } from './ask.ts';
 
@@ -94,6 +95,13 @@ export async function openAsk(client: Client | null, sessionId: string, focus = 
   if (focus) focusAsk(sessionId);
   const state = useAsk.getState().sessions.get(sessionId);
   if (client && !state?.loaded) await loadAskThreads(client, sessionId).catch(() => {});
+}
+
+/** The header's Ask button: open, bring to the front, or close, as Agents does. `othersOpen`: Changes or Agents is open too. */
+export function toggleAskPanel(client: Client | null, sessionId: string, othersOpen: boolean): void {
+  const step = agentsToggleStep(isAskOpen(sessionId), useRightPanel.getState().tab === 'ask', othersOpen);
+  if (step === 'close') closeAsk(sessionId);
+  else void openAsk(client, sessionId);
 }
 
 export const focusAsk = (sessionId: string) => useAsk.setState((s) => ({ focus: { sessionId, nonce: (s.focus?.nonce ?? 0) + 1 } }));

@@ -11,8 +11,8 @@ export interface Segment<T extends string> {
   iconOnly?: boolean;
   /** A count after the label (changed files). Zero or null hides it. */
   badge?: number | null;
-  /** The small green "running" dot in the corner (terminals running). */
-  dot?: boolean;
+  /** The small dot in the corner: green for "running" (terminals running), `link` for "something new" (an answer is ready). */
+  dot?: boolean | 'link';
   tooltip?: string;
   /** An accessible name that says more than the label ("Hide changed files, 42 changed"). */
   ariaLabel?: string;
@@ -123,7 +123,7 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
             {segment.icon}
             {!segment.iconOnly && <span>{segment.label}</span>}
             {segment.badge ? <span className="text-meta tabular-nums">{segment.badge}</span> : null}
-            {segment.dot && <span className="absolute top-1 right-1 size-1.5 rounded-full bg-ok" aria-hidden />}
+            {segment.dot && <span className={`absolute top-1 right-1 size-1.5 rounded-full ${segment.dot === 'link' ? 'bg-link' : 'bg-ok'}`} aria-hidden />}
             {on && segment.front === true && <span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-accent-ink" aria-hidden />}
           </button>
         );
