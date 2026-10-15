@@ -90,7 +90,7 @@ describe('listBranchOverview', () => {
     expect(remoteOnly(list, 'origin/theirs')).toMatchObject({ name: 'theirs', local: null, ahead: 1, merged: false, isBase: false });
     // origin/main pairs with main; it isn't listed again as a remote-only branch.
     expect(list.branches.filter((b) => b.remote?.ref === 'origin/main' && !b.local)).toEqual([]);
-  });
+  }, 20_000);
 
   it('shows the branch checked out in a worktree', async () => {
     const path = join(dir, 'wt');

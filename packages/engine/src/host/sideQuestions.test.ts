@@ -4,17 +4,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ASK_THREADS_KEPT, threadTitle, type AskEvent } from '@switchboard/protocol';
-import { openCacheDatabase } from '../db/database.ts';
+import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { migrations } from '../db/migrations.ts';
 import { breakdown } from '../usage/usageQuery.ts';
 import { Asker, askPrompt, AskStore, isReadOnlyTool, readUsage, stubAnswer, sumByModel, type AskResult, type AskText } from './sideQuestions.ts';
 
 const dirs: string[] = [];
-afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
+const caches: CacheDatabase[] = [];
+afterEach(() => {
+  // Closed first: Windows won't delete a folder with an open database in it.
+  caches.splice(0).forEach((c) => c.close());
+  dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
+});
 const cachePath = () => {
   const dir = mkdtempSync(join(tmpdir(), 'switchboard-ask-'));
   dirs.push(dir);
   return join(dir, 'cache.sqlite');
+};
+const openCache = (path: string) => {
+  const cache = openCacheDatabase(path);
+  caches.push(cache);
+  return cache;
 };
 
 const until = async (check: () => boolean, timeoutMs = 2000) => {
@@ -29,7 +39,7 @@ const tokens = { input: 3, output: 40, cacheRead: 9_000, cacheWrite: 120 };
 
 /** The asker with a real store and a scripted Claude Code. */
 function setup(options: { answer?: (prompt: string, onText: (text: AskText) => void) => Promise<AskResult>; stub?: boolean; path?: string } = {}) {
-  const cache = openCacheDatabase(options.path ?? cachePath());
+  const cache = openCache(options.path ?? cachePath());
   const store = new AskStore(cache.db);
   const events: AskEvent[] = [];
   const prompts: Array<{ sessionId: string; prompt: string }> = [];
@@ -153,15 +163,16 @@ describe('AskStore', () => {
     const b = first.asker.ask('s1', 'Second?');
     await until(() => !!first.done(b.id));
     first.cache.close();
+    caches.splice(caches.indexOf(first.cache), 1);
 
-    const cache = openCacheDatabase(path);
+    const cache = openCache(path);
     const threads = new AskStore(cache.db).threads('s1');
     expect(threads.map((th) => th.title)).toEqual(['Second?', 'First?']);
     expect(threads[1]!.items).toMatchObject([{ question: 'First?', answer: 'About First?' }]);
   });
 
   it(`keeps only the last ${ASK_THREADS_KEPT} threads of a session, with their questions`, () => {
-    const cache = openCacheDatabase(cachePath());
+    const cache = openCache(cachePath());
     const store = new AskStore(cache.db);
     for (let n = 0; n < ASK_THREADS_KEPT + 3; n++) {
       store.addThread('s1', { id: `t${n}`, title: `T${n}`, createdAt: 1_000 + n });
@@ -189,7 +200,7 @@ describe('AskStore', () => {
     insert.run('q3', 's2', 'Other?', 'Yes.', 3_000);
     old.close();
 
-    const cache = openCacheDatabase(path);
+    const cache = openCache(path);
     const store = new AskStore(cache.db);
     const [thread] = store.threads('s1');
     expect(thread).toMatchObject({ id: 'btw-s1', createdAt: 1_000, items: [{ id: 'q1' }, { id: 'q2', answer: 'Then this.' }] });

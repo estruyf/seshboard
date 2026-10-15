@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { posix } from 'node:path';
 import { engineAddress } from '@switchboard/protocol';
 
 /**
@@ -84,9 +84,9 @@ export function findTool(tool: TunnelTool, platform: NodeJS.Platform = process.p
     if (env.LOCALAPPDATA) places.push(`${env.LOCALAPPDATA}\\Microsoft\\WinGet\\Links\\${file}`);
   } else {
     if (tool === 'tailscale' && platform === 'darwin') places.push('/Applications/Tailscale.app/Contents/MacOS/Tailscale');
-    places.push(`/opt/homebrew/bin/${file}`, `/usr/local/bin/${file}`, `/usr/bin/${file}`, join(homedir(), '.local', 'bin', file));
+    places.push(`/opt/homebrew/bin/${file}`, `/usr/local/bin/${file}`, `/usr/bin/${file}`, posix.join(homedir(), '.local', 'bin', file));
   }
-  for (const dir of (env.PATH ?? env.Path ?? '').split(windows ? ';' : delimiter)) if (dir) places.push(windows ? `${dir}\\${file}` : join(dir, file));
+  for (const dir of (env.PATH ?? env.Path ?? '').split(windows ? ';' : ':')) if (dir) places.push(windows ? `${dir}\\${file}` : posix.join(dir, file));
   return places.find((path) => exists(path)) ?? null;
 }
 
