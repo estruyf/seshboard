@@ -10,6 +10,7 @@ import notificationsSettings from '../notifications/NotificationsSettings.tsx?ra
 import sessionsSettings from '../sessions/SessionsSettings.tsx?raw';
 import remoteSettings from '../remote/RemoteSettings.tsx?raw';
 import { settingsIndex } from './settingsIndex.ts';
+import { searchSettings } from './searchSettings.ts';
 
 const entries = settingsIndex();
 const labels = new Set(entries.map((entry) => entry.label));
@@ -50,6 +51,12 @@ describe('the settings index', () => {
     ];
     expect(rows.length).toBeGreaterThan(10);
     expect(rows.filter((label) => !labels.has(label))).toEqual([]);
+  });
+
+  it('finds the prompt outline by the words people use for it', () => {
+    for (const query of ['outline', 'prompts', 'rail']) {
+      expect(searchSettings(query, entries, (page) => page, 'darwin').map((match) => match.entry.id)).toContain('prompt-outline');
+    }
   });
 
   it('writes like the app: no em dashes', () => {

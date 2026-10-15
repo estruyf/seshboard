@@ -648,6 +648,22 @@ export const SHORTCUTS = [
     where: "find",
   },
   {
+    id: "transcript.prompt-previous",
+    keys: ["mod+shift+arrowup"],
+    action: "Previous prompt",
+    section: "session",
+    note: "Not in a text field that has text, where it selects to the start",
+    when: (ctx) => inSession(ctx) && ctx.focus !== "terminal",
+  },
+  {
+    id: "transcript.prompt-next",
+    keys: ["mod+shift+arrowdown"],
+    action: "Next prompt",
+    section: "session",
+    note: "After the last prompt, it goes to the end of the conversation",
+    when: (ctx) => inSession(ctx) && ctx.focus !== "terminal",
+  },
+  {
     id: "transcript.file-link-other",
     keys: ["shift+click"],
     action: "Open a file link the other way",

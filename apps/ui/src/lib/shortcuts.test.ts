@@ -223,6 +223,8 @@ describe('the shortcut registry', () => {
       'agents.toggle': [SESSION, at({ view: 'session' })],
       'ask.open': [SESSION, at({ view: 'session' })],
       'transcript.file-link-other': [SESSION, HOME],
+      'transcript.prompt-previous': [SESSION, { ...SESSION, focus: 'terminal' }],
+      'transcript.prompt-next': [{ ...SESSION, focus: 'composer' }, HOME],
       'terminal.toggle': [at({ view: 'settings' }), at({ view: 'session', session: false })],
       'terminal.maximize': [at({ view: 'settings' }), at({ view: 'session', session: false })],
       'terminal.restore': [{ ...SESSION, terminal: { open: true, maximized: true, actionRunning: false } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],

@@ -122,6 +122,16 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "palette:prompt-previous",
+      "name": "Previous prompt",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:prompt-next",
+      "name": "Next prompt",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "palette:create-pr",
       "name": "Create pull request…",
       "page": "terminal-changes-git/git"
@@ -760,6 +770,16 @@
       "id": "shortcut:find.previous",
       "name": "find.previous",
       "page": "sessions/search"
+    },
+    {
+      "id": "shortcut:transcript.prompt-previous",
+      "name": "transcript.prompt-previous",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:transcript.prompt-next",
+      "name": "transcript.prompt-next",
+      "page": "sessions/conversation"
     },
     {
       "id": "shortcut:git.pull",
@@ -1579,6 +1599,11 @@
     {
       "id": "feature:compacted-conversation",
       "name": "Compacted conversations show in full",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:prompt-outline",
+      "name": "Prompt outline beside the conversation, and Show prompt outline in Settings, Conversation",
       "page": "sessions/conversation"
     },
     {

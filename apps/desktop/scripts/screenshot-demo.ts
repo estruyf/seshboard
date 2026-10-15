@@ -360,8 +360,18 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     'src/screens/Orders.tsx': 'export function Orders() {\n  return null;\n}\n',
   });
 
-  // The hero: a finished session with a full run of tool calls, an edit, a to-do list and a summary.
+  // The hero: a finished session with a full run of tool calls, an edit, a to-do list and a summary. A few short
+  // questions come first, so the prompt outline beside the conversation has marks to show.
   const hero = new Transcript(acme, 'feat/dark-mode', now - 26 * MINUTE, { scale: 2.5, fast: true })
+    .user('How is the theme set up in this project? A short answer, no changes yet.')
+    .tool('Read', { file_path: `${acme}/src/lib/theme.ts` }, numbered(themeBefore))
+    .say('The theme is a fixed `light` or `dark` value in `src/lib/theme.ts`. It starts as light and nothing reads the system setting.')
+    .user('Do the theme tests pass right now?')
+    .tool('Bash', { command: 'npm test -- theme', description: 'Run the theme tests' }, ' RUN  v3.2.4 /acme-store\n\n ✓ src/lib/theme.test.ts (4 tests) 9ms\n\n Test Files  1 passed (1)\n      Tests  4 passed (4)\n   Duration  388ms')
+    .say('Yes, all 4 theme tests pass.')
+    .user('Where would a theme switch fit on the Settings page?')
+    .tool('Read', { file_path: `${acme}/src/pages/Settings.tsx` }, numbered(settingsBefore))
+    .say('In a new **Appearance** section, right under the heading and above **Notifications**.')
     .user('Add a dark mode toggle to the settings page. It should follow the system setting until someone picks a theme, and remember their choice.')
     .tool('Glob', { pattern: 'src/**/*theme*' }, `${acme}/src/lib/theme.ts\n${acme}/src/lib/theme.test.ts`, "I'll start with how the theme is set up today.")
     .tool('Read', { file_path: `${acme}/src/lib/theme.ts` }, numbered(themeBefore))

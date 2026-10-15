@@ -252,7 +252,7 @@ export const TranscriptItem = memo(function TranscriptItem({
       return (
         // Your prompt sits on the right as a card, so the conversation reads like a chat.
         <div className="flex justify-end">
-          <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-remember-from={item.subagent ? undefined : 'user'} data-message-key={item.key}>
+          <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-remember-from={item.subagent ? undefined : 'user'} data-message-key={item.key} data-prompt-bubble={item.subagent ? undefined : true}>
             <Speaker name={item.subagent ? 'Prompt to the subagent' : 'You'} />
             {(item.text || !item.subagent) && <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly={item.subagent} />}
             {/* Images come first, so "Show more" never hides them: one large, a few as thumbnails, many as tiles. */}

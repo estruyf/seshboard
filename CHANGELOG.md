@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### New
 
+- **Prompt outline.** A prompt outline beside the conversation: a mark for each of your prompts. Click one, or use **Previous prompt** and **Next prompt**, to jump back. Hover a mark to see the start of the prompt and when you sent it. The keys are ⌘⇧↑ and ⌘⇧↓ (Ctrl+Shift+↑ and Ctrl+Shift+↓ on Windows), and both are in the command palette. The outline shows from 3 prompts in a pane wide enough for it; turn it off with **Show prompt outline** in Settings › Conversation.
 - **Remote: pick the Claude profile.** With more than one profile, New session on your phone shows the profile a session runs with (the project's own, else your default) as the first chip. Pick another for this session only, and the other chips show its defaults. In the list, each session's left edge has its profile's colour, as in Switchboard's sidebar, and a session's header shows its profile.
 - **Remote: see that Claude is working.** While a session works, the end of its conversation shows three dots, how long the turn has taken and what Claude is doing (**Thinking**, **Using Bash**), as on your computer. A working session's dot pulses in the list and the header.
 - **Remote: answers formatted as they arrive.** Headings, lists, code and tables show formatted while Claude is still writing, as on your computer, instead of as plain text until the answer is done.

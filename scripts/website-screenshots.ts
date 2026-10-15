@@ -481,7 +481,22 @@ const screens: Screen[] = [
     name: 'conversation',
     async take(t) {
       await t.openSession(HERO);
+      // The hero has four prompts: the prompt outline shows its marks beside the conversation.
+      await t.need('[data-current-session] [data-prompt-outline] [data-prompt-mark][data-current]', 'the prompt outline beside the conversation');
       await t.shot('conversation');
+    },
+  },
+  {
+    name: 'prompt-outline',
+    async take(t) {
+      await t.openSession(HERO);
+      await t.need('[data-current-session] [data-prompt-mark="2"]', 'the prompt outline beside the conversation');
+      // From the keyboard, as Tab would get there: the focused mark shows its tooltip and its ring.
+      await t.page.evaluate(() => document.querySelector<HTMLElement>('[data-current-session] [data-prompt-mark="1"]')?.focus());
+      await t.press('ArrowDown');
+      await t.need('[data-current-session] [data-prompt-tooltip]', 'the tooltip of a focused mark');
+      await t.shot('prompt-outline', { clip: '[data-current-session] [data-transcript-area]', keepFocus: true });
+      await t.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
     },
   },
   {
