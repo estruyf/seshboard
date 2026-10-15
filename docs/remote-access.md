@@ -1,6 +1,6 @@
 # Remote access
 
-Remote lets a paired phone follow and steer Switchboard's sessions from anywhere: the session list with its status, the live transcript, sending or queueing a prompt, answering a permission prompt, question or plan, stopping a turn, marking read and archiving, a finished turn's catch-up, the session's uncommitted changes and committing them, starting a session in a known project (with a model, effort, permission mode and worktree of its own) or queueing one for later, and push notifications. Everything else (the terminal, pushing, pull requests, memory, settings, profiles, attachments) stays on the computer. Issue [#93](https://github.com/estruyf/switchboard/issues/93) started it; this note is the design as built. The page for people using the app is [website/src/content/docs/remote-access.mdx](../website/src/content/docs/remote-access.mdx).
+Remote lets a paired phone follow and steer Switchboard's sessions from anywhere: the session list with its status, the live transcript, sending or queueing a prompt (with images), answering a permission prompt, question or plan, stopping a turn, marking read and archiving, a finished turn's catch-up, the session's uncommitted changes and committing them, starting a session in a known project (with a model, effort, permission mode and worktree of its own) or queueing one for later, and push notifications. Everything else (the terminal, pushing, pull requests, memory, settings, profiles, files as attachments) stays on the computer. Issue [#93](https://github.com/estruyf/switchboard/issues/93) started it; this note is the design as built. The page for people using the app is [website/src/content/docs/remote-access.mdx](../website/src/content/docs/remote-access.mdx).
 
 Whoever controls a session can make Claude run commands on the computer. So a paired phone is treated like an SSH key: pairing needs you at the computer, every connection is authenticated both ways and encrypted end to end, and a phone can only do the few things above.
 
@@ -66,6 +66,10 @@ The backoff's client address is what the tunnel saw: Cloudflare's `CF-Connecting
 
 The encryption is done in the app with audited pure-JS primitives (`@noble/curves` X25519, `@noble/ciphers` ChaCha20-Poly1305, `@noble/hashes` SHA-256), shared by the engine and the remote app in `packages/protocol/src/remoteNoise.ts`. It doesn't depend on TLS, so it holds whatever the tunnel does. A test checks both handshakes against the cacophony Noise test vectors byte for byte.
 
+### Images
+
+A phone sends images with `session.send`, never on their own. The remote app redraws each as a JPEG of at most 2,000px on its longest side at 0.8, and smaller or rougher until it fits `REMOTE_IMAGE_BYTES` (`apps/remote/src/lib/images.ts`), so four fit in one RPC line (the engine takes lines up to 4 MB, `remoteServer.ts`). The frame limit stays as it is: the channel already splits a long line into 60,000-byte frames and the line transport puts it back together.
+
 ### Framing (`remoteChannel.ts`)
 
 1. The phone's first WebSocket frame: `0x53`, the protocol version, the mode (1 pair, 2 connect), then Noise's first message.
@@ -115,7 +119,7 @@ WebSocket close codes: 4400 refused, 4403 unknown device, 4410 pairing closed, 4
 | `packages/engine/src/remote/webPush.ts` | Web Push without a library: the VAPID key pair and JWT, the payload encryption (checked against RFC 8291's example), sending |
 | `packages/engine/src/remote/pushEvents.ts` | When a phone gets a push (a prompt opens, a turn ends) and what it says |
 | `packages/engine/src/remote/computerName.ts` | The computer's name for the phone (macOS: the Sharing name) |
-| `apps/remote` | The remote app; `public/sw.js` is its service worker, which only shows notifications |
+| `apps/remote` | The remote app; `public/sw.js` is its service worker, which only shows notifications. On a wide screen (768px and more) the list is a sidebar next to the home view (`Home.tsx`), with the ⌘K palette (`Palette.tsx`, ranking in `lib/palette.ts`) and one key handler in `Connected.tsx` (`lib/keys.ts`) |
 
 The remote contract is not the app's contract: remote handlers call engine functions one by one, so a new method in `contract.ts` never becomes reachable from a phone. A test lists its methods. A phone can only read or act on sessions its list shows (the sidebar's, outside Archived).
 
@@ -126,7 +130,7 @@ The remote contract is not the app's contract: remote handlers call engine funct
 | `hello` | The first request: the app's version, the device, and the computer's name |
 | `sessions.list`, `projects.list` | The list (with `unread`, `pinned`, and a running session's model and mode) and the projects you added |
 | `transcript.get`, `transcript.watch`, `transcript.unwatch` | A transcript's pages and live updates, for one session at a time |
-| `session.send`, `session.queue.remove`, `session.interrupt`, `session.respond` | Send or queue, take from Up next, stop, answer a prompt |
+| `session.send`, `session.queue.remove`, `session.interrupt`, `session.respond` | Send or queue (with up to `REMOTE_MAX_IMAGES` images, each at most `REMOTE_IMAGE_BYTES` of base64), take from Up next, stop, answer a prompt |
 | `session.create`, `later.add` | Start a session, or queue one, in a project you added; `model`, `effort`, `permissionMode` and `worktree` left out are the project's defaults |
 | `session.markRead`, `session.setFlags` | Read, as opening it on the computer; pin or archive |
 | `session.setModel`, `session.setPermissionMode` | A running session's model and mode; modes are `default`, `acceptEdits`, `plan` and `auto` only |
@@ -142,7 +146,9 @@ Events: `sessions.changed`, and for the watched session `transcript.updated`, `s
 
 The engine sends Web Push itself (`webPush.ts`), without a library or a server of Switchboard's: it keeps a VAPID key pair in its app state (`remote.vapid`, made the first time a phone asks), and each device's subscription (`remote.push`). It pushes when a prompt opens in a session the phone lists, and when a turn ends (a session it runs goes from working to idle), after waiting up to eight seconds for the turn's catch-up so the line can say "14 tests passed · ~2 min to review". A device with the app on screen (`device.visibility`) gets none. A push service that answers 404 or 410 drops the subscription; revoking a device does too.
 
-The payload is the kind, the session id, its title and project, and one line. It is encrypted for the browser, so the push service only carries ciphertext; the computer has to reach the push services over HTTPS. The remote app's service worker (`public/sw.js`, allowed by `worker-src 'self'`) shows it and opens the session on a tap (`?s=<id>`, or a message to a page already open). iOS only allows push for a page added to the Home Screen, and shows no buttons on notifications.
+The payload is the kind, the session id, its title and project, and one line; a tool prompt adds its `requestId` and `answers: true` (`promptAnswers`: not for a question or a plan, which need their session). It is encrypted for the browser, so the push service only carries ciphertext; the computer has to reach the push services over HTTPS. The remote app's service worker (`public/sw.js`, allowed by `worker-src 'self'`) shows it and opens the session on a tap (`?s=<id>`, or a message to a page already open). iOS only allows push for a page added to the Home Screen, and shows no buttons on notifications.
+
+Where the browser shows buttons (`Notification.maxActions`: Chrome, Edge and Firefox on a computer), a tool prompt's notification has **Deny** and **Allow**. The answer is never in a URL, so a link can't answer for you: the service worker posts it to a page that is open, or opens one and keeps the answer (and itself, through `waitUntil`) until that page asks for it with `take-answer`, for at most 30 seconds. The page answers only after a fresh `sessions.list` shows the prompt still open, and says "Already answered" otherwise.
 
 Nothing listens until Remote is on: off by default, and started at launch (with its tunnel) only when it was on when the app quit.
 

@@ -965,8 +965,8 @@ export function createEngine(options: EngineOptions): Engine {
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults })),
       readTranscript: (sessionId) => transcripts.read(sessionId),
       watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
-      send: async (sessionId, text, mode) => {
-        const sent = await hosts.send({ sessionId, text, attachments: [], fork: false, mode });
+      send: async (sessionId, text, mode, images) => {
+        const sent = await hosts.send({ sessionId, text, attachments: images, fork: false, mode });
         if (sent.sessionId === sessionId) sessions.wake(sessionId);
         return { messageUuid: sent.messageUuid, queued: sent.queued };
       },

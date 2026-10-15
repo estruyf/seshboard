@@ -8,13 +8,12 @@ import { lastProject, rememberProject } from '../lib/storage.ts';
 import type { Client } from './Connected.tsx';
 import { EffortChip, ModeChip, ModelChip, WorkspaceChip } from './OptionChips.tsx';
 import { toast } from './Toasts.tsx';
-import { Button } from './ui.tsx';
+import { Button, Kbd } from './ui.tsx';
 
 const TONE_DOT: Record<TileTone, string> = { 'needs-you': 'bg-warn', working: 'bg-accent-ink', idle: 'bg-faint' };
 const TONE_TEXT: Record<TileTone, string> = { 'needs-you': 'text-warn', working: 'text-accent-ink', idle: 'text-muted' };
 /** More than this and a filter field shows above the tiles. */
 const FILTER_FROM = 7;
-const START_KEYS = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘↵' : 'Ctrl+Enter';
 /** What you typed survives going back to the list and coming back, until the session starts. */
 const DRAFT = 'switchboard-remote:new-draft';
 
@@ -25,9 +24,9 @@ const DRAFT = 'switchboard-remote:new-draft';
  * mode and worktree as chips, to change for this session only. Queue for later puts it in Switchboard's queue instead,
  * while the project has a session working.
  */
-export function NewSession({ client, sessions, banner, onBack, onStarted }: { client: Client; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; onStarted: (sessionId: string) => void }) {
+export function NewSession({ client, sessions, banner, onBack, onStarted, initialProject = null }: { client: Client; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(initialProject);
   const [filter, setFilter] = useState('');
   const [prompt, setPrompt] = useState(() => sessionStorage.getItem(DRAFT) ?? '');
   const [busy, setBusy] = useState(false);
@@ -246,7 +245,7 @@ export function NewSession({ client, sessions, banner, onBack, onStarted }: { cl
           )}
           <Button type="submit" form="new-session" variant="primary" disabled={!ready} data-remote-start className="flex-1 sm:flex-none">
             Start session
-            {fine && <kbd className="font-sans text-meta font-normal opacity-70">{START_KEYS}</kbd>}
+            <Kbd shortcut="mod+enter" tone="on-accent" />
           </Button>
         </div>
       </footer>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteSession } from '@switchboard/protocol/remote-client';
-import { age, groupSessions, projectStatus, recentProjects, startOfDay, suggestedProject } from './groups.ts';
+import { age, groupSessions, homeHeadline, nextNeedsYou, projectStatus, recentProjects, startOfDay, suggestedProject, toReview } from './groups.ts';
 
 const NOW = new Date(2026, 9, 15, 14, 0).getTime();
 const HOUR = 3_600_000;
@@ -72,5 +72,42 @@ describe('suggestedProject', () => {
   });
   it('picks nothing without anything to go on', () => {
     expect(suggestedProject(projects, [], null)).toBeNull();
+  });
+});
+
+describe('homeHeadline', () => {
+  it('says what needs you, what works and what finished today', () => {
+    const today = startOfDay(NOW);
+    expect(homeHeadline([session('a', 'needs-you', today), session('b', 'needs-you', today), session('c', 'working', today), session('d', 'unread', today + HOUR), session('e', 'idle', today + 2 * HOUR), session('f', 'idle', today - HOUR)], NOW)).toEqual({
+      title: '2 sessions need you',
+      counts: '1 working · 2 finished today',
+    });
+    expect(homeHeadline([session('a', 'needs-you', today)], NOW).title).toBe('1 session needs you');
+    expect(homeHeadline([session('e', 'idle', today - HOUR)], NOW)).toEqual({ title: 'Nothing needs you', counts: '' });
+  });
+});
+
+describe('toReview', () => {
+  it('lists unread finished sessions, newest first', () => {
+    expect(toReview([session('a', 'unread', 1), session('b', 'idle', 3), session('c', 'unread', 2)]).map((s) => s.id)).toEqual(['c', 'a']);
+    expect(toReview([session('a', 'unread', 1), session('c', 'unread', 2)], 1).map((s) => s.id)).toEqual(['c']);
+  });
+});
+
+describe('nextNeedsYou', () => {
+  it('goes through what waits for you (longest first), then what you haven\'t read, and round again', () => {
+    const list = {
+      sessions: [session('late', 'needs-you', 9), session('early', 'needs-you', 9), session('done', 'unread', 5), session('quiet', 'idle', 7)],
+      prompts: [
+        { sessionId: 'late', createdAt: 8 },
+        { sessionId: 'early', createdAt: 2 },
+      ],
+    };
+    expect(nextNeedsYou(list, null)).toBe('early');
+    expect(nextNeedsYou(list, 'early')).toBe('late');
+    expect(nextNeedsYou(list, 'late')).toBe('done');
+    expect(nextNeedsYou(list, 'done')).toBe('early');
+    expect(nextNeedsYou(list, 'quiet')).toBe('early');
+    expect(nextNeedsYou({ sessions: [session('quiet', 'idle', 7)], prompts: [] }, null)).toBeNull();
   });
 });

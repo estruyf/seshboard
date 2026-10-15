@@ -7,9 +7,12 @@ import {
   generateKeyPair,
   parseRemoteLink,
   pskFromSecret,
+  REMOTE_IMAGE_BYTES,
+  REMOTE_MAX_IMAGES,
   type CatchUp,
   type PermissionRequest,
   type RemoteContract,
+  type RemoteImage,
   type RemotePairContract,
   type RemoteSettings,
   type SessionHostInfo,
@@ -69,6 +72,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   const appState = createAppStateStore(cache.db);
   const sent: string[] = [];
+  const sentImages: RemoteImage[][] = [];
   const answered: string[] = [];
   const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
@@ -117,7 +121,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     ],
     readTranscript: async () => ['a', 'b', 'c'].map(message),
     watchTranscript: () => () => {},
-    send: async (_id, text) => (sent.push(text), { messageUuid: 'm1', queued: false }),
+    send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: () => {},
     interrupt: async () => {},
     respond: (requestId) => void answered.push(requestId),
@@ -148,7 +152,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, port, on, sent, answered, created, queued, calls, repo, appState, pushes, permissions };
+  return { hub, port, on, sent, sentImages, answered, created, queued, calls, repo, appState, pushes, permissions };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -192,7 +196,7 @@ describe('Remote hub', () => {
   });
 
   it('gives a phone only what it needs, and only the sessions the sidebar lists', async () => {
-    const { hub, port, on, sent, answered, created } = await setup();
+    const { hub, port, on, sent, sentImages, answered, created } = await setup();
     await on();
     const { remote } = await pair(hub, port);
 
@@ -206,6 +210,13 @@ describe('Remote hub', () => {
     await expect(remote.call('session.send', { sessionId: HIDDEN, text: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(await remote.call('session.send', { sessionId: SESSION, text: 'run the tests' })).toEqual({ queued: false });
     expect(sent).toEqual(['run the tests']);
+    // Pasted or photographed images go with the message; too many, or one too big, are refused.
+    const image = { type: 'image' as const, mediaType: 'image/jpeg' as const, data: 'aGVsbG8=', name: 'screen.jpg' };
+    await remote.call('session.send', { sessionId: SESSION, text: 'look', images: [image] });
+    expect(sentImages.at(-1)).toEqual([image]);
+    await expect(remote.call('session.send', { sessionId: SESSION, text: 'look', images: Array(REMOTE_MAX_IMAGES + 1).fill(image) })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await expect(remote.call('session.send', { sessionId: SESSION, text: 'look', images: [{ ...image, data: 'a'.repeat(REMOTE_IMAGE_BYTES + 1) }] })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    expect(sentImages).toHaveLength(2);
 
     await remote.call('session.respond', { requestId: 'r1', decision: { behavior: 'allow' } });
     expect(answered).toEqual(['r1']);

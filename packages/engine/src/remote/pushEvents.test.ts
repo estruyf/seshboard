@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatchUp } from '@switchboard/protocol';
-import { finishedLine, needsYouLine, pushTargets, TurnEnds } from './pushEvents.ts';
+import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds } from './pushEvents.ts';
 
 const card = (signals: Partial<CatchUp['signals']> = {}, change: Partial<CatchUp> = {}): CatchUp => ({
   sessionId: 's',
@@ -25,6 +25,12 @@ describe('push wording', () => {
     expect(needsYouLine({ toolName: 'AskUserQuestion', input: { questions: [{ question: 'Which cache?' }] } })).toBe('Question: Which cache?');
     expect(needsYouLine({ toolName: 'ExitPlanMode', input: { plan: '...' } })).toBe('Claude has a plan. Ready to start?');
     expect(needsYouLine({ toolName: 'Bash', input: { command: 'x'.repeat(300) } }).length).toBe(120);
+  });
+
+  it('lets a tool prompt be answered from the notification, but not a question or a plan', () => {
+    expect(promptAnswers({ requestId: 'r1', toolName: 'Bash' })).toEqual({ requestId: 'r1', answers: true });
+    expect(promptAnswers({ requestId: 'r2', toolName: 'AskUserQuestion' })).toEqual({ requestId: 'r2', answers: false });
+    expect(promptAnswers({ requestId: 'r3', toolName: 'ExitPlanMode' })).toEqual({ requestId: 'r3', answers: false });
   });
 
   it('sums up a finished turn from its catch-up', () => {

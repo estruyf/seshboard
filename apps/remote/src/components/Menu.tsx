@@ -11,7 +11,7 @@ export type MenuItem =
  * The `⋯` menu (AGENTS.md, Buttons: what people use less often): a quiet icon button and a small list under it. Arrow
  * keys move, Escape and a tap outside close it, focus goes back to the button.
  */
-export function MenuButton({ label = 'More', items, align = 'right' }: { label?: string; items: MenuItem[]; align?: 'left' | 'right' }) {
+export function MenuButton({ label = 'More', items, align = 'right', side = 'below' }: { label?: string; items: MenuItem[]; align?: 'left' | 'right'; side?: 'above' | 'below' }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -55,7 +55,7 @@ export function MenuButton({ label = 'More', items, align = 'right' }: { label?:
               items[(at + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
             } else if (event.key === 'Tab') setOpen(false);
           }}
-          className={`overlay absolute top-full z-40 mt-1 flex min-w-56 flex-col rounded-xl p-1 ${align === 'right' ? 'right-0' : 'left-0'}`}
+          className={`overlay absolute z-40 flex min-w-56 flex-col rounded-xl p-1 ${side === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'} ${align === 'right' ? 'right-0' : 'left-0'}`}
         >
           {items.map((item, index) =>
             item.kind === 'separator' ? (

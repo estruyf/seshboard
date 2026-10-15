@@ -3,8 +3,9 @@ import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
-import { Effort, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
+import { REMOTE_IMAGE_BYTES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
 
 /**
  * Remote's contracts: what a paired phone may ask the engine, and the one request of a phone that is pairing. They
@@ -133,6 +134,10 @@ export const RemotePushSubscription = z.object({
 });
 export type RemotePushSubscription = z.infer<typeof RemotePushSubscription>;
 
+/** An image a phone sends with a message: the app's attachment, smaller. */
+export const RemoteImage = ImageAttachment.extend({ data: z.string().min(1).max(REMOTE_IMAGE_BYTES) });
+export type RemoteImage = z.infer<typeof RemoteImage>;
+
 /** The most lines `changes.diff` returns. */
 export const REMOTE_DIFF_LINES = 2_000;
 
@@ -169,9 +174,9 @@ export const remoteContract = {
     /** From now on, `transcript.updated` for this session (one at a time per phone; watching another stops this one). */
     'transcript.watch': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     'transcript.unwatch': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
-    /** Sends a prompt, or queues it while Claude is working (`mode`, as on the Mac). No attachments. */
+    /** Sends a prompt, or queues it while Claude is working (`mode`, as on the Mac), with images pasted, dropped or photographed. */
     'session.send': {
-      params: z.object({ sessionId: SessionId, text: Prompt, mode: SendMode.default('queue') }),
+      params: z.object({ sessionId: SessionId, text: Prompt, mode: SendMode.default('queue'), images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]) }),
       result: z.object({ queued: z.boolean() }),
     },
     'session.queue.remove': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },

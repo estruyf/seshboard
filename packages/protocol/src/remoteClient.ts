@@ -9,5 +9,6 @@ export type * from './remote.ts';
 export type { CompanionStatus } from './companion.ts';
 export type { Effort, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 export type { CatchUp, CatchUpNeedKind, CatchUpTests } from './catchUp.ts';
+export * from './remoteConstants.ts';
 export * from './remoteNoise.ts';
 export * from './remoteChannel.ts';

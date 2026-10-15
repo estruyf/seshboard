@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react';
 import type { CompanionStatus } from '@switchboard/protocol/remote-client';
+import { keys } from '../lib/platform.ts';
 
 /**
  * The few building blocks the remote app needs, after the desktop's design system (AGENTS.md): one yellow primary
@@ -30,6 +31,15 @@ export function Button({ variant = 'secondary', size = 'lg', className = '', ...
       className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-ui transition-colors disabled:opacity-50 ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
     />
   );
+}
+
+/**
+ * A key hint in a button or a line of text, from its stored form (`mod+k`, `a`, `enter`) so Windows readers see Ctrl.
+ * `on-accent` inside a yellow button. Only shown with a mouse or trackpad: a touch screen has no keys.
+ */
+export function Kbd({ shortcut, tone = 'plain', className = '' }: { shortcut: string; tone?: 'plain' | 'on-accent' | 'cap'; className?: string }) {
+  const look = tone === 'cap' ? 'min-w-5 rounded border border-edge bg-card px-1 text-center text-text shadow-[0_1px_0_var(--sb-edge)]' : tone === 'on-accent' ? 'text-on-accent/70' : 'text-faint';
+  return <kbd className={`hidden font-sans text-meta font-normal tabular-nums pointer-fine:inline-block ${look} ${className}`}>{keys(shortcut)}</kbd>;
 }
 
 /** The small capitals over a group of rows, in the group's colour, with its count (the sidebar's SectionHeader). */

@@ -1172,6 +1172,41 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-home",
+      "name": "Remote: what needs you on a wide screen, and Finished, ready to review",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-keys",
+      "name": "Remote: keys on a wide screen (J, K, A, D, N, ?)",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-palette",
+      "name": "Remote: search and jump to a session or an action",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-changes-panel",
+      "name": "Remote: Changes on the right in a wide window",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-images",
+      "name": "Remote: images in a message",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-tab-signals",
+      "name": "Remote: the needs-you count and dot in the browser tab",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-notification-actions",
+      "name": "Remote: Deny and Allow on a notification",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-offline-help",
       "name": "Remote: why the phone can't connect, and Help",
       "page": "remote-access"

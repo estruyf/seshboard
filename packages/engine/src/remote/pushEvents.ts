@@ -14,6 +14,17 @@ export interface PushPayload {
   project: string;
   /** "Allow Bash: npm publish --tag beta", or "14 tests passed · ~2 min to review". */
   line: string;
+  /** A tool prompt: the notification offers Deny and Allow where the browser has buttons, and answers this request. */
+  requestId?: string;
+  answers?: boolean;
+}
+
+/**
+ * A tool prompt can be answered from the notification (Deny, Allow); a question or a plan needs its session, where
+ * there is room to read it.
+ */
+export function promptAnswers(request: Pick<PermissionRequest, 'requestId' | 'toolName'>): { requestId: string; answers: boolean } {
+  return { requestId: request.requestId, answers: request.toolName !== 'AskUserQuestion' && request.toolName !== 'ExitPlanMode' };
 }
 
 const short = (text: string, max = 120) => {

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, Send, X } from 'lucide-react';
-import type { CatchUp, QueuedMessage, RemoteMessage, RemoteOptions, RemoteSessions } from '@switchboard/protocol/remote-client';
+import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, ImagePlus, Send, Square, X } from 'lucide-react';
+import { REMOTE_MAX_IMAGES, type CatchUp, type QueuedMessage, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions } from '@switchboard/protocol/remote-client';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { transcriptItems } from '../lib/steps.ts';
 import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessages, resultsByCall, type Streaming } from '../lib/transcript.ts';
@@ -14,7 +14,10 @@ import { MenuButton, type MenuItem } from './Menu.tsx';
 import { ModeChip, ModelChip } from './OptionChips.tsx';
 import { DockedPrompt } from './PermissionCard.tsx';
 import { toast } from './Toasts.tsx';
-import { useFinePointer } from '../lib/media.ts';
+import { useFinePointer, useMedia } from '../lib/media.ts';
+import { addReason, imageFiles, toImage } from '../lib/images.ts';
+import { MODE_DOT, MODE_SHORT, modelLabel } from '../lib/options.ts';
+import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
 import { Button, STATUS_LABEL, StatusDot } from './ui.tsx';
 
 const PAGE = 50;
@@ -38,6 +41,8 @@ export function SessionView({
   onBack,
   onLeave,
   onRefresh,
+  wide = false,
+  initialChanges = false,
 }: {
   client: Client;
   sessionId: string;
@@ -47,6 +52,10 @@ export function SessionView({
   /** Back to the list (after Archive): the back gesture on a phone, the empty view on a wide screen. */
   onLeave: () => void;
   onRefresh: () => void;
+  /** A wide screen: the header has the model and mode, Changes and Stop, and the prompt's buttons show their keys. */
+  wide?: boolean;
+  /** Opened from a card's Changes: Changes open from the start. */
+  initialChanges?: boolean;
 }) {
   const session = sessions.sessions.find((s) => s.id === sessionId) ?? null;
   const prompts = sessions.prompts.filter((p) => p.sessionId === sessionId);
@@ -57,7 +66,11 @@ export function SessionView({
   const [error, setError] = useState<string | null>(null);
   const [catchUp, setCatchUp] = useState<CatchUp | null>(null);
   const [changes, setChanges] = useState<ChangesState | null>(null);
-  const [sheet, setSheet] = useState<'changes' | 'commit' | null>(null);
+  /** At 1280px and wider Changes is a panel on the right (remembered in this browser); below that, a sheet. */
+  const panelFits = useMedia('(min-width: 1280px)') && wide;
+  const [panel, setPanel] = useState(() => (initialChanges || panelWasOpen()));
+  const panelOpen = panelFits && panel;
+  const [sheet, setSheet] = useState<'changes' | 'commit' | null>(() => (initialChanges && !(wide && window.matchMedia('(min-width: 1280px)').matches) ? 'changes' : null));
   const [unfolded, setUnfolded] = useState(false);
   /** The turn committed from here, so its card says Committed. */
   const [committed, setCommitted] = useState<string | null>(null);
@@ -150,108 +163,156 @@ export function SessionView({
   const card = showsCatchUp(catchUp, working, Boolean(open)) ? catchUp : null;
   const idle = !working && !open;
   const files = changes?.files.length ?? 0;
-  const send = (text: string) => client!.call('session.send', { sessionId, text, mode: 'queue' }).then(() => setUnfolded(true));
+  const send = (text: string, images: RemoteImage[] = []) => client!.call('session.send', { sessionId, text, mode: 'queue', images }).then(() => setUnfolded(true));
   const askToFix = (path: string | null) => {
     setSheet(null);
     setFill({ text: path ? `In ${path}, ` : '', id: Date.now() });
   };
+  const showPanel = (open: boolean) => {
+    setPanel(open);
+    rememberPanel(open);
+  };
+  const openChanges = () => (panelFits ? showPanel(!panelOpen) : setSheet('changes'));
+  // Esc closes the panel once nothing over it (the palette, a sheet, a menu) took the key.
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[role=dialog],[role=menu]')) return;
+      event.preventDefault();
+      showPanel(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [panelOpen]);
+  const stop = () => void client?.call('session.interrupt', { sessionId }).catch(fail);
+  const modelAndMode = running && options && session ? `${modelLabel(options.models, session.model)} · ${MODE_SHORT[session.permissionMode!]}` : null;
 
   return (
-    <div className="flex h-full flex-col">
-      <header className={`safe-top flex items-center gap-2 border-b border-border bg-bg pb-2 pointer-fine:pb-2.5 ${onBack ? 'px-2' : 'px-5'}`}>
-        {onBack && (
-          <Button variant="quiet" onClick={onBack} aria-label="Back" className="px-2!">
-            <ChevronLeft className="size-5" aria-hidden />
-          </Button>
-        )}
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-title font-semibold">{session?.title ?? 'Session'}</h1>
-          {session && (
-            <p className="flex items-center gap-1.5 truncate text-meta text-muted">
-              <StatusDot status={session.status} />
-              {STATUS_LABEL[session.status]} · {session.projectName}
-              {session.branch ? ` · ${session.branch}` : ''}
-            </p>
-          )}
-        </div>
-        {files > 0 && (
-          <Button variant="quiet" size="md" onClick={() => setSheet('changes')} aria-label={`Changes, ${files} ${files === 1 ? 'file' : 'files'}`} className="px-2!" data-remote-changes>
-            <FileDiff className="size-4" aria-hidden />
-            <span className="tabular-nums">{files}</span>
-          </Button>
-        )}
-        <MenuButton label="Session actions" items={menu} />
-      </header>
-      {banner}
-      <Transcript
-        messages={messages}
-        results={results}
-        streaming={streaming}
-        working={working}
-        hasMore={hasMore}
-        onOlder={() => void loadOlder()}
-        folded={Boolean(card) && !unfolded}
-        onUnfold={() => setUnfolded(true)}
-        header={card && <CatchUpCard card={card} now={now} committed={committed === card.turnId} onChanges={() => setSheet('changes')} onCommit={() => setSheet('commit')} canCommit={Boolean(client) && files > 0} />}
-      />
-      {error && (
-        <div className="px-3 pt-2 sm:px-6">
-          <p role="alert" className="mx-auto flex w-full max-w-3xl items-start gap-2 rounded-lg bg-error/10 px-3 py-2 text-ui text-error">
-            <span className="flex-1">{error}</span>
-            <Button variant="quiet" size="md" aria-label="Dismiss" onClick={() => setError(null)} className="-my-1 -mr-2 px-2! text-error!">
-              <X className="size-4" aria-hidden />
+    <div className="flex h-full">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className={`safe-top flex items-center gap-2 border-b border-border bg-bg pb-2 pointer-fine:pb-2.5 ${onBack ? 'px-2' : 'px-5'}`}>
+          {onBack && (
+            <Button variant="quiet" onClick={onBack} aria-label="Back" className="px-2!">
+              <ChevronLeft className="size-5" aria-hidden />
             </Button>
-          </p>
-        </div>
-      )}
-      {queue.length > 0 && <UpNext queue={queue} onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))} />}
-      <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} />
-      {idle && session && (
-        <div className="px-3 pt-2 sm:px-6" role="group" aria-label="Quick replies">
-          <div className="scroll-row mx-auto flex w-full max-w-3xl gap-1.5">
-            {QUICK_REPLIES.map((reply) => (
-              <button key={reply} type="button" disabled={!client} onClick={() => void send(reply).catch(fail)} className="flex min-h-9 shrink-0 items-center rounded-full border border-edge px-3 text-ui hover:bg-border/45 disabled:opacity-50 pointer-fine:min-h-7" data-remote-quick={reply}>
-                {reply}
-              </button>
-            ))}
-            <button
-              type="button"
-              disabled={!client}
-              onClick={() => void client?.call('session.markRead', { sessionId }).then(onLeave, fail)}
-              className="flex min-h-9 shrink-0 items-center rounded-full border border-edge px-3 text-ui text-muted hover:bg-border/45 disabled:opacity-50 pointer-fine:min-h-7"
-              data-remote-quick="read"
-            >
-              Mark as read
-            </button>
+          )}
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-title font-semibold">{session?.title ?? 'Session'}</h1>
+            {session && (
+              <p className="flex items-center gap-1.5 truncate text-meta text-muted">
+                <StatusDot status={session.status} />
+                {STATUS_LABEL[session.status]} · {session.projectName}
+                {session.branch ? ` · ${session.branch}` : ''}
+              </p>
+            )}
           </div>
-        </div>
-      )}
-      <Composer
-        fill={fill}
-        chips={
-          running && options && session ? (
-            <>
-              <ModelChip options={options} value={session.model} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
-              <ModeChip options={options} value={session.permissionMode!} placement="above" disabled={!client} onPick={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)} />
-            </>
-          ) : null
-        }
-        disabled={!client}
-        working={working}
-        answering={Boolean(open)}
-        onSend={async (text) => {
-          // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
-          if (open) {
-            const result = await answer(client!, open, { behavior: 'deny', message: text }, session?.title);
-            if (result === 'gone') onRefresh();
-            if (result === 'failed') throw new Error("The answer didn't reach your computer.");
-            return;
+          {wide && modelAndMode && (
+            <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-meta text-muted lg:inline-flex" title="Model and permission mode. Change them under the message box." data-remote-model-mode>
+              <span aria-hidden className={`size-1.5 rounded-full ${MODE_DOT[session!.permissionMode!]}`} />
+              {modelAndMode}
+            </span>
+          )}
+          {(files > 0 || (wide && changes)) && (
+            <Button variant="quiet" size="md" onClick={openChanges} aria-pressed={panelOpen || undefined} aria-label={`Changes, ${files} ${files === 1 ? 'file' : 'files'}`} className={`px-2! ${panelOpen ? 'bg-selected text-text!' : ''}`} data-remote-changes>
+              <FileDiff className="size-4" aria-hidden />
+              {wide && <span>Changes</span>}
+              <span className="tabular-nums">{files}</span>
+            </Button>
+          )}
+          {wide && working && (
+            <Button size="md" onClick={stop} disabled={!client} data-remote-stop>
+              <Square className="size-3 fill-current" aria-hidden />
+              Stop
+            </Button>
+          )}
+          <MenuButton label="Session actions" items={menu} />
+        </header>
+        {banner}
+        <Transcript
+          messages={messages}
+          results={results}
+          streaming={streaming}
+          working={working}
+          hasMore={hasMore}
+          onOlder={() => void loadOlder()}
+          folded={Boolean(card) && !unfolded}
+          onUnfold={() => setUnfolded(true)}
+          header={card && <CatchUpCard card={card} now={now} committed={committed === card.turnId} onChanges={() => (panelFits ? showPanel(true) : setSheet('changes'))} onCommit={() => (panelFits ? showPanel(true) : setSheet('commit'))} canCommit={Boolean(client) && files > 0} />}
+        />
+        {error && (
+          <div className="px-3 pt-2 sm:px-6">
+            <p role="alert" className="mx-auto flex w-full max-w-3xl items-start gap-2 rounded-lg bg-error/10 px-3 py-2 text-ui text-error">
+              <span className="flex-1">{error}</span>
+              <Button variant="quiet" size="md" aria-label="Dismiss" onClick={() => setError(null)} className="-my-1 -mr-2 px-2! text-error!">
+                <X className="size-4" aria-hidden />
+              </Button>
+            </p>
+          </div>
+        )}
+        {queue.length > 0 && <UpNext queue={queue} onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))} />}
+        <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} />
+        {idle && session && (
+          <div className="px-3 pt-2 sm:px-6" role="group" aria-label="Quick replies">
+            <div className="scroll-row mx-auto flex w-full max-w-3xl gap-1.5">
+              {QUICK_REPLIES.map((reply) => (
+                <button key={reply} type="button" disabled={!client} onClick={() => void send(reply).catch(fail)} className="flex min-h-9 shrink-0 items-center rounded-full border border-edge px-3 text-ui hover:bg-border/45 disabled:opacity-50 pointer-fine:min-h-7" data-remote-quick={reply}>
+                  {reply}
+                </button>
+              ))}
+              <button
+                type="button"
+                disabled={!client}
+                onClick={() => void client?.call('session.markRead', { sessionId }).then(onLeave, fail)}
+                className="flex min-h-9 shrink-0 items-center rounded-full border border-edge px-3 text-ui text-muted hover:bg-border/45 disabled:opacity-50 pointer-fine:min-h-7"
+                data-remote-quick="read"
+              >
+                Mark as read
+              </button>
+            </div>
+          </div>
+        )}
+        <Composer
+          fill={fill}
+          chips={
+            running && options && session ? (
+              <>
+                <ModelChip options={options} value={session.model} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
+                <ModeChip options={options} value={session.permissionMode!} placement="above" disabled={!client} onPick={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)} />
+              </>
+            ) : null
           }
-          await send(text);
-        }}
-        onError={setError}
-      />
+          disabled={!client}
+          working={working}
+          answering={Boolean(open)}
+          onSend={async (text, images) => {
+            // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
+            if (open) {
+              if (images.length) throw new Error("Images can't go with an answer. Remove them, or answer the prompt first.");
+              const result = await answer(client!, open, { behavior: 'deny', message: text }, session?.title);
+              if (result === 'gone') onRefresh();
+              if (result === 'failed') throw new Error("The answer didn't reach your computer.");
+              return;
+            }
+            await send(text, images);
+          }}
+          onError={setError}
+        />
+      </div>
       {sheet === 'changes' && <ChangesSheet client={client} sessionId={sessionId} changes={changes} onClose={() => setSheet(null)} onAsk={askToFix} onCommit={() => setSheet('commit')} />}
+      {panelOpen && (
+        <ChangesPanel
+          client={client}
+          sessionId={sessionId}
+          changes={changes}
+          initialMessage={commitTitle(catchUp)}
+          onClose={() => showPanel(false)}
+          onAsk={askToFix}
+          onCommitted={() => {
+            setCommitted(catchUp?.turnId ?? null);
+            loadChanges();
+          }}
+        />
+      )}
       {sheet === 'commit' && (
         <CommitSheet
           client={client}
@@ -382,9 +443,18 @@ function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: st
   );
 }
 
+/** An image waiting in the message box, with its thumbnail. */
+interface Attached {
+  id: number;
+  image: RemoteImage;
+}
+
+let nextImage = 1;
+
 /**
  * The message box. While Claude works, a message waits in Up next for the turn to end, as on the computer. While a
- * prompt is open, what you send answers it instead.
+ * prompt is open, what you send answers it instead. Images come from the camera button, a paste or a drop; each is
+ * resized on this device first (`lib/images.ts`), and shows as a thumbnail above the box with a remove button.
  */
 function Composer({
   fill,
@@ -402,11 +472,36 @@ function Composer({
   disabled: boolean;
   working: boolean;
   answering: boolean;
-  onSend: (text: string) => Promise<void>;
+  onSend: (text: string, images: RemoteImage[]) => Promise<void>;
   onError: (message: string) => void;
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [images, setImages] = useState<Attached[]>([]);
+  const [reading, setReading] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const add = async (files: readonly File[]) => {
+    const taken = images.length + reading;
+    const fitting = imageFiles(files, taken);
+    if (!fitting.length) {
+      const reason = files.some((f) => f.type.startsWith('image/')) ? addReason(taken) : null;
+      if (reason) onError(reason);
+      return;
+    }
+    if (fitting.length < files.filter((f) => f.type.startsWith('image/')).length) onError(addReason(taken + fitting.length) ?? '');
+    setReading((n) => n + fitting.length);
+    for (const file of fitting) {
+      try {
+        const image = await toImage(file);
+        setImages((current) => [...current, { id: nextImage++, image }]);
+      } catch (error) {
+        onError(error instanceof Error ? error.message : "That image couldn't be read.");
+      } finally {
+        setReading((n) => n - 1);
+      }
+    }
+  };
   const fine = useFinePointer();
   const box = useRef<HTMLTextAreaElement>(null);
   // With a keyboard, the box is ready to type in when the session opens; on a phone the keyboard waits for a tap.
@@ -423,11 +518,15 @@ function Composer({
   }, [fill]);
   const send = async () => {
     const message = text.trim();
-    if (!message || busy) return;
+    if (!message || busy || reading) return;
     setBusy(true);
     try {
-      await onSend(message);
+      await onSend(
+        message,
+        images.map((a) => a.image),
+      );
       setText('');
+      setImages([]);
     } catch (error) {
       onError(error instanceof Error ? error.message : "The message wasn't sent.");
     } finally {
@@ -441,12 +540,67 @@ function Composer({
         event.preventDefault();
         void send();
       }}
+      onDragOver={(event) => {
+        if (disabled || !event.dataTransfer.types.includes('Files')) return;
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.files.length) return;
+        event.preventDefault();
+        setDragging(false);
+        void add([...event.dataTransfer.files]);
+      }}
     >
-      <div className="mx-auto flex w-full max-w-3xl items-end gap-2 rounded-xl border border-edge bg-card p-1.5 pl-3 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20">
+      {(images.length > 0 || reading > 0) && (
+        <ul className="mx-auto flex w-full max-w-3xl gap-2 pb-2" aria-label="Images to send" data-remote-images>
+          {images.map((attached) => (
+            <li key={attached.id} className="group relative size-14 shrink-0 overflow-hidden rounded-lg border border-edge bg-code">
+              <img src={`data:${attached.image.mediaType};base64,${attached.image.data}`} alt={attached.image.name ?? 'Image'} className="size-full object-cover" />
+              <button
+                type="button"
+                aria-label={`Remove ${attached.image.name ?? 'image'}`}
+                onClick={() => setImages((current) => current.filter((a) => a.id !== attached.id))}
+                className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                data-remote-image-remove
+              >
+                <X className="size-3" aria-hidden />
+              </button>
+            </li>
+          ))}
+          {reading > 0 && <li className="flex size-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-edge text-meta text-faint">Reading…</li>}
+        </ul>
+      )}
+      <div className={`mx-auto flex w-full max-w-3xl items-end gap-2 rounded-xl border bg-card p-1.5 pl-1.5 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${dragging ? 'border-accent-ink ring-4 ring-accent/20' : 'border-edge'}`}>
+        <Button variant="quiet" size="md" aria-label="Add an image" title={answering ? 'Answer the prompt first' : 'Add an image'} disabled={disabled || answering || images.length + reading >= REMOTE_MAX_IMAGES} onClick={() => picker.current?.click()} className="px-2!" data-remote-attach>
+          <ImagePlus className="size-4" aria-hidden />
+        </Button>
+        <input
+          ref={picker}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(event) => {
+            void add([...(event.target.files ?? [])]);
+            event.target.value = '';
+          }}
+        />
         <textarea
           ref={box}
           value={text}
           onChange={(event) => setText(event.target.value)}
+          onPaste={(event) => {
+            // A screenshot pastes as an image; a copied page with text in it pastes its text.
+            const files = [...event.clipboardData.files];
+            if (!files.some((f) => f.type.startsWith('image/')) || event.clipboardData.types.includes('text/plain')) return;
+            event.preventDefault();
+            if (!answering) void add(files);
+            else onError("Images can't go with an answer. Answer the prompt first.");
+          }}
           onKeyDown={(event) => {
             // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer.
             if (fine && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -460,7 +614,7 @@ function Composer({
           data-remote-message
           className="max-h-48 min-h-9 flex-1 resize-none bg-transparent py-2 text-body text-text outline-none [field-sizing:content] placeholder:text-faint pointer-fine:min-h-7 pointer-fine:py-1"
         />
-        <Button type="submit" variant="primary" size="md" disabled={disabled || busy || !text.trim()} aria-label={answering ? 'Send instead' : working ? 'Add to Up next' : 'Send'} className="px-3!">
+        <Button type="submit" variant="primary" size="md" disabled={disabled || busy || reading > 0 || !text.trim()} aria-label={answering ? 'Send instead' : working ? 'Add to Up next' : 'Send'} className="px-3!">
           <Send className="size-4" aria-hidden />
         </Button>
       </div>

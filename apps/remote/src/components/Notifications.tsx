@@ -73,6 +73,42 @@ export function PushOffer({ client, onDone }: { client: Client; onDone: () => vo
   );
 }
 
+/**
+ * The offer on a wide screen: a one-time strip above the main view rather than a card in the list. The words say
+ * "tab", since a computer's browser keeps the page in one.
+ */
+export function PushStrip({ client, onDone }: { client: Client; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const close = () => {
+    markOffered();
+    onDone();
+  };
+  const on = async () => {
+    if (!client) return;
+    setBusy(true);
+    try {
+      await turnOn(client);
+      toast('Notifications are on');
+      close();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Notifications didn't turn on.", { tone: 'error' });
+      setBusy(false);
+    }
+  };
+  return (
+    <section aria-label="Get notified" className="flex items-center gap-3 border-b border-border bg-sidebar px-5 py-2" data-remote-push-strip>
+      <Bell className="size-4 shrink-0 text-unread" aria-hidden />
+      <p className="min-w-0 flex-1 text-ui">Get a notification when a session needs you or finishes, even when this tab is in the background.</p>
+      <Button size="md" onClick={close}>
+        Not now
+      </Button>
+      <Button variant="primary" size="md" onClick={() => void on()} disabled={!client || busy} data-remote-push-on>
+        Turn on
+      </Button>
+    </section>
+  );
+}
+
 /** Whether to show the offer: once, where notifications can work, while they're off. */
 export function shouldOffer(alreadyOffered: boolean): boolean {
   const support: PushSupport = currentSupport();

@@ -25,6 +25,7 @@ import {
   type PermissionRequest,
   type SessionHostInfo,
   type RemotePushSubscription,
+  type RemoteImage,
   type ModelOption,
   type PermissionMode,
   Effort,
@@ -36,7 +37,7 @@ import { DeviceStore, type RemoteDevice } from './devices.ts';
 import { Pairing } from './pairing.ts';
 import { RemoteServer } from './remoteServer.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
-import { finishedLine, needsYouLine, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
+import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, type VapidKeys } from './webPush.ts';
 import { capDiff, projectIdOf, remoteCatchUp, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 
@@ -89,7 +90,7 @@ export interface RemoteHubOptions {
   projects(): RemoteProject[];
   readTranscript(sessionId: string): Promise<TranscriptMessage[]>;
   watchTranscript(sessionId: string, listener: (update: TranscriptUpdate) => void): () => void;
-  send(sessionId: string, text: string, mode: SendMode): Promise<{ messageUuid: string; queued: boolean }>;
+  send(sessionId: string, text: string, mode: SendMode, images: RemoteImage[]): Promise<{ messageUuid: string; queued: boolean }>;
   dequeue(sessionId: string, id: string): void;
   interrupt(sessionId: string): Promise<void>;
   respond(requestId: string, decision: PermissionDecision): void;
@@ -273,7 +274,7 @@ export class RemoteHub {
   permissionAsked(request: PermissionRequest): void {
     const session = this.list().sessions.find((s) => s.id === request.sessionId);
     if (!session) return;
-    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, line: needsYouLine(request) });
+    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, line: needsYouLine(request), ...promptAnswers(request) });
   }
 
   /** A session's process changed state: a turn that ended sends its push once the catch-up is in (or soon without). */
@@ -521,9 +522,9 @@ export class RemoteHub {
         if (this.watches.get(phone)?.sessionId === sessionId) unwatch(phone);
         return {};
       },
-      'session.send': async ({ sessionId, text, mode }) => {
+      'session.send': async ({ sessionId, text, mode, images }) => {
         this.checkSession(sessionId);
-        const sent = await this.options.send(sessionId, text, mode);
+        const sent = await this.options.send(sessionId, text, mode, images);
         if (!sent.queued) label(sessionId, sent.messageUuid);
         this.options.onFromDevice?.({ sessionId, messageUuid: sent.queued ? null : sent.messageUuid, requestId: null, device: device.name });
         return { queued: sent.queued };

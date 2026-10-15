@@ -6,7 +6,7 @@ import { editLines, toolSummary } from '../lib/transcript.ts';
 import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
 import { Markdown } from './Markdown.tsx';
-import { Button } from './ui.tsx';
+import { Button, Kbd } from './ui.tsx';
 
 interface Question {
   question: string;
@@ -28,7 +28,7 @@ export function promptTitle(prompt: RemotePrompt): string {
  * you", and the same choices as the card on the computer. The chevron folds it to one line to read the conversation
  * first; a new prompt opens it again. With more than one, "1 of 2" and arrows step through them.
  */
-export function DockedPrompt({ prompts, client, sessionTitle, onGone }: { prompts: RemotePrompt[]; client: Client; sessionTitle: string | undefined; onGone: () => void }) {
+export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = false }: { prompts: RemotePrompt[]; client: Client; sessionTitle: string | undefined; onGone: () => void; /** Key hints on the buttons (a wide screen). */ hints?: boolean }) {
   const [index, setIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -78,13 +78,7 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone }: { prompt
         </div>
         {!collapsed && (
           <div className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3">
-            {promptKind(prompt) === 'question' ? (
-              <Questions key={prompt.requestId} prompt={prompt} disabled={disabled} respond={respond} />
-            ) : promptKind(prompt) === 'plan' ? (
-              <Plan prompt={prompt} disabled={disabled} respond={respond} />
-            ) : (
-              <ToolPrompt prompt={prompt} disabled={disabled} respond={respond} />
-            )}
+            <PromptBody key={prompt.requestId} prompt={prompt} disabled={disabled} respond={respond} hints={hints} />
           </div>
         )}
       </div>
@@ -92,13 +86,27 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone }: { prompt
   );
 }
 
-type Props = { prompt: RemotePrompt; disabled: boolean; respond: (decision: PermissionDecision) => Promise<void> };
+type Props = {
+  prompt: RemotePrompt;
+  disabled: boolean;
+  respond: (decision: PermissionDecision) => Promise<void>;
+  /** Key hints on the buttons: D, A, ↩ (a wide screen; the keys are in `Connected.tsx`). */
+  hints?: boolean;
+  /** On a card that has its own heading (the home view): no title, a question's options as chips. */
+  compact?: boolean;
+};
 
-function ToolPrompt({ prompt, disabled, respond }: Props) {
+/** A prompt's choices: a tool's Deny, Always and Allow, a question's options, or a plan's Keep planning and Start. */
+export function PromptBody(props: Props) {
+  const kind = promptKind(props.prompt);
+  return kind === 'question' ? <Questions {...props} /> : kind === 'plan' ? <Plan {...props} /> : <ToolPrompt {...props} />;
+}
+
+function ToolPrompt({ prompt, disabled, respond, hints, compact }: Props) {
   const diff = editLines(prompt.toolName, prompt.input);
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>
+      {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>}
       {prompt.description && <p className="text-ui text-muted">{prompt.description}</p>}
       <pre className="max-h-48 overflow-auto rounded-lg bg-code p-2 font-mono text-meta whitespace-pre-wrap">
         {diff ? diff.map((line, i) => <div key={i} className={line.kind === '+' ? 'bg-diff-added' : 'bg-diff-removed'}>{`${line.kind} ${line.text}`}</div>) : toolSummary(prompt.toolName, prompt.input)}
@@ -107,6 +115,7 @@ function ToolPrompt({ prompt, disabled, respond }: Props) {
         {/* With Always allow, Deny and Allow take what their word needs and Always the rest, so its label fits a phone. */}
         <Button variant="danger" disabled={disabled} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} className={prompt.alwaysLabel ? 'px-4!' : 'flex-1'} data-remote-deny>
           Deny
+          {hints && <Kbd shortcut="d" />}
         </Button>
         {prompt.alwaysLabel && (
           <Button disabled={disabled} onClick={() => void respond({ behavior: 'allow', always: true })} className="min-w-0 flex-1 px-3!" data-remote-always>
@@ -115,13 +124,14 @@ function ToolPrompt({ prompt, disabled, respond }: Props) {
         )}
         <Button variant="primary" disabled={disabled} onClick={() => void respond({ behavior: 'allow' })} className={prompt.alwaysLabel ? 'px-5!' : 'flex-[2]'} data-remote-allow>
           Allow
+          {hints && <Kbd shortcut="a" tone="on-accent" />}
         </Button>
       </div>
     </div>
   );
 }
 
-function Questions({ prompt, disabled, respond }: Props) {
+function Questions({ prompt, disabled, respond, hints, compact }: Props) {
   const questions = ((prompt.input as { questions?: Question[] } | null)?.questions ?? []).filter((q) => q && typeof q.question === 'string');
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState<Record<string, string>>({});
@@ -138,12 +148,26 @@ function Questions({ prompt, disabled, respond }: Props) {
   };
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>
+      {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>}
       {questions.map((q) => (
-        <fieldset key={q.question} className="flex flex-col gap-2">
+        <fieldset key={q.question} className={compact ? 'flex flex-wrap gap-1.5' : 'flex flex-col gap-2'}>
           <legend className="pb-1 text-body">{q.question}</legend>
           {q.options.map((option) => {
             const picked = (answers[q.question] ?? []).includes(option.label);
+            if (compact)
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  role={q.multiSelect ? 'checkbox' : 'radio'}
+                  aria-checked={picked}
+                  title={option.description}
+                  onClick={() => toggle(q, option.label)}
+                  className={`min-h-7 rounded-full border px-3 text-ui transition-colors ${picked ? 'border-accent-ink bg-accent/15 font-semibold' : 'border-edge hover:border-faint hover:bg-border/45'}`}
+                >
+                  {option.label}
+                </button>
+              );
             return (
               <button
                 key={option.label}
@@ -161,40 +185,51 @@ function Questions({ prompt, disabled, respond }: Props) {
           <input
             value={other[q.question] ?? ''}
             onChange={(event) => setOther((current) => ({ ...current, [q.question]: event.target.value }))}
+            onKeyDown={(event) => {
+              // ↩ answers once every question has one, as the hint on Answer says.
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing && complete && !disabled) {
+                event.preventDefault();
+                submit();
+              }
+            }}
             placeholder={q.multiSelect ? 'Something else (optional)' : 'Or type your own answer'}
-            className="field min-h-11 px-3 text-body pointer-fine:min-h-8"
+            className={`field px-3 text-body ${compact ? 'min-h-7 w-full basis-full' : 'min-h-11 pointer-fine:min-h-8'}`}
           />
         </fieldset>
       ))}
       <div className="flex gap-2">
-        <Button disabled={disabled} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} className="flex-1">
+        <Button disabled={disabled} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} className="flex-1" data-remote-deny>
           Skip
+          {hints && <Kbd shortcut="d" />}
         </Button>
         <Button variant="primary" disabled={disabled || !complete} onClick={submit} className="flex-[2]" data-remote-answer>
           Answer
+          {hints && <Kbd shortcut="enter" tone="on-accent" />}
         </Button>
       </div>
     </div>
   );
 }
 
-function Plan({ prompt, disabled, respond }: Props) {
+function Plan({ prompt, disabled, respond, hints, compact }: Props) {
   const plan = (prompt.input as { plan?: unknown } | null)?.plan;
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>
+      {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>}
       {typeof plan === 'string' && (
         <div className="max-h-72 overflow-auto rounded-lg bg-code p-3">
           <Markdown text={plan} />
         </div>
       )}
-      <p className="text-meta text-muted">To change it, say what in the message box below.</p>
+      {!compact && <p className="text-meta text-muted">To change it, say what in the message box below.</p>}
       <div className="flex gap-2">
-        <Button disabled={disabled} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} className="flex-1">
+        <Button disabled={disabled} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} className="flex-1" data-remote-deny>
           Keep planning
+          {hints && <Kbd shortcut="d" />}
         </Button>
-        <Button variant="primary" disabled={disabled} onClick={() => void respond({ behavior: 'allow' })} className="flex-[2]">
+        <Button variant="primary" disabled={disabled} onClick={() => void respond({ behavior: 'allow' })} className="flex-[2]" data-remote-allow>
           Start
+          {hints && <Kbd shortcut="a" tone="on-accent" />}
         </Button>
       </div>
     </div>

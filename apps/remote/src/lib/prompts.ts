@@ -45,3 +45,11 @@ export function promptLine(prompt: Pick<RemotePrompt, 'toolName' | 'input'>): st
   const line = typeof text === 'string' ? (text.split('\n').find((l) => l.trim()) ?? '').replace(/^#+\s*/, '').trim() : '';
   return line.length > 140 ? `${line.slice(0, 137)}...` : line;
 }
+
+/** What a prompt asks, in a few words, for its row in the wide sidebar: "Allow Bash", "a question", "a plan". */
+export function promptShort(prompt: Pick<RemotePrompt, 'toolName'>): string {
+  const kind = promptKind(prompt);
+  if (kind === 'question') return 'a question';
+  if (kind === 'plan') return 'a plan';
+  return `Allow ${toolLabel(prompt.toolName)}`;
+}

@@ -31,5 +31,6 @@ export * from './sideQuestionConstants.ts';
 export * from './catchUp.ts';
 export * from './catchUpRules.ts';
 export * from './remote.ts';
+export * from './remoteConstants.ts';
 export * from './remoteNoise.ts';
 export * from './remoteChannel.ts';

@@ -90,3 +90,35 @@ export function age(at: number, now: number): string {
   if (hours < 24) return `${hours}h`;
   return `${Math.round(hours / 24)}d`;
 }
+
+/** The home view's heading on a wide screen: what needs you, and next to it what works and what finished today. */
+export function homeHeadline(sessions: readonly RemoteSession[], now: number): { title: string; counts: string } {
+  const needsYou = sessions.filter((s) => s.status === 'needs-you').length;
+  const working = sessions.filter((s) => s.status === 'working').length;
+  const finished = sessions.filter((s) => sessionGroup(s, now) === 'today').length;
+  const title = needsYou === 0 ? 'Nothing needs you' : `${needsYou} ${needsYou === 1 ? 'session needs' : 'sessions need'} you`;
+  const counts = [working ? `${working} working` : null, finished ? `${finished} finished today` : null].filter(Boolean).join(' · ');
+  return { title, counts };
+}
+
+/** Finished sessions you haven't read, newest first: Finished, ready to review. */
+export function toReview(sessions: readonly RemoteSession[], max = 6): RemoteSession[] {
+  return sessions
+    .filter((s) => s.status === 'unread')
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, max);
+}
+
+/**
+ * The session ⌘⇧U opens, as on the computer: those waiting for you first (the longest waiting first), then finished
+ * ones you haven't read, newest first. From the one open now it goes on to the next, and round again.
+ */
+export function nextNeedsYou(list: { sessions: readonly RemoteSession[]; prompts: ReadonlyArray<{ sessionId: string; createdAt: number }> }, currentId: string | null): string | null {
+  const waitingSince = new Map<string, number>();
+  for (const p of list.prompts) waitingSince.set(p.sessionId, Math.min(waitingSince.get(p.sessionId) ?? Infinity, p.createdAt));
+  const waiting = list.sessions.filter((s) => s.status === 'needs-you').sort((a, b) => (waitingSince.get(a.id) ?? a.updatedAt) - (waitingSince.get(b.id) ?? b.updatedAt));
+  const order = [...waiting, ...toReview(list.sessions, Infinity)].map((s) => s.id);
+  if (!order.length) return null;
+  const at = currentId ? order.indexOf(currentId) : -1;
+  return order[(at + 1) % order.length]!;
+}

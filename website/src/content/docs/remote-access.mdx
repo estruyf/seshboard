@@ -115,6 +115,8 @@ When a session finished, it starts with its catch-up, as on your computer: how i
 
 In a session that runs in Switchboard, the chips under the message box show its model and permission mode. Tap one to change it. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
 
+To send images with a message, tap the image button next to the message box: your phone offers its camera and its photos. In a browser on a computer, you can also paste a screenshot or drop images on the message box. Each shows as a thumbnail above the box, with a button to remove it. A message takes up to four images. Your phone makes big photos smaller before it sends them.
+
 ## Changes and Commit
 
 The file button in a session's header, and **Changes** on its catch-up, open what changed in the session's folder (its worktree when it has one): each file with the lines added and removed, and the diff of the file you tap. Swipe it down to close it.
@@ -128,9 +130,54 @@ Pick a project from the row of tiles (swipe for more), then type what Claude sho
 
 While a session works in that project, **Queue for later** puts the prompt in Switchboard's queue instead. Start it from the queue on your computer.
 
+## On a computer or a tablet
+
+In a wide window, such as the browser of another computer, your sessions stay on the left, as in Switchboard. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list.
+
+### What needs you
+
+With no session open, the right side shows what needs you: how many sessions need you, how many are working and how many finished today. Under it, every prompt is a card, the oldest first, with everything you need to answer it there: **Deny**, **Always allow** when it's offered, and **Allow** for a command or an edit, the options of a question with **Skip** and **Answer**, and **Keep planning** and **Start** for a plan. **Open** opens its session.
+
+Below the cards, **Finished, ready to review** shows the sessions that finished and you haven't read, each with how long it takes to review, what Claude did, the tests, **Changes** and **Open**.
+
+### Keys
+
+| Key | What it does |
+| --- | --- |
+| <Kbd keys="mod+k" /> | Search your sessions and projects, and run an action. Works in the message box too. |
+| <Kbd keys="mod+shift+u" /> or <Kbd keys="u" /> | Open the next session that needs you: the ones waiting for you first, the longest waiting first, then the ones you haven't read. |
+| <Kbd keys="j" /> and <Kbd keys="k" /> | Move to the next or previous card, or session in the list. |
+| <Kbd keys="a" /> | Allow the card you're on, or in a session the prompt above the message box. |
+| <Kbd keys="d" /> | Deny it. |
+| <Kbd keys="enter" /> | Open the card you're on. |
+| <Kbd keys="n" /> | New session. |
+| <Kbd keys="arrowup" /> and <Kbd keys="arrowdown" /> | Move through the files in Changes. |
+| <Kbd keys="escape" /> | Close the search, a sheet or Changes, in that order. |
+| <Kbd keys="?" /> | Show these keys. |
+
+The letters only work when you're not typing in a field, and never with another key held. <Kbd keys="a" /> does nothing when the prompt is scrolled out of view, so you never allow something you can't see.
+
+<OnlyOn os="windows">
+Microsoft Edge keeps <Kbd keys="mod+shift+u" /> for Read aloud: use <Kbd keys="u" /> there.
+</OnlyOn>
+
+### Search and jump
+
+<Kbd keys="mod+k" />, or **Search or jump to…** at the top of the list, opens the search. Type a few letters of a session's title, its project or its branch. Sessions that need you come first. Under them, **New session in** a project that matches, and actions: **Next that needs you**, **New session**, **Turn on notifications**, **Mark all as read** and **Forget this computer**. Use the arrow keys and <Kbd keys="enter" /> to pick one.
+
+### A session and its Changes
+
+The conversation keeps a comfortable reading width in the middle. The header shows the model and the permission mode (such as **Opus · Auto**), **Changes** with the number of files, and **Stop** while Claude works. The buttons of a prompt show their keys.
+
+In a window at least 1280 pixels wide, **Changes** opens on the right instead of over the conversation: the files, the diff of the one you pick, a commit message that starts with what you asked, **Ask Claude to fix…** and **Commit**. The browser remembers whether you had it open.
+
+### The browser tab
+
+The tab's title starts with the number of sessions that need you, such as **(2) Switchboard Remote**, and its icon gets a pink dot. In a session the title is the session's, so you can find the tab among others.
+
 ## Notifications
 
-Your phone can tell you when a session needs you or finishes, also when the page is closed. After you pair, a card offers **Turn on**. Later, open **Notifications** in the **⋯** menu and turn **Needs you** and **Finished** on or off. Nothing comes while Switchboard Remote is open in front of you.
+Your phone can tell you when a session needs you or finishes, also when the page is closed. After you pair, a card offers **Turn on** (in a wide window, a strip above the sessions does). Later, open **Notifications** in the **⋯** menu and turn **Needs you** and **Finished** on or off. Nothing comes while Switchboard Remote is open in front of you.
 
 <Aside type="note" title="On an iPhone or iPad">
 Notifications only work when Switchboard Remote is on your Home Screen. In Safari, tap Share, then **Add to Home Screen**. Open it from there and turn notifications on. iPhones don't show buttons on notifications: tap one to open the session.
@@ -138,7 +185,7 @@ Notifications only work when Switchboard Remote is on your Home Screen. In Safar
 
 A notification goes from your computer to your browser's push service (Apple's, Google's, Mozilla's or Microsoft's), and from there to your phone. It is encrypted for your phone, so the push service can't read it. Your computer needs to reach those services over HTTPS: behind a strict proxy, notifications may not arrive.
 
-Tap a notification to open its session.
+Tap a notification to open its session. In Chrome, Edge and Firefox on a computer, a notification about a command or an edit also has **Deny** and **Allow**. They open Switchboard Remote, which answers once it's connected, and says **Already answered** if you, or someone else, answered first.
 
 ## When your phone can't connect
 
@@ -157,6 +204,5 @@ A line under the header says why, when your phone can tell:
 - Messages you send from your phone show **From *your phone*** under them on the phone.
 - Scrolled up in a conversation, **Jump to latest** takes you back down. It says **New messages** when something arrived below.
 - The chip and the offline help use your computer's name, which you set in <Os mac="System Settings → General → About → Name" windows="Settings → System → About → Rename this PC" />.
-- In a browser tab, the tab's title counts the sessions that need you.
 - Pairing is closed after five wrong attempts, until you click **Pair a phone** again.
 - Your phone keeps its key in the browser, for this site only. Someone with your unlocked phone can use Remote until you revoke it.

@@ -8,7 +8,9 @@ import type { Client } from './Connected.tsx';
 import { ConnectionChip } from './ConnectionStatus.tsx';
 import { MenuButton, type MenuItem } from './Menu.tsx';
 import { NeedsYouCard } from './NeedsYouCard.tsx';
-import { Button, Logo, SectionHeader, STATUS_RAIL, StatusDot } from './ui.tsx';
+import { promptShort } from '../lib/prompts.ts';
+import { useLeaving } from './useLeaving.ts';
+import { Button, Kbd, Logo, SectionHeader, STATUS_RAIL, StatusDot } from './ui.tsx';
 
 const GROUP_TONE: Record<SessionGroup, string> = {
   'needs-you': 'text-warn',
@@ -44,6 +46,9 @@ export function useNow(): number {
  * The sessions: a header with the connection, chips for what needs you and what works (and a search), every open
  * prompt as a card at the top, then the groups the sidebar on the computer has. New session is a bar at the bottom.
  * Offline, the last list stays, greyed out, and what needs the connection is off.
+ *
+ * On a wide screen it is the sidebar: the search opens the palette, prompts are rows in Needs you (their cards are on
+ * the home view), rows are the desktop's size, and New session sits at the bottom next to the `⋯` menu.
  */
 export function SessionList({
   sessions,
@@ -59,6 +64,8 @@ export function SessionList({
   onHelp,
   onRefresh,
   top,
+  wide = false,
+  onPalette,
 }: {
   sessions: RemoteSessions;
   state: ConnectionState;
@@ -74,6 +81,10 @@ export function SessionList({
   onRefresh: () => void;
   /** Above everything in the list: the offer to turn on notifications. */
   top?: ReactNode;
+  /** The sidebar of the wide layout. */
+  wide?: boolean;
+  /** Opens the ⌘K palette (the wide layout's search). */
+  onPalette?: () => void;
 }) {
   const now = useNow();
   const [chosen, setChosen] = useState<ListFilter>(savedFilter);
@@ -82,9 +93,16 @@ export function SessionList({
   const field = useRef<HTMLInputElement>(null);
   const counts = filterCounts(sessions.sessions);
   const filter = visibleFilter(chosen, counts);
-  const shown = filterList(sessions, filter, searching ? query : '');
+  const filtered = filterList(sessions, filter, searching ? query : '');
+  // Wide, a session that waits on you is a row in Needs you rather than a card.
+  const shown = wide ? { prompts: [], sessions: sessions.sessions.filter((s) => filter === 'all' || s.status === filter) } : filtered;
   const leaving = useLeaving(sessions.prompts);
   const cards = leaving.merge(shown.prompts);
+  const promptOf = useMemo(() => {
+    const first = new Map<string, RemotePrompt>();
+    for (const p of [...sessions.prompts].sort((a, b) => a.createdAt - b.createdAt)) if (!first.has(p.sessionId)) first.set(p.sessionId, p);
+    return first;
+  }, [sessions.prompts]);
   const byId = useMemo(() => new Map(sessions.sessions.map((s) => [s.id, s])), [sessions.sessions]);
   const offline = state.kind !== 'connected';
 
@@ -129,10 +147,19 @@ export function SessionList({
         <Logo className="size-6" />
         <h1 className="flex-1 text-title font-semibold">Sessions</h1>
         <ConnectionChip state={state} computer={computer} onHelp={onHelp} />
-        <MenuButton items={menu} />
+        {!wide && <MenuButton items={menu} />}
       </header>
-      <div className="flex items-center gap-2 border-b border-border px-4 pb-2">
-        {searching ? (
+      {wide && (
+        <div className="px-3 pb-2">
+          <button type="button" onClick={onPalette} className="field flex min-h-8 w-full items-center gap-2 px-2.5 text-left text-ui text-faint hover:border-faint" data-remote-palette-open>
+            <Search className="size-3.5 shrink-0" aria-hidden />
+            <span className="flex-1">Search or jump to…</span>
+            <Kbd shortcut="mod+k" tone="cap" />
+          </button>
+        </div>
+      )}
+      <div className={`flex items-center gap-2 border-b border-border pb-2 ${wide ? 'px-3' : 'px-4'}`}>
+        {searching && !wide ? (
           <label className="field flex min-h-9 flex-1 items-center gap-2 px-2.5 pointer-fine:min-h-7">
             <Search className="size-4 shrink-0 text-faint" aria-hidden />
             <input
@@ -162,9 +189,11 @@ export function SessionList({
               {counts.needsYou > 0 && chip('needs-you', 'Needs you', counts.needsYou)}
               {counts.working > 0 && chip('working', 'Working', counts.working)}
             </div>
-            <Button variant="quiet" size="md" aria-label="Search sessions" onClick={() => setSearching(true)} className="-mr-2 px-2!">
-              <Search className="size-4" aria-hidden />
-            </Button>
+            {!wide && (
+              <Button variant="quiet" size="md" aria-label="Search sessions" onClick={() => setSearching(true)} className="-mr-2 px-2!">
+                <Search className="size-4" aria-hidden />
+              </Button>
+            )}
           </>
         )}
       </div>
@@ -202,6 +231,7 @@ export function SessionList({
             <ul>
               {rows.map((session) => {
                 const selected = session.id === selectedId;
+                const asks = wide ? promptOf.get(session.id) : undefined;
                 return (
                   <li key={session.id}>
                     <button
@@ -209,14 +239,15 @@ export function SessionList({
                       onClick={() => onOpen(session.id)}
                       aria-current={selected ? 'page' : undefined}
                       data-remote-session={session.id}
-                      className={`flex min-h-14 w-full items-center gap-2.5 border-l-[3px] px-4 py-2 text-left transition-colors focus-visible:-outline-offset-2 pointer-fine:min-h-12 ${STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
+                      data-remote-nav="row"
+                      className={`flex w-full items-center gap-2.5 border-l-[3px] text-left transition-colors focus-visible:-outline-offset-2 ${wide ? 'min-h-11 px-3 py-1' : 'min-h-14 px-4 py-2 pointer-fine:min-h-12'} ${STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
                     >
                       <StatusDot status={session.status} />
                       <span className="min-w-0 flex-1">
-                        <span className={`block truncate text-body ${session.unread ? 'font-semibold' : ''}`}>{session.title}</span>
+                        <span className={`block truncate text-body ${session.unread || asks ? 'font-semibold' : ''}`}>{session.title}</span>
                         <span className="block truncate text-meta text-muted">
                           {session.projectName}
-                          {session.branch ? ` · ${session.branch}` : ''}
+                          {asks ? <span className="text-warn"> · {promptShort(asks)}</span> : session.branch ? ` · ${session.branch}` : ''}
                         </span>
                       </span>
                       <span className={`self-start pt-0.5 text-meta tabular-nums ${session.status === 'needs-you' ? 'text-warn' : session.unread ? 'text-unread' : 'text-faint'}`}>{age(session.updatedAt, now)}</span>
@@ -228,45 +259,17 @@ export function SessionList({
           </section>
         ))}
       </nav>
-      <footer className="safe-bottom border-t border-border bg-inherit px-4 pt-2">
-        <Button variant="primary" onClick={onNew} aria-pressed={newOpen} disabled={offline} className="w-full" data-remote-new>
-          <Plus className="size-4" aria-hidden />
-          New session
-        </Button>
+      <footer className={`safe-bottom border-t border-border bg-inherit pt-2 ${wide ? 'px-3' : 'px-4'}`}>
+        <div className="flex items-center gap-1">
+          <Button variant="primary" onClick={onNew} aria-pressed={newOpen} disabled={offline} className="flex-1" data-remote-new>
+            <Plus className="size-4" aria-hidden />
+            New session
+            {wide && <Kbd shortcut="n" tone="on-accent" />}
+          </Button>
+          {wide && <MenuButton items={menu} side="above" />}
+        </div>
         {offline && <p className="pt-1 text-center text-meta text-faint">New session needs the connection.</p>}
       </footer>
     </div>
   );
-}
-
-/**
- * Cards that were answered fold away before they leave: they stay in the list (even once the computer dropped the
- * prompt) until their animation ends, or at once when motion is reduced.
- */
-function useLeaving(current: readonly RemotePrompt[]) {
-  const [leaving, setLeaving] = useState<Map<string, RemotePrompt>>(new Map());
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Forget what the computer no longer lists, so the sets stay small.
-  useEffect(() => {
-    const open = new Set(current.map((p) => p.requestId));
-    setHidden((h) => (h.size && [...h].some((id) => !open.has(id)) ? new Set([...h].filter((id) => open.has(id))) : h));
-  }, [current]);
-  const gone = (id: string) => {
-    setLeaving((m) => {
-      const next = new Map(m);
-      next.delete(id);
-      return next;
-    });
-    setHidden((h) => new Set(h).add(id));
-  };
-  return {
-    isLeaving: (id: string) => leaving.has(id),
-    leave: (prompt: RemotePrompt) => (reduced ? gone(prompt.requestId) : setLeaving((m) => new Map(m).set(prompt.requestId, prompt))),
-    gone,
-    merge: (shown: readonly RemotePrompt[]) => {
-      const ids = new Set(shown.map((p) => p.requestId));
-      return [...shown, ...[...leaving.values()].filter((p) => !ids.has(p.requestId))].filter((p) => !hidden.has(p.requestId)).sort((a, b) => a.createdAt - b.createdAt);
-    },
-  };
 }
