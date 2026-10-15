@@ -28,6 +28,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Notifications that don't come through on a newer Mac.** Newer versions of macOS no longer let Switchboard see that notifications are off, so Settings › Notifications never said so. Next to **Send a test notification** it now asks "Nothing showed up?" and has **Open System Settings** to check.
 
+### Fixed
+
+- **Questions from Claude are easier to read and answer.** When Claude asks several questions at once, the one you are answering has an accent line and "1 of 2" before it, and the questions you have answered fade back, so the next one stands out. Picking an answer to a single-choice question, with a click or a number key, moves on to the next open question and scrolls it into view. A multi-select stays until you press Enter or **Next question**, and so does the answer field. Changing an earlier answer doesn't jump ahead.
+
 ## [0.0.17] - 2026-10-14
 
 ### New
