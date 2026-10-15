@@ -1,14 +1,14 @@
-/** Side questions kept per session; asking one more drops the oldest. */
-export const SIDE_QUESTIONS_KEPT = 50;
+/** Threads kept per session; starting one more drops the oldest. */
+export const ASK_THREADS_KEPT = 20;
 
-/** Earlier side questions Claude gets with a new one, as the terminal's `/btw` sends (its last 20). */
-export const SIDE_QUESTION_HISTORY = 20;
-
-/** The longest side question, in characters. */
+/** The longest question, in characters. */
 export const MAX_SIDE_QUESTION_LENGTH = 20_000;
 
-/**
- * The first Claude Code that shows earlier side questions for `/btw` without a question (before it, `/btw` needs
- * one). Switchboard follows it: on an older Claude Code, a bare `/btw` asks for a question.
- */
-export const SIDE_QUESTION_BROWSE_VERSION = '2.1.212';
+/** How much of the first question a thread's title keeps, in characters. */
+export const ASK_TITLE_LENGTH = 80;
+
+/** A thread's title: its first question on one line, shortened. */
+export function threadTitle(question: string): string {
+  const line = question.replace(/\s+/g, ' ').trim();
+  return line.length > ASK_TITLE_LENGTH ? `${line.slice(0, ASK_TITLE_LENGTH - 1)}…` : line;
+}

@@ -112,6 +112,16 @@ A turn runs two 8 s foreground Bash calls; a second message B ("end your answer 
 - **History is the caller's:** the terminal keeps the last 20 exchanges and sends them along (`btwHistory`); for an SDK host the client passes `history: [{ question, response }]`, so Switchboard keeps its own.
 - **A session that isn't running** can answer from a short-lived process: `resume: <id>`, `forkSession: true`, `persistSession: false`. It answered in 2.2 s (start included), and the original file and the projects folder were unchanged.
 
+
+## 14. Ask about this session: a fork with read-only tools ✅ (`13-ask.mjs`, claude 2.1.299, SDK 0.3.288)
+- **Why not `askSideQuestion`:** Claude Code's side question has no tools (`canUseTool` always denies), doesn't stream (one control response) and reports no tokens. Ask needs to read the project, stream, and count its tokens in Usage.
+- **A short-lived fork with the question as its prompt works beside a turn:** `resume: <id>`, `forkSession: true`, `persistSession: false`, asked while the session's own process was 1 s into a 20 s Bash call. It answered in 5 to 8 s with three model calls (a Read, a denied Write, the answer); the main turn went on and ended with its one `result`.
+- **Nothing lands anywhere:** the question wasn't in the session's `.jsonl`, no new session file appeared, and the Write the model tried never happened.
+- **Read-only through a PreToolUse hook:** a hook in `options.hooks` that returns `permissionDecision: 'deny'` for anything but Read, Grep, Glob and `git status|diff|log|show` blocks the tool before settings' allow rules apply; the model is told why. The tool list stays the session's own.
+- **It reuses the prompt cache:** keeping the session's tools (no `tools` or `disallowedTools`), the fork read 63.5k cached tokens and wrote 4.1k. Claude Code reuses the recorded system prompt on resume, so `appendSystemPrompt` would be ignored: the framing goes in the prompt.
+- **It streams and reports tokens:** `includePartialMessages` gives `text_delta`s (12 for a short answer). Count tokens from each assistant message's `usage` once per `message.id`: on a resumed or forked run, `result.modelUsage` may start from the totals the transcript saved.
+- **A tool call still running in the session shows as interrupted** to the fork; the prompt says a call without a result is still running.
+
 ---
 
 ## Side effects of running the spike

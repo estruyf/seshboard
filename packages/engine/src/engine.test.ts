@@ -3,10 +3,11 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type SideQuestionEvent, type TranscriptUpdate } from '@switchboard/protocol';
+import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@switchboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine } from './engine.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
+import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { git } from './git/gitChanges.ts';
 import { userShell } from './system/shell.ts';
 
@@ -38,12 +39,24 @@ function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?:
     setModel: async () => {},
     supportedCommands: async () => [],
     supportedModels: async () => [],
-    askSideQuestion: async (question: string) => ({ response: `It was --cleanStart (${question})`, synthetic: false }),
+  });
+  /** A question about a session: one streamed answer from the fork, with its tokens. */
+  const answer = (prompt: AsyncIterable<SDKUserMessage>) => ({
+    async *[Symbol.asyncIterator]() {
+      for await (const message of prompt) {
+        const text = (message.message.content as Array<{ text?: string }>)[0]?.text ?? '';
+        const reply = `It was --cleanStart (${text.split('\n').at(-1)})`;
+        yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text: reply } } };
+        yield { type: 'assistant', parent_tool_use_id: null, message: { id: 'm1', model: 'claude-opus-5-5', usage: { input_tokens: 2, output_tokens: 9, cache_read_input_tokens: 800, cache_creation_input_tokens: 0 }, content: [{ type: 'text', text: reply }] } };
+        yield { type: 'result', subtype: 'success', is_error: false, result: reply };
+      }
+    },
+    close: () => {},
   });
   return {
-    query: ({ options }) => {
+    query: ({ prompt, options }) => {
       created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode });
-      return quiet() as never;
+      return (options.forkSession && options.persistSession === false ? answer(prompt) : quiet()) as never;
     },
     startup: async ({ options }) => ({ query: () => (created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode }), quiet()), close: () => {} }) as never,
   };
@@ -273,31 +286,35 @@ describe('engine over a MessagePort', () => {
     await client.call('transcript.unwatch', { sessionId: SESSION_ID });
   });
 
-  it('answers a side question and keeps it, with nothing added to the transcript or the session file', async () => {
+  it('answers a question about the session and keeps it in a thread, with nothing added to the transcript or the session file', async () => {
     const created: Array<{ cwd?: string }> = [];
     const { client, projectDir } = connect({ sdk: fakeSdk(created) });
     await new Promise((resolve) => client.on('sessions.changed', resolve));
     const file = join(projectDir, `${SESSION_ID}.jsonl`);
     const before = readFileSync(file, 'utf8');
-    const events: SideQuestionEvent[] = [];
-    client.on('session.btw', (event) => events.push(event));
+    const events: AskEvent[] = [];
+    client.on('session.ask', (event) => events.push(event));
+    const tokens: string[][] = [];
+    client.on('usage.tokens', (event) => tokens.push(event.profileIds));
 
-    const { id } = await client.call('session.btw', { sessionId: SESSION_ID, question: 'Which flag?' });
+    const { threadId, id } = await client.call('session.ask', { sessionId: SESSION_ID, question: 'Which flag?' });
     await expect.poll(() => events.some((e) => e.id === id && e.done)).toBe(true);
     expect(events).toEqual([
-      { sessionId: SESSION_ID, id, delta: 'It was --cleanStart (Which flag?)' },
-      { sessionId: SESSION_ID, id, done: true },
+      { sessionId: SESSION_ID, threadId, id, delta: 'It was --cleanStart (Which flag?)' },
+      { sessionId: SESSION_ID, threadId, id, done: true, answer: 'It was --cleanStart (Which flag?)' },
     ]);
-    // Answered by a short-lived copy in the session's folder; the session itself wasn't started.
-    expect(created).toEqual([{ cwd: PARSER, model: undefined, permissionMode: undefined }]);
+    // Answered by a short-lived fork in the session's folder; the session itself wasn't started.
+    expect(created).toEqual([{ cwd: PARSER, model: undefined, permissionMode: 'default' }]);
     expect((await client.call('hosts.list', {})).hosts).toEqual([]);
-    const list = await client.call('session.btwList', { sessionId: SESSION_ID });
-    expect(list).toMatchObject({ unsupported: false, items: [{ id, question: 'Which flag?', answer: 'It was --cleanStart (Which flag?)' }] });
+    const { threads } = await client.call('session.askThreads', { sessionId: SESSION_ID });
+    expect(threads).toMatchObject([{ id: threadId, title: 'Which flag?', items: [{ id, question: 'Which flag?', answer: 'It was --cleanStart (Which flag?)' }] }]);
+    // Its tokens count in Usage.
+    expect(tokens.length).toBeGreaterThan(0);
 
     const { messages } = await client.call('transcript.get', { sessionId: SESSION_ID });
     expect(messages.map((m) => m.uuid)).toEqual(['u1', 'a1']);
     expect(readFileSync(file, 'utf8')).toBe(before);
-    await expect(client.call('session.btw', { sessionId: SESSION_ID, question: '   ' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await expect(client.call('session.ask', { sessionId: SESSION_ID, question: '   ' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
   });
 
   it('renames a session through Claude Code and sends the new title at once', async () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CanUseTool, Options, PermissionResult, PermissionUpdate, Query, SDKUserMessage, WarmQuery } from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, HookCallback, Options, PermissionResult, PermissionUpdate, Query, SDKUserMessage, WarmQuery } from '@anthropic-ai/claude-agent-sdk';
 import {
   RpcError,
   type Capabilities,
@@ -26,7 +26,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery } from './sessionHost.ts';
-import { askSideQuestion, type SideAnswer, type SideExchange } from './sideQuestions.ts';
+import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
@@ -580,21 +580,86 @@ export class HostManager {
   }
 
   /**
-   * Answers a side question for a session. One running here answers on its own process, beside its turn. Otherwise a
-   * short-lived copy answers: resumed as a fork that persists nothing, so the session isn't started, nothing is
-   * written, and it works while another Claude Code window has the session open.
+   * Answers a question about a session (Ask about this session) from a short-lived fork of it: resumed with
+   * `forkSession` and `persistSession: false`, so the session isn't touched (also while it runs a turn here or in
+   * another Claude Code window) and nothing is written. It keeps the session's model, effort and tools, so the prompt
+   * cache still matches, and a PreToolUse hook lets only reading through (spike 14). Text comes in through `onText`.
    */
-  async sideQuestion(sessionId: string, question: string, history: SideExchange[]): Promise<SideAnswer> {
-    const host = this.running(sessionId) ?? (await this.starting.get(sessionId)?.catch(() => null));
-    if (host?.active) return host.askSideQuestion(question, history);
+  async askAbout(sessionId: string, prompt: string, onText: (text: AskText) => void): Promise<AskResult> {
     const cwd = this.deps.sessionCwd(sessionId);
     if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');
-    const model = this.settings.get(sessionId)?.model ?? null;
-    return this.withHelper(cwd, this.deps.sessionProfile(sessionId), (query) => askSideQuestion(query, question, history), {
-      extra: { resume: sessionId, forkSession: true, ...(model ? { model } : {}) },
-      // A long conversation takes a while to load and answer from.
-      timeoutMs: 180_000,
+    const profileId = this.deps.sessionProfile(sessionId);
+    const running = this.running(sessionId)?.info;
+    const settings = this.settings.get(sessionId);
+    const model = running?.model ?? settings?.model ?? null;
+    const effort = running?.effort ?? settings?.effort ?? null;
+    const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
+    const helperId = randomUUID();
+    this.deps.ephemeral?.add(helperId);
+    const message: SDKUserMessage = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: prompt }] }, parent_tool_use_id: null };
+    const input: AsyncIterable<SDKUserMessage> = (async function* () {
+      yield message;
+    })();
+    const guard: HookCallback = async (hook) => {
+      const tool = hook as { tool_name?: string; tool_input?: unknown };
+      const allowed = isReadOnlyTool(tool.tool_name ?? '', (tool.tool_input ?? {}) as Record<string, unknown>);
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: allowed ? 'allow' : 'deny', ...(allowed ? {} : { permissionDecisionReason: READ_ONLY_REASON }) } };
+    };
+    const query = sdk.query({
+      prompt: input,
+      options: {
+        resume: sessionId,
+        forkSession: true,
+        // Claude Code takes a custom id with --resume only together with --fork-session; the engine hides it by this id.
+        sessionId: helperId,
+        persistSession: false,
+        cwd,
+        env,
+        pathToClaudeCodeExecutable: claudePath,
+        settingSources: ['user', 'project', 'local'],
+        systemPrompt: { type: 'preset', preset: 'claude_code' },
+        includePartialMessages: true,
+        maxTurns: ASK_MAX_TURNS,
+        permissionMode: 'default',
+        hooks: { PreToolUse: [{ hooks: [guard] }] },
+        // The hook already allowed or denied; this only answers what it let through that would otherwise prompt.
+        canUseTool: async (name, toolInput) => (isReadOnlyTool(name, toolInput) ? { behavior: 'allow', updatedInput: toolInput } : { behavior: 'deny', message: READ_ONLY_REASON }),
+        ...(model ? { model } : {}),
+        ...(effort ? { effort } : {}),
+        stderr: (data) => this.deps.log('debug', `[claude ask] ${data.trimEnd()}`),
+      },
     });
+    // Each API response once, by its message id: Claude Code repeats a message's usage on every block of it.
+    const responses = new Map<string, AskUsage>();
+    let answer: string | null = null;
+    let error: string | undefined;
+    const run = async () => {
+      for await (const event of query) {
+        if (event.type === 'stream_event') {
+          const raw = event.event as { type?: string; delta?: { type?: string; text?: string } };
+          if (event.parent_tool_use_id === null && raw.type === 'content_block_delta' && raw.delta?.type === 'text_delta' && raw.delta.text) onText({ delta: raw.delta.text });
+        } else if (event.type === 'assistant') {
+          const usage = readUsage(event.message);
+          if (usage) responses.set(usage.key, { model: usage.model, tokens: usage.tokens });
+          // Text before a tool call is Claude saying what it reads next; the answer comes after.
+          if (event.parent_tool_use_id === null && event.message.content.some((block: { type: string }) => block.type === 'tool_use')) onText({ reset: true });
+        } else if (event.type === 'result') {
+          if (event.subtype === 'success' && !event.is_error) answer = event.result;
+          else error = event.subtype === 'error_max_turns' ? 'Claude needed more steps than a side question gets. Ask something narrower.' : (('errors' in event && event.errors[0]) || 'Claude could not answer.');
+          break;
+        }
+      }
+    };
+    try {
+      await Promise.race([run(), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Claude took too long to answer.')), ASK_TIMEOUT_MS))]);
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      query.close();
+      // Its registry entry stays until the process has exited.
+      setTimeout(() => this.deps.ephemeral?.delete(helperId), 30_000).unref?.();
+    }
+    return { answer, ...(error ? { error } : {}), usage: sumByModel([...responses.values()]) };
   }
 
   /**

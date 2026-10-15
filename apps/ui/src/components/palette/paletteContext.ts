@@ -34,8 +34,6 @@ export interface PaletteSession {
   prompts: number;
   /** Claude has replied at least once (Copy last reply). */
   hasReply: boolean;
-  /** Side questions (/btw) kept for it that can be browsed (Show side questions). */
-  sideQuestions: number;
 }
 
 /** The session's checkout, once read (null outside git, or until it has been read). */

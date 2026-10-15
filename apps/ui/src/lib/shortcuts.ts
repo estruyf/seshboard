@@ -664,6 +664,14 @@ export const SHORTCUTS = [
     when: inSession,
   },
   {
+    id: "ask.open",
+    keys: [],
+    action: "Ask about this session",
+    section: "session",
+    when: inSession,
+    note: "No key by default: use the Ask button next to Send, the command palette, or /btw",
+  },
+  {
     id: "terminal.toggle",
     keys: ["mod+j", "ctrl+`"],
     action: "Show or hide the terminal",

@@ -64,7 +64,7 @@ if (scripted) {
   process.env.SWITCHBOARD_NO_CLAUDE_UPDATE = '1';
   // Auto model never calls a real model here: the engine picks from the prompt's words instead.
   process.env.SWITCHBOARD_STUB_ROUTER = '1';
-  // Side questions (/btw) get a made-up answer, so nothing here asks a model.
+  // Ask about this session (and /btw) gets a made-up answer, so nothing here asks a model.
   process.env.SWITCHBOARD_STUB_BTW = '1';
   // Catch-up cards are written from the tool calls, never by a model.
   process.env.SWITCHBOARD_STUB_CATCHUP = '1';
@@ -5897,16 +5897,18 @@ async function runSendNowStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Side questions (/btw) in the smoke session, answered by the engine's stub (SWITCHBOARD_STUB_BTW), so no model is
- * called and nothing reaches the session: the transcript and Up next must not change. It asks with the Ask button,
- * never Enter, so a broken token could never send the question as a message.
+ * Ask about this session in the smoke session, answered by the engine's stub (SWITCHBOARD_STUB_BTW), so no model is
+ * called and nothing reaches the session: the transcript and Up next must not change. Questions go through the Ask
+ * button, the panel's field and `/btw`, never through Send, so a broken button could never send one as a message.
  */
-async function runSideQuestionStep(win: BrowserWindow): Promise<string> {
+async function runAskStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const pause = () => settle(win);
   const pane = '[data-current-session]';
   const box = `document.querySelector('${pane} [data-composer]')`;
+  const field = `document.querySelector('${pane} [data-ask-field]')`;
   const has = (selector: string) => `!!document.querySelector('${pane} ${selector}')`;
+  const count = (selector: string) => `document.querySelectorAll('${pane} ${selector}').length`;
+  const lastItem = `[...document.querySelectorAll('${pane} [data-ask-item]')].at(-1)`;
   const press = (keyCode: string) => {
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
@@ -5918,90 +5920,118 @@ async function runSideQuestionStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${box} && !${box}.disabled && ${box}.value === ''`, 5_000))) return 'the smoke session has no empty message box';
   const transcript = `document.querySelectorAll('${pane} [data-transcript-item]').length`;
   const before = (await js(transcript)) as number;
-  const typeToken = async (question: string) => {
-    await js(`${box}.focus()`);
-    await win.webContents.insertText(`/btw ${question}`);
-    return waitInPage(win, `${has('[data-btw-token]')} && ${box}.value === ${JSON.stringify(question)} && ${has('[data-composer-ask]')} && !${has('[data-composer-submit]')}`, 2_000);
+  const askButton = `document.querySelector('${pane} [data-ask-button]')`;
+  const close = async () => {
+    if (await js(has('[data-ask-panel]'))) await js(`document.querySelector('${pane} [data-ask-close]')?.click()`);
   };
-  const ask = async () => {
-    // Only with the token in place: Ask is the only button then, and it never sends a message.
-    if (!(await js(`${has('[data-btw-token]')} && ${has('[data-composer-ask]')}`))) return false;
-    await js(`document.querySelector('${pane} [data-composer-ask]').click()`);
-    return true;
-  };
-  const position = () => js(`document.querySelector('${pane} [data-btw-position]')?.textContent?.trim() ?? ''`) as Promise<string>;
   const fail = async (why: string) => {
-    await js(`document.querySelector('${pane} [data-btw-close]')?.click()`);
+    await close();
     return why;
   };
+  /** The last question in the thread on screen has its answer, with these words in it. */
+  const answered = (words: string) => waitInPage(win, `${lastItem}?.dataset.askItem === 'done' && ${lastItem}.textContent.includes(${JSON.stringify(words)})`, 10_000);
+  const askInField = async (question: string) => {
+    await js(`${field}.focus()`);
+    await win.webContents.insertText(question);
+    press('Return');
+  };
+  if (!(await js(`!!${askButton} && ${askButton}.dataset.askButton === '' && !${has('[data-ask-ready]')}`))) return 'no Ask button next to Send, or it starts pressed or with a dot';
 
-  // The slash menu offers /btw first for /b.
+  // An empty box: Ask opens the panel, on the intro, with the caret in its field.
+  await js(`${askButton}.click()`);
+  if (!(await waitInPage(win, `${has('[data-ask-panel]')} && document.activeElement === ${field} && ${askButton}.dataset.askButton === 'open'`, 3_000))) return await fail('Ask with an empty box did not open the panel with its field focused and the button pressed');
+  if (!(await js(`${has('[data-ask-intro]')} && ${count('[data-ask-suggestion]')} === 4`))) return await fail('the first open has no intro with four suggestions');
+
+  // Text in the box: Ask asks it and empties the box.
   await js(`${box}.focus()`);
-  await win.webContents.insertText('/b');
-  if (!(await waitInPage(win, `document.querySelector('${pane} [data-palette] [role=option]')?.textContent?.startsWith('/btw')`, 3_000))) return 'the slash menu did not offer /btw first for /b';
+  await win.webContents.insertText('Which flag did we use for the beta publish?');
+  await js(`${askButton}.click()`);
+  if (!(await answered('--cleanStart'))) return await fail('the answer to the question from the message box did not come in');
+  if (((await js(`${box}.value`)) as string) !== '') return await fail('the message box kept the question after Ask');
+
+  // A follow-up from the panel's field, with ↩, in the same thread.
+  await askInField('and the release script?');
+  if (!(await answered('release script'))) return await fail('the follow-up did not get its answer');
+  if ((await js(count('[data-ask-item]'))) !== 2) return await fail('the follow-up did not stay in the same thread');
+  if (!(await js(`${field}.value === ''`))) return await fail('the field kept the follow-up after asking');
+
+  // ↑ in the empty field puts the last question back.
+  await js(`${field}.focus()`);
+  press('Up');
+  if (!(await waitInPage(win, `${field}.value === 'and the release script?'`, 2_000))) return await fail('↑ in the empty field did not put the last question back');
+  win.webContents.selectAll();
+  press('Backspace');
+
+  // Quote in message: the answer goes into the message box as a quote, with the focus.
+  await js(`${lastItem}.querySelector('[data-ask-quote]').click()`);
+  if (!(await waitInPage(win, `${box}.value.startsWith('> ') && ${box}.value.includes('release script') && document.activeElement === ${box}`, 2_000))) return await fail('Quote in message did not put the answer in the message box as a quote');
+  win.webContents.selectAll();
+  press('Backspace');
+  if (!(await waitInPage(win, `${box}.value === ''`, 1_000))) return await fail('could not empty the message box after the quote');
+
+  // Closed while it answers (Esc lets go of the field, Esc again closes): the dot shows when it is done, and goes on open.
+  await askInField('What is left to do?');
+  if (!(await waitInPage(win, has('[data-ask-answering]'), 3_000))) return await fail('no Answering while the answer came in');
   press('Escape');
-  press('Backspace');
-  press('Backspace');
-  if (!(await waitInPage(win, `${box}.value === ''`, 1_000))) return 'could not empty the message box after /b';
+  if (!(await waitInPage(win, `${has('[data-ask-panel]')} && document.activeElement !== ${field}`, 1_000))) return await fail('Esc in the field did not let go of it first');
+  press('Escape');
+  if (!(await waitInPage(win, `!${has('[data-ask-panel]')}`, 1_000))) return await fail('Esc on the panel did not close it');
+  if (!(await waitInPage(win, has('[data-ask-ready]'), 10_000))) return 'the Ask button got no dot when the answer came in while the panel was closed';
+  await js(`${askButton}.click()`);
+  if (!(await waitInPage(win, `${has('[data-ask-panel]')} && !${has('[data-ask-ready]')}`, 2_000))) return await fail('opening the panel did not clear the dot');
+  if (!(await answered('scheduler'))) return await fail('the answer that came in while closed is not there');
 
-  // The token, and Backspace taking it out.
-  if (!(await typeToken(''))) return '"/btw " did not become the token with Ask in place of Send';
-  const blue = (await js(`!!document.querySelector('${pane} [data-side-question]')`)) as boolean;
-  press('Backspace');
-  if (!(await waitInPage(win, `!${has('[data-btw-token]')} && ${has('[data-composer-submit]')}`, 1_000))) return 'Backspace on an empty question did not take the token out';
-  if (!blue) return 'the message box did not get the side question frame';
+  // New thread starts empty; a suggestion asks there.
+  await js(`document.querySelector('${pane} [data-ask-new-thread]').click()`);
+  if (!(await waitInPage(win, `${has('[data-ask-intro]')} && ${count('[data-ask-item]')} === 0`, 2_000))) return await fail('New thread did not start empty');
+  await js(`document.querySelector('${pane} [data-ask-suggestion="What changed so far?"]').click()`);
+  if (!(await answered('sidebarRows.ts'))) return await fail('a suggestion did not ask');
 
-  // A bare /btw before any was asked: how to ask one.
-  await typeToken('');
-  await ask();
-  if (!(await waitInPage(win, `document.querySelector('${pane} [data-btw-panel]')?.dataset.btwPanel === 'usage'`, 2_000))) return 'a bare /btw did not show how to ask one';
-  if (await js(has('[data-btw-copy], [data-btw-prev]'))) return await fail('the usage panel has Copy or the arrows');
-  await js(`document.querySelector('${pane} [data-btw-close]').click()`);
+  // Earlier threads: both, newest first; picking the first one opens it.
+  await js(`document.querySelector('${pane} [data-ask-threads]').click()`);
+  if (!(await waitInPage(win, `document.querySelectorAll('[role=menu] [data-ask-thread]').length === 2`, 2_000))) return await fail('Earlier threads did not list both threads');
+  await js(`document.querySelectorAll('[role=menu] [data-ask-thread]')[1].click()`);
+  if (!(await waitInPage(win, `${count('[data-ask-item]')} === 3`, 2_000))) return await fail('picking the earlier thread did not open it');
 
-  // Ask, and the stubbed answer shows in the panel.
-  if (!(await typeToken('Which flag did we use for the beta publish?'))) return 'could not type a side question';
-  await ask();
-  if (!(await waitInPage(win, `document.querySelector('${pane} [data-btw-answer="done"]')?.textContent?.includes('--cleanStart')`, 10_000))) return await fail('the side answer did not come in');
-  if (((await js(`${box}.value`)) as string) !== '' || (await js(has('[data-btw-token]')))) return await fail('the message box kept the question or the token after asking');
-  await pause();
-
-  // A second one, hidden with Esc while it answers: the chip says so, and brings it back once it is ready.
-  await typeToken('What changed since the last commit?');
-  await ask();
-  if (!(await waitInPage(win, has('[data-btw-answering]'), 3_000))) return await fail('no Answering while the second answer came in');
+  // /btw asks in the same panel; a bare /btw opens it.
   await js(`${box}.focus()`);
-  press('Escape');
-  if (!(await waitInPage(win, `!${has('[data-btw-panel]')} && document.querySelector('${pane} [data-btw-chip]')?.dataset.btwChip === 'answering'`, 2_000)))
-    return await fail('Esc did not hide the panel and leave an Answering chip');
-  if (!(await waitInPage(win, `document.querySelector('${pane} [data-btw-chip]')?.dataset.btwChip === 'done'`, 10_000))) return 'the chip did not say the side answer was ready';
-  await js(`document.querySelector('${pane} [data-btw-chip]').click()`);
-  if (!(await waitInPage(win, `document.querySelector('${pane} [data-btw-answer="done"]')?.textContent?.includes('scheduler') && !${has('[data-btw-chip]')}`, 2_000))) return await fail('the chip did not bring the answer back');
+  await win.webContents.insertText('/btw Did we round the tax per invoice?');
+  if (!(await waitInPage(win, `${has('[data-btw-token]')} && ${box}.value === 'Did we round the tax per invoice?'`, 2_000))) return await fail('"/btw " did not become the token');
+  await js(`${askButton}.click()`);
+  if (!(await answered('half up'))) return await fail('/btw did not ask in the panel');
+  if (await js(has('[data-btw-token]'))) return await fail('the token stayed after /btw asked');
+  await close();
+  await js(`${box}.focus()`);
+  await win.webContents.insertText('/btw ');
+  await js(`${askButton}.click()`);
+  if (!(await waitInPage(win, `${has('[data-ask-panel]')} && ${box}.value === '' && !${has('[data-btw-token]')}`, 2_000))) return await fail('a bare /btw did not open the panel');
 
-  // ‹ › move through them, Copy copies.
-  const last = await position();
-  await js(`document.querySelector('${pane} [data-btw-prev]').click()`);
-  await pause();
-  const first = await position();
-  await js(`document.querySelector('${pane} [data-btw-next]').click()`);
-  await pause();
-  const back = await position();
-  await js(`document.querySelector('${pane} [data-btw-copy]').click()`);
-  const copied = await waitInPage(win, `document.querySelector('${pane} [data-btw-copy]')?.dataset.btwCopy === 'copied'`, 2_000);
-  await js(`document.querySelector('${pane} [data-btw-close]').click()`);
-  if (last !== '2 of 2' || first !== '1 of 2' || back !== '2 of 2') return `‹ › went ${last} → ${first} → ${back}`;
-  if (!copied) return 'Copy did not say Copied';
-
-  // A bare /btw now opens the latest one.
-  await typeToken('');
-  await ask();
-  const latest = (await waitInPage(win, `document.querySelector('${pane} [data-btw-panel]')?.dataset.btwPanel === 'item'`, 2_000)) && (await position()) === '2 of 2';
-  await js(`document.querySelector('${pane} [data-btw-close]')?.click()`);
-  if (!latest) return 'a bare /btw did not open the latest side question';
+  // With Changes open too, the right side has tabs; opening Changes never closes Ask.
+  let tabs = 'no Changes here';
+  if (await js(has('[data-toggle-changes]'))) {
+    const wasOpen = (await js(has('[data-changes-panel]'))) as boolean;
+    if (!wasOpen) await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
+    else await js(`document.querySelector('${pane} [data-right-tab="changes"]')?.click()`);
+    const tab = (id: string) => `document.querySelector('${pane} [data-right-tab="${id}"]')?.getAttribute('aria-selected') === 'true'`;
+    if (!(await waitInPage(win, `${has('[data-right-tabs]')} && ${tab('changes')} && ${has('[data-changes-panel]')} && !${has('[data-ask-panel]')}`, 3_000))) return await fail('opening Changes with Ask open did not show it in front as a tab');
+    if (!(await js(`document.querySelector('${pane} [data-right-tab="ask"]').textContent.includes('4')`))) return await fail('the Ask tab does not count the thread’s questions');
+    await js(`document.querySelector('${pane} [data-right-tab="ask"]').click()`);
+    if (!(await waitInPage(win, `${tab('ask')} && ${has('[data-ask-panel]')} && !${has('[data-changes-panel]')}`, 2_000))) return await fail('the Ask tab did not bring Ask to the front');
+    if (!wasOpen) {
+      // ⌘⇧D with Changes behind: to the front, then closed (Ask stays).
+      await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
+      if (!(await waitInPage(win, `${tab('changes')}`, 2_000))) return await fail('the Changes toggle did not bring Changes to the front');
+      await js(`document.querySelector('${pane} [data-toggle-changes]').click()`);
+      if (!(await waitInPage(win, `!${has('[data-right-tabs]')} && ${has('[data-ask-panel]')}`, 2_000))) return await fail('closing Changes did not leave Ask on its own');
+    }
+    tabs = 'tabs with Changes';
+  }
+  await close();
 
   const after = (await js(transcript)) as number;
   if (after !== before) return `the transcript changed: ${before} items, then ${after}`;
-  if (await js(has('[data-queue-item]'))) return 'a side question went into Up next';
-  return `ok: /btw first for /b, token and Backspace, usage, two answers (one hidden with Esc, back from the chip), ‹ › and Copy; transcript unchanged at ${before} items`;
+  if (await js(has('[data-queue-item]'))) return 'a question went into Up next';
+  return `ok: Ask opens on an empty box and asks the box's text, follow-up, ↑, Quote in message, the dot, New thread, Earlier threads, /btw, ${tabs}; transcript unchanged at ${before} items`;
 }
 
 async function runHistoryStep(win: BrowserWindow): Promise<string> {
@@ -6479,7 +6509,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('drop target', () => runDropStep(win));
   await step('prompt history', () => runHistoryStep(win));
   await step('send now only while Claude works', () => runSendNowStep(win));
-  await step('side questions with /btw, nothing added to the conversation', () => runSideQuestionStep(win));
+  await step('Ask about this session, nothing added to the conversation', () => runAskStep(win));
   await step('controls', () => runControlsStep(win));
   await step('sidebar states', () => runSidebarStatesStep(win));
   await step('new session view', () => runNewSessionStep(win));
