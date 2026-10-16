@@ -2,6 +2,12 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### Fixed
+
+- **A new line at the bottom of a full message box.** When the message box was at its full height, ⇧↵ (Shift+Enter) at the end left the new line, and the caret, just out of sight under the box. The box now scrolls to the caret.
+
 ## [0.0.21] - 2026-10-16
 
 ### New
