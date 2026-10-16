@@ -17,6 +17,7 @@ export const REMOTE_DESKTOP_ORIGIN = 'switchboard-desktop://switchboard';
 export const COMPUTER_METHODS = [
   'sessions.list',
   'projects.list',
+  'projects.branches',
   'transcript.get',
   'transcript.watch',
   'transcript.unwatch',

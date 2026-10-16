@@ -131,6 +131,11 @@ export const RemoteSessionOptions = z.object({
   permissionMode: RemotePermissionMode.optional(),
   /** In a new worktree (true) or the project's folder (false). */
   worktree: z.boolean().optional(),
+  /**
+   * In the project's folder: a local branch to check out first (one `projects.branches` lists), with
+   * `REMOTE_FEATURE_BRANCHES`. Left out, the session starts on what is checked out. Not with a worktree.
+   */
+  checkoutBranch: z.string().min(1).max(250).optional(),
 });
 export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 
@@ -168,6 +173,16 @@ export const RemoteOptions = z.object({
   ),
 });
 export type RemoteOptions = z.infer<typeof RemoteOptions>;
+
+/** The local branches of a project's folder, most recent first; empty outside a git repository. */
+export const RemoteBranches = z.object({
+  /** What is checked out there now; null when detached or not a repository. */
+  current: z.string().nullable(),
+  branches: z.array(z.string()),
+  /** Checked out in another worktree: git won't check them out in the project's folder too. */
+  checkedOutElsewhere: z.array(z.string()),
+});
+export type RemoteBranches = z.infer<typeof RemoteBranches>;
 
 /** A changed file in the session's checkout. */
 export const RemoteChangedFile = ChangedFile.pick({ path: true, status: true, additions: true, deletions: true });
@@ -238,6 +253,8 @@ export const remoteContract = {
     },
     'sessions.list': { params: z.object({}), result: RemoteSessions },
     'projects.list': { params: z.object({}), result: z.object({ projects: z.array(RemoteProject) }) },
+    /** The branches New session offers for the project's folder, read from git each time. With `REMOTE_FEATURE_BRANCHES`. */
+    'projects.branches': { params: z.object({ projectId: ProjectId }), result: RemoteBranches },
     /**
      * A page of a transcript. Without `before` or `after`, the last `limit` messages. `after` resumes from the last
      * message the phone has: `reset` says that message is gone (a rewind or compaction) and `messages` is the last page.

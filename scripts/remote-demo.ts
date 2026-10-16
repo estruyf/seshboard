@@ -462,12 +462,13 @@ const hub: RemoteHub = new RemoteHub({
     hub.sessionsChanged();
   },
   // A new session in the demo world, working, titled with its prompt.
-  create: async (root, prompt) => {
+  create: async (root, prompt, choice) => {
     const id = crypto.randomUUID();
-    SESSIONS.unshift({ id, title: prompt.split('\n')[0]!.slice(0, 80), root, branch: 'main', minutesAgo: 0, state: 'running' });
+    SESSIONS.unshift({ id, title: prompt.split('\n')[0]!.slice(0, 80), root, branch: choice.checkoutBranch ?? 'main', minutesAgo: 0, state: 'running' });
     setTimeout(() => hub.sessionsChanged(), 0);
     return { sessionId: id };
   },
+  branches: async () => ({ current: 'main', branches: ['main', 'feat/onboarding', 'fix/login-redirect'], checkedOutElsewhere: [] }),
   queue: () => ({ id: `later-${Date.now()}` }),
   markRead: (sessionId) => void read.add(sessionId),
   setFlags: (sessionId, flags) => {

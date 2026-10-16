@@ -3056,6 +3056,13 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   await click(`[data-run-on-option=${JSON.stringify(computerId)}]`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-remote-project]')", 10_000))) return 'Run on the other computer showed none of its projects';
   await click('[data-remote-new-session] [data-remote-project]');
+  // On the current checkout, the branch checked out there shows, and another one can be picked to check out first.
+  const routeBranch = "document.querySelector('[data-remote-new-session] [data-route-branch]')?.innerText";
+  if (!(await waitInPage(win, `${routeBranch} === 'main'`, 5_000))) return `the route shows no branch on the other computer (${await js(routeBranch)})`;
+  await click('[data-remote-branch-select]');
+  if (!(await waitInPage(win, `document.querySelector('[data-menu="remote-branch"] [data-choice="feat/onboarding"]')`, 3_000))) return 'the branch menu does not list the other computer’s branches';
+  await click('[data-menu="remote-branch"] [data-choice="feat/onboarding"]');
+  if (!(await waitInPage(win, `${routeBranch} === 'feat/onboarding'`, 3_000))) return `picking a branch did not show in the route (${await js(routeBranch)})`;
   const prompt = `Smoke test ${Date.now()}`;
   await setFieldValue(win, '[data-remote-new-session] textarea', prompt);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-start]') && !document.querySelector('[data-remote-start]').disabled", 3_000))) return 'Start on Smoke Mac stayed disabled with a project and a prompt';

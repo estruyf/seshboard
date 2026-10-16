@@ -15,6 +15,7 @@ describe('the remote contracts', () => {
       'hello',
       'later.add',
       'options.get',
+      'projects.branches',
       'projects.list',
       'push.key',
       'push.subscribe',

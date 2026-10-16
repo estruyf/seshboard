@@ -19,7 +19,7 @@ On your phone you can:
 - send a prompt, or add one to Up next while Claude works, and remove it again;
 - see what a finished session did, look at its changes and commit them;
 - stop Claude's turn, mark a session as read or archive it;
-- start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of Claude profile, model, effort, mode and worktree;
+- start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of Claude profile, model, effort, mode, worktree and branch;
 - get a notification when a session needs you or finishes.
 
 Everything else stays on your computer: the terminal, pushing and pull requests, memory, settings, managing profiles and file attachments.
@@ -185,6 +185,8 @@ The file button in a session's header, and **Changes** on its catch-up, open wha
 ## New session
 
 Pick a project from the row of tiles (swipe for more), then type what Claude should do. On a phone, **All projects** lists every project, with a filter when you have many. Under the box, chips show the project's defaults: the model, the effort, the permission mode, and **This folder** or **New worktree**. Tap one to change it for this session only. On a phone, its choices open from the bottom of the screen.
+
+With **This folder**, the branch chip shows the branch checked out in the project's folder. Pick another local branch and Switchboard checks it out before the session starts. Git keeps your uncommitted changes, or refuses when they conflict; then the session doesn't start and the app says why. A branch checked out in another worktree isn't listed.
 
 With [Auto model](/new-session/auto-model/) on in Settings › Conversation on your computer, the model list starts with **Auto**: Haiku reads your prompt and picks the model the session starts on, from the models you allowed. In the session, the model chip then says what it picked, such as **Auto · Sonnet**, until you pick another model. With Auto off, it isn't offered, and a project whose default is Auto starts on your default model.
 

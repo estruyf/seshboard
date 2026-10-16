@@ -1057,10 +1057,11 @@ export function createEngine(options: EngineOptions): Engine {
           effort: choice.effort,
           worktree: choice.worktree ? { name: randomWorktreeName(), baseRef: choice.baseRef } : null,
           profileId: choice.profileId,
-          checkoutBranch: null,
+          checkoutBranch: choice.checkoutBranch,
         }),
+      branches: async (root) => (resolver.resolve(root).gitDir ? listBranches(root) : { current: null, branches: [], checkedOutElsewhere: [] }),
       queue: (root, prompt, choice) => {
-        const item = later.add({ cwd: root, prompt, model: choice.model, effort: choice.effort, permissionMode: choice.permissionMode, workspace: choice.worktree ? 'worktree' : 'current', baseRef: choice.baseRef, profileId: choice.profileId }, {});
+        const item = later.add({ cwd: root, prompt, model: choice.model, effort: choice.effort, permissionMode: choice.permissionMode, workspace: choice.worktree ? 'worktree' : 'current', baseRef: choice.baseRef, branch: choice.checkoutBranch, profileId: choice.profileId }, {});
         laterChanged();
         return { id: item.id };
       },

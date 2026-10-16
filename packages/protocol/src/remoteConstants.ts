@@ -21,3 +21,6 @@ export const REMOTE_FEATURE_ATTACHMENTS = 'attachments';
 
 /** In `hello`'s `features`: `usage.tokens` answers, so the Usage view can count that computer's tokens. */
 export const REMOTE_FEATURE_USAGE_TOKENS = 'usage.tokens';
+
+/** In `hello`'s `features`: `projects.branches` answers, and `session.create` and `later.add` take `checkoutBranch`. */
+export const REMOTE_FEATURE_BRANCHES = 'branches';

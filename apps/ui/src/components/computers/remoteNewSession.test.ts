@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteOptions, RemoteSession } from '@switchboard/protocol/client';
-import { remoteAutoFace, remoteChanges, remoteDefaultChoice, remoteModelLabel, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort } from './remoteNewSession.ts';
+import { remoteAutoFace, remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteModelLabel, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort } from './remoteNewSession.ts';
 
 const project = (id: string, name: string) => ({ id: id.padEnd(16, '0'), name });
 const session = (id: string, projectId: string, status: RemoteSession['status'], updatedAt = 1): RemoteSession => ({
@@ -108,5 +108,27 @@ describe('New session choices on another computer', () => {
     expect(remoteAutoFace({ picked: null, choosing: true })).toBe('Auto');
     expect(remoteAutoFace({ picked: 'sonnet', choosing: false })).toBe('Auto · Sonnet');
     expect(remoteAutoFace({ picked: null, choosing: false })).toBe('Auto · Default model');
+  });
+});
+
+describe('the branch on another computer', () => {
+  const branches = { current: 'main', branches: ['feat/login', 'main', 'taken'], checkedOutElsewhere: ['taken'] };
+
+  it('lists the current branch first, and the ones in another worktree as not choosable', () => {
+    expect(remoteBranchChoices(branches)).toEqual([
+      { value: 'main', label: 'main', note: 'current' },
+      { value: 'feat/login', label: 'feat/login' },
+      { value: 'taken', label: 'taken', disabled: true, description: 'Checked out in another worktree' },
+    ]);
+    expect(remoteBranchChoices({ current: null, branches: ['main'], checkedOutElsewhere: [] })[0]).toEqual({ value: '', label: 'Stay on the current checkout' });
+  });
+
+  it('checks out only another branch it still lists, and never in a new worktree', () => {
+    expect(remoteCheckoutBranch('feat/login', branches, false)).toBe('feat/login');
+    expect(remoteCheckoutBranch('main', branches, false)).toBeNull();
+    expect(remoteCheckoutBranch('feat/login', branches, true)).toBeNull();
+    expect(remoteCheckoutBranch('gone', branches, false)).toBeNull();
+    expect(remoteCheckoutBranch(null, branches, false)).toBeNull();
+    expect(remoteCheckoutBranch('feat/login', null, false)).toBeNull();
   });
 });

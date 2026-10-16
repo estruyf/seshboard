@@ -139,6 +139,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
     respond: (requestId) => void answered.push(requestId),
     create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
+    branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] } : { current: null, branches: [], checkedOutElsewhere: [] }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
     markRead: (sessionId) => void calls.push(`read ${sessionId}`),
     setFlags: (sessionId, flags) => void calls.push(`flags ${sessionId} ${JSON.stringify(flags)}`),
@@ -305,22 +306,33 @@ describe('Remote hub', () => {
     await on();
     const { remote } = await pair(hub, port);
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'a', effort: 'high', permissionMode: 'plan', worktree: true });
-    expect(created[0]!.choice).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true, baseRef: 'fresh' });
+    expect(created[0]!.choice).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true, baseRef: 'fresh', checkoutBranch: null });
     // Auto goes through as it is: the engine routes it, or starts on the default model with Auto off.
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'auto', model: 'auto' });
     expect(created.at(-1)!.model).toBe('auto');
     created.pop();
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'b', model: null });
-    expect(created[1]!.choice).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'default', worktree: false, baseRef: 'fresh' });
+    expect(created[1]!.choice).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'default', worktree: false, baseRef: 'fresh', checkoutBranch: null });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'c', permissionMode: 'bypassPermissions' as never })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     // Another profile for this session brings its defaults, under the project's own.
     await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'd', profileId: 'work' });
-    expect(created[2]!.choice).toEqual({ profileId: 'work', model: 'opus', effort: 'high', permissionMode: 'default', worktree: true, baseRef: 'fresh' });
+    expect(created[2]!.choice).toEqual({ profileId: 'work', model: 'opus', effort: 'high', permissionMode: 'default', worktree: true, baseRef: 'fresh', checkoutBranch: null });
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'e', profileId: 'gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     // A project linked to a profile runs with it, and its defaults.
     expect(await remote.call('later.add', { projectId: projectIdOf(FIRST), prompt: 'later', permissionMode: 'acceptEdits' })).toEqual({ id: 'later-1' });
-    expect(queued).toEqual([{ root: FIRST, prompt: 'later', choice: { profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'acceptEdits', worktree: true, baseRef: 'fresh' } }]);
+    expect(queued).toEqual([{ root: FIRST, prompt: 'later', choice: { profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'acceptEdits', worktree: true, baseRef: 'fresh', checkoutBranch: null } }]);
     await expect(remote.call('later.add', { projectId: projectIdOf(SEEN_ONLY), prompt: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    // A branch to check out first: only one of the folder's own, free, and not with a worktree.
+    expect(await remote.call('projects.branches', { projectId: projectIdOf(ROOT) })).toEqual({ current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] });
+    await expect(remote.call('projects.branches', { projectId: projectIdOf(SEEN_ONLY) })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'f', worktree: false, checkoutBranch: 'feat/login' });
+    expect(created.at(-1)!.choice).toMatchObject({ worktree: false, checkoutBranch: 'feat/login' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'g', worktree: false, checkoutBranch: 'origin/main' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'h', worktree: false, checkoutBranch: 'taken' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'i', worktree: true, checkoutBranch: 'feat/login' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    expect(await remote.call('later.add', { projectId: projectIdOf(ROOT), prompt: 'j', worktree: false, checkoutBranch: 'feat/login' })).toEqual({ id: 'later-1' });
+    expect(queued.at(-1)!.choice.checkoutBranch).toBe('feat/login');
 
     const options = await remote.call('options.get', {});
     expect(options.models).toEqual([{ value: 'opus', displayName: 'Opus', description: 'Most capable', supportsEffort: true }]);
@@ -690,11 +702,11 @@ describe('what a phone sees', () => {
   it('takes the project\'s defaults, then the profile\'s, for what the phone leaves out', () => {
     const defaults = { model: 'opus', effort: 'low' as const, permissionMode: 'acceptEdits' as const, workspace: 'worktree' as const, baseRef: 'head' as const, branch: null };
     const none = { id: 'default', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } };
-    expect(sessionChoice({}, defaults, none)).toEqual({ profileId: 'default', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head' });
-    expect(sessionChoice({ model: null, effort: null, permissionMode: 'plan', worktree: false }, defaults, none)).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false, baseRef: 'head' });
+    expect(sessionChoice({}, defaults, none)).toEqual({ profileId: 'default', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head', checkoutBranch: null });
+    expect(sessionChoice({ model: null, effort: null, permissionMode: 'plan', worktree: false }, defaults, none)).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false, baseRef: 'head', checkoutBranch: null });
     const work = { id: 'work', defaults: { model: 'sonnet', effort: 'high' as const, permissionMode: 'plan' as const, workspace: 'current' as const, baseRef: 'fresh' as const } };
-    expect(sessionChoice({}, NO_DEFAULTS, work)).toEqual({ profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'plan', worktree: false, baseRef: 'fresh' });
-    expect(sessionChoice({}, defaults, work)).toEqual({ profileId: 'work', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head' });
+    expect(sessionChoice({}, NO_DEFAULTS, work)).toEqual({ profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'plan', worktree: false, baseRef: 'fresh', checkoutBranch: null });
+    expect(sessionChoice({}, defaults, work)).toEqual({ profileId: 'work', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head', checkoutBranch: null });
   });
 });
 

@@ -200,6 +200,8 @@ export interface SessionChoice {
   permissionMode: PermissionMode;
   worktree: boolean;
   baseRef: 'fresh' | 'head';
+  /** A branch to check out in the project's folder first; null keeps what is checked out. */
+  checkoutBranch: string | null;
 }
 
 export function sessionChoice(options: RemoteSessionOptions, project: ProjectDefaults, profile: { id: string; defaults: ProfileDefaults }): SessionChoice {
@@ -211,6 +213,7 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
     permissionMode: options.permissionMode ?? project.permissionMode ?? profile.defaults.permissionMode ?? 'default',
     worktree: options.worktree ?? workspace === 'worktree',
     baseRef: project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
+    checkoutBranch: options.checkoutBranch ?? null,
   };
 }
 
