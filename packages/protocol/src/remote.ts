@@ -3,13 +3,13 @@ import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
-import { AutoTierSchema, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { REMOTE_ATTACHMENT_BYTES, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
-import { UsageSnapshot } from './usage.ts';
+import { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow, UsageSnapshot } from './usage.ts';
 
 /**
  * Remote's contracts: what a paired phone may ask the engine, and the one request of a phone that is pairing. They
@@ -53,6 +53,11 @@ export const RemoteSession = z.object({
    * model), or `choosing` while it still picks. Null without Auto; left out by a Switchboard from before phones knew it.
    */
   auto: z.object({ picked: AutoTierSchema.nullable(), choosing: z.boolean() }).nullable().optional(),
+  /**
+   * What it keeps running after its turn (a shell command, an agent, a workflow), while it runs in Switchboard; each
+   * can be stopped with `session.stopTask`. Left out by a Switchboard from before phones knew them.
+   */
+  background: z.array(BackgroundTask).optional(),
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 
@@ -126,6 +131,11 @@ export const RemoteSessionOptions = z.object({
   permissionMode: RemotePermissionMode.optional(),
   /** In a new worktree (true) or the project's folder (false). */
   worktree: z.boolean().optional(),
+  /**
+   * In the project's folder: a local branch to check out first (one `projects.branches` lists), with
+   * `REMOTE_FEATURE_BRANCHES`. Left out, the session starts on what is checked out. Not with a worktree.
+   */
+  checkoutBranch: z.string().min(1).max(250).optional(),
 });
 export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 
@@ -164,6 +174,16 @@ export const RemoteOptions = z.object({
 });
 export type RemoteOptions = z.infer<typeof RemoteOptions>;
 
+/** The local branches of a project's folder, most recent first; empty outside a git repository. */
+export const RemoteBranches = z.object({
+  /** What is checked out there now; null when detached or not a repository. */
+  current: z.string().nullable(),
+  branches: z.array(z.string()),
+  /** Checked out in another worktree: git won't check them out in the project's folder too. */
+  checkedOutElsewhere: z.array(z.string()),
+});
+export type RemoteBranches = z.infer<typeof RemoteBranches>;
+
 /** A changed file in the session's checkout. */
 export const RemoteChangedFile = ChangedFile.pick({ path: true, status: true, additions: true, deletions: true });
 export type RemoteChangedFile = z.infer<typeof RemoteChangedFile>;
@@ -198,6 +218,19 @@ export const RemoteProfileUsage = z.object({
 });
 export type RemoteProfileUsage = z.infer<typeof RemoteProfileUsage>;
 
+/** A row of `usage.tokens`: as on the computer, with its project's id and name instead of its folder. */
+export const RemoteUsageRow = UsageRow.omit({ projectRoot: true }).extend({
+  /** The project's id (`projects.list` has the ones you added); null outside a project. */
+  projectId: ProjectId.nullable(),
+  /** The project's name, or its folder's; null outside a project. */
+  projectName: z.string().nullable(),
+});
+export type RemoteUsageRow = z.infer<typeof RemoteUsageRow>;
+
+/** Where an account's tokens went on the computer in a period, as the Usage view's Tokens tab shows it there. */
+export const RemoteUsageBreakdown = UsageBreakdown.omit({ rows: true }).extend({ rows: z.array(RemoteUsageRow) });
+export type RemoteUsageBreakdown = z.infer<typeof RemoteUsageBreakdown>;
+
 /** The most lines `changes.diff` returns. */
 export const REMOTE_DIFF_LINES = 2_000;
 
@@ -220,6 +253,8 @@ export const remoteContract = {
     },
     'sessions.list': { params: z.object({}), result: RemoteSessions },
     'projects.list': { params: z.object({}), result: z.object({ projects: z.array(RemoteProject) }) },
+    /** The branches New session offers for the project's folder, read from git each time. With `REMOTE_FEATURE_BRANCHES`. */
+    'projects.branches': { params: z.object({ projectId: ProjectId }), result: RemoteBranches },
     /**
      * A page of a transcript. Without `before` or `after`, the last `limit` messages. `after` resumes from the last
      * message the phone has: `reset` says that message is gone (a rewind or compaction) and `messages` is the last page.
@@ -252,6 +287,8 @@ export const remoteContract = {
     },
     'session.queue.remove': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Stops one of the session's background tasks (`RemoteSession.background`); Claude is told it was stopped. */
+    'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string().min(1).max(200) }), result: z.object({}) },
     /** Answers a permission prompt, question or plan. NOT_FOUND when it was already answered. */
     'session.respond': { params: z.object({ requestId: z.string().min(1).max(200), decision: PermissionDecision }), result: z.object({}) },
     /** A new session in a project Switchboard knows. What it leaves out of the options is the project's default. */
@@ -302,6 +339,21 @@ export const remoteContract = {
      * minute old; `refresh` checks now. `usage.changed` follows each new check.
      */
     'usage.get': { params: z.object({ refresh: z.boolean().default(false) }), result: z.object({ profiles: z.array(RemoteProfileUsage) }) },
+    /**
+     * Where the tokens of the profile signed in to an account went on the computer, as `usage.breakdown` there.
+     * `account` is the account's `accountKey`, so only someone who knows the account can ask, and the answer never
+     * names it. `breakdown` is null when no profile there signs in to it. With `REMOTE_FEATURE_USAGE_TOKENS`.
+     */
+    'usage.tokens': {
+      params: z.object({
+        account: z.string().regex(/^[a-f0-9]{64}$/),
+        period: UsagePeriod,
+        groupBy: UsageGroup.default('session'),
+        model: z.string().max(200).nullable().default(null),
+        timeZone: z.string().max(100).default('UTC'),
+      }),
+      result: z.object({ breakdown: RemoteUsageBreakdown.nullable() }),
+    },
     /** The catch-up of a session's last turn, without paths outside its project. */
     'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
     /** What changed in the session's checkout (its worktree when it has one), not committed yet. */

@@ -1,4 +1,6 @@
-import { AUTO_MODEL, tierLabel, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions } from '@switchboard/protocol/client';
+import { AUTO_MODEL, tierLabel, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions } from '@switchboard/protocol/client';
+import { filterBranches } from '../worktree/branchMenu.ts';
+import { ELSEWHERE_NOTE } from '../newSession/startSession.ts';
 
 /** A project tile in New session on another computer: the project, and how its sessions there are. */
 export interface RemoteTile {
@@ -87,6 +89,36 @@ export function remoteChanges(choice: RemoteChoice, defaults: RemoteChoice, proj
     ...(choice.permissionMode !== defaults.permissionMode && isRemoteMode(choice.permissionMode) ? { permissionMode: choice.permissionMode } : {}),
     ...(choice.worktree !== defaults.worktree ? { worktree: choice.worktree } : {}),
   };
+}
+
+/** A branch in the branch chip's menu (`ChoiceMenu`'s choice). */
+export interface RemoteBranchChoice {
+  value: string;
+  label: string;
+  note?: string;
+  disabled?: boolean;
+  description?: string;
+}
+
+/**
+ * The branch chip's menu on another computer, as the local one: the branch checked out there first (`current`), then
+ * the most recent. One checked out in another worktree shows but can't be picked. Detached, the first choice keeps it so.
+ */
+export function remoteBranchChoices({ current, branches, checkedOutElsewhere }: RemoteBranches): RemoteBranchChoice[] {
+  const ordered = filterBranches(branches, current, '');
+  return [
+    ...(current ? [] : [{ value: '', label: 'Stay on the current checkout' }]),
+    ...ordered.map((b) => ({ value: b, label: b, ...(b === current ? { note: 'current' } : {}), ...(checkedOutElsewhere.includes(b) ? { disabled: true, description: ELSEWHERE_NOTE } : {}) })),
+  ];
+}
+
+/**
+ * The branch `session.create` checks out first: only another one than is checked out, only in the current checkout,
+ * and only one that computer still lists. Null starts on what is checked out.
+ */
+export function remoteCheckoutBranch(picked: string | null, branches: RemoteBranches | null, worktree: boolean): string | null {
+  if (worktree || !picked || !branches || picked === branches.current) return null;
+  return branches.branches.includes(picked) ? picked : null;
 }
 
 /** A model's name as that computer's list has it ("Opus"); a full id the list doesn't know, by its family; null is the default. */

@@ -1,5 +1,6 @@
-import { FolderGit2, Folder, Gauge, WandSparkles } from 'lucide-react';
-import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteSession } from '@switchboard/protocol/remote-client';
+import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
+import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession } from '@switchboard/protocol/remote-client';
+import { branchChoices } from '../lib/branches.ts';
 import { autoDescription, autoFace, EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, profilesOf, projectProfile } from '../lib/options.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
 
@@ -128,6 +129,29 @@ export function WorkspaceChip({ value, onPick, disabled }: { value: boolean; onP
         { value: true, label: 'New worktree', description: 'An isolated copy; your checkout stays untouched' },
       ]}
       onPick={onPick}
+    />
+  );
+}
+
+/**
+ * The branch a session in the project's folder starts on: the one checked out there, or another to check out first.
+ * Detached, the first choice keeps it so.
+ */
+export function BranchChip({ branches, value, onPick }: { branches: RemoteBranches; value: string | null; onPick: (branch: string | null) => void }) {
+  const STAY = '';
+  const choices = branchChoices(branches);
+  return (
+    <ChoiceChip
+      label="Branch"
+      face={value ?? branches.current ?? 'detached'}
+      icon={<GitBranch className="size-3.5 text-muted" aria-hidden />}
+      selected={value ?? branches.current ?? STAY}
+      hook="branch"
+      options={[
+        ...(branches.current ? [] : [{ value: STAY, label: 'Stay on the current checkout' }]),
+        ...choices.map((b) => ({ value: b, label: b, description: b === branches.current ? 'Checked out now' : undefined })),
+      ]}
+      onPick={(b) => onPick(b === STAY || b === branches.current ? null : b)}
     />
   );
 }

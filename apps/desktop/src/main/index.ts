@@ -2993,8 +2993,9 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
  * Other computers in the same app: pairs with the second computer the smoke script starts (scripts/remote-demo.ts, the
  * real Remote hub over made-up sessions, in a throwaway folder), through the link field in Settings › Remote. Then its
  * sessions are in the sidebar with the computer's chip and the Computers strip; one opens in the session view with the
- * violet line and "on Smoke Mac", its terminal button disabled with the reason; and New session with Run on set to it
- * starts a session there, which opens here. Run on goes back to this computer and the computer is removed again.
+ * violet line and "on Smoke Mac", its terminal button disabled with the reason; a background task there stops from
+ * its pill; and New session with Run on set to it starts a session there, which opens here. Run on goes back to this
+ * computer and the computer is removed again.
  */
 async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const linkFile = process.env.SWITCHBOARD_SMOKE_COMPUTER_LINK;
@@ -3041,12 +3042,29 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (why !== 'Terminal is on Smoke Mac. Not available from here.') return `the disabled terminal says "${why}"`;
   await shot(win, 'computers-session.png');
 
+  // 3b. What a remote session runs in the background: its pill opens the list, and Stop stops the task there.
+  const busy = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Move the login form'))`;
+  if (!(await js(`Boolean(${busy})`))) return 'the working session of the other computer is not in the sidebar';
+  await js(`${busy}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-status-background]')", 5_000))) return 'the remote session shows no pill for its background task';
+  await click('[data-remote-session] [data-status-background]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-background-tasks] [data-stop-task]')", 3_000))) return 'the background pill did not open the list of tasks';
+  await click('[data-remote-session] [data-background-tasks] [data-stop-task]');
+  if (!(await waitInPage(win, "!document.querySelector('[data-remote-session] [data-status-background]')", 5_000))) return 'Stop did not stop the background task on the other computer';
+
   // 4. New session with Run on set to it starts a session there, which opens here.
   await click('[data-new-session]');
   if (!(await waitInPage(win, `document.querySelector('[data-run-on-option=${JSON.stringify(computerId)}]')`, 5_000))) return 'New session has no Run on switch with the other computer';
   await click(`[data-run-on-option=${JSON.stringify(computerId)}]`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-remote-project]')", 10_000))) return 'Run on the other computer showed none of its projects';
   await click('[data-remote-new-session] [data-remote-project]');
+  // On the current checkout, the branch checked out there shows, and another one can be picked to check out first.
+  const routeBranch = "document.querySelector('[data-remote-new-session] [data-route-branch]')?.innerText";
+  if (!(await waitInPage(win, `${routeBranch} === 'main'`, 5_000))) return `the route shows no branch on the other computer (${await js(routeBranch)})`;
+  await click('[data-remote-branch-select]');
+  if (!(await waitInPage(win, `document.querySelector('[data-menu="remote-branch"] [data-choice="feat/onboarding"]')`, 3_000))) return 'the branch menu does not list the other computer’s branches';
+  await click('[data-menu="remote-branch"] [data-choice="feat/onboarding"]');
+  if (!(await waitInPage(win, `${routeBranch} === 'feat/onboarding'`, 3_000))) return `picking a branch did not show in the route (${await js(routeBranch)})`;
   const prompt = `Smoke test ${Date.now()}`;
   await setFieldValue(win, '[data-remote-new-session] textarea', prompt);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-start]') && !document.querySelector('[data-remote-start]').disabled", 3_000))) return 'Start on Smoke Mac stayed disabled with a project and a prompt';

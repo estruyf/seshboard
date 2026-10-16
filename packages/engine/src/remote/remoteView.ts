@@ -17,6 +17,8 @@ import {
   type SessionHostInfo,
   type TranscriptBlock,
   type TranscriptMessage,
+  type RemoteUsageBreakdown,
+  type UsageBreakdown,
 } from '@switchboard/protocol';
 import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
@@ -65,6 +67,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     permissionMode: running.get(s.id)?.permissionMode ?? null,
     profile: profileOf(running.get(s.id)?.profileId ?? flags.get(s.id)?.profileId ?? live.get(s.id)?.profileId),
     auto: autoOf(running.get(s.id)),
+    background: running.get(s.id)?.backgroundTasks ?? [],
   }));
   return { sessions, prompts: promptsFor(sources.permissions ?? [], listed).map(remotePrompt) };
 }
@@ -197,6 +200,8 @@ export interface SessionChoice {
   permissionMode: PermissionMode;
   worktree: boolean;
   baseRef: 'fresh' | 'head';
+  /** A branch to check out in the project's folder first; null keeps what is checked out. */
+  checkoutBranch: string | null;
 }
 
 export function sessionChoice(options: RemoteSessionOptions, project: ProjectDefaults, profile: { id: string; defaults: ProfileDefaults }): SessionChoice {
@@ -208,6 +213,7 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
     permissionMode: options.permissionMode ?? project.permissionMode ?? profile.defaults.permissionMode ?? 'default',
     worktree: options.worktree ?? workspace === 'worktree',
     baseRef: project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
+    checkoutBranch: options.checkoutBranch ?? null,
   };
 }
 
@@ -218,3 +224,17 @@ export const remoteDefaults = (defaults: ProfileDefaults) => ({
   permissionMode: defaults.permissionMode,
   worktree: defaults.workspace === null ? null : defaults.workspace === 'worktree',
 });
+
+/** A token breakdown as another computer gets it: each project as its id and name, never its folder. */
+export function remoteUsage(breakdown: UsageBreakdown, projectNames: ReadonlyMap<string, string>): RemoteUsageBreakdown {
+  return {
+    ...breakdown,
+    rows: breakdown.rows.map(({ projectRoot, ...row }) => {
+      const projectId = projectRoot ? projectIdOf(projectRoot) : null;
+      const projectName = projectRoot ? (projectNames.get(projectRoot) ?? lastSegment(projectRoot)) : null;
+      // A project row: its key and label are the project, so they become its id and name.
+      const projectRow = projectId !== null && row.key === projectRoot;
+      return { ...row, key: projectRow ? projectId : row.key, label: projectRow ? projectName! : row.label, projectId, projectName };
+    }),
+  };
+}

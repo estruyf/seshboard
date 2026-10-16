@@ -1,11 +1,13 @@
+import { GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { Computer, Contract, RemoteProject, RpcClient } from '@switchboard/protocol/client';
+import { REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type RemoteProject, type RpcClient } from '@switchboard/protocol/client';
 import { comboPresses, matches, shortcutById } from '../../lib/shortcuts.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
+import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { RunOnSwitch } from '../newSession/RunOnSwitch.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
@@ -16,7 +18,7 @@ import { callComputer } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { ChipMenu, RemoteEffortChip, RemoteModeChip, RemoteModelChip, RemoteProfileChip, useRemoteOptions } from './RemoteChips.tsx';
-import { remoteChanges, remoteDefaultChoice, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort, type RemoteChoice, type RemoteTile } from './remoteNewSession.ts';
+import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort, type RemoteChoice, type RemoteTile } from './remoteNewSession.ts';
 
 /** Tiles before "+N more on …": the fifth place is that tile. */
 const QUICK = 4;
@@ -31,7 +33,8 @@ const TILE = 'flex min-w-0 items-center gap-2 rounded-lg border p-2.5 text-left 
  * `session.create` and opens it here. Profile, model, effort, mode and where only show when that computer answers
  * `options.get` (an older Switchboard doesn't); they start from the project's defaults, then its profile's, and only
  * what you change is sent, as in the remote app. Images and files go with the prompt when that computer takes them
- * (`RemoteAttachments.tsx`). Folders there can't be picked from here, and Quick question, the queue and the focus limit
+ * (`RemoteAttachments.tsx`). In the current checkout, the branch checked out there shows, and another one picked is
+ * checked out before the session starts (`REMOTE_FEATURE_BRANCHES`). Folders there can't be picked from here, and Quick question, the queue and the focus limit
  * are this computer's.
  */
 export function RemoteNewSession({ client, computer }: { client: RpcClient<Contract> | null; computer: Computer }) {
@@ -41,6 +44,10 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const [prompt, setPrompt] = useState('');
   const [starting, setStarting] = useState(false);
   const [changes, setChanges] = useState<Partial<RemoteChoice>>({});
+  /** That computer's branches for the picked project's folder (null: not read yet, or it can't say). */
+  const [branches, setBranches] = useState<RemoteBranches | null>(null);
+  /** A branch picked to check out first; null stays on what is checked out. */
+  const [branch, setBranch] = useState<string | null>(null);
   const picked = useRunOn((s) => s.projects[computer.id] ?? null);
   const list = useComputers((s) => s.lists.get(computer.id) ?? null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -100,6 +107,27 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const change = (next: Partial<RemoteChoice>) => setChanges((current) => ({ ...current, ...next }));
   const worktree = choice.worktree;
 
+  // Another project has its own branches; read them again when the window comes back, as they change there too.
+  const takesBranch = computer.features.includes(REMOTE_FEATURE_BRANCHES);
+  useEffect(() => {
+    setBranches(null);
+    setBranch(null);
+    if (!client || !connected || !takesBranch || !projectId) return;
+    let current = true;
+    const load = () =>
+      void callComputer(client, computer.id, 'projects.branches', { projectId }).then(
+        (result) => current && setBranches(result),
+        () => current && setBranches(null),
+      );
+    load();
+    window.addEventListener('focus', load);
+    return () => {
+      current = false;
+      window.removeEventListener('focus', load);
+    };
+  }, [client, computer.id, connected, takesBranch, projectId]);
+  const checkoutBranch = remoteCheckoutBranch(branch, branches, worktree);
+
   const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : !project ? 'Choose a project first' : !prompt.trim() ? 'Type a message first' : null;
   const start = async () => {
     if (blocked || starting || attachments.reading || !client || !project) return;
@@ -113,9 +141,11 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
         ...(images.length ? { images } : {}),
         ...(files.length ? { files } : {}),
         ...(options ? remoteChanges(choice, defaults, baseProfile) : {}),
+        ...(checkoutBranch ? { checkoutBranch } : {}),
       });
       setPrompt('');
       setChanges({});
+      setBranch(null);
       attachments.clear();
       useComputers.getState().openSession({ computerId: computer.id, sessionId }, { starting: true });
     } catch (e) {
@@ -199,6 +229,30 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                     ]}
                     data-route-where
                   />
+                  {!worktree && branches && (branches.current || branches.branches.length > 0) && (
+                    <>
+                      <span aria-hidden className="px-0.5 text-faint">
+                        /
+                      </span>
+                      <ChoiceMenu
+                        name="remote-branch"
+                        value={checkoutBranch ?? branches.current ?? ''}
+                        onChange={(b) => setBranch(b === branches.current || b === '' ? null : b)}
+                        title={`Check out a branch on ${name} before the session starts. Git keeps uncommitted changes, or refuses when they conflict.`}
+                        heading="Branch"
+                        chevron
+                        mono
+                        search="Search branches"
+                        width={300}
+                        choices={remoteBranchChoices(branches)}
+                      >
+                        <GitBranch size={14} className="shrink-0" aria-hidden />
+                        <span className="truncate" data-route-branch>
+                          {checkoutBranch ?? branches.current ?? 'detached'}
+                        </span>
+                      </ChoiceMenu>
+                    </>
+                  )}
                 </>
               )}
             </div>

@@ -115,6 +115,8 @@ describe('breakdown', () => {
     expect(filterRows(rows, 'demo', name).map((r) => r.label)).toEqual(['Scene presets']);
     expect(filterRows(rows, 'SONNET', name).map((r) => r.label)).toEqual(['Scene presets']);
     expect(filterRows(rows, ' ', name)).toHaveLength(2);
+    // Another computer's project and name, which the rows hold apart from `projectRoot`.
+    expect(filterRows(rows, 'studio', name, (r) => (r.label === 'Usage view' ? ['Studio', 'Api'] : [null])).map((r) => r.label)).toEqual(['Usage view']);
   });
 });
 

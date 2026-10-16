@@ -173,6 +173,11 @@ export class ProfileStore {
     return this.runtimes().map((r) => accountFile(r.envDir));
   }
 
+  /** Each profile's login, read now. Not a snapshot, so `refreshAccounts` still tells the windows about a change. */
+  accounts(): Array<{ id: string; account: ClaudeProfile['account'] }> {
+    return this.runtimes().map((r) => ({ id: r.id, account: readAccount(accountFile(r.envDir)) }));
+  }
+
   /** Reads the logins again: a new snapshot when one changed since the last, else null. */
   refreshAccounts(): ProfilesSnapshot | null {
     const before = this.accountsSeen;

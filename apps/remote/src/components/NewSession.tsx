@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronLeft, Search } from 'lucide-react';
-import type { RemoteOptions, RemoteProject, RemoteSession } from '@switchboard/protocol/remote-client';
+import { REMOTE_FEATURE_BRANCHES, type RemoteBranches, type RemoteOptions, type RemoteProject, type RemoteSession } from '@switchboard/protocol/remote-client';
+import { checkoutBranch } from '../lib/branches.ts';
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer, useWide } from '../lib/media.ts';
 import { autoOn, changedFrom, defaultChoice, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
 import { lastProject, rememberProject } from '../lib/storage.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
 import type { Client } from './Connected.tsx';
-import { EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip } from './OptionChips.tsx';
+import { BranchChip, EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip } from './OptionChips.tsx';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button, Kbd } from './ui.tsx';
@@ -26,7 +27,8 @@ const DRAFT = 'switchboard-remote:new-draft';
  * say what's going on in each, most recent first; the project you last started in (or the one with the newest session)
  * is picked for you, so most of the time you only type. On a phone, All projects opens them as a list in a sheet, with
  * the filter there, so the keyboard doesn't come up over the tiles. Under the prompt, the project's profile (with more than one)
- * and its defaults for model, effort, mode and worktree as chips, to change for this session only. Queue for later puts it in Switchboard's queue instead,
+ * and its defaults for model, effort, mode and worktree as chips, to change for this session only. In the project's folder,
+ * the branch checked out there, or another to check out first (`REMOTE_FEATURE_BRANCHES`). Queue for later puts it in Switchboard's queue instead,
  * while the project has a session working.
  */
 export function NewSession({ client, features, sessions, banner, onBack, onStarted, initialProject = null }: { client: Client; /** What the computer takes beyond what every version does (its hello). */ features: readonly string[]; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
@@ -39,6 +41,9 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
   const [options, setOptions] = useState<RemoteOptions | null>(null);
   /** What you changed for this session, over the project's defaults. */
   const [changes, setChanges] = useState<Partial<Choice>>({});
+  /** The project folder's branches (null: not read yet, or the computer can't say), and one picked to check out first. */
+  const [branches, setBranches] = useState<RemoteBranches | null>(null);
+  const [branch, setBranch] = useState<string | null>(null);
   const attachments = useAttachments({ features, newSession: true, onError: setError });
   const fine = useFinePointer();
   const wide = useWide();
@@ -60,6 +65,22 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
     );
     void client.call('options.get', {}).then(setOptions, () => {});
   }, [client]);
+
+  // Another project has its own branches.
+  const takesBranch = features.includes(REMOTE_FEATURE_BRANCHES);
+  useEffect(() => {
+    setBranches(null);
+    setBranch(null);
+    if (!client || !projectId || !takesBranch) return;
+    let current = true;
+    void client.call('projects.branches', { projectId }).then(
+      (result) => current && setBranches(result),
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, projectId, takesBranch]);
 
   // With a keyboard, the box is ready to type in; on a phone the keyboard waits for a tap.
   useEffect(() => {
@@ -89,13 +110,15 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
   const defaults = defaultChoice(options, projectId, changes.profileId ?? baseProfile);
   const choice: Choice = { ...defaults, ...changes };
   const change = (next: Partial<Choice>) => setChanges((current) => ({ ...current, ...next }));
+  const checkout = checkoutBranch(branch, branches, choice.worktree);
+  const withBranch = checkout ? { checkoutBranch: checkout } : {};
   const ready = Boolean(client && projectId && prompt.trim() && !busy && !attachments.reading);
   const start = async () => {
     if (!ready) return;
     setBusy(true);
     setError(null);
     try {
-      const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...changedFrom(choice, defaults, baseProfile) });
+      const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
       rememberProject(projectId!);
       sessionStorage.removeItem(DRAFT);
       onStarted(sessionId);
@@ -109,7 +132,7 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
     setBusy(true);
     setError(null);
     try {
-      await client!.call('later.add', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults, baseProfile) });
+      await client!.call('later.add', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
       toast('Queued for later', { detail: `In ${picked?.name ?? 'the project'}. Start it from the queue in Switchboard.` });
       sessionStorage.removeItem(DRAFT);
       setPrompt('');
@@ -245,6 +268,7 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
                   {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} />}
                   <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} />
                   <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} />
+                  {!choice.worktree && branches && (branches.current || branches.branches.length > 0) && <BranchChip branches={branches} value={checkout} onPick={setBranch} />}
                 </div>
                 <p className="text-meta text-faint">
                   Uses {picked.name}'s defaults. Change them here for this session only.

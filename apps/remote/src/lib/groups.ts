@@ -1,4 +1,5 @@
 import type { RemoteSession } from '@switchboard/protocol/remote-client';
+import { inBackground } from './background.ts';
 
 /** The sidebar's sections on the computer (apps/ui sidebarRows.ts), without Pinned: what needs attention, then by day. */
 export type SessionGroup = 'needs-you' | 'working' | 'today' | 'yesterday' | 'earlier';
@@ -101,10 +102,10 @@ export function homeHeadline(sessions: readonly RemoteSession[], now: number): {
   return { title, counts };
 }
 
-/** Finished sessions you haven't read, newest first: Finished, ready to review. */
+/** Finished sessions you haven't read, newest first: Finished, ready to review. Not while a task still runs in the background. */
 export function toReview(sessions: readonly RemoteSession[], max = 6): RemoteSession[] {
   return sessions
-    .filter((s) => s.status === 'unread')
+    .filter((s) => s.status === 'unread' && !inBackground(s))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, max);
 }

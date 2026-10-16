@@ -1157,6 +1157,11 @@
       "page": "new-session/form"
     },
     {
+      "id": "feature:usage-other-computers",
+      "name": "Usage: count the same account's tokens on other computers, with a Computer grouping",
+      "page": "usage"
+    },
+    {
       "id": "feature:computers-attachments",
       "name": "Other computers: send images and files with a message or a new session",
       "page": "remote-access"
@@ -1324,6 +1329,11 @@
     {
       "id": "feature:remote-working-line",
       "name": "Remote: the working line with its timer, and the pulsing working dot",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-background-tasks",
+      "name": "Remote and other computers: what runs in the background, and Stop for each task",
       "page": "remote-access"
     },
     {

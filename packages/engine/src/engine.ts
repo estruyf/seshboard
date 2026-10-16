@@ -45,6 +45,7 @@ import {
   type QueuedMessage,
   type StreamDelta,
   type PermissionRequest,
+  accountKey,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -1087,6 +1088,7 @@ export function createEngine(options: EngineOptions): Engine {
       },
       dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
       interrupt: (sessionId) => hosts.interrupt(sessionId),
+      stopTask: (sessionId, taskId) => hosts.stopTask(sessionId, taskId),
       respond: (requestId, decision) => hosts.respond(requestId, decision),
       create: (root, prompt, choice, images) =>
         createSession({
@@ -1098,10 +1100,11 @@ export function createEngine(options: EngineOptions): Engine {
           effort: choice.effort,
           worktree: choice.worktree ? { name: randomWorktreeName(), baseRef: choice.baseRef } : null,
           profileId: choice.profileId,
-          checkoutBranch: null,
+          checkoutBranch: choice.checkoutBranch,
         }),
+      branches: async (root) => (resolver.resolve(root).gitDir ? listBranches(root) : { current: null, branches: [], checkedOutElsewhere: [] }),
       queue: (root, prompt, choice) => {
-        const item = later.add({ cwd: root, prompt, model: choice.model, effort: choice.effort, permissionMode: choice.permissionMode, workspace: choice.worktree ? 'worktree' : 'current', baseRef: choice.baseRef, profileId: choice.profileId }, {});
+        const item = later.add({ cwd: root, prompt, model: choice.model, effort: choice.effort, permissionMode: choice.permissionMode, workspace: choice.worktree ? 'worktree' : 'current', baseRef: choice.baseRef, branch: choice.checkoutBranch, profileId: choice.profileId }, {});
         laterChanged();
         return { id: item.id };
       },
@@ -1113,6 +1116,15 @@ export function createEngine(options: EngineOptions): Engine {
       models: () => hosts.listModels(),
       autoModel: () => ({ enabled: autoModel.enabled, allowed: [...autoModel.allowed] }),
       usage: (profileId, refresh) => usageFor(profileId).get(refresh),
+      tokens: (account, params) => {
+        // The default profile first, when more than one here signs in to the account.
+        const defaultId = profiles.defaultId();
+        const match = profiles
+          .accounts()
+          .filter((p) => accountKey(p.account) === account)
+          .sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId))[0];
+        return match ? insights.breakdown(match.id, params) : null;
+      },
       // `asker` is made further down; a phone can only ask once the engine is running.
       ask: (sessionId, question, threadId, replaces) => asker.ask(sessionId, question, threadId, replaces),
       askThreads: (sessionId) => asker.list(sessionId),

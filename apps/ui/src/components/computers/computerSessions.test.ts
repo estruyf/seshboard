@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Computer, RemoteMessage, RemoteSession, RemoteSessions } from '@switchboard/protocol/client';
-import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, NOT_STREAMING, prependMessages, remoteItems, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
+import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, inBackground, NOT_STREAMING, prependMessages, remoteItems, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
 
 const message = (uuid: string, text = uuid, extra: Partial<RemoteMessage> = {}): RemoteMessage => ({ uuid, role: 'assistant', timestamp: 1, parentToolUseId: null, blocks: [{ type: 'text', text }], ...extra });
 const session = (id: string, status: RemoteSession['status']): RemoteSession => ({
@@ -124,5 +124,18 @@ describe('the remote transcript', () => {
     expect(toolsSummary([{ name: 'Write', input: { file_path: '/p/new.ts', content: '1\n2' } }, { name: 'Edit', input: { file_path: '/p/old.ts', old_string: 'x', new_string: 'y' } }])).toBe('Edited 2 files +3 −1');
     expect(toolsSummary([{ name: 'Grep', input: { pattern: 'TODO' } }, { name: 'Glob', input: { pattern: '*.ts' } }, { name: 'TodoWrite', input: {} }])).toBe('Searched 2 times · Updated the to-do list');
     expect(toolsSummary([{ name: 'mcp__github__create_issue', input: {} }])).toBe('Used mcp__github__create_issue');
+  });
+});
+
+describe('inBackground', () => {
+  it('is true while a task runs after the turn, also unread, and never while Claude works or waits', () => {
+    const tasks = [{ taskId: 'b1', type: 'local_bash', description: 'gh run watch', startedAt: 1 }];
+    expect(inBackground({ status: 'background', background: tasks })).toBe(true);
+    expect(inBackground({ status: 'unread', background: tasks })).toBe(true);
+    expect(inBackground({ status: 'idle', background: [] })).toBe(false);
+    expect(inBackground({ status: 'working', background: tasks })).toBe(false);
+    expect(inBackground({ status: 'needs-you', background: tasks })).toBe(false);
+    // A computer from before the list.
+    expect(inBackground({ status: 'background' })).toBe(true);
   });
 });

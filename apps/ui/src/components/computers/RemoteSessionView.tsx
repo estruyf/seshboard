@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ArrowUp, ChevronRight, Ellipsis, FileDiff, GitBranch, RefreshCw, SquareCode, SquareTerminal, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareCode, SquareTerminal, X } from 'lucide-react';
 import type { Computer, Contract, PermissionDecision, RemoteMessage, RemotePrompt, RemoteSession, RpcClient } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -9,19 +9,23 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { statusLine } from '../../state/sidebarOrder.ts';
 import { toast } from '../../state/toastStore.ts';
+import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { OVERLAY_SELECTOR } from '../session/permissionKeys.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { ClampedPrompt } from '../transcript/ClampedPrompt.tsx';
 import { WorkingDots } from '../transcript/ActivityGroup.tsx';
+import { BackgroundTaskList } from '../transcript/BackgroundTaskList.tsx';
+import { backgroundSummary } from '../transcript/backgroundTasks.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
+import { Pill } from '../ui/Pill.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
 import { ComputerPrompt } from './ComputerPrompt.tsx';
-import { applyStream, applyUpdate, awayBanner, NOT_STREAMING, prependMessages, remoteItems, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
+import { applyStream, applyUpdate, awayBanner, inBackground, NOT_STREAMING, prependMessages, remoteItems, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { RemoteEffortChip, RemoteModeChip, RemoteModelChip, useRemoteOptions } from './RemoteChips.tsx';
 import { remoteAutoFace, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
@@ -47,9 +51,10 @@ function useNow(active: boolean): number {
 /**
  * A session on another computer, in the same view as a local one (docs/remote-access.md, Other computers): the local
  * header with the computer's chip and a 2px `remote` line along its top, the conversation in the same column, what it
- * waits on docked above the message box, and Stop. What only works on that computer (Changes, the terminal, the
- * editor, pull requests, file links) keeps its place, disabled, with a reason. The transcript is `RemoteText`: nothing
- * in it acts here. While the computer is away the last messages stay, under a banner, and the message box is off.
+ * waits on docked above the message box, Stop, and what it runs in the background with a Stop for each task. What
+ * only works on that computer (Changes, the terminal, the editor, pull requests, file links) keeps its place, disabled,
+ * with a reason. The transcript is `RemoteText`: nothing in it acts here. While the computer is away the last messages
+ * stay, under a banner, and the message box is off.
  */
 export function RemoteSessionView({ client, computer, session, prompts }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; prompts: RemotePrompt[] }) {
   const [messages, setMessages] = useState<RemoteMessage[]>([]);
@@ -64,7 +69,10 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
   const id = computer.id;
   const name = computer.name;
   const status = remoteRowStatus(session, prompts.length > 0);
-  const working = session.status === 'working' || session.status === 'background';
+  const working = session.status === 'working';
+  /** Its turn ended but a task it started still runs: still at work, and Stop is per task (the pill above the message box). */
+  const background = inBackground(session);
+  const tasks = session.background ?? [];
   const now = useNow(computer.state === 'offline');
   const away = awayBanner(computer, now);
   const line = statusLine(status) ?? { text: 'Idle', tone: 'faint' as const };
@@ -125,6 +133,16 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
   };
 
   const stop = () => void callComputer(client, id, 'session.interrupt', { sessionId: session.id }).catch((e: Error) => toast(e.message));
+  const stopTask = async (taskId: string) => {
+    try {
+      await callComputer(client, id, 'session.stopTask', { sessionId: session.id, taskId });
+    } catch (e) {
+      toast(`Could not stop the task: ${(e as Error).message}`);
+      throw e;
+    }
+  };
+  const tasksId = useId();
+  const tasksOpen = useTaskStrip((s) => s.open.get(rowId) === 'background') && tasks.length > 0;
 
   const openMenu = (at: { x: number; y: number }) =>
     setMenu({
@@ -268,6 +286,14 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
               <span className="min-w-0 truncate">{streaming.kind === 'tool' ? `Using ${streaming.text}…` : streaming.kind === 'thinking' ? 'Thinking…' : 'Working…'}</span>
             </p>
           )}
+          {!working && background && connected && (
+            <p className="flex h-6.5 items-center gap-2 text-ui text-ok" role="status" data-computer-background>
+              <span className="flex w-4 shrink-0 justify-center" aria-hidden>
+                <LoaderCircle size={13} className="animate-[spin_2s_linear_infinite]" />
+              </span>
+              <span className="min-w-0 truncate">{tasks.length ? `${backgroundSummary(tasks.map((t) => t.type))} running` : 'Running in the background'}</span>
+            </p>
+          )}
         </div>
       </div>
 
@@ -290,6 +316,26 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
           >
             {away}
           </Notice>
+        )}
+        {connected && tasks.length > 0 && (
+          <div className="grid gap-1.5">
+            <Pill
+              tone="ok"
+              shrink
+              selected={tasksOpen}
+              className="justify-self-end"
+              icon={<LoaderCircle size={11} className="shrink-0 animate-[spin_2s_linear_infinite]" aria-hidden />}
+              onClick={() => useTaskStrip.getState().toggle(rowId, 'background')}
+              aria-expanded={tasksOpen}
+              aria-controls={tasksOpen ? tasksId : undefined}
+              data-tooltip={tasksOpen ? 'Hide what runs in the background' : `Show what runs in the background on ${name}`}
+              data-status-background
+            >
+              <span className="truncate">{backgroundSummary(tasks.map((t) => t.type))}</span>
+              <ChevronDown size={11} className={`shrink-0 transition-transform ${tasksOpen ? 'rotate-180' : ''}`} aria-hidden />
+            </Pill>
+            {tasksOpen && <BackgroundTaskList id={tasksId} tasks={tasks} onStop={stopTask} />}
+          </div>
         )}
         {connected && prompts.length > 0 && (
           <div className="-m-1 grid max-h-[55vh] gap-2 overflow-y-auto p-1" data-permissions>

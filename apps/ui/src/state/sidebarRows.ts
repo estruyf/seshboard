@@ -69,7 +69,7 @@ export const archivedSince = (row: SessionRowData, now: number, archiveAfterDays
  */
 export function archivesOnMiddleClick(row: SessionRowData, now: number, archiveAfterDays: number): boolean {
   const status = rowStatus(row);
-  return row.summary !== null && (status === null || status === 'idle' || status === 'unread') && isActive(row, now, archiveAfterDays);
+  return (row.summary !== null || row.remote != null) && !row.remote?.offline && (status === null || status === 'idle' || status === 'unread') && isActive(row, now, archiveAfterDays);
 }
 
 export interface SessionListOptions {

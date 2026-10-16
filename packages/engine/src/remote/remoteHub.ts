@@ -14,6 +14,8 @@ import {
   type ProfileColor,
   type ProfileDefaults,
   type ProjectDefaults,
+  type RemoteBranches,
+  type RemoteSessionOptions,
   type RemoteSessions,
   type RemoteStatus,
   type RemoteContract,
@@ -30,6 +32,9 @@ import {
   type RemoteImage,
   type ModelOption,
   type PermissionMode,
+  type UsageBreakdown,
+  type UsageGroup,
+  type UsagePeriod,
   type UsageSnapshot,
   type AutoTier,
   type AskEvent,
@@ -48,7 +53,7 @@ import { nextFreePort } from './freePort.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, type VapidKeys } from './webPush.ts';
-import { capDiff, projectIdOf, remoteCatchUp, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { capDiff, projectIdOf, remoteCatchUp, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
 /** The engine's VAPID key pair, made the first time a phone asks for it. */
@@ -129,9 +134,13 @@ export interface RemoteHubOptions {
   send(sessionId: string, text: string, mode: SendMode, images: RemoteImage[]): Promise<{ messageUuid: string; queued: boolean }>;
   dequeue(sessionId: string, id: string): void;
   interrupt(sessionId: string): Promise<void>;
+  /** Stops one of a running session's background tasks. */
+  stopTask(sessionId: string, taskId: string): Promise<void>;
   respond(requestId: string, decision: PermissionDecision): void;
   /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
   create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
+  /** The local branches of the folder `root`, as `git.branches` on the computer (none outside a git repository). */
+  branches(root: string): Promise<RemoteBranches>;
   /** Puts a prompt in the queue (Later) for `root`. */
   queue(root: string, prompt: string, choice: SessionChoice): { id: string };
   /** As opening the session on the computer: no longer unread. */
@@ -145,6 +154,11 @@ export interface RemoteHubOptions {
   autoModel(): { enabled: boolean; allowed: AutoTier[] };
   /** A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). */
   usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
+  /**
+   * Where the tokens of the profile signed in to an account (its `accountKey`) went, as `usage.breakdown`; null when
+   * no profile here signs in to it.
+   */
+  tokens(account: string, params: { period: UsagePeriod; groupBy: UsageGroup; model: string | null; timeZone: string }): UsageBreakdown | null;
   catchUp(sessionId: string): CatchUp | null;
   /** Ask about this session, as on the computer: the answer comes through `askEvent`. */
   ask(sessionId: string, question: string, threadId: string | undefined, replaces: string | undefined): { threadId: string; id: string; at: number };
@@ -579,6 +593,21 @@ export class RemoteHub {
     return profile;
   }
 
+  /**
+   * The phone's choice, after checking a branch to check out is one of the folder's own: git would also take a
+   * remote branch, or a name that isn't one.
+   */
+  private async choiceFor(project: RemoteProject, options: RemoteSessionOptions): Promise<SessionChoice> {
+    const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId));
+    const branch = choice.checkoutBranch;
+    if (branch === null) return choice;
+    if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');
+    const { branches, checkedOutElsewhere } = await this.options.branches(project.root);
+    if (!branches.includes(branch)) throw new RpcError('NOT_FOUND', `No branch ${branch} in ${project.name}`);
+    if (checkedOutElsewhere.includes(branch)) throw new RpcError('INVALID_PARAMS', `${branch} is checked out in another worktree`);
+    return choice;
+  }
+
   /** A phone may only touch the sessions it can see in its list. */
   private checkSession(sessionId: string): void {
     if (!this.list().sessions.some((s) => s.id === sessionId)) throw new RpcError('NOT_FOUND', 'No such session');
@@ -598,6 +627,7 @@ export class RemoteHub {
     return {
       'sessions.list': () => this.list(),
       'projects.list': () => ({ projects: this.yourProjects().map((p) => ({ id: projectIdOf(p.root), name: p.name })) }),
+      'projects.branches': ({ projectId }) => this.options.branches(this.project(projectId).root),
       'transcript.get': async ({ sessionId, before, after, limit }) => {
         this.checkSession(sessionId);
         const page = transcriptPage(await this.options.readTranscript(sessionId), { before, after, limit });
@@ -636,6 +666,12 @@ export class RemoteHub {
         await this.options.interrupt(sessionId);
         return {};
       },
+      'session.stopTask': async ({ sessionId, taskId }) => {
+        // Only a task the list shows: a phone can't stop what it was never told about.
+        if (!this.list().sessions.find((s) => s.id === sessionId)?.background?.some((t) => t.taskId === taskId)) throw new RpcError('NOT_FOUND', 'That task is no longer running');
+        await this.options.stopTask(sessionId, taskId);
+        return {};
+      },
       'session.respond': ({ requestId, decision }) => {
         const prompt = this.list().prompts.find((p) => p.requestId === requestId);
         if (!prompt) throw new RpcError('NOT_FOUND', 'That was already answered');
@@ -646,15 +682,15 @@ export class RemoteHub {
       'session.create': async ({ projectId, prompt, images, files, ...options }) => {
         const project = this.project(projectId);
         checkAttachments(images, files);
-        const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId));
+        const choice = await this.choiceFor(project, options);
         const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
         // Its first prompt: the sidebar's last action for the device.
         this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return created;
       },
-      'later.add': ({ projectId, prompt, ...options }) => {
+      'later.add': async ({ projectId, prompt, ...options }) => {
         const project = this.project(projectId);
-        return this.options.queue(project.root, prompt, sessionChoice(options, project.defaults, this.profileFor(project, options.profileId)));
+        return this.options.queue(project.root, prompt, await this.choiceFor(project, options));
       },
       'session.markRead': ({ sessionId }) => {
         this.checkSession(sessionId);
@@ -713,6 +749,10 @@ export class RemoteHub {
             }),
           ),
         };
+      },
+      'usage.tokens': ({ account, ...params }) => {
+        const breakdown = this.options.tokens(account, params);
+        return { breakdown: breakdown && remoteUsage(breakdown, new Map(this.options.projects().map((p) => [p.root, p.name]))) };
       },
       'session.ask': ({ sessionId, question, threadId, replaces }, phone) => {
         this.checkSession(sessionId);

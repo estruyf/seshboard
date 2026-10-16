@@ -4,6 +4,7 @@ description: See what is left of your plan, when it comes back, and which sessio
 ---
 
 import Kbd from '../../components/Kbd.astro';
+import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
@@ -25,6 +26,7 @@ It opens in the window like Home. **Back** or <Kbd keys="escape" /> returns to w
 - The profile menu picks whose usage you see. Each profile has its own login and limits. Profiles that share a config folder are counted once. See [Claude profiles](/settings/claude-profiles/).
 - *Plan usage updated 1m ago* says when the plan numbers were last checked. The refresh button checks now.
 - **Limits** and **Tokens** are the two tabs. The period on the right applies to both: **Current window (5h)**, **24 hours**, **7 days** or **30 days**. Switchboard remembers the tab and the period.
+- With [other computers](/remote-access/#other-computers) paired, **<Os mac="This Mac" windows="This PC" />** and **All computers** pick whose tokens count. See [Tokens on other computers](#tokens-on-other-computers).
 
 | Keys | Does |
 |---|---|
@@ -51,7 +53,7 @@ Switchboard records your plan % each time it checks, so the chart starts the day
 
 ### What used this window
 
-The sessions that used the current 5-hour window, with their project, model and share. The top five are listed, the rest fold into one line. Click a session to open it.
+The sessions that used the current 5-hour window, with their project, model and share. The top five are listed, the rest fold into one line. Click a session to open it. With **All computers**, sessions on your other computers are listed too, with the computer's name.
 
 ## Tokens
 
@@ -65,7 +67,7 @@ Each chart has **Show as table** for the same numbers as a table.
 
 ### Breakdown
 
-Group the tokens by **Session**, **Project**, **Model** or **Day**, and filter the list by name, project or model.
+Group the tokens by **Session**, **Project**, **Model** or **Day**, and filter the list by name, project, model or computer. With **All computers**, there is also **Computer**.
 
 - The session rows show the turns, output, cache write, cache read, the largest context of one turn, and the share. A bolt marks sessions with fast mode turns, which use the plan faster.
 - Click a session to open it.
@@ -76,12 +78,31 @@ Group the tokens by **Session**, **Project**, **Model** or **Day**, and filter t
 
 <Screenshot name="usage-model" alt="The breakdown grouped by model, with Opus selected: its tokens, sessions, fast mode turns, largest context, average turn and its cache hit rate" width={900} />
 
+## Tokens on other computers
+
+Your plan's limits belong to your account, not to one computer. When you use Claude Code on more than one computer, the Usage view can count them all. Pair the other computers first: see [Other computers](/remote-access/#other-computers).
+
+With a computer paired, the header shows **<Os mac="This Mac" windows="This PC" />** and **All computers**. **All computers** is the default, and Switchboard remembers your choice.
+
+- A profile here counts with the profile on the other computer that signs in to the same claude.ai account. Switchboard never sends the account itself: it sends a code made from it, and the other computer answers only for a profile with the same account.
+- The totals, the chart and **What used this window** add up every computer. The totals line says how many computers count, such as *7 days · Personal · 2 computers*.
+- In the breakdown, sessions and projects on another computer have its name in violet, next to the project. Click such a session to open it, as long as that computer lists it.
+- **Model** and **Day** add up every computer in one row. **Computer** has a row for each computer, with its share of the tokens.
+- A computer that is offline, runs an older Switchboard, or has no profile on the same account isn't counted. A note above the totals says which one and why, such as *Not counted: mystic is offline.*
+
+<Screenshot name="usage-computers" alt="The Usage view on the Tokens tab for 7 days with All computers picked: the totals say Personal · 2 computers, the chart adds up both computers, and the breakdown lists sessions with a violet mystic chip next to their project" />
+
+A profile that isn't signed in to a claude.ai account (an API key, for example) can't be matched, so only this computer counts.
+
+<Screenshot name="usage-by-computer" alt="The breakdown grouped by Computer: a row for mystic with its violet chip and a row for this computer, each with its sessions, turns, tokens and share" width={900} />
+
 ## How shares are counted
 
 Claude doesn't report usage per session, so every **Share (est.)** is an estimate. Click the column's header for how it works:
 
 - Tokens weigh differently against your plan. Compared to input, a cache write counts 1.25×, a cache read 0.1× and output 5×.
 - When only one session ran, the share uses the measured change in plan % (from Claude Code's rate-limit updates during that session's turns). Otherwise it is the estimate.
+- With **All computers**, the shares are split over the sessions of every computer the same way.
 
 A share is a session's part of the period's activity, never a part of a limit.
 

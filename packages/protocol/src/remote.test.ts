@@ -15,6 +15,7 @@ describe('the remote contracts', () => {
       'hello',
       'later.add',
       'options.get',
+      'projects.branches',
       'projects.list',
       'push.key',
       'push.subscribe',
@@ -31,11 +32,13 @@ describe('the remote contracts', () => {
       'session.setFlags',
       'session.setModel',
       'session.setPermissionMode',
+      'session.stopTask',
       'sessions.list',
       'transcript.get',
       'transcript.unwatch',
       'transcript.watch',
       'usage.get',
+      'usage.tokens',
     ]);
     expect(Object.keys(remoteContract.events).sort()).toEqual(['catchup.changed', 'session.ask', 'session.stream', 'sessions.changed', 'transcript.updated', 'upNext.changed', 'usage.changed']);
     expect(Object.keys(remotePairContract.requests)).toEqual(['pair.request']);
