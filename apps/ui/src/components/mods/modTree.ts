@@ -69,6 +69,12 @@ export function cutNote(reason: CutReason, site: 'pane' | 'band' | 'item', limit
 
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+/** The mod a node's drawing belongs to: `part.plugin` as documented, also `part` as a plain name or `part.name`. */
+const partOf = (node: Record<string, unknown>): string | null => {
+  const part = node.part;
+  const name = typeof part === 'string' ? part : (str(obj(part)?.plugin) ?? str(obj(part)?.name));
+  return name?.trim() ? name : null;
+};
 const encoder = new TextEncoder();
 
 function pressOf(raw: unknown): ModPressRef | null {
@@ -132,7 +138,7 @@ export function prepareTree(raw: unknown, limits: TreeLimits): PreparedTree {
     }
     const type = str(node.type);
     const props = obj(node.props) ?? {};
-    const part = str(obj(node.part)?.plugin);
+    const part = partOf(node);
     if (type && CONTAINERS.has(type)) return { kind: 'box', props: plainProps(props), part, children: children(node.children, depth + 1) };
     if (type && TEXTS.has(type)) {
       const textProps = plainProps(props);

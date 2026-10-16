@@ -90,6 +90,11 @@ export function ModsSettings() {
         </ul>
       )}
       <p className="text-meta text-muted">A mod's switch only shows or hides its UI here. To turn a mod off, disable its plugin in Claude Code.</p>
+      {mods !== null && mods.length > 1 && (
+        <p className="text-meta text-muted" data-mods-band-note>
+          Claude Code doesn't say which mod drew the band above the message box. With more than one mod, bands show only while all their switches are on.
+        </p>
+      )}
       {!prefs.showMods && screening.length > 0 && (
         <p className="flex items-start gap-1.5 text-meta text-muted" data-mods-screening-note>
           <ShieldCheck size={13} className="mt-px shrink-0 text-ok" aria-hidden />

@@ -8,10 +8,13 @@ import { modActionFailed, ModFrame } from './ModFrame.tsx';
 import { CutNote, ModTree } from './ModTree.tsx';
 import { BAND_MAX_PX } from './modStack.ts';
 import { cutNote, limitsFor, prepareTree, splitParts, type ModPart } from './modTree.ts';
-import { shownMods } from './modVisibility.ts';
+import { modShown } from './modVisibility.ts';
 import { useCardColor, useCellMetrics, useModRender } from './useModRender.ts';
 import { useModSite } from './useModSite.ts';
 import type { CellMetrics } from './modLayout.ts';
+
+/** The owner of a band no mod is named for. */
+const UNNAMED = 'mod';
 
 /** The frame's header and body padding, which the 160px include. */
 const FRAME_CHROME_PX = 24 + 16;
@@ -43,11 +46,18 @@ export function ModBands({ sessionId, profileId, working }: { sessionId: string;
   const enabled = prefs.showMods && mods.state.attached;
   const { result, error, retry } = useModRender(sessionId, 'AbovePrompt', ABOVE_PROMPT_INSTANCE, props, enabled);
   const prepared = useMemo(() => (result ? prepareTree(result.tree, limitsFor('band')) : null), [result]);
-  // Called on every render (hooks keep their order), but it only asks for the mods when nothing else names the owner.
-  const named = result?.drawnBy[0] ?? mods.state.plugins[0];
-  const onlyMod = useOnlyMod(profileId, !named);
-  const owner = named ?? onlyMod ?? 'mod';
-  const parts = useMemo(() => (prepared && result ? shownMods(prefs, profileId, splitParts(prepared.children, owner, result.drawnBy)) : []), [prepared, result, owner, prefs, profileId]);
+  // Called on every render (hooks keep their order), but it only lists the mods when Claude Code names no owner.
+  const drawnBy = result?.drawnBy ?? [];
+  const profileMods = useProfileMods(profileId, drawnBy.length === 0);
+  const owner = drawnBy[0] ?? (profileMods?.length === 1 ? profileMods[0]!.name : null) ?? UNNAMED;
+  // A drawing no mod is named for can't be split per mod, so no one switch can hide just its share: it shows only while
+  // every mod of the profile is on (and not before the list is in, so a mod that is off doesn't flash).
+  const allOn = profileMods !== null && profileMods.every((m) => modShown(prefs, m.profileId, m.name));
+  const parts = useMemo(() => {
+    if (!prepared || !result) return [];
+    const split = splitParts(prepared.children, owner, result.drawnBy);
+    return split.filter((part) => (part.plugin === UNNAMED ? prefs.showMods && allOn : modShown(prefs, profileId, part.plugin)));
+  }, [prepared, result, owner, prefs, profileId, allOn]);
 
   const drawn = parts.map((p) => p.plugin).join('\n');
   useEffect(() => {
@@ -90,15 +100,14 @@ function ModBand({ part, sessionId, metrics, background, note }: { part: ModPart
   );
 }
 
-/** When Claude Code doesn't say which mod drew the band, the profile's one mod is the owner. `needed`: list the mods only then. */
-function useOnlyMod(profileId: string | null, needed: boolean): string | null {
+/** The profile's mods (null until they are in), for a band Claude Code names no owner for. `needed`: list them only then. */
+function useProfileMods(profileId: string | null, needed: boolean): ModInfo[] | null {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
-  const [mods, setMods] = useState<ModInfo[]>([]);
+  const [mods, setMods] = useState<ModInfo[] | null>(null);
   useEffect(() => {
     if (!client || !needed) return;
     void client.call('mods.list', {}).then(({ mods }) => setMods(mods), () => setMods([]));
   }, [client, needed]);
-  const ofProfile = mods.filter((m) => !profileId || m.profileId === profileId);
-  return ofProfile.length === 1 ? ofProfile[0]!.name : null;
+  return useMemo(() => mods?.filter((m) => !profileId || m.profileId === profileId) ?? null, [mods, profileId]);
 }

@@ -131,6 +131,17 @@ describe('splitParts', () => {
     expect(JSON.stringify(parts)).not.toContain('engine');
   });
 
+  it('reads the mod name as a plain part or part.name too', () => {
+    const tree = prepareTree(
+      [
+        { type: 'Box', part: 'claude-stats', children: [{ type: 'Text', children: ['74% 5h'] }] },
+        { type: 'Box', part: { name: 'agent-watch' }, children: [{ type: 'Text', children: ['2 agents'] }] },
+      ],
+      limitsFor('band'),
+    );
+    expect(splitParts(tree.children, 'mod', []).map((p) => p.plugin)).toEqual(['claude-stats', 'agent-watch']);
+  });
+
   it('drops parts that draw nothing', () => {
     const tree = prepareTree([{ type: 'engine', ref: 0 }, ' '], limitsFor('band'));
     expect(splitParts(tree.children, 'x', [])).toEqual([]);
