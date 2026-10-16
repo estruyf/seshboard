@@ -664,6 +664,15 @@ export const SHORTCUTS = [
     when: (ctx) => inSession(ctx) && ctx.focus !== "terminal",
   },
   {
+    id: "transcript.run-send",
+    keys: ["alt+click"],
+    action: "Run a code block and give Claude its output",
+    section: "session",
+    context: "On a code block's Run button",
+    note: "It runs in a tab of its own; when it ends, Claude gets the exit code and the end of what it printed",
+    when: inSession,
+  },
+  {
     id: "transcript.file-link-other",
     keys: ["shift+click"],
     action: "Open a file link the other way",

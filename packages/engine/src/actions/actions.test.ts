@@ -72,6 +72,19 @@ describe('ActionStore', () => {
     expect(store.list(project).actions).toEqual([]);
     cache.close();
   });
+
+  it('keeps whether an action sends its output to Claude', () => {
+    const { store, project, cache } = setup();
+    store.save(project, action({ id: 'test', command: 'npm test', sendOutput: true }));
+    store.save(project, action({ id: 'dev', command: 'npm run dev' }));
+    expect(store.list(project).actions.map((a) => [a.id, a.sendOutput])).toEqual([
+      ['test', true],
+      ['dev', false],
+    ]);
+    store.save(project, action({ id: 'test', command: 'npm test', sendOutput: false }));
+    expect(store.list(project).actions.find((a) => a.id === 'test')!.sendOutput).toBe(false);
+    cache.close();
+  });
 });
 
 describe('expandCommand', () => {

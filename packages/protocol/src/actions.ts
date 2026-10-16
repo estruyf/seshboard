@@ -18,6 +18,8 @@ export const ProjectAction = z.object({
   shortcut: z.string().max(40).nullable().default(null),
   /** Run automatically in a new worktree before Claude starts (e.g. `npm install`). */
   runOnWorktreeCreate: z.boolean().default(false),
+  /** Shell actions: when it ends, its exit code and the end of its output go to the session as a message (queued while Claude works). */
+  sendOutput: z.boolean().default(false),
 });
 export type ProjectAction = z.infer<typeof ProjectAction>;
 

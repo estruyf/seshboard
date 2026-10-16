@@ -10,6 +10,7 @@ import type { SdkRuntime } from './host/hostManager.ts';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { git } from './git/gitChanges.ts';
 import { userShell } from './system/shell.ts';
+import { shellName } from './terminals/outputMessage.ts';
 
 const SESSION_ID = '33333333-3333-4333-8333-333333333333';
 /** The shell the engine's terminals run for the environment the tests give it: zsh here, PowerShell on Windows. */
@@ -487,6 +488,78 @@ describe('engine over a MessagePort', () => {
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'shared' })).rejects.toMatchObject({ code: 'UNTRUSTED' });
     await client.call('actions.trust', { projectRoot: project, id: 'shared' });
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'shared' })).resolves.toMatchObject({ kind: 'terminal' });
+  });
+
+  it('sends what a command printed, and how it ended, to the session when a run that reports back ends', async () => {
+    const ptys: Array<{ emit: (data: string) => void; exit: (event: { exitCode: number }) => void }> = [];
+    const prompts: string[] = [];
+    const project = mkdtempSync(join(tmpdir(), 'switchboard-project-'));
+    // A Claude Code that takes in what it is sent and never answers.
+    const sdk: SdkRuntime = {
+      query: ({ prompt }) =>
+        ({
+          async *[Symbol.asyncIterator]() {
+            for await (const message of prompt as AsyncIterable<SDKUserMessage>) prompts.push((message.message.content as Array<{ text?: string }>).map((c) => c.text ?? '').join(''));
+          },
+          interrupt: async () => {},
+          close: () => {},
+          setPermissionMode: async () => {},
+          setModel: async () => {},
+          supportedCommands: async () => [],
+          supportedModels: async () => [],
+        }) as never,
+      startup: async () => ({ query: () => ({}) as never, close: () => {} }) as never,
+    };
+    const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
+    const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(join(projectDir, `${SESSION_ID}.jsonl`), '{"entrypoint":"cli"}\n');
+    const engine = createEngine({
+      dataDir,
+      claudeConfigDir: join(dataDir, 'claude'),
+      shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '', SHELL: '/bin/zsh' }, resolved: false, durationMs: 0 }),
+      claudeBinary: '/nonexistent/claude',
+      sessionSource: fakeSource,
+      sdk: async () => sdk,
+      spawnPty: async () => () => {
+        const entry: (typeof ptys)[number] = { emit: () => {}, exit: () => {} };
+        ptys.push(entry);
+        return { pid: 999_998_000 + ptys.length, onData: (l) => ((entry.emit = l), { dispose() {} }), onExit: (l) => ((entry.exit = l), { dispose() {} }), write() {}, resize() {}, kill() {} };
+      },
+    });
+    const { port1, port2 } = new MessageChannel();
+    const detach = engine.attach(messagePortTransport(asDomPort(port1)));
+    const client = createRpcClient<Contract>(messagePortTransport(asDomPort(port2)));
+    cleanups.push(() => {
+      client.dispose();
+      detach();
+      engine.close();
+      port1.close();
+      port2.close();
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    });
+    await new Promise((resolve) => client.on('sessions.changed', resolve));
+    const reached = async (text: string) => {
+      for (let i = 0; i < 200; i++) {
+        const queued = (await client.call('upNext.list', {})).queues.flatMap((q) => q.queue.map((m) => m.text));
+        if ([...prompts, ...queued].some((p) => p.includes(text))) return true;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      return false;
+    };
+
+    // A plain run tells nobody.
+    const plain = await client.call('terminal.run', { sessionId: SESSION_ID, cwd: project, command: 'echo quiet' });
+    expect(plain).toMatchObject({ kind: 'action', title: 'echo quiet', sessionId: SESSION_ID });
+    ptys[0]!.emit('quiet\r\n');
+    ptys[0]!.exit({ exitCode: 0 });
+
+    await client.call('terminal.run', { sessionId: SESSION_ID, cwd: project, command: 'npm test', sendOutput: true });
+    ptys[1]!.emit('\u001b[31m1 failed\u001b[0m\r\n');
+    ptys[1]!.exit({ exitCode: 1 });
+    expect(await reached(`I ran \`npm test\` in the terminal (${shellName(shell)}). It failed with exit code 1.\n\nThe output:\n\`\`\`text\n1 failed\n\`\`\``)).toBe(true);
+    expect(await reached('echo quiet')).toBe(false);
   });
 
   it('stops an action terminal and restarts it in the same tab, checking the action again', async () => {

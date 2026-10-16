@@ -29,6 +29,11 @@ export interface TerminalManagerOptions {
   claudePath: () => Promise<string | undefined>;
   onData: (id: string, data: string) => void;
   onChange: (terminals: TerminalInfo[]) => void;
+  /**
+   * A process ended in a terminal that is still open (not when its tab was closed): what that run printed, without the
+   * command shown above it or the line saying it ended, and whether you pressed Stop.
+   */
+  onExit?: (info: TerminalInfo, run: { output: string; stopped: boolean }) => void;
   log: (level: LogLevel, message: string) => void;
 }
 
@@ -55,6 +60,11 @@ interface Terminal {
   stopTimers: Array<ReturnType<typeof setTimeout>>;
   replay: string[];
   replayLength: number;
+  /** Everything ever flushed, in characters, and where the current run's own output starts in that count. */
+  flushed: number;
+  runFrom: number;
+  /** Stop was pressed during the current run. */
+  stopped: boolean;
   pending: string;
   timer: ReturnType<typeof setTimeout> | undefined;
   exited: Promise<number>;
@@ -179,6 +189,9 @@ export class TerminalManager {
       stopTimers: [],
       replay: [],
       replayLength: 0,
+      flushed: 0,
+      runFrom: 0,
+      stopped: false,
       pending: '',
       timer: undefined,
     } as Partial<Terminal> as Terminal;
@@ -255,6 +268,7 @@ export class TerminalManager {
         // Already gone.
       }
     };
+    terminal.stopped = true;
     pty.write('\x03');
     terminal.stopTimers.push(
       setTimeout(() => signal('SIGTERM'), STOP_GRACE_MS),
@@ -269,6 +283,10 @@ export class TerminalManager {
     const action = terminal.info.kind === 'action';
     // Show what runs: a quiet command like `git fetch` with nothing new prints nothing, and the tab would look like it never ran.
     if (action) this.buffer(terminal, `\x1b[2m$ ${terminal.spawn.command!.replace(/\r?\n/g, '\r\n')}\x1b[0m\r\n`);
+    // What this run prints starts here: after the command shown above it, and after an earlier run's output.
+    this.flush(terminal);
+    terminal.runFrom = terminal.flushed;
+    terminal.stopped = false;
     const pty = (await this.spawnPty)(file, args, { name: 'xterm-256color', cols: terminal.info.cols, rows: terminal.info.rows, cwd, env });
     let resolveExit!: (code: number) => void;
     terminal.exited = new Promise<number>((resolve) => (resolveExit = resolve));
@@ -286,6 +304,8 @@ export class TerminalManager {
       terminal.stopTimers.splice(0).forEach(clearTimeout);
       // Killed by a signal: report it the way shells do (Ctrl+C is 130), not as a clean 0.
       const code = signal ? 128 + signal : exitCode;
+      this.flush(terminal);
+      const output = this.runOutput(terminal);
       if (action) {
         const last = (terminal.pending || terminal.replay.at(-1) || '\n').at(-1);
         this.buffer(terminal, `${last === '\n' ? '' : '\r\n'}\x1b[2m── ${code === 0 ? 'Done' : `Exited with code ${code}`} ──\x1b[0m\r\n`);
@@ -294,7 +314,21 @@ export class TerminalManager {
       terminal.info = { ...terminal.info, exitCode: code };
       resolveExit(code);
       this.changed();
+      if (this.terminals.get(terminal.info.id) === terminal) this.options.onExit?.(terminal.info, { output, stopped: terminal.stopped });
     });
+  }
+
+  /** What the current run printed so far, as far as the replay buffer still holds it. */
+  private runOutput(terminal: Terminal): string {
+    const dropped = terminal.flushed - terminal.replayLength;
+    return terminal.replay.join('').slice(Math.max(0, terminal.runFrom - dropped));
+  }
+
+  /** Adds a dim line of Switchboard's own under a terminal's output, such as where that output went. */
+  note(id: string, text: string): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal) return;
+    this.buffer(terminal, `\x1b[2m${text}\x1b[0m\r\n`);
   }
 
   /** Resolves with the exit code (or -1 when the terminal is closed first). */
@@ -399,6 +433,7 @@ export class TerminalManager {
     terminal.pending = '';
     terminal.replay.push(data);
     terminal.replayLength += data.length;
+    terminal.flushed += data.length;
     while (terminal.replayLength > REPLAY_LIMIT && terminal.replay.length > 1) {
       terminal.replayLength -= terminal.replay.shift()!.length;
     }

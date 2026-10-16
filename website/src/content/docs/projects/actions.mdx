@@ -49,6 +49,7 @@ The editor, **Project actions**, lists your actions on the left under **Yours**,
 | **Shortcut** | Optional. Click **Set**, then press the keys. See [Shortcuts](#shortcuts). |
 | **Ask before running** | Shows a confirmation with the command first. Useful for publish or deploy. |
 | **Run when a new worktree is created** | For a command: runs before Claude starts in each new worktree, for setup such as installing dependencies. |
+| **Send the output to Claude when it finishes** | For a command: see [Send the output to Claude](#send-the-output-to-claude). |
 
 The footer shows the pill as it will look above the message box. **Delete** removes an action you are editing; its command is not run.
 
@@ -108,6 +109,12 @@ It must include <Kbd keys="ctrl" /> or <Kbd keys="alt" />. Keys that Switchboard
 </OnlyOn>
 
 Action shortcuts are listed in the [keyboard shortcuts sheet](/keyboard-shortcuts/) (<Kbd shortcut="shortcuts" />) while a session in the project is open.
+
+## Send the output to Claude
+
+Turn on **Send the output to Claude when it finishes** for a command whose result Claude should see, such as *Test* or *Lint*. When the command ends, Claude gets a message from you with the action's name, its command, its exit code and the end of its output (the last 200 lines). While Claude works, the message waits in **Up next** until Claude finishes its turn; remove it there if you change your mind. A line under the output in the terminal tab says where it went.
+
+It also works when you run the action again with **Restart**. Close the tab before the command ends, and nothing is sent.
 
 ## Run in every new worktree
 

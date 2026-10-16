@@ -363,6 +363,7 @@ export function ActionEditor({
           name,
           id: newId,
           runOnWorktreeCreate: action.type === 'shell' && action.runOnWorktreeCreate,
+          sendOutput: action.type === 'shell' && action.sendOutput,
         },
         ...(editing && sameScope && editing.id !== slug(name) ? { previousId: editing.id } : {}),
       });
@@ -697,6 +698,14 @@ export function ActionEditor({
                       <Switch checked={draft.runOnWorktreeCreate} onChange={(runOnWorktreeCreate) => edit({ runOnWorktreeCreate })} disabled={readOnly} dataAttrs={{ 'data-action-worktree': true }} />
                       <span>
                         Run when a new worktree is created <span className="text-meta text-muted">· before Claude starts, for setup such as installing dependencies</span>
+                      </span>
+                    </label>
+                  )}
+                  {draft.type === 'shell' && (
+                    <label className="flex cursor-pointer items-center gap-3 text-ui">
+                      <Switch checked={draft.sendOutput} onChange={(sendOutput) => edit({ sendOutput })} disabled={readOnly} dataAttrs={{ 'data-action-send-output': true }} />
+                      <span>
+                        Send the output to Claude when it finishes <span className="text-meta text-muted">· the exit code and the end of the output, in Up next while Claude works</span>
                       </span>
                     </label>
                   )}

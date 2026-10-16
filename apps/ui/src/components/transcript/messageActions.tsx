@@ -15,6 +15,8 @@ export interface MessageActions {
   canEdit(messageUuid: string): boolean;
   /** Types a code block's command into the session's terminal; null when the session has no folder. */
   runCommand: ((command: string) => void) | null;
+  /** Runs a code block's command in a tab of its own and sends its output to Claude when it ends; null without a folder. */
+  runAndSend: ((command: string) => void) | null;
   /** Remember this…: the text as a memory (yours, or Claude's), in a dialog first. */
   remember(text: string, from: 'user' | 'claude'): void;
 }

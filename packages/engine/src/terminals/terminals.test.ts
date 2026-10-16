@@ -267,6 +267,47 @@ describe('TerminalManager', () => {
     expect(fake.ptys[2]!.killed).toBe(true);
   });
 
+  it('reports what each run printed when it ends, and whether you stopped it, but not for a closed tab', async () => {
+    let emit: (data: string) => void = () => {};
+    let exit: (event: { exitCode: number }) => void = () => {};
+    const spawn: SpawnPty = () => ({
+      pid: 6000,
+      onData: (l) => ((emit = l), { dispose() {} }),
+      onExit: (l) => ((exit = l), { dispose() {} }),
+      write() {},
+      resize() {},
+      kill() {},
+    });
+    const exits: Array<{ exitCode: number | null; output: string; stopped: boolean }> = [];
+    const manager = new TerminalManager({
+      spawn: async () => spawn,
+      env: async () => ({ PATH: '', SHELL: '/bin/sh' }),
+      claudePath: async () => undefined,
+      onData: () => {},
+      onChange: () => {},
+      onExit: (info, run) => exits.push({ exitCode: info.exitCode, ...run }),
+      log: () => {},
+    });
+    managers.push(manager);
+    const info = await manager.open({ sessionId: 's1', cwd: tempDir(), kind: 'action', command: 'npm test', title: 'Test', cols: 80, rows: 24, fork: false });
+    emit('1 failed\r\n');
+    exit({ exitCode: 1 });
+    // The command shown above the output and the line saying it ended aren't part of it.
+    expect(exits).toEqual([{ exitCode: 1, output: '1 failed\r\n', stopped: false }]);
+
+    // A second run reports only its own output; Stop is remembered for the run it was pressed in.
+    await manager.restart(info.id);
+    emit('all passed\r\n');
+    manager.stop(info.id);
+    exit({ exitCode: 130 });
+    expect(exits[1]).toEqual({ exitCode: 130, output: 'all passed\r\n', stopped: true });
+
+    await manager.restart(info.id);
+    manager.close(info.id);
+    exit({ exitCode: 0 });
+    expect(exits).toHaveLength(2);
+  });
+
   it('drops a resize or keystroke for a pty that closed before its exit event', async () => {
     const fake = fakePtys();
     const { manager } = setup(fake.spawn);

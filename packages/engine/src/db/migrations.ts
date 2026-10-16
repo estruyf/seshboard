@@ -502,4 +502,9 @@ export const migrations: readonly string[] = [
   ALTER TABLE remote_devices ADD COLUMN kind TEXT NOT NULL DEFAULT 'phone';
   ALTER TABLE remote_devices ADD COLUMN last_address TEXT;
   `,
+
+  // v29: A shell action can send its output to the session when it ends. Your choice, on your actions.
+  `
+  ALTER TABLE project_actions ADD COLUMN send_output INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
