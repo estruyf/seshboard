@@ -537,6 +537,7 @@ Switchboard reads the session files Claude Code already keeps in `~/.claude` (an
 The full guide to every feature is on the website: **[switchboard.struyfconsulting.com](https://switchboard.struyfconsulting.com/)**.
 
 - [Themes](docs/themes.md): the theme file format, every colour and where it shows, and code colours.
+- [Claude Code mods](docs/mods.md): how Switchboard relays mods' requests and draws their trees, and the limits it keeps.
 - [Project actions](docs/project-actions.md): add buttons for your own commands and prompts, and share them with your team.
 - [Memory](docs/memory.md): where Claude Code's memory lives, the file format, what loads in a session, the personal folder and the Claude export import.
 - [Links](docs/deep-links.md): open Switchboard from a `switchboard://` URL, with examples for the shell, READMEs, Raycast, Alfred and alerts.

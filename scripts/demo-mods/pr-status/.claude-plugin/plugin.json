@@ -1,0 +1,6 @@
+{
+  "name": "pr-status",
+  "version": "0.1.0",
+  "description": "Demo mod for the website's screenshots: the pull request, as a status",
+  "author": { "name": "Switchboard" }
+}

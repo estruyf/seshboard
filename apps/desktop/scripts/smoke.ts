@@ -8,7 +8,7 @@
  * (npm run smoke:demo), since a runner's home folder has no ~/.claude.
  */
 import { spawn } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -76,6 +76,13 @@ const otherComputer = spawn(process.execPath, ['--experimental-transform-types',
 });
 childEnv.SWITCHBOARD_SMOKE_COMPUTER_LINK = computerLink;
 
+// Claude Code mods: the test mod in a throwaway folder (Claude Code writes its types into a mod's folder), a throwaway
+// Claude config folder for its profile, and an empty folder for its session.
+const modsDir = mkdtempSync(join(tmpdir(), 'switchboard-smoke-mods-'));
+cpSync(join(appDir, '..', '..', 'tests', 'fixtures', 'smoke-mod'), join(modsDir, 'smoke-mod'), { recursive: true });
+for (const folder of ['config', 'project']) mkdirSync(join(modsDir, folder));
+childEnv.SWITCHBOARD_SMOKE_MODS = JSON.stringify({ pluginDir: join(modsDir, 'smoke-mod'), configDir: join(modsDir, 'config'), cwd: join(modsDir, 'project'), out: join(modsDir, 'started.json') });
+
 const child = spawn(command, packaged ? [] : [appDir], {
   env: { ...childEnv, SWITCHBOARD_SMOKE_OUT: outDir, ELECTRON_ENABLE_LOGGING: '0' },
   stdio: 'inherit',
@@ -84,6 +91,7 @@ const child = spawn(command, packaged ? [] : [appDir], {
 const code: number = await new Promise((resolve) => child.on('exit', (c) => resolve(c ?? 1)));
 otherComputer.kill();
 rmSync(computerDir, { recursive: true, force: true, maxRetries: 5 });
+rmSync(modsDir, { recursive: true, force: true, maxRetries: 5 });
 if (world) {
   world.stop();
   rmSync(world.home, { recursive: true, force: true, maxRetries: 5 });

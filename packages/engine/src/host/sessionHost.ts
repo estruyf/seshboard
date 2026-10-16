@@ -20,6 +20,8 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
 import { InputQueue } from './inputQueue.ts';
+import { modsBridge } from './modsBridge.ts';
+import { ModsSurface, type ModsEvents } from './modsSurface.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 import { limitStop, type LimitStop, type RateLimitUpdate } from '../usageLimit/usageLimit.ts';
 
@@ -53,6 +55,8 @@ export interface HostEvents {
   turnOk?(sessionId: string): void;
   /** The profile is at a usage limit: what is queued waits until it is cleared. */
   limited?(): boolean;
+  /** What this session's mods tell the windows; without it, mods never attach. */
+  mods?: ModsEvents;
 }
 
 export interface HostConfig {
@@ -76,6 +80,8 @@ export interface HostConfig {
   canUseTool: CanUseTool;
   /** The SDK's messages for a usage limit that was reached (`limitPrefixes`); empty when this SDK has none. */
   limitPrefixes?: readonly string[];
+  /** Show mods (Settings › Mods): attach when Claude Code can draw mods. On unless said otherwise. */
+  showMods?: boolean;
 }
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
@@ -88,6 +94,20 @@ export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Switchb
 export function failureMessage(message: string, claudePath: string | undefined): string {
   return claudePath === undefined && /native cli binary .*not found/i.test(message) ? CLAUDE_MISSING_MESSAGE : message;
 }
+
+/** A host nobody listens to for mods (tests, helpers): it never attaches. */
+const NO_MODS: ModsEvents = {
+  state: () => {},
+  toast: () => {},
+  statuses: () => {},
+  log: () => {},
+  invalidate: () => {},
+  panes: () => {},
+  scroll: () => {},
+  focus: () => {},
+  ask: async () => null,
+  diagnostics: () => {},
+};
 
 const STATE_FROM_SDK: Record<string, HostState> = { running: 'running', requires_action: 'needs-you', idle: 'idle' };
 
@@ -189,6 +209,8 @@ export class SessionHost {
   /** When the process ended (closed or crashed), for telling our own exiting process apart from another window. */
   closedAt: number | undefined;
   info: SessionHostInfo;
+  /** The session's Claude Code mods (attached when it reports `ui_surface_v1` and Show mods is on). */
+  readonly mods: ModsSurface;
 
   constructor(
     private readonly config: HostConfig,
@@ -214,6 +236,7 @@ export class SessionHost {
       profileId: config.profileId,
       backgroundTasks: [],
     };
+    this.mods = new ModsSurface(() => this.info.sessionId, events.mods ?? NO_MODS, events.mods !== undefined && config.showMods !== false);
     this.initialized = new Promise((resolve, reject) => {
       this.initResolve = resolve;
       this.initReject = reject;
@@ -235,6 +258,8 @@ export class SessionHost {
       (query) => {
         // The loop catches its own failures; this is the last line, so nothing becomes an unhandled rejection.
         this.loop(query).catch((error: unknown) => this.events.log('error', `Session ${this.sessionId} broke: ${(error as Error).message}`));
+        this.mods.setBridge(modsBridge(query));
+        void this.readInitCapabilities(query);
         return query;
       },
       (error: unknown) => {
@@ -500,8 +525,19 @@ export class SessionHost {
    * map (their last state is still shown), and would otherwise keep the whole Query alive until quit.
    */
   private release(): void {
+    this.mods.close();
     this.input.end();
     this.query = Promise.resolve(undefined);
+  }
+
+  /** Capabilities from the initialize result, which comes before any turn's init message. */
+  private async readInitCapabilities(query: Query): Promise<void> {
+    try {
+      const init = (await query.initializationResult()) as { capabilities?: unknown };
+      if (Array.isArray(init?.capabilities) && this.active) this.mods.setCapabilities(init.capabilities.filter((c): c is string => typeof c === 'string'));
+    } catch {
+      // The init message carries them too.
+    }
   }
 
   private update(patch: Partial<SessionHostInfo>): void {
@@ -604,6 +640,8 @@ export class SessionHost {
   }
 
   private handleSystem(message: Extract<SDKMessage, { type: 'system' }>): void {
+    // Mods' toasts, statuses, panes and logs never reach the transcript.
+    if (this.mods.handleSystem(message as unknown as { subtype?: unknown } & Record<string, unknown>)) return;
     if (message.subtype === 'init') {
       const init = message as Extract<SDKMessage, { subtype: 'init' }>;
       // Without an id the session would be filed under `undefined` (and break every list that looks it up): skip it.
@@ -622,6 +660,9 @@ export class SessionHost {
       const terminalOnly = (init as { terminal_slash_commands?: unknown }).terminal_slash_commands;
       if (Array.isArray(terminalOnly)) this.terminalOnly = terminalOnly.filter((c): c is string => typeof c === 'string');
       this.plugins = pluginsFromInit((init as { plugins?: unknown }).plugins);
+      const capabilities = (init as { capabilities?: unknown }).capabilities;
+      // Every turn's init lists them: one without `ui_surface_v1` means the mods are gone.
+      if (Array.isArray(capabilities)) this.mods.setCapabilities(capabilities.filter((c): c is string => typeof c === 'string'));
       this.initResolve(init.session_id);
       if (first) {
         void this.loadCatalogs();

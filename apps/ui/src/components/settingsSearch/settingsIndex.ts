@@ -85,6 +85,25 @@ export function settingsIndex(): SettingEntry[] {
     },
     { id: 'all-sessions', page: 'sessions', label: 'All sessions', detail: 'Every session, grouped by month, with filters. Unarchive them or move them to the ' + trash + '.', keywords: 'manage overview table disk size unarchive', target: '[data-session-manager]' },
 
+    // Mods
+    {
+      id: 'show-mods',
+      page: 'mods',
+      label: 'Show mods',
+      detail: "Bands, panes, statuses, toasts and replaced views from your plugins. Off, sessions use only Switchboard's own views.",
+      keywords: 'mods plugins panes status line statusline bands toasts ui surfaces extensions',
+      target: '[data-show-mods]',
+    },
+    {
+      id: 'mods-list',
+      page: 'mods',
+      label: 'Mods',
+      detail: 'Each mod from your enabled plugins, with a switch that shows or hides its UI here.',
+      keywords: 'mods plugins panes status line hide show ui enabledPlugins managed marketplace',
+      target: '[data-mods-list]',
+      fallback: '[data-mods-settings]',
+    },
+
     // Conversation
     {
       id: 'tool-activity',
@@ -276,6 +295,7 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'backup-import', page: 'backup', label: 'Import settings', detail: 'See what a file would change before anything happens. Your current settings are backed up first.', keywords: 'restore backup', target: '[data-backup-import]' },
 
     // Diagnostics
+    { id: 'diagnostics-mod-logs', page: 'diagnostics', label: 'Mod logs', detail: 'What mods wrote to their log in running sessions.', keywords: 'mods plugins log ui_log debug', target: '[data-diagnostics-card="Mod logs"]' },
     { id: 'diagnostics-engine', page: 'diagnostics', label: 'Engine', detail: 'Status, round trip and engine version.', keywords: 'ping health', target: '[data-diagnostics-card="Engine"]' },
     { id: 'diagnostics-claude', page: 'diagnostics', label: 'Claude Code', detail: 'Binary, config folder and shell environment.', keywords: 'path version env', target: '[data-diagnostics-card="Claude Code"]' },
     { id: 'diagnostics-log', page: 'diagnostics', label: 'Engine log', detail: 'What the engine did recently.', keywords: 'logs errors debug', target: '[data-diagnostics-card="Engine log"]' },

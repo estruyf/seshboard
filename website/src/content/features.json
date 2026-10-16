@@ -1087,6 +1087,11 @@
       "page": "settings"
     },
     {
+      "id": "settings:mods",
+      "name": "Settings: Mods",
+      "page": "sessions/mods"
+    },
+    {
       "id": "settings:focus",
       "name": "Settings: Focus",
       "page": "focus-limit"
@@ -3385,6 +3390,21 @@
       "id": "slash:btw",
       "name": "/btw asks about the session",
       "page": "sessions/ask"
+    },
+    {
+      "id": "feature:mods",
+      "name": "Claude Code mods: bands, panes, statuses, toasts and replaced views, framed with the mod's name",
+      "page": "sessions/mods"
+    },
+    {
+      "id": "feature:show-mods",
+      "name": "Settings › Mods: Show mods, and a switch per mod",
+      "page": "sessions/mods"
+    },
+    {
+      "id": "feature:mods-chip",
+      "name": "The mods chip in the session header and its popover",
+      "page": "sessions/mods"
     }
   ]
 }
