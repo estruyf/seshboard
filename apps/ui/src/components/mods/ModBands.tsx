@@ -43,7 +43,10 @@ export function ModBands({ sessionId, profileId, working }: { sessionId: string;
   const enabled = prefs.showMods && mods.state.attached;
   const { result, error, retry } = useModRender(sessionId, 'AbovePrompt', ABOVE_PROMPT_INSTANCE, props, enabled);
   const prepared = useMemo(() => (result ? prepareTree(result.tree, limitsFor('band')) : null), [result]);
-  const owner = result?.drawnBy[0] ?? mods.state.plugins[0] ?? useOnlyMod(profileId) ?? 'mod';
+  // Called on every render (hooks keep their order), but it only asks for the mods when nothing else names the owner.
+  const named = result?.drawnBy[0] ?? mods.state.plugins[0];
+  const onlyMod = useOnlyMod(profileId, !named);
+  const owner = named ?? onlyMod ?? 'mod';
   const parts = useMemo(() => (prepared && result ? shownMods(prefs, profileId, splitParts(prepared.children, owner, result.drawnBy)) : []), [prepared, result, owner, prefs, profileId]);
 
   const drawn = parts.map((p) => p.plugin).join('\n');
@@ -87,15 +90,15 @@ function ModBand({ part, sessionId, metrics, background, note }: { part: ModPart
   );
 }
 
-/** When Claude Code doesn't say which mod drew the band, the profile's one mod is the owner. */
-function useOnlyMod(profileId: string | null): string | null {
+/** When Claude Code doesn't say which mod drew the band, the profile's one mod is the owner. `needed`: list the mods only then. */
+function useOnlyMod(profileId: string | null, needed: boolean): string | null {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [mods, setMods] = useState<ModInfo[]>([]);
   useEffect(() => {
-    if (!client) return;
+    if (!client || !needed) return;
     void client.call('mods.list', {}).then(({ mods }) => setMods(mods), () => setMods([]));
-  }, [client]);
+  }, [client, needed]);
   const ofProfile = mods.filter((m) => !profileId || m.profileId === profileId);
   return ofProfile.length === 1 ? ofProfile[0]!.name : null;
 }

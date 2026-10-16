@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Starting a session no longer empties the window.** Sending the first message from New session could leave Switchboard blank, until you restarted it. It now opens the session.
 - **A new line at the bottom of a full message box.** When the message box was at its full height, ⇧↵ (Shift+Enter) at the end left the new line, and the caret, just out of sight under the box. The box now scrolls to the caret.
 
 ## [0.0.21] - 2026-10-16
