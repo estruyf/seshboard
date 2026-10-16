@@ -77,3 +77,23 @@ export function textareaRows(el: HTMLTextAreaElement): RowOf {
     return top;
   };
 }
+
+/** The scroll position that shows a row `top`–`top + height` in a box `clientHeight` tall: unchanged when it already shows. */
+export function scrollToRow(scrollTop: number, clientHeight: number, top: number, height: number): number {
+  if (top < scrollTop) return top;
+  if (top + height > scrollTop + clientHeight) return top + height - clientHeight;
+  return scrollTop;
+}
+
+/**
+ * Scrolls a box at its full height to the caret's row. Chromium scrolls to the caret before
+ * `field-sizing: content` grows the box, so a new line typed at the bottom stayed just out of sight.
+ */
+export function revealCaret(el: HTMLTextAreaElement) {
+  if (el.scrollHeight <= el.clientHeight) return;
+  const top = textareaRows(el)(el.selectionDirection === 'backward' ? el.selectionStart : el.selectionEnd);
+  if (top === null) return;
+  const style = getComputedStyle(el);
+  const height = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+  el.scrollTop = scrollToRow(el.scrollTop, el.clientHeight, top, height);
+}

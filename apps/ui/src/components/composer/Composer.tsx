@@ -11,7 +11,7 @@ import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
-import { onFirstLine, onLastLine, textareaRows } from './caretLine.ts';
+import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
 import { appendQuote, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
@@ -778,6 +778,8 @@ export function Composer(props: ComposerProps) {
               }
               setText(el.value);
               updatePalette(el.value, el.selectionStart);
+              // After the box has grown (or not, at its full height): before the next paint, so nothing jumps.
+              requestAnimationFrame(() => revealCaret(el));
             }}
             onKeyDown={onKeyDown}
             {...deadKeyWrap(setText)}
