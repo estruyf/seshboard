@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  .copy { width: 450px; }
+  .also { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 22px; font-size: 13px; color: var(--faint); }
+  .also .pill { height: 26px; padding: 0 11px; font-size: 12.5px; color: var(--text); background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px var(--edge); }
+
+  .card { position: absolute; border-radius: 13px; background: var(--card); box-shadow: 0 0 0 1px var(--edge), 0 26px 60px -12px rgba(0,0,0,0.85); }
+  .code { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
+
+  /* The Commands panel, at the back on the right. */
+  .cmds { left: 286px; top: 0; width: 314px; height: 372px; overflow: hidden; background: var(--bg); }
+  .cmds .hd { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+  .cmds .hd svg { width: 14px; height: 14px; color: var(--muted); }
+  .cmds .hd b { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .cmds .hd .run { margin-left: auto; }
+  .cmds .sec { padding: 9px 14px 4px; }
+  .cmd { display: grid; grid-template-columns: 12px 1fr auto; gap: 9px; align-items: center; padding: 6px 14px; }
+  .cmd.sel { background: rgba(255,255,255,0.06); box-shadow: inset 2px 0 0 var(--error); }
+  .cmd b { display: block; font-size: 11.5px; font-weight: 600; color: var(--text); }
+  .cmd span.c { font-size: 10.5px; color: var(--muted); }
+  .cmd .ex { font-size: 10.5px; color: var(--error); }
+  .cmd .ok { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  .cmd .bad { width: 8px; height: 8px; border-radius: 50%; background: var(--error); }
+  .gspin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(81,207,102,0.25); border-top-color: var(--ok); }
+  .out { margin: 8px 12px 0; border-radius: 9px; background: var(--card); box-shadow: inset 0 0 0 1px var(--border); }
+  .out .oh { display: flex; align-items: center; padding: 7px 10px 6px; }
+  .out .oh .st { margin-left: 8px; font-size: 10.5px; color: var(--error); }
+  .out .oh .cp { margin-left: auto; font-size: 10.5px; color: var(--muted); padding: 2px 7px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--edge); }
+  .out pre { margin: 0; padding: 4px 10px 10px; font-size: 10.5px; line-height: 1.55; color: var(--muted); white-space: pre; }
+  .out pre .r { color: var(--error); } .out pre .g { color: var(--ok); } .out pre .t { color: var(--text); }
+
+  /* Claude's reply with a shell block and its two buttons, in front on the left. */
+  .reply { left: 0; top: 36px; width: 278px; padding: 13px 14px 14px; }
+  .reply p { font-size: 12.5px; color: var(--text); line-height: 1.5; }
+  .block { position: relative; margin-top: 9px; border-radius: 8px; background: #191d27; box-shadow: inset 0 0 0 1px var(--border); padding: 12px 12px; font-size: 12px; color: var(--text); }
+  .block .p { color: var(--faint); }
+  .tools { position: absolute; top: 5px; right: 5px; display: flex; gap: 2px; padding: 2px; border-radius: 7px; background: #191d27; }
+  .tools span { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); }
+  .tools span svg { width: 13px; height: 13px; }
+  .tools span.on { background: rgba(255,212,59,0.16); color: var(--accent); box-shadow: inset 0 0 0 1px rgba(255,212,59,0.5); }
+  .tip { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif; position: absolute; top: 34px; right: -4px; white-space: nowrap; padding: 5px 8px; border-radius: 7px; font-size: 11px; color: var(--text); background: var(--popover); box-shadow: 0 0 0 1px var(--edge), 0 8px 20px rgba(0,0,0,0.5); }
+  .tip .kbd { background: rgba(255,255,255,0.08); color: var(--muted); margin-left: 4px; }
+
+  /* What Claude gets: your message, waiting in Up next while Claude works. */
+  .sent { left: 0; top: 352px; width: 372px; padding: 12px 14px 13px; }
+  .sent .lbl { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+  .sent .lbl .pill { height: 19px; font-size: 10.5px; }
+  .sent p { font-size: 12.5px; color: var(--text); line-height: 1.5; }
+  .sent p .code { font-size: 11.5px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.07); }
+  .sent pre { margin: 7px 0 0; padding: 7px 9px; border-radius: 7px; background: #191d27; font-size: 10.5px; line-height: 1.5; color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard 0.0.21</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Out now</div>
+    <h1>Run it, <span class="hl">and Claude sees how it went</span></h1>
+    <p class="sub">A new <b>Commands</b> panel follows Claude's background commands live. <b>Run and send</b> gives Claude the exit code and the output, so it carries on by itself.</p>
+    <div class="also">Also new:
+      <span class="pill">Claude Code mods</span>
+      <span class="pill">Usage across computers</span>
+      <span class="pill">Connected devices</span>
+    </div>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Download for free</span>
+    <span class="where">switchboard.struyfconsulting.com</span>
+  </div>
+
+  <div class="stage">
+    <div class="card cmds">
+      <div class="hd">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4 6l2 2-2 2M8 10h4"/></svg>
+        <b>Commands</b>
+        <span class="pill ok run">1 running</span>
+      </div>
+      <div class="sec section" style="color:var(--accent)">Running <span class="count">1</span></div>
+      <div class="cmd"><span class="gspin"></span><div><b>Start the dev server</b><span class="c code">npm run dev</span></div><span></span></div>
+      <div class="sec section" style="color:var(--faint)">Finished <span class="count">2</span></div>
+      <div class="cmd sel"><span class="bad"></span><div><b>Run the theme tests</b><span class="c code">npm test -- theme</span></div><span class="ex code">exit 1</span></div>
+      <div class="cmd"><span class="ok"></span><div><b>Build the app</b><span class="c code">npm run build</span></div><span></span></div>
+      <div class="out">
+        <div class="oh"><span class="section" style="color:var(--muted)">Output</span><span class="st">Failed, exit code 1</span><span class="cp">Copy</span></div>
+<pre class="code"><span class="r">FAIL</span> <span class="t">src/lib/theme.test.ts</span>
+  <span class="r">✕</span> remembers the choice <span>(12 ms)</span>
+    Expected: <span class="g">"dark"</span>  Received: <span class="r">"light"</span>
+Tests: <span class="r">1 failed</span>, <span class="g">5 passed</span>, 6 total</pre>
+      </div>
+    </div>
+
+    <div class="card reply">
+      <p>Fixed the default. Run the theme tests to check it:</p>
+      <div class="block code"><span class="p">$</span> npm test -- theme
+        <div class="tools">
+          <span><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.5v9l7-4.5z"/></svg></span>
+          <span class="on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/><path d="M7 7h3.5M9 5.5L10.5 7 9 8.5"/></svg></span>
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M3 10.5V3.5a1 1 0 0 1 1-1h6.5"/></svg></span>
+        </div>
+        <div class="tip">Run and send the output to Claude <span class="kbd">⌥ click</span></div>
+      </div>
+    </div>
+
+    <!-- From the send button to the message Claude gets. -->
+    <svg class="cable" viewBox="0 0 600 540">
+      <defs>
+        <linearGradient id="warm" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#f3a27f"/><stop offset="1" stop-color="#c95f3d"/>
+        </linearGradient>
+        <filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#000" flood-opacity="0.55"/></filter>
+      </defs>
+      <g filter="url(#sh)">
+        <path d="M 0 118 C -40 190, 30 300, 96 350" fill="none" stroke="url(#warm)" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="0" cy="118" r="8" fill="#f3a27f"/>
+        <circle cx="96" cy="350" r="8" fill="#c95f3d"/>
+      </g>
+    </svg>
+
+    <div class="card sent">
+      <div class="lbl"><span class="section" style="color:var(--muted)">Sent to Claude</span><span class="pill">Up next</span></div>
+      <p>I ran <span class="code">npm test -- theme</span> in the terminal (zsh). It failed with exit code 1.</p>
+      <pre class="code">✕ remembers the choice
+Tests: 1 failed, 5 passed, 6 total</pre>
+    </div>
+  </div>
+</body>
+</html>
