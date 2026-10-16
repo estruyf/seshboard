@@ -30,6 +30,15 @@ export function tunnelArgs(tool: TunnelTool, port: number, options: { ngrokDomai
   }
 }
 
+/**
+ * The environment a tool runs in. On macOS, Tailscale.app's binary is the app and the CLI in one, and only acts as the
+ * CLI with `TERM` or `TAILSCALE_BE_CLI` set: started from the Dock, Switchboard has no `TERM`, so `tailscale serve`
+ * would try to open the app and fail with "Tailscale.CLIError error 3".
+ */
+export function tunnelEnv(tool: TunnelTool, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return tool === 'tailscale' ? { ...env, TAILSCALE_BE_CLI: '1' } : env;
+}
+
 /** The public address in what a tool printed so far, or null while it hasn't said it yet. */
 export function tunnelAddress(tool: TunnelTool, output: string): string | null {
   let match: string | null = null;
@@ -118,7 +127,7 @@ export class Tunnel {
     return new Promise((resolve, reject) => {
       let output = '';
       let address: string | null = null;
-      const child = spawn(file, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      const child = spawn(file, args, { stdio: ['ignore', 'pipe', 'pipe'], env: tunnelEnv(tool), windowsHide: true });
       this.child = child;
       const timer = setTimeout(() => {
         reject(new Error(`${NAMES[tool]} didn't give an address in time. ${tunnelError(output)}`));

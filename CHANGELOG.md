@@ -18,6 +18,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **The remote app's conversation keeps its place.** When a run of steps folded away after Claude moved on, the conversation could show blank space with the earlier messages out of view. Opening and closing a step no longer leaves a **New messages** button that goes nowhere.
 - **Long links in the remote app's catch-up.** A long link in what you asked, or in what Claude did, ran off the side of the card. It now wraps.
 
+### Fixed
+
+- **Remote with Tailscale on macOS.** With Switchboard started from the Dock, turning Remote on with Tailscale failed with "The Tailscale GUI failed to start" (Tailscale.CLIError error 3), even though Tailscale was running. Switchboard now runs the Tailscale app as its command-line tool.
+
 ## [0.0.20] - 2026-10-15
 
 ### New
