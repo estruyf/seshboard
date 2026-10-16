@@ -57,7 +57,8 @@ export function useNow(): number {
  * - `sidebar`: the wide layout's sidebar. The search opens the palette, chips for what needs you and what works,
  *   prompts are rows in Needs you (their cards are on the home view), rows are the desktop's size, and the `⋯` menu
  *   sits at the bottom next to New session.
- * - `drawer`: the sessions drawer. A search, the Home row on a wide screen, prompts as rows, the open session picked.
+ * - `drawer`: the sessions drawer. A search, the Home row (on every screen size: Home on a wide screen, the first
+ *   screen on a phone), prompts as rows, the open session picked.
  */
 export type ListMode = 'phone' | 'sidebar' | 'drawer';
 
@@ -109,8 +110,11 @@ export function SessionList({
   newOpen: boolean;
   onOpen: (sessionId: string) => void;
   onNew: () => void;
-  /** Goes to Home: the sidebar's button, or the drawer's Home row on a wide screen. Without it, no Home row. */
-  onHome?: () => void;
+  /**
+   * The sidebar's Home button, or the drawer's Home row, which shows on every screen size: Home on a wide screen, the
+   * first screen on a phone.
+   */
+  onHome: () => void;
   /** Home is on screen: its button or row shows as current. */
   homeOpen?: boolean;
   /** Asks for the list again (pull to refresh); done when the answer is in. */
@@ -343,7 +347,7 @@ export function SessionList({
         <header className={`sticky top-0 z-10 flex items-center gap-2 bg-inherit pb-2 ${drawer ? 'px-3 pt-[max(0.75rem,env(safe-area-inset-top))]' : 'safe-top px-4'}`}>
           <Logo className="size-6" />
           <h1 className="min-w-0 flex-1 truncate text-title font-semibold">Sessions</h1>
-          {sidebar && onHome && (
+          {sidebar && (
             <Button variant="quiet" size="md" aria-label="Home" title="Home" aria-current={homeOpen ? 'page' : undefined} onClick={onHome} className={`px-2! ${homeOpen ? 'bg-selected text-text' : ''}`} data-remote-home-button>
               <House className="size-4" aria-hidden />
             </Button>
@@ -367,7 +371,7 @@ export function SessionList({
       {drawer && (
         <>
           <div className="flex px-3 pb-2">{searchField}</div>
-          {!query && onHome && (
+          {!query && (
             <button
               type="button"
               onClick={onHome}

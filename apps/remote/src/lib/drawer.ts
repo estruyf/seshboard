@@ -48,6 +48,12 @@ export function drawerLabel(needsYou: number): string {
   return `Sessions, ${needsYou} ${needsYou === 1 ? 'needs' : 'need'} you`;
 }
 
+/**
+ * Where the drawer's Home row goes. A wide screen has Home, the view next to the sidebar. A phone has one home, the
+ * first screen: the list.
+ */
+export const homeRoute = (wide: boolean): { kind: 'home' } | { kind: 'list' } => (wide ? { kind: 'home' } : { kind: 'list' });
+
 /** What waits on you in the other sessions: the open one's prompt is on screen already. */
 export function needsYouElsewhere(sessions: readonly { id: string; status: string }[], openId: string | null): number {
   return sessions.filter((s) => s.status === 'needs-you' && s.id !== openId).length;

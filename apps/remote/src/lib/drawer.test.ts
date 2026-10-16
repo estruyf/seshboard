@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dragPosition, drawerLabel, drawerWidth, needsYouElsewhere, settle, startsEdgeSwipe } from './drawer.ts';
+import { dragPosition, drawerLabel, drawerWidth, homeRoute, needsYouElsewhere, settle, startsEdgeSwipe } from './drawer.ts';
 import { addSample, axisOf, velocity } from './gesture.ts';
 
 describe('the edge swipe', () => {
@@ -93,5 +93,15 @@ describe('the drawer button', () => {
   it('takes 86% of a phone’s width, and at most 400px', () => {
     expect(drawerWidth(390)).toBe(335);
     expect(drawerWidth(820)).toBe(400);
+  });
+});
+
+describe('the Home row', () => {
+  it('goes to the first screen on a phone, which has no Home route', () => {
+    expect(homeRoute(false)).toEqual({ kind: 'list' });
+  });
+
+  it('goes to Home next to the sidebar on a wide screen', () => {
+    expect(homeRoute(true)).toEqual({ kind: 'home' });
   });
 });

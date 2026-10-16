@@ -3,7 +3,7 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { RemoteContract, RemoteSessions, RpcClient } from '@switchboard/protocol/remote-client';
 import { Connection, type ConnectionState } from '../lib/connection.ts';
 import { setFaviconDot } from '../lib/favicon.ts';
-import { needsYouElsewhere } from '../lib/drawer.ts';
+import { homeRoute, needsYouElsewhere } from '../lib/drawer.ts';
 import { nextNeedsYou } from '../lib/groups.ts';
 import { inView, isTypingTarget, keyAction, nextIndex } from '../lib/keys.ts';
 import type { Paired } from '../lib/link.ts';
@@ -267,7 +267,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     setRoute(next);
   };
   const pick = (sessionId: string) => fromDrawer(() => swap({ kind: 'session', sessionId }));
-  const pickHome = () => fromDrawer(() => swap({ kind: 'home' }));
+  /** The drawer's Home row: Home on a wide screen, the first screen on a phone (its only home). */
+  const pickHome = () => fromDrawer(() => swap(homeRoute(wide)));
   const pickNew = () => fromDrawer(() => (wide ? swap({ kind: 'new' }) : go({ kind: 'new' })));
   /** ⌘B, or the toggle in the session's header: the sidebar folds into the drawer, or comes back. */
   const toggleFold = () => {
@@ -461,8 +462,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         newOpen={route.kind === 'new'}
         onOpen={pick}
         onNew={pickNew}
-        onHome={wide ? pickHome : undefined}
-        homeOpen={wide && atRoot}
+        onHome={pickHome}
+        homeOpen={atRoot}
         onRefresh={reload}
         onArchived={(sessionId) => sessionId === currentId && leave()}
         homeRow={<ProfileStrip usage={usage} />}

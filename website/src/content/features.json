@@ -1338,7 +1338,7 @@
     },
     {
       "id": "feature:remote-drawer",
-      "name": "Remote: switch sessions from the sessions drawer (button or edge swipe), with the Home row on a wide screen",
+      "name": "Remote: switch sessions from the sessions drawer (button or edge swipe), with the Home row",
       "page": "remote-access"
     },
     {
