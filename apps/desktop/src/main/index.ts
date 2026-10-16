@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
-import { basename, join } from 'node:path';
+import { basename, join, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
@@ -1539,6 +1539,8 @@ async function actionMenuChecks(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-current-session] [data-more-actions]').click()");
   if (!(await waitInPage(win, "document.querySelector('[role=menu] [role=menuitem][data-action]')", 2_000))) return 'failed: "N more" did not open';
   const hidden = (await js("document.querySelector('[role=menu] [role=menuitem][data-action]').dataset.action")) as string;
+  // The menu places itself once it has measured; a point taken before then can miss the item when the click lands.
+  await settle(win);
   const overflow = await clickLikeAUser(win, `[role=menu] [role=menuitem][data-action="${hidden}"]`, 'right');
   if (!(await waitInPage(win, `${items} === 'run,edit,delete'`, 2_000))) return `failed: a right-click in "N more" (landed on ${overflow.at}) showed "${await js(items)}"`;
   await js("document.querySelector('[role=menu] [data-action-menu-item=\"delete\"]').click()");
@@ -4477,7 +4479,8 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   pressKey(win, 'Tab');
   if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(dir)}`, 2_000))) return `Tab did not complete the folder (${String(await js(`${one(field)}.value`))})`;
   pressKey(win, 'Tab');
-  if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(`${dir}/`)} && ${suggestion(join(dir, 'inner'))} && ${suggestion(dir)}`, 3_000))) return 'Tab on a whole folder did not list what is inside';
+  // The separator the path uses goes after it: a backslash on Windows.
+  if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(`${dir}${sep}`)} && ${suggestion(join(dir, 'inner'))} && ${suggestion(dir)}`, 3_000))) return `Tab on a whole folder did not list what is inside (${String(await js(`${one(field)}.value`))})`;
   await setFieldValue(win, field, `${dir}/no-such-folder`);
   if (!(await waitInPage(win, one('[data-path-missing]'), 3_000))) return 'a missing folder did not say so';
 
@@ -4501,7 +4504,13 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   if (before) {
     openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
     if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(before)}`, 5_000))) return 'New session did not go back to its folder';
-    rmSync(dir, { recursive: true, force: true });
+  }
+  // On Windows the folder can't be removed while a process still runs in it (New session warms Claude Code up for the
+  // folder it picked): try for a while, then leave it in the temp folder rather than fail the step.
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (error) {
+    console.log(`[smoke] could not remove ${dir}: ${(error as Error).message}`);
   }
   return 'ok: Add project… opened the Add project dialog and Esc left New session as it was, a refused file drop, Filter opened the field, ghost text and Tab, Tab into a folder, a missing folder, ↩ added and picked it; removed again';
 }
@@ -5589,6 +5598,7 @@ async function runSplitEdgeStep(win: BrowserWindow): Promise<string> {
   const { js, box, slot, activePane, slots, mark, changed, stickingOut, tiles, drag, ended, handleOf } = splitTools(win);
   const smoke = smokeSessionId;
   if (!smoke || !(await waitInPage(win, `document.querySelector('[data-current-session="${smoke}"]')`, 3_000))) return 'failed: no session open to split';
+  await openSidebarSections(win);
   const others = (await js(`[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId).filter((id) => id !== '${smoke}').slice(0, 3)`)) as string[];
   if (others.length < 3) return `failed: needs four sessions in the sidebar to arrange, found ${others.length + 1}`;
   const [one, two, three] = others as [string, string, string];
@@ -5633,7 +5643,8 @@ async function runSplitEdgeStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, ended, 2_000))) return 'failed: the indicator stayed after the drop';
     const equalThirds = await columns([smoke, one, two]);
     if (equalThirds) return `failed: docking on the right edge did not give three equal columns: ${equalThirds}`;
-    if (await changed()) return 'failed: docking on the window edge remounted a pane';
+    const edgeLost = await changed();
+    if (edgeLost) return `failed: docking on the window edge remounted a pane (${edgeLost})`;
 
     // The bottom edge: the first pane takes the whole width under the other two; the left edge puts it back as a column.
     const toBottom = await drag(handleOf(smoke), { edge: 'bottom' }, 'drop', {
@@ -5651,7 +5662,8 @@ async function runSplitEdgeStep(win: BrowserWindow): Promise<string> {
     if (toLeft) return `failed: ${toLeft}`;
     const back = await columns([smoke, one, two]);
     if (back) return `failed: docking on the left edge did not give three equal columns again: ${back}`;
-    if (await changed()) return 'failed: docking along the edges remounted a pane';
+    const alongLost = await changed();
+    if (alongLost) return `failed: docking along the edges remounted a pane (${alongLost})`;
 
     // Aiming anywhere over a pane finds it: over its message box, its header and its terminal, a session's row from the sidebar still shows where it lands.
     const view = `[data-current-session="${smoke}"]`;
@@ -5723,6 +5735,17 @@ async function runSplitEdgeStep(win: BrowserWindow): Promise<string> {
 
 type DragTarget = { pane: string; zone: 'left' | 'right' | 'top' | 'bottom' | 'center' } | { edge: 'left' | 'right' | 'top' | 'bottom' } | { at: { x: number; y: number } };
 
+/**
+ * Opens every closed section of the sidebar, so its rows are in the page. Earlier starts closed, and which demo
+ * sessions fall in it depends on the time of day the run starts: after midnight the sessions of a few hours ago are
+ * there, and steps that pick rows from the sidebar found too few.
+ */
+async function openSidebarSections(win: BrowserWindow): Promise<void> {
+  const closed = "document.querySelector('[data-section-list], [data-sidebar]')?.querySelectorAll('[data-section-toggle][data-open=\"false\"]') ?? []";
+  await win.webContents.executeJavaScript(`for (const toggle of ${closed}) toggle.click()`);
+  await waitInPage(win, `${closed}.length === 0`, 2_000);
+}
+
 /** What the split view's smoke steps share: reading the panes' places, marking them to see a remount, and dragging with the mouse. */
 function splitTools(win: BrowserWindow) {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -5735,18 +5758,26 @@ function splitTools(win: BrowserWindow) {
   const slots = () => js("[...document.querySelectorAll('[data-pane-slot]')].map((el) => { const r = el.getBoundingClientRect(); return { id: el.dataset.paneSlot, hidden: el.hasAttribute('data-pane-hidden'), left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }; })") as Promise<Array<{ id: string; hidden: boolean; left: number; top: number; width: number; height: number }>>;
   // Tags each pane's view and notes its scroll position: a remounted or moved view loses both.
   const mark = async () => {
-    // Scrolled up a little, then left alone until the conversations stop moving (they open at their end).
-    await js("for (const t of document.querySelectorAll('[data-current-session] [data-transcript]')) t.scrollTop = 30");
+    // Scrolled up a little, then left alone until the conversations stop moving (they open at their end). A wheel up
+    // first, as a person scrolls: a scroll from a script alone doesn't stop a conversation following its end (the list
+    // moves itself while rows are measured), so it would snap back to the end on the next resize.
+    await js("for (const t of document.querySelectorAll('[data-current-session] [data-transcript]')) { t.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true })); t.scrollTop = 30; }");
     await waitInPage(
       win,
       "(() => { const now = [...document.querySelectorAll('[data-current-session] [data-transcript]')].map((t) => t.scrollTop + '/' + t.scrollHeight).join(); const at = performance.now(); if (window.__smokeScroll?.now !== now) { window.__smokeScroll = { now, at }; return false; } return at - window.__smokeScroll.at > 500; })()",
       6_000,
     );
-    await js("for (const view of document.querySelectorAll('[data-current-session]')) { view.dataset.smokeMark = view.dataset.currentSession; const t = view.querySelector('[data-transcript]'); if (t) view.dataset.smokeScroll = String(t.scrollHeight - t.scrollTop - t.clientHeight); }");
+    await js("for (const view of document.querySelectorAll('[data-current-session]')) { view.dataset.smokeMark = view.dataset.currentSession; const t = view.querySelector('[data-transcript]'); if (t) view.dataset.smokeScroll = String(t.scrollTop); }");
   };
-  /** What changed in a pane since `mark()` (remounted, or how far its conversation is from the end), or an empty string when nothing did. */
+  /**
+   * What changed in a pane since `mark()`, or an empty string when nothing did: remounted (its mark is gone), or moved
+   * in the DOM, which resets its conversation's scroll to the top. How far it is from the end isn't compared: a pane
+   * that changes width wraps its text again, so that changes when nothing is wrong. A hidden pane (a window too small
+   * for every pane) reads as scrolled to the top, so only its mark counts, and so does one that got so much room that
+   * its conversation no longer scrolls as far (the browser holds the scroll to what is left).
+   */
   const changed = () =>
-    js("[...document.querySelectorAll('[data-current-session]')].map((view) => { const t = view.querySelector('[data-transcript]'); return (view.dataset.smokeMark !== view.dataset.currentSession ? 'remounted' : '') + (String(t ? t.scrollHeight - t.scrollTop - t.clientHeight : '') !== (view.dataset.smokeScroll ?? '') ? 'scrolled, ' + view.dataset.smokeScroll + 'px from the end to ' + (t.scrollHeight - t.scrollTop - t.clientHeight) : ''); }).filter(Boolean).join('; ')") as Promise<string>;
+    js("[...document.querySelectorAll('[data-current-session]')].map((view) => { const t = view.querySelector('[data-transcript]'); return (view.dataset.smokeMark !== view.dataset.currentSession ? view.dataset.currentSession.slice(0, 8) + ' remounted' : '') + (t && t.clientHeight > 0 && Number(view.dataset.smokeScroll ?? 0) > 0 && t.scrollTop === 0 && t.scrollHeight - t.clientHeight >= Number(view.dataset.smokeScroll) ? view.dataset.currentSession.slice(0, 8) + ' scrolled back to the top from ' + view.dataset.smokeScroll + 'px' : ''); }).filter(Boolean).join('; ')") as Promise<string>;
   /** What sticks out of its pane, or overlaps: the header, the message box with its chips and Send, and the conversation above it. */
   const stickingOut = () =>
     js(`[...document.querySelectorAll('[data-pane-slot]:not([data-pane-hidden]) [data-current-session]')].flatMap((view) => {
@@ -5841,6 +5872,7 @@ async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
 
   const smoke = smokeSessionId;
   if (!smoke || !(await waitInPage(win, `document.querySelector('[data-current-session="${smoke}"]')`, 3_000))) return 'failed: no session open to split';
+  await openSidebarSections(win);
   const others = (await js(`[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId).filter((id) => id !== '${smoke}').slice(0, 3)`)) as string[];
   if (others.length < 3) return `failed: needs four sessions in the sidebar to arrange, found ${others.length + 1}`;
   const [one, two, three] = others as [string, string, string];
@@ -6002,7 +6034,8 @@ async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
     const smallSticking = await stickingOut();
     if (smallSticking.length) return `failed: in the small window these stick out of the pane: ${smallSticking.join(', ')}`;
     await shot(win, 'split-small-window.png');
-    if (await changed()) return 'failed: shrinking the window remounted a pane';
+    const shrinkLost = await changed();
+    if (shrinkLost) return `failed: shrinking the window remounted a pane (${shrinkLost})`;
     win.setBounds(bounds);
     if (!(await waitInPage(win, "!document.querySelector('[data-split-fallback]')", 3_000))) return 'failed: the panes did not come back in the larger window';
     await settle(win);
@@ -6356,7 +6389,8 @@ async function runAskStep(win: BrowserWindow): Promise<string> {
   if (!smokeSessionId || running.ids.has(smokeSessionId)) return 'ok: skipped, no idle smoke session to ask in';
   await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
   if (!(await waitInPage(win, `${box} && !${box}.disabled && ${box}.value === ''`, 5_000))) return 'the smoke session has no empty message box';
-  const transcript = `document.querySelectorAll('${pane} [data-transcript-item]').length`;
+  // The conversation's own count: its list is virtualised, so the rows in the DOM change when the Ask panel narrows it.
+  const transcript = `Number(document.querySelector('${pane} [data-transcript]')?.dataset.transcriptCount ?? -1)`;
   const before = (await js(transcript)) as number;
   const askButton = `document.querySelector('${pane} [data-ask-button]')`;
   const close = async () => {
@@ -7117,12 +7151,22 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-  // A last resort for a run that hangs outside a step (each step has its own time limit); it still writes what ran.
+  // A last resort for a run that hangs outside a step (each step has its own time limit): it stops once no step has
+  // finished for a while, and still writes what ran. Not a limit on the whole run: as steps were added, a slow CI
+  // runner needed more than three minutes for all of them and was stopped halfway, every step after it failing.
   if (smokeOutDir) {
-    setTimeout(() => {
-      writeSmokeResult();
-      exitApp(2);
-    }, process.env.SWITCHBOARD_SMOKE_LIVE_CWD ? 300_000 : 180_000).unref();
+    const quietMs = process.env.SWITCHBOARD_SMOKE_LIVE_CWD ? 300_000 : 180_000;
+    let finished = -1;
+    let since = Date.now();
+    setInterval(() => {
+      if (smokeRun.steps.length !== finished) {
+        finished = smokeRun.steps.length;
+        since = Date.now();
+      } else if (Date.now() - since > quietMs) {
+        writeSmokeResult();
+        exitApp(2);
+      }
+    }, 5_000).unref();
   }
   if (screenshotOutDir) setTimeout(() => exitApp(2), 240_000).unref();
 });

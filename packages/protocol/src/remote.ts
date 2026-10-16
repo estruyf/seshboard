@@ -8,7 +8,7 @@ import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
-import { REMOTE_ATTACHMENT_BYTES, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
+import { REMOTE_ATTACHMENT_BYTES, REMOTE_DEVICE_NAME_MAX, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
 import { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow, UsageSnapshot } from './usage.ts';
 
 /**
@@ -24,7 +24,7 @@ const Prompt = z.string().trim().min(1).max(MAX_PROMPT_LENGTH);
 const ProjectId = z.string().regex(/^[a-f0-9]{16}$/);
 const ProfileId = z.string().min(1).max(100);
 /** The name a phone gives itself while pairing ("Elio's iPhone"). */
-export const DeviceName = z.string().trim().min(1).max(60);
+export const DeviceName = z.string().trim().min(1).max(REMOTE_DEVICE_NAME_MAX);
 
 /** A Claude profile as a session row shows it: its colour and name. */
 export const RemoteSessionProfile = z.object({ id: z.string(), name: z.string(), color: ProfileColor });

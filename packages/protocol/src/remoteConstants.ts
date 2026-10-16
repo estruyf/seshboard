@@ -16,6 +16,9 @@ export const REMOTE_IMAGE_BYTES = 900_000;
 export const REMOTE_MAX_FILES = 4;
 export const REMOTE_ATTACHMENT_BYTES = 3_600_000;
 
+/** The longest name a paired device or computer may have (`DeviceName`): a computer pairing with another sends its own. */
+export const REMOTE_DEVICE_NAME_MAX = 60;
+
 /** In `hello`'s `features`: `session.send` takes files, and `session.create` images and files. */
 export const REMOTE_FEATURE_ATTACHMENTS = 'attachments';
 

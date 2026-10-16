@@ -6,6 +6,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **A computer with a long name can pair with another one.** Its name is cut to 60 characters, the most a paired device's name may have; pairing used to fail with "Invalid params".
+- **The session header fits four panes side by side.** In a narrow pane, the git button shows its icon and count instead of the word (Commit, Push…), so the ⋯ menu no longer runs off the edge.
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.
 
 ## [0.0.22] - 2026-10-16

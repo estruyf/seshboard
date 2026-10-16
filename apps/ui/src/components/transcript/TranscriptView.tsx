@@ -1460,6 +1460,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               aria-label="Conversation"
               className={`min-h-0 flex-1 overflow-y-auto ${terminalMaximized ? 'hidden' : ''}`}
               data-transcript
+              // How many items the conversation has: the list is virtualised, so the rows in the DOM are only the ones in view.
+              data-transcript-count={renderItems.length}
             >
               {status === 'loading' ? (
                 <p className="p-8 text-center text-ui text-muted" role="status">
