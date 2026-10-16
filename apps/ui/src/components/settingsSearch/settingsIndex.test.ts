@@ -10,6 +10,7 @@ import notificationsSettings from '../notifications/NotificationsSettings.tsx?ra
 import sessionsSettings from '../sessions/SessionsSettings.tsx?raw';
 import remoteSettings from '../remote/RemoteSettings.tsx?raw';
 import modsSettings from '../mods/ModsSettings.tsx?raw';
+import usageSettings from '../usage/UsageSettings.tsx?raw';
 import { settingsIndex } from './settingsIndex.ts';
 import { searchSettings } from './searchSettings.ts';
 
@@ -50,6 +51,7 @@ describe('the settings index', () => {
       ...rowLabels(backupSettings, ['Row']),
       ...rowLabels(remoteSettings, ['Toggle']),
       ...rowLabels(modsSettings, ['Toggle']),
+      ...rowLabels(usageSettings, ['Toggle']),
     ];
     expect(rows.length).toBeGreaterThan(10);
     expect(rows.filter((label) => !labels.has(label))).toEqual([]);

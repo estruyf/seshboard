@@ -154,6 +154,14 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
       if (profileId === 'work') return { usage: null, error: 'Not logged in' };
       return { usage: { fetchedAt: 1, limits: [{ kind: 'session', group: 'session', percent: 44, resetsAt: 2, scope: null, severity: 'normal', isActive: true }], extraUsage: null }, error: null };
     },
+    sessionCost: (sessionId) => {
+      calls.push(`sessionCost ${sessionId}`);
+      return { usd: 4.2, partial: false };
+    },
+    windowCosts: (account, windows) => {
+      calls.push(`windowCosts ${account.slice(0, 4)} ${windows.map((w) => w.kind).join(',')}`);
+      return account === ACCOUNT ? windows.map((w) => ({ ...w, usd: 1.5, partial: false })) : null;
+    },
     tokens: (account, params) => {
       calls.push(`tokens ${account.slice(0, 4)} ${params.period} ${params.groupBy}`);
       if (account !== ACCOUNT) return null;
@@ -451,6 +459,19 @@ describe('Remote hub', () => {
     expect(await remote.call('usage.tokens', { account: 'cd'.repeat(32), period: 'day' })).toEqual({ breakdown: null });
     await expect(remote.call('usage.tokens', { account: 'elio@example.com', period: 'day' } as never)).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(calls).toEqual(['tokens abab week project', 'tokens cdcd day session']);
+  });
+
+  it('answers the cost of a session in the list, and of the plan windows an account asks for', async () => {
+    const { hub, port, on, calls } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    expect(await remote.call('usage.sessionCost', { sessionId: SESSION })).toEqual({ cost: { usd: 4.2, partial: false } });
+    // A session the list doesn't show has no cost to tell either.
+    await expect(remote.call('usage.sessionCost', { sessionId: HIDDEN })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    const windows = [{ kind: 'session', scope: null, from: 1 }, { kind: 'weekly_scoped', scope: 'Opus', from: 2 }];
+    expect(await remote.call('usage.windowCosts', { account: ACCOUNT, windows })).toEqual({ windows: windows.map((w) => ({ ...w, usd: 1.5, partial: false })) });
+    expect(await remote.call('usage.windowCosts', { account: 'cd'.repeat(32), windows })).toEqual({ windows: null });
+    expect(calls).toEqual(['sessionCost ' + SESSION, 'windowCosts abab session,weekly_scoped', 'windowCosts cdcd session,weekly_scoped']);
   });
 
   it('asks about a session in the list, and sends the answer to the phone that asked and to phones watching it', async () => {

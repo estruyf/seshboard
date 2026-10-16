@@ -4,8 +4,13 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **See what your tokens would cost at API prices, in the currency you pick: per plan window, per session, project, model and day.** After the 5-hour and weekly bars under the message box and in New session, an estimate such as **5h 38% ≈$4.10 · Week 52% ≈$61** says what the tokens of each window would cost at Anthropic's API prices, every model at its own price. Next to Context under a session's message box, **Cost ≈$12.40** is what that session used since it started, also for a session on another computer. The bars and the Limits cards add up your paired computers that sign in to the same account, since your plan counts them all; hover a bar to see which computers count. In the Usage view, the Limits cards show each window's cost, and the Tokens tab has a **Cost (est.)** tile and column for every session, project, model, day or computer. Your plan is not billed per token, so this is never a charge. A new **Usage** page in Settings turns it off or on, picks the currency (US dollar, Euro, British pound, Japanese yen and 20 more), and has **Open usage** for the Usage view.
+
 ### Fixed
 
+- **The Usage view fits a narrow window.** The chart on the Tokens tab no longer runs past its card after the window gets narrower, and the breakdown's columns no longer stick out of their rows: the table scrolls sideways instead.
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.
 
 ## [0.0.22] - 2026-10-16

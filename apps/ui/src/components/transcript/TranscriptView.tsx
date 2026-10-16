@@ -66,6 +66,7 @@ import { MoreMenu } from '../session/MoreMenu.tsx';
 import { SessionControls } from '../session/StatusBar.tsx';
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
+import { SessionCost } from '../usage/SessionCost.tsx';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
 import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
@@ -1788,6 +1789,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   <div className="@container/meters flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
                     <UsageBand profileId={profileId} footer />
                   </div>
+                  <SessionCost sessionId={sessionId} profileId={profileId} />
                   <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
                 </div>
               )}

@@ -12,6 +12,7 @@ import {
 } from "./retention.ts";
 
 import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./autoModel.ts";
+import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
@@ -212,6 +213,13 @@ export interface Preferences {
    */
   resumeAtLimit: ResumeAtLimit;
   /**
+   * Settings › Usage: "Show estimated cost". On, the usage bars under the message box and in New session say what the
+   * tokens of each plan window would cost at API prices.
+   */
+  showCost: boolean;
+  /** Settings › Usage: the currency of the cost estimate. */
+  costCurrency: CurrencyCode;
+  /**
    * Settings › Mods: "Show mods". Off, sessions don't attach their Claude Code mods: no bands, panes, statuses, toasts
    * or replaced views. Prompt screening still shows, since it happens in Claude Code.
    */
@@ -259,6 +267,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
   resumeAtLimit: "ask",
+  showCost: true,
+  costCurrency: DEFAULT_CURRENCY,
   showMods: true,
   hiddenMods: [],
   sidebarSort: "recent",
@@ -423,6 +433,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
   if (oneOf(["ask", "always"] as const, raw.resumeAtLimit))
     out.resumeAtLimit = raw.resumeAtLimit;
+  if (typeof raw.showCost === "boolean") out.showCost = raw.showCost;
+  if (isCurrencyCode(raw.costCurrency)) out.costCurrency = raw.costCurrency;
   if (typeof raw.showMods === "boolean") out.showMods = raw.showMods;
   if (Array.isArray(raw.hiddenMods))
     out.hiddenMods = [...new Set(raw.hiddenMods.filter((m): m is string => typeof m === "string" && m.length > 0 && m.length <= 400))].slice(0, 500);

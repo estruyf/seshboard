@@ -297,6 +297,7 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: Lucid
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
+  { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },

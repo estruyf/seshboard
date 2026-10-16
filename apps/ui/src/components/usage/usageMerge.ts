@@ -1,4 +1,4 @@
-import { REMOTE_FEATURE_USAGE_TOKENS, sharesOf, weightOf, type Computer, type RemoteUsageBreakdown, type TokenCounts, type UsageBreakdown, type UsageBucket, type UsageGroup, type UsageRow } from '@switchboard/protocol/client';
+import { REMOTE_FEATURE_USAGE_TOKENS, sharesOf, weightOf, type Computer, type RemoteUsageBreakdown, type TokenCounts, type UsageBreakdown, type UsageBucket, type UsageGroup, type UsageRow, type WindowCost } from '@switchboard/protocol/client';
 
 /**
  * The Usage view counts the tokens of the same account on other computers (docs/remote-access.md, "Other
@@ -24,7 +24,11 @@ export type MergedRow = UsageRow & {
   remoteProject?: { id: string | null; name: string | null };
 };
 
-export type MergedBreakdown = Omit<UsageBreakdown, 'rows'> & { rows: MergedRow[] };
+export type MergedBreakdown = Omit<UsageBreakdown, 'rows'> & {
+  rows: MergedRow[];
+  /** Counted computers that sent no cost (an older Switchboard): their tokens are in the totals, not in the cost. */
+  uncosted?: ComputerRef[];
+};
 
 /** The key of the Computer row for this computer. */
 export const THIS_COMPUTER_KEY = 'this-computer';
@@ -35,15 +39,18 @@ export interface Uncounted {
   reason: string;
 }
 
-/** The paired computers to ask for an account's tokens: connected ones whose Switchboard answers `usage.tokens`. */
-export function computersToAsk(computers: readonly Computer[]): { ask: ComputerRef[]; uncounted: Uncounted[] } {
+/**
+ * The paired computers to ask for an account's tokens: connected ones whose Switchboard answers `usage.tokens`, or
+ * another request that came with `feature` (`REMOTE_FEATURE_COSTS` for the plan windows' costs).
+ */
+export function computersToAsk(computers: readonly Computer[], feature: string = REMOTE_FEATURE_USAGE_TOKENS): { ask: ComputerRef[]; uncounted: Uncounted[] } {
   const ask: ComputerRef[] = [];
   const uncounted: Uncounted[] = [];
   for (const { id, name, state, features } of computers) {
     const computer = { id, name };
     if (state === 'connecting') uncounted.push({ computer, reason: `Connecting to ${name}.` });
     else if (state !== 'connected') uncounted.push({ computer, reason: `${name} is offline.` });
-    else if (!features.includes(REMOTE_FEATURE_USAGE_TOKENS)) uncounted.push({ computer, reason: `${name} needs a newer Switchboard.` });
+    else if (!features.includes(feature)) uncounted.push({ computer, reason: `${name} needs a newer Switchboard.` });
     else ask.push(computer);
   }
   return { ask, uncounted };
@@ -89,6 +96,8 @@ function combine(rows: readonly MergedRow[]): MergedRow[] {
     into.turns += row.turns;
     into.fastTurns += row.fastTurns;
     into.largestContext = Math.max(into.largestContext, row.largestContext);
+    const cost = sum(into.cost, row.cost);
+    if (cost !== undefined) into.cost = cost;
     if (weight > seen.weight) into.model = row.model;
     seen.weight += weight;
     const byAuto = sum(into.byAuto, row.byAuto);
@@ -102,8 +111,8 @@ function combine(rows: readonly MergedRow[]): MergedRow[] {
 
 /** A row for one computer's totals, for the Computer grouping. */
 function computerRow(data: Pick<UsageBreakdown, 'totals'>, key: string, label: string, computer?: ComputerRef): MergedRow {
-  const { tokens, sessions, turns, fastTurns, largestContext } = data.totals;
-  return { key, label, sessionId: null, projectRoot: null, model: null, sessions, turns, fastTurns, tokens, largestContext, share: 0, measured: false, ...(computer ? { computer } : {}) };
+  const { tokens, cost, sessions, turns, fastTurns, largestContext } = data.totals;
+  return { key, label, sessionId: null, projectRoot: null, model: null, sessions, turns, fastTurns, tokens, ...(cost !== undefined ? { cost } : {}), largestContext, share: 0, measured: false, ...(computer ? { computer } : {}) };
 }
 
 /** Each remote bucket into this computer's bucket that holds its start (the same hour or day, as both use this time zone). */
@@ -116,6 +125,8 @@ function mergeBuckets(base: readonly UsageBucket[], others: ReadonlyArray<readon
       if (!target) continue;
       add(target.tokens, bucket.tokens);
       target.turns += bucket.turns;
+      const cost = sum(target.cost, bucket.cost);
+      if (cost !== undefined) target.cost = cost;
     }
   }
   return buckets;
@@ -134,8 +145,11 @@ export function mergeBreakdowns(
   thisComputer = 'This Mac',
 ): MergedBreakdown {
   const totals = { ...local.totals, tokens: { ...local.totals.tokens } };
-  for (const { breakdown } of others) {
+  const uncosted: ComputerRef[] = [];
+  for (const { computer, breakdown } of others) {
     add(totals.tokens, breakdown.totals.tokens);
+    if (breakdown.totals.cost === undefined) uncosted.push(computer);
+    else totals.cost = (totals.cost ?? 0) + breakdown.totals.cost;
     totals.sessions += breakdown.totals.sessions;
     totals.turns += breakdown.totals.turns;
     totals.fastTurns += breakdown.totals.fastTurns;
@@ -168,5 +182,22 @@ export function mergeBreakdowns(
   const scans = [local.scan, ...others.map((o) => o.breakdown.scan)].filter((s) => s !== null);
   const scan = scans.length ? { done: scans.reduce((n, s) => n + s.done, 0), total: scans.reduce((n, s) => n + s.total, 0) } : null;
 
-  return { ...local, totals, rows, buckets, scan };
+  return { ...local, totals, rows, buckets, scan, uncosted };
+}
+
+/**
+ * This computer's plan window costs with the same windows' on other computers (`usage.windowCosts`), added up per
+ * window. A window only another computer priced is left out: the windows are this computer's, from its plan.
+ */
+export function addWindowCosts(local: readonly WindowCost[], others: ReadonlyArray<readonly WindowCost[]>): WindowCost[] {
+  return local.map((window) => {
+    let { usd, partial } = window;
+    for (const list of others) {
+      const same = list.find((w) => w.kind === window.kind && w.scope === window.scope);
+      if (!same) continue;
+      usd += same.usd;
+      partial ||= same.partial;
+    }
+    return { ...window, usd, partial };
+  });
 }

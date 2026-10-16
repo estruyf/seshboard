@@ -512,6 +512,11 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-usage",
+      "name": "settings-usage",
+      "page": "settings"
+    },
+    {
       "id": "palette:settings-sidebar",
       "name": "settings-sidebar",
       "page": "settings"
@@ -1132,6 +1137,11 @@
       "page": "projects/settings"
     },
     {
+      "id": "settings:usage",
+      "name": "Settings › Usage: Open usage, Show estimated cost and Currency",
+      "page": "settings"
+    },
+    {
       "id": "settings:sidebar",
       "name": "Settings: Sidebar",
       "page": "sessions/sidebar"
@@ -1625,6 +1635,26 @@
       "id": "feature:usage-limit-hold",
       "name": "Up next and the queue wait while a profile is at its usage limit",
       "page": "usage"
+    },
+    {
+      "id": "feature:usage-cost-estimate",
+      "name": "Estimated API cost after the 5-hour and weekly usage bars, in a currency you pick",
+      "page": "usage"
+    },
+    {
+      "id": "feature:usage-cost-breakdown",
+      "name": "Usage view: estimated cost per window, session, project, model, day and computer",
+      "page": "usage"
+    },
+    {
+      "id": "feature:session-cost",
+      "name": "A session's estimated cost next to Context under its message box",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:remote-costs",
+      "name": "Other computers: a remote session's cost, and plan window costs added up across paired computers",
+      "page": "remote-access"
     },
     {
       "id": "feature:usage-limit-setting",

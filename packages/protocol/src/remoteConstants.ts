@@ -27,3 +27,9 @@ export const REMOTE_FEATURE_BRANCHES = 'branches';
 
 /** In `hello`'s `features`: `session.markUnread` answers, so Mark as read can be undone. */
 export const REMOTE_FEATURE_MARK_UNREAD = 'session.markUnread';
+
+/**
+ * In `hello`'s `features`: `usage.sessionCost` and `usage.windowCosts` answer, and `usage.tokens` rows carry their
+ * `cost`, so a session there and the plan windows show their estimated API cost here.
+ */
+export const REMOTE_FEATURE_COSTS = 'costs';

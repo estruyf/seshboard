@@ -1096,6 +1096,16 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   if (options.remote) {
+    /** The profile here signed in to an account (its `accountKey`), the default one first when more than one is. */
+    const profileOfAccount = (account: string): string | null => {
+      const defaultId = profiles.defaultId();
+      return (
+        profiles
+          .accounts()
+          .filter((p) => accountKey(p.account) === account)
+          .sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId))[0]?.id ?? null
+      );
+    };
     remote = new RemoteHub({
       db: cache.db,
       appState,
@@ -1147,13 +1157,13 @@ export function createEngine(options: EngineOptions): Engine {
       autoModel: () => ({ enabled: autoModel.enabled, allowed: [...autoModel.allowed] }),
       usage: (profileId, refresh) => usageFor(profileId).get(refresh),
       tokens: (account, params) => {
-        // The default profile first, when more than one here signs in to the account.
-        const defaultId = profiles.defaultId();
-        const match = profiles
-          .accounts()
-          .filter((p) => accountKey(p.account) === account)
-          .sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId))[0];
-        return match ? insights.breakdown(match.id, params) : null;
+        const match = profileOfAccount(account);
+        return match ? insights.breakdown(match, params) : null;
+      },
+      sessionCost: (sessionId) => insights.sessionCost(sessions.get(sessionId)?.profileId ?? profiles.defaultId(), sessionId),
+      windowCosts: (account, windows) => {
+        const match = profileOfAccount(account);
+        return match ? insights.windowCostsFrom(match, windows) : null;
       },
       // `asker` is made further down; a phone can only ask once the engine is running.
       ask: (sessionId, question, threadId, replaces) => asker.ask(sessionId, question, threadId, replaces),
@@ -1703,6 +1713,8 @@ export function createEngine(options: EngineOptions): Engine {
     'usage.get': ({ refresh, profileId }) => usageFor(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()).get(refresh),
     'usage.breakdown': ({ profileId, ...params }) => insights.breakdown(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.history': ({ profileId, ...params }) => insights.planHistory(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
+    'usage.cost': ({ profileId }) => ({ windows: insights.windowCosts(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()) }),
+    'usage.sessionCost': ({ sessionId, profileId }) => ({ cost: insights.sessionCost(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), sessionId) }),
 
     'questions.folder': () => ({ path: questions.ensure() }),
     'projects.inspect': ({ path }) => {

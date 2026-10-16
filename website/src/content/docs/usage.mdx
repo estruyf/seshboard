@@ -10,7 +10,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 The usage bar tells you how much of your plan is used. The Usage view tells you what used it: which sessions, projects and models, in the current 5-hour window, the last 24 hours, or the last 7 or 30 days. It counts every session, also the ones you started with `claude` in a terminal.
 
-It shows tokens and shares. It never shows prices or dollars: your plan is a subscription.
+It shows tokens and shares, and what they would cost at API prices. Your plan is a subscription, so that is only an estimate: see [Estimated cost](#estimated-cost).
 
 <Screenshot name="usage-limits" alt="The Usage view on the Limits tab: cards for Session, Weekly and Weekly · Opus with the % left, a chart of % used over the last 7 days with a weekly reset, and What used this window with each session's share" eager />
 
@@ -126,6 +126,28 @@ The limit belongs to your [Claude profile](/settings/claude-profiles/), not to o
 To have every stopped session resume by itself, set **Resume after a usage limit resets** to **Always** in [Settings › Conversation](/settings/#conversation).
 
 With an API key, Amazon Bedrock or Google Vertex there are no plan limits, so none of this shows.
+
+## Estimated cost
+
+Switchboard shows what your tokens would cost at Anthropic's API prices. Your plan is not billed per token, so this is never a charge. It tells you what the same work would cost on the API.
+
+- **The usage bars** under the message box and in [New session](/new-session/form/), after each window's %: *5h 38% ≈$4.10 · Week 52% ≈$61*. Hover a bar for each window's estimate.
+- **A session's cost** next to Context under its message box: *Cost ≈$12.40*, everything the session used since it started, its agents included. A session on [another computer](/remote-access/#other-computers) shows it too, as that computer counts it.
+- **The Limits cards**: each window's cost, such as *≈$4.10 at API prices*.
+- **The Tokens tab**: a **Cost (est.)** tile with the period's total, and a **Cost (est.)** column for each session, project, model, day or computer, also in the *N more* line. A model's panel says its cost, and **Show as table** under the chart has the cost of each hour or day.
+- **What used this window** on the Limits tab: each session's cost.
+
+How it is counted:
+
+- Each window counts from when it started: 5 hours before the 5-hour window resets, 7 days before the weekly one resets. A model's own weekly limit, such as **Weekly · Opus**, counts only that model's tokens.
+- Every model is priced at its own list price: input, output, cache writes and cache reads. Fast mode's higher price isn't counted.
+- The calls Switchboard makes itself, such as [Auto model](/new-session/auto-model/) routing and [catch-up](/sessions/catch-up/) summaries, are counted too.
+- Your plan counts every computer you use it on, so the usage bars and the Limits cards add up the same windows on your [paired computers](/remote-access/#other-computers) that sign in to the same account. Hover a bar to see which computers count, such as *Counts This PC and mystic*, and which don't and why, such as *Not counted: studio is offline.* A computer counts once it runs this version of Switchboard. The Tokens tab adds up your other computers with **All computers**.
+- Totals are kept per hour, so the window's first hour counts whole. The estimate can be a little high early in a window.
+- In a narrow pane the estimates in the bars and next to Context hide first.
+- With **All computers**, a computer on an older Switchboard sends no cost: its rows stay blank, and the **Cost (est.)** tile says which computer is left out, such as *at API prices, without mystic*.
+
+Turn it off, or pick the currency, in [Settings › Usage](/settings/#usage). Other currencies are converted from US dollars at fixed exchange rates.
 
 ## Where the numbers come from
 

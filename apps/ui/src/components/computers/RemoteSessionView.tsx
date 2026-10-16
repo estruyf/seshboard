@@ -31,6 +31,7 @@ import { RemoteEffortChip, RemoteModeChip, RemoteModelChip, useRemoteOptions } f
 import { remoteAutoFace, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
 import { RemoteText } from './RemoteText.tsx';
 import { usePreferences } from '../../state/preferencesStore.ts';
+import { RemoteSessionCost } from '../usage/SessionCost.tsx';
 import { useWidth } from '../ui/useWidth.ts';
 import { sentLine } from '../transcript/turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, TurnMetaLine, type LiveTurnInfo, type TurnMetaValue } from '../transcript/TurnMeta.tsx';
@@ -365,6 +366,10 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
           </div>
         )}
         <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />
+        {/* What the session would cost at API prices, as that computer counts it; the quiet line under a local session's box. */}
+        <div className="-mt-1 flex min-h-6 items-center justify-end px-1 text-meta text-muted empty:hidden" data-remote-session-footer>
+          <RemoteSessionCost client={client} computer={computer} sessionId={session.id} working={working} />
+        </div>
       </div>
       {menu && <Menu x={menu.x} y={menu.y} entries={menu.entries} width={240} label={`Session “${session.title}”`} onClose={() => setMenu(null)} />}
     </div>

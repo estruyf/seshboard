@@ -1,5 +1,5 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Brain, Gauge, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
@@ -20,6 +20,7 @@ import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
+import { UsageSettings } from './usage/UsageSettings.tsx';
 import { AboutSettings, SettingsVersion } from './updates/AboutSettings.tsx';
 import { Button } from './ui/Button.tsx';
 import { Choice } from './ui/Choice.tsx';
@@ -175,6 +176,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
+  { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'remote', label: 'Remote', icon: Smartphone },
@@ -368,6 +370,12 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           description="Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login. Link a project to a profile from its menu or the Projects view; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
         >
           <ProfilesSettings />
+        </Section>
+      );
+    case 'usage':
+      return (
+        <Section title="Usage" description="How much of your plan's 5-hour and weekly limits you have used, shown under the message box, in New session and on Home.">
+          <UsageSettings />
         </Section>
       );
     case 'memory':

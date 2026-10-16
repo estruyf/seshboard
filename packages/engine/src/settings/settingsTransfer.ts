@@ -76,6 +76,8 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   autoModel: 'Auto model',
   catchUpSummaries: 'Write catch-up summaries with Haiku',
   resumeAtLimit: 'Resume after a usage limit resets',
+  showCost: 'Show estimated cost',
+  costCurrency: 'Currency',
   showMods: 'Show mods',
   hiddenMods: 'Mods with their UI hidden',
   sidebarSort: 'Sidebar order',
