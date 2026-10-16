@@ -170,6 +170,23 @@ export async function runInTerminal(client: EngineClient, sessionId: string, cwd
 }
 
 /**
+ * Runs a code block's command and sends its output to Claude: in a tab of its own that ends with the command (so it is
+ * clear where the output starts and stops, and what it exited with), shown in the panel. When it ends, the engine sends
+ * the exit code and the end of the output to the session, held in Up next while Claude works.
+ */
+export async function runAndSendOutput(client: EngineClient, sessionId: string, cwd: string, command: string): Promise<void> {
+  const state = useTerminals.getState();
+  state.setNotice(sessionId, null);
+  state.togglePanel(sessionId, true);
+  try {
+    const info = await client.call('terminal.run', { sessionId, cwd, command, sendOutput: true });
+    useTerminals.getState().setActive(sessionId, info.id);
+  } catch (e) {
+    useTerminals.getState().setNotice(sessionId, { code: null, message: `Couldn't run the command: ${e instanceof Error ? e.message : String(e)}` });
+  }
+}
+
+/**
  * Resolves once the terminal has exited (or is gone), or after `timeoutMs`. Restart on a running action
  * stops it first, and the engine only restarts a terminal that has exited.
  */

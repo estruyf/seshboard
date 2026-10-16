@@ -19,6 +19,7 @@ Project actions are in the **⋯** menu of a session's header, for the things yo
 | **Shortcut** | Optional, for example ⌘⇧T. |
 | **Ask before running** | Shows a confirmation first. Useful for publish or deploy. |
 | **Run in every new worktree** | Runs before Claude starts in each new worktree session, for example to install dependencies. Claude's first message waits until it has finished. |
+| **Send the output to Claude when it finishes** | When the command ends, its exit code and the last 200 lines of its output go to the session as your message, held in Up next while Claude works. |
 
 Your actions are listed under **Project actions** in the **⋯** menu, with their shortcuts. Use **Edit actions…** there to change or remove them.
 
@@ -70,6 +71,7 @@ Put a `.switchboard.json` file in the root of the repository and commit it. Ever
 | `confirm` | `false` | Ask before running |
 | `shortcut` | none | For example `"cmd+shift+t"` |
 | `runOnWorktreeCreate` | `false` | Run in every new worktree before Claude starts |
+| `sendOutput` | `false` | When it ends, send its exit code and the end of its output to Claude |
 | `id` | from the name | Lowercase letters, digits and dashes |
 
 Actions with the same `id` (by default, the same name) replace each other: your actions for this project win over shared ones, and shared ones win over your *All projects* actions. Shared actions can't be edited in the app; change `.switchboard.json` instead.

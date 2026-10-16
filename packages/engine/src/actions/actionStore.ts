@@ -70,6 +70,7 @@ interface Row {
   confirm: number;
   shortcut: string | null;
   run_on_worktree_create: number;
+  send_output: number;
   project_id: string | null;
   imported: number;
 }
@@ -85,6 +86,7 @@ const fromRow = (row: Row): ProjectAction =>
     confirm: row.confirm === 1,
     shortcut: row.shortcut,
     runOnWorktreeCreate: row.run_on_worktree_create === 1,
+    sendOutput: row.send_output === 1,
   });
 
 /** Project actions: yours (per project or global, in the database) and shared ones from the repo. */
@@ -96,12 +98,12 @@ export class ActionStore {
       list: db.prepare('SELECT * FROM project_actions WHERE COALESCE(project_id, \'\') = ? ORDER BY sort, name'),
       all: db.prepare('SELECT * FROM project_actions ORDER BY COALESCE(project_id, \'\'), sort, name'),
       upsert: db.prepare(`
-        INSERT INTO project_actions (id, project_id, name, icon, type, command, cwd_mode, confirm, shortcut, run_on_worktree_create, sort, imported)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO project_actions (id, project_id, name, icon, type, command, cwd_mode, confirm, shortcut, run_on_worktree_create, send_output, sort, imported)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (COALESCE(project_id, ''), id) DO UPDATE SET
           name = excluded.name, icon = excluded.icon, type = excluded.type, command = excluded.command,
           cwd_mode = excluded.cwd_mode, confirm = excluded.confirm, shortcut = excluded.shortcut,
-          run_on_worktree_create = excluded.run_on_worktree_create, imported = excluded.imported`),
+          run_on_worktree_create = excluded.run_on_worktree_create, send_output = excluded.send_output, imported = excluded.imported`),
       remove: db.prepare("DELETE FROM project_actions WHERE COALESCE(project_id, '') = ? AND id = ?"),
       approve: db.prepare("UPDATE project_actions SET imported = 0 WHERE COALESCE(project_id, '') = ? AND id = ?"),
       count: db.prepare("SELECT COUNT(*) AS n FROM project_actions WHERE COALESCE(project_id, '') = ?"),
@@ -179,6 +181,7 @@ export class ActionStore {
       action.confirm ? 1 : 0,
       action.shortcut,
       action.runOnWorktreeCreate ? 1 : 0,
+      action.sendOutput ? 1 : 0,
       sort,
       imported ? 1 : 0,
     );

@@ -1077,6 +1077,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "shortcut:transcript.run-send",
+      "name": "transcript.run-send",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "settings:about",
       "name": "Settings: About",
       "page": "settings"
@@ -2665,6 +2670,16 @@
       "id": "feature:run-code-block",
       "name": "Run code blocks in the terminal",
       "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:run-code-block-send-output",
+      "name": "Run a code block and send its output to Claude",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:action-send-output",
+      "name": "Send a project action's output to Claude when it finishes",
+      "page": "projects/actions"
     },
     {
       "id": "feature:save-as-project-default",

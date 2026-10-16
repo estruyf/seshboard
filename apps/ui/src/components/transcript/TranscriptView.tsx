@@ -15,7 +15,7 @@ import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../sta
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { realBranch, useSessions } from '../../state/sessionsStore.ts';
-import { runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
+import { runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -991,6 +991,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       },
       canEdit: (uuid) => previous.has(uuid),
       runCommand: cwd ? (command) => void runInTerminal(client, sessionId, cwd, command).catch(fail) : null,
+      runAndSend: cwd ? (command) => void runAndSendOutput(client, sessionId, cwd, command).catch(fail) : null,
       remember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
     };
   }, [client, items, sessionId, select, cwd, projectRoot]);

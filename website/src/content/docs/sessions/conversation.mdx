@@ -96,7 +96,8 @@ Prefer to see each tool call as its own card? Choose **Every step** in [Settings
 Hover a code block in Claude's reply for its buttons:
 
 - **Copy** copies the code.
-- **Run in terminal** (on shell code blocks) types the command into a terminal tab of the session and runs it. For a block that shows a terminal session (`$` lines with their output), only the `$` lines run.
+- **Run in terminal** (on shell code blocks, and on Windows PowerShell ones too) types the command into a terminal tab of the session and runs it. For a block that shows a terminal session (`$` lines with their output), only the `$` lines run.
+- **Run and send the output to Claude** (next to it, or <Kbd keys="alt+click" /> on **Run in terminal**) runs the command in a terminal tab of its own, which ends with the command. When it ends, Claude gets a message from you with the command, its exit code and the end of its output (the last 200 lines), so it can carry on from there. While Claude works, the message waits in **Up next** until Claude finishes its turn; remove it there if you change your mind. A line under the output in the tab says where it went. If you stop the command, the message says so. Close the tab before it ends, and nothing is sent.
 - A markdown block (a README, a pull request description) opens rendered, with a **Preview | Source** switch above it. Copy still copies the markdown.
 
 <Screenshot name="code-block" alt="A code block in Claude's reply with syntax colours and the copy button in its corner" width={720} />

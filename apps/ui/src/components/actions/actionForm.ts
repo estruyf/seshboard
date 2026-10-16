@@ -15,6 +15,7 @@ export const EMPTY_DRAFT: ActionDraft = {
   confirm: false,
   shortcut: null,
   runOnWorktreeCreate: false,
+  sendOutput: false,
   scope: 'project',
 };
 

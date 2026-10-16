@@ -20,6 +20,7 @@ import {
   type RpcServer,
   type AskEvent,
   type SessionHostInfo,
+  type TerminalInfo,
   type SlashCommand,
   type SystemInfo,
   type PrError,
@@ -75,6 +76,7 @@ import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profi
 import { HostManager, type SdkRuntime } from './host/hostManager.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
+import { commandRunMessage, shellName } from './terminals/outputMessage.ts';
 import { readTaskOutput } from './host/taskOutput.ts';
 import { UsageInsights } from './usage/usageInsights.ts';
 import { scopeOf } from './usage/usageScanner.ts';
@@ -765,6 +767,7 @@ export function createEngine(options: EngineOptions): Engine {
       for (const viewer of terminalViewers.get(id) ?? []) viewer.emit('terminal.data', { id, data });
     },
     onChange: (list) => broadcast('terminals.changed', { terminals: list }),
+    onExit: (info, run) => reportRun(info, run),
     log,
   });
   /** The terminals each connection is attached to, so one dispose hook per connection detaches it from all of them. */
@@ -854,6 +857,30 @@ export function createEngine(options: EngineOptions): Engine {
     (await terminals.open({ sessionId, cwd, kind: 'action', command, title: name, cols: 100, rows: 20, fork: false, env: profileEnv(sessionProfile(sessionId)) })).id;
   /** Terminals started by `actions.run`, so Restart can look the action up again. */
   const actionRuns = new Map<string, { sessionId: string; projectRoot: string; cwd: string; id: string }>();
+  /** Terminals whose runs report back to their session when they end: a code block run with its output, or an action set to. */
+  const runReports = new Map<string, { sessionId: string; command: string; action?: string }>();
+  /**
+   * A run that reports back has ended: its exit code and the end of its output go to the session as your message, held
+   * in Up next while Claude works. A line under the output says where it went, or why it couldn't go.
+   */
+  const reportRun = (info: TerminalInfo, run: { output: string; stopped: boolean }) => {
+    const report = runReports.get(info.id);
+    if (!report) return;
+    void terminals
+      .shell()
+      .then((shell) => {
+        const text = commandRunMessage({ command: report.command, ...(report.action ? { action: report.action } : {}), shell: shellName(shell), exitCode: info.exitCode ?? -1, stopped: run.stopped, output: run.output });
+        return hosts.send({ sessionId: report.sessionId, text, attachments: [], fork: false, mode: 'queue' });
+      })
+      .then((sent) => {
+        if (sent.sessionId === report.sessionId) sessions.wake(report.sessionId);
+        terminals.note(info.id, sent.queued ? '↳ Output added to Up next: Claude reads it when it finishes its turn' : '↳ Output sent to Claude');
+      })
+      .catch((error: Error) => {
+        log('warn', `Could not send a command's output to ${report.sessionId}: ${error.message}`);
+        terminals.note(info.id, `↳ Could not send the output to Claude: ${error.message}`);
+      });
+  };
 
   /**
    * Refuses (SESSION_BUSY) while Claude works in the checkout at `cwd`, wherever that session runs: changing the files under a
@@ -1735,8 +1762,10 @@ export function createEngine(options: EngineOptions): Engine {
         return { kind: 'prompt' as const, sessionId: sent.sessionId, messageUuid: sent.messageUuid };
       }
       const runIn = action.cwd === 'project-root' ? projectRoot : cwd;
-      const terminalId = await runShellAction(sessionId, runIn, action.name, expandCommand(action.command, vars, await terminals.shell()));
+      const command = expandCommand(action.command, vars, await terminals.shell());
+      const terminalId = await runShellAction(sessionId, runIn, action.name, command);
       actionRuns.set(terminalId, { sessionId, projectRoot, cwd, id });
+      if (action.sendOutput) runReports.set(terminalId, { sessionId, command, action: action.name });
       return { kind: 'terminal' as const, terminalId };
     },
     'later.list': ({ cwd }) => ({ items: later.list(cwd), started: later.startedLinks() }),
@@ -2096,6 +2125,17 @@ export function createEngine(options: EngineOptions): Engine {
         throw new RpcError('TERMINAL_FAILED', (error as Error).message);
       }
     },
+    'terminal.run': async ({ sessionId, cwd, command, sendOutput }) => {
+      const firstLine = command.split('\n')[0]!.trim();
+      const title = firstLine.length > 40 ? `${firstLine.slice(0, 39)}…` : firstLine;
+      try {
+        const info = await terminals.open({ sessionId, cwd, kind: 'action', command, title, cols: 100, rows: 20, fork: false, env: profileEnv(sessionProfile(sessionId)) });
+        if (sendOutput) runReports.set(info.id, { sessionId, command });
+        return info;
+      } catch (error) {
+        throw new RpcError('TERMINAL_FAILED', (error as Error).message);
+      }
+    },
     'terminal.list': () => ({ terminals: terminals.list() }),
     'terminal.font': () => {
       const font = detectTerminalFont();
@@ -2123,6 +2163,7 @@ export function createEngine(options: EngineOptions): Engine {
       terminals.close(id);
       terminalViewers.delete(id);
       actionRuns.delete(id);
+      runReports.delete(id);
       return {};
     },
     'terminal.stop': ({ id }) => {
@@ -2367,6 +2408,9 @@ export function createEngine(options: EngineOptions): Engine {
           command: expandCommand(action.command, actionVars(run.sessionId, run.projectRoot, run.cwd), await terminals.shell()),
           cwd: action.cwd === 'project-root' ? run.projectRoot : run.cwd,
         };
+        // Its switch may have changed since, too.
+        if (action.sendOutput) runReports.set(id, { sessionId: run.sessionId, command: change.command!, action: action.name });
+        else runReports.delete(id);
       }
       try {
         return await terminals.restart(id, change);

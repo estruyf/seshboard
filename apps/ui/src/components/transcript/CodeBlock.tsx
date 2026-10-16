@@ -1,6 +1,8 @@
-import { Check, Copy, Play } from 'lucide-react';
+import { Check, Copy, MessageSquareShare, Play } from 'lucide-react';
 import { memo, useContext, useEffect, useState, type ReactNode } from 'react';
 import { highlight } from '../../lib/highlight.ts';
+import { currentPlatform } from '../../lib/platform.ts';
+import { clickKeysFor, formatKeys } from '../../lib/shortcuts.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
@@ -22,7 +24,8 @@ const idle = (fn: () => void) => {
  * idle (and once it stops changing, for a block Claude is still writing). Only
  * blocks on screen exist (the transcript is virtualised). Hovering it, or tabbing to
  * it, shows a button that copies the code as it was written. A shell block in a session
- * with a folder also gets a Run button, which types it into the session's terminal.
+ * with a folder also gets a Run button, which types it into the session's terminal, and a
+ * button (or ⌥-click on Run) that runs it in a tab of its own and sends its output to Claude.
  *
  * With a `preview` (a markdown block, rendered), the block opens on the preview and a
  * Preview | Source switch sits in a header above it, next to the copy button.
@@ -34,8 +37,10 @@ export const CodeBlock = memo(function CodeBlock({ code, language, preview }: { 
   const [highlighted, setHighlighted] = useState<{ code: string; syntaxKey: string; html: string | null } | null>(null);
   // A new theme can bring other code colours: highlight again with them.
   const syntaxKey = useThemes((s) => s.syntaxKey);
-  const runCommand = useContext(MessageActionsContext)?.runCommand ?? null;
-  const command = runCommand && isRunnable(language) ? commandToRun(code) : '';
+  const actions = useContext(MessageActionsContext);
+  const runCommand = actions?.runCommand ?? null;
+  const runAndSend = actions?.runAndSend ?? null;
+  const command = runCommand && isRunnable(language, currentPlatform()) ? commandToRun(code) : '';
   const html = highlighted?.code === code && highlighted.syntaxKey === syntaxKey ? highlighted.html : null;
 
   useEffect(() => {
@@ -77,7 +82,27 @@ export const CodeBlock = memo(function CodeBlock({ code, language, preview }: { 
       {/* Takes the language's place on hover, on the code's own background so the first line doesn't show through. Invisible rather than removed, so Tab still reaches it and it shows while it has focus. */}
       <div className="pointer-events-none absolute top-1 right-1 z-10 flex rounded-md bg-code opacity-0 group-focus-within/code:pointer-events-auto group-focus-within/code:opacity-100 group-hover/code:pointer-events-auto group-hover/code:opacity-100">
         {command && runCommand && (
-          <Button variant="quiet" size="sm" iconOnly icon={<Play size={12} aria-hidden />} aria-label="Run in terminal" onClick={() => runCommand(command)} data-code-run />
+          <Button
+            variant="quiet"
+            size="sm"
+            iconOnly
+            icon={<Play size={12} aria-hidden />}
+            aria-label="Run in terminal"
+            onClick={(event) => (event.altKey && runAndSend ? runAndSend(command) : runCommand(command))}
+            data-code-run
+          />
+        )}
+        {command && runAndSend && (
+          <Button
+            variant="quiet"
+            size="sm"
+            iconOnly
+            icon={<MessageSquareShare size={12} aria-hidden />}
+            aria-label="Run and send the output to Claude"
+            data-tooltip={`Run and send the output to Claude (${formatKeys(clickKeysFor('transcript.run-send'))} on Run)`}
+            onClick={() => runAndSend(command)}
+            data-code-run-send
+          />
         )}
         {copyButton}
       </div>

@@ -719,6 +719,14 @@ export const contract = {
       }),
       result: TerminalInfo,
     },
+    /**
+     * Runs a command (from a code block in the conversation) in a terminal tab of its own, which ends with it. With
+     * `sendOutput`, its exit code and the end of its output then go to the session as a message, queued while Claude works.
+     */
+    'terminal.run': {
+      params: z.object({ sessionId: SessionId, cwd: AbsolutePath, command: z.string().trim().min(1).max(10_000), sendOutput: z.boolean().default(false) }),
+      result: TerminalInfo,
+    },
     'terminal.list': { params: z.object({}), result: z.object({ terminals: z.array(TerminalInfo) }) },
     /** The font the user's own terminal uses (Ghostty, VS Code), so prompts with Nerd Font glyphs render. */
     'terminal.font': { params: z.object({}), result: z.object({ fontFamily: z.string().nullable(), source: z.string().nullable() }) },
