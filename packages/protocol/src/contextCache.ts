@@ -10,9 +10,6 @@ export type CacheTtl = '5m' | '1h';
 
 export const CACHE_TTL_MS: Record<CacheTtl, number> = { '5m': 5 * 60_000, '1h': 60 * 60_000 };
 
-/** A cache write's price as a multiple of the input price: 1.25 for the 5-minute cache, 2 for the hour. */
-export const CACHE_WRITE_FACTOR: Record<CacheTtl, number> = { '5m': 1.25, '1h': 2 };
-
 /** Which cache a response wrote to, from its `usage.cache_creation` (null when it wrote nothing, or says nothing). */
 export function cacheTtlOf(usage: { cache_creation?: unknown } | null | undefined): CacheTtl | null {
   const split = usage?.cache_creation as { ephemeral_1h_input_tokens?: unknown; ephemeral_5m_input_tokens?: unknown } | null | undefined;
@@ -28,5 +25,5 @@ export const cacheExpiresAt = (at: number, ttl: CacheTtl): number => at + CACHE_
 /** What writing `tokens` of context to the cache again costs at the model's list price, in US dollars; null for an unknown model. */
 export function cacheRewriteCost(tokens: number, model: string, ttl: CacheTtl): number | null {
   const p = priceOf(model);
-  return p ? (tokens * p.input * CACHE_WRITE_FACTOR[ttl]) / 1_000_000 : null;
+  return p ? (tokens * (ttl === '1h' ? p.cacheWrite1h : p.cacheWrite)) / 1_000_000 : null;
 }
