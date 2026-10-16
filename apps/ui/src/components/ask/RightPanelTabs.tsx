@@ -3,11 +3,11 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import { CountBadge } from '../ui/Pill.tsx';
 import { paneOfTab, type PanelTab, type RightTab } from './askWidth.ts';
 
-const LABELS: Record<PanelTab, string> = { changes: 'Changes', ask: 'Ask', agents: 'Agents', terminal: 'Terminal' };
+const LABELS: Record<PanelTab, string> = { changes: 'Changes', ask: 'Ask', agents: 'Agents', commands: 'Commands', terminal: 'Terminal' };
 
 /**
- * The top of the right side while two or more panels are open (Changes, Ask, Agents, a terminal docked right): a tab for
- * each, with its count (changed files, the questions in the thread on screen, agents or terminals running), and the
+ * The top of the right side while two or more panels are open (Changes, Ask, Agents, Commands, a terminal docked right): a tab
+ * for each, with its count (changed files, the questions in the thread on screen, agents, commands or terminals running), and the
  * front panel's buttons on the right.
  * ← → move between the tabs.
  */

@@ -627,6 +627,11 @@
       "page": "sessions/agents"
     },
     {
+      "id": "palette:toggle-commands",
+      "name": "Toggle commands",
+      "page": "sessions/commands"
+    },
+    {
       "id": "palette:toggle-changes",
       "name": "Toggle changes",
       "page": "terminal-changes-git/changes"
@@ -695,6 +700,11 @@
       "id": "shortcut:agents.toggle",
       "name": "agents.toggle",
       "page": "sessions/agents"
+    },
+    {
+      "id": "shortcut:commands.toggle",
+      "name": "commands.toggle",
+      "page": "sessions/commands"
     },
     {
       "id": "shortcut:ask.open",
@@ -1455,6 +1465,26 @@
       "id": "feature:agents-open-from-conversation",
       "name": "Open in Agents panel, from an agent's call",
       "page": "sessions/agents"
+    },
+    {
+      "id": "feature:commands-panel",
+      "name": "Commands panel: background commands and monitors with their output",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "feature:commands-from-background-tasks",
+      "name": "Open a command from the background tasks list",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "feature:commands-stop",
+      "name": "Stop a background command from the panel",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "feature:commands-open-from-conversation",
+      "name": "Open in Commands panel, from a command's call",
+      "page": "sessions/commands"
     },
     {
       "id": "feature:always-allow",

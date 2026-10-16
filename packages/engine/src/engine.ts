@@ -75,6 +75,7 @@ import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profi
 import { HostManager, type SdkRuntime } from './host/hostManager.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
+import { readTaskOutput } from './host/taskOutput.ts';
 import { UsageInsights } from './usage/usageInsights.ts';
 import { scopeOf } from './usage/usageScanner.ts';
 import { ModelRouter, RoutingStore, stubRoute } from './autoModel/router.ts';
@@ -1583,6 +1584,7 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.stopTask(sessionId, taskId);
       return {};
     },
+    'session.taskOutput': async ({ outputFile }) => readTaskOutput(outputFile),
     'session.setPermissionMode': async ({ sessionId, mode }) => {
       await hosts.setPermissionMode(sessionId, mode);
       return {};
