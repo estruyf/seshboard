@@ -243,6 +243,10 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
                   {item.device && <p className="mt-1 text-meta text-faint">from {item.device}</p>}
                 </div>
               </div>
+            ) : item.kind === 'notice' ? (
+              <p key={item.key} className="text-center text-meta whitespace-pre-wrap text-muted [overflow-wrap:anywhere]">
+                {item.text}
+              </p>
             ) : item.kind === 'text' ? (
               <div key={item.key} className="text-body">
                 <RemoteText text={item.text} />

@@ -20,6 +20,8 @@ describe('Working line', () => {
     ];
     expect(turnStart(messages)).toBe(1_000);
     expect(turnStart([...messages, message('d', 'user', 4_000, [{ type: 'image' }])])).toBe(4_000);
+    // A background task finishing starts a turn too.
+    expect(turnStart([...messages, message('e', 'system', 5_000, [{ type: 'text', text: 'Background command "x" completed' }])])).toBe(5_000);
     expect(turnStart([])).toBeNull();
   });
 

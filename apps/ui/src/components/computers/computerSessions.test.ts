@@ -109,6 +109,11 @@ describe('the remote transcript', () => {
     expect(items).toEqual([{ kind: 'user', key: 'p', text: 'Look', device: 'Elio’s iPhone' }]);
   });
 
+  it('shows lines from Claude Code as notices', () => {
+    const items = remoteItems([message('n', 'Background command "Wait" failed with exit code 1', { role: 'system' }), message('e', '', { role: 'system', blocks: [] })]);
+    expect(items).toEqual([{ kind: 'notice', key: 'n', text: 'Background command "Wait" failed with exit code 1' }]);
+  });
+
   it('sums up a run of tool calls in one line', () => {
     const reads = ['ContentOverview.tsx', 'useItems.ts', 'a.ts', 'b.ts'].map((f) => ({ name: 'Read', input: { file_path: `/p/src/${f}` } }));
     const edit = { name: 'Edit', input: { file_path: '/p/src/ContentOverview.tsx', old_string: 'a\nb', new_string: 'a\nb\nc' } };

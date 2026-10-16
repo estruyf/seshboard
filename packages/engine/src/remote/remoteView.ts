@@ -103,12 +103,50 @@ function remoteBlock(block: TranscriptBlock): RemoteBlock {
 
 export const remoteMessage = (message: TranscriptMessage, device?: string): RemoteMessage => ({
   uuid: message.uuid,
-  role: message.role,
   timestamp: message.timestamp,
   parentToolUseId: message.parentToolUseId,
-  blocks: message.blocks.map(remoteBlock),
+  ...remoteTurn(message.role, message.blocks.map(remoteBlock)),
   ...(device ? { device } : {}),
 });
+
+const tag = (text: string, name: string) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)?.[1]?.trim() ?? null;
+const SYSTEM_REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
+const NOTICE_LABELS: Record<string, string> = { compact_boundary: 'Conversation compacted', informational: 'Information' };
+
+/**
+ * A turn as a phone shows it, the way the app's transcript reads the markup Claude Code writes into user turns
+ * (apps/ui `displayItems`): a background task finishing, command output and an interrupt become a `system` line, a
+ * slash command reads `/name args`, and reminders go. A system turn's markers become their label.
+ */
+function remoteTurn(role: RemoteMessage['role'], blocks: RemoteBlock[]): Pick<RemoteMessage, 'role' | 'blocks'> {
+  const notice = (line: string | null) => ({ role: 'system' as const, blocks: line ? [{ type: 'text' as const, text: line }] : [] });
+  if (role === 'system') {
+    return { role, blocks: blocks.map((b) => (b.type === 'unknown' ? { type: 'text' as const, text: NOTICE_LABELS[b.kind] ?? b.kind.replace(/_/g, ' ') } : b)) };
+  }
+  if (role !== 'user' || blocks.some((b) => b.type === 'tool_result')) return { role, blocks };
+  const text = blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n\n');
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith('<task-notification>')) return notice(tag(trimmed, 'summary') ?? 'Background task finished');
+  // The saved transcript puts a line before an agent's hand-back; the live stream sends the tag on its own.
+  if (/^(Another Claude session sent a message:\s*)?<agent-message from="/.test(trimmed)) return notice('An agent reported back');
+  const command = tag(text, 'command-name');
+  if (command) {
+    const args = tag(text, 'command-args') ?? '';
+    const line = `${command.startsWith('/') ? command : `/${command}`}${args ? ` ${args}` : ''}`;
+    return { role, blocks: [{ type: 'text', text: line }, ...blocks.filter((b) => b.type !== 'text')] };
+  }
+  const stdout = tag(text, 'local-command-stdout');
+  if (stdout !== null) return notice(stdout);
+  if (/^\[Request interrupted by user/.test(trimmed)) return notice('Interrupted by you');
+  return {
+    role,
+    blocks: blocks.flatMap((b): RemoteBlock[] => {
+      if (b.type !== 'text') return [b];
+      const cleaned = b.text.replace(SYSTEM_REMINDER, '').trim();
+      return cleaned ? [{ ...b, text: cleaned }] : [];
+    }),
+  };
+}
 
 /**
  * A page of a transcript. `after` resumes after a message the phone has (`reset` when it is gone, with the last

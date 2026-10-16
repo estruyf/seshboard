@@ -5,12 +5,14 @@ type ToolUse = Extract<RemoteBlock, { type: 'tool_use' }>;
 type Thinking = Extract<RemoteBlock, { type: 'thinking' }>;
 
 /**
- * The conversation as the phone draws it: your messages, Claude's text, and runs of tool calls in a row folded into
+ * The conversation as the phone draws it: your messages, Claude Code's own lines, Claude's text, and runs of tool calls in a row folded into
  * one line ("6 steps · edited 3 files, ran 2 commands"). Thinking between two calls belongs to their run. Pure, so the
  * grouping and the counting are easy to check.
  */
 export type TranscriptItem =
   | { kind: 'message'; key: string; message: RemoteMessage }
+  /** A line from Claude Code itself: a background task finishing, command output, an interrupt, a compaction. */
+  | { kind: 'notice'; key: string; text: string }
   | { kind: 'text'; key: string; text: string }
   | { kind: 'thinking'; key: string; text: string }
   | { kind: 'image'; key: string }
@@ -26,6 +28,12 @@ export function transcriptItems(messages: readonly RemoteMessage[]): TranscriptI
     pending = [];
   };
   for (const message of visibleMessages(messages)) {
+    if (message.role === 'system') {
+      flush();
+      const text = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
+      if (text.trim()) items.push({ kind: 'notice', key: message.uuid, text });
+      continue;
+    }
     if (message.role !== 'assistant') {
       flush();
       items.push({ kind: 'message', key: message.uuid, message });
