@@ -1372,6 +1372,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-update",
+      "name": "Remote: A new version is ready, with Reload and Later, and pull to update",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-profile",
       "name": "Remote: the Claude profile of a new session, in the list and in a session's header",
       "page": "remote-access"

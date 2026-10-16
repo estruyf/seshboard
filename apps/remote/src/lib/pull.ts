@@ -34,3 +34,9 @@ export const PULL_LABEL: Record<Exclude<PullPhase, 'idle'>, string> = {
   release: 'Release to refresh',
   refreshing: 'Refreshing…',
 };
+
+/** What the indicator says; with a newer remote app on the site, letting go reloads the app with it. */
+export function pullLabel(phase: Exclude<PullPhase, 'idle'>, update: boolean): string {
+  if (!update) return PULL_LABEL[phase];
+  return phase === 'release' ? 'Release to update' : phase === 'refreshing' ? 'Updating…' : PULL_LABEL.pull;
+}

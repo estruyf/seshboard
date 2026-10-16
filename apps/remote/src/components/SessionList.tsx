@@ -80,6 +80,7 @@ export function SessionList({
   onHome,
   homeOpen = false,
   onRefresh,
+  update = false,
   onArchived,
   top,
   usage,
@@ -107,6 +108,8 @@ export function SessionList({
   homeOpen?: boolean;
   /** Asks for the list again (pull to refresh); done when the answer is in. */
   onRefresh: () => Promise<unknown>;
+  /** A newer remote app is on the site: pull to refresh says Release to update (`onRefresh` reloads the app then). */
+  update?: boolean;
   /** A session was archived from its row: leave it if it is open. */
   onArchived: (sessionId: string) => void;
   /** Above everything in the list: the offer to turn on notifications. */
@@ -353,7 +356,7 @@ export function SessionList({
       )}
       {banner}
       {mode === 'phone' ? (
-        <PullToRefresh onRefresh={onRefresh} disabled={offline} className={`min-h-0 flex-1 pb-3 transition-opacity ${offline ? 'opacity-60' : ''}`} aria-busy={offline || undefined} data-remote-list>
+        <PullToRefresh onRefresh={onRefresh} update={update} disabled={offline} className={`min-h-0 flex-1 pb-3 transition-opacity ${offline ? 'opacity-60' : ''}`} aria-busy={offline || undefined} data-remote-list>
           <nav aria-label="Sessions">{body}</nav>
         </PullToRefresh>
       ) : (

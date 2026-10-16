@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_OFFSET, pullOffset, pullPhase, pullStarts } from './pull.ts';
+import { MAX_OFFSET, pullLabel, pullOffset, pullPhase, pullStarts } from './pull.ts';
 
 describe('pull to refresh', () => {
   it('says Pull to refresh, then Release to refresh past 64px', () => {
@@ -18,6 +18,14 @@ describe('pull to refresh', () => {
     expect(pullOffset(-20)).toBe(0);
     expect(pullOffset(50)).toBe(30);
     expect(pullOffset(1000)).toBe(MAX_OFFSET);
+  });
+
+  it('says Release to update when a newer app is waiting', () => {
+    expect(pullLabel('pull', false)).toBe('Pull to refresh');
+    expect(pullLabel('release', false)).toBe('Release to refresh');
+    expect(pullLabel('pull', true)).toBe('Pull to refresh');
+    expect(pullLabel('release', true)).toBe('Release to update');
+    expect(pullLabel('refreshing', true)).toBe('Updating…');
   });
 
   it('only starts at the top of the list, going down', () => {

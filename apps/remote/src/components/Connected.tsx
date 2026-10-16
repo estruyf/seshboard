@@ -27,6 +27,8 @@ import { toast, Toasts } from './Toasts.tsx';
 import { NotificationsSheet, PushOffer, PushStrip, shouldOffer } from './Notifications.tsx';
 import { PhoneHome } from './PhoneHome.tsx';
 import { ProfileStrip, UsageCard, useUsage } from './Usage.tsx';
+import { UpdateBar } from './UpdateBar.tsx';
+import { useUpdate } from './useUpdate.ts';
 import { useAskSync } from './askStore.ts';
 import { currentSupport, loadPrefs, offered, resync, turnOff, turnOn } from '../lib/push.ts';
 import { Button, Message } from './ui.tsx';
@@ -55,7 +57,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const [state, setState] = useState<ConnectionState>(() => (wasDisconnected() ? { kind: 'disconnected' } : { kind: 'connecting', attempt: 0 }));
   const connection = useRef<Connection | null>(null);
   const [sessions, setSessions] = useState<RemoteSessions>(cachedSessions);
-  const [route, setRoute] = useState<Route>({ kind: 'list' });
+  // A reload keeps the history entry's state: back on the screen you were on (Reload after an update).
+  const [route, setRoute] = useState<Route>(() => routeOf(history.state));
   const [drawerOpen, setDrawerOpen] = useState(false);
   /** How far an edge swipe has pulled the drawer out, while the finger is down. */
   const [edge, setEdge] = useState<number | null>(null);
@@ -102,6 +105,12 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const computer = (state.kind === 'connected' && state.computerName) || paired.computerName || '';
   const needsYou = sessions.sessions.filter((s) => s.status === 'needs-you').length;
   const usage = useUsage(client);
+  const update = useUpdate();
+  /** Loads the newer remote app, on this screen: the route is in the history entry, which a reload keeps. */
+  const reloadApp = () => {
+    history.replaceState(route, '');
+    location.reload();
+  };
   useAskSync(client);
 
   // Keep the computer's name, so the offline help can name it after a reload.
@@ -211,7 +220,13 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     { kind: 'note', label: `Paired as ${paired.name}` },
     { label: 'Forget this computer…', danger: true, onSelect: () => void forget() },
   ];
-  const banner = <ConnectionBanner state={state} computer={computer} onHelp={() => setHelp(true)} onRetry={retryNow} onConnect={reconnect} />;
+  const connectionBanner = <ConnectionBanner state={state} computer={computer} onHelp={() => setHelp(true)} onRetry={retryNow} onConnect={reconnect} />;
+  const banner = (
+    <>
+      {update.state === 'ready' && <UpdateBar onReload={reloadApp} onLater={update.later} />}
+      {connectionBanner}
+    </>
+  );
   const chip = <ComputerChip state={state} computer={computer} onDisconnect={disconnect} onConnect={reconnect} onForget={() => void forget()} />;
   const startNew = (projectId?: string) => (wide && !atRoot ? (history.replaceState({ kind: 'new', projectId }, ''), setRoute({ kind: 'new', projectId })) : go({ kind: 'new', projectId }));
   /** On a wide screen, picking another session replaces the open one rather than stacking up history. */
@@ -417,7 +432,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       onNew={() => startNew()}
       onHome={goHome}
       homeOpen={wide && atRoot}
-      onRefresh={reload}
+      onRefresh={update.state === 'none' ? reload : async () => reloadApp()}
+      update={update.state !== 'none'}
       onArchived={(sessionId) => sessionId === currentId && leave()}
       top={offering && !stripOffer ? <PushOffer client={client} onDone={() => setOffer(false)} /> : null}
       usage={<UsageCard usage={usage} offline={state.kind !== 'connected'} />}
@@ -430,7 +446,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         mode="drawer"
         sessions={sessions}
         state={state}
-        banner={banner}
+        banner={connectionBanner}
         client={client}
         features={features}
         chip={chip}

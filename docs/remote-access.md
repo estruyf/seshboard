@@ -53,7 +53,7 @@ Without the desktop app, `node --experimental-transform-types scripts/remote-dem
 | Someone replays recorded traffic | Fresh keys per connection and a counter nonce; a replayed or reordered frame closes the connection |
 | Someone pretends to be the computer | The phone checks the engine's key from the QR code on every connection |
 | A website open on the computer or the phone talks to the engine | `Origin` must be the remote app's; no cookies, no CORS; the engine listens on `127.0.0.1` |
-| Hostile content in a transcript runs script in the remote app | Strict CSP (`script-src 'self'`), transcripts rendered as text (React escapes it), never HTML |
+| Hostile content in a transcript runs script in the remote app | Strict CSP (`script-src 'self'`), transcripts rendered as text (React escapes it), never HTML. `connect-src` allows `'self'` only so the app can read `version.json` (the build it would update to, `src/lib/update.ts`) on its own site |
 | A paired phone does more than it should | Its own contract (`remoteContract`), validated with zod; only sessions the sidebar lists; no terminal, files or settings; Changes take a session id, never a path, and a diff only of a file the change list has; only the permission modes that still ask (`RemotePermissionMode`); commits never push; a branch to check out must be one of the project's local branches |
 | A paired phone makes the engine send requests elsewhere | Push subscriptions must point at a browser push service (`isPushEndpoint`: Google, Mozilla, Apple, Microsoft) over HTTPS |
 | The push service reads notifications | Payloads are encrypted for the phone's browser (RFC 8291, `aes128gcm`) and signed with the engine's VAPID key (RFC 8292) |

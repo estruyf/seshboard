@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { SLOP } from '../lib/gesture.ts';
-import { PULL_LABEL, pullOffset, pullPhase, pullStarts, REFRESHING_OFFSET } from '../lib/pull.ts';
+import { pullLabel, pullOffset, pullPhase, pullStarts, REFRESHING_OFFSET } from '../lib/pull.ts';
 
 /** The spinner stays this long at least, so a quick answer still reads as a refresh. */
 const MIN_SPIN_MS = 500;
@@ -9,14 +9,15 @@ const MIN_SPIN_MS = 500;
 /**
  * A scrolling list you pull down at its top to refresh (`lib/pull.ts`): "Pull to refresh", "Release to refresh" past
  * 64px, then a spinner while `onRefresh` runs. A Home Screen app has no reload button, and `overscroll-contain` keeps
- * the browser's own pull from reloading the page, so the pull is done here. Touch only.
+ * the browser's own pull from reloading the page, so the pull is done here. Touch only. With `update`, a newer remote
+ * app is on the site: it says Release to update, and `onRefresh` reloads the app.
  */
-export function PullToRefresh({ onRefresh, disabled = false, className = '', children, ...rest }: { onRefresh: () => Promise<unknown>; disabled?: boolean; className?: string; children: ReactNode } & Record<`data-${string}` | `aria-${string}`, unknown>) {
+export function PullToRefresh({ onRefresh, update = false, disabled = false, className = '', children, ...rest }: { onRefresh: () => Promise<unknown>; update?: boolean; disabled?: boolean; className?: string; children: ReactNode } & Record<`data-${string}` | `aria-${string}`, unknown>) {
   const scroller = useRef<HTMLDivElement>(null);
   const [dy, setDy] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const latest = useRef({ onRefresh, disabled, refreshing });
-  latest.current = { onRefresh, disabled, refreshing };
+  const latest = useRef({ onRefresh, disabled, refreshing, update });
+  latest.current = { onRefresh, disabled, refreshing, update };
 
   useEffect(() => {
     const el = scroller.current;
@@ -26,7 +27,8 @@ export function PullToRefresh({ onRefresh, disabled = false, className = '', chi
     let distance = 0;
     const onStart = (event: TouchEvent) => {
       const touch = event.touches[0];
-      if (event.touches.length !== 1 || !touch || latest.current.disabled || latest.current.refreshing || el.scrollTop > 0) return;
+      // Offline the list can't refresh, but a newer app can still load.
+      if (event.touches.length !== 1 || !touch || (latest.current.disabled && !latest.current.update) || latest.current.refreshing || el.scrollTop > 0) return;
       start = { x: touch.clientX, y: touch.clientY };
       pulling = false;
     };
@@ -86,10 +88,10 @@ export function PullToRefresh({ onRefresh, disabled = false, className = '', chi
         {phase === 'refreshing' ? (
           <span className="flex h-11 items-center">
             <LoaderCircle className="size-4 animate-spin text-faint" aria-hidden />
-            <span className="sr-only">{PULL_LABEL.refreshing}</span>
+            <span className="sr-only">{pullLabel('refreshing', update)}</span>
           </span>
         ) : (
-          phase !== 'idle' && <span className="flex h-11 items-center">{PULL_LABEL[phase]}</span>
+          phase !== 'idle' && <span className="flex h-11 items-center">{pullLabel(phase, update)}</span>
         )}
       </div>
       <div className={dragging ? '' : 'pull-settle'} style={offset ? { transform: `translateY(${offset}px)` } : undefined}>
