@@ -11,6 +11,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Images and files in the remote app.** New session in the remote app takes images and files, and a session takes files next to images: tap the paperclip button, or paste or drop them on the message box. A message takes up to four images and four files, about 2.7 MB in all. Sending files, and images with a new session, needs this version of Switchboard on your computer. Queue for later doesn't take attachments.
 - **Pick the profile, model, effort and mode for another computer.** New session with **Run on** set to another computer now has the same chips as the remote app: with more than one Claude profile there, pick the profile the session runs with, and the other chips follow its defaults. The model list offers **Auto** when it is on there, and the effort chip only shows for a model that takes an effort. In an open session on another computer, the model, effort and mode chips under the message box now change them there, and the session's profile shows next to the computer's name.
 
+### Fixed
+
+- **Background tasks in a remote conversation.** In the remote app and in a session on another computer, a background command or agent finishing showed as a message from you, full of markup such as `<task-notification>`. It now shows as a short line, such as *Background command "Wait for PR checks to finish" failed with exit code 1*. Slash commands show as **/review --fast**, command output and **Interrupted by you** as a line, and the reminders Claude Code adds to your messages are gone. This needs this version of Switchboard on the computer the session runs on.
+
 ## [0.0.20] - 2026-10-15
 
 ### New

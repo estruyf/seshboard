@@ -29,6 +29,12 @@ describe('transcriptItems', () => {
     expect(items.map((i) => i.kind)).toEqual(['run', 'thinking', 'text']);
   });
 
+  it('shows lines from Claude Code as notices, not as your messages', () => {
+    const items = transcriptItems([msg('user', text('Wait for CI')), msg('system', text('Background command "Wait" failed with exit code 1')), msg('system')]);
+    expect(items.map((i) => i.kind)).toEqual(['message', 'notice']);
+    expect(items[1]).toMatchObject({ text: 'Background command "Wait" failed with exit code 1' });
+  });
+
   it('leaves out subagents\' messages and empty text', () => {
     const sub: RemoteMessage = { ...msg('assistant', call('Bash')), parentToolUseId: 't1' };
     expect(transcriptItems([sub, msg('assistant', text('  '))])).toEqual([]);

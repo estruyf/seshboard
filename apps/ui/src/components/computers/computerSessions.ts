@@ -60,9 +60,11 @@ export interface RemoteTool {
   failed: boolean;
 }
 
-/** What the conversation shows, in order: your prompts, Claude's text, and each run of tool calls as one item. */
+/** What the conversation shows, in order: your prompts, Claude Code's own lines, Claude's text, and each run of tool calls as one item. */
 export type RemoteItem =
   | { kind: 'user'; key: string; text: string; device: string | null }
+  /** A line from Claude Code itself: a background task finishing, command output, an interrupt, a compaction. */
+  | { kind: 'notice'; key: string; text: string }
   | { kind: 'text'; key: string; text: string }
   | { kind: 'tools'; key: string; tools: RemoteTool[] };
 
@@ -79,6 +81,11 @@ export function remoteItems(messages: readonly RemoteMessage[]): RemoteItem[] {
     if (message.role === 'user') {
       const text = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : b.type === 'image' ? ['[image]'] : [])).join('\n\n');
       if (text.trim()) items.push({ kind: 'user', key: message.uuid, text, device: message.device ?? null });
+      continue;
+    }
+    if (message.role === 'system') {
+      const text = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
+      if (text.trim()) items.push({ kind: 'notice', key: message.uuid, text });
       continue;
     }
     message.blocks.forEach((block, index) => {

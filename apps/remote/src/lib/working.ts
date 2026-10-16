@@ -14,11 +14,14 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-/** When your last message went in (null: not known), for the "9s · Thinking" timer. Tool results don't count. */
+/**
+ * When your last message went in (null: not known), for the "9s · Thinking" timer. Tool results don't count; a line from
+ * Claude Code (a background task finishing) does, as it starts a turn too.
+ */
 export function turnStart(messages: readonly RemoteMessage[]): number | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]!;
-    if (message.role === 'user' && !message.parentToolUseId && message.blocks.some((b) => b.type === 'text' || b.type === 'image')) return message.timestamp;
+    if (message.role !== 'assistant' && !message.parentToolUseId && message.blocks.some((b) => b.type === 'text' || b.type === 'image')) return message.timestamp;
   }
   return null;
 }
