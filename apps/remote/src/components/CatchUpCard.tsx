@@ -14,7 +14,7 @@ export function CatchUpCard({ card, now, committed, onChanges, onCommit, canComm
   const state = stateLabel(card, committed);
   const hasDiff = (card.signals.diff?.files ?? 0) > 0 && !committed;
   return (
-    <section aria-label="Catch-up" className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card p-3 shadow-sm" data-remote-catchup>
+    <section aria-label="Catch-up" className="flex min-w-0 flex-col gap-2.5 rounded-[14px] border border-border bg-card p-3 break-words shadow-sm" data-remote-catchup>
       <div className="flex items-center gap-2">
         <span className={`flex items-center gap-1.5 text-ui font-semibold ${TEXT[state.tone]}`}>
           <span aria-hidden className={`size-2 rounded-full ${DOT[state.tone]}`} />

@@ -1,5 +1,7 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
+import { useWide } from '../lib/media.ts';
+import { Sheet } from './Sheet.tsx';
 
 export interface ChoiceOption<T> {
   value: T;
@@ -15,7 +17,8 @@ export interface ChoiceOption<T> {
 /**
  * A quiet chip that shows a value (the model, an effort with its gauge) and opens a small list to pick another: the list is a
  * listbox, arrow keys move, Enter picks, Escape and a tap outside close it. The mouse moves the same highlight as the
- * arrow keys (focus), so there is one row lit at a time; the chosen one has a check.
+ * arrow keys (focus), so there is one row lit at a time; the chosen one has a check. On a phone the list is a bottom
+ * sheet instead, with rows big enough to tap, because a chip near the right edge has no room for a list beside it.
  */
 export function ChoiceChip<T>({
   label,
@@ -44,19 +47,28 @@ export function ChoiceChip<T>({
   spoken?: string;
 }) {
   const [open, setOpen] = useState(false);
+  /** The list opens to the left of the chip when it would run off the right edge. */
+  const [alignEnd, setAlignEnd] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const id = useId();
+  const wide = useWide();
+
+  useLayoutEffect(() => {
+    if (!open || !wide || !button.current || !list.current) return;
+    const chip = button.current.getBoundingClientRect();
+    setAlignEnd(chip.left + list.current.offsetWidth > document.documentElement.clientWidth - 8);
+  }, [open, wide]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !wide) return;
     (list.current?.querySelector<HTMLElement>('[aria-selected=true]') ?? list.current?.querySelector<HTMLElement>('[role=option]'))?.focus();
     const outside = (event: PointerEvent) => {
       if (!list.current?.contains(event.target as Node) && !button.current?.contains(event.target as Node)) setOpen(false);
     };
     document.addEventListener('pointerdown', outside);
     return () => document.removeEventListener('pointerdown', outside);
-  }, [open]);
+  }, [open, wide]);
 
   const pick = (option: ChoiceOption<T>) => {
     setOpen(false);
@@ -82,7 +94,27 @@ export function ChoiceChip<T>({
         {face}
         <ChevronDown className="size-3.5 text-faint" aria-hidden />
       </button>
-      {open && (
+      {open && !wide && (
+        <Sheet title={label} onClose={() => setOpen(false)} hook={hook ? `choice-${hook}` : 'choice'}>
+          <ul role="listbox" aria-label={label} className="-mx-1 flex flex-col pb-1">
+            {options.map((option, index) => {
+              const isSelected = option.value === selected;
+              return [
+                <li key={index} role="option" aria-selected={isSelected} onClick={() => pick(option)} className="flex min-h-12 cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 active:bg-selected">
+                  {option.icon ?? (option.dot && <span aria-hidden className={`mt-2 size-2 shrink-0 rounded-full ${option.dot}`} />)}
+                  <span className="min-w-0 flex-1">
+                    <span className={`block text-body ${isSelected ? 'font-medium' : ''}`}>{option.label}</span>
+                    {option.description && <span className="block text-ui text-muted">{option.description}</span>}
+                  </span>
+                  <Check aria-hidden className={`mt-1 size-4 shrink-0 text-accent-ink ${isSelected ? '' : 'invisible'}`} />
+                </li>,
+                option.separatorAfter && <li key={`${index}-line`} role="presentation" aria-hidden className="mx-3 my-1 shrink-0 border-t border-border" />,
+              ];
+            })}
+          </ul>
+        </Sheet>
+      )}
+      {open && wide && (
         <ul
           ref={list}
           id={id}
@@ -101,7 +133,7 @@ export function ChoiceChip<T>({
               items[(at + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
             } else if (event.key === 'Tab') setOpen(false);
           }}
-          className={`overlay absolute left-0 z-40 flex max-h-72 w-64 flex-col overflow-y-auto rounded-xl p-1 ${placement === 'below' ? 'top-full mt-1' : 'bottom-full mb-1'}`}
+          className={`overlay absolute z-40 flex max-h-72 w-64 max-w-[calc(100vw-1rem)] ${alignEnd ? 'right-0' : 'left-0'} flex-col overflow-y-auto rounded-xl p-1 ${placement === 'below' ? 'top-full mt-1' : 'bottom-full mb-1'}`}
         >
           {options.map((option, index) => {
             const isSelected = option.value === selected;

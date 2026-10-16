@@ -111,6 +111,7 @@ export interface RemoteHubOptions {
   projects(): RemoteProject[];
   /** Every Claude profile, and the one projects without their own use. */
   profiles(): { profiles: RemoteHubProfile[]; defaultId: string };
+  /** The transcript with the messages a session still holds back, as the first `watchTranscript` update has it. */
   readTranscript(sessionId: string): Promise<TranscriptMessage[]>;
   watchTranscript(sessionId: string, listener: (update: TranscriptUpdate) => void): () => void;
   send(sessionId: string, text: string, mode: SendMode, images: RemoteImage[]): Promise<{ messageUuid: string; queued: boolean }>;
