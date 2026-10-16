@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareCode, SquareTerminal, X } from 'lucide-react';
 import type { Computer, Contract, PermissionDecision, RemoteMessage, RemotePrompt, RemoteSession, RpcClient } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
@@ -25,11 +25,15 @@ import { Pill } from '../ui/Pill.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
 import { ComputerPrompt } from './ComputerPrompt.tsx';
-import { applyStream, applyUpdate, awayBanner, inBackground, NOT_STREAMING, prependMessages, remoteItems, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
+import { applyStream, applyUpdate, awayBanner, inBackground, NOT_STREAMING, prependMessages, remoteItems, remoteTurns, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { RemoteEffortChip, RemoteModeChip, RemoteModelChip, useRemoteOptions } from './RemoteChips.tsx';
 import { remoteAutoFace, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
 import { RemoteText } from './RemoteText.tsx';
+import { usePreferences } from '../../state/preferencesStore.ts';
+import { useWidth } from '../ui/useWidth.ts';
+import { sentLine } from '../transcript/turnFormat.ts';
+import { LiveTurnParts, TurnMetaContext, TurnMetaLine, type LiveTurnInfo, type TurnMetaValue } from '../transcript/TurnMeta.tsx';
 import { remoteSessionEntries } from './remoteActions.ts';
 
 const PAGE = 100;
@@ -156,7 +160,19 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
       ],
     });
 
-  const items = remoteItems(messages);
+  const items = useMemo(() => remoteItems(messages), [messages]);
+  // Each finished turn's time and duration under its last reply, from the messages' timestamps (no tokens: the
+  // remote contract has no usage), and the open turn's clock on the working line.
+  const turns = useMemo(() => remoteTurns(messages), [messages]);
+  const turnDetails = usePreferences((s) => s.prefs.turnDetails);
+  const width = useWidth(scroller);
+  const openTurn = working ? (turns.at(-1) ?? null) : null;
+  const turnMeta = useMemo<TurnMetaValue>(
+    () => ({ byReply: new Map(turns.filter((t) => t !== openTurn && t.replyKey).map((t) => [t.replyKey!, t])), mode: turnDetails, width }),
+    [turns, openTurn, turnDetails, width],
+  );
+  const waitingSince = prompts.length ? Math.min(...prompts.map((p) => p.createdAt)) : null;
+  const live = useMemo<LiveTurnInfo>(() => ({ turn: openTurn, waitingSince, mode: turnDetails }), [openTurn, waitingSince, turnDetails]);
 
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
@@ -239,6 +255,7 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
         data-transcript
       >
+        <TurnMetaContext.Provider value={turnMeta}>
         <div className="mx-auto grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-3 px-6 pt-3 pb-6">
           {error && <Notice tone="error">{error}</Notice>}
           {!loaded && !error && (
@@ -254,7 +271,7 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
           {items.map((item) =>
             item.kind === 'user' ? (
               <div key={item.key} className="flex justify-end">
-                <div className="relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-prompt-bubble>
+                <div className="relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-prompt-bubble data-tooltip={item.at !== null ? sentLine(item.at, item.device) : undefined}>
                   <ClampedPrompt itemKey={item.key} className="text-body whitespace-pre-wrap select-text [overflow-wrap:anywhere]">
                     {item.text}
                   </ClampedPrompt>
@@ -268,6 +285,7 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
             ) : item.kind === 'text' ? (
               <div key={item.key} className="text-body">
                 <RemoteText text={item.text} />
+                <TurnMetaLine itemKey={item.key} className="mt-1 h-6" />
               </div>
             ) : (
               <ToolRun key={item.key} tools={item.tools} />
@@ -283,7 +301,8 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
               <span className="flex w-4 shrink-0 justify-center">
                 <WorkingDots />
               </span>
-              <span className="min-w-0 truncate">{streaming.kind === 'tool' ? `Using ${streaming.text}…` : streaming.kind === 'thinking' ? 'Thinking…' : 'Working…'}</span>
+              <span className="min-w-0 truncate">{prompts.length ? 'Waiting for you' : streaming.kind === 'tool' ? `Using ${streaming.text}…` : streaming.kind === 'thinking' ? 'Thinking…' : 'Working…'}</span>
+              <LiveTurnParts live={live} startedAt={null} />
             </p>
           )}
           {!working && background && connected && (
@@ -295,6 +314,7 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
             </p>
           )}
         </div>
+        </TurnMetaContext.Provider>
       </div>
 
       <div className="mx-auto grid w-full max-w-3xl shrink-0 gap-2 px-6 pb-4">

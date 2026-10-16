@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **Each reply shows when the turn ended and how long it took. Turn on tokens in Settings › Conversation to see what a turn used.** A faint line after the buttons under the last reply of a turn says when it ended and how long Claude worked, such as **14:32 · 2m 14s**. Time a permission prompt, a question or a plan waited for you is left out, and shown in brackets; a turn you stopped says **Stopped after**, and one that ended on an error **Failed after**. Hover the time for the full date. With **Time, duration and tokens** under **Under each reply**, the line adds the turn's tokens, its agents' included; hover them for what they were made of and the model. While Claude works, the working line counts along, and pauses while a prompt waits for you. Hover one of your prompts to see when you sent it, and from which phone. Sessions on another computer and in the remote app show the time and duration too.
+
 ### Fixed
 
 - **Starting a session no longer empties the window.** Sending the first message from New session could leave Switchboard blank, until you restarted it. It now opens the session.

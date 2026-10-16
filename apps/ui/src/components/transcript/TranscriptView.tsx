@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareTerminal, X } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
@@ -76,6 +76,10 @@ import { useCommandRuns } from './useCommandRuns.ts';
 import { backgroundSummary } from './backgroundTasks.ts';
 import { PromptExpansionContext, type PromptExpansion } from './ClampedPrompt.tsx';
 import { buildDisplayItems, groupActivity, type RenderItem } from './displayItems.ts';
+import { durationWords, liveParts, tokenWords } from './turnFormat.ts';
+import { LiveTurnParts, TurnMetaContext, type LiveTurnInfo, type TurnMetaValue } from './TurnMeta.tsx';
+import { claudeMs, liveTurn, type Turn } from './turns.ts';
+import { useTurns } from './useTurns.ts';
 import { memoryWriteOf } from './memoryWrites.ts';
 import { useKnownMemoryFolders, useMemoryFoldersSync } from '../memory/useMemoryFolders.ts';
 import { MessageMenuContext, useRememberLayer } from '../memory/RememberLayer.tsx';
@@ -150,12 +154,12 @@ function SpinnerSlot({ sessionId, message, children }: { sessionId: string; mess
   );
 }
 
-function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string; since: number | null; showIndicator: boolean }) {
+function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: string; since: number | null; showIndicator: boolean; live: LiveTurnInfo }) {
   const block = useHosts((s) => s.streaming.get(sessionId));
   const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
   // A new session on Auto: your message waits until Auto has picked its model.
   const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
-  const now = useTicker((running || choosing) && showIndicator && block?.kind !== 'text');
+  const now = useTicker(choosing && showIndicator);
   if (choosing) {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-auto-choosing>
@@ -179,7 +183,7 @@ function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string
     );
   }
   if (!running || !showIndicator) return null;
-  const label = block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
+  const label = live.waitingSince !== null ? 'Waiting for you' : block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
   return (
     <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
       <SpinnerSlot sessionId={sessionId} message={label}>
@@ -187,8 +191,9 @@ function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string
         <span className="flex w-4 shrink-0 justify-center">
           <WorkingDots />
         </span>
-        {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
         <span className="shrink-0">{label}</span>
+        {/* The turn's time and tokens so far, as Settings › Conversation says. */}
+        <LiveTurnParts live={live} startedAt={since} />
         {block?.kind === 'thinking' && block.text && <span className="min-w-0 truncate text-faint italic">{block.text.slice(-160)}</span>}
       </p>
       </SpinnerSlot>
@@ -196,12 +201,21 @@ function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string
   );
 }
 
+/** How the turn that just ended went, as the setting shows it, for its announcement: " It took 2 minutes 14 seconds, 18.4 thousand tokens." */
+function finishedDetails(live: LiveTurnInfo | null): string {
+  if (!live?.turn) return '';
+  const parts = liveParts(live.mode);
+  const worked = claudeMs(live.turn) ?? liveTurn(live.turn, Date.now(), null).workedMs;
+  const said = [...(parts.duration && worked !== null ? [`It took ${durationWords(worked)}`] : []), ...(parts.tokens && live.turn.tokens ? [tokenWords(live.turn.tokens.total)] : [])];
+  return said.length ? ` ${said.join(', ')}.` : '';
+}
+
 /**
  * A polite screen-reader announcement when Claude finishes a turn or needs you to answer something.
  * The transcript itself is not a live region: streamed text and rows the list mounts while you
  * scroll would be read out non-stop.
  */
-function Announcer({ sessionId, working, failed, permissions, cwd }: { sessionId: string; working: boolean; failed: boolean; permissions: PermissionRequest[]; cwd: string | null }) {
+function Announcer({ sessionId, working, failed, permissions, cwd, turn }: { sessionId: string; working: boolean; failed: boolean; permissions: PermissionRequest[]; cwd: string | null; turn: RefObject<LiveTurnInfo | null> }) {
   const [message, setMessage] = useState('');
   // A trailing no-break space makes a repeated message a change, so it's read out again.
   const say = (text: string) => setMessage((current) => (current.replace(/\u00a0$/, '') === text ? `${text}\u00a0` : text));
@@ -216,8 +230,8 @@ function Announcer({ sessionId, working, failed, permissions, cwd }: { sessionId
   useEffect(() => {
     const was = previous.current;
     previous.current = { sessionId, working };
-    if (was.sessionId === sessionId && was.working && !working) say(failed ? 'Claude stopped with an error.' : 'Claude finished.');
-  }, [sessionId, working, failed]);
+    if (was.sessionId === sessionId && was.working && !working) say(`${failed ? 'Claude stopped with an error.' : 'Claude finished.'}${finishedDetails(turn.current)}`);
+  }, [sessionId, working, failed, turn]);
   return (
     <p className="sr-only" role="status" aria-live="polite" data-announcer>
       {message}
@@ -588,6 +602,21 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const activeLabel =
     live?.status === 'needs-you' ? 'Waiting for you' : streamKind === 'thinking' ? 'Thinking' : streamKind === 'tool' && streamTool ? `Using ${streamTool}` : null;
   // When your last message went in, for the "9s · Thinking" timer.
+  // Turns: the line under each finished one, and the working line's numbers for the open one.
+  const turns = useTurns(client, sessionId, items, working);
+  const turnDetails = usePreferences((s) => s.prefs.turnDetails);
+  const openTurn = working ? (turns.at(-1) ?? null) : null;
+  const finishedByReply = useMemo(() => {
+    const map = new Map<string, Turn>();
+    for (const turn of turns) if (turn !== openTurn && turn.replyKey) map.set(turn.replyKey, turn);
+    return map;
+  }, [turns, openTurn]);
+  // While a prompt waits on you, the clock stops: that time isn't Claude's.
+  const waitingSince = live?.status === 'needs-you' && permissions.length > 0 ? Math.min(...permissions.map((p) => p.createdAt)) : null;
+  const liveTurnInfo = useMemo<LiveTurnInfo>(() => ({ turn: openTurn, waitingSince, mode: turnDetails }), [openTurn, waitingSince, turnDetails]);
+  // The latest turn, for the announcement when it ends.
+  const lastTurnRef = useRef<LiveTurnInfo | null>(null);
+  lastTurnRef.current = { turn: turns.at(-1) ?? null, waitingSince: null, mode: turnDetails };
   const turnStart = useMemo(() => {
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i]!;
@@ -719,6 +748,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   }, [renderItems]);
   const showOutlinePref = usePreferences((s) => s.prefs.promptOutline);
   const transcriptWidth = useWidth(scrollRef);
+  const turnMeta = useMemo<TurnMetaValue>(() => ({ byReply: finishedByReply, mode: turnDetails, width: transcriptWidth }), [finishedByReply, turnDetails, transcriptWidth]);
   const showOutline = showOutlinePref && prompts.length >= MIN_PROMPTS && (transcriptWidth ?? 0) >= MIN_WIDTH && status === 'ready' && !terminalMaximized;
   /** Where each prompt's row starts, from the virtualizer: measured, or estimated for rows not rendered yet. */
   const promptStarts = () => {
@@ -1415,6 +1445,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <PromptExpansionContext.Provider value={promptExpansion}>
           <MessageMenuContext.Provider value={remember.openMenu}>
           <FileLinksProvider cwd={cwd}>
+          <TurnMetaContext.Provider value={turnMeta}>
             {/* The conversation, and the prompt outline beside it in the gutter (outside the scroll, so it stays put). */}
             <div className={`relative min-h-0 flex-1 flex-col ${terminalMaximized ? 'hidden' : 'flex'}`} data-transcript-area>
             <div
@@ -1482,6 +1513,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                         sessionId={sessionId}
                         active={renderItems[row.index]!.key === activeGroupKey}
                         activeLabel={renderItems[row.index]!.key === activeGroupKey ? activeLabel : null}
+                        live={renderItems[row.index]!.key === activeGroupKey ? liveTurnInfo : null}
                       />
                     </div>
                   ))}
@@ -1493,7 +1525,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 </div>
               )}
               <div ref={tailRef}>
-                <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} />
+                <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} live={liveTurnInfo} />
               </div>
               {/* Sticks to the bottom of the view while you read further up; takes no room at the end. */}
               {away && (
@@ -1512,12 +1544,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               <PromptOutline prompts={prompts} starts={outlineMeasure.starts} total={outlineMeasure.total} current={currentMark} right={outlineMeasure.gutter} onJump={onOutlineJump} />
             )}
             </div>
+          </TurnMetaContext.Provider>
           </FileLinksProvider>
           </MessageMenuContext.Provider>
           </PromptExpansionContext.Provider>
           </MessageActionsContext.Provider>
           {remember.overlay}
-          <Announcer sessionId={sessionId} working={working} failed={host?.state === 'error'} permissions={permissions} cwd={cwd} />
+          <Announcer sessionId={sessionId} working={working} failed={host?.state === 'error'} permissions={permissions} cwd={cwd} turn={lastTurnRef} />
 
           {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} onClose={() => useOverlay.getState().close()} />}
       {rewinding && (

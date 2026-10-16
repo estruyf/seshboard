@@ -73,7 +73,8 @@ export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { item
   const context = useContext(MessageActionsContext);
   const actions = copyOnly ? null : context;
   const uuid = messageUuid(itemKey);
-  const placement = kind === 'text' ? '-ml-1 mt-1 h-6' : 'absolute -top-3 right-2 z-10 rounded-md border border-border bg-card px-0.5 shadow-sm';
+  // Under a reply it sits in the reply's row (`ReplyActions`), with the turn's line after it.
+  const placement = kind === 'text' ? 'h-6 shrink-0' : 'absolute -top-3 right-2 z-10 rounded-md border border-border bg-card px-0.5 shadow-sm';
   return (
     <div
       role="toolbar"

@@ -72,6 +72,8 @@ export type SidebarStyle = "large" | "standard" | "compact";
 export type SidebarCollapsed = "minimal" | "closed";
 /** Tool calls in a conversation: one summary line per run (click for the steps), or every step. */
 export type ToolActivity = "summary" | "steps";
+/** Settings › Conversation, "Under each reply": what a finished turn's line shows after the reply's actions. */
+export type TurnDetails = "none" | "time" | "duration" | "tokens";
 /** What a click on a file link in the conversation does: show the file in the file manager, or open it in the editor. */
 export type FileLinkClick = "file-manager" | "editor";
 /** Sessions in the sidebar: only those started or continued in Switchboard, or every Claude Code session. */
@@ -168,6 +170,8 @@ export interface Preferences {
   fileLinkClick: FileLinkClick;
   /** Settings › Conversation: "Show prompt outline", the rail beside the conversation with a mark for each of your prompts. */
   promptOutline: boolean;
+  /** Settings › Conversation: "Under each reply", when a turn ended, how long it took and its tokens. */
+  turnDetails: TurnDetails;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
   /** Settings › Remote: "Show in the sidebar when nobody is connected", the quiet "Remote on · nobody connected" line. */
@@ -235,6 +239,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   toolActivity: "summary",
   fileLinkClick: "file-manager",
   promptOutline: true,
+  turnDetails: "duration",
   confirmQuit: true,
   remoteIdleLine: true,
   sessionScope: "switchboard",
@@ -372,6 +377,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["file-manager", "editor"] as const, raw.fileLinkClick))
     out.fileLinkClick = raw.fileLinkClick;
   if (typeof raw.promptOutline === "boolean") out.promptOutline = raw.promptOutline;
+  if (oneOf(["none", "time", "duration", "tokens"] as const, raw.turnDetails))
+    out.turnDetails = raw.turnDetails;
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
   if (typeof raw.remoteIdleLine === "boolean") out.remoteIdleLine = raw.remoteIdleLine;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))

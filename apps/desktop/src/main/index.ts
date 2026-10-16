@@ -4018,6 +4018,102 @@ async function runReplyActionsStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Under each reply: a finished turn's line ("14:32 · 2m 14s · 18.4k tokens") after the reply's actions, its tokens'
+ * tooltip on hover, the prompt's "Sent …" tooltip, and Nothing in Settings › Conversation hiding the line. Shows all
+ * three parts for the step and puts the setting back. Read-only: it only scrolls and hovers.
+ */
+async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const lines = `[...document.querySelectorAll('${view} [data-turn-meta]')]`;
+  const before = preferences.get().turnDetails;
+  const back = smokeSessionId;
+  let borrowed: string | null = null;
+  updatePreferences({ turnDetails: 'tokens' });
+  // Scrolls up from the end until the lines of two finished turns have been on screen (the list is virtualised).
+  const twoTurns = async (): Promise<boolean> => {
+    await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); if (el) el.scrollTop = el.scrollHeight; })()`);
+    const seen = new Set<string>();
+    for (let page = 0; page < 20 && seen.size < 2; page++) {
+      await waitInPage(win, `${lines}.length > 0`, page === 0 ? 1_500 : 300);
+      for (const key of (await js(`${lines}.map((line) => line.closest('[data-message-key]')?.dataset.messageKey ?? '')`)) as string[]) if (key) seen.add(key);
+      const top = (await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); if (!el || el.scrollTop === 0) return true; el.scrollTop -= el.clientHeight * 0.8; return false; })()`)) as boolean;
+      if (top) break;
+    }
+    return seen.size >= 2;
+  };
+  try {
+    if (!(await twoTurns())) {
+      const running = await runningSessions();
+      if (!running) return 'failed: could not ask the engine which sessions are running, so none is safe to open';
+      const rows = (await js("[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId)")) as string[];
+      for (const id of [...new Set(rows)].filter((id) => id !== back && !running.ids.has(id)).slice(0, 10)) {
+        await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+        if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000))) continue;
+        if (await twoTurns()) {
+          borrowed = id;
+          break;
+        }
+      }
+      if (!borrowed) return 'ok: no session with two finished turns among the newest (the demo home has them: npm run smoke:demo)';
+    }
+
+    // The line: the time, then parts joined by a · in the border colour, on one row with the actions.
+    // The one with tokens if any (sessions without usage have none), in the middle of the view.
+    await js(`(() => { const line = ${lines}.find((l) => l.querySelector('[data-turn-tokens]')) ?? ${lines}.at(-1); line.dataset.smokeTurnLine = '1'; line.scrollIntoView({ block: 'center' }); })()`);
+    await settle(win);
+    const line = (await js(`(() => {
+      const line = document.querySelector('[data-smoke-turn-line]');
+      const actions = line.parentElement.querySelector('[data-message-actions]');
+      const seps = [...line.children].filter((c) => c.textContent === '·');
+      return {
+        time: line.querySelector('[data-turn-time]')?.textContent ?? '',
+        seps: seps.length,
+        sameRow: actions ? Math.abs(actions.getBoundingClientRect().top - line.getBoundingClientRect().top) < 6 : false,
+        oneLine: line.getBoundingClientRect().height < 20,
+        label: line.querySelector('.sr-only')?.textContent ?? '',
+      };
+    })()`)) as { time: string; seps: number; sameRow: boolean; oneLine: boolean; label: string };
+    if (!line.time) return 'a turn line has no time';
+    if (line.seps < 1) return `the line "${line.label}" has no · between its parts`;
+    if (!line.sameRow) return "the line isn't on the row of the reply's actions";
+    if (!line.oneLine) return 'the line wraps';
+    if (!line.label.startsWith('Ended at ')) return `the line's label reads "${line.label}"`;
+
+    // The tokens' tooltip, on hover: the turn's total, a bar, a row per part.
+    const tokens = (await js(`(() => {
+      const el = document.querySelector('[data-smoke-turn-line] [data-turn-tokens]');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    })()`)) as { x: number; y: number } | null;
+    let hovered = 'no tokens on screen (sessions without usage)';
+    if (tokens) {
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: tokens.x, y: tokens.y });
+      if (!(await waitInPage(win, "document.querySelector('[data-turn-tokens-tooltip]')", 3_000))) return 'hovering the tokens showed no tooltip';
+      const tip = (await js(`(() => { const t = document.querySelector('[data-turn-tokens-tooltip]'); return { heading: t.querySelector('p')?.textContent ?? '', rows: t.querySelectorAll('dd').length }; })()`)) as { heading: string; rows: number };
+      if (!/tokens · this turn · \d+ repl(y|ies)$/.test(tip.heading)) return `the tooltip is headed "${tip.heading}"`;
+      if (tip.rows !== 4) return `the tooltip has ${tip.rows} rows, not one per part`;
+      await shot(win, 'turn-tokens.png');
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
+      if (!(await waitInPage(win, "!document.querySelector('[data-turn-tokens-tooltip]')", 2_000))) return 'the tooltip stayed after the pointer left';
+      hovered = `tooltip "${tip.heading}"`;
+    }
+    const sent = (await js(`document.querySelector('${view} [data-prompt-bubble][data-tooltip]')?.dataset.tooltip ?? ''`)) as string;
+    if (sent && !sent.startsWith('Sent ')) return `a prompt's tooltip reads "${sent}"`;
+
+    // Nothing: no line.
+    updatePreferences({ turnDetails: 'none' });
+    if (!(await waitInPage(win, `${lines}.length === 0`, 2_000))) return 'Nothing in Under each reply left the lines';
+    return `ok: "${line.label}", ${hovered}, gone with Nothing`;
+  } finally {
+    updatePreferences({ turnDetails: before });
+    await js(`document.querySelector('[data-smoke-turn-line]')?.removeAttribute('data-smoke-turn-line')`);
+    if (borrowed && back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+  }
+}
+
+/**
  * Shell code blocks in the conversation have a Run button and other blocks don't. Read-only: Run is
  * never clicked, since it would run the command in a real project.
  */
@@ -6890,6 +6986,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
+  await step('under each reply: the turn line, its tokens on hover, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));

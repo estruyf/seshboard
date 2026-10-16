@@ -14,13 +14,16 @@ const MARGIN = 8;
 
 /**
  * Where a tooltip goes: centred below its target, or above when there's no room below, and always
- * kept inside the window with a small margin.
+ * kept inside the window with a small margin. `prefer: 'above'` turns that round, for a target near
+ * the bottom of the conversation, where the message box would cover what opens below.
  */
-export function placeTooltip(target: Rect, tip: Size, viewport: Size): { left: number; top: number } {
+export function placeTooltip(target: Rect, tip: Size, viewport: Size, prefer: 'below' | 'above' = 'below'): { left: number; top: number } {
   const centred = target.left + target.width / 2 - tip.width / 2;
   const left = Math.max(MARGIN, Math.min(centred, viewport.width - tip.width - MARGIN));
   const below = target.bottom + GAP;
-  const top = below + tip.height + MARGIN <= viewport.height ? below : Math.max(MARGIN, target.top - GAP - tip.height);
+  const above = target.top - GAP - tip.height;
+  const fitsBelow = below + tip.height + MARGIN <= viewport.height;
+  const top = prefer === 'above' ? (above >= MARGIN ? above : fitsBelow ? below : MARGIN) : fitsBelow ? below : Math.max(MARGIN, above);
   return { left: Math.round(left), top: Math.round(top) };
 }
 

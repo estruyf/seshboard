@@ -552,6 +552,32 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'turn-details',
+    async take(t) {
+      // Time, duration and tokens under each reply, with the tokens' tooltip open (from the keyboard, as Tab gets there).
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="conversation"]');
+      await t.click('[data-turn-details="tokens"]');
+      await t.click('[data-close-settings]');
+      await t.openSession(HERO);
+      const tokens = t.page.locator('[data-current-session] [data-turn-meta] [data-turn-tokens]').last();
+      await tokens.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {
+        throw new Error('no finished turn with tokens in the hero session');
+      });
+      await tokens.scrollIntoViewIfNeeded();
+      await t.settle();
+      await tokens.focus();
+      await t.need('[data-turn-tokens-tooltip]', 'the tokens did not open their tooltip on focus');
+      await t.shot('turn-details', { clip: '[data-current-session] [data-transcript-area]', keepFocus: true });
+      await t.escape();
+      await t.gone('[data-turn-tokens-tooltip]', 'Esc did not close the tokens tooltip');
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="conversation"]');
+      await t.click('[data-turn-details="duration"]');
+      await t.click('[data-close-settings]');
+    },
+  },
+  {
     name: 'code-block',
     async take(t) {
       await t.openSession(HERO);

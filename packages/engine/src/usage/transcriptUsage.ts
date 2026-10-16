@@ -26,6 +26,33 @@ const text = (v: unknown) => (typeof v === 'string' && v ? v : null);
 /** The marker every line with usage has; lines without it (tool results can be megabytes) are never parsed. */
 export const USAGE_MARKER = '"usage"';
 
+/** The tokens of an API response, as an assistant message's `usage` reports them. */
+export interface UsageCounts {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  fast: boolean;
+}
+
+/**
+ * Reads an assistant message's `usage` (the transcript line's `message`), or null when it has none or Claude Code
+ * wrote the message itself (`<synthetic>`: API errors, local notices), which used no tokens. Shared by the Usage
+ * scanner and the conversation, so a turn's tokens add up the way the Usage view counts them.
+ */
+export function usageCounts(message: { model?: unknown; usage?: Record<string, unknown> | null } | null | undefined): UsageCounts | null {
+  const usage = message?.usage;
+  if (!message || !usage || typeof usage !== 'object') return null;
+  if (message.model === '<synthetic>') return null;
+  return {
+    input: count(usage.input_tokens),
+    output: count(usage.output_tokens),
+    cacheRead: count(usage.cache_read_input_tokens),
+    cacheWrite: count(usage.cache_creation_input_tokens),
+    fast: usage.speed === 'fast',
+  };
+}
+
 /** Reads a transcript line's usage, or null when it has none (another type, a `<synthetic>` message, bad JSON). */
 export function parseUsageLine(line: string): UsageLine | null {
   if (!line.includes(USAGE_MARKER)) return null;
@@ -45,11 +72,9 @@ export function parseUsageLine(line: string): UsageLine | null {
   }
   if (json?.type !== 'assistant') return null;
   const message = json.message;
-  const usage = message?.usage;
-  if (!message || !usage || typeof usage !== 'object') return null;
-  const model = text(message.model);
-  // Claude Code writes `<synthetic>` messages itself (API errors, local notices): no tokens were used.
-  if (!model || model === '<synthetic>') return null;
+  const counts = usageCounts(message);
+  const model = text(message?.model);
+  if (!message || !counts || !model) return null;
   const sessionId = text(json.sessionId);
   const at = Date.parse(String(json.timestamp ?? ''));
   if (!sessionId || !Number.isFinite(at)) return null;
@@ -63,11 +88,7 @@ export function parseUsageLine(line: string): UsageLine | null {
     at,
     model,
     cwd: text(json.cwd),
-    input: count(usage.input_tokens),
-    output: count(usage.output_tokens),
-    cacheRead: count(usage.cache_read_input_tokens),
-    cacheWrite: count(usage.cache_creation_input_tokens),
-    fast: usage.speed === 'fast',
+    ...counts,
   };
 }
 

@@ -1,4 +1,5 @@
 import type { ImageRef, TranscriptBlock, TranscriptMessage } from '@switchboard/protocol';
+import { usageCounts } from '../usage/transcriptUsage.ts';
 import { imageSize } from './imageSize.ts';
 
 /** Receives image data found while normalising, so it can be served on demand instead of inline. */
@@ -144,8 +145,8 @@ export function normaliseMessage(raw: RawSessionMessage, sink?: ImageSink): Tran
     const subtype = (raw.message as { subtype?: unknown } | null)?.subtype;
     blocks = [{ type: 'unknown', kind: typeof subtype === 'string' ? subtype : 'system' }];
   }
-  const usage = (raw.message as { usage?: Record<string, unknown> } | null)?.usage;
-  const count = (key: string) => (typeof usage?.[key] === 'number' ? (usage[key] as number) : 0);
+  const counts = raw.type === 'assistant' ? usageCounts(raw.message as Parameters<typeof usageCounts>[0]) : null;
+  const responseId = (raw.message as { id?: unknown } | null)?.id;
   return {
     uuid: raw.uuid,
     role: raw.type,
@@ -153,9 +154,14 @@ export function normaliseMessage(raw: RawSessionMessage, sink?: ImageSink): Tran
     parentToolUseId: raw.parent_tool_use_id ?? null,
     model: typeof model === 'string' ? model : null,
     blocks,
-    usage:
-      raw.type === 'assistant' && usage
-        ? { input: count('input_tokens'), output: count('output_tokens'), cacheRead: count('cache_read_input_tokens'), cacheCreation: count('cache_creation_input_tokens') }
-        : null,
+    usage: counts
+      ? {
+          input: counts.input,
+          output: counts.output,
+          cacheRead: counts.cacheRead,
+          cacheCreation: counts.cacheWrite,
+          ...(typeof responseId === 'string' && responseId ? { id: responseId } : {}),
+        }
+      : null,
   };
 }

@@ -10,9 +10,12 @@ import { useFileLinkActions } from './useFileLinkActions.tsx';
 import { DiffView } from './DiffView.tsx';
 import { ActivityGroupView } from './ActivityGroup.tsx';
 import { ClampedPrompt } from './ClampedPrompt.tsx';
-import type { RenderItem } from './displayItems.ts';
+import type { DisplayItem, RenderItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
-import { MessageToolbar } from './messageActions.tsx';
+import { MessageToolbar, messageUuid } from './messageActions.tsx';
+import { sentLine } from './turnFormat.ts';
+import { TurnMetaLine, type LiveTurnInfo } from './TurnMeta.tsx';
+import { useRemote } from '../../state/remoteStore.ts';
 import { ToolDetails, ToolImages, type ToolItem } from './ToolDetails.tsx';
 import { messageImageSlots } from './imageLayout.ts';
 import { TranscriptImage } from './TranscriptImage.tsx';
@@ -235,6 +238,42 @@ function ToolOrMemory({ item, cwd, sessionId }: { item: ToolItem; cwd: string | 
   return <ToolCard item={item} cwd={cwd} sessionId={sessionId} />;
 }
 
+/** Your prompt, on the right as a card; hovering it says when you sent it, and from which paired device. */
+function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'user' }>; sessionId: string }) {
+  const device = useRemote((s) => s.sentFrom.get(messageUuid(item.key)) ?? null);
+  const sent = item.at !== null ? sentLine(item.at, device) : undefined;
+  return (
+    // Your prompt sits on the right as a card, so the conversation reads like a chat.
+    <div className="flex justify-end">
+      <div
+        className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5"
+        data-remember-from={item.subagent ? undefined : 'user'}
+        data-message-key={item.key}
+        data-prompt-bubble={item.subagent ? undefined : true}
+        data-tooltip={item.subagent ? undefined : sent}
+      >
+        <Speaker name={item.subagent ? 'Prompt to the subagent' : 'You'} />
+        {(item.text || !item.subagent) && <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly={item.subagent} />}
+        {/* Images come first, so "Show more" never hides them: one large, a few as thumbnails, many as tiles. */}
+        {item.images.length > 0 && (
+          <div className={`flex flex-wrap gap-1.5 ${item.text ? 'mb-2' : ''}`} data-prompt-images={item.images.length}>
+            {messageImageSlots(item.images.length).map((slot) => {
+              const image = item.images[slot.index]!;
+              return <TranscriptImage key={image.imageId} sessionId={sessionId} image={image} variant={slot.variant} gallery={item.images} index={slot.index} more={slot.more} />;
+            })}
+          </div>
+        )}
+        {/* Your prompts render as Markdown too, so code and code blocks are styled. */}
+        {item.text && (
+          <ClampedPrompt itemKey={item.key} className="text-body [overflow-wrap:anywhere] [&_p]:whitespace-pre-wrap [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+            <Markdown text={item.text} />
+          </ClampedPrompt>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const NO_HOOKED: readonly HookableComponent[] = [];
 
 export const TranscriptItem = memo(function TranscriptItem(props: {
@@ -243,6 +282,8 @@ export const TranscriptItem = memo(function TranscriptItem(props: {
   sessionId: string;
   active?: boolean;
   activeLabel?: string | null;
+  /** For the activity group Claude is on: the live part of the working line. */
+  live?: LiveTurnInfo | null;
 }) {
   // A mod that replaces this kind of item draws it, with the built-in one where it puts its `engine` node.
   const hooked = useMods((s) => s.sessions.get(props.sessionId)?.state.hooked) ?? NO_HOOKED;
@@ -264,6 +305,7 @@ function BuiltInItem({
   sessionId,
   active = false,
   activeLabel = null,
+  live = null,
 }: {
   item: RenderItem;
   cwd: string | null;
@@ -271,35 +313,12 @@ function BuiltInItem({
   /** For an activity group: Claude is working on it now. */
   active?: boolean;
   activeLabel?: string | null;
+  live?: LiveTurnInfo | null;
 }) {
-  if (item.kind === 'activity') return <ActivityGroupView group={item} cwd={cwd} sessionId={sessionId} active={active} activeLabel={activeLabel} />;
+  if (item.kind === 'activity') return <ActivityGroupView group={item} cwd={cwd} sessionId={sessionId} active={active} activeLabel={activeLabel} live={live} />;
+  if (item.kind === 'user') return <PromptItem item={item} sessionId={sessionId} />;
   const indent = 'subagent' in item && item.subagent ? 'ml-6 border-l border-border pl-3' : '';
   switch (item.kind) {
-    case 'user':
-      return (
-        // Your prompt sits on the right as a card, so the conversation reads like a chat.
-        <div className="flex justify-end">
-          <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-remember-from={item.subagent ? undefined : 'user'} data-message-key={item.key} data-prompt-bubble={item.subagent ? undefined : true}>
-            <Speaker name={item.subagent ? 'Prompt to the subagent' : 'You'} />
-            {(item.text || !item.subagent) && <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly={item.subagent} />}
-            {/* Images come first, so "Show more" never hides them: one large, a few as thumbnails, many as tiles. */}
-            {item.images.length > 0 && (
-              <div className={`flex flex-wrap gap-1.5 ${item.text ? 'mb-2' : ''}`} data-prompt-images={item.images.length}>
-                {messageImageSlots(item.images.length).map((slot) => {
-                  const image = item.images[slot.index]!;
-                  return <TranscriptImage key={image.imageId} sessionId={sessionId} image={image} variant={slot.variant} gallery={item.images} index={slot.index} more={slot.more} />;
-                })}
-              </div>
-            )}
-            {/* Your prompts render as Markdown too, so code and code blocks are styled. */}
-            {item.text && (
-              <ClampedPrompt itemKey={item.key} className="text-body [overflow-wrap:anywhere] [&_p]:whitespace-pre-wrap [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
-                <Markdown text={item.text} />
-              </ClampedPrompt>
-            )}
-          </div>
-        </div>
-      );
     case 'command':
       return (
         // A prompt card like your other messages: the command as a chip, then everything you wrote after it.
@@ -319,7 +338,11 @@ function BuiltInItem({
         <div className={`group/message relative text-body ${indent}`} data-remember-from={item.subagent ? undefined : 'claude'} data-message-key={item.key}>
           <Speaker name={item.subagent ? 'Subagent' : 'Claude'} />
           <Markdown text={item.text} />
-          <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly={item.subagent} />
+          {/* The actions, then (under a turn's last reply) when the turn ended, how long it took and its tokens. */}
+          <div className="-ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
+            <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly={item.subagent} />
+            {!item.subagent && <TurnMetaLine itemKey={item.key} />}
+          </div>
         </div>
       );
     case 'thinking':

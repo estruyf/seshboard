@@ -31,6 +31,7 @@ import {
   SearchHit,
   SessionsChanged,
   SessionsSnapshot,
+  AgentUsage,
   TranscriptDiagnosis,
   TranscriptMessage,
   TranscriptUpdate,
@@ -283,6 +284,14 @@ export const contract = {
     'transcript.subagent': {
       params: z.object({ sessionId: SessionId, toolUseId: z.string().min(1).max(200) }),
       result: z.object({ agentId: z.string().nullable(), agentType: z.string().nullable(), messages: z.array(TranscriptMessage) }),
+    },
+    /**
+     * The tokens each subagent of a session used, from their own transcripts (the session's transcript doesn't have
+     * them), counted the way the Usage view counts them. For the tokens of the turn that started each one.
+     */
+    'transcript.agentUsage': {
+      params: z.object({ sessionId: SessionId }),
+      result: z.object({ agents: z.array(AgentUsage) }),
     },
     /**
      * Checks why a session's conversation shows the way it does: its transcript files in every

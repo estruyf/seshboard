@@ -3032,6 +3032,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:turn-details",
+      "name": "Under each reply: when a turn ended, how long it took and its tokens, and the setting in Settings, Conversation",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:tool-activity",
       "name": "Tool activity: Summarised or Every step",
       "page": "settings"

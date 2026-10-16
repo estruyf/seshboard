@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Computer, RemoteMessage, RemoteSession, RemoteSessions } from '@switchboard/protocol/client';
-import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, inBackground, NOT_STREAMING, prependMessages, remoteItems, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
+import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, inBackground, NOT_STREAMING, prependMessages, remoteItems, remoteTurns, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
 
 const message = (uuid: string, text = uuid, extra: Partial<RemoteMessage> = {}): RemoteMessage => ({ uuid, role: 'assistant', timestamp: 1, parentToolUseId: null, blocks: [{ type: 'text', text }], ...extra });
 const session = (id: string, status: RemoteSession['status']): RemoteSession => ({
@@ -106,7 +106,7 @@ describe('the remote transcript', () => {
       message('u', '  ', { role: 'user' }),
       message('p', 'Look', { role: 'user', device: 'Elio’s iPhone' }),
     ]);
-    expect(items).toEqual([{ kind: 'user', key: 'p', text: 'Look', device: 'Elio’s iPhone' }]);
+    expect(items).toEqual([{ kind: 'user', key: 'p', text: 'Look', device: 'Elio’s iPhone', at: 1 }]);
   });
 
   it('shows lines from Claude Code as notices', () => {
@@ -124,6 +124,26 @@ describe('the remote transcript', () => {
     expect(toolsSummary([{ name: 'Write', input: { file_path: '/p/new.ts', content: '1\n2' } }, { name: 'Edit', input: { file_path: '/p/old.ts', old_string: 'x', new_string: 'y' } }])).toBe('Edited 2 files +3 −1');
     expect(toolsSummary([{ name: 'Grep', input: { pattern: 'TODO' } }, { name: 'Glob', input: { pattern: '*.ts' } }, { name: 'TodoWrite', input: {} }])).toBe('Searched 2 times · Updated the to-do list');
     expect(toolsSummary([{ name: 'mcp__github__create_issue', input: {} }])).toBe('Used mcp__github__create_issue');
+  });
+});
+
+describe('remoteTurns', () => {
+  it('times each turn from the messages, with no tokens, keyed like the text items', () => {
+    const tool = { type: 'tool_use' as const, id: 't1', name: 'Bash', input: {}, truncated: false };
+    const messages: RemoteMessage[] = [
+      message('u1', 'Fix it', { role: 'user', timestamp: 1_000 }),
+      message('a1', '', { timestamp: 2_000, blocks: [tool] }),
+      message('r1', '', { role: 'user', timestamp: 30_000, blocks: [{ type: 'tool_result', toolUseId: 't1', isError: false, text: 'ok', truncated: false }] }),
+      message('a2', 'Fixed.', { timestamp: 49_000 }),
+      message('u2', 'Thanks', { role: 'user', timestamp: 60_000 }),
+    ];
+    const turns = remoteTurns(messages);
+    expect(turns.map((t) => [t.key, t.replyKey, t.durationMs, t.tokens])).toEqual([
+      ['u1', 'a2:0', 48_000, null],
+      ['u2', null, null, null],
+    ]);
+    const text = remoteItems(messages).find((i) => i.kind === 'text');
+    expect(text?.key).toBe('a2:0');
   });
 });
 

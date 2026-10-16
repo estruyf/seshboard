@@ -1,8 +1,9 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
+import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
+import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
 import { NotificationsSettings } from './notifications/NotificationsSettings.tsx';
@@ -116,6 +117,38 @@ const ACTIVITY: Array<{ value: ToolActivity; label: string }> = [
   { value: 'summary', label: 'Summarised' },
   { value: 'steps', label: 'Every step' },
 ];
+
+/** "Under each reply": each choice with what the line looks like, at 14:32 today in the user's own time format. */
+const TURN_DETAILS: Array<{ value: TurnDetails; label: string; example: (time: string) => string }> = [
+  { value: 'none', label: 'Nothing', example: () => '' },
+  { value: 'time', label: 'Time', example: (time) => time },
+  { value: 'duration', label: 'Time and duration', example: (time) => `${time} · 2m 14s` },
+  { value: 'tokens', label: 'Time, duration and tokens', example: (time) => `${time} · 2m 14s · 18.4k tokens` },
+];
+
+function TurnDetailsSetting({ value, onChange }: { value: TurnDetails; onChange(value: TurnDetails): void }) {
+  const time = formatTurnTime(new Date().setHours(14, 32, 0, 0));
+  return (
+    <div className="grid gap-2" data-setting-row data-turn-details-setting>
+      <span>
+        <span className="block text-ui">Under each reply</span>
+        <span className="block text-meta text-muted">Shown after the actions, in faint text.</span>
+      </span>
+      <RadioGroup label="Under each reply" className="grid gap-2">
+        {TURN_DETAILS.map((choice) => (
+          <Radio key={choice.value} checked={value === choice.value} onSelect={() => onChange(choice.value)} className="w-full" dataAttrs={{ 'data-turn-details': choice.value }}>
+            <span className="flex min-w-0 items-baseline justify-between gap-4">
+              <span className="text-ui text-text">{choice.label}</span>
+              <span className="truncate text-meta text-faint tabular-nums" aria-hidden>
+                {choice.example(time)}
+              </span>
+            </span>
+          </Radio>
+        ))}
+      </RadioGroup>
+    </div>
+  );
+}
 
 const STYLES: Array<{ value: SidebarStyle; label: string }> = [
   { value: 'large', label: 'Large icons' },
@@ -244,6 +277,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               attr="data-prompt-outline-setting"
               onChange={(promptOutline) => update({ promptOutline })}
             />
+            <TurnDetailsSetting value={prefs.turnDetails} onChange={(turnDetails) => update({ turnDetails })} />
           </Section>
           <Section title="File links">
             <div className="flex items-center justify-between gap-4" data-setting-row>

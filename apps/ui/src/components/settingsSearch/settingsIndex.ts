@@ -122,6 +122,14 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-prompt-outline-setting]',
     },
     {
+      id: 'turn-details',
+      page: 'conversation',
+      label: 'Under each reply',
+      detail: 'Shown after the actions, in faint text. Nothing, Time, Time and duration, or Time, duration and tokens.',
+      keywords: 'timestamp time duration tokens turn ended took how long clock usage reply line',
+      target: '[data-turn-details-setting]',
+    },
+    {
       id: 'file-link-click',
       page: 'conversation',
       label: 'Clicking a file link',

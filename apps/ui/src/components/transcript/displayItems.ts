@@ -9,12 +9,31 @@ export interface ToolResultView {
   at: number | null;
 }
 
-/** Every item carries `at`: when its message was written (epoch ms), if known. */
+/**
+ * The tokens of the API response an assistant item came from. Claude Code writes a response as one message per content
+ * block, each with the whole response's usage, so every item of it carries the same `id`: count it once.
+ */
+export interface ReplyUsage {
+  /** The response's id (the message's uuid when Claude Code didn't keep one). */
+  id: string;
+  model: string | null;
+  /** The Task/Agent call a subagent's reply belongs to; null for Claude's own. */
+  agent: string | null;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/**
+ * Every item carries `at`: when its message was written (epoch ms), if known. Items from Claude's replies carry the
+ * reply's `usage` when it reported one, and `failed` when Claude Code wrote the reply itself for an API error.
+ */
 export type DisplayItem =
   | { kind: 'user'; key: string; at: number | null; text: string; images: ImageRef[]; subagent: boolean }
   | { kind: 'command'; key: string; at: number | null; name: string; args: string }
-  | { kind: 'text'; key: string; at: number | null; text: string; subagent: boolean }
-  | { kind: 'thinking'; key: string; at: number | null; text: string }
+  | { kind: 'text'; key: string; at: number | null; text: string; subagent: boolean; usage?: ReplyUsage; failed?: true }
+  | { kind: 'thinking'; key: string; at: number | null; text: string; usage?: ReplyUsage }
   | {
       kind: 'tool';
       key: string;
@@ -25,6 +44,7 @@ export type DisplayItem =
       inputTruncated: boolean;
       result: ToolResultView | null;
       subagent: boolean;
+      usage?: ReplyUsage;
     }
   | { kind: 'notice'; key: string; at: number | null; text: string }
   /**
@@ -85,6 +105,24 @@ function userTextItem(text: string, key: string, at: number | null, subagent: bo
   return { kind: 'user', key, at, text: cleaned, images, subagent };
 }
 
+const SYNTHETIC = '<synthetic>';
+const API_ERROR = /^\s*API Error\b/;
+
+/** An assistant message's tokens, or null when it reported none (old sessions, remote ones, Claude Code's own notices). */
+function replyUsage(message: TranscriptMessage): ReplyUsage | null {
+  const usage = message.usage;
+  if (!usage) return null;
+  return {
+    id: usage.id ?? message.uuid,
+    model: message.model,
+    agent: message.parentToolUseId,
+    input: usage.input,
+    output: usage.output,
+    cacheRead: usage.cacheRead,
+    cacheWrite: usage.cacheCreation,
+  };
+}
+
 /**
  * Turns transcript messages into the items the viewer renders: tool calls are
  * paired with their results (matched by id), and user turns that only carry
@@ -122,14 +160,18 @@ export function buildDisplayItems(messages: readonly TranscriptMessage[]): Displ
       continue;
     }
 
+    const usage = replyUsage(message);
+    const extra = usage ? { usage } : {};
+    // Claude Code writes an API error as a reply of its own, without a model behind it.
+    const failed = message.model === SYNTHETIC ? { failed: true as const } : {};
     for (const [i, block] of message.blocks.entries()) {
       const key = `${message.uuid}:${i}`;
       switch (block.type) {
         case 'text':
-          if (block.text.trim()) items.push({ kind: 'text', key, at, text: block.text, subagent });
+          if (block.text.trim()) items.push({ kind: 'text', key, at, text: block.text, subagent, ...extra, ...(API_ERROR.test(block.text) ? failed : {}) });
           break;
         case 'thinking':
-          if (block.text.trim()) items.push({ kind: 'thinking', key, at, text: block.text });
+          if (block.text.trim()) items.push({ kind: 'thinking', key, at, text: block.text, ...extra });
           break;
         case 'tool_use':
           items.push({
@@ -142,6 +184,7 @@ export function buildDisplayItems(messages: readonly TranscriptMessage[]): Displ
             inputTruncated: block.truncated,
             result: results.get(block.id) ?? null,
             subagent,
+            ...extra,
           });
           break;
         default:

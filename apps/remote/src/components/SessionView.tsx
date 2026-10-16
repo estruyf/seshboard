@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
 import type { CatchUp, QueuedMessage, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions } from '@switchboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
@@ -9,6 +9,7 @@ import type { Client } from './Connected.tsx';
 import { ItemView } from './MessageView.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
 import { formatDuration, turnStart, workingLabel } from '../lib/working.ts';
+import { turnEnds, turnLine } from '../lib/turns.ts';
 import { answer } from './answer.ts';
 import { CatchUpCard } from './CatchUpCard.tsx';
 import { ChangesSheet, CommitSheet, type ChangesState } from './ChangesSheet.tsx';
@@ -424,6 +425,8 @@ function Transcript({
 }) {
   const items = useMemo(() => transcriptItems(messages), [messages]);
   const since = useMemo(() => turnStart(messages), [messages]);
+  // When each finished turn ended and how long it took, under its last reply.
+  const ends = useMemo(() => turnEnds(messages, working), [messages, working]);
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
@@ -504,9 +507,19 @@ function Transcript({
                 </div>
               )}
               <div className="flex flex-col gap-4">
-                {items.map((item, index) => (
-                  <ItemView key={item.key} item={item} results={results} live={working && index === items.length - 1} />
-                ))}
+                {items.map((item, index) => {
+                  const end = item.kind === 'text' ? ends.get(item.key) : undefined;
+                  return (
+                    <Fragment key={item.key}>
+                      <ItemView item={item} results={results} live={working && index === items.length - 1} />
+                      {end && (
+                        <p className="-mt-3 text-meta whitespace-nowrap text-faint tabular-nums" data-turn-meta>
+                          {turnLine(end)}
+                        </p>
+                      )}
+                    </Fragment>
+                  );
+                })}
                 {streaming.kind === 'text' ? (
                   <div data-remote-streaming>
                     <StreamingMarkdown text={streaming.text} />

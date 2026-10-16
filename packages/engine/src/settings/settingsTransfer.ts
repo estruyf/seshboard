@@ -56,6 +56,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   toolActivity: 'Tool activity',
   fileLinkClick: 'Clicking a file link',
   promptOutline: 'Show prompt outline',
+  turnDetails: 'Under each reply',
   confirmQuit: 'Ask before quitting',
   remoteIdleLine: 'Show in the sidebar when nobody is connected',
   sessionScope: 'Sessions in the sidebar',

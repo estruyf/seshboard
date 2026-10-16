@@ -1,5 +1,7 @@
-import type { Computer, RemoteMessage, RemoteSession, RemoteSessions, RemoteTranscriptUpdate, StreamDelta } from '@switchboard/protocol/client';
+import type { Computer, RemoteMessage, RemoteSession, RemoteSessions, RemoteTranscriptUpdate, StreamDelta, TranscriptMessage } from '@switchboard/protocol/client';
 import { basename } from '../../lib/format.ts';
+import { buildDisplayItems } from '../transcript/displayItems.ts';
+import { buildTurns, type Turn } from '../transcript/turns.ts';
 
 /**
  * Another computer's sessions and conversations, as this app shows them (Other computers, docs/remote-access.md).
@@ -62,7 +64,7 @@ export interface RemoteTool {
 
 /** What the conversation shows, in order: your prompts, Claude Code's own lines, Claude's text, and each run of tool calls as one item. */
 export type RemoteItem =
-  | { kind: 'user'; key: string; text: string; device: string | null }
+  | { kind: 'user'; key: string; text: string; device: string | null; at: number | null }
   /** A line from Claude Code itself: a background task finishing, command output, an interrupt, a compaction. */
   | { kind: 'notice'; key: string; text: string }
   | { kind: 'text'; key: string; text: string }
@@ -80,7 +82,7 @@ export function remoteItems(messages: readonly RemoteMessage[]): RemoteItem[] {
   for (const message of visibleMessages(messages)) {
     if (message.role === 'user') {
       const text = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : b.type === 'image' ? ['[image]'] : [])).join('\n\n');
-      if (text.trim()) items.push({ kind: 'user', key: message.uuid, text, device: message.device ?? null });
+      if (text.trim()) items.push({ kind: 'user', key: message.uuid, text, device: message.device ?? null, at: message.timestamp });
       continue;
     }
     if (message.role === 'system') {
@@ -244,4 +246,21 @@ export function awayBanner(computer: Pick<Computer, 'name' | 'state' | 'retryAt'
     case 'offline':
       return `${computer.name} is offline.${retryText(computer, now)}`;
   }
+}
+
+/**
+ * Another computer's turns, from its messages' timestamps, by the same rules as this computer's (`buildTurns`): when
+ * each ended and how long it took. The remote contract carries no usage, so they have no tokens.
+ */
+export function remoteTurns(messages: readonly RemoteMessage[]): Turn[] {
+  const transcript: TranscriptMessage[] = messages.map((m) => ({
+    uuid: m.uuid,
+    role: m.role,
+    timestamp: m.timestamp,
+    parentToolUseId: m.parentToolUseId,
+    model: null,
+    usage: null,
+    blocks: m.blocks.map((b) => (b.type === 'tool_result' ? { ...b, images: [] } : b.type === 'image' ? { type: 'image' as const, mediaType: null, ref: null } : b)),
+  }));
+  return buildTurns(buildDisplayItems(transcript));
 }

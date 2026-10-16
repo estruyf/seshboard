@@ -12,6 +12,11 @@ describe('placeTooltip', () => {
     expect(placeTooltip({ left: 100, top: 770, bottom: 790, width: 20 }, { width: 60, height: 20 }, viewport)).toEqual({ left: 80, top: 744 });
   });
 
+  it('goes above when asked, and below when there is no room above', () => {
+    expect(placeTooltip({ left: 100, top: 100, bottom: 120, width: 20 }, { width: 60, height: 20 }, viewport, 'above')).toEqual({ left: 80, top: 74 });
+    expect(placeTooltip({ left: 100, top: 10, bottom: 30, width: 20 }, { width: 60, height: 20 }, viewport, 'above')).toEqual({ left: 80, top: 36 });
+  });
+
   it('stays inside the window horizontally', () => {
     expect(placeTooltip({ left: 0, top: 100, bottom: 120, width: 10 }, { width: 200, height: 20 }, viewport).left).toBe(8);
     expect(placeTooltip({ left: 990, top: 100, bottom: 120, width: 10 }, { width: 200, height: 20 }, viewport).left).toBe(792);

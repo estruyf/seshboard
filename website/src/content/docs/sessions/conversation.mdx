@@ -106,6 +106,22 @@ Hover a code block in Claude's reply for its buttons:
 
 Use the save button on an image, right-click it and choose **Save image…**, or press <Kbd keys="mod+s" /> while it is open full size.
 
+## How long a turn took
+
+A turn is your prompt and everything Claude does until it stops and waits for you again. Under the last reply of each turn, after the reply's buttons, a faint line says when the turn ended and how long it took, such as `14:32 · 2m 14s`.
+
+<Screenshot name="turn-details" alt="Under Claude's last reply, the time, duration and tokens of the turn, with the tokens' tooltip open: the total, a bar of the token types, a row for each and the model" />
+
+- **The time** is the time of day today, the day this week, and the date before that. Hover it for the full date and time, the duration and the tokens.
+- **The duration** is Claude's own time. Time a permission prompt, a question or a plan waited for your answer is left out, and shown in brackets: `48s (12s waiting on you)`. A turn you stopped says **Stopped after**, and a turn that ended on an error says **Failed after**, in red.
+- **The tokens** show when you choose them in [Settings, Conversation](/settings/#conversation). They count every reply in the turn, its agents' replies included. Hover or focus them for what they were made of: input, output, cache write and cache read, in the colours of the [Usage](/usage/) view, and the model when the turn used one. <Kbd keys="escape" /> closes it. Old sessions don't have token counts, so they show no tokens.
+
+While Claude works, the working line counts the same way: `Reading AGENTS.md · 0m 37s · 3.2k tokens`. While a prompt waits for you, it says **Waiting for you** and **paused**, and the clock stops.
+
+Hover one of your prompts to see when you sent it, and from which phone or computer when it came from a [paired device](/remote-access/).
+
+In a narrow pane the line drops the tokens first, then the duration. To change what the line shows, or turn it off, use **Under each reply** in [Settings, Conversation](/settings/#conversation).
+
 ## Go back to a prompt
 
 In a long conversation, the prompt outline takes you back to what you asked. It is a thin rail on the right of the conversation, with a mark for each of your prompts. The mark of the prompt at the top of the view is highlighted, and it moves as you scroll.
@@ -206,4 +222,5 @@ Click the **×** in the header (or *Close session* in the command palette) to go
 
 - [Settings, Conversation](/settings/#conversation): **Summarised** (the default) shows each run of tool calls as one line; **Every step** shows each tool call as its own card.
 - **Show prompt outline** (on by default) shows the rail of your prompts beside the conversation.
+- **Under each reply** sets the line under each turn: **Nothing**, **Time**, **Time and duration** (the default) or **Time, duration and tokens**.
 - Each project's defaults for model, effort and mode are on its [Settings tab](/projects/settings/).

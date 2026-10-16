@@ -31,6 +31,26 @@ describe('normaliseMessage', () => {
     expect(m.usage).toEqual({ input: 3, output: 40, cacheRead: 45_000, cacheCreation: 1_200 });
   });
 
+  it('keeps the response id, so a reply written as several messages counts once', () => {
+    const m = normaliseMessage({
+      type: 'assistant',
+      uuid: 'a1',
+      parent_tool_use_id: null,
+      message: { id: 'msg_1', model: 'claude-opus-5-5', content: [], usage: { input_tokens: 3, output_tokens: 40 } },
+    });
+    expect(m.usage).toEqual({ input: 3, output: 40, cacheRead: 0, cacheCreation: 0, id: 'msg_1' });
+  });
+
+  it('has no usage for what Claude Code writes itself', () => {
+    const m = normaliseMessage({
+      type: 'assistant',
+      uuid: 'a1',
+      parent_tool_use_id: null,
+      message: { id: 'msg_2', model: '<synthetic>', content: [{ type: 'text', text: 'API Error: Connection lost' }], usage: { input_tokens: 0, output_tokens: 0 } },
+    });
+    expect(m.usage).toBeNull();
+  });
+
   it('keeps assistant text, thinking and tool calls, and clips long tool input', () => {
     const big = 'x'.repeat(LIMITS.toolInputString + 10);
     const m = normaliseMessage({

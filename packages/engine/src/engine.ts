@@ -78,6 +78,7 @@ import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
 import { commandRunMessage, shellName } from './terminals/outputMessage.ts';
 import { readTaskOutput } from './host/taskOutput.ts';
+import { agentUsage } from './usage/agentUsage.ts';
 import { UsageInsights } from './usage/usageInsights.ts';
 import { scopeOf } from './usage/usageScanner.ts';
 import { ModelRouter, RoutingStore, stubRoute } from './autoModel/router.ts';
@@ -1528,6 +1529,7 @@ export function createEngine(options: EngineOptions): Engine {
       const sink = transcripts.images.sink(sessionId);
       return { agentId, agentType, messages: (await source.subagentMessages(sessionId, agentId)).map((m) => normaliseMessage(m, sink)) };
     },
+    'transcript.agentUsage': async ({ sessionId }) => ({ agents: await agentUsage(sessions.pathFor(sessionId)) }),
     'transcript.diagnose': async ({ sessionId }) =>
       diagnoseTranscript(
         sessionId,

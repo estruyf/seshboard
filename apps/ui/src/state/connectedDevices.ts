@@ -36,6 +36,9 @@ export interface FromDeviceEvent {
   sessionId: string;
   requestId: string | null;
   deviceId: string;
+  /** The prompt's message, for a prompt; and the device's name. */
+  messageUuid?: string | null;
+  device?: string;
   answer?: { toolName: string; allowed: boolean } | null;
 }
 

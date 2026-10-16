@@ -57,6 +57,8 @@ interface RemoteState {
   announcement: string;
   setStatus(status: RemoteStatus): void;
   setError(error: string | null): void;
+  /** The paired device each prompt sent from one came from (its name), by message uuid, for the prompt's tooltip. In memory only. */
+  sentFrom: Map<string, string>;
   recordAction(event: FromDeviceEvent, at?: number): void;
   setOpen(open: boolean): void;
   announce(text: string): void;
@@ -73,7 +75,12 @@ export const useRemote = create<RemoteState>()((set) => ({
   announcement: '',
   setStatus: (status) => set({ status, error: null }),
   setError: (error) => set({ error }),
-  recordAction: (event, at = Date.now()) => set((s) => ({ lastActions: new Map(s.lastActions).set(event.deviceId, actionOf(event, at)) })),
+  sentFrom: new Map(),
+  recordAction: (event, at = Date.now()) =>
+    set((s) => ({
+      lastActions: new Map(s.lastActions).set(event.deviceId, actionOf(event, at)),
+      ...(event.messageUuid && !event.requestId && event.device ? { sentFrom: new Map(s.sentFrom).set(event.messageUuid, event.device) } : {}),
+    })),
   setOpen: (open) => {
     writeOpen(open);
     set({ open });
