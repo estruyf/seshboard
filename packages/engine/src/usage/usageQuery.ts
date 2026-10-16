@@ -91,6 +91,8 @@ interface Hourly {
   output: number;
   cache_read: number;
   cache_write: number;
+  /** The part of `cache_write` that went to the hour-long cache, which costs more. */
+  cache_write_1h: number;
   turns: number;
   fast_turns: number;
   max_context: number;
@@ -128,7 +130,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   const { scope, from, to, groupBy, model, bucket } = query;
   const rows = db
     .prepare(
-      `SELECT session_id, hour, model, input, output, cache_read, cache_write, turns, fast_turns, max_context
+      `SELECT session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context
        FROM session_usage WHERE scope = ? AND hour >= ? AND hour <= ? ${model ? 'AND model = ?' : ''}`,
     )
     .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Hourly[];
@@ -167,7 +169,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
 
   for (const row of rows) {
     const tokens: TokenCounts = { input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write };
-    const cost = costOf(tokens, row.model) ?? 0;
+    const cost = costOf({ ...tokens, cacheWrite1h: row.cache_write_1h }, row.model) ?? 0;
     const key = keyOf(row);
     let group = groups.get(key);
     if (!group) groups.set(key, (group = newGroup(key)));
@@ -326,17 +328,17 @@ export interface PlanWindow {
  * windows are the account's and this computer may not have checked its plan lately.
  */
 export function windowCostsFrom(db: DatabaseSync, scope: string, windows: readonly PlanWindow[], now: number): WindowCost[] {
-  const perModel = (from: number): Array<{ model: string; tokens: TokenCounts }> => {
+  const perModel = (from: number): Array<{ model: string; tokens: TokenCounts & { cacheWrite1h: number } }> => {
     const rows = db
       .prepare(
-        `SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cacheRead, SUM(cache_write) AS cacheWrite FROM (
-           SELECT model, input, output, cache_read, cache_write FROM session_usage WHERE scope = ? AND hour >= ? AND hour <= ?
-           UNION ALL SELECT model, input, output, cache_read, cache_write FROM auto_routing WHERE scope = ? AND at >= ? AND at <= ?
-           UNION ALL SELECT model, input, output, cache_read, cache_write FROM side_question_usage WHERE scope = ? AND at >= ? AND at <= ?
-           UNION ALL SELECT model, input, output, cache_read, cache_write FROM catchup_usage WHERE scope = ? AND at >= ? AND at <= ?
+        `SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cacheRead, SUM(cache_write) AS cacheWrite, SUM(cache_write_1h) AS cacheWrite1h FROM (
+           SELECT model, input, output, cache_read, cache_write, cache_write_1h FROM session_usage WHERE scope = ? AND hour >= ? AND hour <= ?
+           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM auto_routing WHERE scope = ? AND at >= ? AND at <= ?
+           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM side_question_usage WHERE scope = ? AND at >= ? AND at <= ?
+           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM catchup_usage WHERE scope = ? AND at >= ? AND at <= ?
          ) GROUP BY model`,
       )
-      .all(scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now) as Array<{ model: string } & TokenCounts>;
+      .all(scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
     return rows.map(({ model, ...tokens }) => ({ model, tokens }));
   };
   const result: WindowCost[] = [];
@@ -363,14 +365,14 @@ export function windowCostsFrom(db: DatabaseSync, scope: string, windows: readon
 export function sessionCost(db: DatabaseSync, scope: string, sessionId: string): { usd: number; partial: boolean } | null {
   const rows = db
     .prepare(
-      `SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cacheRead, SUM(cache_write) AS cacheWrite FROM (
-         SELECT model, input, output, cache_read, cache_write FROM session_usage WHERE scope = ? AND session_id = ?
-         UNION ALL SELECT model, input, output, cache_read, cache_write FROM auto_routing WHERE scope = ? AND session_id = ?
-         UNION ALL SELECT model, input, output, cache_read, cache_write FROM side_question_usage WHERE scope = ? AND session_id = ?
-         UNION ALL SELECT model, input, output, cache_read, cache_write FROM catchup_usage WHERE scope = ? AND session_id = ?
+      `SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cacheRead, SUM(cache_write) AS cacheWrite, SUM(cache_write_1h) AS cacheWrite1h FROM (
+         SELECT model, input, output, cache_read, cache_write, cache_write_1h FROM session_usage WHERE scope = ? AND session_id = ?
+         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM auto_routing WHERE scope = ? AND session_id = ?
+         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM side_question_usage WHERE scope = ? AND session_id = ?
+         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM catchup_usage WHERE scope = ? AND session_id = ?
        ) GROUP BY model`,
     )
-    .all(scope, sessionId, scope, sessionId, scope, sessionId, scope, sessionId) as Array<{ model: string } & TokenCounts>;
+    .all(scope, sessionId, scope, sessionId, scope, sessionId, scope, sessionId) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
   if (rows.length === 0) return null;
   let usd = 0;
   let partial = false;

@@ -17,6 +17,8 @@ export interface UsageLine {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  /** The part of `cacheWrite` that went to the hour-long prompt cache, which costs more (`costEstimate.ts`). */
+  cacheWrite1h: number;
   fast: boolean;
 }
 
@@ -89,6 +91,7 @@ export function parseUsageLine(line: string): UsageLine | null {
     model,
     cwd: text(json.cwd),
     ...counts,
+    cacheWrite1h: Math.min(counts.cacheWrite, count((message.usage?.cache_creation as { ephemeral_1h_input_tokens?: unknown } | null | undefined)?.ephemeral_1h_input_tokens)),
   };
 }
 

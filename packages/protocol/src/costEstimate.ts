@@ -3,17 +3,21 @@ import type { TokenCounts } from './usage.ts';
 /**
  * What tokens would cost at Anthropic's API list prices, for the estimate next to the plan's usage bars. A plan is
  * not billed per token, so this is never a charge: it says what the same work would have cost on the API. Prices are
- * per million tokens, in US dollars; a cache write is 1.25 times the input price (the 5-minute cache Claude Code
- * uses). Fast mode's premium and long-context pricing are left out.
+ * per million tokens, in US dollars; a cache write is 1.25 times the input price for the 5-minute cache and twice it for
+ * the hour-long one (Claude Code uses either; the transcript says which). Fast mode's premium and long-context pricing
+ * are left out.
  */
 export interface ModelPrice {
   input: number;
   output: number;
   cacheRead: number;
+  /** A write to the 5-minute cache. */
   cacheWrite: number;
+  /** A write to the hour-long cache. */
+  cacheWrite1h: number;
 }
 
-const price = (input: number, output: number, cacheRead = input / 10): ModelPrice => ({ input, output, cacheRead, cacheWrite: input * 1.25 });
+const price = (input: number, output: number, cacheRead = input / 10): ModelPrice => ({ input, output, cacheRead, cacheWrite: input * 1.25, cacheWrite1h: input * 2 });
 
 /**
  * List prices by model id, first match wins: newer versions before the family's older ones. Model ids come from the
@@ -44,11 +48,15 @@ export function priceOf(model: string): ModelPrice | null {
   return PRICES.find(([pattern]) => pattern.test(id))?.[1] ?? null;
 }
 
-/** What tokens of one model cost at its list price, in US dollars; null when the model has no known price. */
-export function costOf(tokens: TokenCounts, model: string): number | null {
+/**
+ * What tokens of one model cost at its list price, in US dollars; null when the model has no known price.
+ * `cacheWrite1h`: the part of `cacheWrite` that went to the hour-long cache (the rest is priced as 5-minute writes).
+ */
+export function costOf(tokens: TokenCounts & { cacheWrite1h?: number }, model: string): number | null {
   const p = priceOf(model);
   if (!p) return null;
-  return (tokens.input * p.input + tokens.output * p.output + tokens.cacheRead * p.cacheRead + tokens.cacheWrite * p.cacheWrite) / 1_000_000;
+  const hour = Math.min(tokens.cacheWrite, tokens.cacheWrite1h ?? 0);
+  return (tokens.input * p.input + tokens.output * p.output + tokens.cacheRead * p.cacheRead + (tokens.cacheWrite - hour) * p.cacheWrite + hour * p.cacheWrite1h) / 1_000_000;
 }
 
 /**

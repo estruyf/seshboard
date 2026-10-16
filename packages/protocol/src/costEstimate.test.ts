@@ -31,6 +31,13 @@ describe('priceOf', () => {
     expect(costOf({ input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 }, 'claude-sonnet-5-5')).toBeCloseTo(2 + 10 + 0.2 + 2.5);
     expect(costOf({ input: 1, output: 1, cacheRead: 1, cacheWrite: 1 }, 'gpt-x')).toBeNull();
   });
+
+  it('prices writes to the hour-long cache at twice the input price, the rest at 1.25 times', () => {
+    expect(priceOf('claude-opus-5-5')!.cacheWrite1h).toBe(8);
+    expect(costOf({ input: 0, output: 0, cacheRead: 0, cacheWrite: 1_000_000, cacheWrite1h: 600_000 }, 'claude-opus-5-5')).toBeCloseTo(0.4 * 5 + 0.6 * 8);
+    // More hour-long writes than writes (a bad row) counts no more than all of them.
+    expect(costOf({ input: 0, output: 0, cacheRead: 0, cacheWrite: 1_000_000, cacheWrite1h: 5_000_000 }, 'claude-opus-5-5')).toBeCloseTo(8);
+  });
 });
 
 describe('currencies', () => {

@@ -140,7 +140,7 @@ Switchboard shows what your tokens would cost at Anthropic's API prices. Your pl
 How it is counted:
 
 - Each window counts from when it started: 5 hours before the 5-hour window resets, 7 days before the weekly one resets. A model's own weekly limit, such as **Weekly · Opus**, counts only that model's tokens.
-- Every model is priced at its own list price: input, output, cache writes and cache reads. Fast mode's higher price isn't counted.
+- Every model is priced at its own list price: input, output, cache writes and cache reads. A write to the hour-long prompt cache costs more than one to the 5-minute cache, and each reply says which it used. Fast mode's higher price isn't counted.
 - The calls Switchboard makes itself, such as [Auto model](/new-session/auto-model/) routing and [catch-up](/sessions/catch-up/) summaries, are counted too.
 - Your plan counts every computer you use it on, so the usage bars and the Limits cards add up the same windows on your [paired computers](/remote-access/#other-computers) that sign in to the same account. Hover a bar to see which computers count, such as *Counts This PC and mystic*, and which don't and why, such as *Not counted: studio is offline.* A computer counts once it runs this version of Switchboard. The Tokens tab adds up your other computers with **All computers**.
 - Totals are kept per hour, so the window's first hour counts whole. The estimate can be a little high early in a window.
