@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { findTool, Tunnel, tunnelAddress, tunnelArgs, tunnelError } from './tunnel.ts';
+import { findTool, Tunnel, tunnelAddress, tunnelArgs, tunnelEnv, tunnelError } from './tunnel.ts';
 
 const tunnels: Tunnel[] = [];
 afterEach(() => tunnels.splice(0).forEach((t) => t.stop()));
@@ -12,6 +12,11 @@ describe('tunnel tools', () => {
     expect(tunnelArgs('cloudflare', 47615)).toEqual(['tunnel', '--no-autoupdate', '--url', 'http://127.0.0.1:47615']);
     expect(tunnelArgs('ngrok', 47615, { ngrokDomain: 'me.ngrok-free.app' })).toEqual(['http', 'http://127.0.0.1:47615', '--log', 'stdout', '--log-format', 'json', '--url', 'https://me.ngrok-free.app']);
     expect(tunnelArgs('tailscale', 47615)).toEqual(['serve', '--https=443', 'http://127.0.0.1:47615']);
+  });
+
+  it('run Tailscale as its CLI, also without TERM (started from the Dock)', () => {
+    expect(tunnelEnv('tailscale', { HOME: '/Users/me' })).toEqual({ HOME: '/Users/me', TAILSCALE_BE_CLI: '1' });
+    expect(tunnelEnv('cloudflare', { HOME: '/Users/me' })).toEqual({ HOME: '/Users/me' });
   });
 
   it('read the address each tool prints', () => {

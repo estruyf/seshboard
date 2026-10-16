@@ -1035,7 +1035,7 @@ export function createEngine(options: EngineOptions): Engine {
       scope: () => sidebarScope,
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),
       profiles: () => ({ profiles: profiles.exportEntries(), defaultId: profiles.defaultId() }),
-      readTranscript: (sessionId) => transcripts.read(sessionId),
+      readTranscript: (sessionId) => transcripts.readWithHeld(sessionId),
       watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
       send: async (sessionId, text, mode, images) => {
         const sent = await hosts.send({ sessionId, text, attachments: images, fork: false, mode });

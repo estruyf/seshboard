@@ -13,6 +13,11 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Picking a project and a choice on a phone.** In the remote app's New session, **All projects** opens every project as a list, with the filter there, and a project's tile no longer snaps against the edge of the screen. The model, effort, mode and worktree chips open their choices from the bottom of the screen instead of a list that ran off its side.
+- **Your first message in a new session from the remote app.** A session you started from your phone sometimes opened without the message you sent, until you closed it and opened it again. It now shows it at once.
+- **The remote app's conversation keeps its place.** When a run of steps folded away after Claude moved on, the conversation could show blank space with the earlier messages out of view. Opening and closing a step no longer leaves a **New messages** button that goes nowhere.
+- **Long links in the remote app's catch-up.** A long link in what you asked, or in what Claude did, ran off the side of the card. It now wraps.
+- **Remote with Tailscale on macOS.** With Switchboard started from the Dock, turning Remote on with Tailscale failed with "The Tailscale GUI failed to start" (Tailscale.CLIError error 3), even though Tailscale was running. Switchboard now runs the Tailscale app as its command-line tool.
 - **Background tasks in a remote conversation.** In the remote app and in a session on another computer, a background command or agent finishing showed as a message from you, full of markup such as `<task-notification>`. It now shows as a short line, such as *Background command "Wait for PR checks to finish" failed with exit code 1*. Slash commands show as **/review --fast**, command output and **Interrupted by you** as a line, and the reminders Claude Code adds to your messages are gone. This needs this version of Switchboard on the computer the session runs on.
 
 ## [0.0.20] - 2026-10-15

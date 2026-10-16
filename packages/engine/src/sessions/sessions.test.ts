@@ -385,6 +385,20 @@ describe('TranscriptHub', () => {
     hub.stop();
   });
 
+  it('reads a held message with the file, as a phone asks for a page before it watches', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [msg('0')]);
+    const hub = new TranscriptHub(source, () => {});
+    hub.pushLive(ID_A, [msg('1')], true);
+    expect(uuids(await hub.readWithHeld(ID_A))).toEqual(['0', '1']);
+    expect(uuids(await hub.read(ID_A))).toEqual(['0']);
+
+    // Once the file has it, it is there once.
+    messages.set(ID_A, [msg('0'), msg('1')]);
+    expect(uuids(await hub.readWithHeld(ID_A))).toEqual(['0', '1']);
+    hub.stop();
+  });
+
   it('never sends duplicates when a change lands during the initial load', async () => {
     const { source, messages } = fakeSource([]);
     messages.set(ID_A, [msg('1')]);
