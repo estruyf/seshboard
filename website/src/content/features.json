@@ -1162,6 +1162,16 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:connected-devices",
+      "name": "Sidebar: Connected to this Mac, the devices connected right now, their last action and Revoke",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-idle-line",
+      "name": "Settings › Remote: Show in the sidebar when nobody is connected",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-rename-device",
       "name": "Settings › Remote: rename a paired device",
       "page": "remote-access"

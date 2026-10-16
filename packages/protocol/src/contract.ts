@@ -1101,8 +1101,19 @@ export const contract = {
     'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
     /** Settings › Remote changed: listening, devices, connections, pairing. */
     'remote.changed': RemoteStatus,
-    /** A prompt or an answer to a permission prompt came from a paired phone, for its label in the conversation. */
-    'remote.fromDevice': z.object({ sessionId: z.string(), messageUuid: z.string().nullable(), requestId: z.string().nullable(), device: z.string() }),
+    /**
+     * A prompt or an answer to a permission prompt came from a paired device, for its label in the conversation and
+     * the sidebar's last action. `device` is its name (kept for older callers), `deviceId` the device itself; `answer`
+     * is set for an answer (`requestId` set): the tool it was about and whether it was allowed.
+     */
+    'remote.fromDevice': z.object({
+      sessionId: z.string(),
+      messageUuid: z.string().nullable(),
+      requestId: z.string().nullable(),
+      device: z.string(),
+      deviceId: z.string(),
+      answer: z.object({ toolName: z.string(), allowed: z.boolean() }).nullable().default(null),
+    }),
     /** Paired computers: their connections and pairing. */
     'computers.changed': ComputersStatus,
     /** An event from a connected computer (`sessions.changed`, `transcript.updated`, `session.stream`, …). */

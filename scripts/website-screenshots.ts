@@ -15,6 +15,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { homedir, tmpdir, userInfo } from 'node:os';
@@ -22,6 +23,7 @@ import { join } from 'node:path';
 import { _electron, type ElectronApplication, type Locator, type Page } from 'playwright-core';
 import sharp from 'sharp';
 import { createDemoWorld, type DemoWorld } from '../apps/desktop/scripts/screenshot-demo.ts';
+import { x25519 } from '@noble/curves/ed25519.js';
 
 const root = join(import.meta.dirname, '..');
 const appDir = join(root, 'apps', 'desktop');
@@ -1142,6 +1144,83 @@ const screens: Screen[] = [
       await t.shot('settings-remote');
       await t.click('[data-remote-enabled]');
       await t.click('[data-close-settings]');
+    },
+  },
+  {
+    // Connected to this Mac: two made-up devices, paired days ago in the throwaway profile's cache, connect for real
+    // (the engine's test phone, with the engine's key from a pairing link that is cancelled at once). The sidebar's
+    // section with the details popover open. Revoked and turned off after.
+    name: 'connected-devices',
+    async take(t) {
+      const userData = await t.app.evaluate(({ app }) => app.getPath('userData'));
+      const devices = [
+        { id: 'demo-connected-phone', name: "Sam's iPhone", kind: 'phone', secret: randomBytes(32), paired: Date.now() - 3 * DAY },
+        { id: 'demo-connected-browser', name: 'Safari on Studio laptop', kind: 'browser', secret: randomBytes(32), paired: Date.now() - 9 * DAY },
+      ];
+      const db = new DatabaseSync(join(userData, 'cache.sqlite'));
+      try {
+        const insert = db.prepare('INSERT OR REPLACE INTO remote_devices (id, name, kind, public_key, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)');
+        for (const d of devices) insert.run(d.id, d.name, d.kind, Buffer.from(x25519.getPublicKey(d.secret)).toString('base64url'), d.paired, d.paired);
+      } finally {
+        db.close();
+      }
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="remote"]');
+      // My own address, as in settings-remote: no tunnel starts, and the address is a made-up one.
+      await t.need('[data-remote-off-card]', 'Settings › Remote did not say Remote is off');
+      await t.click('[data-remote-tunnel-option="custom"]');
+      await t.page.fill('[data-remote-custom-url] input', 'https://remote.example.com');
+      await t.click('[data-remote-save-connection]');
+      await t.click('[data-remote-turn-on]');
+      await t.need('[data-remote-status]', 'Turn on showed no status card');
+      await t.settle();
+      if (await t.page.locator('[data-remote-action="use-port"]').count()) await t.click('[data-remote-action="use-port"]');
+      await t.until(`document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle === 'Running'`, 'Remote did not say Running');
+      // The engine's key, from a pairing link; closing the dialog makes the link useless. Copy link is caught in the
+      // page, so the system's clipboard is never touched.
+      await t.page.evaluate(() => {
+        navigator.clipboard.writeText = async (text: string) => void ((window as unknown as { demoLink: string }).demoLink = text);
+      });
+      await t.click('[data-remote-action="pair"]');
+      await t.click('[data-remote-copy-link]');
+      await t.until('Boolean(window.demoLink)', 'Copy link gave no pairing link');
+      const link = await t.page.evaluate(() => (window as unknown as { demoLink: string }).demoLink);
+      await t.page.keyboard.press('Escape');
+      const settings = new DatabaseSync(join(userData, 'cache.sqlite'));
+      const port = (JSON.parse((settings.prepare("SELECT value FROM app_state WHERE key = 'remote.settings'").get() as { value: string }).value) as { port: number }).port;
+      settings.close();
+      const phones = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(root, 'scripts', 'demo-phones.ts')], {
+        env: { ...process.env, SWITCHBOARD_DEMO_LINK: link, PORT: String(port), SWITCHBOARD_DEMO_SECRETS: devices.map((d) => d.secret.toString('base64')).join(',') },
+        stdio: ['ignore', 'pipe', 'inherit'],
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          phones.stdout.on('data', (data: Buffer) => data.toString().includes('connected') && resolve());
+          phones.on('exit', (code) => reject(new Error(`the demo devices did not connect (exit ${code})`)));
+        });
+        await t.click('[data-close-settings]');
+        await t.need('[data-connected-devices="devices"] [data-connected-device="demo-connected-browser"]', 'the connected devices did not show in the sidebar');
+        // The toasts for the new connections are not part of this picture.
+        const toasts = t.page.locator('[data-device-toast] [data-toast-close]');
+        for (let i = 0; i < 5 && (await toasts.count()); i++) await toasts.first().click({ force: true }).catch(() => {});
+        await t.gone('[data-device-toast]', 'the connected toasts did not go');
+        await t.click('[data-connected-device="demo-connected-phone"] [data-device-row]');
+        await t.need('[data-device-details]', 'the details popover did not open');
+        await t.settle();
+        await t.shot('connected-devices');
+        await t.page.keyboard.press('Escape');
+      } finally {
+        phones.kill();
+        await t.click('[data-open-settings]').catch(() => {});
+        await t.click('[data-settings-section="remote"]').catch(() => {});
+        for (const d of devices) {
+          if (!(await t.page.locator(`[data-remote-device="${d.id}"] [data-remote-revoke]`).count())) continue;
+          await t.click(`[data-remote-device="${d.id}"] [data-remote-revoke]`);
+          await t.click('[data-confirm-strip] [data-confirm]');
+        }
+        await t.click('[data-remote-enabled]').catch(() => {});
+        await t.click('[data-close-settings]').catch(() => {});
+      }
     },
   },
   {
