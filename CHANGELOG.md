@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **The remote app works with more than one computer, with notifications from all of them.** Pair your phone with a laptop and a desktop, for example: **Pair another computer…** in the computer's menu pairs one more, and your other computers stay paired. The app shows one computer at a time but stays connected to all of them. The computer's menu lists the others with how many sessions need you there; tap one to switch. While sessions on another computer need you, a row above your sessions says so, such as **mystic · 2 need you**, and the counts on the drawer button and in the browser tab add up every computer. Every computer sends notifications, each starting with the computer's name, and a tap opens the session on the right computer. **Forget this computer…** only forgets the computer on screen. Notifications from more than one computer need this version of Switchboard on each of them.
+
 ### Fixed
 
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.
