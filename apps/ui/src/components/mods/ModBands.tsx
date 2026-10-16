@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ModInfo } from '@switchboard/protocol/client';
+import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ABOVE_PROMPT_INSTANCE } from '@switchboard/protocol/client';
 import { useMods, useSessionMods } from '../../state/modsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -29,7 +31,7 @@ export function ModBands({ sessionId, profileId, working }: { sessionId: string;
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const observer = new ResizeObserver(() => setColumns(Math.max(20, Math.floor((el.clientWidth - 24) / metrics.ch))));
+    const observer = new ResizeObserver(() => setColumns(Math.max(20, Math.floor((el.clientWidth - 20) / metrics.ch))));
     observer.observe(el);
     return () => observer.disconnect();
   }, [metrics.ch]);
@@ -41,7 +43,7 @@ export function ModBands({ sessionId, profileId, working }: { sessionId: string;
   const enabled = prefs.showMods && mods.state.attached;
   const { result, error, retry } = useModRender(sessionId, 'AbovePrompt', ABOVE_PROMPT_INSTANCE, props, enabled);
   const prepared = useMemo(() => (result ? prepareTree(result.tree, limitsFor('band')) : null), [result]);
-  const owner = result?.drawnBy[0] ?? mods.state.plugins[0] ?? 'mod';
+  const owner = result?.drawnBy[0] ?? mods.state.plugins[0] ?? useOnlyMod(profileId) ?? 'mod';
   const parts = useMemo(() => (prepared && result ? shownMods(prefs, profileId, splitParts(prepared.children, owner, result.drawnBy)) : []), [prepared, result, owner, prefs, profileId]);
 
   const drawn = parts.map((p) => p.plugin).join('\n');
@@ -77,10 +79,23 @@ function ModBand({ part, sessionId, metrics, background, note }: { part: ModPart
   useModSite(sessionId, 'AbovePrompt', ABOVE_PROMPT_INSTANCE, scroller, metrics, true);
   return (
     <ModFrame plugin={part.plugin} end="band" bodyClassName="p-0" data-mod-band={part.plugin}>
-      <div ref={scroller} className="overflow-y-auto px-3 py-2" style={{ maxHeight: BAND_MAX_PX - 24 }} data-mod-band-body>
+      <div ref={scroller} className="overflow-y-auto px-2.5 py-2" style={{ maxHeight: BAND_MAX_PX - 24 }} data-mod-band-body>
         <ModTree drawing={{ sessionId, component: 'AbovePrompt', instanceId: ABOVE_PROMPT_INSTANCE, metrics, background, onError: (error) => modActionFailed(part.plugin, error) }}>{part.children}</ModTree>
         {note && <CutNote text={note} />}
       </div>
     </ModFrame>
   );
+}
+
+/** When Claude Code doesn't say which mod drew the band, the profile's one mod is the owner. */
+function useOnlyMod(profileId: string | null): string | null {
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const [mods, setMods] = useState<ModInfo[]>([]);
+  useEffect(() => {
+    if (!client) return;
+    void client.call('mods.list', {}).then(({ mods }) => setMods(mods), () => setMods([]));
+  }, [client]);
+  const ofProfile = mods.filter((m) => !profileId || m.profileId === profileId);
+  return ofProfile.length === 1 ? ofProfile[0]!.name : null;
 }

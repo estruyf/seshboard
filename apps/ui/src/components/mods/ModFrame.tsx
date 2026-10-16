@@ -37,7 +37,7 @@ export function ModFrame({
         <span className="min-w-0 truncate">{title ?? plugin}</span>
         {end && <span className="ml-auto flex shrink-0 items-center">{end}</span>}
       </header>
-      <div className={`min-w-0 px-3 py-2 ${bodyClassName}`}>{error ? <ModError plugin={plugin} error={error} onRetry={onRetry} /> : children}</div>
+      <div className={`min-w-0 px-2.5 py-2 ${bodyClassName}`}>{error ? <ModError plugin={plugin} error={error} onRetry={onRetry} /> : children}</div>
     </section>
   );
 }
