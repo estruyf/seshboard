@@ -132,6 +132,8 @@ export interface RemoteHubOptions {
   send(sessionId: string, text: string, mode: SendMode, images: RemoteImage[]): Promise<{ messageUuid: string; queued: boolean }>;
   dequeue(sessionId: string, id: string): void;
   interrupt(sessionId: string): Promise<void>;
+  /** Stops one of a running session's background tasks. */
+  stopTask(sessionId: string, taskId: string): Promise<void>;
   respond(requestId: string, decision: PermissionDecision): void;
   /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
   create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
@@ -642,6 +644,12 @@ export class RemoteHub {
       'session.interrupt': async ({ sessionId }) => {
         this.checkSession(sessionId);
         await this.options.interrupt(sessionId);
+        return {};
+      },
+      'session.stopTask': async ({ sessionId, taskId }) => {
+        // Only a task the list shows: a phone can't stop what it was never told about.
+        if (!this.list().sessions.find((s) => s.id === sessionId)?.background?.some((t) => t.taskId === taskId)) throw new RpcError('NOT_FOUND', 'That task is no longer running');
+        await this.options.stopTask(sessionId, taskId);
         return {};
       },
       'session.respond': ({ requestId, decision }) => {

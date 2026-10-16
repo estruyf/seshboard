@@ -184,7 +184,7 @@ const hosts = (): SessionHostInfo[] =>
         queue: [],
         queueHold: null,
         profileId: profileOf(s.root),
-        backgroundTasks: [],
+        backgroundTasks: s.state === 'running' ? background : [],
       }) as unknown as SessionHostInfo,
   );
 
@@ -227,6 +227,8 @@ const models = new Map<string, string | null>();
 const modes = new Map<string, string>();
 const efforts = new Map<string, SessionHostInfo['effort']>();
 let committed = false;
+/** What the working session keeps running in the background; Stop takes a task away. */
+let background: SessionHostInfo['backgroundTasks'] = [{ taskId: 'demo-dev-server', type: 'local_bash', description: 'npm run dev', startedAt: now - 12 * MINUTE }];
 
 const CHANGES: GitChanges = {
   root: '/demo/harbor-api',
@@ -451,6 +453,10 @@ const hub: RemoteHub = new RemoteHub({
   },
   dequeue: () => {},
   interrupt: async () => {},
+  stopTask: async (_sessionId, taskId) => {
+    background = background.filter((task) => task.taskId !== taskId);
+    hub.sessionsChanged();
+  },
   respond: (requestId) => {
     permissions = permissions.filter((p) => p.requestId !== requestId);
     hub.sessionsChanged();

@@ -7,7 +7,7 @@ export { lineTransport, LineDecoder, type TextStream } from './lineTransport.ts'
 export type { Transport, WireMessage } from './wire.ts';
 export type * from './remote.ts';
 export type { CompanionStatus } from './companion.ts';
-export type { Effort, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+export type { BackgroundTask, Effort, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 export type { UsageLimit, UsageSnapshot } from './usage.ts';
 export type { AskEvent, AskItem, AskThread, AskThreadList } from './sideQuestions.ts';
 export { MAX_SIDE_QUESTION_LENGTH, threadTitle } from './sideQuestionConstants.ts';

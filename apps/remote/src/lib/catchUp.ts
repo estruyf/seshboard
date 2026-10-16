@@ -32,7 +32,7 @@ export function catchUpChips(card: CatchUp): Array<{ id: 'tests' | 'diff'; text:
   return chips;
 }
 
-/** A catch-up worth a card: a turn that ended (not one that waits for you), while Claude isn't working. */
+/** A catch-up worth a card: a turn that ended (not one that waits for you), while Claude isn't working, in the background either. */
 export const showsCatchUp = (card: CatchUp | null, working: boolean, waiting: boolean): card is CatchUp => Boolean(card && card.state !== 'waiting' && !working && !waiting);
 
 /** The commit message to start from: the ask that started the work, on one line. */

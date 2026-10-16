@@ -159,9 +159,11 @@ When Claude needs you, the question stays above the message box, so it doesn't s
 
 While Claude works, the end of the conversation shows three dots, how long the turn has taken and what Claude is doing, such as **Thinking** or **Using Bash**. A working session's dot pulses, in the list and in the header.
 
+When Claude's turn ended but a background command or agent it started still runs, the session isn't done yet: Claude carries on when that finishes. The header says **Running in the background**, the end of the conversation says what still runs in green, such as **1 background command running**, and the catch-up waits until it's done. A green pill above the message box, such as **1 background command**, lists each task with how long it has run. Tap **Stop** next to one to stop it; Claude is told it was stopped. Seeing and stopping the tasks needs this version of Switchboard on your computer.
+
 Claude's answers show headings, lists, links, code and tables, also while Claude is still writing them. Code blocks have **Copy**. A run of tool calls is one line, such as **6 steps · edited 3 files, ran 2 commands**: tap it to see each step. The run Claude is working on stays open.
 
-When a session finished, it starts with its catch-up, as on your computer: how it ended, how long it takes to review, what Claude did, whether the tests passed, and how much changed. The conversation is folded under it: tap **Show the conversation** to read it.
+When a session finished, and nothing it started still runs in the background, it starts with its catch-up, as on your computer: how it ended, how long it takes to review, what Claude did, whether the tests passed, and how much changed. The conversation is folded under it: tap **Show the conversation** to read it.
 
 In a session that runs in Switchboard, the chips under the message box show its model, effort and permission mode. Tap one to change it. The effort chip only shows for a model that takes an effort; **Default** is the model's own. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
 
@@ -264,7 +266,7 @@ The other computer's sessions sit in your sidebar, in the same groups as yours: 
 - the project icon has a small monitor badge;
 - the second line of the row ends with a chip with the computer's name, such as **mystic**.
 
-Click a row to open the session in the normal view. A violet line runs along the top, and the header says **on mystic**. Read the conversation as it happens, answer what Claude asks with the same keys as on your own sessions, send a message (it waits in Up next while Claude works), and **Stop** a turn. Runs of tool calls fold into one line, such as *Read 4 files · Edited ContentOverview.tsx +42 −6*. Click it to see each step.
+Click a row to open the session in the normal view. A violet line runs along the top, and the header says **on mystic**. Read the conversation as it happens, answer what Claude asks with the same keys as on your own sessions, send a message (it waits in Up next while Claude works), and **Stop** a turn. When the turn ended but a background command or agent still runs there, the end of the conversation says so in green, and a green pill above the message box lists each task with a **Stop** for it, as on your own sessions. Runs of tool calls fold into one line, such as *Read 4 files · Edited ContentOverview.tsx +42 −6*. Click it to see each step.
 
 While the session runs in Switchboard there, the chips under the message box show its model, effort and permission mode. Click one to change it on that computer. The effort chip only shows for a model that takes an effort, and you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**. With more than one Claude profile there, the profile the session runs with shows next to the computer's name. A running session keeps its profile.
 

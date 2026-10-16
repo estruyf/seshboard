@@ -67,6 +67,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     permissionMode: running.get(s.id)?.permissionMode ?? null,
     profile: profileOf(running.get(s.id)?.profileId ?? flags.get(s.id)?.profileId ?? live.get(s.id)?.profileId),
     auto: autoOf(running.get(s.id)),
+    background: running.get(s.id)?.backgroundTasks ?? [],
   }));
   return { sessions, prompts: promptsFor(sources.permissions ?? [], listed).map(remotePrompt) };
 }

@@ -1045,6 +1045,7 @@ export function createEngine(options: EngineOptions): Engine {
       },
       dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
       interrupt: (sessionId) => hosts.interrupt(sessionId),
+      stopTask: (sessionId, taskId) => hosts.stopTask(sessionId, taskId),
       respond: (requestId, decision) => hosts.respond(requestId, decision),
       create: (root, prompt, choice, images) =>
         createSession({

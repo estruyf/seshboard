@@ -23,6 +23,7 @@ export const COMPUTER_METHODS = [
   'session.send',
   'session.queue.remove',
   'session.interrupt',
+  'session.stopTask',
   'session.respond',
   'session.create',
   'later.add',

@@ -2991,8 +2991,9 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
  * Other computers in the same app: pairs with the second computer the smoke script starts (scripts/remote-demo.ts, the
  * real Remote hub over made-up sessions, in a throwaway folder), through the link field in Settings › Remote. Then its
  * sessions are in the sidebar with the computer's chip and the Computers strip; one opens in the session view with the
- * violet line and "on Smoke Mac", its terminal button disabled with the reason; and New session with Run on set to it
- * starts a session there, which opens here. Run on goes back to this computer and the computer is removed again.
+ * violet line and "on Smoke Mac", its terminal button disabled with the reason; a background task there stops from
+ * its pill; and New session with Run on set to it starts a session there, which opens here. Run on goes back to this
+ * computer and the computer is removed again.
  */
 async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const linkFile = process.env.SWITCHBOARD_SMOKE_COMPUTER_LINK;
@@ -3038,6 +3039,16 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const why = (await js("document.querySelector('[data-remote-terminal]').parentElement.dataset.tooltip")) as string;
   if (why !== 'Terminal is on Smoke Mac. Not available from here.') return `the disabled terminal says "${why}"`;
   await shot(win, 'computers-session.png');
+
+  // 3b. What a remote session runs in the background: its pill opens the list, and Stop stops the task there.
+  const busy = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Move the login form'))`;
+  if (!(await js(`Boolean(${busy})`))) return 'the working session of the other computer is not in the sidebar';
+  await js(`${busy}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-status-background]')", 5_000))) return 'the remote session shows no pill for its background task';
+  await click('[data-remote-session] [data-status-background]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-background-tasks] [data-stop-task]')", 3_000))) return 'the background pill did not open the list of tasks';
+  await click('[data-remote-session] [data-background-tasks] [data-stop-task]');
+  if (!(await waitInPage(win, "!document.querySelector('[data-remote-session] [data-status-background]')", 5_000))) return 'Stop did not stop the background task on the other computer';
 
   // 4. New session with Run on set to it starts a session there, which opens here.
   await click('[data-new-session]');

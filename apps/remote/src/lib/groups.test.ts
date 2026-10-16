@@ -92,6 +92,11 @@ describe('toReview', () => {
     expect(toReview([session('a', 'unread', 1), session('b', 'idle', 3), session('c', 'unread', 2)]).map((s) => s.id)).toEqual(['c', 'a']);
     expect(toReview([session('a', 'unread', 1), session('c', 'unread', 2)], 1).map((s) => s.id)).toEqual(['c']);
   });
+
+  it('leaves out a session that still runs something in the background', () => {
+    const waiting = { ...session('ci', 'unread', 3), background: [{ taskId: 'b1', type: 'local_bash', description: 'gh run watch', startedAt: 1 }] };
+    expect(toReview([waiting, session('a', 'unread', 1)]).map((s) => s.id)).toEqual(['a']);
+  });
 });
 
 describe('nextNeedsYou', () => {

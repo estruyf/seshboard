@@ -44,6 +44,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
       'session.send': () => ({ queued: false }),
       'session.queue.remove': () => ({}),
       'session.interrupt': () => ({}),
+      'session.stopTask': () => ({}),
       'session.respond': () => ({}),
       'session.create': () => {
         throw new RpcError('NOT_FOUND', 'No such project');

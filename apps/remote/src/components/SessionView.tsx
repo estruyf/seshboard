@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
+import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
 import type { CatchUp, QueuedMessage, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions } from '@switchboard/protocol/remote-client';
+import { backgroundLine, inBackground } from '../lib/background.ts';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { transcriptItems } from '../lib/steps.ts';
 import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessages, resultsByCall, type Streaming } from '../lib/transcript.ts';
@@ -21,6 +22,7 @@ import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx'
 import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, takesEffort } from '../lib/options.ts';
 import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
 import { AskPanel, AskSheet } from './AskPanel.tsx';
+import { BackgroundTasks } from './BackgroundTasks.tsx';
 import { closeAsk, openAsk, useSessionAsk } from './askStore.ts';
 import { withQuote } from '../lib/ask.ts';
 import { Button, STATUS_LABEL, StatusDot } from './ui.tsx';
@@ -165,6 +167,9 @@ export function SessionView({
   };
 
   const working = session?.status === 'working';
+  /** Its turn ended but a task it started still runs: still at work, so no catch-up yet. */
+  const background = inBackground(session);
+  const tasks = session?.background ?? [];
   const results = resultsByCall(messages);
   const fail = (e: Error) => !lostConnection(e) && setError(e.message);
   const menu: MenuItem[] = [
@@ -184,7 +189,7 @@ export function SessionView({
     },
   ];
   const open = prompts[0];
-  const card = showsCatchUp(catchUp, working, Boolean(open)) ? catchUp : null;
+  const card = showsCatchUp(catchUp, working || background, Boolean(open)) ? catchUp : null;
   const files = changes?.files.length ?? 0;
   const send = (text: string, images: RemoteImage[] = [], files: RemoteFile[] = []) => client!.call('session.send', { sessionId, text, mode: 'queue', images, ...(files.length ? { files } : {}) }).then(() => setUnfolded(true));
   const askToFix = (path: string | null) => {
@@ -222,6 +227,14 @@ export function SessionView({
     return () => window.removeEventListener('keydown', onKey);
   }, [panelOpen, askPanel, sessionId]);
   const stop = () => void client?.call('session.interrupt', { sessionId }).catch(fail);
+  const stopTask = async (taskId: string) => {
+    try {
+      await client!.call('session.stopTask', { sessionId, taskId });
+    } catch (e) {
+      fail(e as Error);
+      throw e;
+    }
+  };
   const modelAndMode = running && options && session ? `${autoFace(session.auto) ?? modelLabel(options.models, session.model)} · ${MODE_SHORT[session.permissionMode!]}` : null;
 
   return (
@@ -293,6 +306,7 @@ export function SessionView({
           results={results}
           streaming={streaming}
           working={working}
+          background={background && !working ? backgroundLine(session?.background) : null}
           hasMore={hasMore}
           onOlder={() => void loadOlder()}
           folded={Boolean(card) && !unfolded}
@@ -310,6 +324,7 @@ export function SessionView({
           </div>
         )}
         {queue.length > 0 && <UpNext queue={queue} onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))} />}
+        {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
         <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} />
         <Composer
           fill={fill}
@@ -386,6 +401,7 @@ function Transcript({
   results,
   streaming,
   working,
+  background,
   hasMore,
   onOlder,
   header,
@@ -396,6 +412,8 @@ function Transcript({
   results: ReturnType<typeof resultsByCall>;
   streaming: Streaming;
   working: boolean;
+  /** What still runs after the turn, for the line at the end (null: nothing). */
+  background: string | null;
   hasMore: boolean;
   onOlder: () => void;
   /** The catch-up, over the conversation. */
@@ -494,8 +512,10 @@ function Transcript({
                     <StreamingMarkdown text={streaming.text} />
                     <span className="mt-0.5 block h-3.5 w-1.5 animate-pulse bg-accent-ink" aria-hidden />
                   </div>
+                ) : working || streaming.kind ? (
+                  <WorkingLine streaming={streaming} since={since} />
                 ) : (
-                  (working || streaming.kind) && <WorkingLine streaming={streaming} since={since} />
+                  background && <BackgroundLine text={background} />
                 )}
               </div>
             </>
@@ -534,6 +554,20 @@ function WorkingLine({ streaming, since }: { streaming: Streaming; since: number
         {workingLabel(streaming)}
       </span>
       {streaming.kind === 'thinking' && streaming.text && <span className="min-w-0 truncate text-faint italic">{streaming.text.slice(-160)}</span>}
+    </p>
+  );
+}
+
+/** Claude's turn ended but something it started still runs, in the background's green: it carries on when that finishes. */
+function BackgroundLine({ text }: { text: string }) {
+  return (
+    <p className="flex min-w-0 items-center gap-2 text-ui text-ok" data-remote-background-line>
+      <span className="flex w-4 shrink-0 justify-center" aria-hidden>
+        <LoaderCircle className="size-3.5 animate-[spin_2s_linear_infinite]" />
+      </span>
+      <span className="min-w-0 truncate" aria-live="polite">
+        {text}
+      </span>
     </p>
   );
 }

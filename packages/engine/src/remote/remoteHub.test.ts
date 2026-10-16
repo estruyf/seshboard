@@ -64,7 +64,7 @@ const freePort = () =>
 const fakeTunnel = (script: string) => ({ file: process.execPath, args: ['-e', script] });
 const QUIET_TUNNEL = (port: number) => fakeTunnel(`console.error('|  https://quiet-river.trycloudflare.com  |'); setInterval(() => {}, 1000); void ${port}`);
 
-async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number } = {}) {
+async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[] } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   const pushFetch = (async (url: string, init: RequestInit) => {
     pushes.push({ url, urgency: (init.headers as Record<string, string>).Urgency! });
@@ -115,7 +115,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     appUrl: `${APP_ORIGIN}/remote/`,
     filesDir: join(dir, 'remote-files'),
     identity: async () => identity,
-    sources: () => ({ summaries: [summary(SESSION, true), summary(HIDDEN, false)], live: [], hosts: [], permissions }),
+    sources: () => ({ summaries: [summary(SESSION, true), summary(HIDDEN, false)], live: [], hosts: options.hosts ?? [], permissions }),
     archiveAfterDays: () => 7,
     scope: () => 'switchboard',
     projects: () => [
@@ -136,6 +136,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: () => {},
     interrupt: async () => {},
+    stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
     respond: (requestId) => void answered.push(requestId),
     create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
@@ -357,6 +358,20 @@ describe('Remote hub', () => {
     ])
       await expect(call).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(remote.call('session.setPermissionMode', { sessionId: SESSION, mode: 'dontAsk' as never })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+  });
+
+  it('lists what a session runs in the background, and stops only a task it lists', async () => {
+    const task = { taskId: 'b1', type: 'local_bash', description: 'gh run watch', startedAt: 5 };
+    const host = { sessionId: SESSION, cwd: ROOT, state: 'idle', model: 'opus', effort: null, permissionMode: 'default', profileId: 'work', backgroundTasks: [task] } as unknown as SessionHostInfo;
+    const { hub, port, on, calls } = await setup({ hosts: [host] });
+    await on();
+    const { remote } = await pair(hub, port);
+    const { sessions } = await remote.call('sessions.list', {});
+    expect(sessions.find((s) => s.id === SESSION)).toMatchObject({ status: 'background', background: [task] });
+    await remote.call('session.stopTask', { sessionId: SESSION, taskId: 'b1' });
+    expect(calls).toEqual([`stop ${SESSION} b1`]);
+    await expect(remote.call('session.stopTask', { sessionId: SESSION, taskId: 'gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('session.stopTask', { sessionId: HIDDEN, taskId: 'b1' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('gives the catch-up without paths outside the project', async () => {

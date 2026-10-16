@@ -177,6 +177,17 @@ function describeCalls(kind: string, calls: readonly ToolCall[]): string {
   }
 }
 
+/**
+ * Its turn ended but a task it started still runs (`RemoteSession.background`): Claude carries on when that finishes,
+ * so the view shows it at work, in the background's green, and Stop stops each task rather than a turn. Also while it
+ * is unread, which its status says first. A computer from before the list only says so through the status. The same
+ * rule as the remote app's (apps/remote/src/lib/background.ts).
+ */
+export function inBackground(session: Pick<RemoteSession, 'status' | 'background'>): boolean {
+  if (session.status === 'working' || session.status === 'needs-you') return false;
+  return session.status === 'background' || Boolean(session.background?.length);
+}
+
 /** The groups of the list, as the sidebar has them: what needs you, what is working, then the rest by time. */
 export function sessionGroups(list: RemoteSessions | null): Array<{ key: 'needs-you' | 'working' | 'recent'; label: string; sessions: RemoteSession[] }> {
   if (!list) return [];

@@ -1327,6 +1327,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-background-tasks",
+      "name": "Remote and other computers: what runs in the background, and Stop for each task",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-streaming-markdown",
       "name": "Remote: answers formatted while Claude writes them",
       "page": "remote-access"

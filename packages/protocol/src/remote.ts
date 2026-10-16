@@ -3,7 +3,7 @@ import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
-import { AutoTierSchema, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
@@ -53,6 +53,11 @@ export const RemoteSession = z.object({
    * model), or `choosing` while it still picks. Null without Auto; left out by a Switchboard from before phones knew it.
    */
   auto: z.object({ picked: AutoTierSchema.nullable(), choosing: z.boolean() }).nullable().optional(),
+  /**
+   * What it keeps running after its turn (a shell command, an agent, a workflow), while it runs in Switchboard; each
+   * can be stopped with `session.stopTask`. Left out by a Switchboard from before phones knew them.
+   */
+  background: z.array(BackgroundTask).optional(),
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 
@@ -265,6 +270,8 @@ export const remoteContract = {
     },
     'session.queue.remove': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Stops one of the session's background tasks (`RemoteSession.background`); Claude is told it was stopped. */
+    'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string().min(1).max(200) }), result: z.object({}) },
     /** Answers a permission prompt, question or plan. NOT_FOUND when it was already answered. */
     'session.respond': { params: z.object({ requestId: z.string().min(1).max(200), decision: PermissionDecision }), result: z.object({}) },
     /** A new session in a project Switchboard knows. What it leaves out of the options is the project's default. */
