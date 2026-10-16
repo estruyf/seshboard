@@ -64,7 +64,7 @@ const freePort = () =>
 const fakeTunnel = (script: string) => ({ file: process.execPath, args: ['-e', script] });
 const QUIET_TUNNEL = (port: number) => fakeTunnel(`console.error('|  https://quiet-river.trycloudflare.com  |'); setInterval(() => {}, 1000); void ${port}`);
 
-async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[] } = {}) {
+async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string> } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   const pushFetch = (async (url: string, init: RequestInit) => {
     pushes.push({ url, urgency: (init.headers as Record<string, string>).Urgency! });
@@ -115,7 +115,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     appUrl: `${APP_ORIGIN}/remote/`,
     filesDir: join(dir, 'remote-files'),
     identity: async () => identity,
-    sources: () => ({ summaries: [summary(SESSION, true), summary(HIDDEN, false)], live: [], hosts: options.hosts ?? [], permissions }),
+    sources: () => ({ summaries: [summary(SESSION, true), summary(HIDDEN, false)].map((s) => (options.archived?.has(s.id) ? { ...s, archivedAt: Date.now() } : s)), live: [], hosts: options.hosts ?? [], permissions }),
     archiveAfterDays: () => 7,
     scope: () => 'switchboard',
     projects: () => [
@@ -142,6 +142,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] } : { current: null, branches: [], checkedOutElsewhere: [] }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
     markRead: (sessionId) => void calls.push(`read ${sessionId}`),
+    markUnread: (sessionId) => void calls.push(`unread ${sessionId}`),
     setFlags: (sessionId, flags) => void calls.push(`flags ${sessionId} ${JSON.stringify(flags)}`),
     setModel: async (sessionId, model) => void calls.push(`model ${sessionId} ${model}`),
     setEffort: async (sessionId, effort) => void calls.push(`effort ${sessionId} ${effort}`),
@@ -354,14 +355,16 @@ describe('Remote hub', () => {
     await on();
     const { remote } = await pair(hub, port);
     await remote.call('session.markRead', { sessionId: SESSION });
+    await remote.call('session.markUnread', { sessionId: SESSION });
     await remote.call('session.setFlags', { sessionId: SESSION, archived: true });
     await remote.call('session.setModel', { sessionId: SESSION, model: 'sonnet' });
     await remote.call('session.setEffort', { sessionId: SESSION, effort: 'high' });
     await remote.call('session.setEffort', { sessionId: SESSION, effort: null });
     await remote.call('session.setPermissionMode', { sessionId: SESSION, mode: 'auto' });
-    expect(calls).toEqual([`read ${SESSION}`, `flags ${SESSION} {"archived":true}`, `model ${SESSION} sonnet`, `effort ${SESSION} high`, `effort ${SESSION} null`, `mode ${SESSION} auto`]);
+    expect(calls).toEqual([`read ${SESSION}`, `unread ${SESSION}`, `flags ${SESSION} {"archived":true}`, `model ${SESSION} sonnet`, `effort ${SESSION} high`, `effort ${SESSION} null`, `mode ${SESSION} auto`]);
     for (const call of [
       remote.call('session.markRead', { sessionId: HIDDEN }),
+      remote.call('session.markUnread', { sessionId: HIDDEN }),
       remote.call('session.setFlags', { sessionId: HIDDEN, pinned: true }),
       remote.call('session.setModel', { sessionId: HIDDEN, model: null }),
       remote.call('session.setEffort', { sessionId: HIDDEN, effort: 'low' }),
@@ -370,6 +373,26 @@ describe('Remote hub', () => {
     ])
       await expect(call).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(remote.call('session.setPermissionMode', { sessionId: SESSION, mode: 'dontAsk' as never })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+  });
+
+  it('lets a phone take back an archive it made (Undo), but not unarchive anything else', async () => {
+    const archived = new Set<string>();
+    const { hub, port, on, calls } = await setup({ archived });
+    await on();
+    const { remote } = await pair(hub, port);
+    await remote.call('session.setFlags', { sessionId: SESSION, archived: true });
+    archived.add(SESSION);
+    expect((await remote.call('sessions.list', {})).sessions.map((s) => s.id)).not.toContain(SESSION);
+    // Gone from the list: nothing but Undo may touch it.
+    await expect(remote.call('session.markRead', { sessionId: SESSION })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('session.setFlags', { sessionId: SESSION, archived: false, pinned: true })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
+    expect(calls.at(-1)).toBe(`flags ${SESSION} {"archived":false}`);
+    // Once only.
+    await expect(remote.call('session.setFlags', { sessionId: SESSION, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // A session the phone never archived stays out of reach.
+    archived.add(HIDDEN);
+    await expect(remote.call('session.setFlags', { sessionId: HIDDEN, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('lists what a session runs in the background, and stops only a task it lists', async () => {

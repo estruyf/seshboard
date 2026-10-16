@@ -1138,6 +1138,7 @@ export function createEngine(options: EngineOptions): Engine {
         return { id: item.id };
       },
       markRead: (sessionId) => sessions.markViewed(sessionId),
+      markUnread: (sessionId) => sessions.markUnviewed(sessionId),
       setFlags: (sessionId, flags) => sessions.setFlags(sessionId, flags),
       setModel: (sessionId, model) => hosts.setModel(sessionId, model),
       setEffort: (sessionId, effort) => hosts.setEffort(sessionId, effort),

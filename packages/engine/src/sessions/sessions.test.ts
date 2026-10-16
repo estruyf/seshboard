@@ -142,6 +142,9 @@ describe('SessionIndex', () => {
     expect(t.index.get(ID_B)!.unread).toBe(true);
     t.index.markViewed(ID_B);
     expect(t.index.get(ID_B)).toMatchObject({ unread: false });
+    t.index.markUnviewed(ID_B);
+    expect(t.index.get(ID_B)).toMatchObject({ unread: true });
+    t.index.markViewed(ID_B);
     t.index.setFlags(ID_A, { pinned: true, archived: true });
     expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ id: ID_A, pinned: true });
     expect(t.index.get(ID_A)!.archivedAt).toBeGreaterThan(0);

@@ -471,6 +471,7 @@ const hub: RemoteHub = new RemoteHub({
   branches: async () => ({ current: 'main', branches: ['main', 'feat/onboarding', 'fix/login-redirect'], checkedOutElsewhere: [] }),
   queue: () => ({ id: `later-${Date.now()}` }),
   markRead: (sessionId) => void read.add(sessionId),
+  markUnread: (sessionId) => void read.delete(sessionId),
   setFlags: (sessionId, flags) => {
     if (flags.archived) archived.add(sessionId);
     else if (flags.archived === false) archived.delete(sessionId);

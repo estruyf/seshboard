@@ -16,6 +16,7 @@ import {
   type ProjectDefaults,
   type RemoteBranches,
   type RemoteSessionOptions,
+  type RemoteSession,
   type RemoteSessions,
   type RemoteStatus,
   type RemoteContract,
@@ -145,6 +146,8 @@ export interface RemoteHubOptions {
   queue(root: string, prompt: string, choice: SessionChoice): { id: string };
   /** As opening the session on the computer: no longer unread. */
   markRead(sessionId: string): void;
+  /** Unread again, as before it was read: Undo after Mark as read. */
+  markUnread(sessionId: string): void;
   setFlags(sessionId: string, flags: { pinned?: boolean; archived?: boolean }): void;
   setModel(sessionId: string, model: string | null): Promise<void>;
   setEffort(sessionId: string, effort: Effort | null): Promise<void>;
@@ -221,6 +224,11 @@ export class RemoteHub {
   private readonly askedBy = new Map<string, Set<HandlerContext<RemoteContract>>>();
   /** Messages sent from a phone, by session, for the label (kept while the engine runs). */
   private readonly sentFrom = new Map<string, Map<string, string>>();
+  /**
+   * Sessions a phone archived, and when: it may take that back (Undo) for a while, although an archived session has
+   * left its list and nothing else may touch it.
+   */
+  private readonly archivedFromPhone = new Map<string, number>();
   private applying: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: RemoteHubOptions) {
@@ -369,7 +377,7 @@ export class RemoteHub {
   permissionAsked(request: PermissionRequest): void {
     const session = this.list().sessions.find((s) => s.id === request.sessionId);
     if (!session) return;
-    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, line: needsYouLine(request), ...promptAnswers(request) });
+    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, ...profileOf(session), line: needsYouLine(request), ...promptAnswers(request) });
   }
 
   /** A session's process changed state: a turn that ended sends its push once the catch-up is in (or soon without). */
@@ -534,7 +542,7 @@ export class RemoteHub {
     this.finishing.delete(sessionId);
     const session = this.list().sessions.find((s) => s.id === sessionId);
     if (!session) return;
-    this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, line: finishedLine(this.options.catchUp(sessionId)) });
+    this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, ...profileOf(session), line: finishedLine(this.options.catchUp(sessionId)) });
   }
 
   /**
@@ -698,8 +706,17 @@ export class RemoteHub {
         this.sessionsChanged();
         return {};
       },
-      'session.setFlags': ({ sessionId, pinned, archived }) => {
+      'session.markUnread': ({ sessionId }) => {
         this.checkSession(sessionId);
+        this.options.markUnread(sessionId);
+        this.sessionsChanged();
+        return {};
+      },
+      'session.setFlags': ({ sessionId, pinned, archived }) => {
+        const undo = archived === false && pinned === undefined && Date.now() - (this.archivedFromPhone.get(sessionId) ?? -Infinity) < UNDO_ARCHIVE_MS;
+        if (!undo) this.checkSession(sessionId);
+        if (archived === true) this.archivedFromPhone.set(sessionId, Date.now());
+        else if (archived === false) this.archivedFromPhone.delete(sessionId);
         this.options.setFlags(sessionId, { ...(pinned !== undefined ? { pinned } : {}), ...(archived !== undefined ? { archived } : {}) });
         this.sessionsChanged();
         return {};
@@ -809,3 +826,9 @@ export class RemoteHub {
     };
   }
 }
+
+/** A push names the session's profile only when there is more than one (the list leaves it out with one). */
+const profileOf = (session: RemoteSession): { profile?: string } => (session.profile ? { profile: session.profile.name } : {});
+
+/** How long a phone may unarchive a session it archived (Undo), after it left its list. */
+const UNDO_ARCHIVE_MS = 10 * 60_000;

@@ -23,7 +23,8 @@ self.addEventListener('push', (event) => {
   }
   const title = typeof data.title === 'string' && data.title ? data.title : 'Switchboard';
   const line = typeof data.line === 'string' ? data.line : data.kind === 'finished' ? 'Claude finished a turn.' : 'Claude needs you.';
-  const body = typeof data.project === 'string' && data.project ? `${data.project} · ${line}` : line;
+  // With more than one Claude profile, the profile first ("Work · web · Allow Bash: npm publish --tag beta").
+  const body = [data.profile, data.project, line].filter((part) => typeof part === 'string' && part).join(' · ');
   const answers = data.kind === 'needs-you' && data.answers === true && typeof data.requestId === 'string' && (self.Notification?.maxActions ?? 0) >= 2;
   event.waitUntil(
     self.registration.showNotification(title, {

@@ -31,7 +31,7 @@ const DRAFT = 'switchboard-remote:new-draft';
  * the branch checked out there, or another to check out first (`REMOTE_FEATURE_BRANCHES`). Queue for later puts it in Switchboard's queue instead,
  * while the project has a session working.
  */
-export function NewSession({ client, features, sessions, banner, onBack, onStarted, initialProject = null }: { client: Client; /** What the computer takes beyond what every version does (its hello). */ features: readonly string[]; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
+export function NewSession({ client, features, sessions, banner, onBack, lead = null, onStarted, initialProject = null }: { client: Client; /** What the computer takes beyond what every version does (its hello). */ features: readonly string[]; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; /** In Back's place on a wide screen whose sidebar folded away: the drawer button. */ lead?: ReactNode; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
   const [projectId, setProjectId] = useState<string | null>(initialProject);
   const [filter, setFilter] = useState('');
@@ -154,7 +154,8 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
 
   return (
     <div className="flex h-full flex-col">
-      <header className={`safe-top flex items-center gap-2 border-b border-border pb-2 pointer-fine:pb-2.5 ${onBack ? 'px-2' : 'px-5'}`}>
+      <header className={`safe-top flex items-center gap-2 border-b border-border pb-2 pointer-fine:pb-2.5 ${onBack || lead ? 'px-2' : 'px-5'}`}>
+        {!onBack && lead}
         {onBack && (
           <Button variant="quiet" onClick={onBack} aria-label="Back" className="px-2!">
             <ChevronLeft className="size-5" aria-hidden />

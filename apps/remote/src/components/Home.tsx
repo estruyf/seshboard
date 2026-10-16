@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 import type { CatchUp, PermissionDecision, RemoteProfileUsage, RemotePrompt, RemoteSession, RemoteSessions } from '@switchboard/protocol/remote-client';
 import { catchUpChips, reviewLabel } from '../lib/catchUp.ts';
@@ -28,6 +28,7 @@ export function Home({
   onOpen,
   onNew,
   onRefresh,
+  lead,
 }: {
   sessions: RemoteSessions;
   usage: RemoteProfileUsage[] | null;
@@ -36,6 +37,8 @@ export function Home({
   onOpen: OpenSession;
   onNew: () => void;
   onRefresh: () => void;
+  /** Before the title on a wide screen whose sidebar folded away: the drawer button. */
+  lead?: ReactNode;
 }) {
   const now = useNow();
   const headline = homeHeadline(sessions.sessions, now);
@@ -49,6 +52,7 @@ export function Home({
     <main className="h-full overflow-y-auto overscroll-contain" data-remote-scroll data-remote-home>
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-4 px-6 py-8">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {lead && <div className="-ml-2 self-center">{lead}</div>}
           <h1 className="text-hero font-semibold" data-remote-home-title>
             {headline.title}
           </h1>

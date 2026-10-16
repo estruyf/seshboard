@@ -12,6 +12,8 @@ export interface PushPayload {
   sessionId: string;
   title: string;
   project: string;
+  /** The Claude profile's name, only with more than one profile ("Work"): the notification starts with it. */
+  profile?: string;
   /** "Allow Bash: npm publish --tag beta", or "14 tests passed · ~2 min to review". */
   line: string;
   /** A tool prompt: the notification offers Deny and Allow where the browser has buttons, and answers this request. */

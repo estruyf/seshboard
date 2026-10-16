@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import type { RemoteProfileUsage, UsageLimit } from '@switchboard/protocol/remote-client';
 import { PROFILE_DOT } from '../lib/options.ts';
+import { cardRows, compactProfiles, compactText, windowPercent } from '../lib/profiles.ts';
 import { countdown, LEVEL_FILL, LEVEL_TEXT, levelOf, limitName, spokenLimit, usageMessage, visibleLimits, withUsage } from '../lib/usage.ts';
 import type { Client } from './Connected.tsx';
 import { useNow } from './SessionList.tsx';
@@ -69,6 +71,129 @@ export function UsageSection({ usage, offline = false, className = '' }: { usage
         </div>
       )}
     </section>
+  );
+}
+
+/** Whether the first screen's usage card is unfolded, for this tab. */
+const OPEN_KEY = 'switchboard-remote:usage-open';
+
+function wasOpen(): boolean {
+  try {
+    return sessionStorage.getItem(OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The first screen's usage: "Usage" with the 5-hour and week bars on one row, or with more than one profile a
+ * "Profiles" card with a row per profile (the two closest to a limit, and "+N", from three on). A tap unfolds every
+ * profile's full card. Nothing until the first numbers come.
+ */
+export function UsageCard({ usage, offline = false }: { usage: RemoteProfileUsage[] | null; offline?: boolean }) {
+  const now = useNow();
+  const [open, setOpen] = useState(wasOpen);
+  const id = useId();
+  if (!usage?.length) return null;
+  const toggle = () => {
+    setOpen(!open);
+    try {
+      sessionStorage.setItem(OPEN_KEY, open ? '0' : '1');
+    } catch {
+      // Storage is off: it stays the way it is until the page closes.
+    }
+  };
+  const many = usage.length > 1;
+  const { rows, more } = cardRows(usage);
+  return (
+    <section aria-label={many ? 'Profiles' : 'Usage'} className={`flex flex-col gap-2 transition-opacity ${offline ? 'opacity-60' : ''}`} data-remote-usage-card>
+      <button type="button" onClick={toggle} aria-expanded={open} aria-controls={id} className="flex w-full flex-col gap-1.5 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-border/45 active:bg-selected">
+        {many ? (
+          <>
+            <span className="flex items-center gap-2 text-meta font-semibold tracking-wide text-faint uppercase">
+              <span className="flex-1">Profiles</span>
+              <span className="w-[5.5rem] normal-case">5h</span>
+              <span className="w-[5.5rem] normal-case">Week</span>
+              <ChevronDown aria-hidden className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </span>
+            {rows.map((entry) => (
+              <span key={entry.profile.id} className="flex min-w-0 items-center gap-2 text-ui" data-remote-usage-row={entry.profile.id}>
+                <span aria-hidden className={`size-2 shrink-0 rounded-full ${PROFILE_DOT[entry.profile.color]}`} />
+                <span className="min-w-0 flex-1 truncate">{entry.profile.name}</span>
+                <MiniBar label="5-hour limit" percent={windowPercent(entry, 'session')} />
+                <MiniBar label="Weekly limit" percent={windowPercent(entry, 'weekly_all')} />
+                <span className="w-3.5" />
+              </span>
+            ))}
+            {more > 0 && <span className="text-meta text-muted">+{more}</span>}
+          </>
+        ) : (
+          <span className="flex min-w-0 items-center gap-2 text-ui" data-remote-usage-row={usage[0]!.profile.id}>
+            <span className="flex-1 font-semibold">Usage</span>
+            <span className="text-meta text-faint">5h</span>
+            <MiniBar label="5-hour limit" percent={windowPercent(usage[0]!, 'session')} />
+            <span className="text-meta text-faint">Week</span>
+            <MiniBar label="Weekly limit" percent={windowPercent(usage[0]!, 'weekly_all')} />
+            <ChevronDown aria-hidden className={`size-3.5 shrink-0 text-faint transition-transform ${open ? 'rotate-180' : ''}`} />
+          </span>
+        )}
+      </button>
+      {open && (
+        <div id={id} className="grid grid-cols-1 gap-2">
+          {usage.map((entry) => (
+            <ProfileCard key={entry.profile.id} entry={entry} now={now} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** A small bar and its %, in the level's colour; a dash with no number. */
+function MiniBar({ label, percent }: { label: string; percent: number | null }) {
+  if (percent === null) {
+    return (
+      <span className="w-[5.5rem] text-meta text-faint" aria-label={`${label}: not reported`}>
+        –
+      </span>
+    );
+  }
+  const value = Math.round(Math.min(100, Math.max(0, percent)));
+  const level = levelOf(percent);
+  return (
+    <span role="meter" aria-label={`${label}: ${value}% used`} aria-valuenow={value} aria-valuemin={0} aria-valuemax={100} className="flex w-[5.5rem] shrink-0 items-center gap-1.5">
+      <span aria-hidden className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+        <span className={`block h-full rounded-full ${LEVEL_FILL[level]}`} style={{ width: `max(${value}%, 4px)` }} />
+      </span>
+      <span aria-hidden className={`w-8 text-right text-meta font-semibold tabular-nums ${LEVEL_TEXT[level]}`}>
+        {value}%
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The drawer's Home row: each profile's dot, name and the highest of its limits in the level's colour ("● Work 82%
+ * ● Personal 18%"), or the closest to a limit and "+2" from three profiles on. Nothing with one profile.
+ */
+export function ProfileStrip({ usage }: { usage: RemoteProfileUsage[] | null }) {
+  const compact = compactProfiles(usage ?? []);
+  if (!compact.items.length) return null;
+  return (
+    <span className="flex min-w-0 items-center gap-3 text-meta" aria-label={compactText(compact)} data-remote-profile-strip>
+      {compact.items.map((item) => (
+        <span key={item.id} aria-hidden className="flex min-w-0 items-center gap-1">
+          <span className={`size-1.5 shrink-0 rounded-full ${PROFILE_DOT[item.color]}`} />
+          <span className="truncate text-muted">{item.name}</span>
+          {item.percent !== null && <span className={`font-semibold tabular-nums ${LEVEL_TEXT[item.level] || 'text-muted'}`}>{item.percent}%</span>}
+        </span>
+      ))}
+      {compact.more > 0 && (
+        <span aria-hidden className="shrink-0 text-faint">
+          +{compact.more}
+        </span>
+      )}
+    </span>
   );
 }
 

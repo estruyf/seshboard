@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PermissionDecision, RemotePrompt } from '@switchboard/protocol/remote-client';
-import { DECLINED, promptKind, toolLabel } from '../lib/prompts.ts';
+import { DECLINED, promptAsk, promptKind, toolLabel } from '../lib/prompts.ts';
 import { editLines, toolSummary } from '../lib/transcript.ts';
 import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
@@ -28,7 +28,7 @@ export function promptTitle(prompt: RemotePrompt): string {
  * you", and the same choices as the card on the computer. The chevron folds it to one line to read the conversation
  * first; a new prompt opens it again. With more than one, "1 of 2" and arrows step through them.
  */
-export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = false }: { prompts: RemotePrompt[]; client: Client; sessionTitle: string | undefined; onGone: () => void; /** Key hints on the buttons (a wide screen). */ hints?: boolean }) {
+export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = false, typing = false }: { prompts: RemotePrompt[]; client: Client; sessionTitle: string | undefined; onGone: () => void; /** Key hints on the buttons (a wide screen). */ hints?: boolean; /** The keyboard is up: one line, so the message box stays above it. */ typing?: boolean }) {
   const [index, setIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -53,6 +53,31 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = fa
     if (result === 'gone') onGone();
   };
   const disabled = busy || !client;
+
+  // While you type, one line: a tap unfolds it and puts the keyboard away, so there is room to read it.
+  if (typing) {
+    return (
+      <section aria-label="Claude needs you" className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId} data-remote-prompt-line>
+        <button
+          type="button"
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={() => {
+            setCollapsed(false);
+            (document.activeElement as HTMLElement | null)?.blur();
+          }}
+          className="mx-auto flex min-h-11 w-full max-w-3xl items-center gap-2 rounded-xl border-2 border-warn bg-card px-3 text-left"
+        >
+          <span className="shrink-0 text-meta font-semibold text-warn">Claude needs you</span>
+          <span aria-hidden className="text-faint">
+            ·
+          </span>
+          <span className="min-w-0 flex-1 truncate text-ui font-semibold">{promptAsk(prompt)}</span>
+          {prompts.length > 1 && <span className="shrink-0 text-meta text-muted tabular-nums">{prompts.length}</span>}
+          <ChevronRight className="size-4 shrink-0 text-faint" aria-hidden />
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section aria-label="Claude needs you" className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId}>

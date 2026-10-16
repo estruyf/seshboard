@@ -7,6 +7,13 @@ const WIN: KeyContext = { mac: false, inField: false };
 const inField = (context: KeyContext): KeyContext => ({ ...context, inField: true });
 
 describe('keyAction', () => {
+  it('shows or hides the sessions with ⌘B on a Mac and Ctrl+B elsewhere', () => {
+    expect(keyAction(press('b', { metaKey: true }), MAC)).toBe('sidebar');
+    expect(keyAction(press('b', { ctrlKey: true }), inField(WIN))).toBe('sidebar');
+    expect(keyAction(press('b', { ctrlKey: true }), MAC)).toBeNull();
+    expect(keyAction(press('b'), MAC)).toBeNull();
+  });
+
   it('opens the palette with ⌘K on a Mac and Ctrl+K elsewhere, also in a field', () => {
     expect(keyAction(press('k', { metaKey: true }), MAC)).toBe('palette');
     expect(keyAction(press('k', { metaKey: true }), inField(MAC))).toBe('palette');
@@ -104,7 +111,7 @@ describe('keyLabel', () => {
 
   it('lists every key the handler knows', () => {
     const listed = new Set(KEY_LIST.map((k) => k.action));
-    for (const action of ['palette', 'next-needs-you', 'down', 'up', 'allow', 'deny', 'open', 'new', 'escape', 'help'] as const) expect(listed).toContain(action);
+    for (const action of ['palette', 'next-needs-you', 'sidebar', 'down', 'up', 'allow', 'deny', 'open', 'new', 'escape', 'help'] as const) expect(listed).toContain(action);
   });
 });
 

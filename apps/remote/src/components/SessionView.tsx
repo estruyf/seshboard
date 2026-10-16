@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
+import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
 import type { CatchUp, QueuedMessage, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions } from '@switchboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
@@ -19,6 +19,7 @@ import { EffortChip, ModeChip, ModelChip } from './OptionChips.tsx';
 import { DockedPrompt } from './PermissionCard.tsx';
 import { toast } from './Toasts.tsx';
 import { useFinePointer, useMedia } from '../lib/media.ts';
+import { useVisualViewport } from './useVisualViewport.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
 import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, takesEffort } from '../lib/options.ts';
 import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
@@ -47,7 +48,7 @@ export function SessionView({
   sessionId,
   sessions,
   banner,
-  onBack,
+  lead,
   onLeave,
   onRefresh,
   wide = false,
@@ -59,7 +60,8 @@ export function SessionView({
   sessionId: string;
   sessions: RemoteSessions;
   banner: ReactNode;
-  onBack: (() => void) | null;
+  /** In the header's left corner: the drawer button on a phone, the sidebar's toggle where it can fold. */
+  lead: ReactNode;
   /** Back to the list (after Archive): the back gesture on a phone, the empty view on a wide screen. */
   onLeave: () => void;
   onRefresh: () => void;
@@ -90,6 +92,11 @@ export function SessionView({
   const [fill, setFill] = useState<Fill | null>(null);
   const [options, setOptions] = useState<RemoteOptions | null>(null);
   const now = useNow();
+  /** The message box has focus on a touch screen: the keyboard is up. */
+  const [typing, setTyping] = useState(false);
+  const fine = useFinePointer();
+  // On an iPhone the view takes what the keyboard leaves, so the box stays above it (`lib/viewport.ts`).
+  const frame = useVisualViewport(typing && !wide);
   const lastUuid = useRef<string | undefined>(undefined);
   lastUuid.current = messages.at(-1)?.uuid;
 
@@ -183,7 +190,7 @@ export function SessionView({
         void client
           ?.call('session.setFlags', { sessionId, archived: true })
           .then(() => {
-            toast('Archived', { detail: session?.title });
+            toast(`Archived ${session?.title ?? 'the session'}`, { action: { label: 'Undo', run: () => void client.call('session.setFlags', { sessionId, archived: false }).catch(fail) } });
             onLeave();
           })
           .catch(fail),
@@ -239,14 +246,10 @@ export function SessionView({
   const modelAndMode = running && options && session ? `${autoFace(session.auto) ?? modelLabel(options.models, session.model)} · ${MODE_SHORT[session.permissionMode!]}` : null;
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full bg-bg" style={frame ? { position: 'fixed', left: 0, right: 0, top: frame.top, height: frame.height, zIndex: 20 } : undefined} data-remote-session-view>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className={`safe-top flex items-center gap-2 border-b border-border bg-bg pb-2 pointer-fine:pb-2.5 ${onBack ? 'px-2' : 'px-5'}`}>
-          {onBack && (
-            <Button variant="quiet" onClick={onBack} aria-label="Back" className="px-2!">
-              <ChevronLeft className="size-5" aria-hidden />
-            </Button>
-          )}
+        <header className={`safe-top flex items-center gap-2 border-b border-border bg-bg pb-2 pointer-fine:pb-2.5 ${lead ? 'px-2' : 'px-5'}`}>
+          {lead}
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-title font-semibold">{session?.title ?? 'Session'}</h1>
             {session && (
@@ -326,7 +329,7 @@ export function SessionView({
         )}
         {queue.length > 0 && <UpNext queue={queue} onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))} />}
         {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
-        <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} />
+        <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} />
         <Composer
           fill={fill}
           features={features}
@@ -357,6 +360,7 @@ export function SessionView({
             await send(text, images, files);
           }}
           onError={setError}
+          onFocusChange={setTyping}
         />
       </div>
       {ask.open && !panelFits && <AskSheet client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
@@ -619,6 +623,7 @@ function Composer({
   answering,
   onSend,
   onError,
+  onFocusChange,
 }: {
   /** Text to put in the box and focus it (Ask Claude to fix…), or to quote at its end; a new `id` each time. */
   fill: Fill | null;
@@ -630,6 +635,8 @@ function Composer({
   answering: boolean;
   onSend: (text: string, images: RemoteImage[], files: RemoteFile[]) => Promise<void>;
   onError: (message: string) => void;
+  /** The box got or lost focus: on a touch screen, the keyboard came up or went. */
+  onFocusChange: (focused: boolean) => void;
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -688,6 +695,8 @@ function Composer({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onPaste={attachments.onPaste}
+          onFocus={() => onFocusChange(true)}
+          onBlur={() => onFocusChange(false)}
           onKeyDown={(event) => {
             // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer.
             if (fine && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {

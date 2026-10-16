@@ -1213,12 +1213,12 @@
     },
     {
       "id": "feature:remote-list-filters",
-      "name": "Remote: All, Needs you and Working chips, and search",
+      "name": "Remote: All, Needs you and Working chips in the wide sidebar, and search",
       "page": "remote-access"
     },
     {
       "id": "feature:remote-connection-chip",
-      "name": "Remote: the computer's name and the connection in the list's header",
+      "name": "Remote: the computer chip and its menu, with the connection's state",
       "page": "remote-access"
     },
     {
@@ -1248,7 +1248,7 @@
     },
     {
       "id": "feature:remote-row-menu",
-      "name": "Remote: Mark as read and Archive from a session's right-click menu",
+      "name": "Remote: Mark as read and Archive from a long press, a right-click or the row's actions button",
       "page": "remote-access"
     },
     {
@@ -1298,7 +1298,7 @@
     },
     {
       "id": "feature:remote-usage-home",
-      "name": "Remote: Home with each profile's plan usage, and the Home button",
+      "name": "Remote: the usage card on the first screen, and Home with each profile's full card",
       "page": "remote-access"
     },
     {
@@ -1334,6 +1334,41 @@
     {
       "id": "feature:remote-offline-help",
       "name": "Remote: why the phone can't connect, and Help",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-drawer",
+      "name": "Remote: switch sessions from the sessions drawer (button or edge swipe), with the Home row",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-first-screen",
+      "name": "Remote: the first screen with the usage card, what needs you and the groups",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-pull-to-refresh",
+      "name": "Remote: pull to refresh",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-swipe-actions",
+      "name": "Remote: swipe to mark as read or archive, with Undo",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-disconnect",
+      "name": "Remote: Disconnect and Connect from the computer's menu",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-keyboard",
+      "name": "Remote: the message box stays above the keyboard, and the prompt folds to one line while you type",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-fold-sidebar",
+      "name": "Remote: fold the sidebar into the drawer on a narrow wide screen",
       "page": "remote-access"
     },
     {

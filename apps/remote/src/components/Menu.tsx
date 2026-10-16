@@ -5,7 +5,18 @@ import { Button } from './ui.tsx';
 export type MenuItem =
   | { kind?: 'item'; label: string; onSelect: () => void; danger?: boolean; disabled?: boolean; hint?: string | undefined }
   | { kind: 'note'; label: ReactNode }
+  /** What the menu is about, on top: the computer's name and its state. */
+  | { kind: 'header'; title: string; detail: ReactNode }
   | { kind: 'separator' };
+
+/** What a menu's trigger needs to open it and say so. */
+export interface MenuTriggerProps {
+  ref: Ref<HTMLButtonElement>;
+  onClick: () => void;
+  'aria-haspopup': 'menu';
+  'aria-expanded': boolean;
+  'aria-controls': string | undefined;
+}
 
 /**
  * The `⋯` menu (AGENTS.md, Buttons: what people use less often): a quiet icon button and a small list under it. Arrow
@@ -13,6 +24,19 @@ export type MenuItem =
  * button.
  */
 export function MenuButton({ label = 'More', items, align = 'right', side = 'below' }: { label?: string; items: MenuItem[]; align?: 'left' | 'right'; side?: 'above' | 'below' }) {
+  return (
+    <AnchoredMenu label={label} items={items} align={align} side={side}>
+      {(trigger) => (
+        <Button {...trigger} variant="quiet" size="md" aria-label={label} className="px-2!" data-remote-menu>
+          <MoreHorizontal className="size-5" aria-hidden />
+        </Button>
+      )}
+    </AnchoredMenu>
+  );
+}
+
+/** A menu under (or over) a trigger of your own: the computer chip. The trigger gets the props that open it. */
+export function AnchoredMenu({ label, items, align = 'right', side = 'below', className = '', children }: { label: string; items: MenuItem[]; align?: 'left' | 'right'; side?: 'above' | 'below'; className?: string; children: (trigger: MenuTriggerProps) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -23,10 +47,8 @@ export function MenuButton({ label = 'More', items, align = 'right', side = 'bel
   };
 
   return (
-    <div className="relative">
-      <Button ref={button} variant="quiet" size="md" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)} className="px-2!" data-remote-menu>
-        <MoreHorizontal className="size-5" aria-hidden />
-      </Button>
+    <div className={`relative ${className}`}>
+      {children({ ref: button, onClick: () => setOpen(!open), 'aria-haspopup': 'menu', 'aria-expanded': open, 'aria-controls': open ? id : undefined })}
       {open && <MenuList id={id} label={label} items={items} owner={button} onClose={close} className={`absolute ${side === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'} ${align === 'right' ? 'right-0' : 'left-0'}`} />}
     </div>
   );
@@ -149,6 +171,11 @@ function MenuList({
       {items.map((item, index) =>
         item.kind === 'separator' ? (
           <div key={index} role="separator" className="my-1 h-px bg-border" />
+        ) : item.kind === 'header' ? (
+          <div key={index} className="flex flex-col px-3 pt-2 pb-1.5">
+            <span className="truncate text-ui font-semibold text-text">{item.title}</span>
+            <span className="text-meta text-muted">{item.detail}</span>
+          </div>
         ) : item.kind === 'note' ? (
           <div key={index} className="px-3 py-1.5 text-meta text-faint">
             {item.label}

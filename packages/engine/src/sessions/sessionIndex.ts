@@ -204,6 +204,13 @@ export class SessionIndex {
     this.writeFlags(sessionId, { ...(this.flags.get(sessionId) ?? NO_FLAGS), viewedAt: Date.now() });
   }
 
+  /** Unread again (Undo after Mark as read on a phone): seen last just before its latest activity. */
+  markUnviewed(sessionId: string): void {
+    const updatedAt = this.entries.get(sessionId)?.summary.updatedAt;
+    if (updatedAt === undefined) return;
+    this.writeFlags(sessionId, { ...(this.flags.get(sessionId) ?? NO_FLAGS), viewedAt: updatedAt - UNREAD_SLACK_MS - 1 });
+  }
+
   private writeFlags(sessionId: string, flags: Flags): void {
     this.flags.set(sessionId, flags);
     this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt);

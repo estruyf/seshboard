@@ -4,7 +4,7 @@
  * `Connected.tsx` acts on the result.
  */
 
-export type KeyAction = 'palette' | 'next-needs-you' | 'down' | 'up' | 'allow' | 'deny' | 'open' | 'new' | 'escape' | 'help';
+export type KeyAction = 'palette' | 'next-needs-you' | 'sidebar' | 'down' | 'up' | 'allow' | 'deny' | 'open' | 'new' | 'escape' | 'help';
 
 export interface KeyEventLike {
   key: string;
@@ -28,7 +28,8 @@ export const modKey = (event: Pick<KeyEventLike, 'metaKey' | 'ctrlKey'>, mac: bo
 const SINGLE: Record<string, KeyAction> = { j: 'down', k: 'up', a: 'allow', d: 'deny', n: 'new', u: 'next-needs-you', enter: 'open' };
 
 /**
- * What a key does. ⌘K (Ctrl+K) opens the palette anywhere, also in a field; ⌘⇧U (Ctrl+Shift+U) and U open the next
+ * What a key does. ⌘K (Ctrl+K) opens the palette anywhere, also in a field, and ⌘B (Ctrl+B) shows or hides the
+ * sessions where the sidebar can fold; ⌘⇧U (Ctrl+Shift+U) and U open the next
  * session that needs you (Edge on Windows keeps Ctrl+Shift+U for Read aloud, so U is there too). Single keys only
  * work outside a field and never with a modifier held; `?` is the one that may need Shift to type.
  */
@@ -40,6 +41,7 @@ export function keyAction(event: KeyEventLike, context: KeyContext): KeyAction |
   const other = context.mac ? event.ctrlKey : event.metaKey;
   if (mod && !other && !event.altKey) {
     if (key === 'k' && !event.shiftKey) return 'palette';
+    if (key === 'b' && !event.shiftKey) return 'sidebar';
     if (key === 'u' && event.shiftKey) return 'next-needs-you';
     return null;
   }
@@ -82,6 +84,7 @@ export function keyLabel(keys: string, mac: boolean): string {
 export const KEY_LIST: ReadonlyArray<{ action: KeyAction | 'files'; keys: string[]; label: string }> = [
   { action: 'palette', keys: ['mod+k'], label: 'Search sessions and actions' },
   { action: 'next-needs-you', keys: ['mod+shift+u', 'u'], label: 'Open the next session that needs you' },
+  { action: 'sidebar', keys: ['mod+b'], label: 'Show or hide the sessions (on a narrow screen)' },
   { action: 'down', keys: ['j'], label: 'Next card or session' },
   { action: 'up', keys: ['k'], label: 'Previous card or session' },
   { action: 'allow', keys: ['a'], label: 'Allow' },

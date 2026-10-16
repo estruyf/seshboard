@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { RemoteContract, RemoteSessions, RpcClient } from '@switchboard/protocol/remote-client';
 import { Connection, type ConnectionState } from '../lib/connection.ts';
 import { setFaviconDot } from '../lib/favicon.ts';
+import { needsYouElsewhere } from '../lib/drawer.ts';
 import { nextNeedsYou } from '../lib/groups.ts';
 import { inView, isTypingTarget, keyAction, nextIndex } from '../lib/keys.ts';
 import type { Paired } from '../lib/link.ts';
-import { useWide } from '../lib/media.ts';
+import { useFoldable, useWide } from '../lib/media.ts';
 import type { PaletteItem } from '../lib/palette.ts';
-import { MAC } from '../lib/platform.ts';
+import { keys, MAC } from '../lib/platform.ts';
 import { DECLINED } from '../lib/prompts.ts';
 import { tabTitle } from '../lib/signals.ts';
 import { answer } from './answer.ts';
@@ -17,17 +19,22 @@ import { NewSession } from './NewSession.tsx';
 import { Palette, type PaletteAction } from './Palette.tsx';
 import { SessionList } from './SessionList.tsx';
 import { SessionView } from './SessionView.tsx';
-import { ConnectionBanner, OfflineHelp } from './ConnectionStatus.tsx';
+import { ComputerChip, ConnectionBanner, OfflineHelp } from './ConnectionStatus.tsx';
+import { afterOverlays } from './overlayHistory.ts';
+import { DrawerButton, SessionsDrawer, useEdgeSwipe } from './SessionsDrawer.tsx';
 import type { MenuItem } from './Menu.tsx';
 import { toast, Toasts } from './Toasts.tsx';
 import { NotificationsSheet, PushOffer, PushStrip, shouldOffer } from './Notifications.tsx';
 import { PhoneHome } from './PhoneHome.tsx';
-import { useUsage } from './Usage.tsx';
+import { ProfileStrip, UsageCard, useUsage } from './Usage.tsx';
 import { useAskSync } from './askStore.ts';
 import { currentSupport, loadPrefs, offered, resync, turnOff, turnOn } from '../lib/push.ts';
 import { Button, Message } from './ui.tsx';
 
-/** `home` and `list` are the two roots: one at a time on a phone, the same view on a wide screen. */
+/**
+ * `list` and `home` are the two roots: on a phone the first screen (the sessions, where the app opens) and Home (from
+ * the drawer's Home row); on a wide screen both are the view next to the sidebar.
+ */
 export type Route = { kind: 'home' } | { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean } | { kind: 'new'; projectId?: string };
 
 /** An answer from a notification's Deny or Allow (public/sw.js), sent once connected if the prompt is still open. */
@@ -38,15 +45,21 @@ interface NotificationAnswer {
 }
 
 /**
- * Connected to the paired computer: Home, the session list, a session, or New session. On a phone one at a time,
- * opening on Home, each step forward a history entry so the back gesture goes back; on a wide screen the list stays on
- * the left, as the sidebar does on the computer, with Home next to it while no session is open.
+ * Connected to the paired computer: the sessions, a session, Home or New session. On a phone one at a time, opening
+ * on the sessions, with the other sessions in a drawer (its button in a session's header, or a swipe from the left
+ * edge); picking one there swaps it in place, so the back gesture goes back to the sessions, not through every
+ * session you looked at. On a wide screen the list stays on the left, as the sidebar does on the computer, with Home
+ * next to it while no session is open; below 1024px it can fold away (⌘B), and then it is the drawer.
  */
 export function Connected({ paired, openSession, onForget, onPaired }: { paired: Paired; openSession: string | null; onForget: () => void; onPaired: (paired: Paired) => void }) {
-  const [state, setState] = useState<ConnectionState>({ kind: 'connecting', attempt: 0 });
+  const [state, setState] = useState<ConnectionState>(() => (wasDisconnected() ? { kind: 'disconnected' } : { kind: 'connecting', attempt: 0 }));
   const connection = useRef<Connection | null>(null);
   const [sessions, setSessions] = useState<RemoteSessions>(cachedSessions);
-  const [route, setRoute] = useState<Route>({ kind: 'home' });
+  const [route, setRoute] = useState<Route>({ kind: 'list' });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  /** How far an edge swipe has pulled the drawer out, while the finger is down. */
+  const [edge, setEdge] = useState<number | null>(null);
+  const [folded, setFolded] = useState(wasFolded);
   const [help, setHelp] = useState(false);
   const [notifications, setNotifications] = useState(false);
   const [offer, setOffer] = useState(() => shouldOffer(offered()));
@@ -54,6 +67,9 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const [keysOpen, setKeysOpen] = useState(false);
   const [fromNotification, setFromNotification] = useState<NotificationAnswer | null>(null);
   const wide = useWide();
+  const foldable = useFoldable();
+  /** The sessions are in a drawer: on a phone, and on a wide screen whose sidebar folded away. */
+  const drawerMode = !wide || (foldable && folded);
 
   // A connection per effect run, so a stopped one is never started again (StrictMode runs effects twice). Keeping the
   // computer's name changes `paired`, which mustn't reconnect: only another device or address does.
@@ -63,13 +79,23 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     const current = new Connection(latestPaired.current);
     connection.current = current;
     const unsubscribe = current.subscribe(setState);
-    current.start();
+    // A reload after Disconnect stays disconnected; a new launch connects again (sessionStorage).
+    current.start({ disconnected: wasDisconnected() });
     return () => {
       unsubscribe();
       current.stop();
     };
   }, [paired.deviceId, paired.address]);
   const retryNow = () => connection.current?.retryNow();
+  /** Disconnect: closes the connection and keeps the pairing, until Connect. */
+  const disconnect = () => {
+    keepDisconnected(true);
+    connection.current?.disconnect();
+  };
+  const reconnect = () => {
+    keepDisconnected(false);
+    connection.current?.reconnect();
+  };
 
   const client = state.kind === 'connected' ? state.client : null;
   const features = state.kind === 'connected' ? state.features : NO_FEATURES;
@@ -101,6 +127,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   }, [client]);
 
   const refresh = () => void client?.call('sessions.list', {}).then(setSessions, () => {});
+  /** The same refresh, as a promise: pull to refresh shows its spinner until the list is in. */
+  const reload = () => (client ? client.call('sessions.list', {}).then(setSessions) : Promise.resolve());
   useEffect(() => {
     if (!client) return;
     void client.call('sessions.list', {}).then(setSessions, () => {});
@@ -174,15 +202,17 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const forget = async () => {
     if (!confirm('Forget this computer? You can pair again from Settings › Remote.')) return;
     await turnOff(client).catch(() => {});
+    keepDisconnected(false);
     onForget();
   };
   const menu: MenuItem[] = [
     { label: 'Notifications', onSelect: () => setNotifications(true) },
     { kind: 'separator' },
     { kind: 'note', label: `Paired as ${paired.name}` },
-    { label: 'Forget this computer', danger: true, onSelect: () => void forget() },
+    { label: 'Forget this computer…', danger: true, onSelect: () => void forget() },
   ];
-  const banner = <ConnectionBanner state={state} computer={computer} onHelp={() => setHelp(true)} onRetry={retryNow} />;
+  const banner = <ConnectionBanner state={state} computer={computer} onHelp={() => setHelp(true)} onRetry={retryNow} onConnect={reconnect} />;
+  const chip = <ComputerChip state={state} computer={computer} onDisconnect={disconnect} onConnect={reconnect} onForget={() => void forget()} />;
   const startNew = (projectId?: string) => (wide && !atRoot ? (history.replaceState({ kind: 'new', projectId }, ''), setRoute({ kind: 'new', projectId })) : go({ kind: 'new', projectId }));
   /** On a wide screen, picking another session replaces the open one rather than stacking up history. */
   const showSession: OpenSession = (sessionId, options = {}) => {
@@ -195,6 +225,46 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const currentId = route.kind === 'session' ? route.sessionId : null;
   const nextId = nextNeedsYou(sessions, currentId);
 
+  /** What you pick in the drawer replaces the entry under it, once the drawer has closed and taken back its own. */
+  const fromDrawer = (run: () => void) => {
+    setDrawerOpen(false);
+    setTimeout(() =>
+      afterOverlays(() => {
+        refocusDrawer.current = true;
+        run();
+      }),
+    );
+  };
+  // After a pick, the new view's drawer button takes the focus back, where it was before the drawer opened.
+  const refocusDrawer = useRef(false);
+  useEffect(() => {
+    if (!refocusDrawer.current) return;
+    refocusDrawer.current = false;
+    document.querySelector<HTMLElement>('[data-remote-drawer-button]')?.focus({ preventScroll: true });
+  }, [route]);
+  const swap = (next: Route) => {
+    history.replaceState(next, '');
+    setRoute(next);
+  };
+  const pick = (sessionId: string) => fromDrawer(() => swap({ kind: 'session', sessionId }));
+  const pickHome = () => fromDrawer(() => swap({ kind: 'home' }));
+  const pickNew = () => fromDrawer(() => (wide ? swap({ kind: 'new' }) : go({ kind: 'new' })));
+  /** ⌘B, or the toggle in the session's header: the sidebar folds into the drawer, or comes back. */
+  const toggleFold = () => {
+    setFolded((current) => {
+      keepFolded(!current);
+      return !current;
+    });
+    setDrawerOpen(false);
+  };
+  // A screen that turns wide (an iPad rotated) has its sidebar again.
+  useEffect(() => {
+    if (!drawerMode) setDrawerOpen(false);
+  }, [drawerMode]);
+  // An edge swipe opens the drawer where its button is: a session or Home on a phone, anywhere on a folded wide screen.
+  const drawerHere = drawerMode && (wide || route.kind === 'session' || route.kind === 'home');
+  useEdgeSwipe({ enabled: drawerHere && !drawerOpen, onDrag: setEdge, onSettle: setDrawerOpen });
+
   // The wide layout's keys (lib/keys.ts): one handler, reading the latest state through a ref.
   const onKey = useRef<(event: KeyboardEvent) => void>(() => {});
   onKey.current = (event) => {
@@ -204,6 +274,12 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     if (action === 'palette') {
       event.preventDefault();
       setPalette((open) => !open);
+      return;
+    }
+    if (action === 'sidebar') {
+      if (!foldable) return;
+      event.preventDefault();
+      toggleFold();
       return;
     }
     // Under the palette, a sheet or a menu, the letters are theirs.
@@ -288,6 +364,17 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         return void forget();
     }
   };
+  const drawerButton = <DrawerButton needsYou={needsYouElsewhere(sessions.sessions, currentId)} onOpen={() => setDrawerOpen(true)} />;
+  /** The session header's left corner: the drawer button, or where the sidebar can fold, its toggle. */
+  const sessionLead = drawerMode ? (
+    drawerButton
+  ) : foldable ? (
+    <Button variant="quiet" onClick={toggleFold} aria-label="Hide the sessions" title={`Hide the sessions (${keys('mod+b')})`} className="px-2!" data-remote-fold>
+      <PanelLeftClose className="size-5" aria-hidden />
+    </Button>
+  ) : null;
+  /** Home's and New session's on a wide screen whose sidebar folded away. */
+  const viewLead = wide && drawerMode ? drawerButton : null;
   const started = (sessionId: string) => {
     history.replaceState({ kind: 'session', sessionId }, '');
     setRoute({ kind: 'session', sessionId });
@@ -301,14 +388,14 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         sessionId={route.sessionId}
         sessions={sessions}
         banner={wide ? null : banner}
-        onBack={wide ? null : back}
+        lead={sessionLead}
         onLeave={leave}
         onRefresh={refresh}
         wide={wide}
         initialChanges={route.changes ?? false}
       />
     ) : route.kind === 'new' ? (
-      <NewSession key={route.projectId ?? ''} client={client} features={features} sessions={sessions.sessions} banner={wide ? null : banner} onBack={wide ? null : back} onStarted={started} initialProject={route.projectId ?? null} />
+      <NewSession key={route.projectId ?? ''} client={client} features={features} sessions={sessions.sessions} banner={wide ? null : banner} onBack={wide ? null : back} lead={viewLead} onStarted={started} initialProject={route.projectId ?? null} />
     ) : null;
   // A wide screen offers notifications in a strip over the main view; an iPad outside the Home Screen keeps the card,
   // which explains how to add it.
@@ -316,25 +403,56 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const stripOffer = wide && currentSupport() === 'ready';
   const list = (
     <SessionList
+      mode={wide ? 'sidebar' : 'phone'}
       sessions={sessions}
       state={state}
       banner={wide ? null : banner}
       client={client}
-      computer={computer}
+      features={features}
+      chip={chip}
       menu={menu}
-      selectedId={route.kind === 'session' ? route.sessionId : null}
+      selectedId={currentId}
       newOpen={route.kind === 'new'}
       onOpen={(sessionId) => showSession(sessionId)}
       onNew={() => startNew()}
       onHome={goHome}
       homeOpen={wide && atRoot}
-      onHelp={() => setHelp(true)}
-      onRefresh={refresh}
+      onRefresh={reload}
       onArchived={(sessionId) => sessionId === currentId && leave()}
-      top={offering && !stripOffer && route.kind !== 'home' ? <PushOffer client={client} onDone={() => setOffer(false)} /> : null}
-      wide={wide}
+      top={offering && !stripOffer ? <PushOffer client={client} onDone={() => setOffer(false)} /> : null}
+      usage={<UsageCard usage={usage} offline={state.kind !== 'connected'} />}
       onPalette={() => setPalette(true)}
     />
+  );
+  const drawer = drawerMode && (
+    <SessionsDrawer open={drawerOpen} edge={edge} onClose={() => setDrawerOpen(false)}>
+      <SessionList
+        mode="drawer"
+        sessions={sessions}
+        state={state}
+        banner={banner}
+        client={client}
+        features={features}
+        chip={chip}
+        menu={menu}
+        selectedId={currentId}
+        newOpen={route.kind === 'new'}
+        onOpen={pick}
+        onNew={pickNew}
+        onHome={pickHome}
+        homeOpen={route.kind === 'home' || (wide && atRoot)}
+        onRefresh={reload}
+        onArchived={(sessionId) => sessionId === currentId && leave()}
+        homeRow={<ProfileStrip usage={usage} />}
+        headerEnd={
+          wide && (
+            <Button variant="quiet" size="md" onClick={toggleFold} aria-label="Keep the sessions open" title={`Keep the sessions open (${keys('mod+b')})`} className="px-2!" data-remote-unfold-sidebar>
+              <PanelLeftOpen className="size-4" aria-hidden />
+            </Button>
+          )
+        }
+      />
+    </SessionsDrawer>
   );
   const overlays = (
     <>
@@ -349,45 +467,72 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   if (!wide)
     return (
       <>
-        {main ??
-          (route.kind === 'home' ? (
-            <PhoneHome
-              sessions={sessions}
-              usage={usage}
-              state={state}
-              banner={banner}
-              computer={computer}
-              menu={menu}
-              top={offering ? <PushOffer client={client} onDone={() => setOffer(false)} /> : null}
-              onSessions={() => root('list')}
-              onNew={() => startNew()}
-              onHelp={() => setHelp(true)}
-            />
-          ) : (
-            list
-          ))}
+        {main ?? (route.kind === 'home' ? <PhoneHome lead={drawerButton} banner={banner} sessions={sessions} usage={usage} offline={state.kind !== 'connected'} client={client} onOpen={showSession} onNew={() => startNew()} onRefresh={refresh} /> : list)}
+        {drawer}
         {overlays}
       </>
     );
   return (
     <div className="flex h-full">
-      <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-sidebar" data-remote-sidebar>
-        {list}
-      </aside>
+      {!drawerMode && (
+        <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-sidebar" data-remote-sidebar>
+          {list}
+        </aside>
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         {offering && stripOffer && <PushStrip client={client} onDone={() => setOffer(false)} />}
         {banner}
-        <div className="min-h-0 flex-1">{main ?? <Home sessions={sessions} usage={usage} offline={state.kind !== 'connected'} client={client} onOpen={showSession} onNew={() => startNew()} onRefresh={refresh} />}</div>
+        <div className="min-h-0 flex-1">{main ?? <Home sessions={sessions} usage={usage} offline={state.kind !== 'connected'} client={client} onOpen={showSession} onNew={() => startNew()} onRefresh={refresh} lead={viewLead} />}</div>
       </div>
+      {drawer}
       {overlays}
     </div>
   );
 }
 
-/** A history entry's route (a sheet adds its own entry on top of one). The first entry, with none yet, is Home. */
+/** A history entry's route (a sheet or the drawer adds its own entry on top of one). The first entry, with none yet, is the sessions. */
 function routeOf(state: unknown): Route {
   const route = state as Route | null;
-  return route && (route.kind === 'session' || route.kind === 'new' || route.kind === 'list') ? route : { kind: 'home' };
+  return route && (route.kind === 'session' || route.kind === 'new' || route.kind === 'home') ? route : { kind: 'list' };
+}
+
+/** Disconnect, for this tab: a reload stays disconnected, a new launch connects again. */
+const DISCONNECTED = 'switchboard-remote:disconnected';
+
+function wasDisconnected(): boolean {
+  try {
+    return sessionStorage.getItem(DISCONNECTED) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function keepDisconnected(on: boolean): void {
+  try {
+    if (on) sessionStorage.setItem(DISCONNECTED, '1');
+    else sessionStorage.removeItem(DISCONNECTED);
+  } catch {
+    // Storage is off: a reload connects again.
+  }
+}
+
+/** The sidebar folded away where it can (an iPad in portrait), kept in this browser. */
+const FOLDED = 'switchboard-remote:sidebar-folded';
+
+function wasFolded(): boolean {
+  try {
+    return localStorage.getItem(FOLDED) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function keepFolded(on: boolean): void {
+  try {
+    localStorage.setItem(FOLDED, on ? '1' : '0');
+  } catch {
+    // Storage is off: it stays the way it is until the page closes.
+  }
 }
 
 /** The last list, for this tab: shown greyed out while offline, also after a reload. */

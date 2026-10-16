@@ -24,3 +24,6 @@ export const REMOTE_FEATURE_USAGE_TOKENS = 'usage.tokens';
 
 /** In `hello`'s `features`: `projects.branches` answers, and `session.create` and `later.add` take `checkoutBranch`. */
 export const REMOTE_FEATURE_BRANCHES = 'branches';
+
+/** In `hello`'s `features`: `session.markUnread` answers, so Mark as read can be undone. */
+export const REMOTE_FEATURE_MARK_UNREAD = 'session.markUnread';

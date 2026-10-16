@@ -143,10 +143,15 @@
   }
 }
 
+/*
+ * The dynamic viewport's height, not 100%: in Safari 100% reaches under the toolbar, which hid the bottom bar. On an
+ * iPhone the keyboard doesn't change it; the session view follows the visual viewport while you type instead
+ * (`useVisualViewport`).
+ */
 html,
 body,
 #root {
-  height: 100%;
+  height: 100dvh;
 }
 
 body {
@@ -280,6 +285,10 @@ body {
 .toast-in {
   animation: toast-in 160ms ease-out;
 }
+/* A pulled list going back up, or to where the spinner shows. */
+.pull-settle {
+  transition: transform 200ms ease-out;
+}
 
 /* A prompt card that was answered folds away before it leaves the list. */
 .collapse-out {
@@ -312,7 +321,8 @@ body {
     opacity: 0.8;
   }
   .collapse-out,
-  .sheet-in {
+  .sheet-in,
+  .pull-settle {
     transition: none;
   }
 }

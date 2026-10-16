@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { promptKind, promptLine, promptShort, promptSubject, promptTag, toolLabel } from './prompts.ts';
+import { promptAsk, promptKind, promptLine, promptShort, promptSubject, promptTag, toolLabel } from './prompts.ts';
 
 describe('prompt wording', () => {
   it('tags what a prompt asks for', () => {
@@ -26,6 +26,15 @@ describe('prompt wording', () => {
     expect(promptLine({ toolName: 'AskUserQuestion', input: { questions: [{ question: 'Which database?\nMore' }, { question: 'Second' }] } })).toBe('Which database?');
     expect(promptLine({ toolName: 'ExitPlanMode', input: { plan: '\n# Plan: move the login\n1. Step' } })).toBe('Plan: move the login');
     expect(promptLine({ toolName: 'AskUserQuestion', input: null })).toBe('');
+  });
+});
+
+describe('promptAsk', () => {
+  it('says what a prompt asks, for the line it folds to while you type', () => {
+    expect(promptAsk({ toolName: 'Bash' })).toBe('Allow Bash?');
+    expect(promptAsk({ toolName: 'mcp__github__create_issue' })).toBe('Allow create_issue?');
+    expect(promptAsk({ toolName: 'AskUserQuestion' })).toBe('A question');
+    expect(promptAsk({ toolName: 'ExitPlanMode' })).toBe('A plan to start');
   });
 });
 

@@ -325,6 +325,8 @@ export const remoteContract = {
     'session.askThreads': { params: z.object({ sessionId: SessionId }), result: AskThreadList },
     /** Marks a session read, as opening it on the computer does. */
     'session.markRead': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Marks a session unread again: Undo after a swipe marked it read. With `REMOTE_FEATURE_MARK_UNREAD`. */
+    'session.markUnread': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Pins or archives a session; an archived one leaves the phone's list. */
     'session.setFlags': { params: z.object({ sessionId: SessionId, pinned: z.boolean().optional(), archived: z.boolean().optional() }), result: z.object({}) },
     /** The model of a running session (null: the default). */

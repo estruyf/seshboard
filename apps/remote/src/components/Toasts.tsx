@@ -2,13 +2,16 @@ import { useEffect, useSyncExternalStore } from 'react';
 
 /**
  * Short news that isn't next to anything on screen (AGENTS.md, Context menus and confirmations): an answer that went
- * through, a commit, "Already answered". Above the bottom bar, gone after four seconds.
+ * through, a commit, "Already answered", an Undo after a swipe. Above the bottom bar, gone after four seconds (six
+ * with an Undo, so there is time to reach it).
  */
 export interface Toast {
   id: number;
   text: string;
   detail?: string | undefined;
   tone: 'neutral' | 'error';
+  /** A button on the toast: Undo. */
+  action?: { label: string; run: () => void } | undefined;
 }
 
 let toasts: Toast[] = [];
@@ -16,8 +19,8 @@ let nextId = 1;
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((listener) => listener());
 
-export function toast(text: string, options: { detail?: string | undefined; tone?: Toast['tone'] } = {}): void {
-  toasts = [...toasts.slice(-2), { id: nextId++, text, detail: options.detail, tone: options.tone ?? 'neutral' }];
+export function toast(text: string, options: { detail?: string | undefined; tone?: Toast['tone']; action?: Toast['action'] } = {}): void {
+  toasts = [...toasts.slice(-2), { id: nextId++, text, detail: options.detail, tone: options.tone ?? 'neutral', action: options.action }];
   changed();
 }
 
@@ -41,13 +44,37 @@ export function Toasts() {
 
 function ToastView({ toast: t }: { toast: Toast }) {
   useEffect(() => {
-    const timer = setTimeout(() => dismiss(t.id), 4_000);
+    const timer = setTimeout(() => dismiss(t.id), t.action ? 6_000 : 4_000);
     return () => clearTimeout(timer);
-  }, [t.id]);
-  return (
-    <button type="button" onClick={() => dismiss(t.id)} className="toast-in overlay pointer-events-auto max-w-sm rounded-xl px-4 py-2.5 text-left" data-remote-toast>
-      <span className={`block text-ui font-semibold ${t.tone === 'error' ? 'text-error' : 'text-text'}`}>{t.text}</span>
+  }, [t.id, t.action]);
+  const text = (
+    <>
+      <span className={`block truncate text-ui font-semibold ${t.tone === 'error' ? 'text-error' : 'text-text'}`}>{t.text}</span>
       {t.detail && <span className="block truncate text-meta text-muted">{t.detail}</span>}
-    </button>
+    </>
+  );
+  if (!t.action) {
+    return (
+      <button type="button" onClick={() => dismiss(t.id)} className="toast-in overlay pointer-events-auto max-w-sm rounded-xl px-4 py-2.5 text-left" data-remote-toast>
+        {text}
+      </button>
+    );
+  }
+  const { label, run } = t.action;
+  return (
+    <div className="toast-in overlay pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-xl py-1.5 pr-1.5 pl-4" data-remote-toast>
+      <span className="min-w-0 flex-1">{text}</span>
+      <button
+        type="button"
+        onClick={() => {
+          dismiss(t.id);
+          run();
+        }}
+        className="min-h-11 shrink-0 rounded-lg px-3 text-ui font-semibold text-link hover:bg-border/45 pointer-fine:min-h-7"
+        data-remote-toast-action
+      >
+        {label}
+      </button>
+    </div>
   );
 }

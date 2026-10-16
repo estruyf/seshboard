@@ -20,7 +20,7 @@ import { createServer } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { homedir, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
-import { _electron, type ElectronApplication, type Locator, type Page } from 'playwright-core';
+import { _electron, chromium, type ElectronApplication, type Locator, type Page } from 'playwright-core';
 import sharp from 'sharp';
 import { createDemoWorld, type DemoWorld } from '../apps/desktop/scripts/screenshot-demo.ts';
 import { x25519 } from '@noble/curves/ed25519.js';
@@ -485,6 +485,95 @@ async function withComputer(t: Tour, take: (computerId: string) => Promise<void>
     }
     await t.click('[data-close-settings]').catch(() => {});
     hub.kill();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+  }
+}
+
+/** A port nothing listens on, on this computer. */
+function freePort(): Promise<number> {
+  return new Promise((resolve) => {
+    const server = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+/** Waits until `check` holds, or fails with `message`. */
+async function waitFor(check: () => boolean | Promise<boolean>, message: string, timeout = 20_000): Promise<void> {
+  const started = Date.now();
+  while (!(await check())) {
+    if (Date.now() - started > timeout) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/** A phone's size for the remote app's pictures: an iPhone, at 2x so the files stay small. */
+const PHONE = { width: 390, height: 844 };
+
+/**
+ * The remote app on a phone (Remote's page): the real app from apps/remote, served by Vite, against the made-up
+ * computer of scripts/remote-demo.ts ("Studio Mac", two profiles), in Chrome at a phone's size with touch. It pairs as a
+ * phone would, then takes the first screen, the sessions drawer and the computer's menu in both colour schemes.
+ */
+async function phoneShots(): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), 'switchboard-shots-phone-'));
+  const [vitePort, hubPort] = [await freePort(), await freePort()];
+  const appUrl = `http://localhost:${vitePort}/remote/`;
+  const vite = spawn(process.execPath, [join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(vitePort)], { cwd: join(root, 'apps', 'remote'), stdio: 'ignore' });
+  const linkFile = join(dir, 'link.txt');
+  const hub = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(root, 'scripts', 'remote-demo.ts')], {
+    env: { ...process.env, SWITCHBOARD_DEMO_DIR: dir, SWITCHBOARD_DEMO_NAME: 'Studio Mac', SWITCHBOARD_DEMO_LINK_FILE: linkFile, SWITCHBOARD_REMOTE_APP_URL: appUrl, PORT: String(hubPort) },
+    stdio: 'ignore',
+  });
+  // Google Chrome when it is there, else Playwright's own Chromium.
+  const browser = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch());
+  try {
+    await waitFor(() => existsSync(linkFile), 'the demo computer wrote no pairing link');
+    await waitFor(() => fetch(appUrl).then((r) => r.ok, () => false), 'Vite did not serve the remote app');
+    const context = await browser.newContext({ viewport: PHONE, deviceScaleFactor: SCALE, isMobile: true, hasTouch: true, colorScheme: 'dark' });
+    const page = await context.newPage();
+    page.setDefaultTimeout(15_000);
+    await page.goto(readFileSync(linkFile, 'utf8').trim());
+    await page.getByRole('button', { name: 'Pair' }).click();
+    await page.waitForSelector('[data-remote-computer-chip][data-remote-connection="connected"]');
+    await page.waitForSelector('[data-remote-usage-card]');
+    // The offer to turn on notifications isn't what these pictures are about.
+    const notNow = page.getByRole('button', { name: 'Not now' });
+    if (await notNow.count()) await notNow.click();
+    const shot = async (name: string, scheme: 'dark' | 'light') => {
+      // The spinners and the slide of the drawer settle first.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const path = join(outDir, `${name}-${scheme}.png`);
+      await page.screenshot({ path, animations: 'disabled' });
+      writeFileSync(path, await sharp(path).png({ compressionLevel: 9, effort: 10, adaptiveFiltering: true }).toBuffer());
+      console.log(`  ${name}-${scheme}.png`);
+    };
+    for (const scheme of ['dark', 'light'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.evaluate(() => document.querySelector('[data-remote-list]')?.scrollTo(0, 0));
+      await shot('remote-phone-first-screen', scheme);
+
+      await page.click('[data-remote-computer-chip]');
+      await page.waitForSelector('[role=menu]');
+      await shot('remote-phone-computer-menu', scheme);
+      await page.keyboard.press('Escape');
+
+      // The drawer over a session, the way it opens from the session's header.
+      await page.click('[data-remote-list] [data-remote-session]:not([data-remote-session=""])');
+      await page.click('[data-remote-drawer-button]');
+      await page.waitForSelector('[data-remote-drawer="open"]');
+      await shot('remote-phone-drawer', scheme);
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('[data-remote-drawer]', { state: 'detached' });
+      await page.goBack();
+      await page.waitForSelector('[data-remote-usage-card]');
+    }
+    await context.close();
+  } finally {
+    await browser.close().catch(() => {});
+    hub.kill();
+    vite.kill();
     rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
   }
 }
@@ -1673,6 +1762,7 @@ try {
       await screen.take(tour);
     }
   }
+  if (!only || only.has('remote-phone')) await phoneShots();
 } catch (error) {
   failed = true;
   console.error(`✗ ${(error as Error).message}`);

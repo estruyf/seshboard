@@ -1,34 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { useOverlayHistory } from './overlayHistory.ts';
 import { Button } from './ui.tsx';
-
-/** Open sheets, so only the top one takes Escape and the back gesture. */
-const stack: number[] = [];
-let nextId = 1;
-/**
- * A sheet closed by a button or Escape takes back its history entry with `history.back()`, which lands a moment later.
- * Until it has, its popstate is nobody's back gesture, and a sheet opening meanwhile (Changes, then Commit) waits to add
- * its own entry.
- */
-let goingBack: Promise<void> | null = null;
-
-function takeBackEntry(): void {
-  goingBack = new Promise((resolve) => {
-    const done = () => {
-      window.removeEventListener('popstate', done);
-      clearTimeout(timer);
-      // After every popstate listener has seen it: theirs run after this one.
-      setTimeout(() => {
-        goingBack = null;
-        resolve();
-      });
-    };
-    // A browser that doesn't fire it (nothing to go back to) mustn't hold sheets back for ever.
-    const timer = setTimeout(done, 500);
-    window.addEventListener('popstate', done);
-  });
-  history.back();
-}
 
 /**
  * A bottom sheet on a phone, a dialog in the middle on a wide screen: a grabber, a title and a close button, a
@@ -39,46 +12,13 @@ export function Sheet({ title, subtitle, onClose, children, footer, label, hook,
   const [drag, setDrag] = useState(0);
   const start = useRef<number | null>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  const viaHistory = useRef(false);
+  // The back gesture and Escape close the sheet, not the screen under it.
+  useOverlayHistory(onClose);
 
   useEffect(() => {
-    const id = nextId++;
-    stack.push(id);
     const before = document.activeElement as HTMLElement | null;
     panel.current?.focus({ preventScroll: true });
-    // The back gesture closes the sheet, not the screen under it. A tick later, so StrictMode's trial mount adds nothing.
-    let pushed = false;
-    let cancelled = false;
-    const add = () => {
-      if (cancelled) return;
-      pushed = true;
-      history.pushState({ ...(history.state as object | null), sheet: id }, '');
-    };
-    const push = setTimeout(() => (goingBack ? void goingBack.then(add) : add()));
-    const onPop = () => {
-      if (goingBack || !pushed || stack.at(-1) !== id) return;
-      viaHistory.current = true;
-      closeRef.current();
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || stack.at(-1) !== id || event.defaultPrevented) return;
-      event.preventDefault();
-      closeRef.current();
-    };
-    window.addEventListener('popstate', onPop);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('popstate', onPop);
-      document.removeEventListener('keydown', onKey);
-      clearTimeout(push);
-      cancelled = true;
-      stack.splice(stack.indexOf(id), 1);
-      // Closed another way: take back the history entry it added.
-      if (pushed && !viaHistory.current && (history.state as { sheet?: number } | null)?.sheet === id) takeBackEntry();
-      before?.focus({ preventScroll: true });
-    };
+    return () => before?.focus({ preventScroll: true });
   }, []);
 
   const grab = {

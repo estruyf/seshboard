@@ -46,6 +46,14 @@ export function promptLine(prompt: Pick<RemotePrompt, 'toolName' | 'input'>): st
   return line.length > 140 ? `${line.slice(0, 137)}...` : line;
 }
 
+/** What a prompt asks, for the one line the docked prompt folds to while you type: "Allow Bash?", "A question". */
+export function promptAsk(prompt: Pick<RemotePrompt, 'toolName'>): string {
+  const kind = promptKind(prompt);
+  if (kind === 'question') return 'A question';
+  if (kind === 'plan') return 'A plan to start';
+  return `Allow ${toolLabel(prompt.toolName)}?`;
+}
+
 /** What a prompt asks, in a few words, for its row in the wide sidebar: "Allow Bash", "a question", "a plan". */
 export function promptShort(prompt: Pick<RemotePrompt, 'toolName'>): string {
   const kind = promptKind(prompt);

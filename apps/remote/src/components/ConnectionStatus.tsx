@@ -1,7 +1,10 @@
-import { CircleHelp, RotateCw } from 'lucide-react';
+import { ChevronDown, CircleHelp, PlugZap, RotateCw } from 'lucide-react';
+import { stateLine } from '../lib/computer.ts';
 import type { ConnectionState } from '../lib/connection.ts';
 import { offlineHelp, offlineLine, reconnectingLine, type OfflineReason } from '../lib/offline.ts';
+import { AnchoredMenu, type MenuItem } from './Menu.tsx';
 import { Sheet } from './Sheet.tsx';
+import { useNow } from './SessionList.tsx';
 import { Button } from './ui.tsx';
 
 /** The Remote access page of the docs, on the site the app comes from. */
@@ -11,30 +14,43 @@ type Look = { dot: string; text: string; label: string };
 
 function look(state: ConnectionState, computer: string): Look {
   if (state.kind === 'connected') return { dot: 'bg-ok', text: 'text-muted', label: computer || 'Connected' };
+  if (state.kind === 'disconnected') return { dot: 'bg-faint', text: 'text-muted', label: 'Disconnected' };
   if (state.kind === 'offline' && state.retryAt === null) return { dot: 'bg-error', text: 'text-error', label: 'Offline' };
   if (state.kind === 'connecting' && state.attempt === 0) return { dot: 'bg-caution pulse-dot', text: 'text-muted', label: 'Connecting…' };
   return { dot: 'bg-caution pulse-dot', text: 'text-caution', label: 'Reconnecting…' };
 }
 
 /**
- * The chip in the list's header: the computer's name with a green dot while connected, amber while it retries, red
- * once it gave up. Not connected, it opens the offline help.
+ * The computer chip in the first screen's and the drawer's header ("● Elio's iMac ▾"): the computer's name with a
+ * green dot while connected, amber while it retries, red once it gave up, grey after Disconnect. It opens the
+ * computer's menu: its name and state, Disconnect (or Connect), and Forget this computer… under a line.
  */
-export function ConnectionChip({ state, computer, onHelp }: { state: ConnectionState; computer: string; onHelp: () => void }) {
+export function ComputerChip({ state, computer, onDisconnect, onConnect, onForget }: { state: ConnectionState; computer: string; onDisconnect: () => void; onConnect: () => void; onForget: () => void }) {
+  const now = useNow();
   const { dot, text, label } = look(state, computer);
-  const connected = state.kind === 'connected';
+  const items: MenuItem[] = [
+    { kind: 'header', title: computer || 'Your computer', detail: stateLine(state, now) },
+    state.kind === 'disconnected' ? { label: 'Connect', onSelect: onConnect } : { label: 'Disconnect', onSelect: onDisconnect },
+    { kind: 'separator' },
+    { label: 'Forget this computer…', danger: true, onSelect: onForget },
+  ];
   return (
-    <button
-      type="button"
-      onClick={connected ? undefined : onHelp}
-      aria-disabled={connected || undefined}
-      aria-label={connected ? `Connected to ${computer || 'your computer'}` : `${label} Show why`}
-      data-remote-connection={state.kind}
-      className={`flex min-h-9 max-w-44 items-center gap-1.5 rounded-full border border-border px-2.5 text-meta pointer-fine:min-h-6 ${text} ${connected ? 'cursor-default!' : 'hover:bg-border/45'}`}
-    >
-      <span aria-hidden className={`size-2 shrink-0 rounded-full ${dot}`} />
-      <span className="truncate">{label}</span>
-    </button>
+    <AnchoredMenu label={computer || 'Your computer'} items={items} className="min-w-0">
+      {(trigger) => (
+        <button
+          type="button"
+          {...trigger}
+          aria-label={`${computer || 'Your computer'}: ${stateLine(state, now)}`}
+          data-remote-connection={state.kind}
+          data-remote-computer-chip
+          className={`flex min-h-9 max-w-44 items-center gap-1.5 rounded-full border border-border pr-1.5 pl-2.5 text-meta hover:bg-border/45 pointer-fine:min-h-6 ${text}`}
+        >
+          <span aria-hidden className={`size-2 shrink-0 rounded-full ${dot}`} />
+          <span className="truncate">{label}</span>
+          <ChevronDown aria-hidden className="size-3.5 shrink-0 text-faint" />
+        </button>
+      )}
+    </AnchoredMenu>
   );
 }
 
@@ -45,8 +61,20 @@ export const reasonOf = (state: ConnectionState): OfflineReason => (state.kind =
  * Under the header while the connection is down: why, when the phone can tell, and what to do (Help, Try again). The
  * `caution` tone: something outside Switchboard stops it.
  */
-export function ConnectionBanner({ state, computer, onHelp, onRetry }: { state: ConnectionState; computer: string; onHelp: () => void; onRetry: () => void }) {
+export function ConnectionBanner({ state, computer, onHelp, onRetry, onConnect }: { state: ConnectionState; computer: string; onHelp: () => void; onRetry: () => void; onConnect: () => void }) {
   if (state.kind === 'connected' || state.kind === 'unpaired') return null;
+  // Disconnect was your choice: a quiet line, not the caution of a connection that broke.
+  if (state.kind === 'disconnected') {
+    return (
+      <div role="status" className="flex items-center gap-2 border-b border-border bg-sidebar px-4 py-2" data-remote-banner="disconnected">
+        <PlugZap className="size-4 shrink-0 text-faint" aria-hidden />
+        <p className="min-w-0 flex-1 text-ui text-text">Disconnected from {computer || 'your computer'}</p>
+        <Button variant="primary" size="md" onClick={onConnect} data-remote-connect>
+          Connect
+        </Button>
+      </div>
+    );
+  }
   if (state.kind === 'connecting' && state.attempt === 0) return null;
   const line = state.kind === 'offline' ? offlineLine(state.reason, computer || 'your computer') : null;
   const gaveUp = state.kind === 'offline' && state.retryAt === null;

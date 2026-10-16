@@ -13,12 +13,13 @@ Claude often works for minutes and then stops to ask before it runs a command, o
 
 On your phone you can:
 
-- see your sessions with their status, and answer what Claude asks right from the list;
+- see your sessions with their status and each Claude profile's usage, and answer what Claude asks right from the list;
+- switch between sessions from a drawer, with one tap;
 - read a session's conversation as it happens, with Claude's answers formatted and its tool runs folded into one line;
 - allow or deny what Claude asks, answer its questions, and start or keep working on a plan;
 - send a prompt, or add one to Up next while Claude works, and remove it again;
 - see what a finished session did, look at its changes and commit them;
-- stop Claude's turn, mark a session as read or archive it;
+- stop Claude's turn, mark a session as read or archive it, with a swipe;
 - start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of Claude profile, model, effort, mode, worktree and branch;
 - get a notification when a session needs you or finishes.
 
@@ -114,7 +115,7 @@ Switchboard listens on port 47615. If another app uses it, the card says so and 
 
 ## Paired devices, Rename and Revoke
 
-**Paired devices** in Settings → Remote lists your phones, browsers and other computers, each with when it last connected and **Connected now** while it is. **Rename** changes a device's name in place: <Kbd keys="enter" /> saves, <Kbd keys="escape" /> cancels. **Revoke** asks first, then disconnects the device at once, and it can't connect again until you pair it again. A device that doesn't connect for 30 days is removed. On the phone, **Forget this computer** in the **⋯** menu next to the computer's name removes the pairing from the phone.
+**Paired devices** in Settings → Remote lists your phones, browsers and other computers, each with when it last connected and **Connected now** while it is. **Rename** changes a device's name in place: <Kbd keys="enter" /> saves, <Kbd keys="escape" /> cancels. **Revoke** asks first, then disconnects the device at once, and it can't connect again until you pair it again. A device that doesn't connect for 30 days is removed. On the phone, **Forget this computer…** in the computer's menu (tap its name at the top) or in the **⋯** menu removes the pairing from the phone.
 
 ## Who is connected now
 
@@ -130,32 +131,61 @@ While Remote is on, **<Os mac="Connected to this Mac" windows="Connected to this
 
 With the sidebar collapsed, a phone icon with a green count shows how many devices are connected. Point at it for their names, or click it for the details, with **Revoke…** for each.
 
-## Home
+## Your sessions
 
-The app opens on **Home**. At the top, a card says how many sessions need you, how many are working and how many finished today. Tap it to open the list. Under it, each Claude profile has a card with how much of its plan is used: a bar for the 5-hour window and one for the week, with when each resets. A bar turns orange from 60% and red from 85%. With one profile the section is called **Usage**, with more **Profiles**. The numbers come from your computer: they update when it checks, and each time you come back to the app. **New session** is at the bottom of the screen.
+<Screenshot name="remote-phone-first-screen" width={390} alt="The remote app on a phone: Sessions at the top with the computer chip Studio Mac. Under it a Profiles card with Personal and Work, each with a 5h and a Week bar, Work at 91% in red. Then Needs you with a question and two prompts with Deny and Allow, and New session at the bottom." />
 
-To come back to Home from the list, tap the house button next to **Sessions**. The back gesture doesn't go between Home and the list: from a session, it goes back to the one you came from.
+The app opens on your sessions. At the top, the chip with your computer's name, the magnifier to search the titles, project names and branches, and the **⋯** menu.
 
-## The list
+The card under it shows how much of your plan is used: **Usage** with a bar for the 5-hour window and one for the week. With more than one Claude profile it is **Profiles**, with a row for each, its colour and both bars. With three or more, it shows the two closest to a limit and **+1** for the rest. A bar turns orange from 60% and red from 85%. Tap the card for each profile's full card, with when each window resets; tap it again to fold them. The numbers come from your computer: they update when it checks, and each time you come back to the app.
 
-The chip at the top right shows your computer's name with a green dot while your phone is connected. It turns orange with **Reconnecting…** while your phone tries again, and red with **Offline** when it stopped trying.
-
-Under it, **All**, **Needs you** and **Working** narrow the list. A chip with nothing in it is hidden. The magnifier searches the titles, project names and branches. Esc or the close button ends the search.
-
-What Claude asks shows first, as cards with a pink frame, the oldest first:
+What Claude asks shows next, as cards with a pink frame, the oldest first:
 
 - A command, an edit or a fetch has **Deny** and **Allow** on the card. **Allow** answers it from the list, and the card folds away. **Always allow** isn't on the card: open the session to read what it does.
 - A question or a plan is a short row. Tap it to answer in the session.
 
 Tap anywhere else on a card to open its session. If someone answered first, on your computer or another phone, the phone says **Already answered**.
 
-Below the cards are your sessions by group: working, today, yesterday and earlier. Sessions you haven't read have a bold title. Right-click a session for **Mark as read** and **Archive**. With more than one Claude profile, each session's left edge has its profile's colour, as in Switchboard's sidebar. **New session** is at the bottom of the screen.
+Below the cards are your sessions by group: **Working**, **Today**, **Yesterday** and **Earlier**. Sessions you haven't read have a bold title. With more than one Claude profile, a dot in the profile's colour comes before the project's name, and the session's left edge has that colour too, as in Switchboard's sidebar. **New session** is at the bottom of the screen.
+
+Pull the list down from the top to refresh it: it says **Pull to refresh**, then **Release to refresh**, and shows a spinner until the new list is in.
+
+### Swipe a session
+
+- **Swipe right** to mark it as read, on blue with a check.
+- **Swipe left** to archive it.
+
+A short swipe shows the button: tap it, or tap the session to put it back. A long swipe, past most of the row, does it at once. Either way a message says what happened, with **Undo**. A session that needs you doesn't swipe, so you can't dismiss a prompt by accident: open it to answer.
+
+A long press on a session has the same **Mark as read** and **Archive**, and so does a right-click in a browser on a computer. With a screen reader, each session has its own actions button. Undo after **Mark as read** needs this version of Switchboard on your computer.
+
+## Switch sessions
+
+<Screenshot name="remote-phone-drawer" width={390} alt="The sessions drawer over a session: Sessions with the computer chip, a search field, a Home row with Personal 58% and Work 91%, the sessions by group with the open one picked, and New session at the bottom." />
+
+In a session, the button at the top left opens your other sessions in a drawer. Its pink count says how many other sessions need you. You can also swipe from the left edge of the screen to pull the drawer out. Tap a session to switch to it.
+
+The drawer has a search field, **Home**, your sessions by group with the open one picked, and **New session** at the bottom. With more than one Claude profile, the **Home** row shows how much each profile has used, such as **Work 82%** and **Personal 18%**. With three or more, it shows the one closest to a limit and **+2**. Tap **Home** for what needs you, the sessions to review and every profile's full usage card.
+
+To close the drawer, tap next to it, swipe it to the left, or use the back gesture. A session you pick takes the place of the one you had open, so the back gesture goes back to your sessions, not through every session you looked at.
+
+## Your computer's menu
+
+<Screenshot name="remote-phone-computer-menu" width={390} alt="The computer chip opened as a menu: Studio Mac, Connected for under a minute · encrypted, then Disconnect, and Forget this computer… in red." />
+
+The chip at the top right shows your computer's name with a green dot while your phone is connected. It turns orange with **Reconnecting…** while your phone tries again, and red with **Offline** when it stopped trying. Tap it for your computer's menu:
+
+- Its name and how it's connected, such as **Connected for 2h · encrypted**.
+- **Disconnect** closes the connection and keeps the pairing. The app says **Disconnected from** your computer, with **Connect**, and shows your last list greyed out. It stays disconnected until you tap **Connect**, also after a reload. When you open the app again later, it connects by itself.
+- **Forget this computer…** asks first, then removes the pairing from this phone. To use Remote again, pair the phone again.
 
 ## A session
 
-The header shows the session's status, project and branch, and with more than one Claude profile, the profile it runs with. The **⋯** menu has **Stop** while Claude works, **Mark as read** and **Archive**. Opening a session marks it as read, as on your computer.
+The header shows the session's status, project and branch, and with more than one Claude profile, the profile it runs with, such as **· Work**. The **⋯** menu has **Stop** while Claude works, **Mark as read** and **Archive**. Opening a session marks it as read, as on your computer.
 
 When Claude needs you, the question stays above the message box, so it doesn't scroll away: **Claude needs you**, what it asks, and **Deny**, **Always allow** when it's offered, and **Allow**. The arrow folds it to one line while you read the conversation. With more than one, **1 of 2** and the arrows step through them. While it's open, the message box says **Or tell Claude what to do instead**: what you send there says no, with your message as the reason.
+
+While you type, the keyboard never covers the message box, and the question folds to one line above it, such as **Claude needs you · Allow Bash?**. Tap that line to read it again: the keyboard goes away and the question unfolds.
 
 While Claude works, the end of the conversation shows three dots, how long the turn has taken and what Claude is doing, such as **Thinking** or **Using Bash**. A working session's dot pulses, in the list and in the header.
 
@@ -196,7 +226,9 @@ While a session works in that project, **Queue for later** puts the prompt in Sw
 
 ## On a computer or a tablet
 
-In a wide window, such as the browser of another computer, your sessions stay on the left, as in Switchboard. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list. The house button next to **Sessions** closes the open session and shows Home on the right.
+In a wide window, such as the browser of another computer or an iPad, your sessions stay on the left, as in Switchboard. A phone held sideways keeps the phone's layout. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list. The house button next to **Sessions** closes the open session and shows Home on the right.
+
+On a narrower screen, such as an iPad held upright, the sessions can fold away to leave the session the whole width: tap the button at the top left of a session, or press <Kbd keys="mod+b" />. Folded, that button opens them as a drawer, as on a phone; the button next to the computer's name in the drawer, or <Kbd keys="mod+b" /> again, keeps them open on the left. Your choice is kept in this browser.
 
 ### What needs you
 
@@ -316,6 +348,8 @@ A line under the header says why, when your phone can tell:
 - **Its tunnel address changed**: a Cloudflare quick tunnel got a new address. Click **Reconnect a paired device phones** in Settings → Remote and scan that code, or use a tunnel whose address stays the same.
 - **Is it asleep or offline?**: nothing answers. Wake your computer, or check its network.
 - **Is Switchboard running, with Remote on?**: the address answers, but Switchboard doesn't.
+
+You chose **Disconnect**? Then nothing connects until you tap **Connect** (see [Your computer's menu](#your-computers-menu)).
 
 **Help** explains what to do, with a link to this page. While it's offline, your phone keeps showing the last list, greyed out, and the buttons that need your computer are off. It tries again by itself, and at once when you come back to the page.
 
