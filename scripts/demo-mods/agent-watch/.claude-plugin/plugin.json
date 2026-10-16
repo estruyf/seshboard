@@ -1,0 +1,6 @@
+{
+  "name": "agent-watch",
+  "version": "0.1.0",
+  "description": "Demo mod for the website's screenshots: agents running, as a band, a pane and a status",
+  "author": { "name": "Switchboard" }
+}

@@ -207,6 +207,13 @@ export interface Preferences {
    * Resume when it resets; `always`: it is armed to continue by itself at once.
    */
   resumeAtLimit: ResumeAtLimit;
+  /**
+   * Settings › Mods: "Show mods". Off, sessions don't attach their Claude Code mods: no bands, panes, statuses, toasts
+   * or replaced views. Prompt screening still shows, since it happens in Claude Code.
+   */
+  showMods: boolean;
+  /** Mods whose UI is hidden here, as `modKey(profileId, name)`; kept while Show mods is off. */
+  hiddenMods: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
   githubStar: GithubStar;
@@ -214,6 +221,11 @@ export interface Preferences {
   notifications: NotificationPrefs;
   /** Settings › Notifications: a sound per moment, with or without the notification. */
   sounds: SoundPrefs;
+}
+
+/** A mod in `hiddenMods`: its name per Claude profile (the same plugin can be in two profiles). */
+export function modKey(profileId: string, name: string): string {
+  return `${profileId}:${name}`;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -242,6 +254,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
   resumeAtLimit: "ask",
+  showMods: true,
+  hiddenMods: [],
   sidebarSort: "recent",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
@@ -402,6 +416,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
   if (oneOf(["ask", "always"] as const, raw.resumeAtLimit))
     out.resumeAtLimit = raw.resumeAtLimit;
+  if (typeof raw.showMods === "boolean") out.showMods = raw.showMods;
+  if (Array.isArray(raw.hiddenMods))
+    out.hiddenMods = [...new Set(raw.hiddenMods.filter((m): m is string => typeof m === "string" && m.length > 0 && m.length <= 400))].slice(0, 500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
   if (oneOf(["ask", "done"] as const, raw.githubStar))

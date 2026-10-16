@@ -13,7 +13,7 @@
  * Usage: npm run website:screenshots [-- --only home,palette]   (--only takes the setup, then just those)
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
@@ -1253,7 +1253,25 @@ const screens: Screen[] = [
       });
     },
   },
-  ...(['general', 'theme', 'sidebar', 'conversation', 'focus', 'profiles', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
+  {
+    name: 'mods',
+    async take(t) {
+      for (const end = Date.now() + 45_000; !existsSync(modsStarted) && Date.now() < end; ) await new Promise((resolve) => setTimeout(resolve, 200));
+      if (!existsSync(modsStarted)) throw new Error('the mods session did not start');
+      const started = JSON.parse(readFileSync(modsStarted, 'utf8')) as { sessionId?: string; supported?: boolean };
+      if (!started.sessionId || !started.supported) throw new Error("the mods session didn't start, or this Claude Code doesn't draw mods");
+      await t.click(`[data-session-id="${started.sessionId}"]`);
+      await t.need('[data-current-session] [data-mod-band="agent-watch"]', 'the agent-watch band did not show');
+      await t.need('[data-current-session] [data-mod-pane="agents"]', 'the Agents pane did not open');
+      await t.settle();
+      await t.shot('mods');
+      await t.click('[data-current-session] [data-mods-chip]');
+      await t.need('[data-mods-popover]', 'the mods popover did not open');
+      await t.shot('mods-popover', { clip: '[data-mods-popover]', pad: 12, keepFocus: true });
+      await t.page.keyboard.press('Escape');
+    },
+  },
+  ...(['general', 'theme', 'sidebar', 'conversation', 'mods', 'focus', 'profiles', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
     (section): Screen => ({
       name: `settings-${section}`,
       async take(t) {
@@ -1560,6 +1578,20 @@ console.log(`demo home: ${world.home}`);
 // The registry the app checks offers the version that is installed, so Settings says Claude Code is up to date.
 const claudeVersion = claude ? (/\d+\.\d+\.\d+/.exec(execFileSync(claude, ['--version'], { encoding: 'utf8' }))?.[0] ?? '2.0.0') : '2.0.0';
 
+// Claude Code mods: two made-up mods (scripts/demo-mods) in a throwaway profile of their own. The app starts a session
+// with them as it opens, with agent-watch's `/agent-watch`, which the mod answers without the model.
+// They live in the demo home, so Settings › Mods shows them as ~/.claude/plugins/<name>.
+const modsDir = mkdtempSync(join(tmpdir(), 'switchboard-shots-mods-'));
+const demoMods = ['agent-watch', 'pr-status'].map((name) => {
+  const folder = join(world.home, '.claude', 'plugins', name);
+  cpSync(join(root, 'scripts', 'demo-mods', name), folder, { recursive: true });
+  return folder;
+});
+mkdirSync(join(world.home, '.claude-mods'));
+mkdirSync(join(modsDir, 'switchboard'));
+const modsStarted = join(modsDir, 'started.json');
+const modsSpec = { pluginDir: demoMods.join(':'), configDir: join(world.home, '.claude-mods'), cwd: join(modsDir, 'switchboard'), out: modsStarted, prompt: '/agent-watch', profileName: 'Mods' };
+
 const electronPath = createRequire(join(appDir, 'package.json'))('electron') as unknown as string;
 const { ELECTRON_RUN_AS_NODE: _, ...env } = process.env;
 const app = await _electron.launch({
@@ -1570,6 +1602,7 @@ const app = await _electron.launch({
     HOME: world.home,
     CLAUDE_CONFIG_DIR: join(world.home, '.claude'),
     SWITCHBOARD_DRIVEN: '1',
+    SWITCHBOARD_SMOKE_MODS: JSON.stringify(modsSpec),
     SWITCHBOARD_GH: fakeGh(world.home),
     SWITCHBOARD_DEMO_USAGE: demoUsage(world),
     // No "Claude Code vX is available" in the pictures: the registry offers nothing newer.
@@ -1614,6 +1647,7 @@ try {
   }
   world.stop();
   rmSync(world.home, { recursive: true, force: true });
+  rmSync(modsDir, { recursive: true, force: true });
 }
 if (failed) process.exit(1);
 console.log(`✓ screenshots written to ${outDir}`);

@@ -75,6 +75,8 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   autoModel: 'Auto model',
   catchUpSummaries: 'Write catch-up summaries with Haiku',
   resumeAtLimit: 'Resume after a usage limit resets',
+  showMods: 'Show mods',
+  hiddenMods: 'Mods with their UI hidden',
   sidebarSort: 'Sidebar order',
   githubStar: 'Star on GitHub',
   notifications: 'Notifications',

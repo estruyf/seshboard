@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
@@ -10,6 +10,7 @@ import {
   RpcError,
   serveRpc,
   type Contract,
+  type HookableComponent,
   type HandlerContext,
   type LiveSession,
   type Handlers,
@@ -56,6 +57,7 @@ import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branc
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
 import { installedPlugins } from './host/capabilities.ts';
+import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
 import { LaterStore } from './later/laterStore.ts';
 import { summarise, UpNextStore } from './host/upNextStore.ts';
@@ -215,6 +217,14 @@ export interface Engine {
   setCatchUpSummaries(enabled: boolean): void;
   /** Settings › Conversation › Resume after a usage limit resets, from main. */
   setResumeAtLimit(mode: ResumeAtLimit): void;
+  /** Settings › Mods › Show mods, from main: sessions attach or detach their mods at once. */
+  setShowMods(enabled: boolean): void;
+  /**
+   * The smoke run's mods step (`SWITCHBOARD_SMOKE_MODS`): adds a throwaway profile whose sessions load the test mod,
+   * starts a session there with the mod's own `/smoke-ping` (answered without the model), and writes its id and
+   * whether its Claude Code draws mods to the file the step reads.
+   */
+  startModsSmoke(): Promise<void>;
   /** Runs the clean-up of archived sessions now (it also runs on launch and daily). Null when deleting is off. */
   deleteArchivedNow(): Promise<ArchivedCleanup | null>;
   close(): void;
@@ -468,11 +478,26 @@ export function createEngine(options: EngineOptions): Engine {
 
   const sdk = options.sdk ?? (() => import('@anthropic-ai/claude-agent-sdk'));
   /** The login shell's environment, pointed at a profile's config folder. */
+  /** Plugin folders the smoke run's throwaway profile loads (`startModsSmoke`). */
+  const smokePluginDirs = new Map<string, string>();
   const envFor = async (profileId: string): Promise<Record<string, string>> => {
     const env = { ...(await shell.ready).env };
     const { envDir } = profiles.runtime(profileId);
     if (envDir) env.CLAUDE_CONFIG_DIR = envDir;
+    const pluginDirs = smokePluginDirs.get(profileId);
+    if (pluginDirs) env.CLAUDE_CODE_PLUGIN_DIRS = pluginDirs;
     return env;
+  };
+  /** Keeps what mods replace in a profile's sessions, under the key of its plugin settings (`mods.hooked`). */
+  const rememberHooked = async (sessionId: string, hooked: HookableComponent[]) => {
+    try {
+      const profileId = sessionProfile(sessionId);
+      const key = hookedCacheKey({ profileId, configDir: profiles.runtime(profileId).configDir, env: await envFor(profileId) });
+      const stored = appState.get(`mods-hooked:${profileId}`) as { key: string; hooked: HookableComponent[] } | null;
+      if (stored?.key !== key || stored.hooked.join() !== hooked.join()) appState.set(`mods-hooked:${profileId}`, { key, hooked });
+    } catch (error) {
+      log('debug', `Mods: keeping the hooked list failed: ${(error as Error).message}`);
+    }
   };
   /** Plan usage per profile (each login has its own limits), started when first asked for. */
   const usageMonitors = new Map<string, UsageMonitor>();
@@ -616,6 +641,24 @@ export function createEngine(options: EngineOptions): Engine {
       sessions.republish(id);
     },
     installedPlugins: (profileId) => installedPlugins(profiles.runtime(profileId).configDir),
+    // Mods draw only in this app's windows: none of these reach paired phones or the companion.
+    mods: {
+      state: (state) => {
+        broadcast('mods.state', state);
+        if (state.supported) void rememberHooked(state.sessionId, state.hooked);
+      },
+      toast: (toast) => broadcast('mods.toast', toast),
+      statuses: (sessionId, statuses) => broadcast('mods.statuses', { sessionId, statuses }),
+      log: (entry) => {
+        log('debug', `[mod ${entry.plugin}] ${entry.text}`);
+        broadcast('mods.log', entry);
+      },
+      invalidate: (sessionId, instances) => broadcast('mods.invalidate', { sessionId, instances }),
+      panes: (sessionId, roster) => broadcast('mods.panes', { sessionId, roster }),
+      scroll: (event) => broadcast('mods.scroll', event),
+      focus: (event) => broadcast('mods.focus', event),
+      ask: (ask) => broadcast('mods.promptAsk', ask),
+    },
     sessionSettings: createSessionSettingsStore(cache.db),
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
@@ -1560,6 +1603,34 @@ export function createEngine(options: EngineOptions): Engine {
       await continueInEditor(editorId, cwd, sessionId, await editorEnv());
       return {};
     },
+    'mods.snapshot': () => ({ sessions: hosts.modsSnapshots() }),
+    'mods.render': ({ sessionId, ...params }) => hosts.mods(sessionId).render({ sessionId, ...params }),
+    'mods.press': (params) => hosts.mods(params.sessionId).press(params),
+    'mods.input': (params) => hosts.mods(params.sessionId).input(params),
+    'mods.select': (params) => hosts.mods(params.sessionId).select(params),
+    'mods.scroll': (params) => hosts.mods(params.sessionId).scroll(params),
+    'mods.focus': (params) => hosts.mods(params.sessionId).focus(params),
+    'mods.panes': ({ sessionId }) => hosts.mods(sessionId).panes(),
+    'mods.pane': async ({ sessionId, action, id }) => {
+      await hosts.mods(sessionId).pane(action, id);
+      return {};
+    },
+    'mods.promptAnswer': (answer) => {
+      hosts.answerModPrompt(answer);
+      return {};
+    },
+    'mods.hooked': async ({ profileId }) => {
+      const stored = appState.get(`mods-hooked:${profileId}`) as { key: string; hooked: HookableComponent[] } | null;
+      if (!stored) return { hooked: [] };
+      const key = hookedCacheKey({ profileId, configDir: profiles.runtime(profileId).configDir, env: await envFor(profileId) });
+      return { hooked: stored.key === key ? stored.hooked : [] };
+    },
+    'mods.logs': ({ sessionId }) => ({ logs: hosts.modLogs(sessionId) }),
+    'mods.list': async () => {
+      const runtimes = profiles.runtimes();
+      const envs = await Promise.all(runtimes.map((p) => envFor(p.id)));
+      return { mods: listMods(runtimes.map((p, i) => ({ profileId: p.id, configDir: p.configDir, env: envs[i]! }))) };
+    },
     'session.respond': ({ requestId, decision }) => {
       hosts.respond(requestId, decision);
       return {};
@@ -2313,6 +2384,31 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setResumeAtLimit: (mode) => {
       resumeAtLimit = mode;
+    },
+    setShowMods: (enabled) => hosts.setShowMods(enabled),
+    startModsSmoke: async () => {
+      const spec = JSON.parse(process.env.SWITCHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;
+      if (!spec) return;
+      const write = (result: Record<string, unknown>) => writeFileSync(spec.out, JSON.stringify(result));
+      try {
+        const profileId = profiles.add(spec.profileName ?? 'Smoke mods', 'gray', spec.configDir);
+        smokePluginDirs.set(profileId, spec.pluginDir);
+        const sessionId = await hosts.create({ cwd: spec.cwd, profileId, prompt: spec.prompt ?? '/smoke-ping', attachments: [], model: null, permissionMode: 'default', effort: null, worktree: null });
+        // Claude Code says whether it draws mods once it has started.
+        const deadline = Date.now() + 30_000;
+        let supported = false;
+        while (Date.now() < deadline) {
+          const state = hosts.modsSnapshots().find((s) => s.state.sessionId === sessionId)?.state;
+          if (state?.attached || (state && hosts.list().hosts.find((h) => h.sessionId === sessionId)?.state === 'idle')) {
+            supported = state.supported;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        write({ sessionId, profileId, supported });
+      } catch (error) {
+        write({ error: (error as Error).message });
+      }
     },
     deleteArchivedNow: runCleanup,
     close() {

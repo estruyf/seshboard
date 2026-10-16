@@ -1,4 +1,4 @@
-import { GitPullRequest, Globe, ListEnd, Monitor, Smartphone, X } from 'lucide-react';
+import { GitPullRequest, Globe, ListEnd, Monitor, Puzzle, Smartphone, X } from 'lucide-react';
 import { TOAST_MS, useToasts, type Toast } from '../../state/toastStore.ts';
 import { UpdateToasts } from '../updates/UpdateToasts.tsx';
 import { Button } from './Button.tsx';
@@ -63,7 +63,18 @@ function ToastCard({ toast }: { toast: Toast }) {
       {...toast.data}
     >
       {lead}
-      <span className="min-w-0 flex-1 truncate">{toast.message}</span>
+      {toast.source ? (
+        // A mod's toast: its name on a small line above, so it always says who wrote it.
+        <span className="min-w-0 flex-1 py-0.5">
+          <span className="flex items-center gap-1 text-meta text-muted" data-toast-source>
+            <Puzzle size={11} className="shrink-0" aria-hidden />
+            <span className="truncate">{toast.source}</span>
+          </span>
+          <span className="line-clamp-3 break-words">{toast.message}</span>
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1 truncate">{toast.message}</span>
+      )}
       {toast.undo && (
         // In the link colour, like the sidebar's Select all: the one thing to do with a toast.
         <button

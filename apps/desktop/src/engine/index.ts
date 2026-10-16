@@ -90,6 +90,16 @@ process.parentPort.on('message', (event) => {
     engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
     return;
   }
+  // The smoke run's mods step.
+  if (data?.type === 'smokeMods') {
+    void engine.startModsSmoke();
+    return;
+  }
+  // Settings › Mods › Show mods.
+  if (data?.type === 'mods') {
+    engine.setShowMods((data as { show?: unknown }).show !== false);
+    return;
+  }
   // Settings › Conversation › Resume after a usage limit resets.
   if (data?.type === 'limits') {
     engine.setResumeAtLimit((data as { resume?: unknown }).resume === 'always' ? 'always' : 'ask');
