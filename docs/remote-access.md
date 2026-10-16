@@ -68,7 +68,7 @@ The encryption is done in the app with audited pure-JS primitives (`@noble/curve
 
 ### Images
 
-A phone sends images with `session.send`, never on their own. The remote app redraws each as a JPEG of at most 2,000px on its longest side at 0.8, and smaller or rougher until it fits `REMOTE_IMAGE_BYTES` (`apps/remote/src/lib/images.ts`), so four fit in one RPC line (the engine takes lines up to 4 MB, `remoteServer.ts`). The frame limit stays as it is: the channel already splits a long line into 60,000-byte frames and the line transport puts it back together.
+A phone sends images with `session.send` (and `session.create`, and files too, when `hello` says `attachments`: `apps/remote/src/components/Attachments.tsx`, planning in `lib/attachments.ts`), never on their own. The remote app redraws each as a JPEG of at most 2,000px on its longest side at 0.8, and smaller or rougher until it fits `REMOTE_IMAGE_BYTES` (`apps/remote/src/lib/images.ts`), so four fit in one RPC line (the engine takes lines up to 4 MB, `remoteServer.ts`). The frame limit stays as it is: the channel already splits a long line into 60,000-byte frames and the line transport puts it back together.
 
 ### Files
 

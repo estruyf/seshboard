@@ -136,7 +136,7 @@ export async function pairPhone(link: Extract<RemoteLink, { kind: 'pair' }>, nam
 export type ConnectionState =
   /** `attempt` 0 is the first try; later ones are reconnects. */
   | { kind: 'connecting'; attempt: number }
-  | { kind: 'connected'; client: RpcClient<RemoteContract>; appVersion: string; computerName: string }
+  | { kind: 'connected'; client: RpcClient<RemoteContract>; appVersion: string; computerName: string; features: string[] }
   /** `retryAt` null: it gave up trying by itself (Try again, or the page coming back to the front, starts over). */
   | { kind: 'offline'; retryAt: number | null; message: string; reason: OfflineReason; attempt: number }
   | { kind: 'unpaired'; message: string };
@@ -212,7 +212,7 @@ export class Connection {
       if (this.stopped) return;
       this.attempt = 0;
       // An engine from before the computer's name was sent.
-      this.set({ kind: 'connected', client, appVersion: hello.app.version, computerName: hello.computer?.name ?? this.paired.computerName ?? '' });
+      this.set({ kind: 'connected', client, appVersion: hello.app.version, computerName: hello.computer?.name ?? this.paired.computerName ?? '', features: hello.features ?? [] });
       const code = await socket.closed;
       client.dispose();
       this.socket = null;

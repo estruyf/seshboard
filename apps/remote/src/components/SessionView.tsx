@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, ImagePlus, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
-import { REMOTE_MAX_IMAGES, type CatchUp, type QueuedMessage, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions } from '@switchboard/protocol/remote-client';
+import { ArrowDown, ChevronDown, ChevronLeft, FileDiff, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
+import type { CatchUp, QueuedMessage, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions } from '@switchboard/protocol/remote-client';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { transcriptItems } from '../lib/steps.ts';
 import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessages, resultsByCall, type Streaming } from '../lib/transcript.ts';
@@ -17,7 +17,7 @@ import { EffortChip, ModeChip, ModelChip } from './OptionChips.tsx';
 import { DockedPrompt } from './PermissionCard.tsx';
 import { toast } from './Toasts.tsx';
 import { useFinePointer, useMedia } from '../lib/media.ts';
-import { addReason, imageFiles, toImage } from '../lib/images.ts';
+import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
 import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, takesEffort } from '../lib/options.ts';
 import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
 import { AskPanel, AskSheet } from './AskPanel.tsx';
@@ -40,6 +40,7 @@ const lostConnection = (error: unknown) => (error as { code?: string }).code ===
  */
 export function SessionView({
   client,
+  features,
   sessionId,
   sessions,
   banner,
@@ -50,6 +51,8 @@ export function SessionView({
   initialChanges = false,
 }: {
   client: Client;
+  /** What the computer takes beyond what every version does (its hello). */
+  features: readonly string[];
   sessionId: string;
   sessions: RemoteSessions;
   banner: ReactNode;
@@ -170,7 +173,7 @@ export function SessionView({
   const open = prompts[0];
   const card = showsCatchUp(catchUp, working, Boolean(open)) ? catchUp : null;
   const files = changes?.files.length ?? 0;
-  const send = (text: string, images: RemoteImage[] = []) => client!.call('session.send', { sessionId, text, mode: 'queue', images }).then(() => setUnfolded(true));
+  const send = (text: string, images: RemoteImage[] = [], files: RemoteFile[] = []) => client!.call('session.send', { sessionId, text, mode: 'queue', images, ...(files.length ? { files } : {}) }).then(() => setUnfolded(true));
   const askToFix = (path: string | null) => {
     setSheet(null);
     setFill({ text: path ? `In ${path}, ` : '', id: Date.now() });
@@ -297,6 +300,7 @@ export function SessionView({
         <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} />
         <Composer
           fill={fill}
+          features={features}
           chips={
             running && options && session ? (
               <>
@@ -312,16 +316,16 @@ export function SessionView({
           disabled={!client}
           working={working}
           answering={Boolean(open)}
-          onSend={async (text, images) => {
+          onSend={async (text, images, files) => {
             // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
             if (open) {
-              if (images.length) throw new Error("Images can't go with an answer. Remove them, or answer the prompt first.");
+              if (images.length || files.length) throw new Error("Attachments can't go with an answer. Remove them, or answer the prompt first.");
               const result = await answer(client!, open, { behavior: 'deny', message: text }, session?.title);
               if (result === 'gone') onRefresh();
               if (result === 'failed') throw new Error("The answer didn't reach your computer.");
               return;
             }
-            await send(text, images);
+            await send(text, images, files);
           }}
           onError={setError}
         />
@@ -503,21 +507,14 @@ function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: st
   );
 }
 
-/** An image waiting in the message box, with its thumbnail. */
-interface Attached {
-  id: number;
-  image: RemoteImage;
-}
-
-let nextImage = 1;
-
 /**
  * The message box. While Claude works, a message waits in Up next for the turn to end, as on the computer. While a
- * prompt is open, what you send answers it instead. Images come from the camera button, a paste or a drop; each is
- * resized on this device first (`lib/images.ts`), and shows as a thumbnail above the box with a remove button.
+ * prompt is open, what you send answers it instead. Images and files come from the attach button, a paste or a drop
+ * (`Attachments.tsx`), and show above the box with a remove button.
  */
 function Composer({
   fill,
+  features,
   chips,
   disabled,
   working,
@@ -527,41 +524,19 @@ function Composer({
 }: {
   /** Text to put in the box and focus it (Ask Claude to fix…), or to quote at its end; a new `id` each time. */
   fill: Fill | null;
+  features: readonly string[];
   /** The running session's model and mode, under the box. */
   chips: ReactNode;
   disabled: boolean;
   working: boolean;
   answering: boolean;
-  onSend: (text: string, images: RemoteImage[]) => Promise<void>;
+  onSend: (text: string, images: RemoteImage[], files: RemoteFile[]) => Promise<void>;
   onError: (message: string) => void;
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [images, setImages] = useState<Attached[]>([]);
-  const [reading, setReading] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const picker = useRef<HTMLInputElement>(null);
-  const add = async (files: readonly File[]) => {
-    const taken = images.length + reading;
-    const fitting = imageFiles(files, taken);
-    if (!fitting.length) {
-      const reason = files.some((f) => f.type.startsWith('image/')) ? addReason(taken) : null;
-      if (reason) onError(reason);
-      return;
-    }
-    if (fitting.length < files.filter((f) => f.type.startsWith('image/')).length) onError(addReason(taken + fitting.length) ?? '');
-    setReading((n) => n + fitting.length);
-    for (const file of fitting) {
-      try {
-        const image = await toImage(file);
-        setImages((current) => [...current, { id: nextImage++, image }]);
-      } catch (error) {
-        onError(error instanceof Error ? error.message : "That image couldn't be read.");
-      } finally {
-        setReading((n) => n - 1);
-      }
-    }
-  };
+  const attachments = useAttachments({ features, blocked: answering ? "Attachments can't go with an answer. Answer the prompt first." : null, onError });
+  const { reading, dragging } = attachments;
   const fine = useFinePointer();
   const box = useRef<HTMLTextAreaElement>(null);
   // With a keyboard, the box is ready to type in when the session opens; on a phone the keyboard waits for a tap.
@@ -585,12 +560,9 @@ function Composer({
     if (!message || busy || reading) return;
     setBusy(true);
     try {
-      await onSend(
-        message,
-        images.map((a) => a.image),
-      );
+      await onSend(message, attachments.images, attachments.files);
       setText('');
-      setImages([]);
+      attachments.clear();
     } catch (error) {
       onError(error instanceof Error ? error.message : "The message wasn't sent.");
     } finally {
@@ -605,66 +577,19 @@ function Composer({
         void send();
       }}
       onDragOver={(event) => {
-        if (disabled || !event.dataTransfer.types.includes('Files')) return;
-        event.preventDefault();
-        setDragging(true);
+        if (!disabled) attachments.dropProps.onDragOver(event);
       }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
-      }}
-      onDrop={(event) => {
-        if (!event.dataTransfer.files.length) return;
-        event.preventDefault();
-        setDragging(false);
-        void add([...event.dataTransfer.files]);
-      }}
+      onDragLeave={attachments.dropProps.onDragLeave}
+      onDrop={attachments.dropProps.onDrop}
     >
-      {(images.length > 0 || reading > 0) && (
-        <ul className="mx-auto flex w-full max-w-3xl gap-2 pb-2" aria-label="Images to send" data-remote-images>
-          {images.map((attached) => (
-            <li key={attached.id} className="group relative size-14 shrink-0 overflow-hidden rounded-lg border border-edge bg-code">
-              <img src={`data:${attached.image.mediaType};base64,${attached.image.data}`} alt={attached.image.name ?? 'Image'} className="size-full object-cover" />
-              <button
-                type="button"
-                aria-label={`Remove ${attached.image.name ?? 'image'}`}
-                onClick={() => setImages((current) => current.filter((a) => a.id !== attached.id))}
-                className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
-                data-remote-image-remove
-              >
-                <X className="size-3" aria-hidden />
-              </button>
-            </li>
-          ))}
-          {reading > 0 && <li className="flex size-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-edge text-meta text-faint">Reading…</li>}
-        </ul>
-      )}
+      <AttachmentTray state={attachments} className="mx-auto w-full max-w-3xl pb-2" />
       <div className={`mx-auto flex w-full max-w-3xl items-end gap-2 rounded-xl border bg-card p-1.5 pl-1.5 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${dragging ? 'border-accent-ink ring-4 ring-accent/20' : 'border-edge'}`}>
-        <Button variant="quiet" size="md" aria-label="Add an image" title={answering ? 'Answer the prompt first' : 'Add an image'} disabled={disabled || answering || images.length + reading >= REMOTE_MAX_IMAGES} onClick={() => picker.current?.click()} className="px-2!" data-remote-attach>
-          <ImagePlus className="size-4" aria-hidden />
-        </Button>
-        <input
-          ref={picker}
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          onChange={(event) => {
-            void add([...(event.target.files ?? [])]);
-            event.target.value = '';
-          }}
-        />
+        <AttachButton state={attachments} disabled={disabled || answering} title={answering ? 'Answer the prompt first' : undefined} />
         <textarea
           ref={box}
           value={text}
           onChange={(event) => setText(event.target.value)}
-          onPaste={(event) => {
-            // A screenshot pastes as an image; a copied page with text in it pastes its text.
-            const files = [...event.clipboardData.files];
-            if (!files.some((f) => f.type.startsWith('image/')) || event.clipboardData.types.includes('text/plain')) return;
-            event.preventDefault();
-            if (!answering) void add(files);
-            else onError("Images can't go with an answer. Answer the prompt first.");
-          }}
+          onPaste={attachments.onPaste}
           onKeyDown={(event) => {
             // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer.
             if (fine && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -678,7 +603,7 @@ function Composer({
           data-remote-message
           className="max-h-48 min-h-9 flex-1 resize-none bg-transparent py-2 text-body text-text outline-none [field-sizing:content] placeholder:text-faint pointer-fine:min-h-7 pointer-fine:py-1"
         />
-        <Button type="submit" variant="primary" size="md" disabled={disabled || busy || reading > 0 || !text.trim()} aria-label={answering ? 'Send instead' : working ? 'Add to Up next' : 'Send'} className="px-3!">
+        <Button type="submit" variant="primary" size="md" disabled={disabled || busy || reading || !text.trim()} aria-label={answering ? 'Send instead' : working ? 'Add to Up next' : 'Send'} className="px-3!">
           <Send className="size-4" aria-hidden />
         </Button>
       </div>

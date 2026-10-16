@@ -7,6 +7,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### New
 
 - **Connected to this Mac.** The sidebar shows which phones and computers are connected to this Mac, with what they did last. Revoke one from there. While Remote is on, **Connected to this Mac** at the bottom of the sidebar lists each connected device, with since when. Click a device to see its last action, such as **Sent a prompt in Needs review sort**, when it was paired and the address it came through. **Revoke** asks first, then disconnects it at once. A device that connects for the first time that day shows a toast with **Revoke**. With nobody connected, a quiet line says Remote is on; turn it off with **Show in the sidebar when nobody is connected** in Settings › Remote. In the collapsed sidebar, a phone icon shows how many devices are connected.
+- **Images and files in the remote app.** New session in the remote app takes images and files, and a session takes files next to images: tap the paperclip button, or paste or drop them on the message box. A message takes up to four images and four files, about 2.7 MB in all. Sending files, and images with a new session, needs this version of Switchboard on your computer. Queue for later doesn't take attachments.
 
 ## [0.0.20] - 2026-10-15
 

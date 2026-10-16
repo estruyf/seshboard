@@ -72,6 +72,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const retryNow = () => connection.current?.retryNow();
 
   const client = state.kind === 'connected' ? state.client : null;
+  const features = state.kind === 'connected' ? state.features : NO_FEATURES;
   const computer = (state.kind === 'connected' && state.computerName) || paired.computerName || '';
   const needsYou = sessions.sessions.filter((s) => s.status === 'needs-you').length;
   const usage = useUsage(client);
@@ -296,6 +297,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       <SessionView
         key={route.sessionId}
         client={client}
+        features={features}
         sessionId={route.sessionId}
         sessions={sessions}
         banner={wide ? null : banner}
@@ -306,7 +308,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         initialChanges={route.changes ?? false}
       />
     ) : route.kind === 'new' ? (
-      <NewSession key={route.projectId ?? ''} client={client} sessions={sessions.sessions} banner={wide ? null : banner} onBack={wide ? null : back} onStarted={started} initialProject={route.projectId ?? null} />
+      <NewSession key={route.projectId ?? ''} client={client} features={features} sessions={sessions.sessions} banner={wide ? null : banner} onBack={wide ? null : back} onStarted={started} initialProject={route.projectId ?? null} />
     ) : null;
   // A wide screen offers notifications in a strip over the main view; an iPad outside the Home Screen keeps the card,
   // which explains how to add it.
@@ -408,6 +410,8 @@ function cacheSessions(sessions: RemoteSessions): void {
     // Storage is full or off: the list just isn't kept.
   }
 }
+
+const NO_FEATURES: string[] = [];
 
 export type Client = RpcClient<RemoteContract> | null;
 

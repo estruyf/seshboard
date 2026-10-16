@@ -5,6 +5,7 @@ import { projectStatus, recentProjects, suggestedProject, type TileTone } from '
 import { useFinePointer } from '../lib/media.ts';
 import { autoOn, changedFrom, defaultChoice, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
 import { lastProject, rememberProject } from '../lib/storage.ts';
+import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
 import type { Client } from './Connected.tsx';
 import { EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip } from './OptionChips.tsx';
 import { toast } from './Toasts.tsx';
@@ -24,7 +25,7 @@ const DRAFT = 'switchboard-remote:new-draft';
  * and its defaults for model, effort, mode and worktree as chips, to change for this session only. Queue for later puts it in Switchboard's queue instead,
  * while the project has a session working.
  */
-export function NewSession({ client, sessions, banner, onBack, onStarted, initialProject = null }: { client: Client; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
+export function NewSession({ client, features, sessions, banner, onBack, onStarted, initialProject = null }: { client: Client; /** What the computer takes beyond what every version does (its hello). */ features: readonly string[]; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
   const [projectId, setProjectId] = useState<string | null>(initialProject);
   const [filter, setFilter] = useState('');
@@ -34,6 +35,7 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
   const [options, setOptions] = useState<RemoteOptions | null>(null);
   /** What you changed for this session, over the project's defaults. */
   const [changes, setChanges] = useState<Partial<Choice>>({});
+  const attachments = useAttachments({ features, newSession: true, onError: setError });
   const fine = useFinePointer();
   const box = useRef<HTMLTextAreaElement>(null);
   // Read when the projects arrive, without loading them again each time a session changes.
@@ -74,13 +76,13 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
   const defaults = defaultChoice(options, projectId, changes.profileId ?? baseProfile);
   const choice: Choice = { ...defaults, ...changes };
   const change = (next: Partial<Choice>) => setChanges((current) => ({ ...current, ...next }));
-  const ready = Boolean(client && projectId && prompt.trim() && !busy);
+  const ready = Boolean(client && projectId && prompt.trim() && !busy && !attachments.reading);
   const start = async () => {
     if (!ready) return;
     setBusy(true);
     setError(null);
     try {
-      const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults, baseProfile) });
+      const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...changedFrom(choice, defaults, baseProfile) });
       rememberProject(projectId!);
       sessionStorage.removeItem(DRAFT);
       onStarted(sessionId);
@@ -189,12 +191,15 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
               event.preventDefault();
               void start();
             }}
+            {...attachments.dropProps}
           >
-            <div className={`rounded-xl border bg-card p-2 pl-3 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${projectId ? 'border-edge' : 'border-border'}`}>
+            <div className={`rounded-xl border bg-card p-2 pl-3 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${attachments.dragging ? 'border-accent-ink ring-4 ring-accent/20' : projectId ? 'border-edge' : 'border-border'}`}>
+              <AttachmentTray state={attachments} className="pt-1 pr-1 pb-2" />
               <textarea
                 ref={box}
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
+                onPaste={attachments.onPaste}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                     event.preventDefault();
@@ -207,6 +212,9 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
                 data-remote-new-prompt
                 className="min-h-24 w-full resize-none bg-transparent py-1 text-body text-text outline-none [field-sizing:content] placeholder:text-faint"
               />
+              <div className="flex items-center">
+                <AttachButton state={attachments} disabled={!client} />
+              </div>
             </div>
             {options && picked && (
               <div className="flex flex-col gap-2">
@@ -242,7 +250,7 @@ export function NewSession({ client, sessions, banner, onBack, onStarted, initia
             ) : null}
           </span>
           {projectBusy && (
-            <Button onClick={() => void queue()} disabled={!ready} className="flex-1 sm:flex-none" data-remote-queue>
+            <Button onClick={() => void queue()} disabled={!ready || attachments.items.length > 0} title={attachments.items.length ? 'Attachments go with a session that starts now' : undefined} className="flex-1 sm:flex-none" data-remote-queue>
               Queue for later
             </Button>
           )}
