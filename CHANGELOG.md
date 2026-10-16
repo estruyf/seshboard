@@ -2,6 +2,12 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### Fixed
+
+- **Sessions on another computer work in split view.** Dragging one from the sidebar into the panes left an empty pane, and while one was open, you couldn't drag another session next to it. A session on another computer now opens in a pane like your own: drag it next to another session, ⌥-click it (Alt+click on Windows), or right-click it and choose **Open beside**.
+
 ## [0.0.22] - 2026-10-16
 
 ### New

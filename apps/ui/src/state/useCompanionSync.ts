@@ -4,6 +4,7 @@ import { newDraftKey } from './drafts.ts';
 import { useDrafts } from './draftsStore.ts';
 import { useLinks } from './linksStore.ts';
 import { usePreferences } from './preferencesStore.ts';
+import { localSessionId } from './remoteSelection.ts';
 import { useSessions } from './sessionsStore.ts';
 
 /**
@@ -17,7 +18,7 @@ export function useCompanionSync(): void {
   const client = connection.status === 'connected' ? connection.client : null;
   const view = useSessions((s) => s.view);
   const selectedId = useSessions((s) => s.selectedId);
-  const focused = view === 'session' ? selectedId : null;
+  const focused = view === 'session' ? localSessionId(selectedId) : null;
   const scope = usePreferences((s) => s.prefs.sessionScope);
 
   useEffect(() => {

@@ -60,6 +60,7 @@ import { useHostsSync } from './state/useHostsSync.ts';
 import { useComputersSync } from './state/useComputersSync.ts';
 import { useRemoteSync } from './state/useRemoteSync.ts';
 import { RemoteView } from './components/computers/RemoteView.tsx';
+import { localSessionId } from './state/remoteSelection.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
@@ -69,10 +70,13 @@ function terminalView(view: MainView, sessionId: string | null): TerminalView {
   return view === 'new' ? 'new-session' : view === 'session' ? (sessionId ? 'session' : 'home') : view;
 }
 
-/** The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere (Settings too). */
+/**
+ * The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere (Settings too). None
+ * for a session on another computer: its terminal is there.
+ */
 function currentTerminalOwner(): string | null {
   const { view, selectedId } = useSessions.getState();
-  return terminalOwner(terminalView(view, selectedId), selectedId);
+  return terminalOwner(terminalView(view, selectedId), localSessionId(selectedId));
 }
 
 /** A dialog, menu or popover is open: it keeps Tab for itself, so ⌃⇥ doesn't switch sessions behind it. */
@@ -202,7 +206,7 @@ function useWindowFocus() {
   const view = useSessions((s) => s.view);
   const selectedId = useSessions((s) => s.selectedId);
   useEffect(() => {
-    window.switchboard?.reportFocus(view === 'session' ? selectedId : null);
+    window.switchboard?.reportFocus(view === 'session' ? localSessionId(selectedId) : null);
   }, [view, selectedId]);
   useEffect(() => window.switchboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
   // Switchboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.

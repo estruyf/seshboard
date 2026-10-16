@@ -29,6 +29,7 @@ import { planGit } from '../git/gitPlan.ts';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './paletteContext.ts';
 import { useComputers } from '../../state/computersStore.ts';
+import { localSessionId } from '../../state/remoteSelection.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
 function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
@@ -106,7 +107,8 @@ export function usePaletteContext(): PaletteContext {
 
   const pageRoot = useProjectPage((s) => s.root);
   const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
-  const id = view === 'session' ? selectedId : null;
+  // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
+  const id = view === 'session' ? localSessionId(selectedId) : null;
 
   const catchUps = useCatchUp((s) => s.cards);
   const collapsedCatchUps = useCatchUp((s) => s.collapsed);
