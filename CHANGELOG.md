@@ -11,6 +11,13 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Images and files in the remote app.** New session in the remote app takes images and files, and a session takes files next to images: tap the paperclip button, or paste or drop them on the message box. A message takes up to four images and four files, about 2.7 MB in all. Sending files, and images with a new session, needs this version of Switchboard on your computer. Queue for later doesn't take attachments.
 - **Pick the profile, model, effort and mode for another computer.** New session with **Run on** set to another computer now has the same chips as the remote app: with more than one Claude profile there, pick the profile the session runs with, and the other chips follow its defaults. The model list offers **Auto** when it is on there, and the effort chip only shows for a model that takes an effort. In an open session on another computer, the model, effort and mode chips under the message box now change them there, and the session's profile shows next to the computer's name.
 
+### Fixed
+
+- **Picking a project and a choice on a phone.** In the remote app's New session, **All projects** opens every project as a list, with the filter there, and a project's tile no longer snaps against the edge of the screen. The model, effort, mode and worktree chips open their choices from the bottom of the screen instead of a list that ran off its side.
+- **Your first message in a new session from the remote app.** A session you started from your phone sometimes opened without the message you sent, until you closed it and opened it again. It now shows it at once.
+- **The remote app's conversation keeps its place.** When a run of steps folded away after Claude moved on, the conversation could show blank space with the earlier messages out of view. Opening and closing a step no longer leaves a **New messages** button that goes nowhere.
+- **Long links in the remote app's catch-up.** A long link in what you asked, or in what Claude did, ran off the side of the card. It now wraps.
+
 ## [0.0.20] - 2026-10-15
 
 ### New
