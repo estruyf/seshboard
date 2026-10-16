@@ -1,3 +1,5 @@
+import { cacheTtlOf, type CacheTtl } from '@switchboard/protocol';
+
 /**
  * Token usage from Claude Code's transcript lines. Only `assistant` lines carry a `message.usage`; Claude Code writes
  * one line per content block of a message and repeats the whole message's usage on each, so callers count a message
@@ -35,6 +37,8 @@ export interface UsageCounts {
   cacheRead: number;
   cacheWrite: number;
   fast: boolean;
+  /** Which prompt cache it wrote to (null: it wrote nothing, or the transcript doesn't say). */
+  cacheTtl: CacheTtl | null;
 }
 
 /**
@@ -52,6 +56,7 @@ export function usageCounts(message: { model?: unknown; usage?: Record<string, u
     cacheRead: count(usage.cache_read_input_tokens),
     cacheWrite: count(usage.cache_creation_input_tokens),
     fast: usage.speed === 'fast',
+    cacheTtl: cacheTtlOf(usage),
   };
 }
 

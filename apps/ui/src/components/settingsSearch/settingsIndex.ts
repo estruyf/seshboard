@@ -260,6 +260,38 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'money dollars euro pounds yen exchange rate cost price',
       target: '[data-cost-currency]',
     },
+    {
+      id: 'large-context',
+      page: 'usage',
+      label: 'Warn about a large context',
+      detail: 'Says above the message box how large it is and when its cache expires.',
+      keywords: 'context window full percent prompt cache expire expiry compact tokens warning alert ring',
+      target: '[data-large-context-enabled]',
+    },
+    {
+      id: 'large-context-percent',
+      page: 'usage',
+      label: 'Large from',
+      detail: 'How full the context window is before it counts as large. The context ring turns orange here too.',
+      keywords: 'context window percent threshold full warning ring orange',
+      target: '[data-large-context-percent]',
+    },
+    {
+      id: 'large-context-notify',
+      page: 'usage',
+      label: 'Notify before the cache expires',
+      detail: "5 minutes before a large session's hour-long cache expires.",
+      keywords: 'prompt cache expire expiry notification reminder context hour',
+      target: '[data-large-context-notify]',
+    },
+    {
+      id: 'large-context-quit',
+      page: 'usage',
+      label: 'Warn when quitting',
+      detail: 'Quitting with a large session open asks first.',
+      keywords: 'quit exit close context cache prompt warning end of day',
+      target: '[data-large-context-quit]',
+    },
 
     // Memory
     {

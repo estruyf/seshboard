@@ -154,6 +154,7 @@ function updatePreferences(patch: unknown): void {
   if (item) item.checked = true;
   updateWindowBackgrounds();
   sendEngineSettings(next);
+  notifier?.prefsChanged();
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.preferencesChanged, next);
 }
 
@@ -393,6 +394,17 @@ ipcMain.on(IpcChannel.quitAnswer, (_event, answer: unknown) => {
 });
 
 /**
+ * A session with a large context is open and Settings › Usage warns about it on quitting (or hasn't said yet that it
+ * can): the window reports it, so quitting asks even with Ask before quitting off.
+ */
+let quitContext = false;
+ipcMain.on(IpcChannel.quitContext, (_event, ask: unknown) => {
+  quitContext = ask === true;
+});
+/** Whether ⌘Q (or closing the window on Windows and Linux) asks first. */
+const asksBeforeQuit = () => preferences.get().confirmQuit || quitContext;
+
+/**
  * Messages that arrived before a window could take them: the link that launched the app, a notification
  * clicked after the window was closed (a new one is still loading), Settings… with no window open.
  */
@@ -454,7 +466,7 @@ function checkForUpdates(): void {
  */
 function installMenu(): void {
   const mac = process.platform === 'darwin';
-  const quit: MenuItemConstructorOptions = { id: 'quit', label: mac ? 'Quit Switchboard' : 'Exit', accelerator: 'CmdOrCtrl+Q', click: () => (preferences.get().confirmQuit ? quitGuard.request() : quitApp()) };
+  const quit: MenuItemConstructorOptions = { id: 'quit', label: mac ? 'Quit Switchboard' : 'Exit', accelerator: 'CmdOrCtrl+Q', click: () => (asksBeforeQuit() ? quitGuard.request() : quitApp()) };
   const settings: MenuItemConstructorOptions = { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() };
   const checkUpdates: MenuItemConstructorOptions = { id: 'check-updates', label: 'Check for Updates…', click: () => checkForUpdates() };
   const top: MenuItemConstructorOptions[] = mac
@@ -582,7 +594,7 @@ function createWindow(): BrowserWindow {
     quitting = true;
   });
   win.on('close', (event) => {
-    if (process.platform === 'darwin' || quitting || scripted || !preferences.get().confirmQuit) return;
+    if (process.platform === 'darwin' || quitting || scripted || !asksBeforeQuit()) return;
     event.preventDefault();
     quitGuard.request();
   });
@@ -5131,6 +5143,15 @@ async function runUsageSettingsStep(win: BrowserWindow): Promise<string> {
   const picked = preferences.get().costCurrency;
   if (!(await waitInPage(win, `document.querySelector('[data-cost-currency]').innerText.includes(${JSON.stringify(picked)})`, 2_000))) return `Currency does not show ${picked}`;
   updatePreferences({ costCurrency: before.costCurrency });
+  // Large context: its four rows, and Warn when quitting saves (and is put back).
+  const large = (await js("['[data-large-context-enabled]', '[data-large-context-percent]', '[data-large-context-notify]', '[data-large-context-quit]'].filter((s) => !document.querySelector(s))")) as string[];
+  if (large.length > 0) return `Large context is missing: ${large.join(', ')}`;
+  const warning = preferences.get().contextWarning;
+  if (!(await waitInPage(win, `document.querySelector('[data-large-context-percent]').innerText.includes('${warning.percent}%')`, 2_000))) return `Large from does not show ${warning.percent}%`;
+  await js("document.querySelector('[data-large-context-quit]').click()");
+  if (!(await until(() => preferences.get().contextWarning.onQuit === !warning.onQuit, 2_000))) return 'Warn when quitting was not saved';
+  await js("document.querySelector('[data-large-context-quit]').click()");
+  if (!(await until(() => preferences.get().contextWarning.onQuit === warning.onQuit, 2_000))) return 'Warn when quitting did not go back';
   await shot(win, 'settings-usage.png');
   await js("document.querySelector('[data-settings-open-usage]').click()");
   if (!(await waitInPage(win, "document.querySelector('[data-usage-view]') && !document.querySelector('[data-settings]')", 3_000))) return 'Open usage did not open the Usage view';
@@ -7134,6 +7155,7 @@ app.whenReady().then(() => {
     openSession,
     showAllSessions: () => preferences.get().sessionScope === 'all',
     alerts: () => preferences.get(),
+    cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),
     sounds,
     ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event) } : {}),
   });

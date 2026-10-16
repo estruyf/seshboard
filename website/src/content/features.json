@@ -1138,7 +1138,7 @@
     },
     {
       "id": "settings:usage",
-      "name": "Settings › Usage: Open usage, Show estimated cost and Currency",
+      "name": "Settings › Usage: Open usage, Show estimated cost, Currency and Large context",
       "page": "settings"
     },
     {
@@ -1640,6 +1640,21 @@
       "id": "feature:usage-cost-estimate",
       "name": "Estimated API cost after the 5-hour and weekly usage bars, in a currency you pick",
       "page": "usage"
+    },
+    {
+      "id": "feature:large-context-warning",
+      "name": "Large context: the ring turns orange from a percentage you pick, and a note says when the prompt cache expires and what the next message costs after",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:cache-expiry-notification",
+      "name": "A notification before a large session's hour-long prompt cache expires",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:quit-large-context",
+      "name": "Quitting with a large session open warns once, or every time with Warn when quitting",
+      "page": "settings"
     },
     {
       "id": "feature:usage-cost-breakdown",

@@ -157,6 +157,19 @@ Under the message box, a line shows your plan usage (your 5-hour and weekly limi
 
 After a compaction the whole conversation stays: a *Conversation compacted* line marks each place it was compacted, and you can scroll back past it.
 
+### Large context
+
+Anthropic keeps a conversation's context in its prompt cache for a while after the last message: an hour or 5 minutes, depending on what Claude Code asks for. Each message that reads from the cache starts that time again. Once the cache expires, the next message reads the whole context again, at a price several times higher than reading it from the cache. It doesn't matter whether Switchboard is open: only the time since the last message counts.
+
+When a session's context is large (60% full or more, by default), the ring turns orange and a note above the message box says so while the session waits for you:
+
+- While the cache is kept: *Large context: 412k tokens (82%). Its cache expires in 48 min. After that, your next message reads all of it again (≈$3.20).* **Compact now** compacts it while that is still cheap.
+- After the cache expired, such as the next morning: *Its cache expired 14 h ago, so your next message reads all of it again (≈$3.20).* Compacting now would read it all again too, so the note doesn't offer it.
+
+The cost shows with **Show estimated cost** on, and reading it all again counts toward your plan's limits too. For a session that isn't running in Switchboard, the size is an estimate from the last reply. Close the note with its **×**; it comes back the next time Switchboard starts.
+
+With **Notify before the cache expires** on, you get a notification 5 minutes before a large session's hour-long cache expires, while it waits for you. Quitting Switchboard with a large session open says so once, and **Warn me about this every time I quit** turns that on for good. Change the percentage or turn any of this off in [Settings › Usage](/settings/#large-context).
+
 ## The hover toolbar
 
 Hover over a message for its toolbar:

@@ -20,7 +20,7 @@ import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
-import { UsageSettings } from './usage/UsageSettings.tsx';
+import { LargeContextSettings, UsageSettings } from './usage/UsageSettings.tsx';
 import { AboutSettings, SettingsVersion } from './updates/AboutSettings.tsx';
 import { Button } from './ui/Button.tsx';
 import { Choice } from './ui/Choice.tsx';
@@ -374,9 +374,17 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       );
     case 'usage':
       return (
-        <Section title="Usage" description="How much of your plan's 5-hour and weekly limits you have used, shown under the message box, in New session and on Home.">
-          <UsageSettings />
-        </Section>
+        <>
+          <Section title="Usage" description="How much of your plan's 5-hour and weekly limits you have used, shown under the message box, in New session and on Home.">
+            <UsageSettings />
+          </Section>
+          <Section
+            title="Large context"
+            description="Anthropic keeps a conversation's context in its prompt cache for up to an hour after the last message. Once that cache expires, the next message reads the whole context again, which costs far more than reading it from the cache."
+          >
+            <LargeContextSettings />
+          </Section>
+        </>
       );
     case 'memory':
       return (

@@ -19,6 +19,7 @@ export type * from './usage.ts';
 export type * from './usageLimit.ts';
 export { SHARE_WEIGHTS, sharesOf, weightOf } from './usageWeights.ts';
 export * from './costEstimate.ts';
+export * from './contextCache.ts';
 export { accountKey } from './accountKey.ts';
 export type * from './profiles.ts';
 export type * from './claudeUpdate.ts';

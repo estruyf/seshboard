@@ -40,4 +40,5 @@ export * from './usageLimit.ts';
 export * from './mods.ts';
 export * from './usageWeights.ts';
 export * from './costEstimate.ts';
+export * from './contextCache.ts';
 export * from './accountKey.ts';

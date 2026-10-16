@@ -43,6 +43,7 @@ export const IpcChannel = {
   selectSession: "switchboard:select-session",
   quitRequested: "switchboard:quit-requested",
   quitAnswer: "switchboard:quit-answer",
+  quitContext: "switchboard:quit-context",
   getPreferences: "switchboard:get-preferences",
   setPreferences: "switchboard:set-preferences",
   preferencesChanged: "switchboard:preferences-changed",
@@ -140,6 +141,35 @@ export interface SoundPrefs {
 }
 
 export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { enabled: true };
+
+/**
+ * Settings › Usage › Large context. A session whose context is at least `percent` full is "large": its ring turns
+ * orange there, and the session says when its prompt cache lapses (after which the next message writes all of that
+ * context again, `contextCache.ts`).
+ */
+export interface ContextWarningPrefs {
+  enabled: boolean;
+  /** 40–95, in steps of 5. */
+  percent: number;
+  /** A notification a few minutes before a large session's hour-long cache lapses. */
+  notifyExpiry: boolean;
+  /** Quitting with a large session open asks first, and says what it costs to pick up later. Off by default. */
+  onQuit: boolean;
+  /** The quit prompt has said once that it can warn about this. Not shown in Settings. */
+  quitTipShown: boolean;
+}
+
+export const CONTEXT_WARNING_PERCENTS = [40, 50, 60, 70, 80, 90, 95] as const;
+export const DEFAULT_CONTEXT_WARNING: ContextWarningPrefs = { enabled: true, percent: 60, notifyExpiry: true, onQuit: false, quitTipShown: false };
+
+function sanitizeContextWarning(raw: unknown): ContextWarningPrefs | null {
+  const r = raw as Partial<Record<keyof ContextWarningPrefs, unknown>> | null | undefined;
+  if (!r || typeof r !== "object") return null;
+  const flag = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fallback);
+  const d = DEFAULT_CONTEXT_WARNING;
+  const percent = typeof r.percent === "number" && Number.isFinite(r.percent) ? Math.min(95, Math.max(40, Math.round(r.percent / 5) * 5)) : d.percent;
+  return { enabled: flag(r.enabled, d.enabled), percent, notifyExpiry: flag(r.notifyExpiry, d.notifyExpiry), onQuit: flag(r.onQuit, d.onQuit), quitTipShown: flag(r.quitTipShown, d.quitTipShown) };
+}
 /** Bumped when the default sounds change, so sounds nobody picked move to the new defaults once (`sanitizeSounds`). */
 export const SOUNDS_REVISION = 2;
 export const DEFAULT_SOUNDS: SoundPrefs = {
@@ -219,6 +249,8 @@ export interface Preferences {
   showCost: boolean;
   /** Settings › Usage: the currency of the cost estimate. */
   costCurrency: CurrencyCode;
+  /** Settings › Usage › Large context: when a session's context counts as large, and what that warns about. */
+  contextWarning: ContextWarningPrefs;
   /**
    * Settings › Mods: "Show mods". Off, sessions don't attach their Claude Code mods: no bands, panes, statuses, toasts
    * or replaced views. Prompt screening still shows, since it happens in Claude Code.
@@ -269,6 +301,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   resumeAtLimit: "ask",
   showCost: true,
   costCurrency: DEFAULT_CURRENCY,
+  contextWarning: DEFAULT_CONTEXT_WARNING,
   showMods: true,
   hiddenMods: [],
   sidebarSort: "recent",
@@ -341,15 +374,16 @@ function sanitizeSounds(raw: Record<string, unknown>): SoundPrefs | undefined {
   };
 }
 
-/** A change to the preferences: like the preferences, but the notification and sound settings may name only some fields. */
-export type PreferencesPatch = Partial<Omit<Preferences, "notifications" | "sounds">> & {
+/** A change to the preferences: like the preferences, but the notification, sound and large context settings may name only some fields. */
+export type PreferencesPatch = Partial<Omit<Preferences, "notifications" | "sounds" | "contextWarning">> & {
   notifications?: Partial<NotificationPrefs>;
+  contextWarning?: Partial<ContextWarningPrefs>;
   sounds?: Partial<Omit<SoundPrefs, "byEvent" | "revision">> & { byEvent?: Partial<SoundPrefs["byEvent"]> };
 };
 
 /**
- * Applies a change to the preferences (unvalidated; sanitize the result). The notification and sound settings
- * merge field by field, so `{ sounds: { enabled: false } }` keeps every sound.
+ * Applies a change to the preferences (unvalidated; sanitize the result). The notification, sound and large context
+ * settings merge field by field, so `{ sounds: { enabled: false } }` keeps every sound.
  */
 export function mergePreferences(current: Preferences, patch: unknown): Record<string, unknown> {
   const raw = (patch ?? {}) as Record<string, unknown>;
@@ -357,6 +391,8 @@ export function mergePreferences(current: Preferences, patch: unknown): Record<s
   const merged: Record<string, unknown> = { ...current, ...raw };
   const notifications = object(raw.notifications);
   if (notifications) merged.notifications = { ...current.notifications, ...notifications };
+  const contextWarning = object(raw.contextWarning);
+  if (contextWarning) merged.contextWarning = { ...current.contextWarning, ...contextWarning };
   const sounds = object(raw.sounds);
   if (sounds) merged.sounds = { ...current.sounds, ...sounds, byEvent: { ...current.sounds.byEvent, ...object(sounds.byEvent) } };
   return merged;
@@ -435,6 +471,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.resumeAtLimit = raw.resumeAtLimit;
   if (typeof raw.showCost === "boolean") out.showCost = raw.showCost;
   if (isCurrencyCode(raw.costCurrency)) out.costCurrency = raw.costCurrency;
+  const contextWarning = sanitizeContextWarning(raw.contextWarning);
+  if (contextWarning) out.contextWarning = contextWarning;
   if (typeof raw.showMods === "boolean") out.showMods = raw.showMods;
   if (Array.isArray(raw.hiddenMods))
     out.hiddenMods = [...new Set(raw.hiddenMods.filter((m): m is string => typeof m === "string" && m.length > 0 && m.length <= 400))].slice(0, 500);
@@ -626,6 +664,8 @@ export interface SwitchboardBridge {
   /** ⌘Q was pressed: show the quit prompt. Pressing ⌘Q again while it's open quits without it. */
   onQuitRequested(listener: () => void): () => void;
   answerQuit(answer: "quit" | "cancel"): void;
+  /** Whether quitting should ask because of a session with a large context (Settings › Usage), even with Ask before quitting off. */
+  setQuitContext(ask: boolean): void;
   /** Read once when the page loads, so the first paint already uses them. */
   readonly preferences: Preferences;
   /** Applies at once (the colour scheme flips prefers-color-scheme) and is remembered. */

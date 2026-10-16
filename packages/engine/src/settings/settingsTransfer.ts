@@ -78,6 +78,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   resumeAtLimit: 'Resume after a usage limit resets',
   showCost: 'Show estimated cost',
   costCurrency: 'Currency',
+  contextWarning: 'Large context',
   showMods: 'Show mods',
   hiddenMods: 'Mods with their UI hidden',
   sidebarSort: 'Sidebar order',
