@@ -19,6 +19,7 @@ export const sidebar = [
       'sessions/ask',
       'sessions/agents',
       'sessions/commands',
+      'sessions/mods',
       'sessions/home',
       'sessions/search',
       'sessions/split-view',

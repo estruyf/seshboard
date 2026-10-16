@@ -1,5 +1,5 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon, Smartphone } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
@@ -12,6 +12,7 @@ import { useSidebar } from '../state/sidebarStore.ts';
 import { BackupSettings } from './backup/BackupSettings.tsx';
 import { CompanionSettings } from './companion/CompanionSettings.tsx';
 import { RemoteSettings } from './remote/RemoteSettings.tsx';
+import { ModsSettings } from './mods/ModsSettings.tsx';
 import { EngineDiagnostics } from './EngineDiagnostics.tsx';
 import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
@@ -137,6 +138,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
   { id: 'sessions', label: 'Sessions', icon: Archive },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
+  { id: 'mods', label: 'Mods', icon: Puzzle },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
@@ -422,6 +424,12 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           description="Move your setup to another Mac, restore it after a reset, or share your actions: preferences, projects with their icons, and project actions. Your sessions stay in ~/.claude."
         >
           <BackupSettings />
+        </Section>
+      );
+    case 'mods':
+      return (
+        <Section title="Mods" description="Plugins that add UI to your sessions. Claude Code loads them from your enabled plugins. Switchboard only draws what they return.">
+          <ModsSettings />
         </Section>
       );
     case 'diagnostics':

@@ -1,8 +1,9 @@
+import { Puzzle } from 'lucide-react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { CountBadge } from '../ui/Pill.tsx';
-import type { RightTab } from './askWidth.ts';
+import { paneOfTab, type PanelTab, type RightTab } from './askWidth.ts';
 
-const LABELS: Record<RightTab, string> = { changes: 'Changes', ask: 'Ask', agents: 'Agents', commands: 'Commands', terminal: 'Terminal' };
+const LABELS: Record<PanelTab, string> = { changes: 'Changes', ask: 'Ask', agents: 'Agents', commands: 'Commands', terminal: 'Terminal' };
 
 /**
  * The top of the right side while two or more panels are open (Changes, Ask, Agents, Commands, a terminal docked right): a tab
@@ -15,13 +16,16 @@ export function RightPanelTabs({
   open,
   onTab,
   counts,
+  titles = {},
   children,
 }: {
   tab: RightTab;
   /** The open panels, in tab order. */
   open: readonly RightTab[];
   onTab(tab: RightTab): void;
-  counts: Record<RightTab, number>;
+  counts: Partial<Record<RightTab, number>>;
+  /** A mod's pane's tab label (its title), by pane id. */
+  titles?: Readonly<Record<string, string>>;
   children?: ReactNode;
 }) {
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -37,6 +41,7 @@ export function RightPanelTabs({
       <div role="tablist" aria-label="Right panel" className="-mb-px flex min-w-0 gap-1" onKeyDown={onKey}>
         {open.map((id) => {
           const active = id === tab;
+          const pane = paneOfTab(id);
           return (
             <button
               key={id}
@@ -47,9 +52,11 @@ export function RightPanelTabs({
               onClick={() => onTab(id)}
               className={`flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 text-ui ${active ? 'border-accent-ink font-semibold text-text' : 'border-transparent text-muted hover:text-text'}`}
               data-right-tab={id}
+              data-mod-pane-tab={pane ?? undefined}
             >
-              {LABELS[id]}
-              <CountBadge count={counts[id]} />
+              {pane !== null && <Puzzle size={12} className="shrink-0" aria-hidden />}
+              {pane !== null ? (titles[pane] ?? pane) : LABELS[id as PanelTab]}
+              <CountBadge count={counts[id] ?? 0} />
             </button>
           );
         })}

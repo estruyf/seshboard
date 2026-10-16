@@ -30,6 +30,13 @@ import { AutoWand } from '../composer/ComposerChips.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
+import { ModBands } from '../mods/ModBands.tsx';
+import { ModPanePanel } from '../mods/ModPanePanel.tsx';
+import { ModFooterChips } from '../mods/ModFooterChips.tsx';
+import { ModsChip } from '../mods/ModsChip.tsx';
+import { shownMods } from '../mods/modVisibility.ts';
+import { useMods, useSessionMods } from '../../state/modsStore.ts';
+import { ModReplaced } from '../mods/ModReplaced.tsx';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
 import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
@@ -79,7 +86,7 @@ import { StreamingMarkdown } from './Markdown.tsx';
 import { AgentsPanel } from '../agents/AgentsPanel.tsx';
 import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
-import { rightPanel } from '../ask/askWidth.ts';
+import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
 import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
@@ -130,6 +137,19 @@ const Sep = () => (
  * What Claude is doing right now, before it lands in the transcript: the text it's writing,
  * or (when no step line is already showing it) dots, the time since your message, and the step.
  */
+/** The working line, drawn by a mod that replaces the Spinner. */
+function SpinnerSlot({ sessionId, message, children }: { sessionId: string; message: string; children: ReactNode }) {
+  const hooked = useMods((s) => s.sessions.get(sessionId)?.state.hooked.includes('Spinner') ?? false);
+  const target = useMemo(() => ({ component: 'Spinner' as const, instanceId: 'spinner', props: { message } }), [message]);
+  return hooked ? (
+    <ModReplaced sessionId={sessionId} target={target}>
+      {children}
+    </ModReplaced>
+  ) : (
+    <>{children}</>
+  );
+}
+
 function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string; since: number | null; showIndicator: boolean }) {
   const block = useHosts((s) => s.streaming.get(sessionId));
   const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
@@ -162,6 +182,7 @@ function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string
   const label = block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
   return (
     <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
+      <SpinnerSlot sessionId={sessionId} message={label}>
       <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
         <span className="flex w-4 shrink-0 justify-center">
           <WorkingDots />
@@ -170,6 +191,7 @@ function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string
         <span className="shrink-0">{label}</span>
         {block?.kind === 'thinking' && block.text && <span className="min-w-0 truncate text-faint italic">{block.text.slice(-160)}</span>}
       </p>
+      </SpinnerSlot>
     </div>
   );
 }
@@ -456,27 +478,57 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const terminalDock = effectiveDock(useTerminals((s) => s.dock), terminalBlocked);
   const terminalMaximized = useTerminals((s) => s.maximizedFor.has(sessionId)) && terminalShown;
   const terminalOnRight = terminalShown && terminalDock === 'right' && !terminalMaximized;
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, terminal: terminalOnRight }, rightTab);
+  // Mods' panes are tabs too, while Claude Code has them open (and Show mods and the mod's own switch are on).
+  const sessionMods = useSessionMods(sessionId);
+  const showMods = usePreferences((s) => s.prefs.showMods);
+  const hiddenMods = usePreferences((s) => s.prefs.hiddenMods);
+  const modPrefs = useMemo(() => ({ showMods, hiddenMods }), [showMods, hiddenMods]);
+  const modPanes = useMemo(
+    () => (active && sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
+    [active, sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
+  );
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  const modPaneFront = paneOfTab(right.tab);
+  const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
   const changesFront = right.tabs && showChanges ? right.tab === 'changes' : undefined;
   const askFront = right.tabs && ask.open ? right.tab === 'ask' : undefined;
   const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
   const commandsFront = right.tabs && showCommands ? right.tab === 'commands' : undefined;
   const terminalFront = right.tabs && terminalOnRight ? right.tab === 'terminal' : undefined;
-  const toggleChangesHere = () => toggleChangesPanel(ask.open || showAgents || showCommands || terminalOnRight);
-  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || terminalOnRight);
-  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || terminalOnRight);
-  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || terminalOnRight);
+  const panesOpen = modPanes.length > 0;
+  const toggleChangesHere = () => toggleChangesPanel(ask.open || showAgents || showCommands || terminalOnRight || panesOpen);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || terminalOnRight || panesOpen);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || terminalOnRight || panesOpen);
+  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || terminalOnRight || panesOpen);
+  // Picking a mod's tab tells Claude Code which pane is shown.
+  const pickRightTab = (tab: RightTab) => {
+    useRightPanel.getState().setTab(tab);
+    const pane = paneOfTab(tab);
+    if (pane && client) void client.call('mods.pane', { sessionId, action: 'show', id: pane }).catch(() => {});
+  };
+  const closeModPane = (id: string) => {
+    if (client) void client.call('mods.pane', { sessionId, action: 'close', id }).catch(() => {});
+  };
   const rightTabs = (actions: ReactNode) => (
     <RightPanelTabs
       tab={right.tab ?? 'changes'}
       open={right.open}
-      onTab={useRightPanel.getState().setTab}
+      onTab={pickRightTab}
       counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask), agents: agentsRunning, commands: commandsRunning, terminal: terminalCount }}
+      titles={Object.fromEntries(modPanes.map((p) => [p.id, p.title]))}
     >
       {actions}
     </RightPanelTabs>
   );
+  // A mod asked for one of its panes to take the keyboard: its tab comes to the front and takes focus.
+  const [paneFocus, setPaneFocus] = useState({ id: null as string | null, nonce: 0 });
+  const focusRequested = active ? sessionMods.panes.focusRequestedId : null;
+  useEffect(() => {
+    if (!focusRequested || !modPanes.some((p) => p.id === focusRequested)) return;
+    useRightPanel.getState().setTab(modPaneTab(focusRequested));
+    setPaneFocus((f) => ({ id: focusRequested, nonce: f.nonce + 1 }));
+  }, [focusRequested, modPanes]);
   // The terminal coming to the right (opened, or docked there) comes to the front, as a panel opened there does.
   const terminalWasOnRight = useRef(terminalOnRight);
   useEffect(() => {
@@ -1294,6 +1346,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             }}
           />
         )}
+        <ModsChip sessionId={sessionId} profileId={profileId} />
         <MoreMenu
           sessionId={sessionId}
           actions={actionsMenu}
@@ -1581,6 +1634,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   ))}
                 </div>
               )}
+              {/* Mods' bands: under Switchboard's own cards, above Up next. */}
+              <ModBands sessionId={sessionId} profileId={profileId} working={running} />
               {openElsewhere && (
                 <Notice role="note" data-open-elsewhere>
                   This session is open in {ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'} right now. Sending here starts a{' '}
@@ -1610,6 +1665,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               <div className="relative">
                 <Composer
                   draftKey={sessionId}
+                  status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}
                   restored={restored !== null}
@@ -1736,6 +1792,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onPickThread={(threadId) => pickAskThread(sessionId, threadId)}
             onClose={closeAskHere}
             disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
+          />
+        )}
+        {!whyRequest && frontPane && !terminalMaximized && (
+          <ModPanePanel
+            key={frontPane.id}
+            sessionId={sessionId}
+            pane={frontPane}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+            onClose={() => closeModPane(frontPane.id)}
+            focusNonce={paneFocus.id === frontPane.id ? paneFocus.nonce : 0}
           />
         )}
         {!whyRequest && right.tab === 'agents' && !terminalMaximized && (
