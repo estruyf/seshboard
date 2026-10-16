@@ -13,7 +13,7 @@ import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemoryEntries } from '../memory/sessionMemories.tsx';
-import { remoteSessionEntries } from '../computers/remoteActions.ts';
+import { remoteSessionEntries, setRemoteFlags } from '../computers/remoteActions.ts';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -63,7 +63,10 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   };
 
   const middleClick = (data: SessionRowData) => {
-    if (archivesOnMiddleClick(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays)) flagAll([data], ARCHIVE);
+    if (!archivesOnMiddleClick(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays)) return;
+    // A session on another computer is archived there, through its own contract.
+    if (data.remote) return setRemoteFlags(client, data.remote.computerId, data.remote.sessionId, ARCHIVE);
+    flagAll([data], ARCHIVE);
   };
 
   const openSessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
