@@ -15,14 +15,6 @@ export function settingsIndex(): SettingEntry[] {
     // General
     { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
     {
-      id: 'project-order',
-      page: 'general',
-      label: 'Project order',
-      detail: 'How New session, Home and the command palette list your projects: the ones you used last first, or the order you set in Projects.',
-      keywords: 'sort recent your order',
-      target: '[data-project-order]',
-    },
-    {
       id: 'new-session-mode',
       page: 'general',
       label: 'Permission mode',
@@ -84,6 +76,25 @@ export function settingsIndex(): SettingEntry[] {
       fallback: '[data-sessions-settings]',
     },
     { id: 'all-sessions', page: 'sessions', label: 'All sessions', detail: 'Every session, grouped by month, with filters. Unarchive them or move them to the ' + trash + '.', keywords: 'manage overview table disk size unarchive', target: '[data-session-manager]' },
+
+    // Projects
+    {
+      id: 'project-order',
+      page: 'projects',
+      label: 'Project order',
+      detail: 'How New session, Home and the command palette list your projects: the ones you used last first, or the order you set in Projects.',
+      keywords: 'sort recent your order',
+      target: '[data-project-order]',
+    },
+    {
+      id: 'clone-github',
+      page: 'projects',
+      label: 'Clone from GitHub',
+      detail: 'Start a project from a GitHub URL. New session clones it into the folder below, adds it to your projects and runs your first prompt there.',
+      keywords: 'git clone repository repo url download',
+      target: '[data-clone-enabled]',
+    },
+    { id: 'clone-folder', page: 'projects', label: 'Clone into', detail: 'The folder new projects go in, such as ~/Developer.', keywords: 'clone folder developer code location', target: '[data-clone-folder-choose]' },
 
     // Mods
     {

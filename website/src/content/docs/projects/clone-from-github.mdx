@@ -1,0 +1,84 @@
+---
+title: Clone from GitHub
+description: Start a project from a GitHub URL. Switchboard clones it into a folder you set, adds it as a project and runs your first prompt there.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+Paste `https://github.com/owner/name`, type your first prompt and press Start. Switchboard clones the repository into the folder you set for it, adds it to your projects and starts the session there, on this computer or on another one. It saves the three steps of cloning in a terminal, adding the folder as a project and opening New session, for trying out a library, reviewing someone's repository or picking up a project on a second computer.
+
+<Screenshot name="clone-from-github" alt="New session with the Clone from GitHub form: the URL of a repository, the folder it goes in under ~/Developer, the finished clone added to your projects, and a prompt in the message box under it" eager />
+
+## Turn it on
+
+Clone from GitHub is off until you turn it on:
+
+1. Open Settings › **Projects**.
+2. Turn on **Clone from GitHub**. Switchboard asks for the folder new projects go in first, such as `~/Developer`.
+3. To change that folder later, click **Choose…** next to **Clone into**.
+
+Each computer has its own setting and folder: a clone on [another computer](/remote-access/) goes in that computer's **Clone into** folder. While the setting is off, none of the ways in below show.
+
+## Start from a URL
+
+- **New session**: click **Clone from GitHub…** above the project tiles, and paste the URL. Or paste a GitHub URL in the project filter (type a letter on a tile, or click **Filter**), and choose **Clone owner/name**.
+- **Command palette**: run *New session from a GitHub repository…*, paste the URL and press <Kbd keys="enter" />. New session opens with the clone running.
+- **Sidebar**: the add project menu (the project filter at the top of the sidebar) has **Clone from GitHub…**. It clones and adds the project, without starting a session.
+- **Links**: when a `switchboard://new-session` link names a `repo` you have no checkout of, the line above the message box offers **Clone owner/name**. See [Links](/links/).
+
+Switchboard takes these forms:
+
+- `https://github.com/owner/name`, with or without `.git`;
+- `git@github.com:owner/name.git`;
+- `owner/name`;
+- `https://github.com/owner/name/tree/<branch>`, which checks out that branch after cloning.
+
+Only GitHub repositories can be cloned. GitLab, Bitbucket and other hosts aren't supported yet.
+
+## The clone
+
+1. The form shows the repository and where it goes: your **Clone into** folder and the repository's name. Change the name in the field if you want another folder.
+2. Press <Kbd keys="enter" /> or **Clone**. The clone starts right away, while you type the prompt, with its progress in the form. **Cancel** stops it and removes the folder it made. A folder that was there before is never removed.
+3. When the clone is done, the folder is added to your projects and picked in New session.
+4. Press **Start** (<Kbd shortcut="new-session.start" />). If the clone is still running, Start waits for it, then starts the session in the clone.
+
+You can type the prompt and press Start before you press **Clone**: Start clones first.
+
+A fresh clone runs in the clone itself, so **New worktree** isn't offered.
+
+When the folder is there already:
+
+- It's a checkout of the same repository: Switchboard uses it, with no second clone. The form says "Already cloned in ~/Developer/name".
+- It's something else: the form says "~/Developer/name already exists". Type another name.
+
+Switchboard clones with the [GitHub CLI](https://cli.github.com/) when `gh` is signed in, so private repositories work and your choice of HTTPS or SSH is kept. Without it, it clones with git over HTTPS, which works for public repositories. Switchboard only reads from GitHub: it never forks, stars or writes anything there.
+
+## Before the first session
+
+A cloned repository is someone else's code. Claude Code loads a project's own settings, so a repository's `.claude/settings.json` hooks, `.mcp.json` MCP servers and permission rules apply from the first prompt.
+
+When the repository brings any of these, Start asks once and lists them: "This repository runs these hooks and MCP servers when the session starts." It also lists rules that allow tools without asking, plugins, and settings that run a command or send requests elsewhere, such as `env` or `apiKeyHelper`. Choose **Start anyway** to start, or **Cancel** to keep your prompt and look at the repository first. A repository with none of them starts without asking.
+
+<Aside type="caution">
+A link never clones and starts on its own: a link with `autostart` doesn't start when it has to clone first. You press Start, after reading the prompt and what the repository brings.
+</Aside>
+
+## On another computer
+
+With **Run on** set to another computer in [New session](/new-session/form/), **Clone from GitHub…** clones there, in that computer's **Clone into** folder, and the session starts there. The new project shows as a tile of that computer.
+
+- When that computer has Clone from GitHub off, the form says "Turn on Clone from GitHub in Settings on mystic to clone there."
+- When that computer runs an older Switchboard, the form says "Update Switchboard on mystic to clone there."
+
+See [Remote access](/remote-access/) for pairing with another computer.
+
+<Aside>
+The form keeps the URL when you change **Run on**, so you can paste first and pick the computer after.
+</Aside>
+
+## Where the clone goes
+
+The clone is a normal folder, such as `~/Developer/name`. Open it in <Os mac="Finder" windows="File Explorer" /> or your editor like any other project, and remove it from your projects in the [Projects view](/projects/projects-view/) when you're done with it. Removing a project never deletes its folder.

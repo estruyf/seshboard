@@ -27,3 +27,6 @@ export const REMOTE_FEATURE_BRANCHES = 'branches';
 
 /** In `hello`'s `features`: `session.markUnread` answers, so Mark as read can be undone. */
 export const REMOTE_FEATURE_MARK_UNREAD = 'session.markUnread';
+
+/** In `hello`'s `features`: `projects.clonePlan`, `projects.clone` and `projects.cancelClone` answer (Clone from GitHub). */
+export const REMOTE_FEATURE_CLONE = 'projects.clone';

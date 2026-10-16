@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **Start a project from a GitHub URL.** Turn on **Clone from GitHub** in the new Settings › Projects page and choose the folder new projects go in, such as `~/Developer`. Then paste `https://github.com/owner/name` in New session (**Clone from GitHub…** above the projects, or the project filter), type your first prompt and press Start: Switchboard clones the repository, adds it to your projects and starts the session there. The clone starts right away, with its progress and **Cancel**, while you type. A `/tree/<branch>` URL checks out that branch, and a checkout of the same repository that is already there is used as it is. With **Run on** set to another computer, the clone and the session run there, in that computer's own folder. The command palette has **New session from a GitHub repository…**, the sidebar's add project menu has **Clone from GitHub…**, and a link whose `repo` you have no checkout of offers **Clone owner/name**. A cloned repository can bring hooks, MCP servers and permission rules of its own: before its first session, Switchboard lists them and asks. **Project order** moved from General to the Projects page.
+
 ### Fixed
 
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.

@@ -176,6 +176,16 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     changes: async () => listChanges(repo, 'uncommitted'),
     diff: async (_id, path) => fileDiff(repo, 'uncommitted', path),
     commit: async (_id, message) => commitAll(repo, message, {}),
+    clonePlan: async (url, name) => ({ state: 'free', repo: { owner: 'o', name: 'n', branch: null }, name: name ?? 'n', where: `~/Developer/${name ?? 'n'}` }),
+    clone: async (jobId, url, name, onProgress) => {
+      calls.push(`clone ${jobId} ${url} ${name}`);
+      const progress = { jobId, phase: null, percent: null, root: null, reused: false, brings: null, error: null };
+      setTimeout(() => {
+        onProgress({ ...progress, state: 'running', phase: 'receiving', percent: 40 });
+        onProgress({ ...progress, state: 'done', phase: 'checkout', percent: 100, root: ROOT });
+      }, 5);
+    },
+    cancelClone: (jobId) => void calls.push(`cancel ${jobId}`),
     onStatus: () => {},
     onFromDevice: (event) => void fromDevice.push(event),
     log: () => {},
@@ -348,6 +358,26 @@ describe('Remote hub', () => {
     ]);
     expect(options.defaultProfileId).toBe('default');
     expect(JSON.stringify(options)).not.toContain(ROOT);
+  });
+
+  it('clones on the computer for a phone, with job ids of its own and the project by its id', async () => {
+    const { hub, port, on, calls } = await setup();
+    await hub.start();
+    await on();
+    const { remote } = await pair(hub, port);
+    // Clone from GitHub on the computer: the job is the device's own, and the project comes back as its id.
+    const heard: unknown[] = [];
+    remote.on('projects.cloneProgress', (event) => heard.push(event));
+    expect(await remote.call('projects.clonePlan', { url: 'https://github.com/o/n' })).toMatchObject({ state: 'free', where: '~/Developer/n' });
+    expect(await remote.call('projects.clone', { jobId: 'j1', url: 'https://github.com/o/n', name: 'n' })).toEqual({});
+    await until(() => heard.length === 2);
+    expect(heard).toEqual([
+      expect.objectContaining({ jobId: 'j1', state: 'running', percent: 40, projectId: null }),
+      expect.objectContaining({ jobId: 'j1', state: 'done', projectId: projectIdOf(ROOT) }),
+    ]);
+    expect(heard[1]).not.toHaveProperty('root');
+    await remote.call('projects.cancelClone', { jobId: 'j1' });
+    expect(calls.filter((c) => c.startsWith('clone') || c.startsWith('cancel'))).toEqual([expect.stringMatching(/^clone remote:[^:]+:j1 https:\/\/github.com\/o\/n n$/), expect.stringMatching(/^cancel remote:[^:]+:j1$/)]);
   });
 
   it('marks read, archives, and changes the model, effort and mode only of sessions in the list', async () => {

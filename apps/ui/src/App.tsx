@@ -16,6 +16,8 @@ import { CommandPalette } from './components/palette/CommandPalette.tsx';
 import { PaletteDialogs } from './components/palette/PaletteDialogs.tsx';
 import { ClaudeInstallDialog } from './components/updates/ClaudeInstallDialog.tsx';
 import { SearchDialog } from './components/search/SearchDialog.tsx';
+import { CloneProjectDialog } from './components/clone/CloneProjectDialog.tsx';
+import { useClone, useCloneSync } from './state/cloneStore.ts';
 import { AddProjectDialog } from './components/projects/AddProjectDialog.tsx';
 import { BackupDialogs } from './components/backup/BackupDialogs.tsx';
 import { ProjectManagerView } from './components/projects/ProjectManagerView.tsx';
@@ -217,6 +219,7 @@ export function App() {
   useComputersSync();
   useRemoteSync();
   useProjectsSync();
+  useCloneSync();
   useProfilesSync();
   useTerminalsSync();
   useUpdatesSync();
@@ -251,6 +254,7 @@ export function App() {
   const shownView = view === 'settings' ? 'settings' : terminalView(behind, selectedId);
   const overlay = useOverlay((s) => s.open);
   const adding = useProjects((s) => s.adding);
+  const cloning = useClone((s) => s.dialog);
 
   return (
     <div className="flex h-full">
@@ -289,6 +293,7 @@ export function App() {
       <UnsentList />
       <ArchiveDraftDialog />
       {adding && <AddProjectDialog onClose={() => useProjects.getState().showAdd(false)} />}
+      {cloning && <CloneProjectDialog />}
       <BackupDialogs />
       <ThemeImportDialogs />
       <FocusGateDialog />

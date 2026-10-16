@@ -1,6 +1,6 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, type ContextItem, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, type ContextItem, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -27,6 +27,11 @@ import { promptWithContext } from '../composer/contextItems.ts';
 import { StartButton } from './StartButton.tsx';
 import { RunOnSwitch } from './RunOnSwitch.tsx';
 import { RemoteNewSession } from '../computers/RemoteNewSession.tsx';
+import { ClonePanel } from '../clone/ClonePanel.tsx';
+import { useTrustQuestion } from '../clone/CloneTrustDialog.tsx';
+import { CloneCancelled, useCloneJob, type CloneResult } from '../clone/useCloneJob.ts';
+import { canClone, planLine } from '../clone/cloneModel.ts';
+import { useClone, useCloneEnabled } from '../../state/cloneStore.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { THIS_COMPUTER } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
@@ -131,7 +136,7 @@ function LocalNewSession() {
   /** The folder the user changed options for: until the folder changes, late-arriving defaults never override their choices. */
   const touchedFor = useRef<string | null>(null);
   /** A `switchboard://` link chose the folder (or chose to leave it empty): the remembered or preferred folder must not fill it. */
-  const folderFromLink = useRef(false);
+  const folderFromLink = useRef(useClone.getState().form !== null);
   const linkRequest = useLinks((s) => s.newSession);
   /** Replaces the prompt: a link's prompt, or clearing it. */
   const [preset, setPreset] = useState<{ text: string; attachments?: ImageAttachment[]; context?: ContextItem[]; seq: number } | undefined>(undefined);
@@ -164,6 +169,16 @@ function LocalNewSession() {
   const waitMenu = useMenu();
   /** Start anyway in the focus note sends what is in the box, without asking again. */
   const [submitRequest, setSubmitRequest] = useState(0);
+  // Clone from GitHub: the form (kept in the store, so Run on can move it to another computer) and its clone here.
+  const cloneEnabled = useCloneEnabled();
+  const cloneForm = useClone((s) => s.form);
+  const cloneRequest = useClone((s) => s.request);
+  const cloneJob = useCloneJob(client, cloneForm?.url ?? '', cloneForm?.name ?? '');
+  /** A request that said which repository (the palette, a link, the folder field): clone as soon as the plan is in. */
+  const [cloneSoon, setCloneSoon] = useState(false);
+  /** The folder picked before the clone form opened, to go back to when it closes without a clone. */
+  const beforeClone = useRef<string | null>(null);
+  const trust = useTrustQuestion();
   const focus = useFocus();
   const atLimit = focus.limit !== null && focus.count >= focus.limit;
   /** Strict at the limit: Start waits (⌘↵ still asks, with the queue offered), Add to queue stays in Start's menu. */
@@ -351,6 +366,47 @@ function LocalNewSession() {
     setPreset({ text: item.prompt, attachments: item.attachments, seq: ++presets.current });
     setDraftPrompt(item.prompt);
   }, [handoff]);
+  // Clone from GitHub asked for here (the palette's step, a link's Clone, a URL in the folder field).
+  useEffect(() => {
+    if (!cloneRequest) return;
+    const request = useClone.getState().take();
+    if (!request) return;
+    if (fromLater) leaveQueued();
+    setLinkRepo(null);
+    setLinkNoFolder(false);
+    // A clone never starts a session on its own: Start does, after asking about what the repository brings.
+    setPendingStart(null);
+    setCloneSoon(request.start);
+    // Until the clone is there, no folder is picked: the strip and the lists under the box are about the clone.
+    if (cwd) beforeClone.current = cwd;
+    folderFromLink.current = true;
+    setCwd(null);
+  }, [cloneRequest]);
+  /** The clone finished: its folder (a project now) is the one New session starts in. */
+  const onCloned = (result: CloneResult) => {
+    if (!result.root || result.root === cwd) return;
+    reloadProjects();
+    changeFolder(result.root);
+  };
+  const startClone = () => void cloneJob.wait().then(onCloned, () => {});
+  useEffect(() => {
+    if (!cloneSoon || !cloneForm || cloneJob.stage !== 'idle' || (!cloneJob.plan && !cloneJob.problem)) return;
+    setCloneSoon(false);
+    if (canClone(cloneJob.plan) && !cloneJob.problem) startClone();
+  }, [cloneSoon, cloneForm, cloneJob.plan, cloneJob.problem, cloneJob.stage]);
+  const closeClone = () => {
+    setCloneSoon(false);
+    useClone.getState().closeForm();
+    // Closed without a clone: back to the project picked before.
+    if (!cwd && beforeClone.current) setCwd(beforeClone.current);
+    beforeClone.current = null;
+  };
+  /** The clone's folder, once it is there: a fresh one is worked in as it is (no worktree). */
+  const clonedRoot = cloneForm && cloneJob.stage === 'done' ? cloneJob.result?.root ?? null : null;
+  const freshClone = clonedRoot !== null && clonedRoot === cwd && !cloneJob.result?.reused;
+  /** The form is open and Start would clone first: the box works without a folder. */
+  const cloning = !!cloneForm && clonedRoot === null;
+
   // Find a checkout of the link's repository among your projects and folders with sessions.
   const lookingFor = linkRepo?.state === 'looking' ? linkRepo.repo : null;
   useEffect(() => {
@@ -523,7 +579,7 @@ function LocalNewSession() {
     if (picked) await addFolder(picked);
   };
 
-  const canWorktree = options.git && (inspection?.isGitRepo ?? false);
+  const canWorktree = options.git && (inspection?.isGitRepo ?? false) && !freshClone;
   const useWorktree = d.workspace === 'worktree' && canWorktree;
   const effectiveName = nameTouched ? worktreeName : suggestedName;
   const branch = inspection?.branch ?? (cwd ? (lastBranches.get(cwd) ?? null) : null);
@@ -641,22 +697,38 @@ function LocalNewSession() {
    * Returns false when nothing started and the prompt should stay.
    */
   const create = async (text: string, attachments: ImageAttachment[], parts: SentParts | undefined, { fromLink = false, skipGate = false, worktree = useWorktree } = {}): Promise<void | false> => {
-    if (!client || !cwd) throw new Error('Choose a folder first');
+    // With the clone form open, Start waits for the clone, then asks once about what the repository brings.
+    let cloned: CloneResult | null = null;
+    if (cloneForm && !fromLink) {
+      try {
+        cloned = await cloneJob.wait();
+      } catch (error) {
+        if (error instanceof CloneCancelled) return false;
+        throw error;
+      }
+      if (!cloned.root) throw new Error('The clone has no folder here');
+      onCloned(cloned);
+      if (bringsAnything(cloned.brings) && !(await trust.ask(cloned.root, cloned.brings))) return false;
+    }
+    const folder = cloned?.root ?? cwd;
+    if (!client || !folder) throw new Error('Choose a folder first');
+    // A fresh clone runs in the clone, on the branch it checked out; a clone that was there already as it is.
+    const fresh = cloned !== null && (folder !== cwd || !cloned.reused);
     // The same path as the palette's New session: the focus limit's gate, worktree naming, then the session.
     const outcome = await startNewSession(
       {
-        cwd,
+        cwd: folder,
         prompt: text,
         attachments,
-        choices: d,
-        worktree,
+        choices: fresh ? { ...d, branch: '', workspace: 'current' } : d,
+        worktree: fresh ? false : worktree,
         worktreeName: effectiveName,
         currentBranch: gitBranches.current,
         checkedOutElsewhere: gitBranches.checkedOutElsewhere,
         profileId,
         fromLink,
         skipGate,
-        addProject: options.addAsProject && !isProject && addAsProject && !!inspection?.exists,
+        addProject: !cloned && options.addAsProject && !isProject && addAsProject && !!inspection?.exists,
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
       },
@@ -668,14 +740,19 @@ function LocalNewSession() {
         open: (sessionId) => {
           // Edited from the queue and started here: it leaves the queue, and items waiting on it follow this session.
           // New session's own prompt for the project stays.
+          if (cloned) closeClone();
           if (fromLater) {
             forgetUnsavedQueued();
             void removeFromQueue(fromLater, true, sessionId).catch(() => {});
             leaveQueued();
           }
-          // The view goes away before the composer empties itself, so forget the prompt and its images here.
-          else useDrafts.getState().removeDraft(newDraftKey(cwd));
-          if (worktree && !nameTouched) setSuggestedName(randomWorktreeName());
+          // The view goes away before the composer empties itself, so forget the prompt and its images here (and where
+          // it moved to when the clone was picked while Start waited).
+          else {
+            useDrafts.getState().removeDraft(newDraftKey(cwd));
+            if (cloned?.root) useDrafts.getState().removeDraft(newDraftKey(cloned.root));
+          }
+          if (!fresh && worktree && !nameTouched) setSuggestedName(randomWorktreeName());
           select(sessionId);
         },
       },
@@ -720,7 +797,11 @@ function LocalNewSession() {
   );
 
   const folderProblem = !cwd
-    ? linkNoFolder
+    ? cloning
+      ? cloneJob.plan
+        ? `Claude works in the clone of ${cloneJob.plan.repo.owner}/${cloneJob.plan.repo.name}.`
+        : 'Paste a GitHub repository to clone.'
+      : linkNoFolder
       ? "The link doesn't say which project. Pick where Claude should work."
       : linkRepo
       ? linkRepo.state === 'looking'
@@ -859,6 +940,18 @@ function LocalNewSession() {
             </div>
           </div>
 
+          {cloneForm ? (
+            <ClonePanel
+              url={cloneForm.url}
+              name={cloneForm.name}
+              job={cloneJob}
+              onUrl={(url) => useClone.getState().editForm({ url })}
+              onName={(name) => useClone.getState().editForm({ name })}
+              onStart={startClone}
+              onClose={closeClone}
+              closeLabel={clonedRoot ? 'Done' : 'Pick a project instead'}
+            />
+          ) : (
           <FolderPicker
             value={question ? null : cwd}
             question={questionsDir ? { selected: question, onSelect: () => changeFolder(questionsDir) } : null}
@@ -872,7 +965,10 @@ function LocalNewSession() {
             onChooseOther={() => void chooseFolder()}
             shortcuts={view === 'new'}
             openRequest={pickerRequest}
+            onClone={cloneEnabled ? (url, start) => useClone.getState().cloneInNewSession(url ?? '', { start }) : undefined}
           />
+          )}
+          {trust.dialog}
 
           {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onDone={(root) => root && changeFolder(root)} />}
 
@@ -912,9 +1008,17 @@ function LocalNewSession() {
             >
               {/* Where and branch depend on the folder: until there is one, say why instead of showing empty controls. */}
               {!cwd ? (
-                <span className="min-w-0 flex-1 px-1.5 py-0.5 text-ui text-muted" data-route-placeholder data-route-hint>
-                  {folderProblem}
-                </span>
+                <>
+                  <span className="min-w-0 flex-1 px-1.5 py-0.5 text-ui text-muted" data-route-placeholder data-route-hint>
+                    {folderProblem}
+                  </span>
+                  {/* No checkout of the link's repository: clone it, with the link's prompt kept for Start. */}
+                  {linkRepo?.state === 'missing' && cloneEnabled && !cloneForm && (
+                    <Button size="sm" onClick={() => useClone.getState().cloneInNewSession(`https://github.com/${linkRepo.repo}`, { start: true })} className="shrink-0" data-link-clone>
+                      Clone {linkRepo.repo}
+                    </Button>
+                  )}
+                </>
               ) : question ? (
                 // No project and no git: nothing to choose about where Claude works.
                 <>
@@ -1084,7 +1188,7 @@ function LocalNewSession() {
               onContextChange={setDraftContext}
               controls={controls}
               onCycleMode={() => update({ permissionMode: nextMode(d.permissionMode) })}
-              disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
+              disabledReason={!client ? 'Connecting to the engine…' : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
               onSubmit={(text, attachments, requested, parts) => create(text, attachments, parts, { skipGate: requested === true })}
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (

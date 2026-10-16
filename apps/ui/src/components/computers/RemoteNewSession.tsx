@@ -1,8 +1,14 @@
-import { GitBranch } from 'lucide-react';
+import { FolderDown, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type RemoteProject, type RpcClient } from '@switchboard/protocol/client';
+import { bringsAnything, REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type RemoteProject, type RpcClient } from '@switchboard/protocol/client';
 import { comboPresses, matches, shortcutById } from '../../lib/shortcuts.ts';
 import { useComputers } from '../../state/computersStore.ts';
+import { useClone, useCloneEnabled } from '../../state/cloneStore.ts';
+import { ClonePanel } from '../clone/ClonePanel.tsx';
+import { useTrustQuestion } from '../clone/CloneTrustDialog.tsx';
+import { canClone, planLine } from '../clone/cloneModel.ts';
+import { CloneCancelled, useCloneJob, type CloneResult } from '../clone/useCloneJob.ts';
+import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -35,7 +41,8 @@ const TILE = 'flex min-w-0 items-center gap-2 rounded-lg border p-2.5 text-left 
  * what you change is sent, as in the remote app. Images and files go with the prompt when that computer takes them
  * (`RemoteAttachments.tsx`). In the current checkout, the branch checked out there shows, and another one picked is
  * checked out before the session starts (`REMOTE_FEATURE_BRANCHES`). Folders there can't be picked from here, and Quick question, the queue and the focus limit
- * are this computer's.
+ * are this computer's. Clone from GitHub (on here) clones on that computer, into its own Clone into folder
+ * (`REMOTE_FEATURE_CLONE`), and the session starts in the clone there.
  */
 export function RemoteNewSession({ client, computer }: { client: RpcClient<Contract> | null; computer: Computer }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
@@ -57,6 +64,14 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const attachments = useRemoteAttachments({ computer, rootRef: composer, newSession: true, disabledReason: connected ? null : `${name} is not connected` });
   // An older Switchboard there has no options.get: then New session sends only the project and the prompt.
   const options = useRemoteOptions(client, computer);
+  // Clone from GitHub, on that computer: the same form as here (kept when Run on changes), the clone there.
+  const cloneEnabled = useCloneEnabled();
+  const cloneForm = useClone((s) => s.form);
+  const cloneRequest = useClone((s) => s.request);
+  const cloneJob = useCloneJob(client, cloneForm?.url ?? '', cloneForm?.name ?? '', computer);
+  const [cloneSoon, setCloneSoon] = useState(false);
+  const trust = useTrustQuestion();
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (!client || !connected) return;
@@ -69,7 +84,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
     return () => {
       current = false;
     };
-  }, [client, computer.id, connected]);
+  }, [client, computer.id, connected, reload]);
 
   const tiles = useMemo(() => remoteProjectTiles(projects ?? [], list), [projects, list]);
   const project = tiles.find((t) => t.id === picked)?.project ?? null;
@@ -79,6 +94,32 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
     useRunOn.getState().setProject(computer.id, id);
     requestAnimationFrame(() => box.current?.focus());
   };
+  // Clone from GitHub asked for (the palette's step, a URL): clone as soon as that computer has said where it goes.
+  useEffect(() => {
+    if (!cloneRequest) return;
+    const request = useClone.getState().take();
+    if (request) setCloneSoon(request.start);
+  }, [cloneRequest]);
+  /** The clone finished there: its project is listed and picked. */
+  const onCloned = (result: CloneResult) => {
+    if (!result.projectId) return;
+    setReload((n) => n + 1);
+    pick(result.projectId);
+  };
+  const startClone = () => void cloneJob.wait().then(onCloned, () => {});
+  useEffect(() => {
+    if (!cloneSoon || !cloneForm || cloneJob.stage !== 'idle' || (!cloneJob.plan && !cloneJob.problem)) return;
+    setCloneSoon(false);
+    if (canClone(cloneJob.plan) && !cloneJob.problem) startClone();
+  }, [cloneSoon, cloneForm, cloneJob.plan, cloneJob.problem, cloneJob.stage]);
+  const closeClone = () => {
+    setCloneSoon(false);
+    useClone.getState().closeForm();
+  };
+  const cloned = cloneForm && cloneJob.stage === 'done' ? (cloneJob.result?.projectId ?? null) : null;
+  /** The form is open and Start would clone first: no project to pick yet. */
+  const cloning = !!cloneForm && cloned === null;
+
   // A picked tile that is past the quick ones shows anyway, as in the local picker.
   const shown = expanded ? tiles : tiles.slice(0, tiles.length > QUICK + 1 ? QUICK : QUICK + 1);
   const more = expanded ? 0 : tiles.length - shown.length;
@@ -128,21 +169,40 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   }, [client, computer.id, connected, takesBranch, projectId]);
   const checkoutBranch = remoteCheckoutBranch(branch, branches, worktree);
 
-  const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : !project ? 'Choose a project first' : !prompt.trim() ? 'Type a message first' : null;
+  const cloneBlocked = cloning && !canClone(cloneJob.plan) && cloneJob.stage !== 'running' ? (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, name).text : 'Paste a GitHub repository first')) : null;
+  const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : cloneBlocked ? cloneBlocked : !project && !cloning ? 'Choose a project first' : !prompt.trim() ? 'Type a message first' : null;
   const start = async () => {
-    if (blocked || starting || attachments.reading || !client || !project) return;
+    if (blocked || starting || attachments.reading || !client || (!project && !cloning)) return;
     setStarting(true);
     const { images, files } = attachments;
     try {
+      // With the clone form open, Start waits for the clone there, then asks once about what the repository brings.
+      let fresh: CloneResult | null = null;
+      if (cloneForm) {
+        try {
+          fresh = await cloneJob.wait();
+        } catch (e) {
+          if (e instanceof CloneCancelled) return;
+          throw e;
+        }
+        if (!fresh.projectId) throw new Error(`The clone has no project on ${name}`);
+        onCloned(fresh);
+        if (bringsAnything(fresh.brings) && !(await trust.ask(`${computer.id}:${fresh.projectId}`, fresh.brings))) return;
+      }
+      const projectId = fresh?.projectId ?? project!.id;
+      // A fresh clone runs in the clone, on the branch it checked out: no worktree, no other branch.
+      const inClone = fresh !== null && !fresh.reused;
       const { sessionId } = await callComputer(client, computer.id, 'session.create', {
-        projectId: project.id,
+        projectId,
         prompt: prompt.trim(),
         // Only a computer that takes them gets these: an older one would drop them without a word.
         ...(images.length ? { images } : {}),
         ...(files.length ? { files } : {}),
         ...(options ? remoteChanges(choice, defaults, baseProfile) : {}),
-        ...(checkoutBranch ? { checkoutBranch } : {}),
+        ...(inClone ? { worktree: false } : {}),
+        ...(checkoutBranch && !fresh ? { checkoutBranch } : {}),
       });
+      if (fresh) closeClone();
       setPrompt('');
       setChanges({});
       setBranch(null);
@@ -180,7 +240,32 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
           </div>
 
           {loadError && <Notice tone="error">{loadError}</Notice>}
-          <div className="@container">
+          {cloneForm ? (
+            <ClonePanel
+              url={cloneForm.url}
+              name={cloneForm.name}
+              job={cloneJob}
+              computer={name}
+              onUrl={(url) => useClone.getState().editForm({ url })}
+              onName={(folder) => useClone.getState().editForm({ name: folder })}
+              onStart={startClone}
+              onClose={closeClone}
+              closeLabel={cloned ? 'Done' : 'Pick a project instead'}
+            />
+          ) : (
+          <div className="@container grid gap-2">
+            {cloneEnabled && (
+              <SectionHeader
+                className="h-6"
+                action={
+                  <Button size="sm" icon={<FolderDown size={14} aria-hidden />} onClick={() => useClone.getState().openForm()} className="ml-auto font-normal tracking-normal normal-case" data-clone-from-github>
+                    Clone from GitHub…
+                  </Button>
+                }
+              >
+                Project
+              </SectionHeader>
+            )}
             {projects === null && !loadError ? (
               <p className="py-3 text-center text-ui text-muted">{connected ? `Loading the projects on ${name}…` : `The projects show once ${name} is back.`}</p>
             ) : tiles.length === 0 && !loadError ? (
@@ -198,6 +283,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
               </div>
             )}
           </div>
+          )}
+          {trust.dialog}
 
           <div className="rounded-xl">
             <div className="flex min-h-10 min-w-0 items-center gap-1 rounded-t-xl border border-b-0 border-remote/45 bg-border/25 px-1.5 py-1" data-route-tray>
@@ -205,17 +292,17 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
               <span aria-hidden className="px-0.5 text-faint">
                 /
               </span>
-              {project ? (
+              {project && !cloning ? (
                 <span className="flex min-w-0 items-center gap-1.5 px-1 text-ui font-semibold text-text" data-route-project>
                   <ProjectIcon project={undefined} root={remoteProjectKey(computer.id, project.id)} name={project.name} size={16} />
                   <span className="truncate">{project.name}</span>
                 </span>
               ) : (
                 <span className="min-w-0 truncate px-1.5 text-ui text-muted" data-route-hint>
-                  Choose a project on {name}
+                  {cloning ? (cloneJob.plan ? `Claude works in the clone of ${cloneJob.plan.repo.owner}/${cloneJob.plan.repo.name}.` : 'Paste a GitHub repository to clone.') : `Choose a project on ${name}`}
                 </span>
               )}
-              {options && project && (
+              {options && project && !cloning && (
                 <>
                   <span aria-hidden className="px-0.5 text-faint">
                     /
@@ -276,7 +363,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
               <div className="mt-1.5 flex items-center justify-between gap-2">
                 <div className="-ml-1.5 flex min-w-0 flex-1 items-center gap-0.5">
                   <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
-                  {options && project && (
+                  {options && project && !cloning && (
                     <>
                       <RemoteProfileChip
                         options={options}

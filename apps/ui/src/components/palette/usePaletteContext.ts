@@ -13,6 +13,7 @@ import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjectPage } from '../../state/projectPageStore.ts';
+import { useCloneEnabled } from '../../state/cloneStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { isQuestionsFolder } from '../../lib/questions.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
@@ -87,6 +88,7 @@ export function usePaletteContext(): PaletteContext {
   const projects = useProjects((s) => s.projects);
   const projectFilter = useProjects((s) => s.filter);
   const questionsDir = useProjects((s) => s.questionsDir);
+  const cloneEnabled = useCloneEnabled();
   const prefs = usePreferences((s) => s.prefs);
   const themes = useThemes((s) => s.themes);
   const activeTheme = useThemes((s) => s.active.entry.id);
@@ -188,6 +190,7 @@ export function usePaletteContext(): PaletteContext {
     questionsDir,
     composer: activeComposer(boxes, view === 'session' ? 'session' : view === 'new-session' ? 'new' : 'other', selectedId),
     canContinueInVSCode: editors.some((e) => e.id === 'vscode'),
+    cloneEnabled,
     computers: (computers ?? []).filter((c) => c.state === 'connected').map((c) => ({ id: c.id, name: c.name })),
   };
 }

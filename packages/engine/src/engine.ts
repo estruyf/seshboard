@@ -7,6 +7,7 @@ import {
   BUILTIN_PROFILE_ID,
   COMPANION_DIR,
   contract,
+  isSameOrInside,
   RpcError,
   serveRpc,
   type Contract,
@@ -25,6 +26,7 @@ import {
   type SystemInfo,
   type PrError,
   type PrProgress,
+  type CloneProgress,
   type WorktreePullRequest,
   type WorktreeSize,
   type Transport,
@@ -104,6 +106,7 @@ import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
 import { RemoteHub } from './remote/remoteHub.ts';
+import { CloneService } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { listFolders } from './system/folders.ts';
@@ -179,6 +182,11 @@ export interface EngineOptions {
    * must never call a model. Never set in normal use.
    */
   stubCatchUp?: boolean;
+  /**
+   * Clone from GitHub clones from this folder (`<folder>/<owner>/<name>.git`) instead of GitHub, never with gh: the
+   * smoke test and the screenshots, which must never clone from the network. Never set in normal use.
+   */
+  cloneSource?: string;
 }
 
 /** See `EngineOptions.demoUsage`. */
@@ -343,6 +351,25 @@ export function createEngine(options: EngineOptions): Engine {
   /** Where quick questions run: never one of the projects, so it is left out of every project list. */
   const questions = new QuestionsFolder(join(options.dataDir, 'questions'));
   const listProjects = () => projects.list(folderActivity()).filter((p) => !questions.contains(p.root));
+  // --- Clone from GitHub: Settings › Projects ----------------------------------------------------------------------
+  /** Clones started from a phone or another computer, by job id: their progress goes back to that connection too. */
+  const cloneListeners = new Map<string, (progress: CloneProgress) => void>();
+  const clones = new CloneService({
+    appState,
+    home: homedir(),
+    env: async () => (await shell.ready).env,
+    gh: defaultGh(),
+    ...(options.cloneSource ? { source: options.cloneSource } : {}),
+    addProject: (root) => projects.add(root),
+    isProject: (root) => listProjects().some((p) => p.added && isSameOrInside(p.root, root) && isSameOrInside(root, p.root)),
+    progress: (progress) => {
+      broadcast('projects.cloneProgress', progress);
+      cloneListeners.get(progress.jobId)?.(progress);
+      if (progress.state !== 'running') cloneListeners.delete(progress.jobId);
+    },
+    settingsChanged: (settings) => broadcast('projects.cloneSettings', settings),
+    log,
+  });
   const sessions = new SessionIndex({
     baseline,
     isOwned: (id) => owned.has(id),
@@ -1187,6 +1214,17 @@ export function createEngine(options: EngineOptions): Engine {
           throw new RpcError('GIT_FAILED', (error as Error).message);
         }
       },
+      clonePlan: (url, name) => clones.plan(url, name),
+      clone: async (jobId, url, name, onProgress) => {
+        cloneListeners.set(jobId, onProgress);
+        try {
+          await clones.start(jobId, url, name);
+        } catch (error) {
+          cloneListeners.delete(jobId);
+          throw error;
+        }
+      },
+      cancelClone: (jobId) => clones.cancel(jobId),
       onStatus: (status) => broadcast('remote.changed', status),
       onFromDevice: (event) => broadcast('remote.fromDevice', event),
       log,
@@ -1446,6 +1484,17 @@ export function createEngine(options: EngineOptions): Engine {
     'projects.findByRepo': async ({ repo }) => {
       const folders = listProjects().filter((p) => p.exists).map((p) => p.root);
       return { root: await findCheckout(folders, repo) };
+    },
+    'projects.cloneSettings': () => clones.settings(),
+    'projects.setCloneSettings': (change) => clones.setSettings(change),
+    'projects.clonePlan': ({ url, name }) => clones.plan(url, name),
+    'projects.clone': async ({ jobId, url, name }) => {
+      await clones.start(jobId, url, name);
+      return {};
+    },
+    'projects.cancelClone': ({ jobId }) => {
+      clones.cancel(jobId);
+      return {};
     },
     'projects.add': ({ path }) => {
       questions.assertNotProject(path);
@@ -2474,6 +2523,7 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      clones.close();
       clearTimeout(settingTimer);
       companion?.stop();
       remote?.stop();

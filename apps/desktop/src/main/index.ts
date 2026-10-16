@@ -70,6 +70,8 @@ if (scripted) {
   process.env.SWITCHBOARD_STUB_BTW = '1';
   // Catch-up cards are written from the tool calls, never by a model.
   process.env.SWITCHBOARD_STUB_CATCHUP = '1';
+  // Clone from GitHub clones from local bare repositories in the throwaway profile, never from the network.
+  process.env.SWITCHBOARD_CLONE_SOURCE ??= join(app.getPath('userData'), 'clone-source');
 }
 
 // The single-instance lock belongs to the data folder. Development builds keep their own ("Switchboard Dev"), so
@@ -637,6 +639,12 @@ interface TimedReport extends RendererReadyReport {
   loadedMs: number;
 }
 ipcMain.handle(IpcChannel.pickFolder, async (event, defaultPath: unknown) => {
+  // A smoke or screenshot run has no one to answer the dialog: a step that needs one sets the folder to pick, once.
+  const answer = scripted ? process.env.SWITCHBOARD_PICK_FOLDER : undefined;
+  if (answer) {
+    delete process.env.SWITCHBOARD_PICK_FOLDER;
+    return answer;
+  }
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
     title: 'Choose a folder for the new session',
@@ -1746,9 +1754,10 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   const scoped = await withSettingsClosed("document.querySelector('[data-session-list]') && !document.querySelector('[data-session-id][data-in-app=\"false\"]')");
   await section('sidebar');
 
+  await section('projects');
+  await click('[data-project-order="yours"]');
   await section('general');
   await click('[data-startup-view="new"]');
-  await click('[data-project-order="yours"]');
   await click('[data-confirm-quit]');
   await until(() => !preferences.get().confirmQuit);
   Menu.getApplicationMenu()?.getMenuItemById('quit')?.click();
@@ -1759,6 +1768,7 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
 
   await click('[data-confirm-quit]');
   await click('[data-startup-view="home"]');
+  await section('projects');
   await click('[data-project-order="recent"]');
   await section('sidebar');
   await click('[data-session-scope]');
@@ -4507,6 +4517,110 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Clone from GitHub, never from the network and never starting a session: Settings › Projects turns it on with a
+ * throwaway Clone into folder (the folder dialog answered here), a GitHub URL in New session's folder field offers
+ * Clone owner/name, and ↩ clones a local bare repository (the engine clones from SWITCHBOARD_CLONE_SOURCE in a smoke
+ * run), which is added as a project and picked, without a worktree. Start then asks about the hook the repository
+ * brings; Cancel keeps the prompt and starts nothing. Ends as it started: the project removed, the setting off, the
+ * folders gone.
+ */
+async function runCloneStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const source = process.env.SWITCHBOARD_CLONE_SOURCE;
+  if (!source) return 'no SWITCHBOARD_CLONE_SOURCE: the engine would clone from GitHub';
+  const sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-clone-')));
+  const bare = join(source, 'acme', 'smoke-clone.git');
+  const folder = join(sandbox, 'Developer');
+  const target = join(folder, 'smoke-clone');
+  const cleanUp = () => {
+    rmSync(sandbox, { recursive: true, force: true });
+    rmSync(bare, { recursive: true, force: true });
+  };
+  // "GitHub": acme/smoke-clone, a bare repository whose project settings bring a hook.
+  const work = join(sandbox, 'work');
+  mkdirSync(join(work, '.claude'), { recursive: true });
+  const git = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, stdio: 'ignore' });
+  git(work, ['init', '-q']);
+  writeFileSync(join(work, 'README.md'), '# Smoke clone\n');
+  writeFileSync(join(work, '.claude', 'settings.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo smoke' }] }] } }));
+  git(work, ['add', '.']);
+  git(work, ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '-m', 'first']);
+  mkdirSync(join(source, 'acme'), { recursive: true });
+  git(sandbox, ['clone', '-q', '--bare', work, bare]);
+  mkdirSync(folder);
+
+  // Settings › Projects: turning it on asks for the folder first.
+  await js(`${one('[data-open-settings]')}.click()`);
+  if (!(await waitInPage(win, one('[data-settings-section="projects"]'), 3_000))) return (cleanUp(), 'Settings has no Projects page');
+  await js(`${one('[data-settings-section="projects"]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-settings-page="projects"]')} && ${one('[data-clone-enabled]')} && ${one('[data-project-order]')}`, 3_000))) return (cleanUp(), 'Settings › Projects has no Clone from GitHub or Project order');
+  process.env.SWITCHBOARD_PICK_FOLDER = folder;
+  await js(`${one('[data-clone-enabled]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-clone-enabled]')}.getAttribute('aria-checked') === 'true' && ${one(`[data-clone-folder-path=${JSON.stringify(folder)}]`)}`, 3_000))) {
+    delete process.env.SWITCHBOARD_PICK_FOLDER;
+    return (cleanUp(), 'turning on Clone from GitHub did not ask for its folder and turn on');
+  }
+  await js(`${one('[data-close-settings]')}.click()`);
+
+  const turnOff = async () => {
+    await js(`${one('[data-open-settings]')}.click()`);
+    await waitInPage(win, one('[data-settings-page="projects"] [data-clone-enabled]'), 3_000);
+    if ((await js(`${one('[data-clone-enabled]')}?.getAttribute('aria-checked')`)) === 'true') await js(`${one('[data-clone-enabled]')}.click()`);
+    const off = await waitInPage(win, `${one('[data-clone-enabled]')}?.getAttribute('aria-checked') === 'false'`, 3_000);
+    await js(`${one('[data-close-settings]')}?.click()`);
+    return off;
+  };
+  const fail = async (why: string) => {
+    await js(`${one('[data-clone-close]')}?.click()`);
+    await turnOff();
+    cleanUp();
+    return why;
+  };
+
+  // New session: Clone from GitHub… next to Add project…, and a URL pasted in the folder field offers the clone.
+  pressKey(win, 'N', ['meta']);
+  if (!(await waitInPage(win, `${one('[data-new-session-view] [data-clone-from-github]')} && ${one('[data-new-session-view] [data-filter-projects]')}`, 3_000))) return fail('New session has no Clone from GitHub…');
+  await js(`${one('[data-new-session-view] [data-filter-projects]')}.click()`);
+  if (!(await waitInPage(win, one('[data-folder-list] input'), 3_000))) return fail('Filter did not open the folder field');
+  await setFieldValue(win, '[data-folder-list] input', 'https://github.com/acme/smoke-clone');
+  if (!(await waitInPage(win, `${one('[data-clone-option="acme/smoke-clone"]')}?.dataset.active === 'true'`, 3_000))) return fail('a GitHub URL in the folder field did not offer Clone acme/smoke-clone');
+  pressKey(win, 'Return');
+  if (!(await waitInPage(win, `${one('[data-clone-repo]')}?.dataset.cloneState === 'done' && ${one('[data-clone-progress="done"]')}`, 20_000))) {
+    return fail(`the clone did not finish: ${String(await js(`${one('[data-clone-repo]')}?.innerText ?? 'no clone form'`))}`);
+  }
+  if (!existsSync(join(target, 'README.md'))) return fail('the clone is not in the Clone into folder');
+  const picked = `${one('[data-route-project]')}?.dataset.tooltip === ${JSON.stringify(target)}`;
+  if (!(await waitInPage(win, `${picked} && ${one('[data-worktree-switch]')}?.disabled === true`, 5_000))) return fail('the clone was not picked as the project, or a fresh clone still offers a worktree');
+  await shot(win, 'clone-from-github.png');
+
+  // Start asks about the hook it brings; Cancel starts nothing and keeps the prompt.
+  const box = '[data-new-session-view] [data-composer]';
+  await setFieldValue(win, box, 'Smoke: never sent');
+  await js(`${one('[data-new-session-view] [data-composer-submit]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-clone-trust]')}?.innerText.includes('echo smoke') && document.activeElement === ${one('[data-clone-trust-cancel]')}`, 5_000))) return fail('Start did not ask about the hook the repository brings, with Cancel focused');
+  await js(`${one('[data-clone-trust-cancel]')}.click()`);
+  if (!(await waitInPage(win, `!${one('[data-clone-trust]')} && ${one('[data-new-session-view]')} && ${one(box)}?.value === 'Smoke: never sent'`, 3_000))) return fail('Cancel left New session or lost the prompt');
+  await setFieldValue(win, box, '');
+
+  // Clean up: the form closed, the project removed, the setting off, the folders gone.
+  await js(`${one('[data-clone-close]')}.click()`);
+  if (!(await waitInPage(win, `!${one('[data-clone-repo]')} && ${one(`[data-folder-option=${JSON.stringify(target)}]`)}`, 3_000))) return fail('Done did not show the clone as a project tile');
+  await js(`${one('[data-open-projects]')}.click()`);
+  const row = one(`[data-project-row=${JSON.stringify(target)}] [data-project-more-button]`);
+  if (!(await waitInPage(win, row, 3_000))) return fail('the clone is not in Projects');
+  await js(`${row}.click()`);
+  if (!(await waitInPage(win, one('[role=menu] [data-remove-project]'), 2_000))) return fail("no Remove in the project's ⋯ menu");
+  await js(`${one('[role=menu] [data-remove-project]')}.click()`);
+  if (!(await waitInPage(win, one('[data-confirm]'), 3_000))) return fail('no confirmation before removing');
+  await js(`${one('[data-confirm]')}.click()`);
+  if (!(await waitInPage(win, `!${one(`[data-project-row=${JSON.stringify(target)}]`)}`, 3_000))) return fail('the clone was not removed from the projects');
+  if (!(await turnOff())) return (cleanUp(), 'Clone from GitHub did not turn off again');
+  cleanUp();
+  return 'ok: Settings › Projects asked for the folder and turned it on, a URL in the folder field offered the clone, ↩ cloned the local repository and picked it without a worktree, Start asked about its hook and Cancel kept the prompt; removed and turned off again';
+}
+
+/**
  * Quick question, read-only: ⌘⇧N opens New session with Quick question picked, which hides every git option
  * (where, branch, worktree, Add to projects) and keeps the model, effort and mode chips, in a mode that asks.
  * The palette's Quick question… shows the same in its prompt step. Nothing is typed or sent. A project picks
@@ -7044,6 +7158,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('profiles', () => runProfilesStep(win));
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
+  await step('clone from GitHub: the setting with its folder, a URL in the folder field, the clone of a local repository, the trust question (no session)', () => runCloneStep(win), { timeoutMs: 60_000 });
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
