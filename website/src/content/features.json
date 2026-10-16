@@ -1872,6 +1872,11 @@
       "page": "focus-limit"
     },
     {
+      "id": "feature:focus-count-remote",
+      "name": "Count sessions on other computers",
+      "page": "focus-limit"
+    },
+    {
       "id": "feature:focus-counter",
       "name": "Focus counter and popover",
       "page": "focus-limit"

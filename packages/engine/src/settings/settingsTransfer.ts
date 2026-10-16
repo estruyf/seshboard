@@ -66,6 +66,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   focusLimit: 'Focus limit',
   focusMode: 'At the focus limit',
   focusCountExternal: 'Count terminal and IDE sessions',
+  focusCountRemote: 'Count sessions on other computers',
   themeId: 'Theme',
   archiveAfterDays: 'Archive finished sessions after',
   deleteArchived: 'Delete archived sessions',

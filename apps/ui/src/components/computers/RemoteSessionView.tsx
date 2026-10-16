@@ -6,6 +6,7 @@ import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { remoteRowId } from '../../state/remoteSelection.ts';
 import { onlyThereLine, remoteRowStatus } from '../../state/remoteRows.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { statusLine } from '../../state/sidebarOrder.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -22,6 +23,8 @@ import { ComputerChip } from './ComputerChip.tsx';
 import { ComputerPrompt } from './ComputerPrompt.tsx';
 import { applyStream, applyUpdate, awayBanner, NOT_STREAMING, prependMessages, remoteItems, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
+import { RemoteEffortChip, RemoteModeChip, RemoteModelChip, useRemoteOptions } from './RemoteChips.tsx';
+import { remoteAutoFace, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
 import { RemoteText } from './RemoteText.tsx';
 import { remoteSessionEntries } from './remoteActions.ts';
 
@@ -355,8 +358,9 @@ function ToolRun({ tools }: { tools: RemoteTool[] }) {
 }
 
 /**
- * The message box, in the local layout: the computer's chip where the profile chip is, model and mode as read-only
- * chips when that computer says them, Stop while Claude works, and a `remote` border. Images and files go with the
+ * The message box, in the local layout: the computer's chip where the profile chip is, the session's profile (it keeps
+ * it, as a local one does), and model, effort and mode chips that change them there while it runs in Switchboard, as
+ * in the remote app. A computer too old for `options.get` shows them as text. Stop while Claude works, and a `remote` border. Images and files go with the
  * message (`RemoteAttachments.tsx`): files only to a computer whose Switchboard takes them.
  */
 function RemoteComposer({ client, computer, session, working, onSent, onStop }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; working: boolean; onSent(): void; onStop(): void }) {
@@ -366,6 +370,10 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   const connected = computer.state === 'connected';
   const name = computer.name;
   const attachments = useRemoteAttachments({ computer, rootRef: root, disabledReason: connected ? null : `${name} is not connected` });
+  const options = useRemoteOptions(client, computer);
+  // Only a session that runs in Switchboard there has a mode, and only then can its model, effort and mode change.
+  const running = session.permissionMode != null;
+  const fail = (e: Error) => toast(e.message, { body: `It didn’t change on ${name}.` });
   // A prompt is always needed, as on the phone: images and files go with it.
   const hasMessage = !!draft.trim();
   const send = () => {
@@ -416,16 +424,35 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
         <div className="-ml-1.5 flex min-w-0 flex-1 items-center gap-1">
           <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
           <ComputerChip name={name} size="header" offline={!connected} data-tooltip={`Claude runs on ${name}, with its Claude profile.`} />
-          {session.model && (
-            <span className="truncate px-1.5 text-ui text-muted" data-tooltip={`Model: ${session.model}`} data-remote-model>
-              {session.model}
+          {session.profile && (
+            <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Claude profile: ${session.profile.name}. A running session keeps its profile.`} data-remote-session-profile={session.profile.id}>
+              <span className={`size-1.5 rounded-full ${PROFILE_DOT[session.profile.color]}`} aria-hidden />
+              {session.profile.name}
             </span>
           )}
-          {session.permissionMode && (
-            <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Mode: ${MODE_LABEL[session.permissionMode]}`} data-remote-mode>
-              <span className={`size-1.5 rounded-full ${MODE_DOT[session.permissionMode] ?? 'bg-faint'}`} aria-hidden />
-              {MODE_LABEL[session.permissionMode]}
-            </span>
+          {running && options ? (
+            <>
+              <RemoteModelChip options={options} value={session.model} autoFace={remoteAutoFace(session.auto)} disabled={!connected} onPick={(model) => void callComputer(client, computer.id, 'session.setModel', { sessionId: session.id, model }).catch(fail)} />
+              {/* Only from a Switchboard that sends the effort, and for a model that takes one. */}
+              {session.effort !== undefined && options.efforts.length > 0 && remoteTakesEffort(options.models, session.model) && (
+                <RemoteEffortChip options={options} value={session.effort} disabled={!connected} onPick={(effort) => void callComputer(client, computer.id, 'session.setEffort', { sessionId: session.id, effort }).catch(fail)} />
+              )}
+              <RemoteModeChip options={options} value={session.permissionMode!} disabled={!connected} onPick={(mode) => void callComputer(client, computer.id, 'session.setPermissionMode', { sessionId: session.id, mode }).catch(fail)} />
+            </>
+          ) : (
+            <>
+              {session.model && (
+                <span className="truncate px-1.5 text-ui text-muted" data-tooltip={`Model: ${session.model}`} data-remote-model>
+                  {options ? remoteModelLabel(options.models, session.model) : session.model}
+                </span>
+              )}
+              {session.permissionMode && (
+                <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Mode: ${MODE_LABEL[session.permissionMode]}`} data-remote-mode>
+                  <span className={`size-1.5 rounded-full ${MODE_DOT[session.permissionMode] ?? 'bg-faint'}`} aria-hidden />
+                  {MODE_LABEL[session.permissionMode]}
+                </span>
+              )}
+            </>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">

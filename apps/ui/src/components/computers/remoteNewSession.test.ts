@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteSession } from '@switchboard/protocol/client';
-import { remoteProjectTiles } from './remoteNewSession.ts';
+import type { RemoteOptions, RemoteSession } from '@switchboard/protocol/client';
+import { remoteAutoFace, remoteChanges, remoteDefaultChoice, remoteModelLabel, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort } from './remoteNewSession.ts';
 
 const project = (id: string, name: string) => ({ id: id.padEnd(16, '0'), name });
 const session = (id: string, projectId: string, status: RemoteSession['status'], updatedAt = 1): RemoteSession => ({
@@ -35,5 +35,78 @@ describe('New session on another computer', () => {
 
   it('works before the session list came', () => {
     expect(remoteProjectTiles([project('b', 'b'), project('a', 'a')], null).map((t) => t.project.name)).toEqual(['a', 'b']);
+  });
+});
+
+const options: RemoteOptions = {
+  models: [
+    { value: 'opus', displayName: 'Opus', description: '', supportsEffort: true },
+    { value: 'haiku', displayName: 'Haiku', description: '', supportsEffort: false },
+  ],
+  efforts: ['low', 'medium', 'high'],
+  modes: ['default', 'acceptEdits', 'plan', 'auto'],
+  profiles: [
+    { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, worktree: null } },
+    { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'haiku', effort: 'low', permissionMode: 'acceptEdits', worktree: true } },
+  ],
+  defaultProfileId: 'default',
+  projects: [
+    { id: 'aaaaaaaaaaaaaaaa', profileId: null, defaults: { model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true } },
+    { id: 'bbbbbbbbbbbbbbbb', profileId: 'work', defaults: { model: null, effort: null, permissionMode: 'plan', worktree: null } },
+  ],
+};
+
+describe('New session choices on another computer', () => {
+  it("start from the project's defaults", () => {
+    expect(remoteDefaultChoice(options, 'aaaaaaaaaaaaaaaa')).toEqual({ profileId: 'default', model: 'opus', effort: 'high', permissionMode: 'plan', worktree: true });
+    expect(remoteDefaultChoice(options, 'other')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'default', worktree: false });
+    expect(remoteDefaultChoice(null, null).permissionMode).toBe('default');
+  });
+
+  it("take the project's profile, and another profile's defaults under the project's own", () => {
+    expect(remoteProjectProfile(options, 'bbbbbbbbbbbbbbbb')).toBe('work');
+    expect(remoteProjectProfile(options, 'aaaaaaaaaaaaaaaa')).toBe('default');
+    expect(remoteDefaultChoice(options, 'bbbbbbbbbbbbbbbb')).toEqual({ profileId: 'work', model: 'haiku', effort: 'low', permissionMode: 'plan', worktree: true });
+    expect(remoteDefaultChoice(options, 'bbbbbbbbbbbbbbbb', 'default')).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false });
+  });
+
+  it('work with a computer that sends no profiles', () => {
+    const older = { ...options, profiles: undefined, defaultProfileId: undefined, projects: [{ id: 'aaaaaaaaaaaaaaaa', defaults: options.projects[0]!.defaults }] } as unknown as RemoteOptions;
+    expect(remoteProfiles(older)).toEqual([]);
+    expect(remoteProjectProfile(older, 'aaaaaaaaaaaaaaaa')).toBe('default');
+    expect(remoteDefaultChoice(older, 'aaaaaaaaaaaaaaaa').model).toBe('opus');
+  });
+
+  it('start on the default model when the default is Auto and Auto is off there', () => {
+    const auto = { ...options, projects: [{ ...options.projects[0]!, defaults: { ...options.projects[0]!.defaults, model: 'auto' } }] };
+    expect(remoteDefaultChoice({ ...auto, auto: { enabled: false, allowed: [] } }, 'aaaaaaaaaaaaaaaa').model).toBeNull();
+    expect(remoteDefaultChoice({ ...auto, auto: { enabled: true, allowed: ['sonnet'] } }, 'aaaaaaaaaaaaaaaa').model).toBe('auto');
+  });
+
+  it('send only what changed, and the profile only when it is not the project\'s', () => {
+    const defaults = remoteDefaultChoice(options, 'bbbbbbbbbbbbbbbb');
+    expect(remoteChanges(defaults, defaults, 'work')).toEqual({});
+    const other = remoteDefaultChoice(options, 'bbbbbbbbbbbbbbbb', 'default');
+    expect(remoteChanges({ ...other, model: 'opus' }, other, 'work')).toEqual({ profileId: 'default', model: 'opus' });
+    // Bypass is only picked on the computer itself.
+    expect(remoteChanges({ ...defaults, permissionMode: 'bypassPermissions' }, defaults, 'work')).toEqual({});
+  });
+
+  it('name models and say whether they take an effort', () => {
+    expect(remoteModelLabel(options.models, null)).toBe('Default model');
+    expect(remoteModelLabel(options.models, 'auto')).toBe('Auto');
+    expect(remoteModelLabel(options.models, 'haiku')).toBe('Haiku');
+    expect(remoteModelLabel(options.models, 'claude-sonnet-5-5')).toBe('Sonnet');
+    expect(remoteTakesEffort(options.models, null)).toBe(true);
+    expect(remoteTakesEffort(options.models, 'haiku')).toBe(false);
+    expect(remoteTakesEffort(options.models, 'unknown')).toBe(true);
+  });
+
+  it("say what Auto picked for a running session", () => {
+    expect(remoteAutoFace(null)).toBeNull();
+    expect(remoteAutoFace(undefined)).toBeNull();
+    expect(remoteAutoFace({ picked: null, choosing: true })).toBe('Auto');
+    expect(remoteAutoFace({ picked: 'sonnet', choosing: false })).toBe('Auto · Sonnet');
+    expect(remoteAutoFace({ picked: null, choosing: false })).toBe('Auto · Default model');
   });
 });
