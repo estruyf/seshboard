@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### Changed
+
+- **The time and duration under a reply now show when you hover the reply, with its buttons.** The faint line under the last reply of a turn, such as **14:32 · 2m 14s**, stays out of the way while you read. Hover the reply, or move to its buttons with Tab, to see it. It takes the same space as before, so nothing moves.
+
 ### Fixed
 
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.
