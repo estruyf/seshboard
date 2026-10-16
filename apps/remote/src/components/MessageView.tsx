@@ -14,6 +14,8 @@ export function ItemView({ item, results, live }: { item: TranscriptItem; result
   switch (item.kind) {
     case 'message':
       return <UserMessage message={item.message} />;
+    case 'notice':
+      return <p className="text-center text-meta break-words whitespace-pre-wrap text-muted">{item.text}</p>;
     case 'text':
       return <Markdown text={item.text} />;
     case 'thinking':

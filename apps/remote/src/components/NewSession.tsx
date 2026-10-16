@@ -1,27 +1,31 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronLeft, Search } from 'lucide-react';
+import { Check, ChevronLeft, Search } from 'lucide-react';
 import type { RemoteOptions, RemoteProject, RemoteSession } from '@switchboard/protocol/remote-client';
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
-import { useFinePointer } from '../lib/media.ts';
+import { useFinePointer, useWide } from '../lib/media.ts';
 import { autoOn, changedFrom, defaultChoice, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
 import { lastProject, rememberProject } from '../lib/storage.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
 import type { Client } from './Connected.tsx';
 import { EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip } from './OptionChips.tsx';
+import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button, Kbd } from './ui.tsx';
 
 const TONE_DOT: Record<TileTone, string> = { 'needs-you': 'bg-warn', working: 'bg-accent-ink', idle: 'bg-faint' };
 const TONE_TEXT: Record<TileTone, string> = { 'needs-you': 'text-warn', working: 'text-accent-ink', idle: 'text-muted' };
-/** More than this and a filter field shows above the tiles. */
+/** More than this and a filter field shows above the tiles (in the sheet on a phone). */
 const FILTER_FROM = 7;
+/** More than this don't fit across a phone: All projects opens them as a list. */
+const LIST_FROM = 3;
 /** What you typed survives going back to the list and coming back, until the session starts. */
 const DRAFT = 'switchboard-remote:new-draft';
 
 /**
  * New session in one of your projects, the ones you added in Switchboard. The tiles (one row that scrolls sideways)
  * say what's going on in each, most recent first; the project you last started in (or the one with the newest session)
- * is picked for you, so most of the time you only type. Under the prompt, the project's profile (with more than one)
+ * is picked for you, so most of the time you only type. On a phone, All projects opens them as a list in a sheet, with
+ * the filter there, so the keyboard doesn't come up over the tiles. Under the prompt, the project's profile (with more than one)
  * and its defaults for model, effort, mode and worktree as chips, to change for this session only. Queue for later puts it in Switchboard's queue instead,
  * while the project has a session working.
  */
@@ -37,6 +41,9 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
   const [changes, setChanges] = useState<Partial<Choice>>({});
   const attachments = useAttachments({ features, newSession: true, onError: setError });
   const fine = useFinePointer();
+  const wide = useWide();
+  const [listOpen, setListOpen] = useState(false);
+  const row = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   // Read when the projects arrive, without loading them again each time a session changes.
   const latest = useRef(sessions);
@@ -69,6 +76,12 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
     if (id !== projectId) setChanges({});
     setProjectId(id);
     if (fine) box.current?.focus();
+  };
+  /** Picked in the list: its tile comes into view, so the row shows what you picked. */
+  const pickFromList = (id: string) => {
+    pick(id);
+    setListOpen(false);
+    requestAnimationFrame(() => row.current?.querySelector(`[data-remote-project="${CSS.escape(id)}"]`)?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' }));
   };
 
   // Another profile brings its defaults, under the project's own and what you changed.
@@ -108,7 +121,8 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
   };
 
   const now = Date.now();
-  const needle = filter.trim().toLowerCase();
+  // The filter is only beside the tiles on a wide screen; on a phone it filters the list in the sheet.
+  const needle = wide ? filter.trim().toLowerCase() : '';
   const shown = recentProjects(projects ?? [], sessions).filter((p) => !needle || p.name.toLowerCase().includes(needle) || p.id === projectId);
   const picked = projects?.find((p) => p.id === projectId) ?? null;
 
@@ -133,7 +147,13 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
               <h2 id="pick-project" className="flex-1 text-meta font-semibold tracking-wide text-faint uppercase">
                 Project
               </h2>
-              {projects && projects.length >= FILTER_FROM && (
+              {!wide && projects && projects.length > LIST_FROM && (
+                <Button variant="quiet" size="md" onClick={() => setListOpen(true)} className="-mr-2 px-2!" data-remote-all-projects>
+                  All projects
+                  <span className="text-faint tabular-nums">{projects.length}</span>
+                </Button>
+              )}
+              {wide && projects && projects.length >= FILTER_FROM && (
                 <label className="field flex items-center gap-1.5 px-2">
                   <Search className="size-3.5 text-faint" aria-hidden />
                   <input
@@ -158,7 +178,7 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
             </div>
             {projects === null && !error && <p className="px-4 text-ui text-muted sm:px-6">Loading projects…</p>}
             {projects?.length === 0 && <p className="mx-4 rounded-lg bg-sidebar p-3 text-ui text-muted sm:mx-6">Add a project in Switchboard on your computer first. New sessions start in the projects you added there.</p>}
-            <div role="radiogroup" aria-labelledby="pick-project" className="scroll-row flex snap-x gap-2 px-4 pt-1 pb-2 sm:px-6">
+            <div ref={row} role="radiogroup" aria-labelledby="pick-project" className="scroll-row flex snap-x scroll-px-4 gap-2 px-4 pt-1 pb-2 sm:scroll-px-6 sm:px-6">
               {shown.map((project) => {
                 const isPicked = projectId === project.id;
                 const status = projectStatus(project.id, sessions, now);
@@ -183,6 +203,7 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
             </div>
             {projects && projects.length > 0 && shown.length === 0 && <p className="px-4 text-ui text-muted sm:px-6">No project matches.</p>}
           </section>
+          {listOpen && projects && <ProjectSheet projects={recentProjects(projects, sessions)} sessions={sessions} now={now} picked={projectId} onPick={pickFromList} onClose={() => setListOpen(false)} />}
 
           <form
             id="new-session"
@@ -261,5 +282,58 @@ export function NewSession({ client, features, sessions, banner, onBack, onStart
         </div>
       </footer>
     </div>
+  );
+}
+
+/**
+ * Every project as a list, most recent first, with what's going on in each: the phone's way to reach one that's far
+ * along the row. A tap picks it and closes the sheet; with many projects a filter sits on top (Enter takes the first).
+ */
+function ProjectSheet({ projects, sessions, now, picked, onPick, onClose }: { projects: readonly RemoteProject[]; sessions: readonly RemoteSession[]; now: number; picked: string | null; onPick: (id: string) => void; onClose: () => void }) {
+  const [filter, setFilter] = useState('');
+  const needle = filter.trim().toLowerCase();
+  const shown = projects.filter((p) => !needle || p.name.toLowerCase().includes(needle));
+  const withFilter = projects.length >= FILTER_FROM;
+  return (
+    <Sheet title="Pick a project" onClose={onClose} tall={withFilter} hook="projects">
+      {withFilter && (
+        <label className="field sticky top-0 z-10 mb-2 flex items-center gap-2 px-3">
+          <Search className="size-4 text-faint" aria-hidden />
+          <input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && shown[0]) {
+                event.preventDefault();
+                onPick(shown[0].id);
+              }
+            }}
+            placeholder="Filter"
+            aria-label="Filter projects"
+            enterKeyHint="go"
+            className="min-h-11 w-full bg-transparent text-body outline-none placeholder:text-faint"
+          />
+        </label>
+      )}
+      <div role="radiogroup" aria-label="Projects" className="-mx-1 flex flex-col">
+        {shown.map((project) => {
+          const isPicked = picked === project.id;
+          const status = projectStatus(project.id, sessions, now);
+          return (
+            <button key={project.id} type="button" role="radio" aria-checked={isPicked} onClick={() => onPick(project.id)} data-remote-project-option={project.id} className="flex min-h-14 items-center gap-3 rounded-lg px-3 py-2 text-left active:bg-selected">
+              <span className="min-w-0 flex-1">
+                <span className={`block truncate text-body ${isPicked ? 'font-semibold' : 'font-medium'}`}>{project.name}</span>
+                <span className={`flex items-center gap-1.5 text-ui ${TONE_TEXT[status.tone]}`}>
+                  <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[status.tone]}`} />
+                  <span className="truncate">{status.label}</span>
+                </span>
+              </span>
+              <Check aria-hidden className={`size-4 shrink-0 text-accent-ink ${isPicked ? '' : 'invisible'}`} />
+            </button>
+          );
+        })}
+        {shown.length === 0 && <p className="px-3 py-2 text-ui text-muted">No project matches.</p>}
+      </div>
+    </Sheet>
   );
 }

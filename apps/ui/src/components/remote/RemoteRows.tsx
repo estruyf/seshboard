@@ -37,9 +37,24 @@ export const dangerQuiet = 'hover:text-error';
 
 /**
  * Asks before a destructive action, in a strip under its row: the question, Cancel (focused) and the filled action.
- * Esc cancels. Focus goes back to `returnTo` (the row's button) when it closes.
+ * Esc cancels. Focus goes back to `returnTo` (the row's button) when it closes. `boxed` is the narrow form, a framed
+ * box with the buttons under the question (the sidebar's Connected to this Mac).
  */
-export function ConfirmStrip({ question, action, onConfirm, onCancel, returnTo }: { question: string; action: string; onConfirm(): void; onCancel(): void; returnTo: RefObject<HTMLButtonElement | null> }) {
+export function ConfirmStrip({
+  question,
+  action,
+  onConfirm,
+  onCancel,
+  returnTo,
+  boxed = false,
+}: {
+  question: string;
+  action: string;
+  onConfirm(): void;
+  onCancel(): void;
+  returnTo: RefObject<HTMLButtonElement | null>;
+  boxed?: boolean;
+}) {
   const id = useId();
   const cancel = useRef<HTMLButtonElement>(null);
   // Once, when it opens: the row's button is read then, and gets focus back when the strip closes.
@@ -52,10 +67,12 @@ export function ConfirmStrip({ question, action, onConfirm, onCancel, returnTo }
     <div
       role="group"
       aria-labelledby={id}
-      className="flex flex-wrap items-center gap-2 border-t border-error/30 bg-error/6 px-4 py-2.5"
+      className={boxed ? 'my-1 grid gap-2 rounded-lg border border-error/45 bg-error/6 px-3 py-2.5' : 'flex flex-wrap items-center gap-2 border-t border-error/30 bg-error/6 px-4 py-2.5'}
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return;
         event.stopPropagation();
+        // Handled: a popover or dialog around it leaves this Escape alone.
+        event.preventDefault();
         onCancel();
       }}
       data-confirm-strip
@@ -63,12 +80,14 @@ export function ConfirmStrip({ question, action, onConfirm, onCancel, returnTo }
       <p id={id} className="min-w-0 flex-1 text-ui">
         {question}
       </p>
-      <Button ref={cancel} size="sm" onClick={onCancel}>
-        Cancel
-      </Button>
-      <Button size="sm" variant="danger" filled onClick={onConfirm} data-confirm>
-        {action}
-      </Button>
+      <span className={boxed ? 'flex justify-end gap-2' : 'contents'}>
+        <Button ref={cancel} size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button size="sm" variant="danger" filled onClick={onConfirm} data-confirm>
+          {action}
+        </Button>
+      </span>
     </div>
   );
 }

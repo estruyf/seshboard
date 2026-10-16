@@ -14,7 +14,7 @@ import {
 
 /**
  * A phone, for the tests: what the remote app does over its WebSocket, from Node. Not a test file itself, so the
- * server's and the hub's tests share it.
+ * server's and the hub's tests share it, and the app's smoke run connects one (Connected to this Mac).
  */
 
 /** The remote app's origin in tests. */
@@ -51,8 +51,9 @@ export function open(port: number, origin = APP_ORIGIN): Promise<{ ws: WebSocket
   });
 }
 
-export async function handshake(port: number, mode: 'pair' | 'connect', phone: KeyPair, engineKey: Uint8Array, psk?: Uint8Array) {
-  const socket = await open(port);
+/** The handshake of a phone; `origin` is the remote app's (the app's smoke run connects with the real one's). */
+export async function handshake(port: number, mode: 'pair' | 'connect', phone: KeyPair, engineKey: Uint8Array, psk?: Uint8Array, origin = APP_ORIGIN) {
+  const socket = await open(port, origin);
   const noise = initiatorHandshake({ mode, staticKey: phone, remoteStatic: engineKey, ...(psk ? { psk } : {}) });
   socket.ws.send(helloFrame(mode, noise.writeMessage1()));
   const reply = await Promise.race([socket.next(), socket.closed.then((code) => code)]);

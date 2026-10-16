@@ -6,7 +6,9 @@ import { ComputersSettings } from '../computers/ComputersSettings.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Radio, RadioGroup } from '../ui/Radio.tsx';
-import { Switch } from '../ui/Toggle.tsx';
+import { Switch, Toggle } from '../ui/Toggle.tsx';
+import { usePreferences } from '../../state/preferencesStore.ts';
+import { useRemote } from '../../state/remoteStore.ts';
 import { useFlash } from '../ui/useFlash.ts';
 import { LinkDialog, PairDialog } from './PairDialog.tsx';
 import { ConfirmStrip, ConnectedNow, dangerQuiet, ListRow, RenameField } from './RemoteRows.tsx';
@@ -32,8 +34,12 @@ function useClient() {
  */
 export function RemoteSettings() {
   const client = useClient();
-  const [status, setStatus] = useState<RemoteStatus | null>(null);
+  // Filled at startup by useRemoteSync, which the sidebar's Connected to this Mac reads too.
+  const status = useRemote((s) => s.status);
+  const loadError = useRemote((s) => s.error);
   const [error, setError] = useState<string | null>(null);
+  const prefs = usePreferences((s) => s.prefs);
+  const updatePrefs = usePreferences((s) => s.update);
   const [dialog, setDialog] = useState<'pair' | 'link' | null>(null);
   const [connectionOpen, setConnectionOpen] = useState<boolean | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(() => readAdvanced());
@@ -41,18 +47,13 @@ export function RemoteSettings() {
   const [focusPort, setFocusPort] = useState(0);
   const titleId = useId();
 
+  // Asked again on opening: whether a tunnel tool is installed now, and devices that expired, only change here.
   useEffect(() => {
     if (!client) return;
-    let current = true;
     void client.call('remote.status', {}).then(
-      (next) => current && setStatus(next),
-      (e: Error) => current && setError(e.message),
+      (next) => useRemote.getState().setStatus(next),
+      (e: Error) => useRemote.getState().setError(e.message),
     );
-    const off = client.on('remote.changed', setStatus);
-    return () => {
-      current = false;
-      off();
-    };
   }, [client]);
 
   useEffect(() => {
@@ -64,14 +65,17 @@ export function RemoteSettings() {
   const configure = (change: Partial<Settings>) => {
     if (!client) return;
     setError(null);
-    void client.call('remote.configure', change).then(setStatus, (e: Error) => setError(e.message));
+    void client.call('remote.configure', change).then(
+      (next) => useRemote.getState().setStatus(next),
+      (e: Error) => setError(e.message),
+    );
   };
   const toggleAdvanced = (open: boolean) => {
     setAdvancedOpen(open);
     writeAdvanced(open);
   };
 
-  if (!status) return error ? <Notice tone="error">{error}</Notice> : <p className="py-6 text-ui text-muted">Checking…</p>;
+  if (!status) return (error ?? loadError) ? <Notice tone="error">{error ?? loadError}</Notice> : <p className="py-6 text-ui text-muted">Checking…</p>;
   if (!status.available) return <Notice className="my-6">Remote isn't available in this build of Switchboard.</Notice>;
 
   const { settings } = status;
@@ -138,6 +142,13 @@ export function RemoteSettings() {
               </div>
             )}
             <Devices status={status} client={client} onPair={() => setDialog('pair')} onError={setError} />
+            <Toggle
+              label="Show in the sidebar when nobody is connected"
+              detail="While Remote is on, the bottom of the sidebar shows who is connected to this computer. With nobody connected, a quiet line says Remote is on."
+              checked={prefs.remoteIdleLine}
+              attr="data-remote-idle-line"
+              onChange={(remoteIdleLine) => updatePrefs({ remoteIdleLine })}
+            />
             <Connection status={status} open={connectionShown} onOpen={setConnectionOpen} configure={configure} />
             <Advanced status={status} open={advancedOpen} onToggle={toggleAdvanced} portInput={portInput} configure={configure} onError={setError} onReconnect={() => setDialog('link')} />
           </>

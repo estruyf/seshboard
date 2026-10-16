@@ -29,6 +29,7 @@ import { openDraft, useNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts
 import { STATUS_LABEL } from './rowLabel.ts';
 import { useSessionMenu } from './useSessionMenu.tsx';
 import { RailStarButton } from './StarOnGithub.tsx';
+import { RailDevices, useDeviceAnnouncement } from '../remote/ConnectedDevices.tsx';
 import { localizeKeys, matches, modKey } from '../../lib/shortcuts.ts';
 
 /**
@@ -223,6 +224,7 @@ const RailRow = memo(function RailRow({
  * the sidebar first.
  */
 export function SidebarRail() {
+  const deviceNotice = useDeviceAnnouncement();
   const sessions = useSessions((s) => s.sessions);
   const live = useSessions((s) => s.live);
   const hosts = useHosts((s) => s.hosts);
@@ -429,6 +431,7 @@ export function SidebarRail() {
       </div>
 
       <footer className="flex shrink-0 flex-col items-center gap-1.5 border-t border-border py-2">
+        <RailDevices />
         <FocusCounter compact />
         <RailStarButton
           sessions={all.length}
@@ -447,6 +450,9 @@ export function SidebarRail() {
           onClick={() => (view === 'settings' ? useSessions.getState().closeSettings() : useSessions.getState().openSettings())}
         />
       </footer>
+      <p className="sr-only" aria-live="polite">
+        {deviceNotice}
+      </p>
       {menus.overlays}
     </nav>
   );

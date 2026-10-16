@@ -43,6 +43,7 @@ import { thisComputerName } from '../../lib/platform.ts';
 import { sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
 import { ComputersStrip } from '../computers/ComputersStrip.tsx';
+import { ConnectedDevices, useDeviceAnnouncement, useRemoteFooterShown } from '../remote/ConnectedDevices.tsx';
 import { ComputerChip } from '../computers/ComputerChip.tsx';
 import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, offlineLine, THIS_COMPUTER } from '../../state/remoteRows.ts';
@@ -926,6 +927,8 @@ export function Sidebar() {
   // would make the count disagree with what's visible.
   const liveCount = all.filter((row) => row.live !== null && isActive(row, now, archiveAfterDays)).length;
   const waitingNotice = useWaitingAnnouncement(all, loaded);
+  const deviceNotice = useDeviceAnnouncement();
+  const remoteFooterShown = useRemoteFooterShown();
   const localWaiting = all.filter((row) => rowStatus(row) === 'needs-you').length;
 
   return (
@@ -1161,7 +1164,9 @@ export function Sidebar() {
         </div>
       )}
 
-      <ComputersStrip localWaiting={localWaiting} />
+      {/* The remote footer: who is connected to this computer, then the computers you reach out to. */}
+      <ConnectedDevices />
+      <ComputersStrip localWaiting={localWaiting} joined={remoteFooterShown} />
 
       <StarOnGithub sessions={all.length} />
 
@@ -1211,7 +1216,7 @@ export function Sidebar() {
       </footer>
 
       <p className="sr-only" aria-live="polite" data-waiting-announcement>
-        {waitingNotice}
+        {[waitingNotice, deviceNotice].filter(Boolean).join(' ')}
       </p>
       {menus.overlays}
       {queueMenus.overlay}

@@ -94,18 +94,31 @@ export function SessionView({
   useEffect(() => {
     if (!client) return;
     let live = true;
+    /**
+     * The watch starts with the whole transcript (a `replace`), and the page asked for first can land after it: the
+     * page was read earlier, so it may miss what came since (your first message in a new session), and later updates
+     * only append. Once a replace is in, the page has nothing to add.
+     */
+    let whole = false;
     const after = lastUuid.current;
     void client
       .call('transcript.get', { sessionId, limit: PAGE, ...(after ? { after } : {}) })
       .then((page) => {
-        if (!live) return;
+        if (!live || whole) return;
         setMessages((current) => (page.reset || !after ? page.messages : appendMessages(current, page.messages)));
         if (page.reset || !after) setHasMore(page.hasMore);
       })
       .catch((e: Error) => live && !lostConnection(e) && setError(e.message));
     void client.call('transcript.watch', { sessionId }).catch(() => {});
     const offs = [
-      client.on('transcript.updated', (update) => update.sessionId === sessionId && setMessages((current) => applyUpdate(current, update))),
+      client.on('transcript.updated', (update) => {
+        if (update.sessionId !== sessionId) return;
+        if (update.mode === 'replace') {
+          whole = true;
+          setHasMore(false);
+        }
+        setMessages((current) => applyUpdate(current, update));
+      }),
       client.on('session.stream', (delta) => delta.sessionId === sessionId && setStreaming((current) => applyStream(current, delta))),
       client.on('upNext.changed', (event) => event.sessionId === sessionId && setQueue(event.queue)),
       client.on('catchup.changed', (event) => event.sessionId === sessionId && setCatchUp(event.catchUp)),
@@ -394,6 +407,7 @@ function Transcript({
   const items = useMemo(() => transcriptItems(messages), [messages]);
   const since = useMemo(() => turnStart(messages), [messages]);
   const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
   const [away, setAway] = useState(false);
   const [missed, setMissed] = useState(false);
@@ -405,7 +419,44 @@ function Transcript({
   useEffect(() => {
     if (!atEnd.current && last) setMissed(true);
   }, [last]);
-  const toEnd = () => scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' });
+  /** Where you are, from the geometry: at the end (or past it), or reading further up. */
+  const settle = (follow: boolean) => {
+    const el = scroller.current;
+    if (!el) return;
+    if (follow || el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
+      // Also past the end: iOS keeps the old offset when the content shrinks, and shows blank space under it.
+      el.scrollTop = el.scrollHeight;
+      atEnd.current = true;
+      setAway(false);
+      setMissed(false);
+    } else {
+      atEnd.current = false;
+      setAway(true);
+    }
+  };
+  // The size changes without a scroll event: a step you open or close, a run that folds once Claude moves on, a prompt
+  // docked under the conversation. Following the end, a smaller view keeps it in view; otherwise, it says where you are.
+  useEffect(() => {
+    const el = scroller.current;
+    const inner = content.current;
+    if (!el || !inner) return;
+    let height = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const resized = el.clientHeight !== height;
+      height = el.clientHeight;
+      settle(resized && atEnd.current);
+    });
+    observer.observe(el);
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, []);
+  const toEnd = () => {
+    const el = scroller.current;
+    if (!el) return;
+    // Nothing left to scroll to: no scroll event will come to say you're at the end.
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 1) settle(true);
+    else el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  };
   return (
     <div className="relative min-h-0 flex-1">
       <div
@@ -418,7 +469,7 @@ function Transcript({
         }}
         className="h-full overflow-y-auto overscroll-contain px-4 py-3 sm:px-6"
       >
-        <div className="mx-auto w-full max-w-3xl">
+        <div ref={content} className="mx-auto w-full max-w-3xl">
           {header && <div className="pb-4">{header}</div>}
           {folded ? (
             <Button variant="quiet" size="md" onClick={onUnfold} className="w-full" data-remote-unfold>

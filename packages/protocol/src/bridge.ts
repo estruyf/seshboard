@@ -170,6 +170,8 @@ export interface Preferences {
   promptOutline: boolean;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
+  /** Settings › Remote: "Show in the sidebar when nobody is connected", the quiet "Remote on · nobody connected" line. */
+  remoteIdleLine: boolean;
   sessionScope: SessionScope;
   startupView: StartupView;
   projectOrder: ProjectOrder;
@@ -222,6 +224,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   fileLinkClick: "file-manager",
   promptOutline: true,
   confirmQuit: true,
+  remoteIdleLine: true,
   sessionScope: "switchboard",
   startupView: "home",
   projectOrder: "recent",
@@ -356,6 +359,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.fileLinkClick = raw.fileLinkClick;
   if (typeof raw.promptOutline === "boolean") out.promptOutline = raw.promptOutline;
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
+  if (typeof raw.remoteIdleLine === "boolean") out.remoteIdleLine = raw.remoteIdleLine;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))
     out.sessionScope = raw.sessionScope;
   if (oneOf(["home", "last", "new"] as const, raw.startupView))

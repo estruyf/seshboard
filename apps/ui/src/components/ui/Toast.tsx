@@ -1,4 +1,4 @@
-import { GitPullRequest, ListEnd, X } from 'lucide-react';
+import { GitPullRequest, Globe, ListEnd, Monitor, Smartphone, X } from 'lucide-react';
 import { TOAST_MS, useToasts, type Toast } from '../../state/toastStore.ts';
 import { UpdateToasts } from '../updates/UpdateToasts.tsx';
 import { Button } from './Button.tsx';
@@ -13,6 +13,9 @@ function ToastCard({ toast }: { toast: Toast }) {
     <>
       {toast.icon === 'queue' && <ListEnd size={14} className="shrink-0 text-muted" aria-hidden />}
       {toast.icon === 'pull-request' && <GitPullRequest size={14} className="shrink-0 text-ok" aria-hidden />}
+      {toast.icon === 'phone' && <Smartphone size={14} className="shrink-0 text-ok" aria-hidden />}
+      {toast.icon === 'browser' && <Globe size={14} className="shrink-0 text-ok" aria-hidden />}
+      {toast.icon === 'computer' && <Monitor size={14} className="shrink-0 text-ok" aria-hidden />}
       {toast.dot && <span className="size-2 shrink-0 rounded-full" style={{ background: toast.dot }} aria-hidden />}
       {toast.tone === 'ok' && <span className="size-2 shrink-0 rounded-full bg-ok" aria-hidden />}
     </>
@@ -28,7 +31,7 @@ function ToastCard({ toast }: { toast: Toast }) {
         actions={toast.actions?.length ? toast.actions.map((action) => (
           <Button
             key={action.label}
-            variant={action.primary ? 'primary' : 'secondary'}
+            variant={action.primary ? 'primary' : action.danger ? 'danger' : 'secondary'}
             onClick={() => {
               dismiss();
               action.onSelect();

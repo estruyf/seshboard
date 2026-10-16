@@ -57,6 +57,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   fileLinkClick: 'Clicking a file link',
   promptOutline: 'Show prompt outline',
   confirmQuit: 'Ask before quitting',
+  remoteIdleLine: 'Show in the sidebar when nobody is connected',
   sessionScope: 'Sessions in the sidebar',
   startupView: 'On startup',
   projectOrder: 'Project order',

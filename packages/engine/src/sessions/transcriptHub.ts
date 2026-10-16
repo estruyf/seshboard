@@ -61,6 +61,17 @@ export class TranscriptHub {
     return (await this.source.messages(sessionId)).map((m) => normaliseMessage(m, sink));
   }
 
+  /**
+   * The transcript as a watcher's first update has it: the file, then what the session holds back until the file has
+   * it (a new session's first message). A phone that reads a page before it watches sees your message too.
+   */
+  async readWithHeld(sessionId: string): Promise<TranscriptMessage[]> {
+    const file = await this.read(sessionId);
+    const inFile = new Set(file.map((m) => m.uuid));
+    const held = [...(this.held.get(sessionId)?.values() ?? [])].filter((m) => !inFile.has(m.uuid));
+    return held.length ? [...file, ...held] : file;
+  }
+
   /** An image from a session's transcript; re-reads the transcript once if it was evicted. */
   async image(sessionId: string, imageId: string): Promise<{ mediaType: string; data: string } | undefined> {
     const hit = this.images.get(sessionId, imageId);

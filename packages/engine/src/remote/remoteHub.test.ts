@@ -23,7 +23,7 @@ import {
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
-import { RemoteHub } from './remoteHub.ts';
+import { RemoteHub, type RemoteFromDevice } from './remoteHub.ts';
 import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 import { APP_ORIGIN, client, handshake } from './testPhone.ts';
 
@@ -107,6 +107,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   const permissions: PermissionRequest[] = [
     { requestId: 'r1', sessionId: SESSION, toolName: 'Bash', toolUseId: null, input: { command: 'npm test' }, title: null, description: null, decisionReason: null, blockedPath: '/secret', alwaysLabel: null, agentId: null, createdAt: 1 },
   ];
+  const fromDevice: RemoteFromDevice[] = [];
   const hub = new RemoteHub({
     db: cache.db,
     appState,
@@ -173,6 +174,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     diff: async (_id, path) => fileDiff(repo, 'uncommitted', path),
     commit: async (_id, message) => commitAll(repo, message, {}),
     onStatus: () => {},
+    onFromDevice: (event) => void fromDevice.push(event),
     log: () => {},
     findTool: () => (options.tools === false ? null : '/fake/cloudflared'),
     tunnelCommand: (_tool, port) => (options.tunnel ?? QUIET_TUNNEL)(port),
@@ -188,7 +190,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, port, on, sent, sentImages, answered, created, queued, calls, repo, appState, pushes, permissions };
+  return { hub, port, on, sent, sentImages, answered, created, queued, calls, repo, appState, pushes, permissions, fromDevice };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -279,6 +281,22 @@ describe('Remote hub', () => {
     // A paired phone learns a new address from a connect link, which holds no secret.
     const link = parseRemoteLink(new URL(hub.connectLink().url).hash);
     expect(link).toMatchObject({ kind: 'connect', address: 'https://quiet-river.trycloudflare.com' });
+  });
+
+  it('says which device sent a prompt, answered or started a session, by its id', async () => {
+    const { hub, port, on, fromDevice } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const deviceId = hub.status().devices[0]!.id;
+
+    await remote.call('session.send', { sessionId: SESSION, text: 'run the tests' });
+    await remote.call('session.respond', { requestId: 'r1', decision: { behavior: 'deny' } });
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test' });
+    expect(fromDevice).toEqual([
+      { sessionId: SESSION, messageUuid: 'm1', requestId: null, device: 'Phone', deviceId, answer: null },
+      { sessionId: SESSION, messageUuid: null, requestId: 'r1', device: 'Phone', deviceId, answer: { toolName: 'Bash', allowed: false } },
+      { sessionId: 'new', messageUuid: null, requestId: null, device: 'Phone', deviceId, answer: null },
+    ]);
   });
 
   it('starts and queues sessions with what the phone chose, and the project\'s defaults for the rest', async () => {

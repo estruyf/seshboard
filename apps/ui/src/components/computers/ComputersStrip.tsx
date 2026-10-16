@@ -17,9 +17,9 @@ const STATE: Record<Computer['state'], string> = { connected: 'Connected', conne
  * computer with its status dot and, in `warn`, how many of its sessions need you. A chip shows only that computer's
  * sessions, and again everything when it already did; the choice is kept per window. A computer whose sessions can't
  * be listed (none yet, offline before its first list, or to pair again) opens its page instead. Only shows with a
- * paired computer.
+ * paired computer. `joined`: Connected to this Mac is right above it, so the two read as one block without a line between.
  */
-export function ComputersStrip({ localWaiting }: { localWaiting: number }) {
+export function ComputersStrip({ localWaiting, joined = false }: { localWaiting: number; joined?: boolean }) {
   const computers = useComputers((s) => s.status?.computers ?? NONE);
   const lists = useComputers((s) => s.lists);
   const hidden = useComputers((s) => s.hidden);
@@ -56,7 +56,7 @@ export function ComputersStrip({ localWaiting }: { localWaiting: number }) {
 
   const here = thisComputerName();
   return (
-    <div className="shrink-0 border-t border-border px-3 pt-1.5 pb-2" data-computers-strip>
+    <div className={`shrink-0 px-3 pb-2 ${joined ? 'pt-0.5' : 'border-t border-border pt-1.5'}`} data-computers-strip>
       <p className="px-0.5 pb-1 text-meta font-medium text-faint">Computers</p>
       <div className="flex min-w-0 flex-wrap items-center gap-1" role="group" aria-label="Show sessions from">
         {chip(THIS_COMPUTER, here, {
