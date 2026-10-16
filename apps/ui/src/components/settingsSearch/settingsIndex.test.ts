@@ -9,6 +9,7 @@ import focusSettings from '../focus/FocusSettings.tsx?raw';
 import notificationsSettings from '../notifications/NotificationsSettings.tsx?raw';
 import sessionsSettings from '../sessions/SessionsSettings.tsx?raw';
 import remoteSettings from '../remote/RemoteSettings.tsx?raw';
+import modsSettings from '../mods/ModsSettings.tsx?raw';
 import { settingsIndex } from './settingsIndex.ts';
 import { searchSettings } from './searchSettings.ts';
 
@@ -48,9 +49,16 @@ describe('the settings index', () => {
       ...rowLabels(sessionsSettings, ['Toggle', 'SettingRow']),
       ...rowLabels(backupSettings, ['Row']),
       ...rowLabels(remoteSettings, ['Toggle']),
+      ...rowLabels(modsSettings, ['Toggle']),
     ];
     expect(rows.length).toBeGreaterThan(10);
     expect(rows.filter((label) => !labels.has(label))).toEqual([]);
+  });
+
+  it('finds Settings › Mods by the words people use for it', () => {
+    for (const query of ['mods', 'plugins', 'panes', 'status line']) {
+      expect(searchSettings(query, entries, (page) => page, 'darwin').map((match) => match.entry.page)).toContain('mods');
+    }
   });
 
   it('finds the prompt outline by the words people use for it', () => {

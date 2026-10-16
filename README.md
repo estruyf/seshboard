@@ -254,6 +254,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⇧-click | Open a file link the other way (on a file in the conversation; A click does what Settings › Conversation sets; this does the other) |
 | ⌘⇧D | Show or hide Changes |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |
+| ⌘⇧E | Show or hide Commands (The commands Claude runs in the background, with their output) |
 |  | Ask about this session (No key by default: use the Ask button next to Send, the command palette, or /btw) |
 | Esc | Restore the terminal (while it fills the view, outside the shell) |
 | ⌘K | Clear the terminal (in the terminal) |
@@ -538,6 +539,7 @@ Switchboard reads the session files Claude Code already keeps in `~/.claude` (an
 The full guide to every feature is on the website: **[switchboard.struyfconsulting.com](https://switchboard.struyfconsulting.com/)**.
 
 - [Themes](docs/themes.md): the theme file format, every colour and where it shows, and code colours.
+- [Claude Code mods](docs/mods.md): how Switchboard relays mods' requests and draws their trees, and the limits it keeps.
 - [Project actions](docs/project-actions.md): add buttons for your own commands and prompts, and share them with your team.
 - [Memory](docs/memory.md): where Claude Code's memory lives, the file format, what loads in a session, the personal folder and the Claude export import.
 - [Links](docs/deep-links.md): open Switchboard from a `switchboard://` URL, with examples for the shell, READMEs, Raycast, Alfred and alerts.

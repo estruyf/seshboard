@@ -84,7 +84,7 @@ Messages in Up next are kept when you look at other sessions, stop the session o
 Each run of tool calls is one line, like Claude Code: what Claude is doing right now ("Reading src/app.ts…"), or what it did when the run ends ("Ran 3 commands and edited 2 files"), with how long it took. Click the line to see every step, and a step to see its details: diffs, command output, to-do lists and subagent runs.
 
 - A **Tasks** pill above the message box shows Claude's to-do list ("Tasks 2 of 5"); click it to open the list.
-- A green pill above the message box lists what runs in the background, such as a long command or an agent, with a way to stop each one.
+- A green pill above the message box lists what runs in the background, such as a long command or an agent, with a way to stop each one. Click a command's name to see its output in the [Commands panel](/sessions/commands/), or an agent's name to open it in the [Agents panel](/sessions/agents/).
 - A file Claude names in a reply, such as `src/search/suggestions.ts:69`, is a link, and so is the **Show** or **Open** chip beside a tool run that read or changed a file. Click it to show the file in <Os mac="Finder" windows="File Explorer" />, where it is selected. <Kbd shortcut="transcript.file-link-other" /> opens it in your editor instead, at that line. Right-click it (or press <Kbd shortcut="context-menu" />) for **Show in <Os mac="Finder" windows="File Explorer" />**, **Open in** your editor and **Copy path**, above the message's **Quote** and **Remember this…**. If the file is gone, the link turns red and says so. To make a click open the editor, and <Kbd shortcut="transcript.file-link-other" /> show the file, change **Clicking a file link** in [Settings, Conversation](/settings/#conversation).
 - Images in your messages show above the text, so **Show more** never hides them: one image at its own shape, two to four as thumbnails, and five or more as tiles with +N for the rest. Hover one for its type, size and pixel size.
 - Images open full size with a click. <Kbd keys="arrowleft|arrowright" /> (or the filmstrip at the bottom) step through all of a message's images.
@@ -174,6 +174,7 @@ If the session is still open somewhere else, such as a terminal, Switchboard say
 ## Agents and tools
 
 - **Agents:** the agents Claude starts, background ones included, show in the [Agents panel](/sessions/agents/) next to the conversation. Open it with the **Agents** button in the header, or from the background tasks above the message box.
+- **Commands:** the commands Claude runs in the background, and monitors, show in the [Commands panel](/sessions/commands/) with their output, live while they run.
 - **Tools:** the blocks button under the message box (or *Tools: MCP servers, skills, agents, plugins* in the command palette) opens the session's **MCP servers**, **Skills & commands**, **Agents** and **Plugins**. MCP servers show their status and tools; while the session runs in Switchboard, you can turn a server on or off, or reconnect it.
 
 <Screenshot name="tools" alt="The Tools dialog on the MCP servers tab: each server with its status and number of tools, and tabs for skills and commands, agents and plugins" />

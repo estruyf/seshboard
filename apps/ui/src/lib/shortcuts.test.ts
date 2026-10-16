@@ -221,6 +221,7 @@ describe('the shortcut registry', () => {
       'find.previous': [SESSION, HOME],
       'changes.toggle': [SESSION, at({ view: 'session' })],
       'agents.toggle': [SESSION, at({ view: 'session' })],
+      'commands.toggle': [SESSION, at({ view: 'session' })],
       'ask.open': [SESSION, at({ view: 'session' })],
       'transcript.file-link-other': [SESSION, HOME],
       'transcript.run-send': [SESSION, HOME],

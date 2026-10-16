@@ -166,6 +166,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'catchUp', summaries: prefs.catchUpSummaries });
   // Settings › Conversation › Resume after a usage limit resets: Always arms a session the moment a limit stops it.
   engine?.sendStanding({ type: 'limits', resume: prefs.resumeAtLimit });
+  // Settings › Mods › Show mods: sessions attach or detach their mods without a restart.
+  engine?.sendStanding({ type: 'mods', show: prefs.showMods });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -6746,6 +6748,63 @@ async function runDiagnosticsStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/**
+ * Claude Code mods: a session in a throwaway profile loads the test mod (tests/fixtures/smoke-mod, copied by the
+ * launcher into SWITCHBOARD_SMOKE_MODS) and starts with its own `/smoke-ping`, which the mod answers without the model.
+ * Checks its band above the message box, its pane's tab, its status chip, that a press reaches the mod (the band and
+ * status change and a toast comes), and that Show mods off takes all of it away without a restart.
+ */
+async function runModsStep(win: BrowserWindow): Promise<string> {
+  const spec = JSON.parse(process.env.SWITCHBOARD_SMOKE_MODS ?? 'null') as { out: string } | null;
+  if (!spec) return 'ok: skipped, the launcher made no test mod (SWITCHBOARD_SMOKE_MODS)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const text = (selector: string) => `(document.querySelector('${selector}')?.innerText ?? '')`;
+  engine.sendStanding({ type: 'smokeMods' });
+  if (!(await until(() => existsSync(spec.out), 45_000))) return 'failed: the engine never started the mods session';
+  const started = JSON.parse(readFileSync(spec.out, 'utf8')) as { sessionId?: string; supported?: boolean; error?: string };
+  if (started.error || !started.sessionId) return `failed: starting the mods session: ${started.error ?? 'no session id'}`;
+  if (!started.supported) return "ok: skipped, this Claude Code doesn't report ui_surface_v1 (no mod support)";
+  openSession(started.sessionId);
+  const band = '[data-mod-band="smoke-mod"]';
+  if (!(await waitInPage(win, `${text(band)}.includes('Smoke band: pressed 0')`, 15_000))) return 'failed: the band did not show above the message box';
+  if (!(await js(`!!document.querySelector('${band}[data-mod-frame]')?.querySelector('header')?.innerText.includes('smoke-mod')`))) return 'failed: the band has no frame with the mod\'s name';
+  if (!(await waitInPage(win, `${text('[data-mod-pane="smoke-pane"]')}.includes('From smoke-mod · pane') && ${text('[data-mod-pane-body]')}.includes('Smoke pane')`, 10_000))) return 'failed: the pane did not open in the right panel';
+  // The status shows as a chip, or in the "+N" list when the footer is narrow (statuses fold first).
+  const status = (want: string) =>
+    waitInPage(
+      win,
+      `${text('[data-mod-status="smoke-mod"]')}.includes('${want}') || (document.querySelector('[data-mod-status-more]') && (document.querySelector('[data-mod-status-list]') || (document.querySelector('[data-mod-status-more]').click(), false)) && ${text('[data-mod-status-list]')}.includes('${want}'))`,
+      10_000,
+    );
+  if (!(await status('ready'))) return 'failed: the status chip did not show';
+  await js("document.querySelector('[data-mod-status-list]') && document.querySelector('[data-mod-status-more]').click()");
+  if (!(await js("!!document.querySelector('[data-mods-chip]')"))) return 'failed: no mods chip in the header';
+  await js(`document.querySelector('${band} [data-mod-button="press"]').click()`);
+  if (!(await waitInPage(win, `${text(band)}.includes('pressed 1')`, 10_000)) || !(await status('pressed 1'))) return 'failed: a press on the band did not reach the mod';
+  await js("document.querySelector('[data-mod-status-list]') && document.querySelector('[data-mod-status-more]').click()");
+  if (!(await waitInPage(win, `${text('[data-mod-toast="smoke-mod"]')}.includes('Smoke toast')`, 5_000))) return 'failed: the mod\'s toast did not show';
+  await shot(win, 'mods.png');
+  // Show mods off: everything goes, without a restart.
+  const toggle = async () => {
+    await js("document.querySelector('[data-open-settings]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"mods\"]')", 3_000))) return false;
+    await js("document.querySelector('[data-settings-section=\"mods\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-show-mods]')", 3_000))) return false;
+    await js("document.querySelector('[data-show-mods]').click()");
+    await js("document.querySelector('[data-close-settings]')?.click()");
+    return waitInPage(win, "!document.querySelector('[data-settings]')", 3_000);
+  };
+  try {
+    if (!(await toggle())) return 'failed: could not turn Show mods off in Settings › Mods';
+    const gone = "!document.querySelector('[data-mod-band], [data-mod-pane], [data-mod-status], [data-mod-status-more], [data-mods-chip]')";
+    if (!(await waitInPage(win, gone, 10_000))) return 'failed: Show mods off left mod UI on screen';
+  } finally {
+    await toggle();
+  }
+  if (!(await waitInPage(win, `${text(band)}.includes('Smoke band')`, 15_000))) return 'failed: the band did not come back with Show mods on';
+  return 'ok: band, pane, status, toast and header chip from the test mod; a press reached it; Show mods off removed all of it and on brought it back';
+}
+
 let smokeFinished = false;
 
 /** The window's size when a scripted run starts, and the screen's, for result.json. */
@@ -6895,6 +6954,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
+  await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });
   rendering = (await js(
     "({ diffs: document.querySelectorAll('[data-diff]').length, highlighted: document.querySelectorAll('.shiki').length, codeBlocks: document.querySelectorAll('.code-block').length, todos: document.querySelectorAll('[data-todos]').length, images: document.querySelectorAll('[data-transcript-image] img').length })",
   )) as Record<string, number>;
@@ -6934,6 +6994,8 @@ app.whenReady().then(() => {
   });
   sendEngineSettings(preferences.get());
   engine.start();
+  // The website's screenshots draw a session with demo mods (SWITCHBOARD_SMOKE_MODS), started as the app opens.
+  if (driven && process.env.SWITCHBOARD_SMOKE_MODS) engine.sendStanding({ type: 'smokeMods' });
   themes.watch();
   installMenu();
   notifier = new Notifier({

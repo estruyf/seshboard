@@ -1,4 +1,4 @@
-import { Bot, Code, Ellipsis, Pencil, Sparkles, Square, Stethoscope } from 'lucide-react';
+import { Bot, Code, Ellipsis, Pencil, ScrollText, Sparkles, Square, Stethoscope } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -30,6 +30,8 @@ export function MoreMenu({
   cwd,
   agents,
   onAgents,
+  commands,
+  onCommands,
   profileId,
   title,
   onStop,
@@ -41,6 +43,10 @@ export function MoreMenu({
   agents: { total: number; running: number };
   /** Shows the Agents panel (or brings it to the front). */
   onAgents(): void;
+  /** How many commands Claude ran in the background in this session, and how many of them still run. */
+  commands: { total: number; running: number };
+  /** Shows the Commands panel (or brings it to the front). */
+  onCommands(): void;
   profileId: string | null;
   /** The session's title; null while it has no transcript to keep a new one in. */
   title: string | null;
@@ -121,6 +127,14 @@ export function MoreMenu({
       disabled: total === 0,
       onSelect: onAgents,
       data: { 'data-agents-button': true },
+    },
+    {
+      label: 'Commands',
+      icon: <ScrollText size={13} />,
+      hint: commands.running ? `${commands.running} running` : commands.total ? `${commands.total} finished` : 'None',
+      disabled: commands.total === 0,
+      onSelect: onCommands,
+      data: { 'data-commands-button': true },
     },
     {
       label: 'Check transcript…',

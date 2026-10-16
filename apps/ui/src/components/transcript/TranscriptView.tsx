@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, SquareTerminal, X } from 'lucide-react';
+import { ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -30,6 +30,13 @@ import { AutoWand } from '../composer/ComposerChips.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
+import { ModBands } from '../mods/ModBands.tsx';
+import { ModPanePanel } from '../mods/ModPanePanel.tsx';
+import { ModFooterChips } from '../mods/ModFooterChips.tsx';
+import { ModsChip } from '../mods/ModsChip.tsx';
+import { shownMods } from '../mods/modVisibility.ts';
+import { useMods, useSessionMods } from '../../state/modsStore.ts';
+import { ModReplaced } from '../mods/ModReplaced.tsx';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
 import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
@@ -64,6 +71,8 @@ import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
 import { agentForTask } from './agentRuns.ts';
 import { useAgentRuns } from './useAgentRuns.ts';
+import { commandForTask } from './commandRuns.ts';
+import { useCommandRuns } from './useCommandRuns.ts';
 import { backgroundSummary } from './backgroundTasks.ts';
 import { PromptExpansionContext, type PromptExpansion } from './ClampedPrompt.tsx';
 import { buildDisplayItems, groupActivity, type RenderItem } from './displayItems.ts';
@@ -75,12 +84,14 @@ import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
 import { AgentsPanel } from '../agents/AgentsPanel.tsx';
+import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
-import { rightPanel } from '../ask/askWidth.ts';
+import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
 import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
 import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
+import { closeCommands, openCommands, pickCommand, toggleCommandsPanel, useSessionCommands } from '../../state/commandsPanelStore.ts';
 import { toggleChangesPanel, toggleTerminalPanel, useRightPanel } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
@@ -126,6 +137,19 @@ const Sep = () => (
  * What Claude is doing right now, before it lands in the transcript: the text it's writing,
  * or (when no step line is already showing it) dots, the time since your message, and the step.
  */
+/** The working line, drawn by a mod that replaces the Spinner. */
+function SpinnerSlot({ sessionId, message, children }: { sessionId: string; message: string; children: ReactNode }) {
+  const hooked = useMods((s) => s.sessions.get(sessionId)?.state.hooked.includes('Spinner') ?? false);
+  const target = useMemo(() => ({ component: 'Spinner' as const, instanceId: 'spinner', props: { message } }), [message]);
+  return hooked ? (
+    <ModReplaced sessionId={sessionId} target={target}>
+      {children}
+    </ModReplaced>
+  ) : (
+    <>{children}</>
+  );
+}
+
 function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string; since: number | null; showIndicator: boolean }) {
   const block = useHosts((s) => s.streaming.get(sessionId));
   const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
@@ -158,6 +182,7 @@ function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string
   const label = block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
   return (
     <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
+      <SpinnerSlot sessionId={sessionId} message={label}>
       <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
         <span className="flex w-4 shrink-0 justify-center">
           <WorkingDots />
@@ -166,6 +191,7 @@ function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string
         <span className="shrink-0">{label}</span>
         {block?.kind === 'thinking' && block.text && <span className="min-w-0 truncate text-faint italic">{block.text.slice(-160)}</span>}
       </p>
+      </SpinnerSlot>
     </div>
   );
 }
@@ -436,8 +462,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const { agents, running: agentsRunning } = useAgentRuns(items, live !== null);
   const agentsState = useSessionAgents(sessionId);
   const showAgents = Boolean(agentsState.open && active);
-  // The terminal docks below or on the right. On the right it is a tab like the others, so opening Changes, Ask or
-  // Agents next to it keeps it there. Maximized, it takes the whole view: the conversation (and the other panels) stay
+  // And Commands: the shell commands and monitors Claude ran in the background, with their output.
+  const { commands: backgroundCommands, running: commandsRunning } = useCommandRuns(items, live !== null, activeHost?.backgroundTasks ?? null);
+  const commandsState = useSessionCommands(sessionId);
+  const showCommands = Boolean(commandsState.open && active);
+  // The terminal docks below or on the right. On the right it is a tab like the others, so opening Changes, Ask,
+  // Agents or Commands next to it keeps it there. Maximized, it takes the whole view: the conversation (and the other panels) stay
   // mounted but hidden. Each pane shows its own session's terminal, so with two panes both can have one.
   const terminalShown = panelOpen;
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -448,25 +478,57 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const terminalDock = effectiveDock(useTerminals((s) => s.dock), terminalBlocked);
   const terminalMaximized = useTerminals((s) => s.maximizedFor.has(sessionId)) && terminalShown;
   const terminalOnRight = terminalShown && terminalDock === 'right' && !terminalMaximized;
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, terminal: terminalOnRight }, rightTab);
+  // Mods' panes are tabs too, while Claude Code has them open (and Show mods and the mod's own switch are on).
+  const sessionMods = useSessionMods(sessionId);
+  const showMods = usePreferences((s) => s.prefs.showMods);
+  const hiddenMods = usePreferences((s) => s.prefs.hiddenMods);
+  const modPrefs = useMemo(() => ({ showMods, hiddenMods }), [showMods, hiddenMods]);
+  const modPanes = useMemo(
+    () => (active && sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
+    [active, sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
+  );
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  const modPaneFront = paneOfTab(right.tab);
+  const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
   const changesFront = right.tabs && showChanges ? right.tab === 'changes' : undefined;
   const askFront = right.tabs && ask.open ? right.tab === 'ask' : undefined;
   const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
+  const commandsFront = right.tabs && showCommands ? right.tab === 'commands' : undefined;
   const terminalFront = right.tabs && terminalOnRight ? right.tab === 'terminal' : undefined;
-  const toggleChangesHere = () => toggleChangesPanel(ask.open || showAgents || terminalOnRight);
-  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || terminalOnRight);
-  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || terminalOnRight);
+  const panesOpen = modPanes.length > 0;
+  const toggleChangesHere = () => toggleChangesPanel(ask.open || showAgents || showCommands || terminalOnRight || panesOpen);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || terminalOnRight || panesOpen);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || terminalOnRight || panesOpen);
+  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || terminalOnRight || panesOpen);
+  // Picking a mod's tab tells Claude Code which pane is shown.
+  const pickRightTab = (tab: RightTab) => {
+    useRightPanel.getState().setTab(tab);
+    const pane = paneOfTab(tab);
+    if (pane && client) void client.call('mods.pane', { sessionId, action: 'show', id: pane }).catch(() => {});
+  };
+  const closeModPane = (id: string) => {
+    if (client) void client.call('mods.pane', { sessionId, action: 'close', id }).catch(() => {});
+  };
   const rightTabs = (actions: ReactNode) => (
     <RightPanelTabs
       tab={right.tab ?? 'changes'}
       open={right.open}
-      onTab={useRightPanel.getState().setTab}
-      counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask), agents: agentsRunning, terminal: terminalCount }}
+      onTab={pickRightTab}
+      counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask), agents: agentsRunning, commands: commandsRunning, terminal: terminalCount }}
+      titles={Object.fromEntries(modPanes.map((p) => [p.id, p.title]))}
     >
       {actions}
     </RightPanelTabs>
   );
+  // A mod asked for one of its panes to take the keyboard: its tab comes to the front and takes focus.
+  const [paneFocus, setPaneFocus] = useState({ id: null as string | null, nonce: 0 });
+  const focusRequested = active ? sessionMods.panes.focusRequestedId : null;
+  useEffect(() => {
+    if (!focusRequested || !modPanes.some((p) => p.id === focusRequested)) return;
+    useRightPanel.getState().setTab(modPaneTab(focusRequested));
+    setPaneFocus((f) => ({ id: focusRequested, nonce: f.nonce + 1 }));
+  }, [focusRequested, modPanes]);
   // The terminal coming to the right (opened, or docked there) comes to the front, as a panel opened there does.
   const terminalWasOnRight = useRef(terminalOnRight);
   useEffect(() => {
@@ -493,6 +555,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       if (active && isShortcut(event, 'agents.toggle')) {
         event.preventDefault();
         toggleAgentsHere();
+      }
+      if (active && isShortcut(event, 'commands.toggle')) {
+        event.preventDefault();
+        toggleCommandsHere();
       }
       // ⌘F finds in this conversation (the terminal keeps its own keys).
       if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm')) {
@@ -1174,14 +1240,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             )}
           </div>
         </div>
-        {/* Changes | Ask | Agents | Terminal: the side panels as one compact, icon-only segmented control. */}
+        {/* Changes | Ask | Agents | Commands | Terminal: the side panels as one compact, icon-only segmented control. */}
         <SegmentedControl
           mode="toggle"
           label="Panels"
           className="no-drag"
           data-panel-toggles
-          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
-          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : toggleTerminalPanel(sessionId))}
+          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
+          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : panel === 'commands' ? toggleCommandsHere() : toggleTerminalPanel(sessionId))}
           segments={[
             ...(cwd && isRepo
               ? [
@@ -1231,6 +1297,24 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   },
                 ]
               : []),
+            // Only a session that has run background commands has this; the panel stays reachable while it is open.
+            ...(backgroundCommands.length > 0 || commandsState.open
+              ? [
+                  {
+                    value: 'commands' as const,
+                    label: 'Commands',
+                    icon: <ScrollText size={14} aria-hidden />,
+                    iconOnly: true,
+                    badge: commandsRunning,
+                    tooltip: `${commandsFront === false ? 'Bring commands to the front' : commandsState.open ? 'Hide commands' : 'Show background commands'} (${formatKeys(keysFor('commands.toggle'))})${commandsRunning ? ` · ${commandsRunning} running` : ''}`,
+                    ariaLabel: `${commandsFront === false ? 'Bring commands to the front' : commandsState.open ? 'Hide commands' : 'Show background commands'}${commandsRunning ? `, ${commandsRunning} running` : ''} (${formatKeys(keysFor('commands.toggle'))})`,
+                    kbd: keysFor('commands.toggle'),
+                    front: commandsFront,
+                    expanded: showCommands && commandsFront !== false,
+                    data: { 'data-toggle-commands': true },
+                  },
+                ]
+              : []),
             {
               value: 'terminal' as const,
               label: 'Terminal',
@@ -1263,12 +1347,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             }}
           />
         )}
+        <ModsChip sessionId={sessionId} profileId={profileId} />
         <MoreMenu
           sessionId={sessionId}
           actions={actionsMenu}
           cwd={cwd}
           agents={{ total: agents.length, running: agentsRunning }}
           onAgents={() => openAgents(sessionId)}
+          commands={{ total: backgroundCommands.length, running: commandsRunning }}
+          onCommands={() => openCommands(sessionId)}
           profileId={profileId}
           title={summary ? title : null}
           onStop={activeHost ? () => void client?.call('session.close', { sessionId }) : null}
@@ -1533,6 +1620,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       onStop={stopTask}
                       agentFor={(task) => agentForTask(task, agents)}
                       onOpenAgent={(run) => openAgents(sessionId, run.item.id)}
+                      commandFor={(task) => commandForTask(task, backgroundCommands)}
+                      onOpenCommand={(run) => openCommands(sessionId, run.taskId)}
                     />
                   )}
                 </div>
@@ -1546,6 +1635,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   ))}
                 </div>
               )}
+              {/* Mods' bands: under Switchboard's own cards, above Up next. */}
+              <ModBands sessionId={sessionId} profileId={profileId} working={running} />
               {openElsewhere && (
                 <Notice role="note" data-open-elsewhere>
                   This session is open in {ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'} right now. Sending here starts a{' '}
@@ -1575,6 +1666,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               <div className="relative">
                 <Composer
                   draftKey={sessionId}
+                  status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}
                   restored={restored !== null}
@@ -1703,6 +1795,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
           />
         )}
+        {!whyRequest && frontPane && !terminalMaximized && (
+          <ModPanePanel
+            key={frontPane.id}
+            sessionId={sessionId}
+            pane={frontPane}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+            onClose={() => closeModPane(frontPane.id)}
+            focusNonce={paneFocus.id === frontPane.id ? paneFocus.nonce : 0}
+          />
+        )}
         {!whyRequest && right.tab === 'agents' && !terminalMaximized && (
           <AgentsPanel
             sessionId={sessionId}
@@ -1716,6 +1820,20 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             onWidth={setRightWidth}
             tabs={right.tabs ? rightTabs : undefined}
             onClose={() => closeAgents(sessionId)}
+          />
+        )}
+        {!whyRequest && right.tab === 'commands' && !terminalMaximized && (
+          <CommandsPanel
+            sessionId={sessionId}
+            runs={backgroundCommands}
+            tasks={backgroundTasks}
+            picked={commandsState.picked}
+            onPick={(taskId) => pickCommand(sessionId, taskId)}
+            onStop={stopTask}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+            onClose={() => closeCommands(sessionId)}
           />
         )}
       </div>

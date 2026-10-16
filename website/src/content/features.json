@@ -627,6 +627,11 @@
       "page": "sessions/agents"
     },
     {
+      "id": "palette:toggle-commands",
+      "name": "Toggle commands",
+      "page": "sessions/commands"
+    },
+    {
       "id": "palette:toggle-changes",
       "name": "Toggle changes",
       "page": "terminal-changes-git/changes"
@@ -695,6 +700,11 @@
       "id": "shortcut:agents.toggle",
       "name": "agents.toggle",
       "page": "sessions/agents"
+    },
+    {
+      "id": "shortcut:commands.toggle",
+      "name": "commands.toggle",
+      "page": "sessions/commands"
     },
     {
       "id": "shortcut:ask.open",
@@ -1092,6 +1102,11 @@
       "page": "settings"
     },
     {
+      "id": "settings:mods",
+      "name": "Settings: Mods",
+      "page": "sessions/mods"
+    },
+    {
       "id": "settings:focus",
       "name": "Settings: Focus",
       "page": "focus-limit"
@@ -1455,6 +1470,26 @@
       "id": "feature:agents-open-from-conversation",
       "name": "Open in Agents panel, from an agent's call",
       "page": "sessions/agents"
+    },
+    {
+      "id": "feature:commands-panel",
+      "name": "Commands panel: background commands and monitors with their output",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "feature:commands-from-background-tasks",
+      "name": "Open a command from the background tasks list",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "feature:commands-stop",
+      "name": "Stop a background command from the panel",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "feature:commands-open-from-conversation",
+      "name": "Open in Commands panel, from a command's call",
+      "page": "sessions/commands"
     },
     {
       "id": "feature:always-allow",
@@ -3400,6 +3435,21 @@
       "id": "slash:btw",
       "name": "/btw asks about the session",
       "page": "sessions/ask"
+    },
+    {
+      "id": "feature:mods",
+      "name": "Claude Code mods: bands, panes, statuses, toasts and replaced views, framed with the mod's name",
+      "page": "sessions/mods"
+    },
+    {
+      "id": "feature:show-mods",
+      "name": "Settings › Mods: Show mods, and a switch per mod",
+      "page": "sessions/mods"
+    },
+    {
+      "id": "feature:mods-chip",
+      "name": "The mods chip in the session header and its popover",
+      "page": "sessions/mods"
     }
   ]
 }

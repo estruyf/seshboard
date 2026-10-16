@@ -21,7 +21,7 @@ describe('Ask panel width', () => {
 });
 
 describe('the right panel', () => {
-  const open = (changes: boolean, ask: boolean, agents = false, terminal = false) => ({ changes, ask, agents, terminal });
+  const open = (changes: boolean, ask: boolean, agents = false, terminal = false, commands = false) => ({ changes, ask, agents, commands, terminal });
 
   it('shows tabs only when more than one panel is open, on the tab picked last', () => {
     expect(rightPanel(open(true, true), 'ask')).toEqual({ tab: 'ask', tabs: true, open: ['changes', 'ask'] });
@@ -42,10 +42,16 @@ describe('the right panel', () => {
     expect(rightPanel(open(false, false, false, true), 'changes')).toEqual({ tab: 'terminal', tabs: false, open: ['terminal'] });
   });
 
+  it('puts Commands after Agents and before the terminal', () => {
+    expect(rightPanel(open(false, false, true, true, true), 'commands')).toEqual({ tab: 'commands', tabs: true, open: ['agents', 'commands', 'terminal'] });
+    expect(rightPanel(open(false, false, false, false, true), 'changes')).toEqual({ tab: 'commands', tabs: false, open: ['commands'] });
+  });
+
   it('reads a stored tab', () => {
     expect(readTab('ask')).toBe('ask');
     expect(readTab('agents')).toBe('agents');
     expect(readTab('terminal')).toBe('terminal');
+    expect(readTab('commands')).toBe('commands');
     expect(readTab(null)).toBe('changes');
     expect(readTab('junk')).toBe('changes');
   });

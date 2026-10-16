@@ -31,7 +31,7 @@ export type DisplayItem =
    * A background agent or task finishing: its report, handed back to the session. `toolUseId`
    * ties it to the call that started it (task notifications carry it; agent hand-backs don't).
    */
-  | { kind: 'agent-report'; key: string; at: number | null; agentId: string; toolUseId: string | null; status: string; title: string; text: string };
+  | { kind: 'agent-report'; key: string; at: number | null; agentId: string; toolUseId: string | null; status: string; title: string; text: string; progress?: true };
 
 const SYSTEM_REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
 const tag = (text: string, name: string) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)?.[1]?.trim() ?? null;
@@ -43,7 +43,8 @@ const NOTICE_LABELS: Record<string, string> = {
 
 const AGENT_MESSAGE = /<agent-message from="([^"]+)">([\s\S]*?)<\/agent-message>/;
 
-type Report = { agentId: string; toolUseId: string | null; status: string; title: string; text: string };
+/** `progress`: a note from a task that still runs (a monitor's event), not its end. */
+type Report = { agentId: string; toolUseId: string | null; status: string; title: string; text: string; progress?: true };
 
 /**
  * A background agent or task reporting back, in either of Claude Code's forms: an agent hand-back
@@ -57,7 +58,8 @@ export function agentReport(text: string): Report | null {
     const taskId = field('task-id');
     if (!taskId) return null;
     const summary = field('summary') ?? 'Background task finished';
-    return { agentId: taskId, toolUseId: field('tool-use-id'), status: field('status') ?? 'completed', title: summary, text: field('result') ?? summary };
+    const status = field('status');
+    return { agentId: taskId, toolUseId: field('tool-use-id'), status: status ?? 'completed', title: summary, text: field('result') ?? summary, ...(status === null ? { progress: true as const } : {}) };
   }
   // The saved transcript puts a line before the tag; the live stream sends the tag on its own.
   if (!/^(Another Claude session sent a message:\s*)?<agent-message from="/.test(trimmed)) return null;

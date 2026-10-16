@@ -697,6 +697,14 @@ export const SHORTCUTS = [
     note: "The agents Claude started in this session, beside the conversation",
   },
   {
+    id: "commands.toggle",
+    keys: ["mod+shift+e"],
+    action: "Show or hide Commands",
+    section: "session",
+    when: inSession,
+    note: "The commands Claude runs in the background, with their output",
+  },
+  {
     id: "ask.open",
     keys: [],
     action: "Ask about this session",
