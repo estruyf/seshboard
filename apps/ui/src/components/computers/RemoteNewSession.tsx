@@ -1,14 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ChevronDown } from 'lucide-react';
-import type { Computer, Contract, Effort, RemoteOptions, RemotePermissionMode, RemoteProject, RpcClient } from '@switchboard/protocol/client';
-import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import type { Computer, Contract, RemoteProject, RpcClient } from '@switchboard/protocol/client';
 import { comboPresses, matches, shortcutById } from '../../lib/shortcuts.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
-import { Menu, type MenuEntry } from '../Menu.tsx';
 import { RunOnSwitch } from '../newSession/RunOnSwitch.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
@@ -18,7 +15,8 @@ import { Notice } from '../ui/Notice.tsx';
 import { callComputer } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
-import { remoteProjectTiles, type RemoteTile } from './remoteNewSession.ts';
+import { ChipMenu, RemoteEffortChip, RemoteModeChip, RemoteModelChip, RemoteProfileChip, useRemoteOptions } from './RemoteChips.tsx';
+import { remoteChanges, remoteDefaultChoice, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort, type RemoteChoice, type RemoteTile } from './remoteNewSession.ts';
 
 /** Tiles before "+N more on …": the fifth place is that tile. */
 const QUICK = 4;
@@ -27,32 +25,22 @@ const TONE_DOT = { 'needs-you': 'bg-warn animate-pulse', working: 'bg-accent-ink
 const TONE_TEXT = { 'needs-you': 'text-warn', working: 'text-accent-ink', idle: 'text-muted' } as const;
 const TILE = 'flex min-w-0 items-center gap-2 rounded-lg border p-2.5 text-left transition-[background-color,border-color,box-shadow,translate] @max-[600px]:flex-col @max-[600px]:items-start @max-[600px]:gap-1.5';
 
-/** What New session sends with the prompt; null leaves it to that computer (the project's default, then its profile's). */
-interface Choices {
-  model: string | null;
-  effort: Effort | null;
-  permissionMode: RemotePermissionMode | null;
-  worktree: boolean | null;
-}
-
-const NO_CHOICES: Choices = { model: null, effort: null, permissionMode: null, worktree: null };
-
 /**
  * New session with another computer picked in Run on (docs/remote-access.md, Other computers): that computer's projects
  * as tiles (⌘1 to ⌘9 still pick), the route tray with its chip, and Start, which asks it to start the session with
- * `session.create` and opens it here. Model, effort, mode and where only show when that computer answers
- * `options.get` (an older Switchboard doesn't). Images and files go with the prompt when that computer takes them
+ * `session.create` and opens it here. Profile, model, effort, mode and where only show when that computer answers
+ * `options.get` (an older Switchboard doesn't); they start from the project's defaults, then its profile's, and only
+ * what you change is sent, as in the remote app. Images and files go with the prompt when that computer takes them
  * (`RemoteAttachments.tsx`). Folders there can't be picked from here, and Quick question, the queue and the focus limit
  * are this computer's.
  */
 export function RemoteNewSession({ client, computer }: { client: RpcClient<Contract> | null; computer: Computer }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
-  const [options, setOptions] = useState<RemoteOptions | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [starting, setStarting] = useState(false);
-  const [choices, setChoices] = useState<Choices>(NO_CHOICES);
+  const [changes, setChanges] = useState<Partial<RemoteChoice>>({});
   const picked = useRunOn((s) => s.projects[computer.id] ?? null);
   const list = useComputers((s) => s.lists.get(computer.id) ?? null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -60,6 +48,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const name = computer.name;
   const connected = computer.state === 'connected';
   const attachments = useRemoteAttachments({ computer, rootRef: composer, newSession: true, disabledReason: connected ? null : `${name} is not connected` });
+  // An older Switchboard there has no options.get: then New session sends only the project and the prompt.
+  const options = useRemoteOptions(client, computer);
 
   useEffect(() => {
     if (!client || !connected) return;
@@ -69,11 +59,6 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       (result) => current && setProjects(result.projects),
       (e: Error) => current && setLoadError(e.message),
     );
-    // An older Switchboard there has no options.get: then New session sends only the project and the prompt.
-    void callComputer(client, computer.id, 'options.get', {}).then(
-      (result) => current && setOptions(result),
-      () => current && setOptions(null),
-    );
     return () => {
       current = false;
     };
@@ -82,8 +67,9 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const tiles = useMemo(() => remoteProjectTiles(projects ?? [], list), [projects, list]);
   const project = tiles.find((t) => t.id === picked)?.project ?? null;
   const pick = (id: string) => {
+    // Another project has its own defaults: what you changed was for the one before.
+    if (id !== picked) setChanges({});
     useRunOn.getState().setProject(computer.id, id);
-    setChoices(NO_CHOICES);
     requestAnimationFrame(() => box.current?.focus());
   };
   // A picked tile that is past the quick ones shows anyway, as in the local picker.
@@ -106,11 +92,13 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const defaults = options && project ? (options.projects.find((p) => p.id === project.id)?.defaults ?? null) : null;
-  const model = choices.model ?? defaults?.model ?? null;
-  const effort = choices.effort ?? defaults?.effort ?? null;
-  const mode = (choices.permissionMode ?? (defaults?.permissionMode && options?.modes.includes(defaults.permissionMode as RemotePermissionMode) ? (defaults.permissionMode as RemotePermissionMode) : null)) as RemotePermissionMode | null;
-  const worktree = choices.worktree ?? defaults?.worktree ?? false;
+  // Another profile brings its defaults, under the project's own and what you changed.
+  const projectId = project?.id ?? null;
+  const baseProfile = remoteProjectProfile(options, projectId);
+  const defaults = remoteDefaultChoice(options, projectId, changes.profileId ?? baseProfile);
+  const choice: RemoteChoice = { ...defaults, ...changes };
+  const change = (next: Partial<RemoteChoice>) => setChanges((current) => ({ ...current, ...next }));
+  const worktree = choice.worktree;
 
   const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : !project ? 'Choose a project first' : !prompt.trim() ? 'Type a message first' : null;
   const start = async () => {
@@ -124,12 +112,10 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
         // Only a computer that takes them gets these: an older one would drop them without a word.
         ...(images.length ? { images } : {}),
         ...(files.length ? { files } : {}),
-        ...(options && choices.model !== null ? { model: choices.model } : {}),
-        ...(options && choices.effort !== null ? { effort: choices.effort } : {}),
-        ...(options && choices.permissionMode !== null ? { permissionMode: choices.permissionMode } : {}),
-        ...(options && choices.worktree !== null ? { worktree: choices.worktree } : {}),
+        ...(options ? remoteChanges(choice, defaults, baseProfile) : {}),
       });
       setPrompt('');
+      setChanges({});
       attachments.clear();
       useComputers.getState().openSession({ computerId: computer.id, sessionId }, { starting: true });
     } catch (e) {
@@ -208,8 +194,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                     label={`Where: ${worktree ? 'New worktree' : 'Current checkout'}`}
                     value={worktree ? 'New worktree' : 'Current checkout'}
                     entries={[
-                      { label: 'Current checkout', checked: !worktree, onSelect: () => setChoices((c) => ({ ...c, worktree: false })) },
-                      { label: 'New worktree', checked: worktree, onSelect: () => setChoices((c) => ({ ...c, worktree: true })) },
+                      { label: 'Current checkout', checked: !worktree, onSelect: () => change({ worktree: false }) },
+                      { label: 'New worktree', checked: worktree, onSelect: () => change({ worktree: true }) },
                     ]}
                     data-route-where
                   />
@@ -238,40 +224,17 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                   <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
                   {options && project && (
                     <>
-                      <span className="flex items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Claude runs with ${name}’s Claude profile`}>
-                        <span aria-hidden className="size-1.5 rounded-full bg-ok" />
-                        {name}’s profile
-                      </span>
-                      <ChipMenu
-                        label={`Model: ${modelName(options, model)}`}
-                        value={modelName(options, model)}
-                        entries={[
-                          { label: 'Default', checked: model === null, onSelect: () => setChoices((c) => ({ ...c, model: null })) },
-                          ...options.models.map((m) => ({ label: m.displayName, detail: m.description, checked: model === m.value, onSelect: () => setChoices((c) => ({ ...c, model: m.value })) })),
-                        ]}
-                        data-remote-model
+                      <RemoteProfileChip
+                        options={options}
+                        computerName={name}
+                        value={choice.profileId}
+                        projectProfileId={baseProfile}
+                        ownProfile={Boolean(options.projects.find((p) => p.id === project.id)?.profileId)}
+                        onPick={(profileId) => change({ profileId })}
                       />
-                      {options.efforts.length > 0 && (
-                        <ChipMenu
-                          label={`Effort: ${effort ?? 'default'}`}
-                          value={`Effort: ${effort ?? 'default'}`}
-                          entries={[
-                            { label: 'Default', checked: effort === null, onSelect: () => setChoices((c) => ({ ...c, effort: null })) },
-                            ...options.efforts.map((e) => ({ label: e[0]!.toUpperCase() + e.slice(1), checked: effort === e, onSelect: () => setChoices((c) => ({ ...c, effort: e })) })),
-                          ]}
-                          data-remote-effort
-                        />
-                      )}
-                      <ChipMenu
-                        label={`Mode: ${mode ? MODE_LABEL[mode] : 'Default'}`}
-                        value={mode ? MODE_LABEL[mode] : 'Default mode'}
-                        dot={mode ? (MODE_DOT[mode] ?? 'bg-faint') : 'bg-faint'}
-                        entries={[
-                          { label: 'Default', checked: mode === null, onSelect: () => setChoices((c) => ({ ...c, permissionMode: null })) },
-                          ...options.modes.map((m) => ({ label: MODE_LABEL[m], checked: mode === m, onSelect: () => setChoices((c) => ({ ...c, permissionMode: m })) })),
-                        ]}
-                        data-remote-mode
-                      />
+                      <RemoteModelChip options={options} value={choice.model} offerAuto={options.auto?.enabled ?? false} onPick={(model) => change({ model })} />
+                      {options.efforts.length > 0 && remoteTakesEffort(options.models, choice.model) && <RemoteEffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} />}
+                      <RemoteModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} />
                     </>
                   )}
                 </div>
@@ -290,11 +253,6 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       </div>
     </div>
   );
-}
-
-function modelName(options: RemoteOptions, model: string | null): string {
-  if (model === null) return 'Default model';
-  return options.models.find((m) => m.value === model)?.displayName ?? model;
 }
 
 function Tile({ tile, index, computerId, selected, onPick }: { tile: RemoteTile; index: number; computerId: string; selected: boolean; onPick(): void }) {
@@ -319,33 +277,3 @@ function Tile({ tile, index, computerId, selected, onPick }: { tile: RemoteTile;
     </button>
   );
 }
-
-/** A quiet chip that opens a menu of choices, like the message box's chips: it shows the value, its label says what it is. */
-function ChipMenu({ label, value, entries, dot, ...rest }: { label: string; value: ReactNode; entries: MenuEntry[]; dot?: string; [data: `data-${string}`]: unknown }) {
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
-  const ref = useRef<HTMLButtonElement>(null);
-  return (
-    <>
-      <button
-        ref={ref}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={at !== null}
-        aria-label={label}
-        data-tooltip={label}
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          setAt(at ? null : { x: rect.left, y: rect.top - 4 });
-        }}
-        className="flex h-7 min-w-0 shrink items-center gap-1.5 rounded-md px-1.5 text-ui text-muted hover:bg-border/50 hover:text-text"
-        {...rest}
-      >
-        {dot && <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${dot}`} />}
-        <span className="truncate">{value}</span>
-        <ChevronDown size={12} className="shrink-0 text-faint" aria-hidden />
-      </button>
-      {at && <Menu x={at.x} y={at.y} above entries={entries} anchor={ref} label={label} onClose={() => setAt(null)} />}
-    </>
-  );
-}
-

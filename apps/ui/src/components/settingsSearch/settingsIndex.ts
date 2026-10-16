@@ -177,6 +177,15 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-focus-count-external]',
       fallback: '[data-focus-limit-switch]',
     },
+    {
+      id: 'focus-remote',
+      page: 'focus',
+      label: 'Count sessions on other computers',
+      detail: 'Also count sessions that are working, need you or are unread on computers you paired.',
+      keywords: 'focus limit remote computers paired',
+      target: '[data-focus-count-remote]',
+      fallback: '[data-focus-limit-switch]',
+    },
 
     // Claude profiles
     {

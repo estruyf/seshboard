@@ -185,6 +185,8 @@ export interface Preferences {
   focusMode: FocusMode;
   /** Also count live sessions started outside Switchboard (terminal, IDE). */
   focusCountExternal: boolean;
+  /** Also count the sessions working on other paired computers (Remote access). On by default. */
+  focusCountRemote: boolean;
   /** The colour theme: a built-in's id (`demo-time`, `github`…) or an imported theme's file name. */
   themeId: string;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
@@ -232,6 +234,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   focusLimit: null,
   focusMode: "nudge",
   focusCountExternal: false,
+  focusCountRemote: true,
   themeId: DEFAULT_THEME_ID,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
@@ -382,6 +385,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.focusMode = raw.focusMode;
   if (typeof raw.focusCountExternal === "boolean")
     out.focusCountExternal = raw.focusCountExternal;
+  if (typeof raw.focusCountRemote === "boolean")
+    out.focusCountRemote = raw.focusCountRemote;
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;

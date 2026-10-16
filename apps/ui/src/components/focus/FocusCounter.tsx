@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { basename } from '../../lib/format.ts';
 import { useFocus } from '../../state/focusGate.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { useSessions } from '../../state/sessionsStore.ts';
+import { openRow } from '../../state/useRemoteRows.ts';
 import { Button } from '../ui/Button.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { Popover } from '../ui/Popover.tsx';
@@ -66,7 +66,7 @@ export function FocusCounter({ compact = false }: { compact?: boolean }) {
                   <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${FOCUS_DOT[session.state]}`} />
                   <span className="grid min-w-0 flex-1">
                     {/* Where it runs only in the tooltip: the state is what the line is for. */}
-                    <span className="truncate text-ui text-text" data-tooltip={session.external ? `${session.title}\nStarted outside Switchboard` : session.title}>
+                    <span className="truncate text-ui text-text" data-tooltip={session.remote ? `${session.title}\nOn ${session.remote.computerName}` : session.external ? `${session.title}\nStarted outside Switchboard` : session.title}>
                       {session.title}
                     </span>
                     <span className="truncate text-meta text-muted">
@@ -77,7 +77,7 @@ export function FocusCounter({ compact = false }: { compact?: boolean }) {
                     size="sm"
                     onClick={() => {
                       setOpen(null);
-                      useSessions.getState().select(session.id);
+                      openRow(session.id);
                     }}
                     aria-label={`Open ${session.title}`}
                     data-focus-open={session.id}

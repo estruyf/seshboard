@@ -1,5 +1,6 @@
 import type { FocusMode, Preferences } from '@switchboard/protocol/bridge';
 import type { LiveSession, PermissionRequest, SessionHostInfo, SessionSummary } from '@switchboard/protocol/client';
+import type { SessionRowData } from './sessionsStore.ts';
 import { HOST_TO_LIVE, isActiveHost } from './hostsStore.ts';
 
 /**
@@ -21,6 +22,8 @@ export interface FocusSession {
   since: number;
   /** A live session from the terminal or an IDE (only counted with `focusCountExternal`). */
   external: boolean;
+  /** A session on another paired computer (only counted with `focusCountRemote`); `id` is then its sidebar row id. */
+  remote: { computerName: string } | null;
 }
 
 export interface FocusInput {
@@ -33,6 +36,9 @@ export interface FocusInput {
   /** Open permission prompts and questions, for how long a session has waited. */
   permissions?: Iterable<PermissionRequest>;
   countExternal: boolean;
+  /** Sessions on other computers as sidebar rows (`remoteRows`); left out unless `countRemote`. */
+  remote?: readonly Pick<SessionRowData, 'id' | 'title' | 'updatedAt' | 'remote'>[];
+  countRemote?: boolean;
 }
 
 const STATE_ORDER: Record<FocusState, number> = { 'needs-you': 0, working: 1, unread: 2 };
@@ -68,6 +74,7 @@ export function focusSessions(input: FocusInput): FocusSession[] {
       state,
       since: state === 'needs-you' ? (waitingSince.get(id) ?? at) : at,
       external,
+      remote: null,
     });
   };
 
@@ -86,6 +93,17 @@ export function focusSessions(input: FocusInput): FocusSession[] {
       consider(entry.sessionId, entry.status, true, { title: entry.name, projectRoot: entry.projectRoot ?? entry.cwd, at: entry.updatedAt ?? entry.startedAt ?? 0 });
     }
   }
+  if (input.countRemote) {
+    for (const row of input.remote ?? []) {
+      const info = row.remote;
+      // An offline computer's state is its last known one, not something going on now.
+      if (!info || info.offline) continue;
+      const state: FocusState | null = info.status === 'needs-you' ? 'needs-you' : info.status === 'running' ? 'working' : info.status === 'unread' ? 'unread' : null;
+      if (!state) continue;
+      // The project's name stands in for a folder: the lists show its last part.
+      out.push({ id: row.id, title: row.title, projectRoot: info.projectName, state, since: row.updatedAt, external: false, remote: { computerName: info.computerName } });
+    }
+  }
   // Needs you: longest waiting first. Working and unread: most recent first.
   return out.sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || (a.state === 'needs-you' ? a.since - b.since : b.since - a.since));
 }
@@ -95,7 +113,7 @@ export type FocusLevel = 'under' | 'at' | 'over';
 
 export const focusLevel = (count: number, limit: number): FocusLevel => (count < limit ? 'under' : count === limit ? 'at' : 'over');
 
-export type FocusPrefs = Pick<Preferences, 'focusLimit' | 'focusMode' | 'focusCountExternal'>;
+export type FocusPrefs = Pick<Preferences, 'focusLimit' | 'focusMode' | 'focusCountExternal' | 'focusCountRemote'>;
 
 /**
  * Whether something may start. `allowed`: go ahead (the limit is off, there is room, or the work goes to a

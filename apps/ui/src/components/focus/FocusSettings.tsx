@@ -80,6 +80,9 @@ export function FocusSettings() {
             <Row label="Count terminal and IDE sessions" detail="Also count live Claude Code sessions started outside Switchboard.">
               <Switch checked={prefs.focusCountExternal} onChange={(focusCountExternal) => update({ focusCountExternal })} label="Count terminal and IDE sessions" dataAttrs={{ 'data-focus-count-external': true }} />
             </Row>
+            <Row label="Count sessions on other computers" detail="Also count sessions that are working, need you or are unread on computers you paired.">
+              <Switch checked={prefs.focusCountRemote} onChange={(focusCountRemote) => update({ focusCountRemote })} label="Count sessions on other computers" dataAttrs={{ 'data-focus-count-remote': true }} />
+            </Row>
           </div>
         )}
       </div>

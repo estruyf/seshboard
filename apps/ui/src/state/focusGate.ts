@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 import { focusLevel, focusSessions, focusVerdict, type FocusLevel, type FocusSession, type FocusVerdict } from './focus.ts';
 import { useHosts } from './hostsStore.ts';
+import { currentRemoteRows, openRow, useRemoteRows } from './useRemoteRows.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { useSessions } from './sessionsStore.ts';
 
@@ -24,10 +25,12 @@ export function useFocus(): FocusSummary {
   const limit = usePreferences((s) => s.prefs.focusLimit);
   const mode = usePreferences((s) => s.prefs.focusMode);
   const countExternal = usePreferences((s) => s.prefs.focusCountExternal);
+  const countRemote = usePreferences((s) => s.prefs.focusCountRemote);
+  const remote = useRemoteRows();
   const counted = useMemo(
     // Off, nothing needs counting.
-    () => (limit === null ? [] : focusSessions({ hosts, live, sessions, permissions: permissions.values(), countExternal })),
-    [limit, hosts, live, sessions, permissions, countExternal],
+    () => (limit === null ? [] : focusSessions({ hosts, live, sessions, permissions: permissions.values(), countExternal, remote, countRemote })),
+    [limit, hosts, live, sessions, permissions, countExternal, remote, countRemote],
   );
   return { limit, mode, sessions: counted, count: counted.length, level: limit === null ? 'under' : focusLevel(counted.length, limit) };
 }
@@ -38,7 +41,7 @@ export function currentVerdict(target: string | null = null): FocusVerdict {
   if (prefs.focusLimit === null) return { kind: 'allowed' };
   const { hosts, permissions } = useHosts.getState();
   const { live, sessions } = useSessions.getState();
-  const counted = focusSessions({ hosts, live, sessions, permissions: permissions.values(), countExternal: prefs.focusCountExternal });
+  const counted = focusSessions({ hosts, live, sessions, permissions: permissions.values(), countExternal: prefs.focusCountExternal, remote: currentRemoteRows(), countRemote: prefs.focusCountRemote });
   return focusVerdict(counted, prefs, target);
 }
 
@@ -93,7 +96,7 @@ export async function passFocusGate(options: { target?: string | null; saveForLa
       await options.saveForLater();
       return 'saved';
     case 'open':
-      useSessions.getState().select(choice.sessionId);
+      openRow(choice.sessionId);
       return 'stop';
     case 'cancel':
       return 'stop';
