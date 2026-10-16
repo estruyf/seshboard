@@ -102,6 +102,17 @@ export function homeHeadline(sessions: readonly RemoteSession[], now: number): {
   return { title, counts };
 }
 
+/**
+ * The first screen's line under the computer's name, after the connection: the one thing worth knowing, from the
+ * home headline. "2 need you", else "1 working", else "1 finished today", else "Nothing needs you".
+ */
+export function shortHeadline(sessions: readonly RemoteSession[], now: number): string {
+  const needsYou = sessions.filter((s) => s.status === 'needs-you').length;
+  if (needsYou) return `${needsYou} ${needsYou === 1 ? 'needs' : 'need'} you`;
+  const { title, counts } = homeHeadline(sessions, now);
+  return counts.split(' · ')[0] || title;
+}
+
 /** Finished sessions you haven't read, newest first: Finished, ready to review. Not while a task still runs in the background. */
 export function toReview(sessions: readonly RemoteSession[], max = 6): RemoteSession[] {
   return sessions

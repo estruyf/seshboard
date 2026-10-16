@@ -514,7 +514,8 @@ const PHONE = { width: 390, height: 844 };
 /**
  * The remote app on a phone (Remote's page): the real app from apps/remote, served by Vite, against the made-up
  * computer of scripts/remote-demo.ts ("Studio Mac", two profiles), in Chrome at a phone's size with touch. It pairs as a
- * phone would, then takes the first screen, the sessions drawer and the computer's menu in both colour schemes.
+ * phone would, then takes the first screen, the computer's menu (from its name, the large title) and the sessions
+ * drawer in both colour schemes.
  */
 async function phoneShots(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'switchboard-shots-phone-'));
@@ -536,7 +537,7 @@ async function phoneShots(): Promise<void> {
     page.setDefaultTimeout(15_000);
     await page.goto(readFileSync(linkFile, 'utf8').trim());
     await page.getByRole('button', { name: 'Pair' }).click();
-    await page.waitForSelector('[data-remote-computer-chip][data-remote-connection="connected"]');
+    await page.waitForSelector('[data-remote-computer-title="large"][data-remote-connection="connected"]');
     await page.waitForSelector('[data-remote-usage-card]');
     // The offer to turn on notifications isn't what these pictures are about.
     const notNow = page.getByRole('button', { name: 'Not now' });
@@ -554,7 +555,7 @@ async function phoneShots(): Promise<void> {
       await page.evaluate(() => document.querySelector('[data-remote-list]')?.scrollTo(0, 0));
       await shot('remote-phone-first-screen', scheme);
 
-      await page.click('[data-remote-computer-chip]');
+      await page.click('[data-remote-computer-title="large"]');
       await page.waitForSelector('[role=menu]');
       await shot('remote-phone-computer-menu', scheme);
       await page.keyboard.press('Escape');

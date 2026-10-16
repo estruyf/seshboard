@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteSession } from '@switchboard/protocol/remote-client';
-import { age, groupSessions, homeHeadline, nextNeedsYou, projectStatus, recentProjects, startOfDay, suggestedProject, toReview } from './groups.ts';
+import { age, groupSessions, homeHeadline, nextNeedsYou, projectStatus, recentProjects, shortHeadline, startOfDay, suggestedProject, toReview } from './groups.ts';
 
 const NOW = new Date(2026, 9, 15, 14, 0).getTime();
 const HOUR = 3_600_000;
@@ -84,6 +84,17 @@ describe('homeHeadline', () => {
     });
     expect(homeHeadline([session('a', 'needs-you', today)], NOW).title).toBe('1 session needs you');
     expect(homeHeadline([session('e', 'idle', today - HOUR)], NOW)).toEqual({ title: 'Nothing needs you', counts: '' });
+  });
+});
+
+describe('shortHeadline', () => {
+  it('says what needs you first, then what works, then what finished today', () => {
+    const today = startOfDay(NOW);
+    expect(shortHeadline([session('a', 'needs-you', today), session('b', 'needs-you', today), session('c', 'working', today)], NOW)).toBe('2 need you');
+    expect(shortHeadline([session('a', 'needs-you', today)], NOW)).toBe('1 needs you');
+    expect(shortHeadline([session('c', 'working', today), session('d', 'unread', today + HOUR)], NOW)).toBe('1 working');
+    expect(shortHeadline([session('d', 'unread', today + HOUR)], NOW)).toBe('1 finished today');
+    expect(shortHeadline([session('e', 'idle', today - HOUR)], NOW)).toBe('Nothing needs you');
   });
 });
 

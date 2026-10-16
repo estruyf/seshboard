@@ -19,13 +19,12 @@ import { NewSession } from './NewSession.tsx';
 import { Palette, type PaletteAction } from './Palette.tsx';
 import { SessionList } from './SessionList.tsx';
 import { SessionView } from './SessionView.tsx';
-import { ComputerChip, ConnectionBanner, OfflineHelp } from './ConnectionStatus.tsx';
+import { ComputerChip, ComputerTitle, ConnectionBanner, OfflineHelp, type ComputerProps } from './ConnectionStatus.tsx';
 import { afterOverlays } from './overlayHistory.ts';
 import { DrawerButton, SessionsDrawer, useEdgeSwipe } from './SessionsDrawer.tsx';
 import type { MenuItem } from './Menu.tsx';
 import { toast, Toasts } from './Toasts.tsx';
 import { NotificationsSheet, PushOffer, PushStrip, shouldOffer } from './Notifications.tsx';
-import { PhoneHome } from './PhoneHome.tsx';
 import { ProfileStrip, UsageCard, useUsage } from './Usage.tsx';
 import { UpdateBar } from './UpdateBar.tsx';
 import { useUpdate } from './useUpdate.ts';
@@ -34,8 +33,8 @@ import { currentSupport, loadPrefs, offered, resync, turnOff, turnOn } from '../
 import { Button, Message } from './ui.tsx';
 
 /**
- * `list` and `home` are the two roots: on a phone the first screen (the sessions, where the app opens) and Home (from
- * the drawer's Home row); on a wide screen both are the view next to the sidebar.
+ * `list` and `home` are the roots of a wide screen, both the view next to the sidebar. A phone has one: the first
+ * screen (the sessions, where the app opens), and a `home` entry shows it too.
  */
 export type Route = { kind: 'home' } | { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean } | { kind: 'new'; projectId?: string };
 
@@ -48,7 +47,7 @@ interface NotificationAnswer {
 
 /**
  * Connected to the paired computer: the sessions, a session, Home or New session. On a phone one at a time, opening
- * on the sessions, with the other sessions in a drawer (its button in a session's header, or a swipe from the left
+ * on the sessions (its only home), with the other sessions in a drawer (its button in a session's header, or a swipe from the left
  * edge); picking one there swaps it in place, so the back gesture goes back to the sessions, not through every
  * session you looked at. On a wide screen the list stays on the left, as the sidebar does on the computer, with Home
  * next to it while no session is open; below 1024px it can fold away (⌘B), and then it is the drawer.
@@ -204,8 +203,12 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     history.replaceState({ kind }, '');
     setRoute({ kind });
   };
-  /** Home: from the list on a phone, from anywhere on a wide screen (where it is the view next to the sidebar). */
-  const goHome = () => (wide || atRoot ? root('home') : back());
+  /** Home on a wide screen, the view next to the sidebar. A phone's home is the list: back to it from a session. */
+  const goHome = () => (wide ? root('home') : atRoot ? root('list') : back());
+  // A phone has one home: a `home` entry (from a wide screen, an iPad turned, or an older version) is the list.
+  useEffect(() => {
+    if (!wide && route.kind === 'home') root('list');
+  }, [wide, route.kind]);
 
 
   const forget = async () => {
@@ -227,7 +230,9 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       {connectionBanner}
     </>
   );
-  const chip = <ComputerChip state={state} computer={computer} onDisconnect={disconnect} onConnect={reconnect} onForget={() => void forget()} />;
+  const computerProps: ComputerProps = { state, computer, onDisconnect: disconnect, onConnect: reconnect, onForget: () => void forget() };
+  const chip = <ComputerChip {...computerProps} />;
+  const title = (size: 'large' | 'compact') => <ComputerTitle size={size} {...computerProps} />;
   const startNew = (projectId?: string) => (wide && !atRoot ? (history.replaceState({ kind: 'new', projectId }, ''), setRoute({ kind: 'new', projectId })) : go({ kind: 'new', projectId }));
   /** On a wide screen, picking another session replaces the open one rather than stacking up history. */
   const showSession: OpenSession = (sessionId, options = {}) => {
@@ -276,8 +281,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   useEffect(() => {
     if (!drawerMode) setDrawerOpen(false);
   }, [drawerMode]);
-  // An edge swipe opens the drawer where its button is: a session or Home on a phone, anywhere on a folded wide screen.
-  const drawerHere = drawerMode && (wide || route.kind === 'session' || route.kind === 'home');
+  // An edge swipe opens the drawer where its button is: a session on a phone, anywhere on a folded wide screen.
+  const drawerHere = drawerMode && (wide || route.kind === 'session');
   useEdgeSwipe({ enabled: drawerHere && !drawerOpen, onDrag: setEdge, onSettle: setDrawerOpen });
 
   // The wide layout's keys (lib/keys.ts): one handler, reading the latest state through a ref.
@@ -425,6 +430,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       client={client}
       features={features}
       chip={chip}
+      title={title}
       menu={menu}
       selectedId={currentId}
       newOpen={route.kind === 'new'}
@@ -455,8 +461,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         newOpen={route.kind === 'new'}
         onOpen={pick}
         onNew={pickNew}
-        onHome={pickHome}
-        homeOpen={route.kind === 'home' || (wide && atRoot)}
+        onHome={wide ? pickHome : undefined}
+        homeOpen={wide && atRoot}
         onRefresh={reload}
         onArchived={(sessionId) => sessionId === currentId && leave()}
         homeRow={<ProfileStrip usage={usage} />}
@@ -483,7 +489,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   if (!wide)
     return (
       <>
-        {main ?? (route.kind === 'home' ? <PhoneHome lead={drawerButton} banner={banner} sessions={sessions} usage={usage} offline={state.kind !== 'connected'} client={client} onOpen={showSession} onNew={() => startNew()} onRefresh={refresh} /> : list)}
+        {main ?? list}
         {drawer}
         {overlays}
       </>

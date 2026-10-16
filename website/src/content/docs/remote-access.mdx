@@ -133,9 +133,13 @@ With the sidebar collapsed, a phone icon with a green count shows how many devic
 
 ## Your sessions
 
-<Screenshot name="remote-phone-first-screen" width={390} alt="The remote app on a phone: Sessions at the top with the computer chip Studio Mac. Under it a Profiles card with Personal and Work, each with a 5h and a Week bar, Work at 91% in red. Then Needs you with a question and two prompts with Deny and Allow, and New session at the bottom." />
+<Screenshot name="remote-phone-first-screen" width={390} alt="The remote app on a phone: Studio Mac in large type at the top, with a chevron, and under it a green dot, Connected · 3 need you. The search and ⋯ buttons on the right. Under it a Profiles card with Personal and Work, each with a 5h and a Week bar, Work at 91% in red. Then Needs you with a question and two prompts with Deny and Allow, and New session at the bottom." />
 
-The app opens on your sessions. At the top, the chip with your computer's name, the magnifier to search the titles, project names and branches, and the **⋯** menu.
+The app opens on your sessions. This is the app's only home on a phone: everything else is one step away from it. At the top is your computer's name. Tap it for your computer's menu. Under it, one line says how your phone is connected and what is going on, such as **Connected · 2 need you** or **Connected · 1 finished today**. On the right are the magnifier and the **⋯** menu.
+
+When you scroll down, the name moves into the bar at the top, in small type with the dot, and the magnifier and the **⋯** menu stay there.
+
+Tap the magnifier to search the titles, project names and branches. The search field takes the name's place, with **Cancel** next to it. While you search, **All**, **Needs you** and **Working** under the field narrow the list. **Cancel** closes the search and shows your whole list again.
 
 The card under it shows how much of your plan is used: **Usage** with a bar for the 5-hour window and one for the week. With more than one Claude profile it is **Profiles**, with a row for each, its colour and both bars. With three or more, it shows the two closest to a limit and **+1** for the rest. A bar turns orange from 60% and red from 85%. Tap the card for each profile's full card, with when each window resets; tap it again to fold them. The numbers come from your computer: they update when it checks, and each time you come back to the app.
 
@@ -161,19 +165,19 @@ A long press on a session has the same **Mark as read** and **Archive**, and so 
 
 ## Switch sessions
 
-<Screenshot name="remote-phone-drawer" width={390} alt="The sessions drawer over a session: Sessions with the computer chip, a search field, a Home row with Personal 58% and Work 91%, the sessions by group with the open one picked, and New session at the bottom." />
+<Screenshot name="remote-phone-drawer" width={390} alt="The sessions drawer over a session: Sessions with the computer chip, a search field, the sessions by group with the open one picked, and New session at the bottom." />
 
 In a session, the button at the top left opens your other sessions in a drawer. Its pink count says how many other sessions need you. You can also swipe from the left edge of the screen to pull the drawer out. Tap a session to switch to it.
 
-The drawer has a search field, **Home**, your sessions by group with the open one picked, and **New session** at the bottom. With more than one Claude profile, the **Home** row shows how much each profile has used, such as **Work 82%** and **Personal 18%**. With three or more, it shows the one closest to a limit and **+2**. Tap **Home** for what needs you, the sessions to review and every profile's full usage card.
+The drawer has a search field, your sessions by group with the open one picked, and **New session** at the bottom.
 
 To close the drawer, tap next to it, swipe it to the left, or use the back gesture. A session you pick takes the place of the one you had open, so the back gesture goes back to your sessions, not through every session you looked at.
 
 ## Your computer's menu
 
-<Screenshot name="remote-phone-computer-menu" width={390} alt="The computer chip opened as a menu: Studio Mac, Connected for under a minute · encrypted, then Disconnect, and Forget this computer… in red." />
+<Screenshot name="remote-phone-computer-menu" width={390} alt="The computer's name opened as a menu: Studio Mac, Connected for under a minute · encrypted, then Disconnect, and Forget this computer… in red." />
 
-The chip at the top right shows your computer's name with a green dot while your phone is connected. It turns orange with **Reconnecting…** while your phone tries again, and red with **Offline** when it stopped trying. Tap it for your computer's menu:
+The line under your computer's name has a green dot and **Connected** while your phone is connected. It turns orange with **Reconnecting…** while your phone tries again, red with **Offline** when it stopped trying, and grey with **Disconnected** after you disconnect. In the drawer, and in a wide window, the chip with your computer's name shows the same dot. Tap the name, or the chip, for your computer's menu:
 
 - Its name and how it's connected, such as **Connected for 2h · encrypted**.
 - **Disconnect** closes the connection and keeps the pairing. The app says **Disconnected from** your computer, with **Connect**, and shows your last list greyed out. It stays disconnected until you tap **Connect**, also after a reload. When you open the app again later, it connects by itself.
@@ -228,13 +232,13 @@ While a session works in that project, **Queue for later** puts the prompt in Sw
 
 In a wide window, such as the browser of another computer or an iPad, your sessions stay on the left, as in Switchboard. A phone held sideways keeps the phone's layout. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list. The house button next to **Sessions** closes the open session and shows Home on the right.
 
-On a narrower screen, such as an iPad held upright, the sessions can fold away to leave the session the whole width: tap the button at the top left of a session, or press <Kbd keys="mod+b" />. Folded, that button opens them as a drawer, as on a phone; the button next to the computer's name in the drawer, or <Kbd keys="mod+b" /> again, keeps them open on the left. Your choice is kept in this browser.
+On a narrower screen, such as an iPad held upright, the sessions can fold away to leave the session the whole width: tap the button at the top left of a session, or press <Kbd keys="mod+b" />. Folded, that button opens them as a drawer, as on a phone, with a **Home** row under its search that shows how much each profile has used, such as **Work 82%** and **Personal 18%**. The button next to the computer's name in the drawer, or <Kbd keys="mod+b" /> again, keeps them open on the left. Your choice is kept in this browser.
 
 ### What needs you
 
 With no session open, the right side shows what needs you: how many sessions need you, how many are working and how many finished today. Under it, every prompt is a card, the oldest first, with everything you need to answer it there: **Deny**, **Always allow** when it's offered, and **Allow** for a command or an edit, the options of a question with **Skip** and **Answer**, and **Keep planning** and **Start** for a plan. **Open** opens its session.
 
-Below the cards, **Finished, ready to review** shows the sessions that finished and you haven't read, each with how long it takes to review, what Claude did, the tests, **Changes** and **Open**. Then each Claude profile's plan usage, as on a phone's Home.
+Below the cards, **Finished, ready to review** shows the sessions that finished and you haven't read, each with how long it takes to review, what Claude did, the tests, **Changes** and **Open**. Then each Claude profile's full usage card, with when each window resets.
 
 ### Keys
 

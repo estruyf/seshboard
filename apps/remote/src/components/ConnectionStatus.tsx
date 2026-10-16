@@ -10,32 +10,46 @@ import { Button } from './ui.tsx';
 /** The Remote access page of the docs, on the site the app comes from. */
 const DOCS = 'https://switchboard.struyfconsulting.com/remote-access/';
 
-type Look = { dot: string; text: string; label: string };
+type Look = { dot: string; text: string; label: string; word: string };
 
 function look(state: ConnectionState, computer: string): Look {
-  if (state.kind === 'connected') return { dot: 'bg-ok', text: 'text-muted', label: computer || 'Connected' };
-  if (state.kind === 'disconnected') return { dot: 'bg-faint', text: 'text-muted', label: 'Disconnected' };
-  if (state.kind === 'offline' && state.retryAt === null) return { dot: 'bg-error', text: 'text-error', label: 'Offline' };
-  if (state.kind === 'connecting' && state.attempt === 0) return { dot: 'bg-caution pulse-dot', text: 'text-muted', label: 'Connecting…' };
-  return { dot: 'bg-caution pulse-dot', text: 'text-caution', label: 'Reconnecting…' };
+  if (state.kind === 'connected') return { dot: 'bg-ok', text: 'text-muted', label: computer || 'Connected', word: 'Connected' };
+  if (state.kind === 'disconnected') return { dot: 'bg-faint', text: 'text-muted', label: 'Disconnected', word: 'Disconnected' };
+  if (state.kind === 'offline' && state.retryAt === null) return { dot: 'bg-error', text: 'text-error', label: 'Offline', word: 'Offline' };
+  if (state.kind === 'connecting' && state.attempt === 0) return { dot: 'bg-caution pulse-dot', text: 'text-muted', label: 'Connecting…', word: 'Connecting…' };
+  return { dot: 'bg-caution pulse-dot', text: 'text-caution', label: 'Reconnecting…', word: 'Reconnecting…' };
 }
 
-/**
- * The computer chip in the first screen's and the drawer's header ("● Elio's iMac ▾"): the computer's name with a
- * green dot while connected, amber while it retries, red once it gave up, grey after Disconnect. It opens the
- * computer's menu: its name and state, Disconnect (or Connect), and Forget this computer… under a line.
- */
-export function ComputerChip({ state, computer, onDisconnect, onConnect, onForget }: { state: ConnectionState; computer: string; onDisconnect: () => void; onConnect: () => void; onForget: () => void }) {
-  const now = useNow();
-  const { dot, text, label } = look(state, computer);
-  const items: MenuItem[] = [
+/** What opens the computer's menu: the chip, or the first screen's title. */
+export interface ComputerProps {
+  state: ConnectionState;
+  computer: string;
+  onDisconnect: () => void;
+  onConnect: () => void;
+  onForget: () => void;
+}
+
+/** The computer's menu: its name and state, Disconnect (or Connect), and Forget this computer… under a line. */
+function computerItems({ state, computer, onDisconnect, onConnect, onForget }: ComputerProps, now: number): MenuItem[] {
+  return [
     { kind: 'header', title: computer || 'Your computer', detail: stateLine(state, now) },
     state.kind === 'disconnected' ? { label: 'Connect', onSelect: onConnect } : { label: 'Disconnect', onSelect: onDisconnect },
     { kind: 'separator' },
     { label: 'Forget this computer…', danger: true, onSelect: onForget },
   ];
+}
+
+/**
+ * The computer chip in the drawer's and the sidebar's header ("● Elio's iMac ▾"): the computer's name with a green
+ * dot while connected, amber while it retries, red once it gave up, grey after Disconnect. It opens the computer's
+ * menu.
+ */
+export function ComputerChip(props: ComputerProps) {
+  const { state, computer } = props;
+  const now = useNow();
+  const { dot, text, label } = look(state, computer);
   return (
-    <AnchoredMenu label={computer || 'Your computer'} items={items} className="min-w-0">
+    <AnchoredMenu label={computer || 'Your computer'} items={computerItems(props, now)} className="min-w-0">
       {(trigger) => (
         <button
           type="button"
@@ -51,6 +65,47 @@ export function ComputerChip({ state, computer, onDisconnect, onConnect, onForge
         </button>
       )}
     </AnchoredMenu>
+  );
+}
+
+/**
+ * The first screen's title, which opens the computer's menu as the chip does. `large`: the computer's name in
+ * `text-hero` with a chevron, at the top of the list. `compact`: "● mystic ▾" in the bar, once the list scrolled.
+ */
+export function ComputerTitle({ size, ...props }: ComputerProps & { size: 'large' | 'compact' }) {
+  const { state, computer } = props;
+  const now = useNow();
+  const { dot } = look(state, computer);
+  const name = computer || 'Your computer';
+  return (
+    <AnchoredMenu label={name} items={computerItems(props, now)} align="left" className="flex min-w-0">
+      {(trigger) => (
+        <button
+          type="button"
+          {...trigger}
+          aria-label={`${name}: ${stateLine(state, now)}`}
+          data-remote-connection={state.kind}
+          data-remote-computer-title={size}
+          className={`flex min-h-11 min-w-0 items-center gap-1.5 rounded-lg hover:bg-border/45 ${size === 'large' ? '-ml-2 px-2 text-hero font-semibold' : 'px-2 text-title font-semibold'}`}
+        >
+          {size === 'compact' && <span aria-hidden className={`size-2 shrink-0 rounded-full ${dot}`} />}
+          <span className="truncate">{name}</span>
+          <ChevronDown aria-hidden className={`shrink-0 text-faint ${size === 'large' ? 'size-5' : 'size-4'}`} />
+        </button>
+      )}
+    </AnchoredMenu>
+  );
+}
+
+/** The line under the first screen's title: "● Connected · 2 need you". */
+export function ConnectionLine({ state, detail }: { state: ConnectionState; detail: string }) {
+  const { dot, text, word } = look(state, '');
+  return (
+    <p className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-remote-connection-line={state.kind}>
+      <span aria-hidden className={`size-2 shrink-0 rounded-full ${dot}`} />
+      <span className={`shrink-0 ${text}`}>{word}</span>
+      <span className="truncate">· {detail}</span>
+    </p>
   );
 }
 

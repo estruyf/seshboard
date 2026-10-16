@@ -23,11 +23,11 @@ export interface MenuTriggerProps {
  * keys move, and so does the mouse (one row lit at a time); Escape and a tap outside close it, focus goes back to the
  * button.
  */
-export function MenuButton({ label = 'More', items, align = 'right', side = 'below' }: { label?: string; items: MenuItem[]; align?: 'left' | 'right'; side?: 'above' | 'below' }) {
+export function MenuButton({ label = 'More', items, align = 'right', side = 'below', className = 'px-2!' }: { label?: string; items: MenuItem[]; align?: 'left' | 'right'; side?: 'above' | 'below'; className?: string }) {
   return (
     <AnchoredMenu label={label} items={items} align={align} side={side}>
       {(trigger) => (
-        <Button {...trigger} variant="quiet" size="md" aria-label={label} className="px-2!" data-remote-menu>
+        <Button {...trigger} variant="quiet" size="md" aria-label={label} className={className} data-remote-menu>
           <MoreHorizontal className="size-5" aria-hidden />
         </Button>
       )}

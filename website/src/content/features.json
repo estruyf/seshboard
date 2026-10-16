@@ -1213,12 +1213,12 @@
     },
     {
       "id": "feature:remote-list-filters",
-      "name": "Remote: All, Needs you and Working chips in the wide sidebar, and search",
+      "name": "Remote: search, with the All, Needs you and Working chips (in the wide sidebar, and on a phone while you search)",
       "page": "remote-access"
     },
     {
       "id": "feature:remote-connection-chip",
-      "name": "Remote: the computer chip and its menu, with the connection's state",
+      "name": "Remote: the computer's name at the top (the chip on a wide screen) and its menu, with the connection's state",
       "page": "remote-access"
     },
     {
@@ -1298,7 +1298,7 @@
     },
     {
       "id": "feature:remote-usage-home",
-      "name": "Remote: the usage card on the first screen, and Home with each profile's full card",
+      "name": "Remote: the usage card on the first screen, and each profile's full card",
       "page": "remote-access"
     },
     {
@@ -1338,7 +1338,7 @@
     },
     {
       "id": "feature:remote-drawer",
-      "name": "Remote: switch sessions from the sessions drawer (button or edge swipe), with the Home row",
+      "name": "Remote: switch sessions from the sessions drawer (button or edge swipe), with the Home row on a wide screen",
       "page": "remote-access"
     },
     {

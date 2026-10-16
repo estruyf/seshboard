@@ -4,10 +4,12 @@ import { REMOTE_FEATURE_MARK_UNREAD, type RemotePrompt, type RemoteSession, type
 import type { ConnectionState } from '../lib/connection.ts';
 import { filterCounts, filterList, matchesSearch, visibleFilter, type ListFilter } from '../lib/filter.ts';
 import { SLOP } from '../lib/gesture.ts';
-import { age, GROUP_LABEL, groupSessions, type SessionGroup } from '../lib/groups.ts';
+import { age, GROUP_LABEL, groupSessions, shortHeadline, type SessionGroup } from '../lib/groups.ts';
 import { PROFILE_DOT } from '../lib/options.ts';
 import type { SwipeAction } from '../lib/swipe.ts';
 import type { Client } from './Connected.tsx';
+import { ConnectionLine } from './ConnectionStatus.tsx';
+import { LargeTitle } from './LargeTitle.tsx';
 import { ContextMenu, MenuButton, menuPoint, type MenuItem, type MenuPoint } from './Menu.tsx';
 import { NeedsYouCard } from './NeedsYouCard.tsx';
 import { promptShort } from '../lib/prompts.ts';
@@ -48,17 +50,19 @@ export function useNow(): number {
 }
 
 /**
- * - `phone`: the first screen, where the app opens. The usage card, every open prompt as a card (oldest first), then
- *   the groups the sidebar on the computer has. Pull it down to refresh; swipe a row to mark it read or archive it.
+ * - `phone`: the first screen, where the app opens, and a phone's only root. The computer's name as a large title
+ *   (it opens the computer's menu), the usage card, every open prompt as a card (oldest first), then the groups the
+ *   sidebar on the computer has. Pull it down to refresh; swipe a row to mark it read or archive it. Search takes the
+ *   title's place, with the chips for what needs you and what works.
  * - `sidebar`: the wide layout's sidebar. The search opens the palette, chips for what needs you and what works,
  *   prompts are rows in Needs you (their cards are on the home view), rows are the desktop's size, and the `⋯` menu
  *   sits at the bottom next to New session.
- * - `drawer`: the sessions drawer. A search, the Home row, prompts as rows, the open session picked.
+ * - `drawer`: the sessions drawer. A search, the Home row on a wide screen, prompts as rows, the open session picked.
  */
 export type ListMode = 'phone' | 'sidebar' | 'drawer';
 
 /**
- * The sessions: a header with the computer chip, then the list. New session is a bar at the bottom. Offline (or
+ * The sessions: a header with the computer chip (on a phone, the large title), then the list. New session is a bar at the bottom. Offline (or
  * disconnected), the last list stays, greyed out, and what needs the connection is off.
  *
  * A row's menu (a long press, a right-click, Shift+F10, or the row's own menu button for screen readers) has Mark as
@@ -72,6 +76,7 @@ export function SessionList({
   client,
   features,
   chip,
+  title,
   menu,
   selectedId,
   newOpen,
@@ -97,13 +102,15 @@ export function SessionList({
   features: readonly string[];
   /** The computer chip, which opens the computer's menu. */
   chip: ReactNode;
+  /** The first screen's title on a phone: the computer's name, large or in the bar once the list scrolled. */
+  title?: (size: 'large' | 'compact') => ReactNode;
   menu: MenuItem[];
   selectedId: string | null;
   newOpen: boolean;
   onOpen: (sessionId: string) => void;
   onNew: () => void;
-  /** Goes to Home: the drawer's Home row, or the view next to the sidebar on a wide screen. */
-  onHome: () => void;
+  /** Goes to Home: the sidebar's button, or the drawer's Home row on a wide screen. Without it, no Home row. */
+  onHome?: () => void;
   /** Home is on screen: its button or row shows as current. */
   homeOpen?: boolean;
   /** Asks for the list again (pull to refresh); done when the answer is in. */
@@ -131,10 +138,11 @@ export function SessionList({
   const [query, setQuery] = useState('');
   const field = useRef<HTMLInputElement>(null);
   const counts = filterCounts(sessions.sessions);
-  const filter = sidebar ? visibleFilter(chosen, counts) : 'all';
+  // On a phone the chips only show, and only filter, while you search.
+  const filter = sidebar || searching ? visibleFilter(chosen, counts) : 'all';
   const search = drawer || searching ? query : '';
   // In the sidebar and the drawer, a session that waits on you is a row in Needs you rather than a card.
-  const shown = mode === 'phone' ? filterList(sessions, 'all', search) : { prompts: [], sessions: sessions.sessions.filter((s) => (filter === 'all' || s.status === filter) && matchesSearch(s, search)) };
+  const shown = mode === 'phone' ? filterList(sessions, filter, search) : { prompts: [], sessions: sessions.sessions.filter((s) => (filter === 'all' || s.status === filter) && matchesSearch(s, search)) };
   const leaving = useLeaving(sessions.prompts);
   const cards = leaving.merge(shown.prompts);
   const promptOf = useMemo(() => {
@@ -182,9 +190,6 @@ export function SessionList({
     setSearching(false);
     setQuery('');
   };
-  useEffect(() => {
-    if (searching) field.current?.focus();
-  }, [searching]);
 
   const chipButton = (value: ListFilter, label: string, count?: number) => (
     <button
@@ -206,6 +211,7 @@ export function SessionList({
       <Search className="size-4 shrink-0 text-faint" aria-hidden />
       <input
         ref={field}
+        autoFocus={mode === 'phone'}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
@@ -221,12 +227,46 @@ export function SessionList({
         data-remote-search
         className="min-w-0 flex-1 bg-transparent text-body outline-none placeholder:text-faint"
       />
-      {(!drawer || query) && (
-        <button type="button" aria-label={drawer ? 'Clear search' : 'Close search'} onClick={drawer ? () => setQuery('') : closeSearch} className="-mr-1 rounded-md p-1 text-faint hover:text-text">
+      {query && (
+        <button type="button" aria-label="Clear search" onClick={() => setQuery('')} className="-mr-1 rounded-md p-1 text-faint hover:text-text">
           <X className="size-4" aria-hidden />
         </button>
       )}
     </label>
+  );
+
+  const chips = (
+    <div className="scroll-row flex min-w-0 flex-1 gap-1.5">
+      {chipButton('all', 'All')}
+      {counts.needsYou > 0 && chipButton('needs-you', 'Needs you', counts.needsYou)}
+      {counts.working > 0 && chipButton('working', 'Working', counts.working)}
+    </div>
+  );
+
+  /** A phone's top: the large title, or while you search, the field with Cancel and the chips. */
+  const phoneTop = searching ? (
+    <div className="safe-top sticky top-0 z-10 flex flex-col gap-2 border-b border-border bg-bg px-4 pb-2" data-remote-bar="search">
+      <div className="flex items-center gap-1">
+        {searchField}
+        <Button variant="quiet" size="md" onClick={closeSearch} className="-mr-2 px-2!" data-remote-search-cancel>
+          Cancel
+        </Button>
+      </div>
+      <div className="-mx-4 flex px-4">{chips}</div>
+    </div>
+  ) : (
+    <LargeTitle
+      title={(size) => title?.(size)}
+      line={<ConnectionLine state={state} detail={shortHeadline(sessions.sessions, now)} />}
+      actions={
+        <>
+          <Button variant="quiet" size="md" aria-label="Search sessions" onClick={() => setSearching(true)} className="min-w-11 px-0! pointer-fine:min-w-8" data-remote-search-open>
+            <Search className="size-5" aria-hidden />
+          </Button>
+          <MenuButton items={menu} className="min-w-11 px-0! pointer-fine:min-w-8" />
+        </>
+      }
+    />
   );
 
   const groups = groupSessions(shown.sessions, now);
@@ -237,7 +277,7 @@ export function SessionList({
     <>
       {top}
       {offline && !empty && <p className="px-4 pt-3 text-meta text-muted">{state.kind === 'disconnected' ? 'The list from before you disconnected.' : "The list from before you lost the connection. Answering waits until you're back online."}</p>}
-      {mode === 'phone' && !search && usage && <div className="px-3 pt-3">{usage}</div>}
+      {mode === 'phone' && !searching && usage && <div className="px-3 pt-3">{usage}</div>}
       {empty && <p className="px-4 py-10 text-center text-body text-muted">{state.kind === 'disconnected' ? 'Connect to see your sessions.' : offline ? 'Waiting for your computer.' : 'No sessions yet. Start one with New session.'}</p>}
       {nothingMatches && <p className="px-4 py-10 text-center text-body text-muted">{search ? 'No session matches.' : 'Nothing here right now.'}</p>}
       {cards.length > 0 && (
@@ -299,23 +339,19 @@ export function SessionList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className={`sticky top-0 z-10 flex items-center gap-2 bg-inherit pb-2 ${drawer ? 'px-3 pt-[max(0.75rem,env(safe-area-inset-top))]' : 'safe-top px-4'}`}>
-        <Logo className="size-6" />
-        <h1 className="min-w-0 flex-1 truncate text-title font-semibold">Sessions</h1>
-        {sidebar && (
-          <Button variant="quiet" size="md" aria-label="Home" title="Home" aria-current={homeOpen ? 'page' : undefined} onClick={onHome} className={`px-2! ${homeOpen ? 'bg-selected text-text' : ''}`} data-remote-home-button>
-            <House className="size-4" aria-hidden />
-          </Button>
-        )}
-        {mode === 'phone' && (
-          <Button variant="quiet" size="md" aria-label="Search sessions" aria-pressed={searching} onClick={() => (searching ? closeSearch() : setSearching(true))} className="-mx-1 px-2!" data-remote-search-open>
-            <Search className="size-4" aria-hidden />
-          </Button>
-        )}
-        {chip}
-        {mode === 'phone' && <MenuButton items={menu} />}
-        {headerEnd}
-      </header>
+      {mode !== 'phone' && (
+        <header className={`sticky top-0 z-10 flex items-center gap-2 bg-inherit pb-2 ${drawer ? 'px-3 pt-[max(0.75rem,env(safe-area-inset-top))]' : 'safe-top px-4'}`}>
+          <Logo className="size-6" />
+          <h1 className="min-w-0 flex-1 truncate text-title font-semibold">Sessions</h1>
+          {sidebar && onHome && (
+            <Button variant="quiet" size="md" aria-label="Home" title="Home" aria-current={homeOpen ? 'page' : undefined} onClick={onHome} className={`px-2! ${homeOpen ? 'bg-selected text-text' : ''}`} data-remote-home-button>
+              <House className="size-4" aria-hidden />
+            </Button>
+          )}
+          {chip}
+          {headerEnd}
+        </header>
+      )}
       {sidebar && (
         <>
           <div className="px-3 pb-2">
@@ -325,20 +361,13 @@ export function SessionList({
               <Kbd shortcut="mod+k" tone="cap" />
             </button>
           </div>
-          <div className="flex items-center gap-2 border-b border-border px-3 pb-2">
-            <div className="scroll-row flex min-w-0 flex-1 gap-1.5">
-              {chipButton('all', 'All')}
-              {counts.needsYou > 0 && chipButton('needs-you', 'Needs you', counts.needsYou)}
-              {counts.working > 0 && chipButton('working', 'Working', counts.working)}
-            </div>
-          </div>
+          <div className="flex items-center gap-2 border-b border-border px-3 pb-2">{chips}</div>
         </>
       )}
-      {mode === 'phone' && searching && <div className="flex border-b border-border px-4 pb-2">{searchField}</div>}
       {drawer && (
         <>
           <div className="flex px-3 pb-2">{searchField}</div>
-          {!query && (
+          {!query && onHome && (
             <button
               type="button"
               onClick={onHome}
@@ -354,10 +383,14 @@ export function SessionList({
           <div className="mt-1 border-b border-border" />
         </>
       )}
-      {banner}
+      {mode !== 'phone' && banner}
       {mode === 'phone' ? (
-        <PullToRefresh onRefresh={onRefresh} update={update} disabled={offline} className={`min-h-0 flex-1 pb-3 transition-opacity ${offline ? 'opacity-60' : ''}`} aria-busy={offline || undefined} data-remote-list>
-          <nav aria-label="Sessions">{body}</nav>
+        <PullToRefresh onRefresh={onRefresh} update={update} disabled={offline} className="min-h-0 flex-1 pb-3" data-remote-list>
+          {phoneTop}
+          {banner}
+          <nav aria-label="Sessions" aria-busy={offline || undefined} className={`transition-opacity ${offline ? 'opacity-60' : ''}`}>
+            {body}
+          </nav>
         </PullToRefresh>
       ) : (
         <nav aria-label="Sessions" aria-busy={offline || undefined} className={`min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3 transition-opacity ${offline ? 'opacity-60' : ''}`} data-remote-list>
