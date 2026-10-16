@@ -43,6 +43,8 @@ The engine has no clipboard and no message box, so `ui_copy`, `ui_prompt_read`, 
 
 A band's tree holds every mod hooked on `AbovePrompt`. Claude Code marks the root of each mod's drawing with `part.plugin`; `splitParts` gives each mod its own frame, in `drawn_by` order. `drawn_by` names the mods that drew a replaced item, for its frame's header.
 
+The marker is read as `part.plugin`, `part.name` or a plain `part` string. When a band names no mod at all (no `drawn_by`, no marker, which is what Claude Code 2.1.292 sends), its owner is the profile's only mod; with more mods it is "mod", and it can't be split, so it shows only while every mod of the profile is on in Settings › Mods.
+
 Renders are cached per instance (`useModRender.ts`) and asked again only when `ui_invalidate` names the instance (or all of them) or the props change. The props each component sends are in `ModBands.tsx` (`AbovePrompt`), `ModPanePanel.tsx` (`Pane`) and `modReplace.ts` (the replaced components).
 
 `AskUserQuestion` drawn by a mod is only a drawing: the question is still answered through Switchboard's own permission card.
