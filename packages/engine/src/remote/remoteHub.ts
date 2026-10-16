@@ -89,6 +89,18 @@ export interface RemoteHubProfile {
   defaults: ProfileDefaults;
 }
 
+/** What `remote.fromDevice` tells the app's windows. */
+export interface RemoteFromDevice {
+  sessionId: string;
+  messageUuid: string | null;
+  requestId: string | null;
+  /** The device's name, for older callers; `deviceId` is the device. */
+  device: string;
+  deviceId: string;
+  /** For an answer: the tool it was about and whether it was allowed. */
+  answer: { toolName: string; allowed: boolean } | null;
+}
+
 export interface RemoteHubOptions {
   db: DatabaseSync;
   appState: AppStateStore;
@@ -143,8 +155,8 @@ export interface RemoteHubOptions {
   commit(sessionId: string, message: string): Promise<{ ok: true; sha: string } | { ok: false; output: string }>;
   /** Tells the app's windows. */
   onStatus(status: RemoteStatus): void;
-  /** A prompt or an answer came from a phone, for the label in the conversation. */
-  onFromDevice?(event: { sessionId: string; messageUuid: string | null; requestId: string | null; device: string }): void;
+  /** A prompt or an answer came from a phone, for the label in the conversation and the sidebar's last action. */
+  onFromDevice?(event: RemoteFromDevice): void;
   log(level: 'info' | 'warn' | 'error', message: string): void;
   /** Tests: where the tools are, and what to run instead of them. */
   findTool?: (tool: TunnelTool) => string | null;
@@ -610,7 +622,7 @@ export class RemoteHub {
         checkAttachments(images, files);
         const sent = await this.options.send(sessionId, promptWithFiles(text, saveRemoteFiles(this.options.filesDir, files)), mode, images);
         if (!sent.queued) label(sessionId, sent.messageUuid);
-        this.options.onFromDevice?.({ sessionId, messageUuid: sent.queued ? null : sent.messageUuid, requestId: null, device: device.name });
+        this.options.onFromDevice?.({ sessionId, messageUuid: sent.queued ? null : sent.messageUuid, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return { queued: sent.queued };
       },
       'session.queue.remove': ({ sessionId, id }) => {
@@ -627,14 +639,17 @@ export class RemoteHub {
         const prompt = this.list().prompts.find((p) => p.requestId === requestId);
         if (!prompt) throw new RpcError('NOT_FOUND', 'That was already answered');
         this.options.respond(requestId, decision);
-        this.options.onFromDevice?.({ sessionId: prompt.sessionId, messageUuid: null, requestId, device: device.name });
+        this.options.onFromDevice?.({ sessionId: prompt.sessionId, messageUuid: null, requestId, device: device.name, deviceId: device.id, answer: { toolName: prompt.toolName, allowed: decision.behavior === 'allow' } });
         return {};
       },
       'session.create': async ({ projectId, prompt, images, files, ...options }) => {
         const project = this.project(projectId);
         checkAttachments(images, files);
         const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId));
-        return this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
+        const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
+        // Its first prompt: the sidebar's last action for the device.
+        this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
+        return created;
       },
       'later.add': ({ projectId, prompt, ...options }) => {
         const project = this.project(projectId);

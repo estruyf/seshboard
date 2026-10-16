@@ -71,7 +71,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - A **queue** of prompts to start next, each one saying when it's ready (when its project is free). See [Queue](#queue).
 - **Unsent messages** are kept, also after you quit. See [Unsent messages](#unsent-messages).
 - An optional **focus limit**: how many sessions you want going at the same time, so starting another doesn't come at the cost of the ones already running. See [Focus limit](#focus-limit).
-- **Remote:** follow your sessions from your phone's browser. See what needs you, allow or deny, answer questions, send prompts, review changes and commit, end-to-end encrypted. Turn it on in Settings › Remote and pair a phone with a QR code.
+- **Remote:** follow your sessions from your phone's browser. See what needs you, allow or deny, answer questions, send prompts, review changes and commit, end-to-end encrypted. Turn it on in Settings › Remote and pair a phone with a QR code. While it is on, **Connected to this Mac** at the bottom of the sidebar shows which devices are connected, what they did last, and Revoke.
 - Your plan usage under the message box: how much of your 5-hour and weekly limits you've used (hover for when they reset).
 
 **Review and finish the work**

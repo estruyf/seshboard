@@ -7,6 +7,7 @@ import { basename, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
+import type { RemoteContract } from '@switchboard/protocol';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { EngineProcess } from './engineProcess.ts';
@@ -2878,6 +2879,112 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
   await click('[data-remote-enabled]');
   if (!(await waitInPage(win, "document.querySelector('[data-remote-off-card]')", 5_000))) return 'turned off with a paired device, the page did not say Remote is off';
   return `ok: three steps, status card "${title}", Change… and Advanced opened, device renamed, Revoke asked and Escape cancelled, turned off`;
+}
+
+/**
+ * The sidebar's Connected to this Mac: with Remote on (My own address, from the step before), a test phone paired in
+ * the throwaway profile's cache connects for real (the engine's `testPhone.ts`, with the smoke run's throwaway key).
+ * Its row shows with the toast, the details popover opens and Escape closes it, and Revoke asks first and then
+ * disconnects it: the row goes, the socket closes and the quiet "nobody connected" line is left. Remote is turned off
+ * again, and the section goes with it.
+ */
+async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const { generateKeyPair, keyPairFromSecret, toBase64Url, REMOTE_APP_URL } = await import('@switchboard/protocol');
+  const phone = await import('../../../../packages/engine/src/remote/testPhone.ts');
+
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000))) return 'Settings has no Remote section';
+  await click('[data-settings-section="remote"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-enabled]')", 5_000))) return 'Settings › Remote has no switch';
+  if ((await js("document.querySelector('[data-remote-enabled]').getAttribute('aria-checked')")) !== 'true') await click('[data-remote-enabled]');
+  const title = () => js("document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle ?? ''") as Promise<string>;
+  await waitInPage(win, "document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle", 10_000);
+  // My own address, so no tunnel tool is needed; and the card's own fix when another Switchboard has the port.
+  if ((await title()) === 'Add your address' || (await js("document.querySelector('[data-remote-connection]')?.innerText.includes('My own address')")) === false) {
+    await click('[data-remote-change-connection]');
+    await waitInPage(win, "document.querySelector('[data-remote-tunnel-option=\"custom\"]')", 3_000);
+    await click('[data-remote-connection] [data-remote-tunnel-option="custom"]');
+    await waitInPage(win, "document.querySelector('[data-remote-custom-url] input')", 3_000);
+    await setFieldValue(win, '[data-remote-custom-url] input', 'https://smoke.example.com');
+    await click('[data-remote-save-connection]');
+  }
+  if (await waitInPage(win, "document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle.startsWith('Port ')", 2_000)) await click('[data-remote-action="use-port"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-status]')?.dataset.remoteStatus === 'ok'", 10_000))) {
+    return `Remote did not run: ${await js("document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle ?? 'no status card'")}`;
+  }
+  if (!(await js("document.querySelector('[data-remote-idle-line]')?.getAttribute('aria-checked') === 'true'"))) return '"Show in the sidebar when nobody is connected" is not on by default';
+  pressKey(win, 'Escape');
+  // The Settings button closes Settings too.
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await click('[data-open-settings]');
+  if (!(await js("Boolean(document.querySelector('[data-sidebar-open]'))"))) {
+    await click('[data-sidebar-toggle]');
+    if (!(await waitInPage(win, "document.querySelector('[data-sidebar-open]')", 3_000))) return 'the sidebar did not open';
+  }
+  if (!(await waitInPage(win, "document.querySelector('[data-connected-devices=\"idle\"]')?.innerText.includes('nobody connected')", 5_000))) return 'Remote on with nobody connected showed no quiet line';
+
+  // A test phone, paired three days ago in the throwaway profile's cache, connects with the engine's throwaway key.
+  const keys = generateKeyPair();
+  const db = new DatabaseSync(join(app.getPath('userData'), 'cache.sqlite'));
+  let port: number;
+  try {
+    db.prepare('INSERT OR REPLACE INTO remote_devices (id, name, kind, public_key, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)').run('smoke-phone', 'Smoke iPhone', 'phone', toBase64Url(keys.publicKey), Date.now() - 3 * 86_400_000, Date.now() - 86_400_000);
+    const row = db.prepare("SELECT value FROM app_state WHERE key = 'remote.settings'").get() as { value: string } | undefined;
+    port = (JSON.parse(row?.value ?? '{}') as { port?: number }).port ?? 0;
+  } finally {
+    db.close();
+  }
+  if (!port) return 'Remote has no port in the cache';
+  const engineKey = keyPairFromSecret(new Uint8Array(Buffer.from(throwawayRemoteKey('identity'), 'base64'))).publicKey;
+  const origin = new URL(process.env.SWITCHBOARD_REMOTE_APP_URL ?? REMOTE_APP_URL).origin;
+  const socket = await phone.handshake(port, 'connect', keys, engineKey, undefined, origin);
+  if (!socket.session) return `the test phone was refused (close code ${socket.code})`;
+  const remote = phone.client<RemoteContract>(socket.frames, socket.session);
+  try {
+    await remote.call('hello', { client: { version: 'smoke' } });
+    const row = '[data-connected-devices="devices"] [data-connected-device="smoke-phone"]';
+    if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(row)})?.innerText.includes('Smoke iPhone')`, 5_000))) return 'the connected test phone has no row in the sidebar';
+    if (!(await js(`/since /.test(document.querySelector(${JSON.stringify(row)}).innerText)`))) return 'the row does not say since when';
+    const header = (await js("document.querySelector('[data-connected-devices-toggle]')?.getAttribute('aria-label')")) as string;
+    if (!/1 device connected/.test(header)) return `the header's name has no count: "${header}"`;
+    if (!(await waitInPage(win, "document.querySelector('[data-device-toast=\"smoke-phone\"]')", 3_000))) return 'no "connected" toast for a device paired days ago';
+    await shot(win, 'connected-devices.png');
+
+    // The details popover: a dialog named after the device, with no actions yet; Escape closes it.
+    await click(`${row} [data-device-row]`);
+    if (!(await waitInPage(win, "document.querySelector('[data-device-details][role=dialog]')?.getAttribute('aria-label') === 'Smoke iPhone'", 3_000))) return 'the row did not open its details';
+    const details = (await js("document.querySelector('[data-device-details]').innerText")) as string;
+    if (!details.includes('No actions yet') || !details.includes('Connected since') || !details.includes('3 days ago')) return `the details miss a line: ${details.replace(/\s+/g, ' ')}`;
+    await shot(win, 'connected-devices-details.png');
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-device-details]') && document.activeElement?.matches('[data-device-row]')", 3_000))) return 'Escape did not close the details and give focus back to the row';
+
+    // Revoke asks first, Escape cancels, then Revoke for real disconnects it.
+    await click(`${row} [data-device-revoke]`);
+    if (!(await waitInPage(win, `document.activeElement?.closest('${row} [data-confirm-strip]')`, 3_000))) return 'Revoke did not ask first with Cancel focused';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-confirm-strip]') && document.activeElement?.matches('[data-device-revoke]')", 3_000))) return "Escape did not cancel and give focus back to the row's Revoke";
+    await click(`${row} [data-device-revoke]`);
+    await waitInPage(win, "document.querySelector('[data-confirm-strip] [data-confirm]')", 3_000);
+    await click('[data-confirm-strip] [data-confirm]');
+    const closed = await Promise.race([socket.closed.then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5_000))]);
+    if (!closed) return 'Revoke did not close the test phone\'s connection';
+    if (!(await waitInPage(win, `!document.querySelector(${JSON.stringify(row)}) && document.querySelector('[data-connected-devices="idle"]')`, 5_000))) return 'the revoked device stayed in the sidebar';
+  } finally {
+    remote.dispose();
+    socket.ws.close();
+  }
+
+  await click('[data-open-settings]');
+  await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
+  await click('[data-settings-section="remote"]');
+  await waitInPage(win, "document.querySelector('[data-remote-enabled]')", 3_000);
+  await click('[data-remote-enabled]');
+  const off = await waitInPage(win, "document.querySelector('[data-remote-off-card]') && !document.querySelector('[data-connected-devices]')", 5_000);
+  pressKey(win, 'Escape');
+  if (!off) return 'turned off, the sidebar still shows Remote';
+  return 'ok: test phone connected, row and toast shown, details opened and closed, Revoke asked, cancelled, then disconnected it; idle line, then nothing once off';
 }
 
 /**
@@ -6766,6 +6873,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
+  await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));

@@ -57,6 +57,7 @@ import { useUpdatesSync } from './state/updatesStore.ts';
 import { useClaudeUpdateSync } from './state/claudeUpdateStore.ts';
 import { useHostsSync } from './state/useHostsSync.ts';
 import { useComputersSync } from './state/useComputersSync.ts';
+import { useRemoteSync } from './state/useRemoteSync.ts';
 import { RemoteView } from './components/computers/RemoteView.tsx';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
@@ -213,6 +214,7 @@ export function App() {
   useSessionsSync();
   useHostsSync();
   useComputersSync();
+  useRemoteSync();
   useProjectsSync();
   useProfilesSync();
   useTerminalsSync();
