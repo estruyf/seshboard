@@ -2,6 +2,12 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### Fixed
+
+- **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.
+
 ## [0.0.22] - 2026-10-16
 
 ### New
