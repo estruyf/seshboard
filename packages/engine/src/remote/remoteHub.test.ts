@@ -35,6 +35,8 @@ afterEach(() => {
 const ROOT = '/work/web';
 const FIRST = '/work/api';
 const SEEN_ONLY = '/work/scratch';
+/** The `accountKey` the fake engine has a profile for. */
+const ACCOUNT = 'ab'.repeat(32);
 const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
 const SESSION = '11111111-1111-4111-8111-111111111111';
 /** A browser's push subscription (the keys from RFC 8291's example). */
@@ -147,6 +149,22 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
       if (profileId === 'work') return { usage: null, error: 'Not logged in' };
       return { usage: { fetchedAt: 1, limits: [{ kind: 'session', group: 'session', percent: 44, resetsAt: 2, scope: null, severity: 'normal', isActive: true }], extraUsage: null }, error: null };
+    },
+    tokens: (account, params) => {
+      calls.push(`tokens ${account.slice(0, 4)} ${params.period} ${params.groupBy}`);
+      if (account !== ACCOUNT) return null;
+      const tokens = { input: 10, output: 20, cacheRead: 300, cacheWrite: 40 };
+      const row = (key: string, projectRoot: string | null) => ({ key, label: key, sessionId: null, projectRoot, model: 'claude-opus-x', sessions: 1, turns: 2, fastTurns: 0, tokens, largestContext: 350, share: 0.5, measured: false });
+      return {
+        period: params.period,
+        from: 1,
+        to: 2,
+        bucket: 'hour',
+        totals: { tokens, sessions: 2, turns: 4, fastTurns: 0, largestContext: 350 },
+        rows: [row(ROOT, ROOT), row('/elsewhere/tools', '/elsewhere/tools'), row('', null)],
+        buckets: [],
+        scan: null,
+      };
     },
     catchUp: () => card,
     ask: (sessionId, question, threadId) => (calls.push(`ask ${sessionId} ${question} ${threadId ?? 'new'}`), { threadId: threadId ?? 't1', id: `q${calls.length}`, at: 5 }),
@@ -348,6 +366,23 @@ describe('Remote hub', () => {
     hub.usageChanged('work', null);
     await until(() => heard.length > 0);
     expect(heard).toEqual(['work']);
+  });
+
+  it('answers token usage for the profile signed in to an account, with projects by id and name and never their folder', async () => {
+    const { hub, port, on, calls } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const { breakdown } = await remote.call('usage.tokens', { account: ACCOUNT, period: 'week', groupBy: 'project' });
+    expect(breakdown?.rows.map((r) => [r.key, r.projectId, r.projectName])).toEqual([
+      [projectIdOf(ROOT), projectIdOf(ROOT), 'Web'],
+      [projectIdOf('/elsewhere/tools'), projectIdOf('/elsewhere/tools'), 'tools'],
+      ['', null, null],
+    ]);
+    expect(JSON.stringify(breakdown)).not.toContain('/work');
+    expect(JSON.stringify(breakdown)).not.toContain('/elsewhere');
+    expect(await remote.call('usage.tokens', { account: 'cd'.repeat(32), period: 'day' })).toEqual({ breakdown: null });
+    await expect(remote.call('usage.tokens', { account: 'elio@example.com', period: 'day' } as never)).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    expect(calls).toEqual(['tokens abab week project', 'tokens cdcd day session']);
   });
 
   it('asks about a session in the list, and sends the answer to the phone that asked and to phones watching it', async () => {

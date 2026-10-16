@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown, Gauge, RefreshCw } from 'lucide-react';
 import type { UsagePeriod } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { thisComputerName } from '../../lib/platform.ts';
 import { matches } from '../../lib/shortcuts.ts';
+import { useComputers } from '../../state/computersStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
-import { closeUsage, useUsageView, type UsageTab } from '../../state/usageViewStore.ts';
+import { closeUsage, useUsageView, type UsageComputers, type UsageTab } from '../../state/usageViewStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { ProfileDot } from '../profiles/ProfileBadge.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
@@ -44,7 +46,10 @@ export function UsageView() {
   const profileId = useUsageView((s) => s.profileId) ?? useProfiles.getState().defaultId;
   const tab = useUsageView((s) => s.tab);
   const period = useUsageView((s) => s.period);
-  const { setTab, setPeriod, setProfile } = useUsageView.getState();
+  const computers = useUsageView((s) => s.computers);
+  const { setTab, setPeriod, setProfile, setComputers } = useUsageView.getState();
+  // Other computers count only while some are paired; then the choice shows.
+  const paired = useComputers((s) => s.status?.computers.length ?? 0) > 0;
   const profiles = useProfiles((s) => s.profiles);
   const profile = profiles.find((p) => p.id === profileId);
   const entry = useUsageFor(profileId);
@@ -180,10 +185,23 @@ export function UsageView() {
               </button>
             ))}
           </div>
+          {paired && (
+            <SegmentedControl<UsageComputers>
+              mode="radio"
+              label="Computers"
+              className="mb-1.5 ml-auto"
+              value={computers}
+              onChange={setComputers}
+              segments={[
+                { value: 'this', label: thisComputerName(), data: { 'data-usage-computers-choice': 'this' } },
+                { value: 'all', label: 'All computers', tooltip: 'Add the tokens this account used on your paired computers', data: { 'data-usage-computers-choice': 'all' } },
+              ]}
+            />
+          )}
           <SegmentedControl<UsagePeriod>
             mode="radio"
             label="Period"
-            className="mb-1.5 ml-auto"
+            className={`mb-1.5 ${paired ? '' : 'ml-auto'}`}
             value={period}
             onChange={setPeriod}
             segments={PERIODS.map((value, i) => ({ value, label: PERIOD_LABEL[value], kbd: String(i + 1), data: { 'data-usage-period': value } }))}

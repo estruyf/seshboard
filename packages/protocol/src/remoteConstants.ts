@@ -18,3 +18,6 @@ export const REMOTE_ATTACHMENT_BYTES = 3_600_000;
 
 /** In `hello`'s `features`: `session.send` takes files, and `session.create` images and files. */
 export const REMOTE_FEATURE_ATTACHMENTS = 'attachments';
+
+/** In `hello`'s `features`: `usage.tokens` answers, so the Usage view can count that computer's tokens. */
+export const REMOTE_FEATURE_USAGE_TOKENS = 'usage.tokens';

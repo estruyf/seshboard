@@ -36,6 +36,7 @@ describe('the remote contracts', () => {
       'transcript.unwatch',
       'transcript.watch',
       'usage.get',
+      'usage.tokens',
     ]);
     expect(Object.keys(remoteContract.events).sort()).toEqual(['catchup.changed', 'session.ask', 'session.stream', 'sessions.changed', 'transcript.updated', 'upNext.changed', 'usage.changed']);
     expect(Object.keys(remotePairContract.requests)).toEqual(['pair.request']);

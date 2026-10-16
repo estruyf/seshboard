@@ -30,6 +30,9 @@ import {
   type RemoteImage,
   type ModelOption,
   type PermissionMode,
+  type UsageBreakdown,
+  type UsageGroup,
+  type UsagePeriod,
   type UsageSnapshot,
   type AutoTier,
   type AskEvent,
@@ -48,7 +51,7 @@ import { nextFreePort } from './freePort.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, type VapidKeys } from './webPush.ts';
-import { capDiff, projectIdOf, remoteCatchUp, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { capDiff, projectIdOf, remoteCatchUp, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
 /** The engine's VAPID key pair, made the first time a phone asks for it. */
@@ -132,6 +135,11 @@ export interface RemoteHubOptions {
   autoModel(): { enabled: boolean; allowed: AutoTier[] };
   /** A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). */
   usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
+  /**
+   * Where the tokens of the profile signed in to an account (its `accountKey`) went, as `usage.breakdown`; null when
+   * no profile here signs in to it.
+   */
+  tokens(account: string, params: { period: UsagePeriod; groupBy: UsageGroup; model: string | null; timeZone: string }): UsageBreakdown | null;
   catchUp(sessionId: string): CatchUp | null;
   /** Ask about this session, as on the computer: the answer comes through `askEvent`. */
   ask(sessionId: string, question: string, threadId: string | undefined, replaces: string | undefined): { threadId: string; id: string; at: number };
@@ -697,6 +705,10 @@ export class RemoteHub {
             }),
           ),
         };
+      },
+      'usage.tokens': ({ account, ...params }) => {
+        const breakdown = this.options.tokens(account, params);
+        return { breakdown: breakdown && remoteUsage(breakdown, new Map(this.options.projects().map((p) => [p.root, p.name]))) };
       },
       'session.ask': ({ sessionId, question, threadId, replaces }, phone) => {
         this.checkSession(sessionId);

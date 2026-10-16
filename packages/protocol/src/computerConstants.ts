@@ -35,6 +35,7 @@ export const COMPUTER_METHODS = [
   'session.setPermissionMode',
   'options.get',
   'usage.get',
+  'usage.tokens',
   'catchup.get',
   'changes.get',
   'changes.diff',

@@ -123,7 +123,7 @@ export function recordedSince(period: UsagePeriod, since: number | null, from: n
 }
 
 /** The first `count` rows, and the rest folded into one line with their totals. */
-export function foldRows(rows: readonly UsageRow[], count: number): { shown: UsageRow[]; rest: { count: number; turns: number; tokens: TokenCounts; share: number } | null } {
+export function foldRows<R extends UsageRow>(rows: readonly R[], count: number): { shown: R[]; rest: { count: number; turns: number; tokens: TokenCounts; share: number } | null } {
   if (rows.length <= count) return { shown: [...rows], rest: null };
   const others = rows.slice(count);
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -134,11 +134,14 @@ export function foldRows(rows: readonly UsageRow[], count: number): { shown: Usa
   };
 }
 
-/** Rows whose label, project or model match a filter (case-insensitive). */
-export function filterRows(rows: readonly UsageRow[], filter: string, projectName: (root: string) => string): UsageRow[] {
+/** "3 computers": this one and the others counted with it. */
+export const computersLabel = (count: number) => `${count} ${count === 1 ? 'computer' : 'computers'}`;
+
+/** Rows whose label, project or model match a filter (case-insensitive), or what `more` says of them (another computer's name). */
+export function filterRows<R extends UsageRow>(rows: readonly R[], filter: string, projectName: (root: string) => string, more: (row: R) => ReadonlyArray<string | null | undefined> = () => []): R[] {
   const q = filter.trim().toLowerCase();
   if (!q) return [...rows];
-  return rows.filter((r) => [r.label, r.projectRoot ? projectName(r.projectRoot) : '', modelName(r.model)].some((text) => text.toLowerCase().includes(q)));
+  return rows.filter((r) => [r.label, r.projectRoot ? projectName(r.projectRoot) : '', modelName(r.model), ...more(r)].some((text) => text?.toLowerCase().includes(q)));
 }
 
 /** A round top for an axis: 1, 2 or 5 times a power of ten, at or above the largest value. */

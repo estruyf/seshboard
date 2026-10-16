@@ -55,6 +55,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
       'session.setPermissionMode': () => ({}),
       'options.get': () => ({ models: [], efforts: [], modes: [], profiles: [], defaultProfileId: 'default', projects: [] }),
       'usage.get': () => ({ profiles: [] }),
+      'usage.tokens': () => ({ breakdown: null }),
       'session.setEffort': () => ({}),
       'session.ask': () => ({ threadId: 't', id: 'q', at: 1 }),
       'session.askThreads': () => ({ threads: [] }),
@@ -98,7 +99,7 @@ describe('Remote server', () => {
 
     const { frames, session } = await handshake(env.port, 'connect', phone, env.identity.publicKey);
     const remote = client<RemoteContract>(frames, session!);
-    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments'] });
+    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments', 'usage.tokens'] });
     expect((await remote.call('sessions.list', {})).prompts[0]!.input).toEqual({ command: "Elio's iPhone" });
     expect(env.server.list()).toMatchObject([{ deviceId, name: "Elio's iPhone" }]);
     await expect(remote.call('session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

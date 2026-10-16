@@ -1,21 +1,23 @@
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { MessageCircleQuestion, NotebookText, Search, X, Zap } from 'lucide-react';
-import type { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow } from '@switchboard/protocol/client';
-import { useProjects } from '../../state/projectsStore.ts';
+import { MessageCircleQuestion, Monitor, NotebookText, Search, X, Zap } from 'lucide-react';
+import type { UsageBreakdown, UsagePeriod } from '@switchboard/protocol/client';
+import { thisComputerName } from '../../lib/platform.ts';
 import { useUsageView } from '../../state/usageViewStore.ts';
-import { ProjectIcon } from '../ProjectIcon.tsx';
+import { ComputerChip } from '../computers/ComputerChip.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { AutoWand } from '../composer/ComposerChips.tsx';
 import { ChartCard, ChartTable, LegendItem, RateLine, StackedBars } from './charts.tsx';
-import { ModelCell, ScanProgress, ShareBar, useOpenSession, useProjectName } from './LimitsTab.tsx';
+import { ModelCell, NotCounted, RowComputer, RowProjectIcon, rowProjectName, ScanProgress, ShareBar, useOpenSession, useProjectName } from './LimitsTab.tsx';
 import { ShareInfo } from './ShareInfo.tsx';
-import { useBreakdown } from './useUsageData.ts';
+import type { ComputerRef, MergedBreakdown, MergedRow, UsageViewGroup } from './usageMerge.ts';
+import { useCountedBreakdown } from './useUsageData.ts';
 import {
   bucketLabel,
   cacheHitRate,
   chartTypes,
+  computersLabel,
   dayLabel,
   filterRows,
   foldRows,
@@ -32,7 +34,7 @@ import {
 const percent = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : '0%');
 
 /** The period's totals: all tokens with sessions and turns, each type with its part of the whole, and the cache hit rate. */
-function Headline({ data, profileName, period }: { data: UsageBreakdown; profileName: string; period: UsagePeriod }) {
+function Headline({ data, profileName, period, counted }: { data: UsageBreakdown; profileName: string; period: UsagePeriod; counted: readonly ComputerRef[] }) {
   const total = sumTokens(data.totals.tokens);
   const hit = cacheHitRate(data.totals.tokens);
   const tile = (label: ReactNode, value: string, note: string, key: string) => (
@@ -47,6 +49,12 @@ function Headline({ data, profileName, period }: { data: UsageBreakdown; profile
       <div className="grid min-w-[200px] content-start gap-0.5 px-4">
         <p className="text-meta text-muted">
           {PERIOD_SHORT[period]} · {profileName}
+          {counted.length > 0 && (
+            <span data-tooltip={`${thisComputerName()} and ${counted.map((c) => c.name).join(', ')}`} data-usage-computers={counted.length + 1}>
+              {' '}
+              · {computersLabel(counted.length + 1)}
+            </span>
+          )}
         </p>
         <p className="flex items-baseline gap-1.5">
           <span className="text-display font-semibold tabular-nums" data-usage-total>
@@ -117,7 +125,7 @@ interface Column {
   /** Grid track. */
   width: string;
   align?: 'right';
-  cell(row: UsageRow): ReactNode;
+  cell(row: MergedRow): ReactNode;
   /** The column's value in the "N more" line, when it adds up. */
   total?(rest: Folded): ReactNode;
 }
@@ -160,16 +168,25 @@ function CatchUpSummariesName({ model }: { model: string | null }) {
 }
 
 /** The name of a row whose tokens left no transcript (Auto routing, Side questions, Catch-up summaries), or null for any other row. */
-function apartName(r: UsageRow): ReactNode | null {
+function apartName(r: MergedRow): ReactNode | null {
   if (r.autoRouting) return <AutoRoutingName model={r.model} />;
   if (r.sideQuestions) return <SideQuestionsName model={r.model} />;
   if (r.catchUpSummaries) return <CatchUpSummariesName model={r.model} />;
   return null;
 }
 
+/** A row's name, with the chip of the computer it comes from when that is another one. */
+function Named({ row, children }: { row: MergedRow; children: ReactNode }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      {children}
+      <RowComputer row={row} />
+    </span>
+  );
+}
+
 /** The columns for each grouping. Numbers are right-aligned in tabular figures. */
-function useColumns(groupBy: UsageGroup): Column[] {
-  const projects = useProjects((s) => s.projects);
+function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
   const nameOf = useProjectName();
   const share: Column = {
     head: (
@@ -211,12 +228,21 @@ function useColumns(groupBy: UsageGroup): Column[] {
         cell: (r) =>
           apartName(r) ?? (
             <span className="flex min-w-0 items-center gap-2.5">
-              {r.projectRoot && <ProjectIcon project={projects.get(r.projectRoot)} root={r.projectRoot} size={18} />}
+              <RowProjectIcon row={r} size={18} />
               <span className="truncate font-medium">{r.label}</span>
             </span>
           ),
       },
-      { head: 'Project', width: 'minmax(90px,1fr)', cell: (r) => <span className="truncate text-muted">{r.autoRouting || r.sideQuestions || r.catchUpSummaries ? '' : nameOf(r.projectRoot)}</span> },
+      {
+        head: 'Project',
+        // The computer's chip sits with the project, so the session's title keeps its room; the column makes room for both.
+        width: across ? 'minmax(170px,1.2fr)' : 'minmax(90px,1fr)',
+        cell: (r) => (
+          <Named row={r}>
+            <span className="truncate text-muted">{r.autoRouting || r.sideQuestions || r.catchUpSummaries ? '' : rowProjectName(r, nameOf)}</span>
+          </Named>
+        ),
+      },
       { head: 'Model', width: '72px', cell: (r) => <ModelCell model={r.model} fastTurns={r.fastTurns} /> },
       ...tokens,
       largest,
@@ -228,13 +254,16 @@ function useColumns(groupBy: UsageGroup): Column[] {
       {
         head: 'Project',
         width: 'minmax(180px,2fr)',
-        cell: (r) =>
-          apartName(r) ?? (
-            <span className="flex min-w-0 items-center gap-2.5">
-              {r.projectRoot && <ProjectIcon project={projects.get(r.projectRoot)} root={r.projectRoot} size={18} />}
-              <span className="truncate font-medium">{nameOf(r.projectRoot)}</span>
-            </span>
-          ),
+        cell: (r) => (
+          <Named row={r}>
+            {apartName(r) ?? (
+              <span className="flex min-w-0 items-center gap-2.5">
+                <RowProjectIcon row={r} size={18} />
+                <span className="truncate font-medium">{rowProjectName(r, nameOf)}</span>
+              </span>
+            )}
+          </Named>
+        ),
       },
       sessions,
       ...tokens,
@@ -272,31 +301,71 @@ function useColumns(groupBy: UsageGroup): Column[] {
       share,
     ];
   }
+  if (groupBy === 'computer') {
+    return [
+      {
+        head: 'Computer',
+        width: 'minmax(160px,2fr)',
+        // Violet is only for another computer: this one is a plain name.
+        cell: (r) =>
+          r.computer ? (
+            <ComputerChip name={r.computer.name} data-usage-row-computer={r.computer.id} />
+          ) : (
+            <span className="flex min-w-0 items-center gap-1.5 font-medium" data-usage-this-computer>
+              <Monitor size={13} className="shrink-0 text-muted" aria-hidden />
+              <span className="truncate">{r.label}</span>
+            </span>
+          ),
+      },
+      sessions,
+      ...tokens,
+      largest,
+      share,
+    ];
+  }
   return [{ head: 'Day', width: 'minmax(160px,2fr)', cell: (r) => <span className="font-medium">{dayLabel(r.label)}</span> }, sessions, ...tokens, largest, share];
 }
+
 
 const ROW_HEIGHT = 44;
 
 /** Where the period's tokens went, grouped by session, project, model or day. */
-function Breakdown({ data, profileId, period, onModel, model }: { data: UsageBreakdown; profileId: string; period: UsagePeriod; onModel(model: string): void; model: string | null }) {
-  const groupBy = useUsageView((s) => s.groupBy);
+function Breakdown({
+  data,
+  groupBy,
+  across,
+  profileId,
+  period,
+  onModel,
+  model,
+}: {
+  data: MergedBreakdown;
+  /** The grouping shown: Computer falls back to Session while only this computer counts. */
+  groupBy: UsageViewGroup;
+  /** Other computers count, so Computer is a grouping. */
+  across: boolean;
+  profileId: string;
+  period: UsagePeriod;
+  onModel(model: string): void;
+  model: string | null;
+}) {
   const setGroupBy = useUsageView((s) => s.setGroupBy);
   const [filter, setFilter] = useState('');
   const [all, setAll] = useState(false);
-  const columns = useColumns(groupBy);
+  const columns = useColumns(groupBy, across);
   const nameOf = useProjectName();
   const open = useOpenSession();
-  const filtered = useMemo(() => filterRows(data.rows, filter, (root) => nameOf(root)), [data.rows, filter, nameOf]);
+  const filtered = useMemo(() => filterRows(data.rows, filter, (root) => nameOf(root), (r) => [r.computer?.name, r.remoteProject?.name]), [data.rows, filter, nameOf]);
   // A filter shows every match; otherwise the top five, then "N more".
   const { shown, rest } = useMemo(() => (all || filter.trim() ? { shown: filtered, rest: null } : foldRows(filtered, 5)), [filtered, all, filter]);
   const template = columns.map((c) => c.width).join(' ');
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtual = shown.length > 40;
   const virtualizer = useVirtualizer({ count: shown.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_HEIGHT, overscan: 8 });
-  const noun = groupBy === 'session' ? 'sessions' : groupBy === 'project' ? 'projects' : groupBy === 'model' ? 'models' : 'days';
+  const noun = groupBy === 'session' ? 'sessions' : groupBy === 'project' ? 'projects' : groupBy === 'model' ? 'models' : groupBy === 'computer' ? 'computers' : 'days';
 
-  const rowAction = (row: UsageRow) => (row.autoRouting || row.sideQuestions || row.catchUpSummaries ? null : groupBy === 'session' ? open(row.sessionId) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
-  const renderRow = (row: UsageRow, style?: CSSProperties) => {
+  const rowAction = (row: MergedRow) => (row.autoRouting || row.sideQuestions || row.catchUpSummaries ? null : groupBy === 'session' ? open(row) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
+  const renderRow = (row: MergedRow, style?: CSSProperties) => {
     const action = rowAction(row);
     const selected = groupBy === 'model' && row.model === model;
     return (
@@ -310,6 +379,7 @@ function Breakdown({ data, profileId, period, onModel, model }: { data: UsageBre
         style={{ gridTemplateColumns: template, ...style }}
         className={`grid items-center gap-x-3 border-b border-border px-4 text-ui ${action ? 'cursor-pointer hover:bg-border/45' : ''} ${selected ? 'bg-selected' : ''}`}
         data-usage-row={row.sessionId ?? row.key}
+        data-usage-row-from={row.computer?.id}
       >
         {columns.map((c, i) => (
           <span key={i} role="cell" className={`flex min-w-0 items-center py-2.5 ${c.align === 'right' ? 'justify-end text-right tabular-nums' : ''}`}>
@@ -324,7 +394,7 @@ function Breakdown({ data, profileId, period, onModel, model }: { data: UsageBre
     <section className="grid min-w-0 rounded-xl border border-border bg-card" aria-label="Breakdown" data-usage-breakdown={groupBy}>
       <header className="flex flex-wrap items-center gap-3 px-4 py-3">
         <h2 className="text-ui font-semibold">Breakdown</h2>
-        <SegmentedControl<UsageGroup>
+        <SegmentedControl<UsageViewGroup>
           mode="radio"
           label="Group by"
           value={groupBy}
@@ -332,7 +402,7 @@ function Breakdown({ data, profileId, period, onModel, model }: { data: UsageBre
             setGroupBy(value);
             setAll(false);
           }}
-          segments={(['session', 'project', 'model', 'day'] as const).map((value) => ({ value, label: value[0]!.toUpperCase() + value.slice(1), data: { 'data-usage-group': value } }))}
+          segments={(['session', 'project', 'model', 'day', ...(across ? (['computer'] as const) : [])] as const).map((value) => ({ value, label: value[0]!.toUpperCase() + value.slice(1), data: { 'data-usage-group': value } }))}
         />
         <label className="ml-auto flex h-8 w-64 max-w-full min-w-0 items-center gap-2 rounded-lg border border-edge bg-bg px-2.5 text-ui focus-within:border-accent-ink">
           <Search size={13} className="shrink-0 text-muted" aria-hidden />
@@ -398,7 +468,7 @@ function Breakdown({ data, profileId, period, onModel, model }: { data: UsageBre
 
 /** One model: its tokens, sessions, fast mode turns, largest context, and its cache hit rate over the period. */
 function ModelPanel({ profileId, period, model }: { profileId: string; period: UsagePeriod; model: string }) {
-  const data = useBreakdown(profileId, period, 'session', model);
+  const { data } = useCountedBreakdown(profileId, period, 'session', model);
   if (!data) return null;
   const hit = cacheHitRate(data.totals.tokens);
   const input = data.totals.tokens.input + data.totals.tokens.cacheRead + data.totals.tokens.cacheWrite;
@@ -429,16 +499,19 @@ function ModelPanel({ profileId, period, model }: { profileId: string; period: U
 
 /** The Tokens tab: totals, tokens per hour or day, and the breakdown. */
 export function TokensTab({ profileId, profileName, period }: { profileId: string; profileName: string; period: UsagePeriod }) {
-  const groupBy = useUsageView((s) => s.groupBy);
-  const data = useBreakdown(profileId, period, groupBy);
+  const chosen = useUsageView((s) => s.groupBy);
+  const { data, counted, uncounted, across, noAccount } = useCountedBreakdown(profileId, period, chosen);
+  const groupBy = across || chosen !== 'computer' ? chosen : 'session';
   const [model, setModel] = useState<string | null>(null);
   if (!data) return <p className="text-ui text-muted">Loading usage…</p>;
   return (
     <>
       {data.scan && <ScanProgress scan={data.scan} />}
-      <Headline data={data} profileName={profileName} period={period} />
+      <NotCounted uncounted={uncounted} noAccount={noAccount} />
+      <Headline data={data} profileName={profileName} period={period} counted={counted} />
       <TokensChart data={data} period={period} />
-      <Breakdown data={data} profileId={profileId} period={period} model={model} onModel={(m) => setModel(model === m ? null : m)} />
+      <Breakdown data={data} groupBy={groupBy} across={across} profileId={profileId} period={period} model={model} onModel={(m) => setModel(model === m ? null : m)} />
     </>
   );
 }
+

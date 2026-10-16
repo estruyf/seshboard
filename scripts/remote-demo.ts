@@ -17,7 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AskThread, CatchUp, GitChanges, PermissionRequest, SessionHostInfo, SessionSummary, TranscriptMessage, TranscriptUpdate } from '@switchboard/protocol';
+import { sharesOf, weightOf, type AskThread, type CatchUp, type GitChanges, type PermissionRequest, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub } from '../packages/engine/src/remote/remoteHub.ts';
@@ -60,6 +60,80 @@ const SESSIONS: DemoSession[] = [
   { id: 'a0000000-0000-4000-8000-000000000007', title: 'Explain the tile renderer', root: '/demo/lighthouse', branch: 'main', minutesAgo: 60 * 26, state: null },
   { id: 'a0000000-0000-4000-8000-000000000008', title: 'Upgrade to Node 24', root: '/demo/harbor-api', branch: 'chore/node-24', minutesAgo: 60 * 24 * 4, state: null },
 ];
+
+const HOUR = 60 * MINUTE;
+/** Made-up tokens for each demo session (the last ones it worked on used the most), and the model it ran on. */
+const TOKENS: Record<string, { tokens: TokenCounts; turns: number; model: string }> = Object.fromEntries(
+  SESSIONS.map((s, i) => [
+    s.id,
+    {
+      tokens: { input: 14_000 + i * 3_000, output: 60_000 - i * 5_000, cacheRead: 3_200_000 - i * 300_000, cacheWrite: 210_000 - i * 18_000 },
+      turns: 24 - i * 2,
+      model: i % 3 === 2 ? 'claude-sonnet-5-5' : 'claude-opus-5-5',
+    },
+  ]),
+);
+
+/** Where the demo sessions' tokens went, as `usage.breakdown` on a real computer: one hour's bucket per session. */
+function demoTokens(params: { period: UsagePeriod; groupBy: UsageGroup; model: string | null; timeZone: string }): UsageBreakdown {
+  const hours = { window: 5, day: 24, week: 24 * 7, month: 24 * 30 }[params.period];
+  const from = now - hours * HOUR;
+  const dayOf = new Intl.DateTimeFormat('en-CA', { timeZone: params.timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const used = SESSIONS.filter((s) => TOKENS[s.id] && now - s.minutesAgo * MINUTE >= from && (!params.model || TOKENS[s.id]!.model === params.model));
+  const add = (into: TokenCounts, t: TokenCounts) => {
+    into.input += t.input;
+    into.output += t.output;
+    into.cacheRead += t.cacheRead;
+    into.cacheWrite += t.cacheWrite;
+  };
+  const empty = (): TokenCounts => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+  const keyOf = (s: DemoSession) =>
+    params.groupBy === 'session' ? s.id : params.groupBy === 'project' ? s.root : params.groupBy === 'model' ? TOKENS[s.id]!.model : dayOf.format(now - s.minutesAgo * MINUTE);
+  const groups = new Map<string, { sessions: DemoSession[]; tokens: TokenCounts; turns: number }>();
+  const totals = empty();
+  for (const s of used) {
+    const key = keyOf(s);
+    const group = groups.get(key) ?? { sessions: [], tokens: empty(), turns: 0 };
+    group.sessions.push(s);
+    add(group.tokens, TOKENS[s.id]!.tokens);
+    group.turns += TOKENS[s.id]!.turns;
+    groups.set(key, group);
+    add(totals, TOKENS[s.id]!.tokens);
+  }
+  const shares = sharesOf([...groups].map(([key, g]) => ({ key, weight: weightOf(g.tokens) })));
+  const rows: UsageRow[] = [...groups].map(([key, g]) => {
+    const first = g.sessions[0]!;
+    const project = PROJECTS.find((p) => p.root === first.root)!;
+    const label = params.groupBy === 'session' ? first.title : params.groupBy === 'project' ? project.name : key;
+    const largest = Math.max(...g.sessions.map((s) => TOKENS[s.id]!.tokens.cacheRead / TOKENS[s.id]!.turns));
+    return {
+      key,
+      label,
+      sessionId: params.groupBy === 'session' ? first.id : null,
+      projectRoot: params.groupBy === 'session' || params.groupBy === 'project' ? first.root : null,
+      model: TOKENS[first.id]!.model,
+      sessions: g.sessions.length,
+      turns: g.turns,
+      fastTurns: 0,
+      tokens: g.tokens,
+      largestContext: Math.round(largest),
+      share: shares.get(key)!.share,
+      measured: false,
+    };
+  });
+  rows.sort((a, b) => (params.groupBy === 'day' ? b.label.localeCompare(a.label) : b.share - a.share));
+  return {
+    period: params.period,
+    from,
+    to: now,
+    bucket: hours > 24 ? 'day' : 'hour',
+    totals: { tokens: totals, sessions: used.length, turns: used.reduce((n, s) => n + TOKENS[s.id]!.turns, 0), fastTurns: 0, largestContext: Math.max(0, ...rows.map((r) => r.largestContext)) },
+    rows,
+    // The app adds each of these to its own hour or day.
+    buckets: used.map((s) => ({ start: Math.floor((now - s.minutesAgo * MINUTE) / HOUR) * HOUR, tokens: TOKENS[s.id]!.tokens, turns: TOKENS[s.id]!.turns })),
+    scan: null,
+  };
+}
 
 const summaries = (): SessionSummary[] =>
   SESSIONS.map(
@@ -407,6 +481,8 @@ const hub: RemoteHub = new RemoteHub({
   ask: (sessionId, question, threadId) => demoAsk(sessionId, question, threadId),
   askThreads: (sessionId) => ({ threads: askThreads.get(sessionId) ?? [] }),
   usage: async (profileId) => ({ usage: USAGE[profileId as keyof typeof USAGE] ?? null, error: null }),
+  // A demo answers for whichever account asks, so the app's Usage view has another computer to count.
+  tokens: (_account, params) => demoTokens(params),
   catchUp: (sessionId) => (sessionId === CATCH_UP.sessionId && !committed ? CATCH_UP : null),
   changes: async () => (committed ? { ...CHANGES, files: [] } : CHANGES),
   diff: async () => ({ diff: DIFF, truncated: false }),

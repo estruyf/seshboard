@@ -9,7 +9,7 @@ import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { REMOTE_ATTACHMENT_BYTES, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
-import { UsageSnapshot } from './usage.ts';
+import { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow, UsageSnapshot } from './usage.ts';
 
 /**
  * Remote's contracts: what a paired phone may ask the engine, and the one request of a phone that is pairing. They
@@ -198,6 +198,19 @@ export const RemoteProfileUsage = z.object({
 });
 export type RemoteProfileUsage = z.infer<typeof RemoteProfileUsage>;
 
+/** A row of `usage.tokens`: as on the computer, with its project's id and name instead of its folder. */
+export const RemoteUsageRow = UsageRow.omit({ projectRoot: true }).extend({
+  /** The project's id (`projects.list` has the ones you added); null outside a project. */
+  projectId: ProjectId.nullable(),
+  /** The project's name, or its folder's; null outside a project. */
+  projectName: z.string().nullable(),
+});
+export type RemoteUsageRow = z.infer<typeof RemoteUsageRow>;
+
+/** Where an account's tokens went on the computer in a period, as the Usage view's Tokens tab shows it there. */
+export const RemoteUsageBreakdown = UsageBreakdown.omit({ rows: true }).extend({ rows: z.array(RemoteUsageRow) });
+export type RemoteUsageBreakdown = z.infer<typeof RemoteUsageBreakdown>;
+
 /** The most lines `changes.diff` returns. */
 export const REMOTE_DIFF_LINES = 2_000;
 
@@ -302,6 +315,21 @@ export const remoteContract = {
      * minute old; `refresh` checks now. `usage.changed` follows each new check.
      */
     'usage.get': { params: z.object({ refresh: z.boolean().default(false) }), result: z.object({ profiles: z.array(RemoteProfileUsage) }) },
+    /**
+     * Where the tokens of the profile signed in to an account went on the computer, as `usage.breakdown` there.
+     * `account` is the account's `accountKey`, so only someone who knows the account can ask, and the answer never
+     * names it. `breakdown` is null when no profile there signs in to it. With `REMOTE_FEATURE_USAGE_TOKENS`.
+     */
+    'usage.tokens': {
+      params: z.object({
+        account: z.string().regex(/^[a-f0-9]{64}$/),
+        period: UsagePeriod,
+        groupBy: UsageGroup.default('session'),
+        model: z.string().max(200).nullable().default(null),
+        timeZone: z.string().max(100).default('UTC'),
+      }),
+      result: z.object({ breakdown: RemoteUsageBreakdown.nullable() }),
+    },
     /** The catch-up of a session's last turn, without paths outside its project. */
     'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
     /** What changed in the session's checkout (its worktree when it has one), not committed yet. */

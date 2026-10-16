@@ -1146,7 +1146,7 @@ const screens: Screen[] = [
   },
   {
     // Other computers: a paired computer's sessions in the sidebar with its chips and the Computers strip, one of them
-    // open with the violet line, and New session with Run on set to it. Nothing is started there.
+    // open with the violet line, New session with Run on set to it, and Usage counting its tokens. Nothing is started there.
     name: 'computers',
     async take(t) {
       await withComputer(t, async (computerId) => {
@@ -1171,6 +1171,19 @@ const screens: Screen[] = [
         for (let i = 0; i < 2; i++) await t.click('[data-remote-new-session] [data-remote-attachments] button[aria-label^="Remove"]');
         await t.page.fill('[data-remote-new-session] textarea', '');
         await t.click('[data-run-on-option="local"]');
+        // Usage with All computers: mystic's tokens for the same account next to this computer's, then per computer.
+        await openUsageView(t, 'tokens', 'week');
+        await t.click('[data-usage-computers-choice="all"]');
+        await t.click('[data-usage-group="session"]');
+        await t.need(`[data-usage-breakdown] [data-usage-row-from="${computerId}"]`, 'the breakdown listed no session from mystic', 20_000);
+        await t.need('[data-usage-headline] [data-usage-computers="2"]', 'the totals did not count two computers');
+        await t.shot('usage-computers');
+        await t.click('[data-usage-group="computer"]');
+        await t.need(`[data-usage-breakdown="computer"] [data-usage-row="${computerId}"]`, 'the breakdown had no row for mystic');
+        await t.shot('usage-by-computer', { clip: '[data-usage-breakdown]', pad: 8 });
+        await t.click('[data-usage-group="session"]');
+        await t.escape();
+        await t.gone('[data-usage-view]', 'Esc did not leave the Usage view');
       });
     },
   },
