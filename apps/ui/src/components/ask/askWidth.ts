@@ -23,9 +23,9 @@ export function askWidthForKey(key: string, width: number, windowWidth: number):
 }
 
 /** The panels that can share the right side: the terminal joins them when it is docked there. */
-export type RightTab = 'changes' | 'ask' | 'agents' | 'terminal';
+export type RightTab = 'changes' | 'ask' | 'agents' | 'commands' | 'terminal';
 /** Their order as tabs. */
-export const RIGHT_TABS: readonly RightTab[] = ['changes', 'ask', 'agents', 'terminal'];
+export const RIGHT_TABS: readonly RightTab[] = ['changes', 'ask', 'agents', 'commands', 'terminal'];
 
 /**
  * What the right side shows: nothing, one panel, or several as tabs with `tab` in front (the one picked last, or the
@@ -37,4 +37,4 @@ export function rightPanel(isOpen: Record<RightTab, boolean>, tab: RightTab): { 
 }
 
 /** A stored tab, or Changes for anything else. */
-export const readTab = (value: string | null): RightTab => (value === 'ask' || value === 'agents' || value === 'terminal' ? value : 'changes');
+export const readTab = (value: string | null): RightTab => (value === 'ask' || value === 'agents' || value === 'commands' || value === 'terminal' ? value : 'changes');

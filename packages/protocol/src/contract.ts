@@ -364,6 +364,14 @@ export const contract = {
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Stops one of the session's background tasks (a shell command, subagent or workflow); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string() }), result: z.object({}) },
+    /**
+     * The end of what a background command printed, from the output file Claude Code named in the transcript (the
+     * engine reads only task output files). `missing`: no such file, yet or any more.
+     */
+    'session.taskOutput': {
+      params: z.object({ sessionId: SessionId, outputFile: AbsolutePath }),
+      result: z.object({ text: z.string(), size: z.number(), truncated: z.boolean(), missing: z.boolean() }),
+    },
     /** A new session with this one's conversation up to and including `messageUuid`. */
     'session.forkAt': { params: z.object({ sessionId: SessionId, messageUuid: z.string() }), result: z.object({ sessionId: z.string() }) },
     /**
