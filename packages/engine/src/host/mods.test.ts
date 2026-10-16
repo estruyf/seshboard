@@ -2,7 +2,7 @@ import type { Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { RpcError, type ModPaneRoster, type ModsSurfaceState, type ModStatus, type ModToast } from '@switchboard/protocol';
 import { modsBridge, type ModsBridge, type UiHost } from './modsBridge.ts';
 import { isModFolder, listMods, pluginDirs } from './modsCatalog.ts';
@@ -359,7 +359,7 @@ describe('modsCatalog', () => {
       writeFileSync(join(config, 'settings.json'), JSON.stringify({ enabledPlugins: { 'pr-status@market': true, 'off@market': false } }));
       writeFileSync(join(config, 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'pr-status@market': [{ installPath: market }] } }));
       expect(isModFolder(plain)).toBe(false);
-      const mods = listMods([{ profileId: 'p', configDir: config, env: { CLAUDE_CODE_PLUGIN_DIRS: [watch, plain].join(':') } }], join(root, 'missing.json'));
+      const mods = listMods([{ profileId: 'p', configDir: config, env: { CLAUDE_CODE_PLUGIN_DIRS: [watch, plain].join(delimiter) } }], join(root, 'missing.json'));
       expect(mods).toEqual([
         { name: 'agent-watch', profileId: 'p', source: 'dir', path: watch },
         { name: 'pr-status', profileId: 'p', source: 'marketplace', path: market },
@@ -370,7 +370,7 @@ describe('modsCatalog', () => {
   });
 
   it('splits plugin folders on the platform separator and expands ~', () => {
-    expect(pluginDirs('~/mods/a:/b', '/home/me', ':')).toEqual(['/home/me/mods/a', '/b']);
+    expect(pluginDirs('~/mods/a:/b', '/home/me', ':')).toEqual([join('/home/me', 'mods/a'), '/b']);
     expect(pluginDirs('C:\\mods\\a;~\\b', 'C:\\Users\\me', ';')).toHaveLength(2);
   });
 });
