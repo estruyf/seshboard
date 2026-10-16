@@ -58,6 +58,29 @@ import { DeviceName, RemoteSettings, RemoteStatus } from './remote.ts';
 import { ComputerEvent, ComputerMethodSchema, ComputersStatus } from './computers.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
 import { KEEP_REASONS } from './retention.ts';
+import {
+  HookableComponentSchema,
+  ModFocusParams,
+  ModFocusResult,
+  ModInfo,
+  ModInputParams,
+  ModInstance,
+  ModLog,
+  ModPaneRoster,
+  ModPressParams,
+  ModPromptAnswer,
+  ModPromptAsk,
+  ModRenderParams,
+  ModRenderResult,
+  ModScrollParams,
+  ModScrollResult,
+  ModSelectParams,
+  ModSite,
+  ModsSnapshot,
+  ModsSurfaceState,
+  ModStatus,
+  ModToast,
+} from './mods.ts';
 import { ExportCandidate, HealthFinding, LoadEntry, MemoryHit, MemoryImportPreview, MemoryList, PersonalMemory, SectionCopy, SharePreview, ShareTarget } from './memory.ts';
 
 export const ClaudeInstall = z.object({
@@ -1046,6 +1069,36 @@ export const contract = {
     'claudeUpdate.dismiss': { params: z.object({}), result: z.object({}) },
     /** Turns automatic checks on or off (remembered). */
     'claudeUpdate.setEnabled': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
+    /** What the mods of every running session show now (`mods.*` events follow). */
+    'mods.snapshot': { params: z.object({}), result: z.object({ sessions: z.array(ModsSnapshot) }) },
+    /**
+     * Has a mod draw a component instance. Fails with MOD_TIMEOUT when Claude Code doesn't answer in 30 s, and with
+     * MODS_OFF when the session isn't attached (Show mods is off, or its Claude Code has no mods).
+     */
+    'mods.render': { params: ModRenderParams, result: ModRenderResult },
+    'mods.press': { params: ModPressParams, result: z.object({ handled: z.boolean() }) },
+    'mods.input': { params: ModInputParams, result: z.object({ handled: z.boolean() }) },
+    'mods.select': { params: ModSelectParams, result: z.object({ handled: z.boolean() }) },
+    'mods.scroll': { params: ModScrollParams, result: ModScrollResult },
+    'mods.focus': { params: ModFocusParams, result: ModFocusResult },
+    /** The pane roster as Claude Code holds it. */
+    'mods.panes': { params: z.object({ sessionId: SessionId }), result: ModPaneRoster },
+    /** You picked a pane's tab (`show`), it took the keyboard (`focus`, null when it let go) or you closed it (`close`). */
+    'mods.pane': {
+      params: z.object({ sessionId: SessionId, action: z.enum(['show', 'focus', 'close']), id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).nullable() }),
+      result: z.object({}),
+    },
+    /** The window's answer to a `mods.promptAsk` (the message box read, filled or given a suggestion). */
+    'mods.promptAnswer': { params: ModPromptAnswer, result: z.object({}) },
+    /**
+     * What mods replaced last time in this profile's sessions, while the plugins and managed settings are the same, so
+     * the conversation knows before Claude Code is ready (and the built-in view doesn't flash first). Empty otherwise.
+     */
+    'mods.hooked': { params: z.object({ profileId: ProfileId }), result: z.object({ hooked: z.array(HookableComponentSchema) }) },
+    /** A session's mod log lines (`ui_log`), oldest first. */
+    'mods.logs': { params: z.object({ sessionId: SessionId.optional() }), result: z.object({ logs: z.array(ModLog) }) },
+    /** Plugins with a mod module, per Claude profile, from their enabled plugins, plugin folders and managed settings (Settings › Mods). */
+    'mods.list': { params: z.object({}), result: z.object({ mods: z.array(ModInfo) }) },
   },
   events: {
     'engine.log': LogEntry,
@@ -1120,6 +1173,22 @@ export const contract = {
     'computers.event': ComputerEvent,
     /** A project's memory or instruction files changed (`root` null: the personal folder): list them again. */
     'memory.changed': z.object({ root: z.string().nullable() }),
+    /** A session's mods surface changed: supported, attached, what mods replace, prompt screening. */
+    'mods.state': ModsSurfaceState,
+    /** A mod's toast (the last 20 per session are kept). */
+    'mods.toast': ModToast,
+    /** A session's statuses, one per mod, whenever one changes. */
+    'mods.statuses': z.object({ sessionId: z.string(), statuses: z.array(ModStatus) }),
+    'mods.log': ModLog,
+    /** Draw these instances again (all of them when `instances` is null). */
+    'mods.invalidate': z.object({ sessionId: z.string(), instances: z.array(ModInstance).nullable() }),
+    'mods.panes': z.object({ sessionId: z.string(), roster: ModPaneRoster }),
+    /** A mod scrolled a band or pane. */
+    'mods.scroll': z.object({ sessionId: z.string(), component: ModSite, instanceId: z.string(), offset: z.number().int(), followEnd: z.boolean() }),
+    /** A mod moved the focus ring to one of its elements. */
+    'mods.focus': z.object({ sessionId: z.string(), component: ModSite, instanceId: z.string(), plugin: z.string(), key: z.string() }),
+    /** Claude Code asks a session's message box (answer with `mods.promptAnswer`; the window showing the session answers). */
+    'mods.promptAsk': ModPromptAsk,
   },
 } as const satisfies ContractShape;
 

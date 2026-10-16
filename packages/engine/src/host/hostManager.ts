@@ -21,11 +21,16 @@ import {
   type StreamDelta,
   type UsageLimitHit,
   type WorktreeRequest,
+  type ModLog,
+  type ModPromptAnswer,
+  type ModPromptAsk,
+  type ModsSnapshot,
 } from '@switchboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
+import type { ModsEvents, ModsSurface } from './modsSurface.ts';
 import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery } from './sessionHost.ts';
 import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
@@ -100,7 +105,15 @@ export interface HostManagerDeps {
    * and while one is set the profile's queues wait. Call `limitChanged` when one is set or cleared from elsewhere.
    */
   limits?: { of(profileId: string): UsageLimitHit | null; hit(profileId: string, sessionId: string, stop: LimitStop): void; ok(profileId: string, sessionId: string): void };
+  /**
+   * Where sessions' mods report to (the `mods.*` events). `ask` goes to the windows; their answer comes back through
+   * `answerModPrompt`. Without it, sessions never attach mods.
+   */
+  mods?: Omit<ModsEvents, 'ask' | 'diagnostics'> & { ask(ask: ModPromptAsk): void };
 }
+
+/** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
+const MOD_ASK_MS = 5_000;
 
 /** Command lists differ per folder (project commands) and per profile (user commands, skills, plugins). */
 export interface CommandKey {
@@ -183,6 +196,10 @@ export class HostManager {
   /** Sessions whose first message waits for Auto's pick. */
   private readonly choosing = new Set<string>();
   private readonly reaper: ReturnType<typeof setInterval>;
+
+  /** Show mods (Settings › Mods); every session follows it, without a restart. */
+  private showMods = true;
+  private readonly modAsks = new Map<string, (answer: ModPromptAnswer | null) => void>();
 
   constructor(private readonly deps: HostManagerDeps) {
     this.settings = deps.sessionSettings ?? createMemorySessionSettings();
@@ -727,6 +744,52 @@ export class HostManager {
     this.deps.onModels?.(models);
   }
 
+  /** Show mods on or off: open sessions attach or detach at once. */
+  setShowMods(enabled: boolean): void {
+    this.showMods = enabled;
+    for (const host of this.hosts.values()) if (host.active) host.mods.setEnabled(enabled);
+  }
+
+  /** The mods surface of a running session (NOT_RUNNING otherwise). */
+  mods(sessionId: string): ModsSurface {
+    return this.require(sessionId).mods;
+  }
+
+  /** What every running session's mods show. */
+  modsSnapshots(): ModsSnapshot[] {
+    return [...this.hosts.values()].filter((h) => h.active).map((h) => h.mods.snapshot());
+  }
+
+  /** Mod log lines of one session, or of all of them. */
+  modLogs(sessionId?: string): ModLog[] {
+    const hosts = sessionId ? [this.hosts.get(sessionId)].filter((h) => h !== undefined) : [...this.hosts.values()];
+    return hosts.flatMap((h) => h.mods.logLines()).sort((a, b) => a.at - b.at);
+  }
+
+  /** A window answered Claude Code's question about its message box; the first answer wins. */
+  answerModPrompt(answer: ModPromptAnswer): void {
+    const resolve = this.modAsks.get(answer.requestId);
+    this.modAsks.delete(answer.requestId);
+    resolve?.(answer);
+  }
+
+  private askWindow(ask: ModPromptAsk): Promise<ModPromptAnswer | null> {
+    const mods = this.deps.mods;
+    if (!mods) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.modAsks.delete(ask.requestId);
+        resolve(null);
+      }, MOD_ASK_MS);
+      timer.unref?.();
+      this.modAsks.set(ask.requestId, (answer) => {
+        clearTimeout(timer);
+        resolve(answer);
+      });
+      mods.ask(ask);
+    });
+  }
+
   /** Forgets what a session ran with (it was moved to the Trash). */
   forget(sessionId: string): void {
     this.lastMode.delete(sessionId);
@@ -855,7 +918,7 @@ export class HostManager {
         }
       : (args) => sdk.query(args);
     const host = new SessionHost(
-      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk) },
+      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods },
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),
@@ -871,6 +934,7 @@ export class HostManager {
         limitHit: (sessionId, stop) => this.deps.limits?.hit(config.profileId, sessionId, stop),
         turnOk: (sessionId) => this.deps.limits?.ok(config.profileId, sessionId),
         limited: () => !!this.deps.limits?.of(config.profileId),
+        mods: this.deps.mods ? { ...this.deps.mods, ask: (ask) => this.askWindow(ask), diagnostics: this.deps.log } : undefined,
       },
       startQuery,
     );

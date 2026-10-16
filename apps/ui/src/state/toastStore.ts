@@ -26,6 +26,8 @@ export interface Toast {
   dot?: string;
   /** A status dot in a theme colour: `ok` for something that became free. */
   tone?: 'ok';
+  /** Who it comes from, on a small line above the message with a puzzle icon: a Claude Code mod's name. */
+  source?: string;
   /** The card's sentence under the title. */
   body?: string;
   /** A one-click way back, for about five seconds. */

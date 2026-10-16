@@ -9,6 +9,7 @@ import { addChips, isLongPaste, pastedItem, pasteTooLongReason, promptWithContex
 import { ContextTray } from './ContextTray.tsx';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
+import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { onFirstLine, onLastLine, textareaRows } from './caretLine.ts';
 import { appendQuote, applyEdit, deadKeyWrap, editKey } from './editing.ts';
@@ -63,6 +64,8 @@ export interface ComposerProps {
   controls?: ReactNode;
   /** Buttons in the card's bottom-right corner, before attach (a session's Tools). */
   actions?: ReactNode;
+  /** Mods' chips (the prompt shield and statuses), first on the right of the footer; they fold before anything else moves. */
+  status?: ReactNode;
   /** Right before Stop and Send: the ring that stands in for the session footer while the terminal is open below. */
   meter?: ReactNode;
   /** A shortcut shown on the submit button, like `⌘↵`. */
@@ -369,6 +372,39 @@ export function Composer(props: ComposerProps) {
     useComposerTargets.getState().register({ key: draftKey, cwd });
     return () => useComposerTargets.getState().unregister(draftKey);
   }, [draftKey, cwd]);
+  // Claude Code may read this box, fill it or show a suggestion in it, for a mod. Never sends.
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const textNow = useRef(text);
+  textNow.current = text;
+  useEffect(() => {
+    if (draftKey === undefined || props.disabledReason) return;
+    return registerModComposer(draftKey, {
+      read: () => {
+        const el = ref.current;
+        const value = el?.value ?? textNow.current;
+        return { text: value, cursor: el && document.activeElement === el ? el.selectionStart : value.length };
+      },
+      fill: (insert, mode) => {
+        const el = ref.current;
+        const current = el?.value ?? textNow.current;
+        const next = filled(current, el?.selectionStart ?? current.length, insert, mode);
+        setText(next.text);
+        setSuggestion(null);
+        requestAnimationFrame(() => ref.current?.setSelectionRange(next.caret, next.caret));
+        return true;
+      },
+      suggest: (value) => {
+        // Only in an empty box: it never covers what you typed.
+        if ((ref.current?.value ?? textNow.current) !== '') return false;
+        setSuggestion(value.trim() ? value : null);
+        return true;
+      },
+    });
+  }, [draftKey, props.disabledReason]);
+  // Typing drops the suggestion.
+  useEffect(() => {
+    if (text) setSuggestion(null);
+  }, [text]);
   const openPicker = () => {
     if (draftKey !== undefined && cwd && !props.disabledReason) useComposerTargets.getState().openPicker({ key: draftKey, cwd });
   };
@@ -493,6 +529,13 @@ export function Composer(props: ComposerProps) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Tab takes a mod's suggestion into the empty box.
+    if (suggestion && event.key === 'Tab' && !event.shiftKey && !text) {
+      event.preventDefault();
+      setText(suggestion);
+      setSuggestion(null);
+      return;
+    }
     if (event.nativeEvent.isComposing) return;
     const el = event.currentTarget;
     // Backspace right after the token takes it out: the box is a normal message again.
@@ -712,7 +755,7 @@ export function Composer(props: ComposerProps) {
             value={text}
             rows={1}
             disabled={disabled}
-            placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : props.placeholder)}
+            placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : (suggestion ?? props.placeholder))}
             aria-label={sideToken ? 'Question about this session' : 'Message to Claude'}
             aria-describedby={`${ids}-hint`}
             aria-keyshortcuts={props.running && props.onInterrupt ? ariaKeysFor('claude.stop') : undefined}
@@ -752,12 +795,12 @@ export function Composer(props: ComposerProps) {
             {notice}
           </p>
         )}
-        <div className="mt-1.5 flex items-center justify-between gap-2">
+        <div className="mt-1.5 flex items-center justify-between gap-2" data-composer-footer>
           <span className="sr-only" role="status" aria-live="polite" data-history-announcer>
             {announcement}
           </span>
           {props.controls ? (
-            <div className="-ml-1.5 flex min-w-0 flex-1 items-center">
+            <div className="-ml-1.5 flex min-w-0 flex-1 items-center" data-composer-footer-start>
               {/* What goes into the message comes first; a thin line, then the chips that set how it runs. */}
               <div className="flex shrink-0 items-center gap-0.5">{attach}</div>
               <span aria-hidden className="mx-1.5 h-4 w-px shrink-0 bg-border" />
@@ -780,7 +823,8 @@ export function Composer(props: ComposerProps) {
               )}
             </span>
           )}
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1.5" data-composer-footer-end>
+            {props.status}
             {props.dropHint && !text && attachments.length === 0 && !disabled && <span className="text-meta text-muted @max-[860px]:hidden">Paste or drop images and files</span>}
             {props.actions}
             {/* Without chips the hint line holds the left; the attach buttons stay on the right. */}

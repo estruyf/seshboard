@@ -1,4 +1,8 @@
 import { Bot, ChevronRight, ClipboardList } from 'lucide-react';
+import type { HookableComponent } from '@switchboard/protocol/client';
+import { useMods } from '../../state/modsStore.ts';
+import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
+import { replaceableOf } from '../mods/modReplace.ts';
 import { memo, useId, useState, type ReactNode } from 'react';
 import { isAbsolutePath } from '@switchboard/protocol/client';
 import { fileLinkChipLabel } from './fileLinkAction.ts';
@@ -231,7 +235,30 @@ function ToolOrMemory({ item, cwd, sessionId }: { item: ToolItem; cwd: string | 
   return <ToolCard item={item} cwd={cwd} sessionId={sessionId} />;
 }
 
-export const TranscriptItem = memo(function TranscriptItem({
+const NO_HOOKED: readonly HookableComponent[] = [];
+
+export const TranscriptItem = memo(function TranscriptItem(props: {
+  item: RenderItem;
+  cwd: string | null;
+  sessionId: string;
+  active?: boolean;
+  activeLabel?: string | null;
+}) {
+  // A mod that replaces this kind of item draws it, with the built-in one where it puts its `engine` node.
+  const hooked = useMods((s) => s.sessions.get(props.sessionId)?.state.hooked) ?? NO_HOOKED;
+  const expected = useExpectedHooked(props.sessionId);
+  const target = replaceableOf(props.item, hooked.length ? hooked : expected);
+  const builtIn = <BuiltInItem {...props} />;
+  return target ? (
+    <ModReplaced sessionId={props.sessionId} target={target}>
+      {builtIn}
+    </ModReplaced>
+  ) : (
+    builtIn
+  );
+});
+
+function BuiltInItem({
   item,
   cwd,
   sessionId,
@@ -310,4 +337,4 @@ export const TranscriptItem = memo(function TranscriptItem({
     case 'notice':
       return <p className="text-center text-meta whitespace-pre-wrap text-muted">{item.text}</p>;
   }
-});
+}
