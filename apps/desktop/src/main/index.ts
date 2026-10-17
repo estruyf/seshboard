@@ -4028,9 +4028,10 @@ async function runReplyActionsStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Under each reply: a finished turn's line ("14:32 · 2m 14s · 18.4k tokens") after the reply's actions, its tokens'
- * tooltip on hover, the prompt's "Sent …" tooltip, and Nothing in Settings › Conversation hiding the line. Shows all
- * three parts for the step and puts the setting back. Read-only: it only scrolls and hovers.
+ * Under each reply: a finished turn's line ("14:32 · 2m 14s · 18.4k tokens") after the reply's actions, hidden with
+ * them until the reply is hovered or the row has focus and then shown in the same space, its tokens' tooltip on hover,
+ * the prompt's "Sent …" tooltip, and Nothing in Settings › Conversation hiding the line. Shows all three parts for the
+ * step and puts the setting back. Read-only: it only scrolls, hovers and focuses.
  */
 async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -4071,7 +4072,36 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
     // The line: the time, then parts joined by a · in the border colour, on one row with the actions.
     // The one with tokens if any (sessions without usage have none), in the middle of the view.
     await js(`(() => { const line = ${lines}.find((l) => l.querySelector('[data-turn-tokens]')) ?? ${lines}.at(-1); line.dataset.smokeTurnLine = '1'; line.scrollIntoView({ block: 'center' }); })()`);
-    await settle(win);
+    // A scroll from a script doesn't leave the end, so the view would still follow it as rows are measured and take the
+    // line off screen before the pointer gets there. A wheel up, as you would, stops following.
+    await js(`document.querySelector('${view} [data-transcript]')?.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }))`);
+    // Scrolls the conversation until the reply's row is in it and in the window, and stays put between two looks: rows
+    // around it are still being measured and move it. Run again right before the pointer goes there.
+    const inView = `(() => {
+      const el = document.querySelector('${view} [data-transcript]');
+      const row = document.querySelector('[data-smoke-turn-line]')?.parentElement;
+      if (!el || !row) return false;
+      const box = el.getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      const top = Math.max(box.top, 0);
+      const bottom = Math.min(box.bottom, innerHeight);
+      if (r.top >= top + 8 && r.bottom <= bottom - 8) {
+        const still = window.__smokeRowTop === Math.round(r.top);
+        window.__smokeRowTop = Math.round(r.top);
+        return still;
+      }
+      window.__smokeRowTop = null;
+      el.scrollTop += r.top + r.height / 2 - (top + bottom) / 2;
+      return false;
+    })()`;
+    const intoView = async (): Promise<string | null> => {
+      await settle(win);
+      if (await waitInPage(win, inView, 3_000)) return null;
+      const where = await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); const r = document.querySelector('[data-smoke-turn-line]').parentElement.getBoundingClientRect(); const box = el.getBoundingClientRect(); return 'row ' + Math.round(r.top) + '-' + Math.round(r.bottom) + ', conversation ' + Math.round(box.top) + '-' + Math.round(box.bottom) + ' scrolled ' + Math.round(el.scrollTop) + ' of ' + (el.scrollHeight - el.clientHeight) + ', window ' + innerHeight; })()`);
+      return `could not keep the reply's row in view (${where})`;
+    };
+    const away = await intoView();
+    if (away) return away;
     const line = (await js(`(() => {
       const line = document.querySelector('[data-smoke-turn-line]');
       const actions = line.parentElement.querySelector('[data-message-actions]');
@@ -4090,6 +4120,31 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
     if (!line.oneLine) return 'the line wraps';
     if (!line.label.startsWith('Ended at ')) return `the line's label reads "${line.label}"`;
 
+    // Hidden with the actions until the reply is hovered or the row has focus, then shown with them, in the same space.
+    // What the pointer is on, for a failure: tells a covered point from a pointer that never reached the page.
+    const pointerAt = (x: number, y: number) =>
+      js(
+        `(() => { const name = (el) => el ? el.tagName.toLowerCase() + Object.keys(el.dataset ?? {}).map((k) => '[data-' + k + ']').join('') : 'nothing'; const at = document.elementFromPoint(${x}, ${y}); const reply = document.querySelector('[data-smoke-turn-line]').closest('[data-message-key]'); return '${x},${y} in ' + innerWidth + 'x' + innerHeight + ' at ' + name(at) + (at && reply.contains(at) ? ' in the reply' : ' outside the reply') + ', hovered ' + name([...document.querySelectorAll(':hover')].at(-1)) + ', window focused ' + document.hasFocus(); })()`,
+      ) as Promise<string>;
+    const shown = `(() => { const line = document.querySelector('[data-smoke-turn-line]'); const actions = line.parentElement.querySelector('[data-message-actions]'); return [getComputedStyle(line).opacity, actions ? getComputedStyle(actions).opacity : '']; })()`;
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
+    await js(`document.activeElement instanceof HTMLElement && document.activeElement.blur()`);
+    if (!(await waitInPage(win, `${shown}[0] === '0'`, 2_000))) return `the line shows (opacity ${(await js(shown))[0]}) without hover or focus`;
+    await js(`document.querySelector('[data-smoke-turn-line]').parentElement.querySelector('[data-message-actions] button[aria-label^="Copy"]')?.focus()`);
+    if (!(await waitInPage(win, `${shown}.join() === '1,1'`, 2_000))) return `tabbing to Copy did not show the line with the actions (${(await js(shown)).join(', ')})`;
+    await js(`document.activeElement instanceof HTMLElement && document.activeElement.blur()`);
+    if (!(await waitInPage(win, `${shown}[0] === '0'`, 2_000))) return 'the line stayed after Copy lost focus';
+    // The pointer goes to the empty end of the reply's row, past the line: on the reply, on neither the actions nor the line.
+    const moved = await intoView();
+    if (moved) return moved;
+    const hidden = (await js(`(() => { const line = document.querySelector('[data-smoke-turn-line]'); const r = line.parentElement.getBoundingClientRect(); return { height: line.closest('[data-message-key]').getBoundingClientRect().height, x: Math.round(r.right - 12), y: Math.round(r.top + r.height / 2) }; })()`)) as { height: number; x: number; y: number };
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: hidden.x, y: hidden.y });
+    if (!(await waitInPage(win, `${shown}.join() === '1,1'`, 2_000))) {
+      return `hovering the reply did not show the line with the actions (${(await js(shown)).join(', ')}; ${await pointerAt(hidden.x, hidden.y)})`;
+    }
+    const height = (await js(`document.querySelector('[data-smoke-turn-line]').closest('[data-message-key]').getBoundingClientRect().height`)) as number;
+    if (Math.abs(height - hidden.height) > 0.5) return `showing the line changed the reply's height from ${hidden.height}px to ${height}px`;
+
     // The tokens' tooltip, on hover: the turn's total, a bar, a row per part.
     const tokens = (await js(`(() => {
       const el = document.querySelector('[data-smoke-turn-line] [data-turn-tokens]');
@@ -4100,7 +4155,7 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
     let hovered = 'no tokens on screen (sessions without usage)';
     if (tokens) {
       win.webContents.sendInputEvent({ type: 'mouseMove', x: tokens.x, y: tokens.y });
-      if (!(await waitInPage(win, "document.querySelector('[data-turn-tokens-tooltip]')", 3_000))) return 'hovering the tokens showed no tooltip';
+      if (!(await waitInPage(win, "document.querySelector('[data-turn-tokens-tooltip]')", 3_000))) return `hovering the tokens showed no tooltip (${await pointerAt(tokens.x, tokens.y)})`;
       const tip = (await js(`(() => { const t = document.querySelector('[data-turn-tokens-tooltip]'); return { heading: t.querySelector('p')?.textContent ?? '', rows: t.querySelectorAll('dd').length }; })()`)) as { heading: string; rows: number };
       if (!/tokens · this turn · \d+ repl(y|ies)$/.test(tip.heading)) return `the tooltip is headed "${tip.heading}"`;
       if (tip.rows !== 4) return `the tooltip has ${tip.rows} rows, not one per part`;
@@ -4109,16 +4164,21 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
       if (!(await waitInPage(win, "!document.querySelector('[data-turn-tokens-tooltip]')", 2_000))) return 'the tooltip stayed after the pointer left';
       hovered = `tooltip "${tip.heading}"`;
     }
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
+    if (!(await waitInPage(win, `${shown}[0] === '0'`, 2_000))) return 'the line stayed after the pointer left the reply';
     const sent = (await js(`document.querySelector('${view} [data-prompt-bubble][data-tooltip]')?.dataset.tooltip ?? ''`)) as string;
     if (sent && !sent.startsWith('Sent ')) return `a prompt's tooltip reads "${sent}"`;
 
     // Nothing: no line.
     updatePreferences({ turnDetails: 'none' });
     if (!(await waitInPage(win, `${lines}.length === 0`, 2_000))) return 'Nothing in Under each reply left the lines';
-    return `ok: "${line.label}", ${hovered}, gone with Nothing`;
+    return `ok: "${line.label}", hidden until hover or focus with the actions, no jump, ${hovered}, gone with Nothing`;
   } finally {
     updatePreferences({ turnDetails: before });
-    await js(`document.querySelector('[data-smoke-turn-line]')?.removeAttribute('data-smoke-turn-line')`);
+    await js(`(document.querySelector('[data-smoke-turn-line]')?.removeAttribute('data-smoke-turn-line'), delete window.__smokeRowTop)`);
+    // Back to the end, which follows the conversation again, and let it settle before the next step selects text.
+    await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); if (el) el.scrollTop = el.scrollHeight; })()`);
+    await settle(win);
     if (borrowed && back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
   }
 }
@@ -7244,7 +7304,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
-  await step('under each reply: the turn line, its tokens on hover, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
+  await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));

@@ -137,7 +137,7 @@ function TurnDetailsSetting({ value, onChange }: { value: TurnDetails; onChange(
     <div className="grid gap-2" data-setting-row data-turn-details-setting>
       <span>
         <span className="block text-ui">Under each reply</span>
-        <span className="block text-meta text-muted">Shown after the actions, in faint text.</span>
+        <span className="block text-meta text-muted">Shows next to the actions when you hover a reply.</span>
       </span>
       <RadioGroup label="Under each reply" className="grid gap-2">
         {TURN_DETAILS.map((choice) => (

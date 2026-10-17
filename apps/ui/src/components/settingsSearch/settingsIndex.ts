@@ -136,7 +136,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'turn-details',
       page: 'conversation',
       label: 'Under each reply',
-      detail: 'Shown after the actions, in faint text. Nothing, Time, Time and duration, or Time, duration and tokens.',
+      detail: 'Shows next to the actions when you hover a reply. Nothing, Time, Time and duration, or Time, duration and tokens.',
       keywords: 'timestamp time duration tokens turn ended took how long clock usage reply line',
       target: '[data-turn-details-setting]',
     },
