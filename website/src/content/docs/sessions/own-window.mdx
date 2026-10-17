@@ -6,7 +6,7 @@ description: Open a session in a window of its own, next to the main window or o
 import Kbd from '../../../components/Kbd.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Open a session in a window of its own to keep an eye on it next to the main window, or on another screen. The window shows that session and nothing else: the conversation, the message box, and the permission prompts and questions Claude asks. The side panels (Changes, Ask, Agents, Background commands and the terminal) stay in the main window.
+Open a session in a window of its own to keep an eye on it next to the main window, or on another screen. The window is the whole session: the conversation, the message box, the permission prompts and questions Claude asks, and all the panels (Changes, Ask, Agents, Commands and the terminal), as in a pane of the main window. Only the sidebar stays in the main window.
 
 ## Open a session in its own window
 
@@ -18,7 +18,7 @@ With the session open:
 
 Or right-click a session in the sidebar and choose **Open in new window**.
 
-The window opens beside the main window when there is room on that screen, and over it when there isn't. Move it and resize it like any other window.
+The window opens beside the main window when there is room on that screen, and over it when there isn't. It is wide enough for a panel next to the conversation. Move it and resize it like any other window.
 
 ## One window per session
 
@@ -31,7 +31,11 @@ A session is open in one place at a time. When it moves to its own window, its p
 
 The message box, permission prompts and questions work as they do in the main window. A message you started typing goes with the session, so it is there in either window.
 
-Shortcuts for the session work in its window, such as <Kbd shortcut="find" />. Shortcuts for the whole app, such as <Kbd shortcut="palette.commands" />, <Kbd shortcut="palette.goto" />, <Kbd shortcut="search" /> and <Kbd shortcut="session.new" />, bring the main window to the front and work there.
+The header's panel buttons open the panels in the window. Each window keeps its own panels: opening [Changes](/terminal-changes-git/changes/) or the terminal here doesn't open it anywhere else. In a narrow window (under about 640 pixels), a panel takes the whole window. Close the panel, or make the window wider, to see the conversation again.
+
+Shortcuts for the session work in its window, such as <Kbd shortcut="find" />, <Kbd shortcut="changes.toggle" />, <Kbd shortcut="terminal.toggle" /> for the terminal and <Kbd shortcut="editor.open" /> to open the folder in your editor. Shortcuts for the whole app, such as <Kbd shortcut="palette.commands" />, <Kbd shortcut="palette.goto" />, <Kbd shortcut="search" /> and <Kbd shortcut="session.new" />, bring the main window to the front and work there.
+
+Things that have no page in this window open in the main window, which comes to the front: Settings, the Usage view, a project's page and New session in a new worktree.
 
 While the session's window is in front, Switchboard sends no notification about that session, as for a session on screen in the main window.
 
