@@ -378,8 +378,7 @@ export function CommandPalette() {
       }
       case 'session':
         close();
-        if (alt && !row.data.remote) useSessions.getState().openBeside(row.data.id);
-        else openRow(row.data.id);
+        openRow(row.data.id, { beside: alt });
         return;
       case 'draft':
         close();

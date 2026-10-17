@@ -12,6 +12,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### Fixed
 
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.
+- **Sessions on another computer work in split view.** Dragging one from the sidebar into the panes left an empty pane, and while one was open, you couldn't drag another session next to it. A session on another computer now opens in a pane like your own: drag it next to another session, ⌥-click it (Alt+click on Windows), or right-click it and choose **Open beside**.
 
 ## [0.0.22] - 2026-10-16
 

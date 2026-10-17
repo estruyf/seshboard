@@ -22,6 +22,12 @@ export const remoteRowId = (ref: RemoteRef): string => `${PREFIX}${ref.computerI
 
 export const isRemoteRowId = (id: string): boolean => id.startsWith(PREFIX);
 
+/**
+ * A pane's session as code for this computer's sessions takes it (the engine, the hosts, the terminal): its id, or null
+ * for a session on another computer, which can be in a pane too.
+ */
+export const localSessionId = (id: string | null): string | null => (id !== null && !isRemoteRowId(id) ? id : null);
+
 /** The computer and session a remote row's key stands for; null for a local id or a key that isn't one. */
 export function parseRemoteRowId(id: string): RemoteRef | null {
   if (!isRemoteRowId(id)) return null;
