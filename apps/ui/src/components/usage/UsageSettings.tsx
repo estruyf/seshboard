@@ -33,6 +33,14 @@ export function UsageSettings() {
         attr="data-show-cost"
         onChange={(showCost) => update({ showCost })}
       />
+      <Toggle
+        label="Show it on the usage bars"
+        detail="The estimate after the 5-hour and weekly bars under the message box and in New session. Turn it off to keep the estimate in the Usage view and next to Context."
+        checked={prefs.showBarCost}
+        disabled={!prefs.showCost}
+        attr="data-show-bar-cost"
+        onChange={(showBarCost) => update({ showBarCost })}
+      />
       <div className="flex items-center justify-between gap-4" data-setting-row>
         <span>
           <span className="block text-ui">Currency</span>

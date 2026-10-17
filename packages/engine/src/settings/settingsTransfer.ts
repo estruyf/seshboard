@@ -78,6 +78,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   catchUpSummaries: 'Write catch-up summaries with Haiku',
   resumeAtLimit: 'Resume after a usage limit resets',
   showCost: 'Show estimated cost',
+  showBarCost: 'Show it on the usage bars',
   costCurrency: 'Currency',
   contextWarning: 'Large context',
   showMods: 'Show mods',

@@ -117,7 +117,7 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
   const limits = usage ? visibleLimits(usage.limits) : [];
   const extra = usage?.extraUsage;
   // The estimated API cost of each window, after its bar (Settings › Usage), in the footer and New session's tray.
-  const showCost = usePreferences((s) => s.prefs.showCost) && (footer || tray);
+  const showCost = usePreferences((s) => s.prefs.showCost && s.prefs.showBarCost) && (footer || tray);
   const currency = usePreferences((s) => s.prefs.costCurrency);
   const priced = useWindowCosts(id, showCost && limits.length > 0);
   const costs = limitCosts(limits, priced.windows, showCost ? currency : null);

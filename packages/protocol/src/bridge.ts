@@ -279,6 +279,11 @@ export interface Preferences {
    * tokens of each plan window would cost at API prices.
    */
   showCost: boolean;
+  /**
+   * Settings › Usage: "Show it on the usage bars". With "Show estimated cost" on, whether the bars under the message box
+   * and in New session carry the estimate too. Off keeps it in the Usage view and next to Context.
+   */
+  showBarCost: boolean;
   /** Settings › Usage: the currency of the cost estimate. */
   costCurrency: CurrencyCode;
   /** Settings › Usage › Large context: when a session's context counts as large, and what that warns about. */
@@ -333,6 +338,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   catchUpSummaries: true,
   resumeAtLimit: "ask",
   showCost: true,
+  showBarCost: true,
   costCurrency: DEFAULT_CURRENCY,
   contextWarning: DEFAULT_CONTEXT_WARNING,
   showMods: true,
@@ -504,6 +510,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["ask", "always"] as const, raw.resumeAtLimit))
     out.resumeAtLimit = raw.resumeAtLimit;
   if (typeof raw.showCost === "boolean") out.showCost = raw.showCost;
+  if (typeof raw.showBarCost === "boolean") out.showBarCost = raw.showBarCost;
   if (isCurrencyCode(raw.costCurrency)) out.costCurrency = raw.costCurrency;
   const contextWarning = sanitizeContextWarning(raw.contextWarning);
   if (contextWarning) out.contextWarning = contextWarning;

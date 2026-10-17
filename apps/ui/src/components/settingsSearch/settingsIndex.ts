@@ -272,6 +272,14 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-show-cost]',
     },
     {
+      id: 'show-bar-cost',
+      page: 'usage',
+      label: 'Show it on the usage bars',
+      detail: 'The estimated cost after the 5-hour and weekly bars, under the message box and in New session.',
+      keywords: 'cost price money dollars euro estimate usage bar footer stats 5h week',
+      target: '[data-show-bar-cost]',
+    },
+    {
       id: 'cost-currency',
       page: 'usage',
       label: 'Currency',
