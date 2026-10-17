@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { REMOTE_FEATURE_USAGE_TOKENS, type Computer, type RemoteUsageBreakdown, type TokenCounts, type UsageBreakdown, type UsageRow } from '@switchboard/protocol/client';
-import { computersToAsk, engineGroup, mergeBreakdowns, notCounted, THIS_COMPUTER_KEY } from './usageMerge.ts';
+import { REMOTE_FEATURE_COSTS, REMOTE_FEATURE_USAGE_TOKENS, type Computer, type RemoteUsageBreakdown, type TokenCounts, type UsageBreakdown, type UsageRow } from '@switchboard/protocol/client';
+import { addWindowCosts, computersToAsk, engineGroup, mergeBreakdowns, notCounted, THIS_COMPUTER_KEY } from './usageMerge.ts';
 
 const HOUR = 3_600_000;
 const T0 = Date.UTC(2026, 9, 16, 8);
@@ -105,7 +105,20 @@ describe('mergeBreakdowns', () => {
 
   it('is this computer\'s breakdown when no other computer answers', () => {
     const local = breakdown([row('a', 100, { share: 1, measured: true })]);
-    expect(mergeBreakdowns(local, [], 'session')).toEqual(local);
+    expect(mergeBreakdowns(local, [], 'session')).toEqual({ ...local, uncosted: [] });
+  });
+
+  it('adds up the costs, and says which computer sent none (an older Switchboard)', () => {
+    const mystic = { id: 'mystic', name: 'mystic' };
+    const priced = (rows: UsageRow[], cost: number) => breakdown(rows, { totals: { ...breakdown(rows).totals, cost } });
+    const local = priced([row('opus', 100, { key: 'claude-opus-5-5', cost: 2 })], 2);
+    const studioBreakdown = remote([row('opus', 300, { key: 'claude-opus-5-5', cost: 6 })], { totals: { ...breakdown([row('x', 300)]).totals, cost: 6 } });
+    const old = remote([row('opus', 50, { key: 'claude-opus-5-5' })]);
+    const merged = mergeBreakdowns(local, [{ computer: studio, breakdown: studioBreakdown }, { computer: mystic, breakdown: old }], 'model');
+    expect(merged.totals.cost).toBe(8);
+    expect(merged.rows).toHaveLength(1);
+    expect(merged.rows[0]!.cost).toBe(8);
+    expect(merged.uncosted).toEqual([mystic]);
   });
 });
 
@@ -129,8 +142,25 @@ describe('computersToAsk', () => {
     expect(uncounted.map((u) => u.reason)).toEqual(['Old needs a newer Switchboard.', 'Laptop is offline.', 'Mini is offline.', 'Connecting to New.']);
   });
 
+  it("asks for the plan windows' costs only computers that answer them", () => {
+    const { ask, uncounted } = computersToAsk([computer('studio', 'connected', [REMOTE_FEATURE_USAGE_TOKENS, REMOTE_FEATURE_COSTS]), computer('old', 'connected')], REMOTE_FEATURE_COSTS);
+    expect(ask).toEqual([{ id: 'studio', name: 'Studio' }]);
+    expect(uncounted.map((u) => u.reason)).toEqual(['Old needs a newer Switchboard.']);
+  });
+
   it('says why an asked computer is not counted', () => {
     expect(notCounted(studio, 'no-account').reason).toBe('No profile on Studio signs in to this account.');
     expect(notCounted(studio, 'failed').reason).toBe("Couldn't get the usage from Studio.");
+  });
+});
+
+describe('addWindowCosts', () => {
+  const cost = (kind: string, usd: number, scope: string | null = null, partial = false) => ({ kind, scope, from: 1, usd, partial });
+
+  it("adds the same windows from other computers, and keeps only this computer's windows", () => {
+    const local = [cost('session', 2), cost('weekly_all', 10), cost('weekly_scoped', 1, 'Opus')];
+    const studio = [cost('session', 3), cost('weekly_all', 5, null, true), cost('weekly_scoped', 4, 'Fable')];
+    expect(addWindowCosts(local, [studio, [cost('session', 1)]])).toEqual([cost('session', 6), cost('weekly_all', 15, null, true), cost('weekly_scoped', 1, 'Opus')]);
+    expect(addWindowCosts(local, [])).toEqual(local);
   });
 });

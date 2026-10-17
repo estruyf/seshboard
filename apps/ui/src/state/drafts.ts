@@ -1,4 +1,5 @@
-import { isAbsolutePath, type ContextItem, type HostState } from '@switchboard/protocol/client';
+import { isAbsolutePath, toPlainText, type ContextItem, type HostState, type PromptScope } from '@switchboard/protocol/client';
+import { fillMessage, type FillState } from '../components/savedPrompts/fillModel.ts';
 import type { Choices } from '../components/newSession/choices.ts';
 import { addChips, chipsSummary, type ContextChip } from '../components/composer/contextItems.ts';
 import { spokenAge } from '../components/sidebar/rowLabel.ts';
@@ -40,6 +41,8 @@ export interface Draft<A = unknown> {
   form?: DraftForm;
   /** Files, lines and text added as context (the chips above the text), sent with it. */
   context?: ContextChip[];
+  /** A saved prompt being filled in: its text and values; `text` is then what goes after it. */
+  fill?: FillState;
   /**
    * The first prompt of a session that never started (Claude Code failed before it wrote a transcript): the folder it
    * was started in. With `form`, it lets the prompt go back to New session there once the session is gone (a restart).
@@ -48,8 +51,14 @@ export interface Draft<A = unknown> {
 }
 
 /** There is something to send: text, or images or context without text. */
-export const hasContent = (draft: { text: string; attachments: readonly unknown[]; context?: readonly unknown[] }) =>
-  draft.text.trim() !== '' || draft.attachments.length > 0 || (draft.context?.length ?? 0) > 0;
+export const hasContent = (draft: { text: string; attachments: readonly unknown[]; context?: readonly unknown[]; fill?: unknown }) =>
+  draft.text.trim() !== '' || draft.attachments.length > 0 || (draft.context?.length ?? 0) > 0 || !!draft.fill;
+
+/** What a draft would send: with a saved prompt, the prompt filled in so far and the text after it. */
+export const draftMessage = (draft: { text: string; fill?: FillState }) => (draft.fill ? fillMessage(draft.fill, draft.text) : draft.text);
+
+/** What a draft says in a list: a saved prompt as filled so far, then the text after it. */
+export const draftText = (draft: { text: string; fill?: FillState }) => (draft.fill ? [toPlainText(draft.fill.text, draft.fill.values), draft.text].filter((t) => t.trim()).join('\n\n') : draft.text);
 
 /** Whether a draft shows as unsent: something to send, which counted already or hasn't changed for `DRAFT_SETTLE_MS`. */
 export function isCountingDraft(draft: Pick<Draft, 'text' | 'attachments' | 'updatedAt' | 'counted'>, now: number): boolean {
@@ -69,11 +78,13 @@ const sameAttachments = (a: readonly unknown[], b: readonly unknown[]) => a.leng
  * changed (a box mounting with its draft writes it back), else the new text with a fresh time. Emptying the
  * box ends counting; editing a draft that counted keeps it counted, so its pen doesn't blink while you type.
  */
-export function nextDraft<A>(previous: Draft<A> | undefined, next: { text: string; attachments: A[]; context?: ContextChip[] }, now: number): Draft<A> | null {
+export function nextDraft<A>(previous: Draft<A> | undefined, next: { text: string; attachments: A[]; context?: ContextChip[]; fill?: FillState | null }, now: number): Draft<A> | null {
   // The message box only says what is typed and attached; the chips change on their own (added from the editor).
   const context = next.context ?? previous?.context;
-  if (!hasContent({ ...next, context })) return null;
-  if (previous && previous.text === next.text && sameAttachments(previous.attachments, next.attachments) && sameAttachments(previous.context ?? [], context ?? [])) return previous;
+  // A saved prompt being filled: null when the box has none, left out when only the chips changed.
+  const fill = next.fill === undefined ? previous?.fill : (next.fill ?? undefined);
+  if (!hasContent({ ...next, context, fill })) return null;
+  if (previous && previous.text === next.text && sameAttachments(previous.attachments, next.attachments) && sameAttachments(previous.context ?? [], context ?? []) && previous.fill === fill) return previous;
   return {
     text: next.text,
     attachments: next.attachments,
@@ -83,6 +94,7 @@ export function nextDraft<A>(previous: Draft<A> | undefined, next: { text: strin
     lostImages: 0,
     form: previous?.form,
     ...(context?.length ? { context } : {}),
+    ...(fill ? { fill } : {}),
     ...(previous?.startIn ? { startIn: previous.startIn } : {}),
   };
 }
@@ -96,7 +108,7 @@ export function draftList(drafts: Readonly<Record<string, Draft>>): DraftItem[] 
     .filter(([, draft]) => draft.counted && hasContent(draft))
     .sort(([, a], [, b]) => b.updatedAt - a.updatedAt)
     .map(([key, draft]): DraftItem => {
-      const base = { key, preview: draftPreview(draft.text) || (draft.attachments.length ? imagesOnly(draft.attachments.length) : chipsSummary(draft.context ?? [])), updatedAt: draft.updatedAt };
+      const base = { key, preview: draftPreview(draftText(draft)) || (draft.attachments.length ? imagesOnly(draft.attachments.length) : chipsSummary(draft.context ?? [])), updatedAt: draft.updatedAt };
       return isNewDraftKey(key) ? { ...base, kind: 'new', root: draftRoot(key) } : { ...base, kind: 'session', sessionId: key };
     });
 }
@@ -128,6 +140,7 @@ interface StoredDraft {
   images: number;
   form?: DraftForm;
   context?: ContextItem[];
+  fill?: FillState;
   startIn?: string;
 }
 export interface StoredDrafts {
@@ -141,7 +154,7 @@ export interface StoredDrafts {
 function storedDrafts(drafts: Readonly<Record<string, Draft>>): Record<string, StoredDraft> {
   const out: Record<string, StoredDraft> = {};
   for (const [key, draft] of Object.entries(drafts)) {
-    if (draft.text.trim() === '' && !draft.context?.length) continue;
+    if (draft.text.trim() === '' && !draft.context?.length && !draft.fill) continue;
     // Chips get new ids when they are read back.
     const context = draft.context?.map(({ id: _id, ...item }) => item as ContextItem);
     out[key] = {
@@ -150,6 +163,7 @@ function storedDrafts(drafts: Readonly<Record<string, Draft>>): Record<string, S
       images: draft.attachments.length + draft.lostImages,
       ...(draft.form ? { form: draft.form } : {}),
       ...(context?.length ? { context } : {}),
+      ...(draft.fill ? { fill: draft.fill } : {}),
       ...(draft.startIn ? { startIn: draft.startIn } : {}),
     };
   }
@@ -173,7 +187,7 @@ function parseContext(value: unknown): ContextItem[] {
     if (!isRecord(raw) || (raw.range !== undefined && !isRange(raw.range))) continue;
     const range = raw.range === undefined ? {} : { range: raw.range as { start: number; end: number } };
     if (raw.kind === 'file' && typeof raw.path === 'string' && isAbsolutePath(raw.path)) out.push({ kind: 'file', path: raw.path, directory: raw.directory === true, ...range });
-    else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output' || raw.source === 'paste')) {
+    else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output' || raw.source === 'paste' || raw.source === 'checks')) {
       out.push({
         kind: 'text',
         source: raw.source,
@@ -204,11 +218,30 @@ function parseForm(value: unknown): DraftForm | undefined {
   };
 }
 
+const isStrings = (value: unknown): value is Record<string, string> => isRecord(value) && Object.values(value).every((v) => typeof v === 'string');
+
+function parseScope(value: unknown): PromptScope | null {
+  if (!isRecord(value)) return null;
+  if (value.kind === 'global') return { kind: 'global' };
+  if ((value.kind === 'personal' || value.kind === 'shared') && typeof value.root === 'string' && isAbsolutePath(value.root)) return { kind: value.kind, root: value.root };
+  return null;
+}
+
+/** A saved prompt being filled in, as it was kept; null when it doesn't read as one. */
+function parseFill(value: unknown): FillState | null {
+  if (!isRecord(value) || !isRecord(value.prompt) || typeof value.text !== 'string' || !isStrings(value.values)) return null;
+  const { id, name } = value.prompt;
+  const scope = parseScope(value.prompt.scope);
+  if (typeof id !== 'string' || typeof name !== 'string' || !scope) return null;
+  return { prompt: { id, name, scope }, text: value.text, values: value.values, displays: isStrings(value.displays) ? value.displays : {} };
+}
+
 /** One saved draft, as a draft that counts straight away; null when it doesn't read as one. */
 function parseDraft(raw: unknown): Draft<never> | null {
   if (!isRecord(raw) || typeof raw.text !== 'string' || typeof raw.updatedAt !== 'number') return null;
   const context = addChips([], parseContext(raw.context));
-  if (raw.text.trim() === '' && context.length === 0) return null;
+  const fill = parseFill(raw.fill);
+  if (raw.text.trim() === '' && context.length === 0 && !fill) return null;
   const form = parseForm(raw.form);
   // Without its choices, a session that never started can't go back to New session as it was.
   const startIn = form && typeof raw.startIn === 'string' && isAbsolutePath(raw.startIn) ? raw.startIn : null;
@@ -220,6 +253,7 @@ function parseDraft(raw: unknown): Draft<never> | null {
     lostImages: typeof raw.images === 'number' && raw.images > 0 ? Math.floor(raw.images) : 0,
     ...(form ? { form } : {}),
     ...(context.length ? { context } : {}),
+    ...(fill ? { fill } : {}),
     ...(startIn ? { startIn } : {}),
   };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareCode, SquareTerminal, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareCode, SquareTerminal } from 'lucide-react';
 import type { Computer, Contract, PermissionDecision, RemoteMessage, RemotePrompt, RemoteSession, RpcClient } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -31,10 +31,13 @@ import { RemoteEffortChip, RemoteModeChip, RemoteModelChip, useRemoteOptions } f
 import { remoteAutoFace, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
 import { RemoteText } from './RemoteText.tsx';
 import { usePreferences } from '../../state/preferencesStore.ts';
+import { RemoteSessionCost } from '../usage/SessionCost.tsx';
 import { useWidth } from '../ui/useWidth.ts';
 import { sentLine } from '../transcript/turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, TurnMetaLine, type LiveTurnInfo, type TurnMetaValue } from '../transcript/TurnMeta.tsx';
 import { remoteSessionEntries } from './remoteActions.ts';
+import { paneHandle, paneHeader, remoteLine, type PaneProps } from './ComputerView.tsx';
+import { PaneClose } from '../split/PaneClose.tsx';
 
 const PAGE = 100;
 
@@ -58,9 +61,10 @@ function useNow(active: boolean): number {
  * waits on docked above the message box, Stop, and what it runs in the background with a Stop for each task. What
  * only works on that computer (Changes, the terminal, the editor, pull requests, file links) keeps its place, disabled,
  * with a reason. The transcript is `RemoteText`: nothing in it acts here. While the computer is away the last messages
- * stay, under a banner, and the message box is off.
+ * stay, under a banner, and the message box is off. It is a pane like a local session (`pane`): dragged by its title,
+ * beside local ones and other remote ones.
  */
-export function RemoteSessionView({ client, computer, session, prompts }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; prompts: RemotePrompt[] }) {
+export function RemoteSessionView({ client, computer, session, prompts, pane }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; prompts: RemotePrompt[]; pane: PaneProps }) {
   const [messages, setMessages] = useState<RemoteMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +85,7 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
   const away = awayBanner(computer, now);
   const line = statusLine(status) ?? { text: 'Idle', tone: 'faint' as const };
   const rowId = remoteRowId({ computerId: id, sessionId: session.id });
+  const handle = paneHandle(pane);
 
   useEffect(() => {
     if (!connected) return;
@@ -176,13 +181,14 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
 
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
-      {/* The 2px line along the top is an inset shadow, so nothing moves. */}
-      <header className="drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 shadow-[inset_0_2px_0_var(--sb-remote)] @max-[860px]:gap-2 @max-[860px]:px-4" data-remote-header>
-        <SidebarToggle />
+      <header className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 ${remoteLine(pane)} @max-[860px]:gap-2 @max-[860px]:px-4`} data-remote-header {...paneHeader(pane)}>
+        {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
+        {pane.leading && <SidebarToggle />}
         <span className="flex shrink-0 @max-[400px]:hidden">
           <ProjectIcon project={undefined} root={session.projectId} name={session.projectName} size={22} remote />
         </span>
-        <div className="min-w-24 flex-1 @max-[400px]:min-w-16">
+        {/* With several panes this is the handle to drag the pane by (useTileDrag). */}
+        <div className={`min-w-24 flex-1 @max-[400px]:min-w-16 ${handle.className}`} data-pane-handle={handle['data-pane-handle']}>
           <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={session.title}>
             {session.title}
           </h1>
@@ -232,16 +238,7 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
           }}
           data-remote-more
         />
-        <Button
-          variant="quiet"
-          iconOnly
-          icon={<X size={15} />}
-          onClick={() => useSessions.getState().closeSession()}
-          data-tooltip={`Close session and go Home (it keeps running on ${name})`}
-          aria-label="Close session"
-          className="no-drag shrink-0"
-          data-close-session
-        />
+        <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip={`Close session and go Home (it keeps running on ${name})`} />
       </header>
 
       <div
@@ -365,6 +362,10 @@ export function RemoteSessionView({ client, computer, session, prompts }: { clie
           </div>
         )}
         <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />
+        {/* What the session would cost at API prices, as that computer counts it; the quiet line under a local session's box. */}
+        <div className="-mt-1 flex min-h-6 items-center justify-end px-1 text-meta text-muted empty:hidden" data-remote-session-footer>
+          <RemoteSessionCost client={client} computer={computer} sessionId={session.id} working={working} />
+        </div>
       </div>
       {menu && <Menu x={menu.x} y={menu.y} entries={menu.entries} width={240} label={`Session “${session.title}”`} onClose={() => setMenu(null)} />}
     </div>

@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { LogLevel, PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot } from '@switchboard/protocol';
+import type { LogLevel, PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from '@switchboard/protocol';
 import { PlanHistoryStore, type RateLimitInfo } from './planHistory.ts';
-import { breakdown, periodRange, type SessionLookup } from './usageQuery.ts';
+import { breakdown, periodRange, sessionCost, windowCosts, windowCostsFrom, type PlanWindow, type SessionLookup } from './usageQuery.ts';
 import { scopeOf, UsageScanner } from './usageScanner.ts';
 
 /** How often a request for numbers reads the transcripts again. */
@@ -128,6 +128,28 @@ export class UsageInsights {
       params.period === 'window' && session && session.percent > 0 ? { percent: session.percent, samples: this.history.samples(scope, 'session', range.from, range.to) } : null;
     const result = breakdown(this.options.db, { scope, ...params, ...range, measure }, this.options.lookup);
     return { ...result, scan };
+  }
+
+  /** The estimated API cost of each of a profile's running plan windows. Starts reading new transcript lines in the background. */
+  windowCosts(profileId: string, now = Date.now()): WindowCost[] {
+    this.refresh();
+    const scope = this.scopeOfProfile(profileId);
+    const limits = this.options.snapshot(profileId)?.limits ?? [];
+    return scope ? windowCosts(this.options.db, scope, limits, now) : [];
+  }
+
+  /** The estimated API cost of one session of a profile, since it started; null before any of its tokens were read. */
+  sessionCost(profileId: string, sessionId: string): { usd: number; partial: boolean } | null {
+    this.refresh();
+    const scope = this.scopeOfProfile(profileId);
+    return scope ? sessionCost(this.options.db, scope, sessionId) : null;
+  }
+
+  /** The estimated API cost of a profile's tokens in windows whose start another computer gave. */
+  windowCostsFrom(profileId: string, windows: readonly PlanWindow[], now = Date.now()): WindowCost[] {
+    this.refresh();
+    const scope = this.scopeOfProfile(profileId);
+    return scope ? windowCostsFrom(this.options.db, scope, windows, now) : [];
   }
 
   /** A profile's plan % over a period. */

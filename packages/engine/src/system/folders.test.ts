@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { canSymlink } from '../util/canSymlink.ts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { expandHome, listFolders, MAX_FOLDERS } from './folders.ts';
 
@@ -46,7 +47,8 @@ describe('listFolders', () => {
     expect((await listFolders(`${join(home, 'Alpha')}/`, '', home)).here).toEqual({ name: 'Alpha', path: join(home, 'Alpha'), isGit: false, branch: null });
   });
 
-  it('filters by prefix, ignoring case, and follows links to folders', async () => {
+  // Windows makes links only with Developer Mode or as an administrator (CI runners are).
+  it.skipIf(!canSymlink())('filters by prefix, ignoring case, and follows links to folders', async () => {
     const root = tempDir();
     mkdirSync(join(root, 'switchboard'));
     mkdirSync(join(root, 'Site'));

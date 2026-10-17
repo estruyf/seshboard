@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { UsageLimit, UsageSnapshot } from '@switchboard/protocol/client';
-import { nextUsageEntry, resetLabel, spokenLimit, usageMessage } from './usageFormat.ts';
+import { costComputersNotes, limitCosts, nextUsageEntry, resetLabel, spokenLimit, usageMessage, usageSummary } from './usageFormat.ts';
 
 const limit = (overrides: Partial<UsageLimit>): UsageLimit => ({ kind: 'session', group: 'session', percent: 10, resetsAt: null, scope: null, severity: 'normal', isActive: false, ...overrides });
 const now = 1_000_000_000;
@@ -49,5 +49,39 @@ describe('resetLabel', () => {
     expect(resetLabel(new Date(2026, 9, 12, 10, 0).getTime(), wednesday, 'en-US')).toBe('Mon');
     expect(resetLabel(wednesday + 24 * 3600_000, wednesday, 'en-US')).toBe('Thu');
     expect(resetLabel(wednesday + 23 * 3600_000 + 59 * 60_000, wednesday, 'en-US')).toBe('23h 59m');
+  });
+});
+
+describe('estimated cost', () => {
+  const session = limit({ percent: 38, resetsAt: now + 134 * 60_000 });
+  const weekly = limit({ kind: 'weekly_all', group: 'weekly', percent: 52 });
+  const opus = limit({ kind: 'weekly_scoped', group: 'weekly', percent: 4, scope: 'Opus' });
+  const costs = [
+    { kind: 'session', scope: null, from: 0, usd: 4.1, partial: false },
+    { kind: 'weekly_all', scope: null, from: 0, usd: 61.25, partial: false },
+  ];
+
+  it('matches each bar to its window, and shows nothing while it is off or not priced', () => {
+    expect(limitCosts([session, weekly, opus], costs, 'USD', 'en-US')).toEqual(['≈$4.10', '≈$61.25', null]);
+    expect(limitCosts([session, weekly], costs, null)).toEqual([null, null]);
+  });
+
+  it('reads the estimate out and lists it in the tooltip, saying what it is', () => {
+    expect(spokenLimit(session, now, '≈$4.10')).toBe('5-hour limit: 38% used, resets in 2h14m, about $4.10 at API prices');
+    expect(usageSummary([session, weekly], now, ['≈$4.10', null])).toBe(
+      ['5h: 38% used, resets in 2h14m · ≈$4.10', '7d: 52% used', 'Costs are estimates at API prices, not charges', 'Click to see what used it'].join('\n'),
+    );
+    expect(usageSummary([weekly], now)).toBe(['7d: 52% used', 'Click to see what used it'].join('\n'));
+  });
+});
+
+describe('costComputersNotes', () => {
+  it("names the computers a window's cost counts, and those it leaves out", () => {
+    expect(costComputersNotes('This PC', [], [])).toEqual([]);
+    expect(costComputersNotes('This PC', [{ name: 'mystic' }], [])).toEqual(['Counts This PC and mystic']);
+    expect(costComputersNotes('This PC', [], ['Studio is offline.'])).toEqual(['Not counted: Studio is offline.']);
+    expect(usageSummary([limit({ percent: 38 })], now, ['≈$4.10'], ['Counts This PC and mystic'])).toBe(
+      ['5h: 38% used · ≈$4.10', 'Costs are estimates at API prices, not charges', 'Counts This PC and mystic', 'Click to see what used it'].join('\n'),
+    );
   });
 });

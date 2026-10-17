@@ -488,6 +488,17 @@ describe('engine over a MessagePort', () => {
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'shared' })).rejects.toMatchObject({ code: 'UNTRUSTED' });
     await client.call('actions.trust', { projectRoot: project, id: 'shared' });
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'shared' })).resolves.toMatchObject({ kind: 'terminal' });
+
+    // One you share yourself goes in the file, is approved for you, and says the project's actions changed.
+    const changed: Array<string | null> = [];
+    client.on('actions.changed', ({ root }) => void changed.push(root));
+    await client.call('actions.save', { projectRoot: project, shared: true, action: { id: 'lint', name: 'Lint', command: 'npm run lint' } });
+    expect(JSON.parse(readFileSync(join(project, '.switchboard.json'), 'utf8')).actions.map((a: { id: string }) => a.id)).toEqual(['shared', 'lint']);
+    await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'lint' })).resolves.toMatchObject({ kind: 'terminal' });
+    await client.call('actions.delete', { projectRoot: project, shared: true, id: 'lint' });
+    expect((await client.call('actions.list', { projectRoot: project })).actions.map((a) => a.id)).toEqual(['shared', 'greet']);
+    await expect(client.call('actions.save', { projectRoot: null, shared: true, action: { id: 'x', name: 'X', command: 'x' } })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    expect(changed).toContain(project);
   });
 
   it('sends what a command printed, and how it ended, to the session when a run that reports back ends', async () => {

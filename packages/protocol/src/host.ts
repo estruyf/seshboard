@@ -87,6 +87,12 @@ export const SessionHostInfo = z.object({
   /** Tokens in the context window now, and its size (from Claude Code, once it has started). */
   contextTokens: z.number().nullable(),
   contextMax: z.number().nullable(),
+  /**
+   * When the conversation last used Anthropic's prompt cache (its last request), and for how long the cache keeps it
+   * (`contextCache.ts`). Null or missing until a turn ran here.
+   */
+  cacheAt: z.number().nullable().optional(),
+  cacheTtl: z.enum(['5m', '1h']).nullable().optional(),
   error: z.string().nullable(),
   startedAt: z.number(),
   /** When you last sent a message (null before the first). The Working list orders by it, so sessions don't trade places as they write. */
