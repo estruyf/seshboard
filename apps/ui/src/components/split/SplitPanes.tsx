@@ -1,6 +1,7 @@
 import { ArrowRightLeft, PanelBottomClose, PanelLeftClose, PanelRightClose, PanelTopClose, Replace } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { usePreferences } from '../../state/preferencesStore.ts';
 import { useTilingArea } from '../../state/tilingArea.ts';
 import { computeLayout, constrain, edgeBand, fits, stableOrder, type Box } from '../../state/tilingGeometry.ts';
 import { TranscriptView } from '../transcript/TranscriptView.tsx';
@@ -40,6 +41,8 @@ export function SplitPanes() {
   const ids = useMemo(() => stableOrder(layout), [layout]);
   const count = ids.length;
   const tiled = count > 1;
+  // Settings › Conversation › Fade inactive panes.
+  const fade = usePreferences((s) => s.prefs.fadeInactivePanes);
   const roomy = !layout || !size || fits(layout, size);
   // The layout as it shows in this window: sizes held to what each pane needs (the saved ones are untouched).
   const shown = useMemo(() => (layout && size ? constrain(layout, size) : layout), [layout, size]);
@@ -69,10 +72,10 @@ export function SplitPanes() {
             data-pane-slot={id}
             data-pane-hidden={hidden || undefined}
           >
-            {/* The inactive pane dims as a whole, and brightens a little on hover to say a click makes it active. */}
+            {/* The inactive pane dims as a whole, and brightens a little on hover to say a click makes it active (unless that is turned off in Settings). */}
             <div
               className={`flex min-h-0 min-w-0 flex-1 flex-col transition-opacity duration-150 ${
-                drag?.source === 'pane' && drag.id === id ? 'opacity-50' : tiled && !isActive ? 'opacity-60 hover:opacity-85' : ''
+                drag?.source === 'pane' && drag.id === id ? 'opacity-50' : tiled && !isActive && fade ? 'opacity-60 hover:opacity-85' : ''
               }`}
               onMouseDownCapture={tiled && !isActive ? () => useSessions.getState().focusPane(id) : undefined}
             >

@@ -172,6 +172,8 @@ export interface Preferences {
   promptOutline: boolean;
   /** Settings › Conversation: "Under each reply", when a turn ended, how long it took and its tokens. */
   turnDetails: TurnDetails;
+  /** Settings › Conversation: "Fade inactive panes". Off, the panes other than the active one look the same as it; the active one keeps its line. */
+  fadeInactivePanes: boolean;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
   /** Settings › Remote: "Show in the sidebar when nobody is connected", the quiet "Remote on · nobody connected" line. */
@@ -240,6 +242,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   fileLinkClick: "file-manager",
   promptOutline: true,
   turnDetails: "duration",
+  fadeInactivePanes: true,
   confirmQuit: true,
   remoteIdleLine: true,
   sessionScope: "switchboard",
@@ -379,6 +382,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.promptOutline === "boolean") out.promptOutline = raw.promptOutline;
   if (oneOf(["none", "time", "duration", "tokens"] as const, raw.turnDetails))
     out.turnDetails = raw.turnDetails;
+  if (typeof raw.fadeInactivePanes === "boolean") out.fadeInactivePanes = raw.fadeInactivePanes;
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
   if (typeof raw.remoteIdleLine === "boolean") out.remoteIdleLine = raw.remoteIdleLine;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))

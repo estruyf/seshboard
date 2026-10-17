@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **Turn off the fading of inactive panes.** With sessions side by side, the panes other than the active one are faded. Turn off **Fade inactive panes** in Settings › Conversation to show them as clearly as the active one, which keeps its line along the top.
+
 ### Fixed
 
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.

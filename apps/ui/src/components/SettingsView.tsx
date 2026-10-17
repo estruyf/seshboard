@@ -279,6 +279,15 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
             />
             <TurnDetailsSetting value={prefs.turnDetails} onChange={(turnDetails) => update({ turnDetails })} />
           </Section>
+          <Section title="Split view">
+            <Toggle
+              label="Fade inactive panes"
+              detail="With sessions side by side, the panes you aren't working in are faded until you point at one. Off, they look the same as the active pane, which keeps its line along the top."
+              checked={prefs.fadeInactivePanes}
+              attr="data-fade-panes-setting"
+              onChange={(fadeInactivePanes) => update({ fadeInactivePanes })}
+            />
+          </Section>
           <Section title="File links">
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>

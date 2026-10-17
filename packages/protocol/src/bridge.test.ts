@@ -34,6 +34,19 @@ describe('fileLinkClick preference', () => {
   });
 });
 
+describe('fadeInactivePanes preference', () => {
+  it('fades the inactive panes by default', () => {
+    expect(DEFAULT_PREFERENCES.fadeInactivePanes).toBe(true);
+  });
+
+  it('keeps on and off, and drops anything else', () => {
+    expect(sanitizePreferences({ fadeInactivePanes: false })).toEqual({ fadeInactivePanes: false });
+    expect(sanitizePreferences({ fadeInactivePanes: true })).toEqual({ fadeInactivePanes: true });
+    expect(sanitizePreferences({ fadeInactivePanes: 'off' })).toEqual({});
+    expect(sanitizePreferences({ fadeInactivePanes: 0 })).toEqual({});
+  });
+});
+
 describe('newSessionMode preference', () => {
   it('starts new sessions in the mode picked last by default', () => {
     expect(DEFAULT_PREFERENCES.newSessionMode).toBe('last');
