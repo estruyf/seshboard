@@ -1,5 +1,5 @@
 import { joinPath, type PromptScope, type SavedPrompt } from '@switchboard/protocol/client';
-import { showInChanges } from '../../state/memoryStore.ts';
+import { showInChanges } from '../../state/showInChanges.ts';
 import { toast } from '../../state/toastStore.ts';
 import { sameScope } from './fillModel.ts';
 import { engineClient } from './savedPromptsStore.ts';
