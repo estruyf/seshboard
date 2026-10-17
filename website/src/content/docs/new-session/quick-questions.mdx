@@ -6,6 +6,7 @@ description: Ask Claude something without picking a project, in a scratch folder
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 A quick question is a session without a project. Ask how a command works, draft a text or think something through, without picking a folder first. Claude works in a scratch folder of Switchboard's own, so there are no git options and nothing is added to your projects.
 
@@ -47,3 +48,7 @@ Quick questions are ordinary Claude Code sessions in one folder, so everything w
 ## Settings
 
 Quick questions have no settings of their own. The choices you make in the chips are remembered for the next quick question, apart from your projects.
+
+## Related
+
+<Related pages={['new-session/form', 'sessions/search', 'command-palette', 'links']} />

@@ -6,6 +6,7 @@ description: What you type and don't send is kept, also after you quit, and easy
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 What you type in a message box and don't send stays there: in a session, and in New session. Switchboard keeps the text when you quit and brings it back next time, and shows you where your unsent messages are.
 
@@ -56,3 +57,7 @@ Empty the message box (its text, images and chips) to drop an unsent message on 
 ## Settings
 
 Unsent messages have no settings. The quit prompt that counts them can be turned off with **Ask before quitting** in [Settings, General](/settings/#general).
+
+## Related
+
+<Related pages={['sessions/saved-prompts', 'new-session/queue', 'sessions/home', 'command-palette']} />

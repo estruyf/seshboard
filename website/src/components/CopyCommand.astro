@@ -1,0 +1,87 @@
+---
+/** A one-line shell command with a copy button, such as the Homebrew install line on the homepage. */
+interface Props {
+  command: string;
+}
+const { command } = Astro.props;
+---
+
+<span class="sb-copy not-content">
+  <code><span class="sb-copy-prompt" aria-hidden="true">$</span> {command}</code>
+  <button type="button" data-copy={command} aria-label="Copy the command">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="13" height="13" x="8" y="8" rx="2" /><path d="M4 16V5a1 1 0 0 1 1-1h11" /></svg>
+    <span data-copy-label>Copy</span>
+  </button>
+</span>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(button.dataset.copy!);
+      const label = button.querySelector('[data-copy-label]')!;
+      label.textContent = 'Copied';
+      setTimeout(() => (label.textContent = 'Copy'), 1600);
+    });
+  });
+</script>
+
+<style>
+  .sb-copy {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 100%;
+    padding: 0.25rem 0.3rem 0.25rem 0.85rem;
+    border: 1px solid var(--sb-border);
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-code-bg);
+  }
+  code {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+    font-family: var(--sb-font-mono);
+    font-size: var(--sb-text-ui);
+    color: var(--sb-text);
+  }
+  .sb-copy-prompt {
+    color: var(--sb-faint);
+  }
+  button {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.9rem;
+    padding: 0 0.6rem;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-muted);
+    font: inherit;
+    font-size: var(--sb-text-meta);
+    cursor: pointer;
+  }
+  button:hover {
+    background: color-mix(in srgb, var(--sb-border) 50%, transparent);
+    color: var(--sb-text);
+  }
+  /* On a phone the command needs the room: the button is only its icon. */
+  @media (max-width: 30rem) {
+    code {
+      font-size: var(--sb-text-meta);
+    }
+    [data-copy-label] {
+      display: none;
+    }
+  }
+  svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+  }
+</style>

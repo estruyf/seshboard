@@ -21,9 +21,11 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Hide the estimated cost on the usage bars only.** With **Show estimated cost** on, **Show it on the usage bars** in Settings › Usage turns the estimate after the 5-hour and weekly bars off, and keeps it in the Usage view and next to Context.
 - **The time and duration under a reply now show when you hover the reply, with its buttons.** The faint line under the last reply of a turn, such as **14:32 · 2m 14s**, stays out of the way while you read. Hover the reply, or move to its buttons with Tab, to see it. It takes the same space as before, so nothing moves.
+- **Commands without a description show what they run, not their script.** While Claude runs a long command or an inline script, the step reads **Running a Python script** or **Running git** instead of a line of code. Short commands still show as they are, such as **Running npm test**. Open the step to see the whole command.
 
 ### Fixed
 
+- **Up next in the remote app stays right after the phone was away.** A message you added to Up next from your phone stayed there after Claude had sent it, and tapping its × did nothing, when the phone was locked or offline at the time. Opening a session now shows its Up next as it is on the computer, and removing a message that was already sent clears it. Opening a session also shows what you queued for it on the computer.
 - **A computer with a long name can pair with another one.** Its name is cut to 60 characters, the most a paired device's name may have; pairing used to fail with "Invalid params".
 - **The session header fits four panes side by side.** In a narrow pane, the git button shows its icon and count instead of the word (Commit, Push…), so the ⋯ menu no longer runs off the edge.
 - **The Usage view fits a narrow window.** The chart on the Tokens tab no longer runs past its card after the window gets narrower, and the breakdown's columns no longer stick out of their rows: the table scrolls sideways instead.

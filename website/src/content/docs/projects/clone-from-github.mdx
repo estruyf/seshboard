@@ -1,10 +1,13 @@
 ---
 title: Clone from GitHub
 description: Start a project from a GitHub URL. Switchboard clones it into a folder you set, adds it as a project and runs your first prompt there.
+sidebar:
+  badge: New
 ---
 
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
@@ -20,7 +23,7 @@ Clone from GitHub is off until you turn it on:
 2. Turn on **Clone from GitHub**. Switchboard asks for the folder new projects go in first, such as `~/Developer`.
 3. To change that folder later, click **Choose…** next to **Clone into**.
 
-Each computer has its own setting and folder: a clone on [another computer](/remote-access/) goes in that computer's **Clone into** folder. While the setting is off, none of the ways in below show.
+Each computer has its own setting and folder: a clone on [another computer](/other-computers/) goes in that computer's **Clone into** folder. While the setting is off, none of the ways in below show.
 
 ## Start from a URL
 
@@ -73,7 +76,7 @@ With **Run on** set to another computer in [New session](/new-session/form/), **
 - When that computer has Clone from GitHub off, the form says "Turn on Clone from GitHub in Settings on mystic to clone there."
 - When that computer runs an older Switchboard, the form says "Update Switchboard on mystic to clone there."
 
-See [Remote access](/remote-access/) for pairing with another computer.
+See [Other computers](/other-computers/#set-it-up) for pairing with another computer.
 
 <Aside>
 The form keeps the URL when you change **Run on**, so you can paste first and pick the computer after.
@@ -82,3 +85,7 @@ The form keeps the URL when you change **Run on**, so you can paste first and pi
 ## Where the clone goes
 
 The clone is a normal folder, such as `~/Developer/name`. Open it in <Os mac="Finder" windows="File Explorer" /> or your editor like any other project, and remove it from your projects in the [Projects view](/projects/projects-view/) when you're done with it. Removing a project never deletes its folder.
+
+## Related
+
+<Related pages={['projects/projects-view', 'new-session/form', 'other-computers', 'projects/settings']} />
