@@ -57,6 +57,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   fileLinkClick: 'Clicking a file link',
   promptOutline: 'Show prompt outline',
   turnDetails: 'Under each reply',
+  fadeInactivePanes: 'Fade inactive panes',
   confirmQuit: 'Ask before quitting',
   remoteIdleLine: 'Show in the sidebar when nobody is connected',
   sessionScope: 'Sessions in the sidebar',

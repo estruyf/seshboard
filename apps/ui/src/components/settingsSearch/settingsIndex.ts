@@ -133,6 +133,14 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-prompt-outline-setting]',
     },
     {
+      id: 'fade-panes',
+      page: 'conversation',
+      label: 'Fade inactive panes',
+      detail: "With sessions side by side, the panes you aren't working in are faded until you point at one. Off, they look the same as the active pane, which keeps its line along the top.",
+      keywords: 'split view panes tiles dim faded opacity inactive active focus side by side',
+      target: '[data-fade-panes-setting]',
+    },
+    {
       id: 'turn-details',
       page: 'conversation',
       label: 'Under each reply',
