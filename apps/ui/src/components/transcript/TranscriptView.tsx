@@ -128,9 +128,9 @@ const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', s
  */
 const STATUS_TONE = { running: 'text-accent-ink', 'needs-you': 'text-warn', idle: 'text-muted' } as const;
 
-/** Within this many pixels of the end counts as at the end (rounding), so the conversation follows new output again. */
 /** A pop-out narrower than this (the session view's width) gives a panel on the right the whole view. */
 const NARROW_POPOUT_PANEL = 640;
+/** Within this many pixels of the end counts as at the end (rounding), so the conversation follows new output again. */
 const AT_END_PX = 4;
 /** Further up than this, Jump to latest shows. */
 const AWAY_PX = 24;
