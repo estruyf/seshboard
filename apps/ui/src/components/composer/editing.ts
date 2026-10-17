@@ -71,6 +71,14 @@ export function appendQuote(text: string, quoted: string): TextEdit | null {
   return { from: text.length, to: text.length, insert: `${before}${quote}\n\n` };
 }
 
+/** A prompt put in the box for you (Fix failing checks with Claude): at the end of what is there, after a blank line. */
+export function appendText(text: string, added: string): TextEdit | null {
+  const block = added.replace(/\r\n?/g, '\n').trim();
+  if (!block) return null;
+  const before = !text ? '' : text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n';
+  return { from: text.length, to: text.length, insert: `${before}${block}` };
+}
+
 /** Makes the edit as if typed, so ⌘Z undoes it; `fallback` sets the text where the browser can't. */
 export function applyEdit(el: HTMLTextAreaElement, edit: TextEdit, fallback: (text: string) => void) {
   const [selectStart, selectEnd] = edit.select ?? [edit.from + edit.insert.length, edit.from + edit.insert.length];

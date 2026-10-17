@@ -51,15 +51,14 @@ export function ActionPills({ actions: menu }: { actions: ActionsMenu }) {
     const handlers: Record<ActionCommand, () => void> = { run: () => menu.run(action), edit: () => menu.edit(action), delete: () => menu.askDelete(action) };
     return [
       { title: action.name, detail: whatItRuns(action) },
-      ...actionContextItems(action).map((item) => {
+      ...actionContextItems().map((item) => {
         const Icon = COMMAND_ICON[item.command];
         return {
           label: item.label,
           icon: <Icon size={13} />,
           ...(item.danger ? { danger: true } : {}),
-          ...(item.disabledReason ? { disabled: true } : {}),
           onSelect: handlers[item.command],
-          data: { 'data-action-menu-item': item.command, ...(item.disabledReason ? { 'data-tooltip': item.disabledReason } : {}) },
+          data: { 'data-action-menu-item': item.command },
         } satisfies MenuEntry;
       }),
     ];

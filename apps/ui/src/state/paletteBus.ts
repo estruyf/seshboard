@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
-import type { ImageAttachment } from '@switchboard/protocol/client';
+import type { ImageAttachment, PromptScope, SavedPrompt } from '@switchboard/protocol/client';
 import type { NewSessionRequest, SessionRequest } from '../components/palette/commands.ts';
 import type { Choices } from '../components/newSession/choices.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -36,7 +36,13 @@ export type PaletteDialog =
   | { kind: 'copy-section'; root: string; file: string }
   | { kind: 'memory-import'; source: { kind: 'export'; paths: string[] } | { kind: 'paste' } }
   | { kind: 'memory-copy-app' }
-  | { kind: 'remember'; text: string; from: 'user' | 'claude'; sessionId: string | null; root: string | null };
+  | { kind: 'remember'; text: string; from: 'user' | 'claude'; sessionId: string | null; root: string | null }
+  /**
+   * The saved prompt editor: New prompt (`editing` null), Edit, or Save as prompt (`text` from a sent message, whose
+   * links, branches and paths it offers as blanks). `root` is the project it was opened in (null: none), `scope` where
+   * a new one goes.
+   */
+  | { kind: 'prompt-editor'; editing: SavedPrompt | null; text?: string; fromMessage?: boolean; root: string | null; scope?: PromptScope };
 
 /** A prompt the palette moves into the full New session view (⌘E), with the choices made there. */
 export interface NewSessionHandoff {

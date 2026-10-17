@@ -29,3 +29,13 @@ export function stateLine(state: ChipState, now: number): string {
       return 'Pair again';
   }
 }
+
+/**
+ * What the menu says next to another computer: how many of its sessions need you while it is connected, else its
+ * state ("Offline", "Disconnected"). Nothing for a connected computer that waits on nothing.
+ */
+export function otherLine(state: ChipState, needsYou: number): string {
+  if (state.kind === 'connected') return needsYou > 0 ? `${needsYou} ${needsYou === 1 ? 'needs' : 'need'} you` : '';
+  if (state.kind === 'connecting' && state.attempt === 0) return 'Connecting…';
+  return stateLine(state, 0);
+}

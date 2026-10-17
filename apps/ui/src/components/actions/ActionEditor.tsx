@@ -1,9 +1,11 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { MoreHorizontal, Plus, Share2, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { ACTION_ICONS, type ActionIcon, type ActionSuggestion, type ListedAction } from '@switchboard/protocol/client';
+import { ACTION_ICONS, joinPath, type ActionIcon, type ActionSuggestion, type ListedAction } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProjects } from '../../state/projectsStore.ts';
+import { showInChanges } from '../../state/memoryStore.ts';
+import { toast } from '../../state/toastStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -24,6 +26,7 @@ import {
   insertVariable,
   NAME_MAX,
   projectName,
+  scopeParams,
   slug,
   validateDraft,
   visibleSuggestions,
@@ -246,7 +249,13 @@ export function DeleteActionDialog({ action, onConfirm, onClose }: { action: Lis
   return (
     <ConfirmDialog
       title={`Delete ${action.name}?`}
-      body={<>The action is removed from {action.scope === 'global' ? 'all your projects' : 'this project'}. Its command is not run.</>}
+      body={
+        action.scope === 'shared' ? (
+          <>The action is taken out of the project’s .switchboard.json, and out of everyone’s projects once you commit it. Its command is not run.</>
+        ) : (
+          <>The action is removed from {action.scope === 'global' ? 'all your projects' : 'this project'}. Its command is not run.</>
+        )
+      }
       confirmLabel="Delete"
       danger
       onConfirm={onConfirm}
@@ -257,7 +266,7 @@ export function DeleteActionDialog({ action, onConfirm, onClose }: { action: Lis
 
 /**
  * Add, edit and remove project actions: the list on the left, the selected action's form on the
- * right. Shared ones (from .switchboard.json) show read-only, since they are edited in that file.
+ * right. Shared ones are kept in the project's .switchboard.json, which a save or delete writes.
  * A successful save hands the action to `onSaved` (the caller closes the editor and confirms it); a
  * failed one keeps the editor open with the error above the form, so nothing typed is lost.
  */
@@ -305,8 +314,9 @@ export function ActionEditor({
   const shortcutRef = useRef<HTMLButtonElement>(null);
   const id = useId();
 
-  const readOnly = selected?.scope === 'shared';
   const { yours, shared } = groupActions(actions);
+  /** Where the shared file is (or will be, for the first shared action). */
+  const sharedPath = sharedFile ?? joinPath(projectRoot, '.switchboard.json');
   const { shown, hidden } = visibleSuggestions(suggestions, actions, showAll);
 
   useEffect(() => {
@@ -340,15 +350,14 @@ export function ActionEditor({
   };
 
   const save = async () => {
-    if (!client || readOnly || saving) return;
-    const editing = selected && selected.scope !== 'shared' ? selected : null;
+    if (!client || saving) return;
+    const editing = selected;
     const invalid = validateDraft(draft, actions, editing);
     setFieldErrors(invalid);
     if (invalid.name) return nameRef.current?.focus();
     if (invalid.command) return commandRef.current?.focus();
     if (invalid.shortcut) return shortcutRef.current?.focus();
     const { scope, ...action } = draft;
-    if (scope === 'shared') return;
     const name = action.name.trim();
     // An edit within the same scope keeps its id (so its shortcut and menu hook stay); a move or a new action gets one from the name.
     const sameScope = editing?.scope === scope;
@@ -357,7 +366,7 @@ export function ActionEditor({
     setError(null);
     try {
       await client.call('actions.save', {
-        projectRoot: scope === 'global' ? null : projectRoot,
+        ...scopeParams(scope, projectRoot),
         action: {
           ...action,
           name,
@@ -371,9 +380,11 @@ export function ActionEditor({
       // save loses nothing (ids are unique per scope, so both can exist for a moment).
       if (editing && !sameScope)
         await client.call('actions.delete', {
-          projectRoot: editing.scope === 'global' ? null : projectRoot,
+          ...scopeParams(editing.scope, projectRoot),
           id: editing.id,
         });
+      // A change to the shared file is a change in the repository: say to commit it.
+      if (scope === 'shared' || editing?.scope === 'shared') announceShared(name, scope === 'shared');
       const saved: ListedAction = {
         ...draft,
         name,
@@ -390,11 +401,12 @@ export function ActionEditor({
   };
 
   const remove = async (a: ListedAction) => {
-    if (!client || a.scope === 'shared') return;
+    if (!client) return;
     await client.call('actions.delete', {
-      projectRoot: a.scope === 'global' ? null : projectRoot,
+      ...scopeParams(a.scope, projectRoot),
       id: a.id,
     });
+    if (a.scope === 'shared') announceShared(a.name, false);
     select(null);
     onChanged();
   };
@@ -429,6 +441,22 @@ export function ActionEditor({
   // A renamed project shows the name you gave it.
   const shownName = useProjects((s) => s.projects.get(projectRoot)?.name) ?? projectName(projectRoot);
 
+  /** Says that an action went into the project's shared file, or out of it, with Show the change. */
+  const announceShared = (name: string, shared: boolean) =>
+    toast(shared ? `${name} is shared with ${shownName}` : `${name} is no longer shared with ${shownName}`, {
+      body: 'Commit the project’s .switchboard.json so your team gets the change.',
+      icon: 'shared',
+      data: { 'data-action-share-toast': shared ? 'shared' : 'unshared' },
+      actions: [
+        {
+          label: 'Show the change',
+          onSelect: () => {
+            if (!showInChanges(projectRoot, sharedPath)) void openIn(sharedPath);
+          },
+        },
+      ],
+    });
+
   return (
     <>
       {/*
@@ -442,7 +470,7 @@ export function ActionEditor({
         title="Project actions"
         subtitle={<span data-tooltip={projectRoot}>{shownName}</span>}
         onClose={onClose}
-        onSubmit={readOnly ? undefined : () => void save()}
+        onSubmit={() => void save()}
         className="h-[650px]"
       >
 
@@ -522,7 +550,7 @@ export function ActionEditor({
                   {e}
                 </Notice>
               ))}
-              {readOnly && (
+              {draft.scope === 'shared' && (
                 <Notice
                   role="note"
                   className="mb-3"
@@ -533,12 +561,12 @@ export function ActionEditor({
                       </Button>
                     )
                   }
+                  data-action-shared-note
                 >
-                  Shared from .switchboard.json in the repo. Edit the file to change it.
+                  {sharedFile ? 'Saved in the project’s .switchboard.json. Commit it so your team gets it.' : 'Saving creates .switchboard.json in the project. Commit it so your team gets it.'}
                 </Notice>
               )}
-              {/* A disabled fieldset makes every control read-only for a shared action in one place. */}
-              <fieldset disabled={readOnly} className="grid min-w-0 gap-4">
+              <div className="grid min-w-0 gap-4">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
                   <label htmlFor={`${id}-name`} className={fieldLabel}>
                     Name
@@ -637,18 +665,11 @@ export function ActionEditor({
                       className={`${field} border-edge`}
                       value={draft.scope}
                       onChange={(scope) => edit({ scope })}
-                      disabled={readOnly}
+                      menuWidth={240}
                       options={[
-                        { value: 'project', label: 'This project' },
-                        { value: 'global', label: 'All projects' },
-                        ...(readOnly
-                          ? [
-                            {
-                              value: 'shared' as const,
-                              label: '.switchboard.json',
-                            },
-                          ]
-                          : []),
+                        { value: 'project', label: 'This project', hint: 'just for you' },
+                        { value: 'global', label: 'All projects', hint: 'just for you' },
+                        { value: 'shared', label: 'Shared with the project', hint: 'in .switchboard.json' },
                       ]}
                     />
                   </div>
@@ -660,7 +681,6 @@ export function ActionEditor({
                         className={`${field} border-edge`}
                         value={draft.cwd}
                         onChange={(cwd) => edit({ cwd })}
-                        disabled={readOnly}
                         menuWidth={200}
                         options={[
                           {
@@ -681,7 +701,7 @@ export function ActionEditor({
                       labelId={`${id}-shortcut`}
                       value={draft.shortcut}
                       onChange={(shortcut) => edit({ shortcut })}
-                      check={(shortcut) => validateDraft({ ...draft, shortcut }, actions, selected && selected.scope !== 'shared' ? selected : null).shortcut ?? null}
+                      check={(shortcut) => validateDraft({ ...draft, shortcut }, actions, selected).shortcut ?? null}
                       invalid={fieldErrors.shortcut}
                       buttonRef={shortcutRef}
                     />
@@ -690,12 +710,12 @@ export function ActionEditor({
 
                 <div className="grid gap-3">
                   <label className="flex cursor-pointer items-center gap-3 text-ui">
-                    <Switch checked={draft.confirm} onChange={(confirm) => edit({ confirm })} disabled={readOnly} dataAttrs={{ 'data-action-confirm': true }} />
+                    <Switch checked={draft.confirm} onChange={(confirm) => edit({ confirm })} dataAttrs={{ 'data-action-confirm': true }} />
                     <span>Ask before running</span>
                   </label>
                   {draft.type === 'shell' && (
                     <label className="flex cursor-pointer items-center gap-3 text-ui">
-                      <Switch checked={draft.runOnWorktreeCreate} onChange={(runOnWorktreeCreate) => edit({ runOnWorktreeCreate })} disabled={readOnly} dataAttrs={{ 'data-action-worktree': true }} />
+                      <Switch checked={draft.runOnWorktreeCreate} onChange={(runOnWorktreeCreate) => edit({ runOnWorktreeCreate })} dataAttrs={{ 'data-action-worktree': true }} />
                       <span>
                         Run when a new worktree is created <span className="text-meta text-muted">· before Claude starts, for setup such as installing dependencies</span>
                       </span>
@@ -703,7 +723,7 @@ export function ActionEditor({
                   )}
                   {draft.type === 'shell' && (
                     <label className="flex cursor-pointer items-center gap-3 text-ui">
-                      <Switch checked={draft.sendOutput} onChange={(sendOutput) => edit({ sendOutput })} disabled={readOnly} dataAttrs={{ 'data-action-send-output': true }} />
+                      <Switch checked={draft.sendOutput} onChange={(sendOutput) => edit({ sendOutput })} dataAttrs={{ 'data-action-send-output': true }} />
                       <span>
                         Send the output to Claude when it finishes <span className="text-meta text-muted">· the exit code and the end of the output, in Up next while Claude works</span>
                       </span>
@@ -711,11 +731,11 @@ export function ActionEditor({
                   )}
                 </div>
 
-              </fieldset>
+              </div>
             </div>
 
             <footer className="flex shrink-0 items-center gap-2.5 border-t border-edge px-6 py-3">
-              {selected && !readOnly && (
+              {selected && (
                 <Button variant="danger" onClick={() => setDeleting(selected)} data-delete-action>
                   Delete
                 </Button>
@@ -729,12 +749,10 @@ export function ActionEditor({
                 </Pill>
               </span>
               <span className="mx-1 h-5 w-px shrink-0 bg-edge" aria-hidden />
-              <Button onClick={onClose}>{readOnly ? 'Close' : 'Cancel'}</Button>
-              {!readOnly && (
-                <Button type="submit" variant="primary" kbd="⌘↵" disabled={saving} data-save-action>
-                  {saving ? 'Saving…' : 'Save'}
-                </Button>
-              )}
+              <Button onClick={onClose}>Cancel</Button>
+              <Button type="submit" variant="primary" kbd="⌘↵" disabled={saving} data-save-action>
+                {saving ? 'Saving…' : 'Save'}
+              </Button>
             </footer>
           </form>
         </div>
@@ -742,7 +760,7 @@ export function ActionEditor({
         <p className="flex shrink-0 items-center gap-2 border-t border-edge bg-bg/40 px-5 py-2.5 text-ui text-muted">
           <Share2 size={14} className="shrink-0" aria-hidden />
           <span>
-            Share actions with your team: commit a <code className="font-mono text-text">.switchboard.json</code> in the repo · each shared command asks for approval once.
+            Share an action with your team: save it for <span className="text-text">Shared with the project</span> and commit <code className="font-mono text-text">.switchboard.json</code> · each shared command asks for approval once.
           </span>
         </p>
       </Dialog>

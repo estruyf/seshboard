@@ -1,4 +1,4 @@
-import { Brain, Check, ClipboardType, Copy, GitFork, Pencil, Undo2 } from 'lucide-react';
+import { BookmarkPlus, Brain, Check, ClipboardType, Copy, GitFork, Pencil, Undo2 } from 'lucide-react';
 import { createContext, useContext, type ReactNode } from 'react';
 import { Button } from '../ui/Button.tsx';
 import { useFlash } from '../ui/useFlash.ts';
@@ -19,6 +19,8 @@ export interface MessageActions {
   runAndSend: ((command: string) => void) | null;
   /** Remember this…: the text as a memory (yours, or Claude's), in a dialog first. */
   remember(text: string, from: 'user' | 'claude'): void;
+  /** Save as prompt…: a message you sent, in the saved prompt editor, its links, branches and paths offered as blanks. */
+  savePrompt?(text: string): void;
 }
 
 export const MessageActionsContext = createContext<MessageActions | null>(null);
@@ -62,6 +64,20 @@ function RichCopyAction({ text }: { text: string }) {
 }
 
 /**
+ * How a message's actions show: invisible rather than removed, so Tab still reaches them and nothing jumps, until the
+ * message (`group/message`) is hovered or one of them has focus.
+ */
+const REVEAL = 'pointer-events-none opacity-0 group-hover/message:pointer-events-auto group-hover/message:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100';
+
+/**
+ * The same for the row under a reply (`group/reply-row`: the actions, then the turn's line), so its parts show together:
+ * while the reply is hovered, while anything in the row has focus, and while the tokens' tooltip is open (it sits
+ * outside the reply, so the pointer can rest on it).
+ */
+export const REVEAL_IN_REPLY_ROW =
+  'pointer-events-none opacity-0 group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-focus-within/reply-row:pointer-events-auto group-focus-within/reply-row:opacity-100 group-has-[[data-turn-tokens][aria-expanded=true]]/reply-row:pointer-events-auto group-has-[[data-turn-tokens][aria-expanded=true]]/reply-row:opacity-100';
+
+/**
  * Small toolbar that appears when you hover a message. It's invisible rather than removed the
  * rest of the time, so Tab still reaches its buttons and it shows up while one has focus.
  * On your prompt cards it floats over the card's top edge; under Claude's replies it's a row of
@@ -73,13 +89,13 @@ export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { item
   const context = useContext(MessageActionsContext);
   const actions = copyOnly ? null : context;
   const uuid = messageUuid(itemKey);
-  // Under a reply it sits in the reply's row (`ReplyActions`), with the turn's line after it.
-  const placement = kind === 'text' ? 'h-6 shrink-0' : 'absolute -top-3 right-2 z-10 rounded-md border border-border bg-card px-0.5 shadow-sm';
+  // Under a reply it sits in the reply's row, with the turn's line after it, and shows with it.
+  const placement = kind === 'text' ? `h-6 shrink-0 ${REVEAL_IN_REPLY_ROW}` : `absolute -top-3 right-2 z-10 rounded-md border border-border bg-card px-0.5 shadow-sm ${REVEAL}`;
   return (
     <div
       role="toolbar"
       aria-label={kind === 'text' ? 'Actions for Claude’s message' : 'Actions for your message'}
-      className={`pointer-events-none flex items-center gap-0.5 opacity-0 group-hover/message:pointer-events-auto group-hover/message:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 ${placement}`}
+      className={`flex items-center gap-0.5 ${placement}`}
       data-message-actions
     >
       {actions && kind === 'user' && (
@@ -101,6 +117,9 @@ export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { item
       )}
       {context && kind !== 'command' && text && (
         <Button variant="quiet" size="sm" iconOnly icon={<Brain size={13} />} aria-label="Remember this…" onClick={() => context.remember(text, kind === 'user' ? 'user' : 'claude')} data-remember-message />
+      )}
+      {context?.savePrompt && kind === 'user' && text && (
+        <Button variant="quiet" size="sm" iconOnly icon={<BookmarkPlus size={13} />} aria-label="Save as prompt…" onClick={() => context.savePrompt!(text)} data-save-as-prompt />
       )}
       {text && <CopyAction text={text} label={kind === 'text' ? 'Copy as Markdown' : 'Copy message'} />}
       {text && kind === 'text' && <RichCopyAction text={text} />}

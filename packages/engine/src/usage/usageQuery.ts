@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { tierOf, type TokenCounts, UsageBreakdown, UsageBucket, UsageGroup, UsagePeriod, UsageRow } from '@switchboard/protocol';
+import { costOf, tierOf, type TokenCounts, UsageBreakdown, UsageBucket, UsageGroup, type UsageLimit, UsagePeriod, UsageRow, type WindowCost } from '@switchboard/protocol';
 import { hourOf } from './transcriptUsage.ts';
 import { measuredDeltas, sharesOf, weightOf, type PlanSample } from './shares.ts';
 
@@ -91,6 +91,8 @@ interface Hourly {
   output: number;
   cache_read: number;
   cache_write: number;
+  /** The part of `cache_write` that went to the hour-long cache, which costs more. */
+  cache_write_1h: number;
   turns: number;
   fast_turns: number;
   max_context: number;
@@ -99,6 +101,8 @@ interface Hourly {
 interface Group {
   key: string;
   tokens: TokenCounts;
+  /** At API list prices, in US dollars: each hour's tokens at its model's price. */
+  cost: number;
   turns: number;
   fastTurns: number;
   largestContext: number;
@@ -126,7 +130,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   const { scope, from, to, groupBy, model, bucket } = query;
   const rows = db
     .prepare(
-      `SELECT session_id, hour, model, input, output, cache_read, cache_write, turns, fast_turns, max_context
+      `SELECT session_id, hour, model, input, output, cache_read, cache_write, cache_write_1h, turns, fast_turns, max_context
        FROM session_usage WHERE scope = ? AND hour >= ? AND hour <= ? ${model ? 'AND model = ?' : ''}`,
     )
     .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Hourly[];
@@ -153,22 +157,25 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   };
 
   const groups = new Map<string, Group>();
-  const newGroup = (key: string): Group => ({ key, tokens: empty(), turns: 0, fastTurns: 0, largestContext: 0, sessions: new Set(), models: new Map(), picks: 0, asked: new Set() });
-  const totals = { tokens: empty(), sessions: new Set<string>(), turns: 0, fastTurns: 0, largestContext: 0 };
+  const newGroup = (key: string): Group => ({ key, tokens: empty(), cost: 0, turns: 0, fastTurns: 0, largestContext: 0, sessions: new Set(), models: new Map(), picks: 0, asked: new Set() });
+  const totals = { tokens: empty(), cost: 0, sessions: new Set<string>(), turns: 0, fastTurns: 0, largestContext: 0 };
   const buckets = new Map<string, UsageBucket>();
   const bucketKey = (hour: number) => (bucket === 'hour' ? String(hour) : dayOf(hour));
   // Every bucket of the period, also empty ones, in order.
   for (let hour = hourOf(from); hour <= to; hour += HOUR) {
     const key = bucketKey(hour);
-    if (!buckets.has(key)) buckets.set(key, { start: hour, tokens: empty(), turns: 0 });
+    if (!buckets.has(key)) buckets.set(key, { start: hour, tokens: empty(), turns: 0, cost: 0 });
   }
 
   for (const row of rows) {
     const tokens: TokenCounts = { input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write };
+    const cost = costOf({ ...tokens, cacheWrite1h: row.cache_write_1h }, row.model) ?? 0;
     const key = keyOf(row);
     let group = groups.get(key);
     if (!group) groups.set(key, (group = newGroup(key)));
     addTo(group.tokens, tokens);
+    group.cost += cost;
+    totals.cost += cost;
     group.turns += row.turns;
     group.fastTurns += row.fast_turns;
     group.largestContext = Math.max(group.largestContext, row.max_context);
@@ -183,6 +190,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     if (b) {
       addTo(b.tokens, tokens);
       b.turns += row.turns;
+      b.cost = (b.cost ?? 0) + cost;
     }
   }
 
@@ -200,11 +208,14 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Routed[];
   const addApart = (row: Routed, rowKey: string, count: (group: Group) => void) => {
     const tokens: TokenCounts = { input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write };
+    const cost = costOf(tokens, row.model) ?? 0;
     const hour = hourOf(row.at);
     const key = groupBy === 'day' ? dayOf(hour) : rowKey;
     let group = groups.get(key);
     if (!group) groups.set(key, (group = newGroup(key)));
     addTo(group.tokens, tokens);
+    group.cost += cost;
+    totals.cost += cost;
     group.turns += 1;
     count(group);
     group.models.set(row.model, (group.models.get(row.model) ?? 0) + weightOf(tokens));
@@ -214,6 +225,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     if (b) {
       addTo(b.tokens, tokens);
       b.turns += 1;
+      b.cost = (b.cost ?? 0) + cost;
     }
   };
   for (const route of routed) addApart(route, AUTO_ROUTING_KEY, (group) => (group.picks += 1));
@@ -248,15 +260,15 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     const share = shares.get(g.key) ?? { share: 0, measured: false };
     const mainModel = [...g.models].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     if (g.key === AUTO_ROUTING_KEY && groupBy !== 'day') {
-      return { key: g.key, label: 'Auto routing', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, largestContext: 0, share: share.share, measured: false, autoRouting: { picks: g.picks } };
+      return { key: g.key, label: 'Auto routing', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, cost: g.cost, largestContext: 0, share: share.share, measured: false, autoRouting: { picks: g.picks } };
     }
     if (g.key === SIDE_QUESTIONS_KEY && groupBy !== 'day') {
-      return { key: g.key, label: 'Side questions', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, largestContext: 0, share: share.share, measured: false, sideQuestions: { asked: g.asked.size } };
+      return { key: g.key, label: 'Side questions', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, cost: g.cost, largestContext: 0, share: share.share, measured: false, sideQuestions: { asked: g.asked.size } };
     }
     if (g.key === CATCHUP_KEY && groupBy !== 'day') {
-      return { key: g.key, label: 'Catch-up summaries', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, largestContext: 0, share: share.share, measured: false, catchUpSummaries: { calls: g.picks } };
+      return { key: g.key, label: 'Catch-up summaries', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, cost: g.cost, largestContext: 0, share: share.share, measured: false, catchUpSummaries: { calls: g.picks } };
     }
-    const base = { key: g.key, sessions: g.sessions.size, turns: g.turns, fastTurns: g.fastTurns, tokens: g.tokens, largestContext: g.largestContext, share: share.share, measured: share.measured };
+    const base = { key: g.key, sessions: g.sessions.size, turns: g.turns, fastTurns: g.fastTurns, tokens: g.tokens, cost: g.cost, largestContext: g.largestContext, share: share.share, measured: share.measured };
     if (groupBy === 'session') {
       const known = lookup.session(g.key);
       const root = known?.projectRoot ?? projectOf(g.key);
@@ -278,8 +290,96 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     from,
     to,
     bucket,
-    totals: { tokens: totals.tokens, sessions: totals.sessions.size, turns: totals.turns, fastTurns: totals.fastTurns, largestContext: totals.largestContext },
+    totals: { tokens: totals.tokens, cost: totals.cost, sessions: totals.sessions.size, turns: totals.turns, fastTurns: totals.fastTurns, largestContext: totals.largestContext },
     rows: result,
     buckets: [...buckets.values()],
   };
+}
+
+/** How long each plan window runs, by its meter's kind: the 5-hour session and the weekly ones. */
+const WINDOW_MS: Record<string, number> = { session: 5 * HOUR };
+const windowLength = (kind: string) => WINDOW_MS[kind] ?? (kind.startsWith('weekly') ? 7 * 24 * HOUR : null);
+
+/**
+ * What each running plan window's tokens would cost at API list prices: every model's tokens since the window began
+ * (its reset minus its length; totals are per hour, so the first hour counts whole, as in the Usage view's This
+ * window), the helper calls Switchboard made included. A scoped window ("Opus") counts only that model's tokens.
+ * Windows without a reset ahead are left out.
+ */
+export function windowCosts(db: DatabaseSync, scope: string, limits: readonly UsageLimit[], now: number): WindowCost[] {
+  const windows: PlanWindow[] = [];
+  for (const limit of limits) {
+    const length = windowLength(limit.kind);
+    if (length === null || limit.resetsAt === null || limit.resetsAt <= now) continue;
+    windows.push({ kind: limit.kind, scope: limit.scope, from: limit.resetsAt - length });
+  }
+  return windowCostsFrom(db, scope, windows, now);
+}
+
+/** A plan window by when it began: its meter's kind and scope, as in `UsageLimit`. */
+export interface PlanWindow {
+  kind: string;
+  scope: string | null;
+  from: number;
+}
+
+/**
+ * `windowCosts` for windows whose start is given: another computer asks with the starts its plan reported, since the
+ * windows are the account's and this computer may not have checked its plan lately.
+ */
+export function windowCostsFrom(db: DatabaseSync, scope: string, windows: readonly PlanWindow[], now: number): WindowCost[] {
+  const perModel = (from: number): Array<{ model: string; tokens: TokenCounts & { cacheWrite1h: number } }> => {
+    const rows = db
+      .prepare(
+        `SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cacheRead, SUM(cache_write) AS cacheWrite, SUM(cache_write_1h) AS cacheWrite1h FROM (
+           SELECT model, input, output, cache_read, cache_write, cache_write_1h FROM session_usage WHERE scope = ? AND hour >= ? AND hour <= ?
+           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM auto_routing WHERE scope = ? AND at >= ? AND at <= ?
+           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM side_question_usage WHERE scope = ? AND at >= ? AND at <= ?
+           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM catchup_usage WHERE scope = ? AND at >= ? AND at <= ?
+         ) GROUP BY model`,
+      )
+      .all(scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
+    return rows.map(({ model, ...tokens }) => ({ model, tokens }));
+  };
+  const result: WindowCost[] = [];
+  for (const { kind, scope: windowScope, from } of windows) {
+    const family = windowScope?.split(/\s+/)[0]?.toLowerCase() ?? null;
+    let usd = 0;
+    let partial = false;
+    for (const { model, tokens } of perModel(from)) {
+      if (family && !model.toLowerCase().includes(family)) continue;
+      const cost = costOf(tokens, model);
+      if (cost === null) partial ||= tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite > 0;
+      else usd += cost;
+    }
+    result.push({ kind, scope: windowScope, from, usd, partial });
+  }
+  return result;
+}
+
+/**
+ * What one session's tokens would cost at API list prices, in US dollars, since it started: its transcript (its
+ * subagents included) and the helper calls made for it (Auto model's pick, its catch-up summaries, the questions asked
+ * about it). `partial`: tokens of a model without a known price were left out. Null when no tokens were counted.
+ */
+export function sessionCost(db: DatabaseSync, scope: string, sessionId: string): { usd: number; partial: boolean } | null {
+  const rows = db
+    .prepare(
+      `SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cacheRead, SUM(cache_write) AS cacheWrite, SUM(cache_write_1h) AS cacheWrite1h FROM (
+         SELECT model, input, output, cache_read, cache_write, cache_write_1h FROM session_usage WHERE scope = ? AND session_id = ?
+         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM auto_routing WHERE scope = ? AND session_id = ?
+         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM side_question_usage WHERE scope = ? AND session_id = ?
+         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM catchup_usage WHERE scope = ? AND session_id = ?
+       ) GROUP BY model`,
+    )
+    .all(scope, sessionId, scope, sessionId, scope, sessionId, scope, sessionId) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
+  if (rows.length === 0) return null;
+  let usd = 0;
+  let partial = false;
+  for (const { model, ...tokens } of rows) {
+    const cost = costOf(tokens, model);
+    if (cost === null) partial ||= tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite > 0;
+    else usd += cost;
+  }
+  return { usd, partial };
 }

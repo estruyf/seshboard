@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ComputersStatus, RemoteSessions } from '@switchboard/protocol/client';
-import type { RemoteRef } from './remoteSelection.ts';
+import { parseRemoteRowId, remoteRowId, type RemoteRef } from './remoteSelection.ts';
 import { useSessions } from './sessionsStore.ts';
 
 const HIDDEN_KEY = 'ui.computersHidden';
@@ -28,11 +28,9 @@ interface ComputersState {
   status: ComputersStatus | null;
   /** Each computer's last session list, by computer id. An offline computer keeps its last one. */
   lists: ReadonlyMap<string, RemoteSessions>;
-  /** The remote session the main area shows (view `remote`). */
-  selected: RemoteRef | null;
-  /** The computer whose page shows instead (view `remote` without a session): no sessions there, or pair it again. */
+  /** The computer whose page the main area shows (view `remote`): no sessions there, or pair it again. */
   pageId: string | null;
-  /** A session New session just started there, until its list has it: the view says it is starting. */
+  /** A session New session just started there, until its list has it: its pane says it is starting. */
   starting: RemoteRef | null;
   /**
    * The computers whose sessions the sidebar leaves out (`THIS_COMPUTER` for this one's own), per window: the
@@ -41,41 +39,47 @@ interface ComputersState {
   hidden: ReadonlySet<string>;
   setStatus(status: ComputersStatus): void;
   setList(computerId: string, list: RemoteSessions): void;
-  /** Opens a session on another computer in the main area; `starting` for one New session just started there. */
-  openSession(ref: RemoteRef, options?: { starting?: boolean }): void;
+  /**
+   * Opens a session on another computer in a pane, as a local one opens: in the active pane, or with `beside` in a
+   * new one next to it. `starting` for one New session just started there.
+   */
+  openSession(ref: RemoteRef, options?: { starting?: boolean; beside?: boolean }): void;
   /** Shows a computer's page: what is wrong, or that it has no sessions. */
   openPage(computerId: string): void;
   setHidden(hidden: ReadonlySet<string>): void;
 }
 
-/** Other computers this app paired with (docs/remote-access.md): their state and sessions, for the sidebar and the remote session view. */
+/** Other computers this app paired with (docs/remote-access.md): their state and sessions, for the sidebar and their sessions' panes. */
 export const useComputers = create<ComputersState>()((set) => ({
   status: null,
   lists: new Map(),
-  selected: null,
   pageId: null,
   starting: null,
   hidden: readHidden(),
-  setStatus: (status) =>
-    set((s) => {
-      // A forgotten computer's list (and its rows, and its place in the filter) goes with it.
-      const ids = new Set(status.computers.map((c) => c.id));
-      const lists = [...s.lists.keys()].every((id) => ids.has(id)) ? s.lists : new Map([...s.lists].filter(([id]) => ids.has(id)));
-      return {
-        status,
-        lists,
-        ...(s.selected && !ids.has(s.selected.computerId) ? { selected: null } : {}),
-        ...(s.pageId && !ids.has(s.pageId) ? { pageId: null } : {}),
-      };
-    }),
+  setStatus: (status) => {
+    // A forgotten computer's list (and its rows, its panes and its place in the filter) goes with it.
+    const ids = new Set(status.computers.map((c) => c.id));
+    set((s) => ({
+      status,
+      lists: [...s.lists.keys()].every((id) => ids.has(id)) ? s.lists : new Map([...s.lists].filter(([id]) => ids.has(id))),
+      ...(s.pageId && !ids.has(s.pageId) ? { pageId: null } : {}),
+    }));
+    const sessions = useSessions.getState();
+    const gone = sessions.paneIds.filter((id) => {
+      const ref = parseRemoteRowId(id);
+      return ref !== null && !ids.has(ref.computerId);
+    });
+    if (gone.length) sessions.closeSessions(gone);
+  },
   setList: (computerId, list) => set((s) => ({ lists: new Map(s.lists).set(computerId, list) })),
   openSession: (ref, options) => {
-    const selected = { computerId: ref.computerId, sessionId: ref.sessionId };
-    set({ selected, pageId: null, starting: options?.starting ? selected : null });
-    useSessions.getState().setView('remote');
+    const id = remoteRowId(ref);
+    set({ pageId: null, starting: options?.starting ? { computerId: ref.computerId, sessionId: ref.sessionId } : null });
+    if (options?.beside) useSessions.getState().openBeside(id);
+    else useSessions.getState().select(id);
   },
   openPage: (computerId) => {
-    set({ selected: null, pageId: computerId });
+    set({ pageId: computerId });
     useSessions.getState().setView('remote');
   },
   setHidden: (hidden) => {
