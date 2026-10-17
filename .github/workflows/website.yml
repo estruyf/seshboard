@@ -1,6 +1,8 @@
 # Builds the website (website/, Astro + Starlight) and publishes it to GitHub Pages at
 # https://switchboard.struyfconsulting.com/, with the remote app (apps/remote) at /remote/. Pull requests that touch the site, the UI (the shortcuts page is
 # built from its registry) or the changelog only build it, so a broken link or a missing screenshot fails there.
+# It doesn't run when a release is published: that run is on the tag, which the github-pages environment doesn't allow
+# to deploy (only main), and the Release commit's push to main has already deployed the new changelog.
 name: Website
 
 on:
@@ -22,8 +24,6 @@ on:
       - "apps/ui/**"
       - "CHANGELOG.md"
       - ".github/workflows/website.yml"
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:
