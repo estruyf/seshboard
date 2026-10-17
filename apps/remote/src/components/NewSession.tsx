@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, ChevronLeft, Search } from 'lucide-react';
+import { Check, ChevronLeft, KeyboardOff, Search } from 'lucide-react';
 import { REMOTE_FEATURE_BRANCHES, type RemoteBranches, type RemoteOptions, type RemoteProject, type RemoteSession } from '@switchboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
@@ -12,6 +12,7 @@ import { BranchChip, EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button, Kbd } from './ui.tsx';
+import { useVisualViewport } from './useVisualViewport.ts';
 
 const TONE_DOT: Record<TileTone, string> = { 'needs-you': 'bg-warn', working: 'bg-accent-ink', idle: 'bg-faint' };
 const TONE_TEXT: Record<TileTone, string> = { 'needs-you': 'text-warn', working: 'text-accent-ink', idle: 'text-muted' };
@@ -29,7 +30,9 @@ const DRAFT = 'switchboard-remote:new-draft';
  * the filter there, so the keyboard doesn't come up over the tiles. Under the prompt, the project's profile (with more than one)
  * and its defaults for model, effort, mode and worktree as chips, to change for this session only. In the project's folder,
  * the branch checked out there, or another to check out first (`REMOTE_FEATURE_BRANCHES`). Queue for later puts it in Switchboard's queue instead,
- * while the project has a session working.
+ * while the project has a session working. While the keyboard is up on a phone, only the prompt and the buttons stay: the
+ * view takes what the keyboard leaves (as the session's message box does, `lib/viewport.ts`), so Start session sits
+ * right above it, and Hide keyboard brings the tiles and the chips back.
  */
 export function NewSession({ client, features, sessions, banner, onBack, lead = null, onStarted, initialProject = null }: { client: Client; /** What the computer takes beyond what every version does (its hello). */ features: readonly string[]; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; /** In Back's place on a wide screen whose sidebar folded away: the drawer button. */ lead?: ReactNode; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
@@ -50,6 +53,12 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
   const [listOpen, setListOpen] = useState(false);
   const row = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  /** The prompt has focus on a phone's touch screen: the keyboard is up. */
+  const [focused, setFocused] = useState(false);
+  const typing = focused && !fine && !wide;
+  const frame = useVisualViewport(typing);
+  /** Keeps the prompt focused when a footer button is tapped, so the layout doesn't jump back under your finger. */
+  const keepFocus = typing ? (event: { preventDefault: () => void }) => event.preventDefault() : undefined;
   // Read when the projects arrive, without loading them again each time a session changes.
   const latest = useRef(sessions);
   latest.current = sessions;
@@ -153,7 +162,7 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
   const projectBusy = Boolean(projectId && sessions.some((s) => s.projectId === projectId && s.status === 'working'));
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-bg" style={frame ? { position: 'fixed', left: 0, right: 0, top: frame.top, height: frame.height, zIndex: 20 } : undefined} data-remote-new-session>
       <header className={`safe-top flex items-center gap-2 border-b border-border pb-2 pointer-fine:pb-2.5 ${onBack || lead ? 'px-2' : 'px-5'}`}>
         {!onBack && lead}
         {onBack && (
@@ -166,7 +175,8 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
       {banner}
       <main className="min-h-0 flex-1 overflow-y-auto py-4 sm:py-8">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-          <section aria-labelledby="pick-project" className="flex flex-col gap-2">
+          {/* Hidden, not unmounted, while you type: the row keeps its scroll for when the keyboard goes. */}
+          <section aria-labelledby="pick-project" className={`flex flex-col gap-2 ${typing ? 'hidden' : ''}`}>
             <div className="flex items-center gap-3 px-4 sm:px-6">
               <h2 id="pick-project" className="flex-1 text-meta font-semibold tracking-wide text-faint uppercase">
                 Project
@@ -229,6 +239,11 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
           </section>
           {listOpen && projects && <ProjectSheet projects={recentProjects(projects, sessions)} sessions={sessions} now={now} picked={projectId} onPick={pickFromList} onClose={() => setListOpen(false)} />}
 
+          {typing && picked && (
+            <p className="-mb-1 truncate px-4 text-meta text-faint" data-remote-new-in>
+              In <span className="font-medium text-muted">{picked.name}</span>
+            </p>
+          )}
           <form
             id="new-session"
             className="flex flex-col gap-3 px-4 sm:px-6"
@@ -245,6 +260,8 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
                 onPaste={attachments.onPaste}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                     event.preventDefault();
@@ -261,7 +278,7 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
                 <AttachButton state={attachments} disabled={!client} />
               </div>
             </div>
-            {options && picked && (
+            {options && picked && !typing && (
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choices for this session">
                   <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} />
@@ -284,8 +301,13 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
           )}
         </div>
       </main>
-      <footer className="safe-bottom border-t border-border px-4 pt-2 sm:px-6">
+      <footer className={`border-t border-border px-4 pt-2 sm:px-6 ${typing ? 'pb-2' : 'safe-bottom'}`}>
         <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
+          {typing && (
+            <Button variant="quiet" onMouseDown={keepFocus} onClick={() => box.current?.blur()} aria-label="Hide keyboard" title="Hide keyboard" className="px-3!" data-remote-hide-keyboard>
+              <KeyboardOff className="size-5" aria-hidden />
+            </Button>
+          )}
           <span className="hidden min-w-0 flex-1 truncate text-meta text-faint sm:block" aria-live="polite">
             {picked ? (
               <>
@@ -296,11 +318,11 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
             ) : null}
           </span>
           {projectBusy && (
-            <Button onClick={() => void queue()} disabled={!ready || attachments.items.length > 0} title={attachments.items.length ? 'Attachments go with a session that starts now' : undefined} className="flex-1 sm:flex-none" data-remote-queue>
+            <Button onClick={() => void queue()} onMouseDown={keepFocus} disabled={!ready || attachments.items.length > 0} title={attachments.items.length ? 'Attachments go with a session that starts now' : undefined} className="flex-1 sm:flex-none" data-remote-queue>
               Queue for later
             </Button>
           )}
-          <Button type="submit" form="new-session" variant="primary" disabled={!ready} data-remote-start className="flex-1 sm:flex-none">
+          <Button type="submit" form="new-session" variant="primary" onMouseDown={keepFocus} disabled={!ready} data-remote-start className="flex-1 sm:flex-none">
             Start session
             <Kbd shortcut="mod+enter" tone="on-accent" />
           </Button>

@@ -154,6 +154,8 @@ Actions with the same `id` (by default, the same name) replace each other: your 
 
 Shared actions can't be edited or deleted in the app. The editor shows them read-only, with **Edit file** to open `.switchboard.json`. Mistakes in the file are shown at the top of the editor and the Actions tab.
 
+The same file holds the project's shared [saved prompts](/sessions/saved-prompts/#shared-prompts), under `prompts`. Switchboard writes those for you when you share a prompt, and keeps the rest of the file as it is.
+
 ### Approving shared actions
 
 A command from a repository could do anything. The first time you run a shared action, Switchboard shows the exact command and asks you to approve it with **Approve and run**. If someone changes the command later, you are asked again.

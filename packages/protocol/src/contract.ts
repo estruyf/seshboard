@@ -54,6 +54,7 @@ import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
+import { GithubIssue, GithubPullRequest, PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './savedPromptSchema.ts';
 import { CompanionTarget } from './companion.ts';
 import { DeviceName, RemoteSettings, RemoteStatus } from './remote.ts';
 import { ComputerEvent, ComputerMethodSchema, ComputersStatus } from './computers.ts';
@@ -541,6 +542,36 @@ export const contract = {
     'actions.run': {
       params: z.object({ sessionId: SessionId, projectRoot: AbsolutePath, cwd: AbsolutePath, id: z.string() }),
       result: ActionRunResult,
+    },
+
+    // --- Saved prompts ---------------------------------------------------------------------------
+    /**
+     * Your prompts for every project, plus the project's own (just for you, and shared in its .switchboard.json)
+     * when `root` is given, most recently used first. `errors` says what in the shared file couldn't be read.
+     */
+    'savedPrompts.list': {
+      params: z.object({ root: AbsolutePath.optional() }),
+      result: z.object({ prompts: z.array(SavedPrompt), errors: z.array(z.string()) }),
+    },
+    /** Creates a prompt (without an `id`) or updates one in its place. Shared ones are written to the project's file. */
+    'savedPrompts.save': { params: z.object({ prompt: SavedPromptInput }), result: z.object({ prompt: SavedPrompt }) },
+    'savedPrompts.delete': { params: z.object({ id: SavedPromptId, scope: PromptScope }), result: z.object({}) },
+    /**
+     * Moves a prompt to another place (global, just for you, shared; in another project too) in one step: it is
+     * written there first, then taken out of where it was, so a failure loses nothing. WRITE_FAILED says why.
+     */
+    'savedPrompts.move': { params: z.object({ id: SavedPromptId, from: PromptScope, to: PromptScope }), result: z.object({ prompt: SavedPrompt }) },
+    /** A prompt was sent: counts it, for ordering. Shared prompts' counts stay in the database. */
+    'savedPrompts.used': { params: z.object({ id: SavedPromptId, scope: PromptScope }), result: z.object({}) },
+    /** Open pull requests of the project, for a `pr` blank (cached for a minute). Empty with a `reason` without gh or a GitHub remote. */
+    'github.pullRequests': {
+      params: z.object({ root: AbsolutePath }),
+      result: z.object({ pullRequests: z.array(GithubPullRequest), repo: z.string().nullable(), reason: z.string().nullable() }),
+    },
+    /** An issue from a link, `#123` or `123`, for an `issue` blank (cached for a minute). Null with a `reason` when it can't be found. */
+    'github.issue': {
+      params: z.object({ root: AbsolutePath, ref: z.string().trim().min(1).max(500) }),
+      result: z.object({ issue: GithubIssue.nullable(), reason: z.string().nullable() }),
     },
 
     /**
@@ -1166,6 +1197,8 @@ export const contract = {
     'limits.resumed': z.object({ sessionId: z.string() }),
     /** Skills were reloaded: ask for slash command lists again. */
     'commands.changed': z.object({}),
+    /** Saved prompts changed (saved, moved, deleted, or the shared file changed, as after a pull): `root` null for global ones. */
+    'savedPrompts.changed': z.object({ root: z.string().nullable() }),
     /** Settings were imported: reload projects and actions. */
     'settings.imported': z.object({}),
     /**

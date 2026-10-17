@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { ContextItem, ImageAttachment } from '@switchboard/protocol/client';
+import type { ContextItem, ImageAttachment, SavedPrompt } from '@switchboard/protocol/client';
 import { addChips, contextFromPrompt } from '../components/composer/contextItems.ts';
+import type { FillState } from '../components/savedPrompts/fillModel.ts';
 import { DRAFT_SETTLE_MS, isCountingDraft, nextDraft, settleFirstPrompts, type Draft, type DraftForm, type FirstPrompt, type SessionsSeen } from './drafts.ts';
 
 export type ComposerDraft = Draft<ImageAttachment>;
@@ -23,11 +24,16 @@ interface DraftsState {
   focus: { key: string; nonce: number } | null;
   /** Text to quote at the end of a message box, which then takes focus (Quote in reply from the conversation). */
   quote: { key: string; text: string; nonce: number } | null;
+  /**
+   * A saved prompt to fill in a message box (null `prompt`: open its / menu), from the palette or New session's chips.
+   * The box with that key takes it, and the focus.
+   */
+  promptRequest: { key: string; prompt: SavedPrompt | null; nonce: number } | null;
   /** The Unsent messages popover: where it opens (its bottom-left corner when `above`). */
   list: { x: number; y: number; above: boolean } | null;
   archivePrompt: ArchivePrompt | null;
   /** The message box changed: keeps it (or forgets an empty one). */
-  setDraft(key: string, draft: { text: string; attachments: ImageAttachment[] }): void;
+  setDraft(key: string, draft: { text: string; attachments: ImageAttachment[]; fill?: FillState | null }): void;
   /** Adds context chips to a box (from the editor, a drop, the Add context picker); one that is there already isn't added again. */
   addContext(key: string, items: readonly ContextItem[]): void;
   /** Removes chips by id (the × on a chip, or the ones that were just sent). */
@@ -52,6 +58,8 @@ interface DraftsState {
   clearFocus(): void;
   requestQuote(key: string, text: string): void;
   clearQuote(): void;
+  requestPrompt(key: string, prompt: SavedPrompt | null): void;
+  clearPromptRequest(): void;
   openList(at: { x: number; y: number; above: boolean }): void;
   closeList(): void;
   /** Archives right away, or first asks when one of the sessions holds an unsent message. */
@@ -110,6 +118,7 @@ export const useDrafts = create<DraftsState>()((set, get) => {
     loaded: false,
     focus: null,
     quote: null,
+    promptRequest: null,
     list: null,
     archivePrompt: null,
     setDraft: (key, value) => {
@@ -190,6 +199,8 @@ export const useDrafts = create<DraftsState>()((set, get) => {
     clearFocus: () => set({ focus: null }),
     requestQuote: (key, text) => set({ quote: { key, text, nonce: ++focusRequests } }),
     clearQuote: () => set({ quote: null }),
+    requestPrompt: (key, prompt) => set({ promptRequest: { key, prompt, nonce: ++focusRequests } }),
+    clearPromptRequest: () => set({ promptRequest: null }),
     openList: (list) => set({ list }),
     closeList: () => set({ list: null }),
     requestArchive: (prompt, needsAsking) => (needsAsking ? set({ archivePrompt: prompt }) : prompt.archive()),

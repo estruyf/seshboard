@@ -2,6 +2,16 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### New
+
+- **Saved prompts: save a prompt with blanks, pick it with / or in New session, fill in an issue, pull request, branch or your own options, and send. Keep them for every project, for one project just for you, or share them with the project.** Type / in any message box: your saved prompts come first, then the commands. Pick one and its text goes in the message box, each blank a chip: type in a text blank, or pick a GitHub issue, an open pull request, a local branch, a file or one of your own options. Tab moves to the next blank, and Send waits until the blanks you need are filled ("1 blank left"). Write more under the prompt to send it along. New session shows the prompts you use most as chips above the message box. Make one in **Settings › Prompts**, with *New saved prompt…* in the command palette, or with **Save as prompt…** on a message you sent, which offers its links, branches and paths as blanks. Shared prompts are saved in the project's `.switchboard.json` with its actions, so the team gets them once it's committed.
+
+### Fixed
+
+- **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.
+
 ## [0.0.22] - 2026-10-16
 
 ### New

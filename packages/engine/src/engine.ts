@@ -46,6 +46,7 @@ import {
   type QueuedMessage,
   type StreamDelta,
   type PermissionRequest,
+  type PromptScope,
   accountKey,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
@@ -61,6 +62,9 @@ import { SearchIndex } from './sessions/searchIndex.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
+import { SharedFileWatcher } from './actions/sharedFileWatcher.ts';
+import { SavedPromptStore } from './prompts/savedPromptStore.ts';
+import { findIssue, openPullRequests } from './git/githubLookups.ts';
 import { LaterStore } from './later/laterStore.ts';
 import { summarise, UpNextStore } from './host/upNextStore.ts';
 import { Asker, AskStore } from './host/sideQuestions.ts';
@@ -801,6 +805,23 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   const actions = new ActionStore(cache.db);
+  const savedPrompts = new SavedPromptStore(cache.db);
+  /** A pull (or anyone) changing a project's .switchboard.json updates its shared prompts in every window. */
+  const sharedFileWatcher = new SharedFileWatcher((root) => broadcast('savedPrompts.changed', { root }));
+  const promptsChanged = (...scopes: PromptScope[]) => {
+    for (const root of new Set(scopes.map((scope) => (scope.kind === 'global' ? null : scope.root)))) broadcast('savedPrompts.changed', { root });
+  };
+  /** What `gh` said about a project's pull requests and issues, for a minute (a network call, and blanks ask often). */
+  const githubLookups = new Map<string, { at: number; value: Promise<unknown> }>();
+  const githubLookup = <T>(key: string, load: (env: Record<string, string>) => Promise<T>): Promise<T> => {
+    const cached = githubLookups.get(key);
+    if (cached && Date.now() - cached.at < 60_000) return cached.value as Promise<T>;
+    const value = shell.ready.then(({ env }) => load(env));
+    githubLookups.set(key, { at: Date.now(), value });
+    // A failure isn't kept: the next blank asks again.
+    value.catch(() => githubLookups.delete(key));
+    return value;
+  };
   /** The queue (first called the Later list). */
   const later = new LaterStore(cache.db);
   /** Every window keeps the whole queue: tell them all after a change. */
@@ -1739,6 +1760,33 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
 
+    'savedPrompts.list': ({ root }) => {
+      if (root) sharedFileWatcher.watch(root);
+      return savedPrompts.list(root);
+    },
+    'savedPrompts.save': ({ prompt }) => {
+      const saved = savedPrompts.save(prompt);
+      promptsChanged(prompt.scope);
+      return { prompt: saved };
+    },
+    'savedPrompts.delete': ({ id, scope }) => {
+      savedPrompts.remove(id, scope);
+      promptsChanged(scope);
+      return {};
+    },
+    'savedPrompts.move': ({ id, from, to }) => {
+      const prompt = savedPrompts.move(id, from, to);
+      promptsChanged(from, to);
+      return { prompt };
+    },
+    'savedPrompts.used': ({ id, scope }) => {
+      savedPrompts.used(id, scope);
+      promptsChanged(scope);
+      return {};
+    },
+    'github.pullRequests': ({ root }) => githubLookup(`prs\u0000${root}`, (env) => openPullRequests(root, env, defaultGh())),
+    'github.issue': ({ root, ref }) => githubLookup(`issue\u0000${root}\u0000${ref.trim().toLowerCase()}`, (env) => findIssue(root, ref, env, defaultGh())),
+
     'actions.list': ({ projectRoot }) => actions.list(projectRoot),
     'actions.save': ({ projectRoot, action, previousId }) => {
       actions.save(projectRoot, action, previousId);
@@ -2479,6 +2527,7 @@ export function createEngine(options: EngineOptions): Engine {
       remote?.stop();
       computers?.stop();
       memoryWatcher.close();
+      sharedFileWatcher.close();
       clearTimeout(memorySyncTimer);
       clearTimeout(startupMemorySync);
       for (const server of servers) server.dispose();
