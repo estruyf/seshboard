@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **The Agents panel shows which model each agent runs on.** Every row and the agent's detail now say *Opus 5.5*, *Sonnet 5.5* or the like, next to the agent's type. Claude picks it when it starts the agent; an agent it gives no model runs on the model its type sets, or on the session's own.
+
 ### Fixed
 
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TranscriptMessage } from '@switchboard/protocol/client';
 import { agentReport, buildDisplayItems, groupActivity, type DisplayItem } from './displayItems.ts';
 import { activitySummary, gerund, stepLabel, toolSummary } from './toolSummary.ts';
-import { agentForTask, agentRuns, shownAgent, splitAgents, taskForAgent } from './agentRuns.ts';
+import { agentForTask, agentModel, agentRuns, shownAgent, splitAgents, taskForAgent } from './agentRuns.ts';
 
 const m = (uuid: string, role: TranscriptMessage['role'], blocks: TranscriptMessage['blocks'], parentToolUseId: string | null = null): TranscriptMessage => ({
   uuid,
@@ -177,10 +177,22 @@ describe('agentRuns', () => {
     // A background agent's own report is the hand-back, not the launch message.
     expect(second).toMatchObject({ background: true, agentId: 'abc123', report: 'Looks fine.', prompt: null, type: 'agent' });
   });
+
+  it('names the model an agent runs on: the one its replies used, else the one the call asked for', () => {
+    const [withModel, without] = agentRuns([agent('a', null), agent('b', null)].map((item, i) => (i === 0 ? ({ ...item, input: { description: 'a', model: 'haiku' } } as DisplayItem) : item)), true);
+    expect(withModel!.asked).toBe('haiku');
+    expect(without!.asked).toBeNull();
+    const used = { model: 'claude-opus-5-5', input: 0, output: 0, cacheRead: 0, cacheWrite: 0, replies: 1 };
+    expect(agentModel(withModel!, used)).toBe('claude-opus-5-5');
+    expect(agentModel(withModel!, undefined)).toBe('haiku');
+    expect(agentModel(without!, undefined)).toBeNull();
+    // Replies that used more than one model name none.
+    expect(agentModel(without!, { ...used, model: null })).toBeNull();
+  });
 });
 
 describe('agents and the background tasks', () => {
-  const run = (key: string, over: Partial<ReturnType<typeof agentRuns>[number]>) => ({ item: tool(key, 'Agent', {}), running: true, background: true, agentId: null, type: 'agent', what: key, prompt: null, report: null, ...over }) as ReturnType<typeof agentRuns>[number];
+  const run = (key: string, over: Partial<ReturnType<typeof agentRuns>[number]>) => ({ item: tool(key, 'Agent', {}), running: true, background: true, agentId: null, type: 'agent', what: key, prompt: null, asked: null, report: null, ...over }) as ReturnType<typeof agentRuns>[number];
   const task = (taskId: string, description: string) => ({ taskId, type: 'local_agent', description, startedAt: 0 });
 
   it('finds the agent a task stands for by its id, else by a description only one running agent has', () => {

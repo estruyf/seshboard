@@ -79,7 +79,7 @@ import { buildDisplayItems, groupActivity, type RenderItem } from './displayItem
 import { durationWords, liveParts, tokenWords } from './turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, type LiveTurnInfo, type TurnMetaValue } from './TurnMeta.tsx';
 import { claudeMs, liveTurn, type Turn } from './turns.ts';
-import { useTurns } from './useTurns.ts';
+import { useAgentTokens, useTurns } from './useTurns.ts';
 import { memoryWriteOf } from './memoryWrites.ts';
 import { useKnownMemoryFolders, useMemoryFoldersSync } from '../memory/useMemoryFolders.ts';
 import { MessageMenuContext, useRememberLayer } from '../memory/RememberLayer.tsx';
@@ -603,7 +603,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     live?.status === 'needs-you' ? 'Waiting for you' : streamKind === 'thinking' ? 'Thinking' : streamKind === 'tool' && streamTool ? `Using ${streamTool}` : null;
   // When your last message went in, for the "9s · Thinking" timer.
   // Turns: the line under each finished one, and the working line's numbers for the open one.
-  const turns = useTurns(client, sessionId, items, working);
+  const agentTokens = useAgentTokens(client, sessionId, items, working);
+  const turns = useTurns(sessionId, items, agentTokens);
   const turnDetails = usePreferences((s) => s.prefs.turnDetails);
   const openTurn = working ? (turns.at(-1) ?? null) : null;
   const finishedByReply = useMemo(() => {
@@ -1845,6 +1846,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             sessionId={sessionId}
             cwd={cwd}
             runs={agents}
+            tokens={agentTokens}
             tasks={backgroundTasks}
             picked={agentsState.picked}
             onPick={(agent) => pickAgent(sessionId, agent)}
