@@ -161,6 +161,7 @@ export function normaliseMessage(raw: RawSessionMessage, sink?: ImageSink): Tran
           cacheRead: counts.cacheRead,
           cacheCreation: counts.cacheWrite,
           ...(typeof responseId === 'string' && responseId ? { id: responseId } : {}),
+          ...(counts.cacheTtl ? { cacheTtl: counts.cacheTtl } : {}),
         }
       : null,
   };

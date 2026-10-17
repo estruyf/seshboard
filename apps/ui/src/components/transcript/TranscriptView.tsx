@@ -16,7 +16,7 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { realBranch, useSessions } from '../../state/sessionsStore.ts';
 import { runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
-import { sessionDraftBanner } from '../../state/drafts.ts';
+import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { useUpNext } from '../../state/upNextStore.ts';
@@ -45,6 +45,7 @@ import { useActionsMenu } from '../actions/useActionsMenu.tsx';
 import { CapabilitiesDialog } from '../capabilities/CapabilitiesDialog.tsx';
 import { ChangesPanel, useChangesLayout } from '../changes/ChangesPanel.tsx';
 import { ContextMeter } from '../session/ContextMeter.tsx';
+import { LargeContextNotice } from '../session/LargeContextNotice.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
 import { useHeight } from '../ui/useHeight.ts';
 import { useWidth } from '../ui/useWidth.ts';
@@ -66,6 +67,7 @@ import { MoreMenu } from '../session/MoreMenu.tsx';
 import { SessionControls } from '../session/StatusBar.tsx';
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
+import { SessionCost } from '../usage/SessionCost.tsx';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
 import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
@@ -976,7 +978,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     if (kept?.startIn) presetBox(kept.text, kept.attachments);
   }, [restarting, sessionId]);
   const onDraftLoaded = (draft: ComposerDraft) => setRestored(draft.seeded ? null : draft);
-  const onDraftText = useCallback((text: string) => setRestored((current) => (current && current.text !== text ? null : current)), []);
+  const onDraftText = useCallback((text: string) => setRestored((current) => (current && draftMessage(current) !== text ? null : current)), []);
 
   // Fork, edit and rewind from a message.
   const [actionError, setActionError] = useState<string | null>(null);
@@ -1025,8 +1027,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       runCommand: cwd ? (command) => void runInTerminal(client, sessionId, cwd, command).catch(fail) : null,
       runAndSend: cwd ? (command) => void runAndSendOutput(client, sessionId, cwd, command).catch(fail) : null,
       remember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
+      savePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
     };
-  }, [client, items, sessionId, select, cwd, projectRoot]);
+  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions]);
 
   // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
@@ -1037,6 +1040,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     },
     onRemember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
     onQuote: (text) => useDrafts.getState().requestQuote(sessionId, text),
+    onSavePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
   });
 
   // The command palette's Fork…, Rewind…, Copy last reply: your prompts and Claude's last reply, from the active pane.
@@ -1462,6 +1466,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               aria-label="Conversation"
               className={`min-h-0 flex-1 overflow-y-auto ${terminalMaximized ? 'hidden' : ''}`}
               data-transcript
+              // How many items the conversation has: the list is virtualised, so the rows in the DOM are only the ones in view.
+              data-transcript-count={renderItems.length}
             >
               {status === 'loading' ? (
                 <p className="p-8 text-center text-ui text-muted" role="status">
@@ -1684,6 +1690,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 </Notice>
               )}
               <AutoSuggestNote sessionId={sessionId} pick={autoPick} items={items} contextTokens={host?.contextTokens ?? null} />
+              <LargeContextNotice sessionId={sessionId} live={contextLive} host={host} messages={messages} working={running} onCompact={compact} />
               {autoPick && <AutoPickPopover sessionId={sessionId} pick={autoPick} items={items} cwd={cwd} />}
               {actionsMenu.overlays}
               {restored && (
@@ -1701,6 +1708,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               <div className="relative">
                 <Composer
                   draftKey={sessionId}
+                  savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
                   status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}
@@ -1790,6 +1798,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   <div className="@container/meters flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
                     <UsageBand profileId={profileId} footer />
                   </div>
+                  <SessionCost sessionId={sessionId} profileId={profileId} />
                   <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
                 </div>
               )}

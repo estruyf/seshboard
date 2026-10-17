@@ -30,6 +30,8 @@ export function useProjectActionList(projectRoot: string | null) {
 
   // An import (in any window) can add, change or remove actions.
   useEffect(() => client?.on('settings.imported', () => setVersion((v) => v + 1)), [client]);
+  // So can a save in another window, or a pull that changes the project's .switchboard.json.
+  useEffect(() => client?.on('actions.changed', ({ root }) => (root === null || root === projectRoot) && setVersion((v) => v + 1)), [client, projectRoot]);
 
   return {
     ...state,
