@@ -70,6 +70,8 @@ if (scripted) {
   process.env.SWITCHBOARD_STUB_BTW = '1';
   // Catch-up cards are written from the tool calls, never by a model.
   process.env.SWITCHBOARD_STUB_CATCHUP = '1';
+  // Clone from GitHub clones from local bare repositories in the throwaway profile, never from the network.
+  process.env.SWITCHBOARD_CLONE_SOURCE ??= join(app.getPath('userData'), 'clone-source');
 }
 
 // The single-instance lock belongs to the data folder. Development builds keep their own ("Switchboard Dev"), so
@@ -637,6 +639,12 @@ interface TimedReport extends RendererReadyReport {
   loadedMs: number;
 }
 ipcMain.handle(IpcChannel.pickFolder, async (event, defaultPath: unknown) => {
+  // A smoke or screenshot run has no one to answer the dialog: a step that needs one sets the folder to pick, once.
+  const answer = scripted ? process.env.SWITCHBOARD_PICK_FOLDER : undefined;
+  if (answer) {
+    delete process.env.SWITCHBOARD_PICK_FOLDER;
+    return answer;
+  }
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
     title: 'Choose a folder for the new session',
@@ -1746,9 +1754,10 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   const scoped = await withSettingsClosed("document.querySelector('[data-session-list]') && !document.querySelector('[data-session-id][data-in-app=\"false\"]')");
   await section('sidebar');
 
+  await section('projects');
+  await click('[data-project-order="yours"]');
   await section('general');
   await click('[data-startup-view="new"]');
-  await click('[data-project-order="yours"]');
   await click('[data-confirm-quit]');
   await until(() => !preferences.get().confirmQuit);
   Menu.getApplicationMenu()?.getMenuItemById('quit')?.click();
@@ -1759,6 +1768,7 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
 
   await click('[data-confirm-quit]');
   await click('[data-startup-view="home"]');
+  await section('projects');
   await click('[data-project-order="recent"]');
   await section('sidebar');
   await click('[data-session-scope]');
@@ -4507,6 +4517,110 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Clone from GitHub, never from the network and never starting a session: Settings › Projects turns it on with a
+ * throwaway Clone into folder (the folder dialog answered here), a GitHub URL in New session's folder field offers
+ * Clone owner/name, and ↩ clones a local bare repository (the engine clones from SWITCHBOARD_CLONE_SOURCE in a smoke
+ * run), which is added as a project and picked, without a worktree. Start then asks about the hook the repository
+ * brings; Cancel keeps the prompt and starts nothing. Ends as it started: the project removed, the setting off, the
+ * folders gone.
+ */
+async function runCloneStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const source = process.env.SWITCHBOARD_CLONE_SOURCE;
+  if (!source) return 'no SWITCHBOARD_CLONE_SOURCE: the engine would clone from GitHub';
+  const sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-clone-')));
+  const bare = join(source, 'acme', 'smoke-clone.git');
+  const folder = join(sandbox, 'Developer');
+  const target = join(folder, 'smoke-clone');
+  const cleanUp = () => {
+    rmSync(sandbox, { recursive: true, force: true });
+    rmSync(bare, { recursive: true, force: true });
+  };
+  // "GitHub": acme/smoke-clone, a bare repository whose project settings bring a hook.
+  const work = join(sandbox, 'work');
+  mkdirSync(join(work, '.claude'), { recursive: true });
+  const git = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, stdio: 'ignore' });
+  git(work, ['init', '-q']);
+  writeFileSync(join(work, 'README.md'), '# Smoke clone\n');
+  writeFileSync(join(work, '.claude', 'settings.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo smoke' }] }] } }));
+  git(work, ['add', '.']);
+  git(work, ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '-m', 'first']);
+  mkdirSync(join(source, 'acme'), { recursive: true });
+  git(sandbox, ['clone', '-q', '--bare', work, bare]);
+  mkdirSync(folder);
+
+  // Settings › Projects: turning it on asks for the folder first.
+  await js(`${one('[data-open-settings]')}.click()`);
+  if (!(await waitInPage(win, one('[data-settings-section="projects"]'), 3_000))) return (cleanUp(), 'Settings has no Projects page');
+  await js(`${one('[data-settings-section="projects"]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-settings-page="projects"]')} && ${one('[data-clone-enabled]')} && ${one('[data-project-order]')}`, 3_000))) return (cleanUp(), 'Settings › Projects has no Clone from GitHub or Project order');
+  process.env.SWITCHBOARD_PICK_FOLDER = folder;
+  await js(`${one('[data-clone-enabled]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-clone-enabled]')}.getAttribute('aria-checked') === 'true' && ${one(`[data-clone-folder-path=${JSON.stringify(folder)}]`)}`, 3_000))) {
+    delete process.env.SWITCHBOARD_PICK_FOLDER;
+    return (cleanUp(), 'turning on Clone from GitHub did not ask for its folder and turn on');
+  }
+  await js(`${one('[data-close-settings]')}.click()`);
+
+  const turnOff = async () => {
+    await js(`${one('[data-open-settings]')}.click()`);
+    await waitInPage(win, one('[data-settings-page="projects"] [data-clone-enabled]'), 3_000);
+    if ((await js(`${one('[data-clone-enabled]')}?.getAttribute('aria-checked')`)) === 'true') await js(`${one('[data-clone-enabled]')}.click()`);
+    const off = await waitInPage(win, `${one('[data-clone-enabled]')}?.getAttribute('aria-checked') === 'false'`, 3_000);
+    await js(`${one('[data-close-settings]')}?.click()`);
+    return off;
+  };
+  const fail = async (why: string) => {
+    await js(`${one('[data-clone-close]')}?.click()`);
+    await turnOff();
+    cleanUp();
+    return why;
+  };
+
+  // New session: Clone from GitHub… next to Add project…, and a URL pasted in the folder field offers the clone.
+  pressKey(win, 'N', ['meta']);
+  if (!(await waitInPage(win, `${one('[data-new-session-view] [data-clone-from-github]')} && ${one('[data-new-session-view] [data-filter-projects]')}`, 3_000))) return fail('New session has no Clone from GitHub…');
+  await js(`${one('[data-new-session-view] [data-filter-projects]')}.click()`);
+  if (!(await waitInPage(win, one('[data-folder-list] input'), 3_000))) return fail('Filter did not open the folder field');
+  await setFieldValue(win, '[data-folder-list] input', 'https://github.com/acme/smoke-clone');
+  if (!(await waitInPage(win, `${one('[data-clone-option="acme/smoke-clone"]')}?.dataset.active === 'true'`, 3_000))) return fail('a GitHub URL in the folder field did not offer Clone acme/smoke-clone');
+  pressKey(win, 'Return');
+  if (!(await waitInPage(win, `${one('[data-clone-repo]')}?.dataset.cloneState === 'done' && ${one('[data-clone-progress="done"]')}`, 20_000))) {
+    return fail(`the clone did not finish: ${String(await js(`${one('[data-clone-repo]')}?.innerText ?? 'no clone form'`))}`);
+  }
+  if (!existsSync(join(target, 'README.md'))) return fail('the clone is not in the Clone into folder');
+  const picked = `${one('[data-route-project]')}?.dataset.tooltip === ${JSON.stringify(target)}`;
+  if (!(await waitInPage(win, `${picked} && ${one('[data-worktree-switch]')}?.disabled === true`, 5_000))) return fail('the clone was not picked as the project, or a fresh clone still offers a worktree');
+  await shot(win, 'clone-from-github.png');
+
+  // Start asks about the hook it brings; Cancel starts nothing and keeps the prompt.
+  const box = '[data-new-session-view] [data-composer]';
+  await setFieldValue(win, box, 'Smoke: never sent');
+  await js(`${one('[data-new-session-view] [data-composer-submit]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-clone-trust]')}?.innerText.includes('echo smoke') && document.activeElement === ${one('[data-clone-trust-cancel]')}`, 5_000))) return fail('Start did not ask about the hook the repository brings, with Cancel focused');
+  await js(`${one('[data-clone-trust-cancel]')}.click()`);
+  if (!(await waitInPage(win, `!${one('[data-clone-trust]')} && ${one('[data-new-session-view]')} && ${one(box)}?.value === 'Smoke: never sent'`, 3_000))) return fail('Cancel left New session or lost the prompt');
+  await setFieldValue(win, box, '');
+
+  // Clean up: the form closed, the project removed, the setting off, the folders gone.
+  await js(`${one('[data-clone-close]')}.click()`);
+  if (!(await waitInPage(win, `!${one('[data-clone-repo]')} && ${one(`[data-folder-option=${JSON.stringify(target)}]`)}`, 3_000))) return fail('Done did not show the clone as a project tile');
+  await js(`${one('[data-open-projects]')}.click()`);
+  const row = one(`[data-project-row=${JSON.stringify(target)}] [data-project-more-button]`);
+  if (!(await waitInPage(win, row, 3_000))) return fail('the clone is not in Projects');
+  await js(`${row}.click()`);
+  if (!(await waitInPage(win, one('[role=menu] [data-remove-project]'), 2_000))) return fail("no Remove in the project's ⋯ menu");
+  await js(`${one('[role=menu] [data-remove-project]')}.click()`);
+  if (!(await waitInPage(win, one('[data-confirm]'), 3_000))) return fail('no confirmation before removing');
+  await js(`${one('[data-confirm]')}.click()`);
+  if (!(await waitInPage(win, `!${one(`[data-project-row=${JSON.stringify(target)}]`)}`, 3_000))) return fail('the clone was not removed from the projects');
+  if (!(await turnOff())) return (cleanUp(), 'Clone from GitHub did not turn off again');
+  cleanUp();
+  return 'ok: Settings › Projects asked for the folder and turned it on, a URL in the folder field offered the clone, ↩ cloned the local repository and picked it without a worktree, Start asked about its hook and Cancel kept the prompt; removed and turned off again';
+}
+
+/**
  * Quick question, read-only: ⌘⇧N opens New session with Quick question picked, which hides every git option
  * (where, branch, worktree, Add to projects) and keeps the model, effort and mode chips, in a mode that asks.
  * The palette's Quick question… shows the same in its prompt step. Nothing is typed or sent. A project picks
@@ -4774,6 +4888,150 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
     client.dispose();
     socket.destroy();
     if (smokeSessionId) await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  }
+}
+
+/**
+ * Saved prompts, in a sandbox (a throwaway git repository, opened in New session with a link): a prompt for
+ * every project with a pull request and a text blank, made in Settings › Prompts; picked with / in New session, both
+ * blanks filled (the pull request typed, as without gh), more context under it, and sent to the queue (never to
+ * Claude), where it is the filled text without braces; then moved to just for you, shared (in the sandbox's
+ * .switchboard.json) and back to every project (out of that file), and deleted.
+ */
+async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const click = (selector: string) => js(`${one(selector)}?.click()`);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-prompts-')));
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  git('-c', 'user.email=smoke@example.com', '-c', 'user.name=Smoke', 'commit', '-q', '--allow-empty', '-m', 'initial');
+  git('branch', 'feat/smoke-prompts');
+  const sharedFile = join(dir, '.switchboard.json');
+  const readShared = () => (existsSync(sharedFile) ? (JSON.parse(readFileSync(sharedFile, 'utf8')) as { prompts?: Array<{ id: string; text: string }> }) : null);
+  const id = 'smoke-fix-a-pull-request';
+  const row = `[data-saved-prompt-row="${id}"]`;
+  const box = '[data-new-session-view] [data-composer]';
+
+  /** Closes what a failure left open, and removes the sandbox. */
+  const cleanUp = async () => {
+    if (await js("!!document.querySelector('[role=dialog], [role=menu]')")) pressKey(win, 'Escape');
+    await click('[data-close-settings]');
+    await click('[data-go-home]');
+    rmSync(dir, { recursive: true, force: true });
+  };
+  try {
+    // New session on the sandbox, through a link (so it isn't remembered as New session's folder).
+    openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(dir)}`);
+    if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(dir)} && ${one(box)}`, 5_000))) return 'New session did not open on the sandbox';
+    // Typed in once, so Settings knows the project "just for you" and "Share" mean.
+    await js(`${one(box)}.focus()`);
+
+    // 1. A prompt for every project, with a pull request and a text blank, from Settings › Prompts.
+    await click('[data-open-settings]');
+    if (!(await waitInPage(win, one('[data-settings-section="prompts"]'), 3_000))) return 'Settings has no Prompts page';
+    await click('[data-settings-section="prompts"]');
+    if (!(await waitInPage(win, one('[data-saved-prompts-new]'), 3_000))) return 'Settings › Prompts has no New prompt';
+    await click('[data-saved-prompts-new]');
+    if (!(await waitInPage(win, `${one('[data-prompt-editor-dialog]')} && ${one('[data-prompt-use-in="personal"]')}?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'New prompt did not open with "just for you" picked';
+    await setFieldValue(win, '[data-prompt-editor-name]', 'Smoke: fix a pull request');
+    await click('[data-prompt-use-in="global"]');
+    await js(`${one('[data-prompt-editor] [data-prompt-run]')}.focus()`);
+    await win.webContents.insertText('Fix ');
+    await click('[data-add-blank]');
+    if (!(await waitInPage(win, one('[role=menu] [data-add-blank-type="pr"]'), 2_000))) return 'Add blank did not list Pull request';
+    await click('[role=menu] [data-add-blank-type="pr"]');
+    if (!(await waitInPage(win, `${one('[data-editor-blank="pr"]')} && document.activeElement === document.querySelectorAll('[data-prompt-editor] [data-prompt-run]')[1]`, 2_000))) return 'Add blank did not put a pull request blank in the text, with the caret after it';
+    // Typing {{ opens the same list.
+    await win.webContents.insertText(' because {{');
+    if (!(await waitInPage(win, one('[role=menu] [data-add-blank-type="text"]'), 2_000))) return 'typing {{ did not open the Add blank list';
+    await click('[role=menu] [data-add-blank-type="text"]');
+    if (!(await waitInPage(win, one('[data-blank-form] [data-blank-form-name]'), 2_000))) return 'a text blank did not open its form';
+    await setFieldValue(win, '[data-blank-form-name]', 'reason');
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `!${one('[data-blank-form]')} && ${one('[data-prompt-editor-preview]')}?.innerText === '2 blanks · pull request, text'`, 2_000))) return `the preview did not say 2 blanks (${String(await js(`${one('[data-prompt-editor-preview]')}?.innerText`))})`;
+    await shot(win, 'saved-prompt-editor.png');
+    await click('[data-prompt-editor-save]');
+    if (!(await waitInPage(win, `!${one('[data-prompt-editor-dialog]')} && ${one(row)}?.dataset.savedPromptScope === 'global'`, 3_000))) return `the prompt was not listed under Every project (${String(await js(`${one('[data-prompt-editor-problem]')}?.innerText`))})`;
+    await click('[data-close-settings]');
+
+    // 2. Picked with / in New session's message box.
+    if (!(await waitInPage(win, one(box), 3_000))) return 'New session did not come back after Settings';
+    await setFieldValue(win, box, '');
+    await js(`${one(box)}.focus()`);
+    await win.webContents.insertText('/smoke');
+    if (!(await waitInPage(win, `${one('[data-palette] [data-palette-heading]')}?.innerText.toLowerCase() === 'saved prompts' && ${one(`[data-palette] [data-saved-prompt-option="${id}"]`)}?.getAttribute('aria-selected') === 'true'`, 3_000))) return 'the / menu did not list the prompt first under Saved prompts';
+    await shot(win, 'saved-prompt-slash.png');
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `${one('[data-saved-prompt-header]')} && document.querySelectorAll('[data-blank][data-blank-empty]').length === 2 && document.activeElement?.matches('[data-blank="pr"]')`, 3_000))) return 'picking it did not show its two empty blanks, with the focus on the first';
+    if (!(await waitInPage(win, `${one('[data-blanks-left]')}?.innerText === '2 blanks left' && ${one(box)}.value === ''`, 2_000))) return 'the box did not say 2 blanks left';
+
+    // 3. Both filled: the pull request typed (gh lists none here), the reason typed in its chip, then more context.
+    pressKey(win, '1');
+    if (!(await waitInPage(win, `document.activeElement?.matches('[data-blank-popover] [data-blank-field]')`, 2_000))) return 'typing on the pull request blank did not open its field';
+    await win.webContents.insertText('42');
+    if (!(await waitInPage(win, one('[data-blank-popover] [data-blank-option="#142"]'), 3_000))) return 'a typed number was not offered';
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `${one('[data-blank="pr"]')}?.getAttribute('aria-label') === 'Pull request: #142' && document.activeElement?.matches('[data-blank="reason"] input')`, 2_000))) return 'picking #142 did not fill the blank and move on to the next';
+    await win.webContents.insertText('the tests fail on main');
+    if (!(await waitInPage(win, `!${one('[data-blanks-left]')} && !document.querySelector('[data-blank-empty]')`, 2_000))) return 'the blanks still counted as empty';
+    pressKey(win, 'Tab');
+    if (!(await waitInPage(win, `document.activeElement === ${one(box)}`, 2_000))) return 'Tab after the last blank did not go to the text under the prompt';
+    await win.webContents.insertText('Smoke context after the prompt.');
+    await shot(win, 'saved-prompt-filled.png');
+
+    // 4. Sent to the queue (Claude is never asked): the filled text, no braces, the context after a blank line.
+    const expected = 'Fix #142 because the tests fail on main\n\nSmoke context after the prompt.';
+    await click('[data-new-session-view] [data-start-menu]');
+    if (!(await waitInPage(win, `${one('[role=menu] [data-queue-add]')} && !${one('[role=menu] [data-queue-add]')}.disabled`, 2_000))) return 'Add to queue was not offered';
+    await click('[role=menu] [data-queue-add]');
+    if (!(await waitInPage(win, `!${one('[data-saved-prompt-header]')} && [...document.querySelectorAll('[data-toast]')].some((t) => t.innerText.includes('Added to the queue'))`, 3_000))) return 'Add to queue did not take the filled prompt';
+    const items = "[...document.querySelectorAll('[data-session-list] [data-queue-item]')].map((el) => el.dataset.queueItem)";
+    const [item] = (await js(items)) as string[];
+    if (!item) return 'the queue has no item';
+    await click(`[data-session-list] [data-queue-item="${item}"]`);
+    await waitInPage(win, `${one(box)}?.value.includes('#142')`, 3_000);
+    const sent = (await js(`${one(box)}?.value ?? ''`)) as string;
+    await click('[data-close-queued]');
+    await js(`${one(`[data-session-list] [data-queue-item="${item}"]`)}?.focus()`);
+    pressKey(win, 'Backspace');
+    if (sent !== expected) return `the queued prompt was not the filled text: ${JSON.stringify(sent)}`;
+    if (!(await waitInPage(win, `!${one(`[data-session-list] [data-queue-item="${item}"]`)}`, 3_000))) return 'the queued item was not removed';
+
+    // 5. Moved: just for you, shared (in the sandbox's file), every project again (out of it). Then deleted.
+    await click('[data-open-settings]');
+    await click('[data-settings-section="prompts"]');
+    if (!(await waitInPage(win, `${one(row)}?.innerText.includes('used 1×')`, 3_000))) return `sending did not count a use (${String(await js(`${one(row)}?.innerText`))})`;
+    const moveTo = async (kind: 'personal' | 'shared' | 'global') => {
+      await click(`${row} [data-saved-prompt-menu]`);
+      if (!(await waitInPage(win, one(`[role=menu] [data-prompt-move="${kind}"]`), 2_000))) return false;
+      await click(`[role=menu] [data-prompt-move="${kind}"]`);
+      return waitInPage(win, `${one(row)}?.dataset.savedPromptScope === '${kind}'`, 3_000);
+    };
+    if (!(await moveTo('personal'))) return 'Use in › just for you did not move it to the sandbox';
+    if (readShared()?.prompts?.length) return 'just for you wrote the shared file';
+    if (!(await moveTo('shared'))) return 'Share with the project did not move it';
+    if (!(await waitInPage(win, "!!document.querySelector('[data-prompt-share-toast=\"shared\"] [data-prompt-show-change]')", 2_000))) return 'sharing did not say to commit the file, with Show the change';
+    await shot(win, 'saved-prompt-shared.png');
+    const shared = readShared()?.prompts?.find((p) => p.id === id);
+    if (shared?.text !== 'Fix {{pr:pr}} because {{reason}}') return `the sandbox's .switchboard.json did not have the prompt (${JSON.stringify(readShared())})`;
+    if (!(await moveTo('global'))) return 'Use in › Every project did not move it back';
+    if (readShared()?.prompts) return `making it global again left it in .switchboard.json (${JSON.stringify(readShared())})`;
+    await click(`${row} [data-saved-prompt-menu]`);
+    await click('[role=menu] [data-prompt-delete]');
+    if (!(await waitInPage(win, `!${one(row)} && !!document.querySelector('[data-prompt-deleted-toast]')`, 3_000))) return 'Delete did not take it out, with Undo';
+    await click('[data-close-settings]');
+    // Its toasts (saved, queued, moved, shared, deleted) would cover what later steps click.
+    // Not the update toasts, which stay until they're dealt with.
+    const ours = '[data-toasts] [data-toast]:not([data-update-toast]):not([data-claude-update-toast])';
+    const closeToasts = `document.querySelectorAll('${ours} [data-toast-close], ${ours} button[aria-label="Dismiss"]').forEach((b) => b.click())`;
+    for (let i = 0; i < 5 && (await js(`!!document.querySelector('${ours}')`)); i++) {
+      await js(closeToasts);
+      await settle(win);
+    }
+    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .switchboard.json, with Show the change) and back (out of it), deleted';
+  } finally {
+    await cleanUp();
   }
 }
 
@@ -7014,6 +7272,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
+  await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('star on GitHub', () => runStarStep(win));
@@ -7044,6 +7303,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('profiles', () => runProfilesStep(win));
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
+  await step('clone from GitHub: the setting with its folder, a URL in the folder field, the clone of a local repository, the trust question (no session)', () => runCloneStep(win), { timeoutMs: 60_000 });
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });

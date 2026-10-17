@@ -15,6 +15,8 @@ import {
   type ProfileDefaults,
   type ProjectDefaults,
   type RemoteBranches,
+  type ClonePlan,
+  type CloneProgress,
   type RemoteSessionOptions,
   type RemoteSession,
   type RemoteSessions,
@@ -53,7 +55,7 @@ import { RemoteServer } from './remoteServer.ts';
 import { nextFreePort } from './freePort.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
-import { generateVapidKeys, isPushEndpoint, sendPush, type VapidKeys } from './webPush.ts';
+import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
 import { capDiff, projectIdOf, remoteCatchUp, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
@@ -69,6 +71,10 @@ type PushEntry = {
   subscription: RemotePushSubscription;
   needsYou: boolean;
   finished: boolean;
+  /** The device's own VAPID key (`REMOTE_FEATURE_PUSH_KEY`), which its subscription was made with; else the engine's. */
+  vapid?: VapidKeys;
+  /** What its pushes start with: this computer's name, for a device paired with more than one. */
+  label?: string;
 };
 const DEFAULT_SETTINGS: RemoteSettings = { enabled: false, tunnel: 'cloudflare', customUrl: null, ngrokDomain: null, port: REMOTE_DEFAULT_PORT };
 /** Waits before starting a tunnel again after it stopped by itself: longer each time, up to a minute. */
@@ -171,6 +177,11 @@ export interface RemoteHubOptions {
   diff(sessionId: string, path: string): Promise<{ diff: string; truncated: boolean }>;
   /** Commits every change in the session's checkout, without a terminal. */
   commit(sessionId: string, message: string): Promise<{ ok: true; sha: string } | { ok: false; output: string }>;
+  /** Clone from GitHub, as `projects.clonePlan` on the computer (`off` while its setting is off). */
+  clonePlan(url: string, name: string | undefined): Promise<ClonePlan>;
+  /** Starts a clone, as `projects.clone` on the computer; its progress goes to `onProgress` too. */
+  clone(jobId: string, url: string, name: string, onProgress: (progress: CloneProgress) => void): Promise<void>;
+  cancelClone(jobId: string): void;
   /** Tells the app's windows. */
   onStatus(status: RemoteStatus): void;
   /** A prompt or an answer came from a phone, for the label in the conversation and the sidebar's last action. */
@@ -556,11 +567,12 @@ export class RemoteHub {
     const known = new Set(this.devices.list().map((d) => d.id));
     const targets = pushTargets(entries, payload.kind, new Set(this.visible.values()), known);
     if (!targets.length) return;
-    const keys = this.vapid();
     // At most 32 characters: a newer push about the same session replaces one the phone hasn't had yet.
     const topic = createHash('sha256').update(`${payload.kind}:${payload.sessionId}`).digest('base64url').slice(0, 32);
     for (const target of targets) {
-      void sendPush(target.subscription, payload, { keys, subject: new URL(this.appUrl).origin, urgent: payload.kind === 'needs-you', topic, ...(this.options.pushFetch ? { fetch: this.options.pushFetch } : {}) }).then(
+      // The device id tells a phone paired with more than one computer which one it came from.
+      const body: PushPayload = { ...payload, deviceId: target.deviceId, ...(target.label ? { computer: target.label } : {}) };
+      void sendPush(target.subscription, body, { keys: target.vapid ?? this.vapid(), subject: new URL(this.appUrl).origin, urgent: payload.kind === 'needs-you', topic, ...(this.options.pushFetch ? { fetch: this.options.pushFetch } : {}) }).then(
         (result) => {
           if (result === 'gone') this.setPush(target.deviceId, null);
           if (result === 'failed') this.options.log('warn', `Remote: a push service refused a notification`);
@@ -696,6 +708,18 @@ export class RemoteHub {
         this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return created;
       },
+      'projects.clonePlan': ({ url, name }) => this.options.clonePlan(url, name),
+      'projects.clone': async ({ jobId, url, name }, phone) => {
+        // Job ids are the device's own: another device can't cancel or hear this one.
+        await this.options.clone(`remote:${device.id}:${jobId}`, url, name, ({ root, ...progress }) => {
+          phone.emit('projects.cloneProgress', { ...progress, jobId, projectId: root ? projectIdOf(root) : null });
+        });
+        return {};
+      },
+      'projects.cancelClone': ({ jobId }) => {
+        this.options.cancelClone(`remote:${device.id}:${jobId}`);
+        return {};
+      },
       'later.add': async ({ projectId, prompt, ...options }) => {
         const project = this.project(projectId);
         return this.options.queue(project.root, prompt, await this.choiceFor(project, options));
@@ -801,10 +825,11 @@ export class RemoteHub {
         return capDiff(await this.options.diff(sessionId, path), REMOTE_DIFF_LINES);
       },
       'push.key': () => ({ publicKey: this.vapid().publicKey }),
-      'push.subscribe': ({ subscription, needsYou, finished }) => {
+      'push.subscribe': ({ subscription, needsYou, finished, vapid, label }) => {
         // Only the browsers' push services: a phone can't make the engine send requests anywhere else.
         if (!isPushEndpoint(subscription.endpoint)) throw new RpcError('INVALID_PARAMS', 'Not a push service this app knows');
-        this.setPush(device.id, { subscription, needsYou, finished });
+        if (vapid && !validVapidKeys(vapid)) throw new RpcError('INVALID_PARAMS', 'Not a VAPID key pair');
+        this.setPush(device.id, { subscription, needsYou, finished, ...(vapid ? { vapid } : {}), ...(label ? { label } : {}) });
         return {};
       },
       'push.unsubscribe': () => {

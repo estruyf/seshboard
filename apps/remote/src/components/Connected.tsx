@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { RemoteContract, RemoteSessions, RpcClient } from '@switchboard/protocol/remote-client';
-import { Connection, type ConnectionState } from '../lib/connection.ts';
+import { keepDisconnected, nameOf, needsYouOf, pushComputers, type Computer } from '../lib/computers.ts';
 import { setFaviconDot } from '../lib/favicon.ts';
 import { homeRoute, needsYouElsewhere } from '../lib/drawer.ts';
 import { nextNeedsYou } from '../lib/groups.ts';
 import { inView, isTypingTarget, keyAction, nextIndex } from '../lib/keys.ts';
-import type { Paired } from '../lib/link.ts';
 import { useFoldable, useWide } from '../lib/media.ts';
 import type { PaletteItem } from '../lib/palette.ts';
 import { keys, MAC } from '../lib/platform.ts';
@@ -19,7 +18,7 @@ import { NewSession } from './NewSession.tsx';
 import { Palette, type PaletteAction } from './Palette.tsx';
 import { SessionList } from './SessionList.tsx';
 import { SessionView } from './SessionView.tsx';
-import { ComputerChip, ComputerTitle, ConnectionBanner, OfflineHelp, type ComputerProps } from './ConnectionStatus.tsx';
+import { ComputerChip, ComputerTitle, ConnectionBanner, ElsewhereStrip, OfflineHelp, type ComputerProps, type OtherComputer } from './ConnectionStatus.tsx';
 import { afterOverlays } from './overlayHistory.ts';
 import { DrawerButton, SessionsDrawer, useEdgeSwipe } from './SessionsDrawer.tsx';
 import type { MenuItem } from './Menu.tsx';
@@ -29,35 +28,70 @@ import { ProfileStrip, UsageCard, useUsage } from './Usage.tsx';
 import { UpdateBar } from './UpdateBar.tsx';
 import { useUpdate } from './useUpdate.ts';
 import { useAskSync } from './askStore.ts';
-import { currentSupport, loadPrefs, offered, resync, turnOff, turnOn } from '../lib/push.ts';
+import { currentSupport, loadPrefs, offered, turnOn } from '../lib/push.ts';
 import { Button, Message } from './ui.tsx';
 
 /**
  * `list` and `home` are the roots of a wide screen, both the view next to the sidebar. A phone has one: the first
  * screen (the sessions, where the app opens), and a `home` entry shows it too.
  */
-export type Route = { kind: 'home' } | { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean } | { kind: 'new'; projectId?: string };
+export type Route = { kind: 'home' } | { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean; computer?: string } | { kind: 'new'; projectId?: string; computer?: string };
 
 /** An answer from a notification's Deny or Allow (public/sw.js), sent once connected if the prompt is still open. */
-interface NotificationAnswer {
+export interface NotificationAnswer {
   sessionId: string;
   requestId: string;
   behavior: 'allow' | 'deny';
 }
 
 /**
- * Connected to the paired computer: the sessions, a session, Home or New session. On a phone one at a time, opening
+ * What a notification asks for, on the computer it came from: open a session, or answer a prompt. `launch`: the app
+ * opened with it, so the session goes on top of the list rather than of what was on screen.
+ */
+export interface OpenRequest {
+  id: number;
+  computer: string;
+  sessionId?: string;
+  answer?: NotificationAnswer;
+  launch?: boolean;
+}
+
+/** The last request a view took, so the next computer's view (or StrictMode's second mount) doesn't take it again. */
+let handledRequest = 0;
+
+/**
+ * Connected to one of the paired computers: its sessions, a session, Home or New session. On a phone one at a time, opening
  * on the sessions (its only home), with the other sessions in a drawer (its button in a session's header, or a swipe from the left
  * edge); picking one there swaps it in place, so the back gesture goes back to the sessions, not through every
  * session you looked at. On a wide screen the list stays on the left, as the sidebar does on the computer, with Home
- * next to it while no session is open; below 1024px it can fold away (⌘B), and then it is the drawer.
+ * next to it while no session is open; below 1024px it can fold away (⌘B), and then it is the drawer. The other
+ * computers stay connected (App.tsx): the computer's menu switches to one, and a row over the list says when
+ * sessions there need you. History entries carry their computer, so Back goes back to it.
  */
-export function Connected({ paired, openSession, onForget, onPaired }: { paired: Paired; openSession: string | null; onForget: () => void; onPaired: (paired: Paired) => void }) {
-  const [state, setState] = useState<ConnectionState>(() => (wasDisconnected() ? { kind: 'disconnected' } : { kind: 'connecting', attempt: 0 }));
-  const connection = useRef<Connection | null>(null);
-  const [sessions, setSessions] = useState<RemoteSessions>(cachedSessions);
+export function Connected({
+  computer: current,
+  computers,
+  onSessions: setSessions,
+  request,
+  onSwitch,
+  onAdd,
+  onForget,
+}: {
+  computer: Computer;
+  /** Every paired computer, this one too. */
+  computers: readonly Computer[];
+  /** A list asked for here (pull to refresh, after an answer). */
+  onSessions: (sessions: RemoteSessions) => void;
+  request: OpenRequest | null;
+  onSwitch: (id: string) => void;
+  onAdd: () => void;
+  onForget: () => void;
+}) {
+  const { id, state, paired, sessions, connection } = current;
+  /** A route as a history entry: sessions and New session belong to this computer. */
+  const stamp = (next: Route): Route => (next.kind === 'session' || next.kind === 'new' ? { ...next, computer: id } : next);
   // A reload keeps the history entry's state: back on the screen you were on (Reload after an update).
-  const [route, setRoute] = useState<Route>(() => routeOf(history.state));
+  const [route, setRoute] = useState<Route>(() => routeOf(history.state, id));
   const [drawerOpen, setDrawerOpen] = useState(false);
   /** How far an edge swipe has pulled the drawer out, while the finger is down. */
   const [edge, setEdge] = useState<number | null>(null);
@@ -73,49 +107,45 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   /** The sessions are in a drawer: on a phone, and on a wide screen whose sidebar folded away. */
   const drawerMode = !wide || (foldable && folded);
 
-  // A connection per effect run, so a stopped one is never started again (StrictMode runs effects twice). Keeping the
-  // computer's name changes `paired`, which mustn't reconnect: only another device or address does.
-  const latestPaired = useRef(paired);
-  latestPaired.current = paired;
-  useEffect(() => {
-    const current = new Connection(latestPaired.current);
-    connection.current = current;
-    const unsubscribe = current.subscribe(setState);
-    // A reload after Disconnect stays disconnected; a new launch connects again (sessionStorage).
-    current.start({ disconnected: wasDisconnected() });
-    return () => {
-      unsubscribe();
-      current.stop();
-    };
-  }, [paired.deviceId, paired.address]);
-  const retryNow = () => connection.current?.retryNow();
-  /** Disconnect: closes the connection and keeps the pairing, until Connect. */
+  const retryNow = () => connection.retryNow();
+  /** Disconnect: closes the connection and keeps the pairing, until Connect. A reload stays disconnected (sessionStorage). */
   const disconnect = () => {
-    keepDisconnected(true);
-    connection.current?.disconnect();
+    keepDisconnected(id, true);
+    connection.disconnect();
   };
   const reconnect = () => {
-    keepDisconnected(false);
-    connection.current?.reconnect();
+    keepDisconnected(id, false);
+    connection.reconnect();
   };
 
   const client = state.kind === 'connected' ? state.client : null;
   const features = state.kind === 'connected' ? state.features : NO_FEATURES;
-  const computer = (state.kind === 'connected' && state.computerName) || paired.computerName || '';
-  const needsYou = sessions.sessions.filter((s) => s.status === 'needs-you').length;
+  const computer = nameOf(current);
+  const others: OtherComputer[] = computers.filter((c) => c.id !== id).map((c) => ({ id: c.id, name: nameOf(c), state: c.state, needsYou: needsYouOf(c) }));
+  /** What waits on you on the other computers, for the tab's title and the drawer button. */
+  const needsYouThere = others.reduce((sum, o) => sum + (o.state.kind === 'connected' ? o.needsYou : 0), 0);
+  const needsYou = needsYouOf(current) + needsYouThere;
+  const push = pushComputers(computers);
+  /**
+   * To another computer: its view opens on its own list, in this entry's place. From the drawer, once it has closed
+   * and taken back its own entry.
+   */
+  const switchTo = (other: string) => {
+    const go = () => {
+      history.replaceState({ kind: 'list' }, '');
+      onSwitch(other);
+    };
+    if (drawerOpen) fromDrawer(go);
+    else go();
+  };
   const usage = useUsage(client);
   const update = useUpdate();
   /** Loads the newer remote app, on this screen: the route is in the history entry, which a reload keeps. */
   const reloadApp = () => {
-    history.replaceState(route, '');
+    history.replaceState(stamp(route), '');
     location.reload();
   };
   useAskSync(client);
-
-  // Keep the computer's name, so the offline help can name it after a reload.
-  useEffect(() => {
-    if (state.kind === 'connected' && state.computerName && state.computerName !== paired.computerName) onPaired({ ...paired, computerName: state.computerName });
-  }, [state, paired, onPaired]);
 
   // The tab's title counts what waits on you, so it shows from another tab or the app switcher; its icon gets a dot.
   const openTitle = route.kind === 'session' ? (sessions.sessions.find((s) => s.id === route.sessionId)?.title ?? null) : null;
@@ -124,58 +154,50 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   }, [needsYou, openTitle]);
   useEffect(() => void setFaviconDot(needsYou > 0), [needsYou]);
 
-  // The computer pushes nothing to a device that has the app on screen: tell it when that changes.
+  // A computer pushes nothing to a device that has the app on screen: tell the one on screen when that changes. The
+  // others aren't on screen, so they push; leaving this one for another tells it so.
   useEffect(() => {
     if (!client) return;
     const tell = () => void client.call('device.visibility', { visible: document.visibilityState === 'visible' }).catch(() => {});
     tell();
-    void resync(client);
     document.addEventListener('visibilitychange', tell);
-    return () => document.removeEventListener('visibilitychange', tell);
+    return () => {
+      document.removeEventListener('visibilitychange', tell);
+      void client.call('device.visibility', { visible: false }).catch(() => {});
+    };
   }, [client]);
 
   const refresh = () => void client?.call('sessions.list', {}).then(setSessions, () => {});
   /** The same refresh, as a promise: pull to refresh shows its spinner until the list is in. */
   const reload = () => (client ? client.call('sessions.list', {}).then(setSessions) : Promise.resolve());
-  useEffect(() => {
-    if (!client) return;
-    void client.call('sessions.list', {}).then(setSessions, () => {});
-    return client.on('sessions.changed', setSessions);
-  }, [client]);
-  useEffect(() => cacheSessions(sessions), [sessions]);
 
+  // Back to an entry of another computer shows that computer, on that entry.
   useEffect(() => {
-    const back = (event: PopStateEvent) => setRoute(routeOf(event.state));
+    const back = (event: PopStateEvent) => {
+      const owner = (event.state as { computer?: unknown } | null)?.computer;
+      if (typeof owner === 'string' && owner !== id && computers.some((c) => c.id === owner)) return onSwitch(owner);
+      setRoute(routeOf(event.state, id));
+    };
     window.addEventListener('popstate', back);
     return () => window.removeEventListener('popstate', back);
-  }, []);
+  }, [id, computers, onSwitch]);
 
   const go = (next: Route) => {
-    history.pushState(next, '');
+    history.pushState(stamp(next), '');
     setRoute(next);
   };
 
-  // Opened from a notification: that session, with the list one step back. A tap while the app is open comes from the
-  // service worker as a message.
-  const opened = useRef(false);
+  // A notification for this computer (App.tsx switches to the one it came from first): that session, or its answer.
+  // Opened with one, the list is one step back.
   useEffect(() => {
-    if (openSession && !opened.current) {
-      opened.current = true;
-      history.replaceState({ kind: 'list' }, '');
-      go({ kind: 'session', sessionId: openSession });
+    if (!request || request.computer !== id || request.id <= handledRequest) return;
+    handledRequest = request.id;
+    if (request.sessionId && !request.answer) {
+      if (request.launch) history.replaceState({ kind: 'list' }, '');
+      go({ kind: 'session', sessionId: request.sessionId });
     }
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; sessionId?: unknown; requestId?: unknown; behavior?: unknown } | null;
-      if (data?.type === 'open-session' && typeof data.sessionId === 'string') go({ kind: 'session', sessionId: data.sessionId });
-      // Deny or Allow on a notification: answered once connected, if nobody answered first.
-      if (data?.type === 'answer' && typeof data.sessionId === 'string' && typeof data.requestId === 'string' && (data.behavior === 'allow' || data.behavior === 'deny'))
-        setFromNotification({ sessionId: data.sessionId, requestId: data.requestId, behavior: data.behavior });
-    };
-    navigator.serviceWorker?.addEventListener('message', onMessage);
-    // Opened by a notification's button: the service worker holds the answer until this page asks for it.
-    navigator.serviceWorker?.controller?.postMessage({ type: 'take-answer' });
-    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
-  }, []);
+    if (request.answer) setFromNotification(request.answer);
+  }, [request, id]);
 
   // Only on a fresh list: the cached one may still have a prompt someone answered meanwhile.
   useEffect(() => {
@@ -211,10 +233,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   }, [wide, route.kind]);
 
 
-  const forget = async () => {
-    if (!confirm('Forget this computer? You can pair again from Settings › Remote.')) return;
-    await turnOff(client).catch(() => {});
-    keepDisconnected(false);
+  const forget = () => {
+    if (!confirm(`Forget ${computer || 'this computer'}? You can pair again from Settings › Remote.`)) return;
     onForget();
   };
   const menu: MenuItem[] = [
@@ -230,15 +250,15 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       {connectionBanner}
     </>
   );
-  const computerProps: ComputerProps = { state, computer, onDisconnect: disconnect, onConnect: reconnect, onForget: () => void forget() };
+  const computerProps: ComputerProps = { state, computer, others, onDisconnect: disconnect, onConnect: reconnect, onSwitch: switchTo, onAdd, onForget: forget };
   const chip = <ComputerChip {...computerProps} />;
   const title = (size: 'large' | 'compact') => <ComputerTitle size={size} {...computerProps} />;
-  const startNew = (projectId?: string) => (wide && !atRoot ? (history.replaceState({ kind: 'new', projectId }, ''), setRoute({ kind: 'new', projectId })) : go({ kind: 'new', projectId }));
+  const startNew = (projectId?: string) => (wide && !atRoot ? (history.replaceState(stamp({ kind: 'new', projectId }), ''), setRoute({ kind: 'new', projectId })) : go({ kind: 'new', projectId }));
   /** On a wide screen, picking another session replaces the open one rather than stacking up history. */
   const showSession: OpenSession = (sessionId, options = {}) => {
     const next: Route = { kind: 'session', sessionId, ...(options.changes ? { changes: true } : {}) };
     if (wide && !atRoot) {
-      history.replaceState(next, '');
+      history.replaceState(stamp(next), '');
       setRoute(next);
     } else go(next);
   };
@@ -263,7 +283,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     document.querySelector<HTMLElement>('[data-remote-drawer-button]')?.focus({ preventScroll: true });
   }, [route]);
   const swap = (next: Route) => {
-    history.replaceState(next, '');
+    history.replaceState(stamp(next), '');
     setRoute(next);
   };
   const pick = (sessionId: string) => fromDrawer(() => swap({ kind: 'session', sessionId }));
@@ -337,10 +357,22 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     return () => window.removeEventListener('keydown', listener);
   }, [wide]);
 
-  // After every hook: a refused device only gets this message.
+  // After every hook: a refused device only gets this message, and the other computers.
   if (state.kind === 'unpaired') {
     return (
-      <Message title="Pair again" actions={<Button onClick={onForget}>Forget this computer</Button>}>
+      <Message
+        title={computer ? `Pair again with ${computer}` : 'Pair again'}
+        actions={
+          <>
+            <Button onClick={onForget}>Forget this computer</Button>
+            {others.map((other) => (
+              <Button key={other.id} variant="quiet" onClick={() => switchTo(other.id)}>
+                Go to {other.name || 'your other computer'}
+              </Button>
+            ))}
+          </>
+        }
+      >
         {state.message}
       </Message>
     );
@@ -352,12 +384,15 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
     { id: 'home', title: 'Go to Home' },
     ...(currentSupport() === 'ready' && !loadPrefs().on ? [{ id: 'notify', title: 'Turn on notifications' }] : []),
     ...(sessions.sessions.some((s) => s.unread) ? [{ id: 'read-all', title: 'Mark all as read' }] : []),
+    ...others.map((other) => ({ id: `switch:${other.id}`, title: `Switch to ${other.name || 'your other computer'}` })),
+    { id: 'add', title: 'Pair another computer' },
     { id: 'forget', title: 'Forget this computer' },
   ];
   const choose = (item: PaletteItem) => {
     setPalette(false);
     if (item.kind === 'session') return showSession(item.session.id);
     if (item.kind === 'start') return startNew(item.project.id);
+    if (item.id.startsWith('action:switch:')) return switchTo(item.id.slice('action:switch:'.length));
     switch (item.id) {
       case 'action:next':
         if (nextId) showSession(nextId);
@@ -367,8 +402,8 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       case 'action:home':
         return goHome();
       case 'action:notify':
-        if (client)
-          void turnOn(client).then(
+        if (push.targets.length)
+          void turnOn(push).then(
             () => toast('Notifications are on'),
             (error: Error) => toast(error.message, { tone: 'error' }),
           );
@@ -381,11 +416,13 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         );
         return;
       }
+      case 'action:add':
+        return onAdd();
       case 'action:forget':
-        return void forget();
+        return forget();
     }
   };
-  const drawerButton = <DrawerButton needsYou={needsYouElsewhere(sessions.sessions, currentId)} onOpen={() => setDrawerOpen(true)} />;
+  const drawerButton = <DrawerButton needsYou={needsYouElsewhere(sessions.sessions, currentId) + needsYouThere} onOpen={() => setDrawerOpen(true)} />;
   /** The session header's left corner: the drawer button, or where the sidebar can fold, its toggle. */
   const sessionLead = drawerMode ? (
     drawerButton
@@ -397,7 +434,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   /** Home's and New session's on a wide screen whose sidebar folded away. */
   const viewLead = wide && drawerMode ? drawerButton : null;
   const started = (sessionId: string) => {
-    history.replaceState({ kind: 'session', sessionId }, '');
+    history.replaceState(stamp({ kind: 'session', sessionId }), '');
     setRoute({ kind: 'session', sessionId });
   };
   const main =
@@ -416,12 +453,13 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         initialChanges={route.changes ?? false}
       />
     ) : route.kind === 'new' ? (
-      <NewSession key={route.projectId ?? ''} client={client} features={features} sessions={sessions.sessions} banner={wide ? null : banner} onBack={wide ? null : back} lead={viewLead} onStarted={started} initialProject={route.projectId ?? null} />
+      <NewSession key={route.projectId ?? ''} client={client} computer={id} features={features} sessions={sessions.sessions} banner={wide ? null : banner} onBack={wide ? null : back} lead={viewLead} onStarted={started} initialProject={route.projectId ?? null} />
     ) : null;
   // A wide screen offers notifications in a strip over the main view; an iPad outside the Home Screen keeps the card,
   // which explains how to add it.
   const offering = offer && state.kind === 'connected';
   const stripOffer = wide && currentSupport() === 'ready';
+  const elsewhere = <ElsewhereStrip others={others} onSwitch={switchTo} />;
   const list = (
     <SessionList
       mode={wide ? 'sidebar' : 'phone'}
@@ -442,7 +480,12 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
       onRefresh={update.state === 'none' ? reload : async () => reloadApp()}
       update={update.state !== 'none'}
       onArchived={(sessionId) => sessionId === currentId && leave()}
-      top={offering && !stripOffer ? <PushOffer client={client} onDone={() => setOffer(false)} /> : null}
+      top={
+        <>
+          {elsewhere}
+          {offering && !stripOffer && <PushOffer push={push} onDone={() => setOffer(false)} />}
+        </>
+      }
       usage={<UsageCard usage={usage} offline={state.kind !== 'connected'} />}
       onPalette={() => setPalette(true)}
     />
@@ -467,6 +510,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         onRefresh={reload}
         onArchived={(sessionId) => sessionId === currentId && leave()}
         homeRow={<ProfileStrip usage={usage} />}
+        top={elsewhere}
         headerEnd={
           wide && (
             <Button variant="quiet" size="md" onClick={toggleFold} aria-label="Keep the sessions open" title={`Keep the sessions open (${keys('mod+b')})`} className="px-2!" data-remote-unfold-sidebar>
@@ -480,7 +524,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   const overlays = (
     <>
       <Toasts />
-      {notifications && <NotificationsSheet client={client} onClose={() => setNotifications(false)} />}
+      {notifications && <NotificationsSheet push={push} onClose={() => setNotifications(false)} />}
       {help && <OfflineHelp state={state} computer={computer} address={paired.address} onClose={() => setHelp(false)} onRetry={retryNow} />}
       {keysOpen && <KeysSheet onClose={() => setKeysOpen(false)} />}
       {palette && <Palette client={client} sessions={sessions.sessions} actions={paletteActions} onChoose={choose} onClose={() => setPalette(false)} />}
@@ -503,7 +547,7 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
         </aside>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        {offering && stripOffer && <PushStrip client={client} onDone={() => setOffer(false)} />}
+        {offering && stripOffer && <PushStrip push={push} onDone={() => setOffer(false)} />}
         {banner}
         <div className="min-h-0 flex-1">{main ?? <Home sessions={sessions} usage={usage} offline={state.kind !== 'connected'} client={client} onOpen={showSession} onNew={() => startNew()} onRefresh={refresh} lead={viewLead} />}</div>
       </div>
@@ -513,30 +557,14 @@ export function Connected({ paired, openSession, onForget, onPaired }: { paired:
   );
 }
 
-/** A history entry's route (a sheet or the drawer adds its own entry on top of one). The first entry, with none yet, is the sessions. */
-function routeOf(state: unknown): Route {
+/**
+ * A history entry's route (a sheet or the drawer adds its own entry on top of one). The first entry, with none yet, is
+ * the sessions; so is one of another computer's sessions.
+ */
+function routeOf(state: unknown, computer: string): Route {
   const route = state as Route | null;
+  if (route && (route.kind === 'session' || route.kind === 'new') && route.computer && route.computer !== computer) return { kind: 'list' };
   return route && (route.kind === 'session' || route.kind === 'new' || route.kind === 'home') ? route : { kind: 'list' };
-}
-
-/** Disconnect, for this tab: a reload stays disconnected, a new launch connects again. */
-const DISCONNECTED = 'switchboard-remote:disconnected';
-
-function wasDisconnected(): boolean {
-  try {
-    return sessionStorage.getItem(DISCONNECTED) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function keepDisconnected(on: boolean): void {
-  try {
-    if (on) sessionStorage.setItem(DISCONNECTED, '1');
-    else sessionStorage.removeItem(DISCONNECTED);
-  } catch {
-    // Storage is off: a reload connects again.
-  }
 }
 
 /** The sidebar folded away where it can (an iPad in portrait), kept in this browser. */
@@ -555,27 +583,6 @@ function keepFolded(on: boolean): void {
     localStorage.setItem(FOLDED, on ? '1' : '0');
   } catch {
     // Storage is off: it stays the way it is until the page closes.
-  }
-}
-
-/** The last list, for this tab: shown greyed out while offline, also after a reload. */
-const CACHE = 'switchboard-remote:sessions';
-
-function cachedSessions(): RemoteSessions {
-  try {
-    const value = JSON.parse(sessionStorage.getItem(CACHE) ?? 'null') as RemoteSessions | null;
-    if (value && Array.isArray(value.sessions) && Array.isArray(value.prompts)) return value;
-  } catch {
-    // Nothing kept, or storage is off.
-  }
-  return { sessions: [], prompts: [] };
-}
-
-function cacheSessions(sessions: RemoteSessions): void {
-  try {
-    sessionStorage.setItem(CACHE, JSON.stringify(sessions));
-  } catch {
-    // Storage is full or off: the list just isn't kept.
   }
 }
 

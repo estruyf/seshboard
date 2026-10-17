@@ -1,8 +1,11 @@
 import { ArrowRightLeft, PanelBottomClose, PanelLeftClose, PanelRightClose, PanelTopClose, Replace } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
+import { useComputers } from '../../state/computersStore.ts';
+import { parseRemoteRowId } from '../../state/remoteSelection.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useTilingArea } from '../../state/tilingArea.ts';
 import { computeLayout, constrain, edgeBand, fits, stableOrder, type Box } from '../../state/tilingGeometry.ts';
+import { RemotePane } from '../computers/RemoteView.tsx';
 import { TranscriptView } from '../transcript/TranscriptView.tsx';
 import { useSize } from '../ui/useSize.ts';
 import { PaneDivider } from './PaneDivider.tsx';
@@ -13,7 +16,7 @@ const pct = (n: number) => `${n * 100}%`;
 
 /**
  * One session, or many in a tiling layout: side by side and stacked, mixed freely (see `state/tiling.ts` for the
- * tree). The tree decides each pane's rectangle (`computeLayout`) and the panes are drawn as a flat list in a
+ * tree). A pane shows a session of this computer or one of another computer's (its leaf is `remoteRowId`). The tree decides each pane's rectangle (`computeLayout`) and the panes are drawn as a flat list in a
  * fixed order (by session id), each positioned absolutely with percentages, so opening, closing, moving,
  * swapping or resizing a pane never moves or remounts a session that stays: its unsent message, scroll position
  * and Find are untouched. Moving a DOM element would reset its scroll and focus, and a nested render that
@@ -59,6 +62,8 @@ export function SplitPanes() {
         const isActive = id === active;
         const hidden = !roomy && !isActive;
         const box = roomy ? (boxes.get(id) ?? WHOLE) : WHOLE;
+        const leading = box.x < 1e-6 && box.y < 1e-6;
+        const remote = parseRemoteRowId(id);
         return (
           <div
             key={id}
@@ -76,7 +81,11 @@ export function SplitPanes() {
               }`}
               onMouseDownCapture={tiled && !isActive ? () => useSessions.getState().focusPane(id) : undefined}
             >
-              <TranscriptView sessionId={id} tiled={tiled} active={isActive} leading={box.x < 1e-6 && box.y < 1e-6} />
+              {remote ? (
+                <RemotePane remote={remote} pane={{ id, tiled, active: isActive, leading }} />
+              ) : (
+                <TranscriptView sessionId={id} tiled={tiled} active={isActive} leading={leading} />
+              )}
             </div>
           </div>
         );
@@ -123,7 +132,12 @@ function dropLabel(drag: TileDrag, open: boolean): { text: string; icon: typeof 
  */
 function DropPreview({ drag, area }: { drag: TileDrag; area: React.RefObject<HTMLDivElement | null> }) {
   const areaRect = area.current?.getBoundingClientRect();
-  const title = useSessions((s) => s.sessions.get(drag.id)?.title ?? s.live.get(drag.id)?.name ?? 'Session');
+  const local = useSessions((s) => s.sessions.get(drag.id)?.title ?? s.live.get(drag.id)?.name ?? null);
+  const remote = useComputers((s) => {
+    const ref = parseRemoteRowId(drag.id);
+    return ref ? (s.lists.get(ref.computerId)?.sessions.find((session) => session.id === ref.sessionId)?.title ?? null) : null;
+  });
+  const title = local ?? remote ?? 'Session';
   const open = useSessions((s) => s.paneIds.includes(drag.id));
   const size = useTilingArea((s) => s.size);
   if (!areaRect || !size) return null;

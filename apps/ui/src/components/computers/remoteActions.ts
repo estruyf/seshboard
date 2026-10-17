@@ -26,11 +26,16 @@ export function setRemoteFlags(client: RpcClient<Contract> | null, computerId: s
   void callComputer(client, computerId, 'session.setFlags', { sessionId, ...flags }).catch((e: Error) => toast(e.message));
 }
 
-/** The menu entries of a remote session: Open (unless it is open already), Pin, Archive, Copy title, and New session in its project. */
+/** The menu entries of a remote session: Open and Open beside (unless it is open already), Pin, Archive, Copy title, and New session in its project. */
 export function remoteSessionEntries(client: RpcClient<Contract> | null, computer: Pick<Computer, 'id' | 'name' | 'state'>, session: Pick<RemoteSession, 'id' | 'title' | 'pinned' | 'projectId' | 'projectName'>, options: { open: boolean }): MenuEntry[] {
   const away = computer.state !== 'connected';
   return [
-    ...(options.open ? [{ label: 'Open', onSelect: () => useComputers.getState().openSession({ computerId: computer.id, sessionId: session.id }), data: { 'data-remote-open': true } } satisfies MenuEntry] : []),
+    ...(options.open
+      ? ([
+          { label: 'Open', onSelect: () => useComputers.getState().openSession({ computerId: computer.id, sessionId: session.id }), data: { 'data-remote-open': true } },
+          { label: 'Open beside', hint: '⌥-click', onSelect: () => useComputers.getState().openSession({ computerId: computer.id, sessionId: session.id }, { beside: true }) },
+        ] satisfies MenuEntry[])
+      : []),
     { label: session.pinned ? 'Unpin' : 'Pin', disabled: away, onSelect: () => setRemoteFlags(client, computer.id, session.id, { pinned: !session.pinned }) },
     { label: 'Archive', hint: `on ${computer.name}`, disabled: away, onSelect: () => setRemoteFlags(client, computer.id, session.id, { archived: true, pinned: false }), data: { 'data-remote-archive': true } },
     { label: 'Copy title', onSelect: () => void navigator.clipboard.writeText(session.title) },

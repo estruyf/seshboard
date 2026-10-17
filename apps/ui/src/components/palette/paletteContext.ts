@@ -1,3 +1,4 @@
+import type { PromptScope } from '@switchboard/protocol/client';
 import type { ColorScheme, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import type { ActionIcon, HostState } from '@switchboard/protocol/client';
@@ -110,10 +111,14 @@ export interface PaletteContext {
   newSession: { canWorktree: boolean; canSaveDefaults: boolean; canQueue: boolean; canCatchUp: boolean } | null;
   /** The scratch folder quick questions run in; null until the engine has said. */
   questionsDir: string | null;
+  /** The saved prompts the message box on screen can use ("Prompt: <name>", Use saved prompt…). */
+  prompts: Array<{ id: string; name: string; scope: PromptScope }>;
   /** The message box Add context… adds to (the session's, or New session's), once its folder is known. */
   composer: { key: string; cwd: string } | null;
   /** VS Code is installed, so a session can continue in its Claude Code extension. */
   canContinueInVSCode: boolean;
+  /** Clone from GitHub is on (Settings › Projects): "New session from a GitHub repository…". */
+  cloneEnabled: boolean;
   /** Paired computers that are connected: "New session on <name>…" and "Show only <name>". */
   computers: Array<{ id: string; name: string }>;
 }

@@ -1,3 +1,4 @@
+import { createDecipheriv, createECDH, hkdfSync } from 'node:crypto';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -27,6 +28,7 @@ import { openCacheDatabase } from '../db/database.ts';
 import { RemoteHub, type RemoteFromDevice } from './remoteHub.ts';
 import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 import { APP_ORIGIN, client, handshake } from './testPhone.ts';
+import { generateVapidKeys } from './webPush.ts';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -43,6 +45,25 @@ const SESSION = '11111111-1111-4111-8111-111111111111';
 /** A browser's push subscription (the keys from RFC 8291's example). */
 const PUSH = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' } };
 const HIDDEN = '22222222-2222-4222-8222-222222222222';
+/** The browser's private key for `PUSH` (RFC 8291's example), to read what a push carries. */
+const PUSH_PRIVATE = 'q1dXpw3UpT5VOmu_cf_v6ih07Aems3njxI-JWgLcM94';
+
+/** What the browser for `PUSH` would read from a push (RFC 8291 with one `aes128gcm` record). */
+function readPush(body: Uint8Array): Record<string, unknown> {
+  const salt = body.subarray(0, 16);
+  const asPublic = body.subarray(21, 21 + body[20]!);
+  const ecdh = createECDH('prime256v1');
+  ecdh.setPrivateKey(Buffer.from(PUSH_PRIVATE, 'base64url'));
+  const uaPublic = Buffer.from(PUSH.keys.p256dh, 'base64url');
+  const ikm = Buffer.from(hkdfSync('sha256', ecdh.computeSecret(asPublic), Buffer.from(PUSH.keys.auth, 'base64url'), Buffer.concat([Buffer.from('WebPush: info\0'), uaPublic, asPublic]), 32));
+  const cek = Buffer.from(hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: aes128gcm\0'), 16));
+  const nonce = Buffer.from(hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: nonce\0'), 12));
+  const record = body.subarray(21 + body[20]!);
+  const decipher = createDecipheriv('aes-128-gcm', cek, nonce);
+  decipher.setAuthTag(record.subarray(record.length - 16));
+  const plain = Buffer.concat([decipher.update(record.subarray(0, record.length - 16)), decipher.final()]);
+  return JSON.parse(plain.subarray(0, plain.lastIndexOf(2)).toString()) as Record<string, unknown>;
+}
 
 const summary = (id: string, inApp: boolean): SessionSummary =>
   ({ id, title: 'Fix the login form', customTitle: null, cwd: ROOT, projectRoot: ROOT, gitBranch: 'main', worktree: null, updatedAt: Date.now(), unread: false, pinned: false, archivedAt: null, restoredAt: null, inApp, profileId: 'work' }) as unknown as SessionSummary;
@@ -67,8 +88,11 @@ const QUIET_TUNNEL = (port: number) => fakeTunnel(`console.error('|  https://qui
 
 async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string> } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
+  /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
+  const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
   const pushFetch = (async (url: string, init: RequestInit) => {
     pushes.push({ url, urgency: (init.headers as Record<string, string>).Urgency! });
+    pushBodies.push({ authorization: (init.headers as Record<string, string>).Authorization!, body: init.body as Uint8Array });
     return new Response(null, { status: options.pushStatus ?? 201 });
   }) as unknown as typeof fetch;
   const identity = options.identity === undefined ? generateKeyPair().secretKey : options.identity;
@@ -177,6 +201,16 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     changes: async () => listChanges(repo, 'uncommitted'),
     diff: async (_id, path) => fileDiff(repo, 'uncommitted', path),
     commit: async (_id, message) => commitAll(repo, message, {}),
+    clonePlan: async (url, name) => ({ state: 'free', repo: { owner: 'o', name: 'n', branch: null }, name: name ?? 'n', where: `~/Developer/${name ?? 'n'}` }),
+    clone: async (jobId, url, name, onProgress) => {
+      calls.push(`clone ${jobId} ${url} ${name}`);
+      const progress = { jobId, phase: null, percent: null, root: null, reused: false, brings: null, error: null };
+      setTimeout(() => {
+        onProgress({ ...progress, state: 'running', phase: 'receiving', percent: 40 });
+        onProgress({ ...progress, state: 'done', phase: 'checkout', percent: 100, root: ROOT });
+      }, 5);
+    },
+    cancelClone: (jobId) => void calls.push(`cancel ${jobId}`),
     onStatus: () => {},
     onFromDevice: (event) => void fromDevice.push(event),
     log: () => {},
@@ -194,7 +228,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, port, on, sent, sentImages, answered, created, queued, calls, repo, appState, pushes, permissions, fromDevice };
+  return { hub, port, on, sent, sentImages, answered, created, queued, calls, repo, appState, pushes, pushBodies, permissions, fromDevice };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -349,6 +383,26 @@ describe('Remote hub', () => {
     ]);
     expect(options.defaultProfileId).toBe('default');
     expect(JSON.stringify(options)).not.toContain(ROOT);
+  });
+
+  it('clones on the computer for a phone, with job ids of its own and the project by its id', async () => {
+    const { hub, port, on, calls } = await setup();
+    await hub.start();
+    await on();
+    const { remote } = await pair(hub, port);
+    // Clone from GitHub on the computer: the job is the device's own, and the project comes back as its id.
+    const heard: unknown[] = [];
+    remote.on('projects.cloneProgress', (event) => heard.push(event));
+    expect(await remote.call('projects.clonePlan', { url: 'https://github.com/o/n' })).toMatchObject({ state: 'free', where: '~/Developer/n' });
+    expect(await remote.call('projects.clone', { jobId: 'j1', url: 'https://github.com/o/n', name: 'n' })).toEqual({});
+    await until(() => heard.length === 2);
+    expect(heard).toEqual([
+      expect.objectContaining({ jobId: 'j1', state: 'running', percent: 40, projectId: null }),
+      expect.objectContaining({ jobId: 'j1', state: 'done', projectId: projectIdOf(ROOT) }),
+    ]);
+    expect(heard[1]).not.toHaveProperty('root');
+    await remote.call('projects.cancelClone', { jobId: 'j1' });
+    expect(calls.filter((c) => c.startsWith('clone') || c.startsWith('cancel'))).toEqual([expect.stringMatching(/^clone remote:[^:]+:j1 https:\/\/github.com\/o\/n n$/), expect.stringMatching(/^cancel remote:[^:]+:j1$/)]);
   });
 
   it('marks read, archives, and changes the model, effort and mode only of sessions in the list', async () => {
@@ -551,6 +605,31 @@ describe('Remote hub', () => {
 
     await remote.call('push.unsubscribe', {});
     expect(appState.get('remote.push')).toEqual([]);
+  });
+
+  it('signs with the device\'s own VAPID key when it gives one, and says which device and computer a push is for', async () => {
+    const { hub, port, on, pushes, pushBodies, permissions } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const mine = generateVapidKeys();
+    // A private key that isn't the public key's is refused.
+    await expect(remote.call('push.subscribe', { subscription: PUSH, needsYou: true, finished: true, vapid: { publicKey: generateVapidKeys().publicKey, privateKey: mine.privateKey } })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await remote.call('push.subscribe', { subscription: PUSH, needsYou: true, finished: true, vapid: mine, label: 'mystic' });
+
+    hub.permissionAsked(permissions[0]!);
+    await until(() => pushes.length === 1);
+    expect(pushBodies[0]!.authorization.endsWith(`k=${mine.publicKey}`)).toBe(true);
+    const device = hub.status().devices[0]!.id;
+    expect(readPush(pushBodies[0]!.body)).toMatchObject({ kind: 'needs-you', sessionId: SESSION, deviceId: device, computer: 'mystic' });
+
+    // Without a key of its own, the engine's, and no label.
+    await remote.call('push.subscribe', { subscription: PUSH, needsYou: true, finished: true });
+    hub.permissionAsked(permissions[0]!);
+    await until(() => pushes.length === 2);
+    expect(pushBodies[1]!.authorization.endsWith(`k=${(await remote.call('push.key', {})).publicKey}`)).toBe(true);
+    const plain = readPush(pushBodies[1]!.body);
+    expect(plain.deviceId).toBe(device);
+    expect(plain).not.toHaveProperty('computer');
   });
 
   it('forgets a subscription the push service says is gone, and a revoked device\'s', async () => {
