@@ -20,6 +20,8 @@ export interface RemoteRowInfo {
   status: RowStatus;
   /** For a session waiting on you: the tool of its oldest open prompt. */
   waitingTool: string | null;
+  /** When its turn began on that computer, for the Working section's order (`workingSince`); null when not known. */
+  workingSince: number | null;
   /** The computer is not connected: the row shows its last known state, dimmed. */
   offline: boolean;
   /** When the computer was last connected, while it is offline. */
@@ -84,6 +86,7 @@ export function remoteRow(computer: Pick<Computer, 'id' | 'name' | 'state' | 'la
       projectName: session.projectName,
       status,
       waitingTool: asking[0]?.toolName ?? null,
+      workingSince: session.workingSince ?? null,
       offline: computer.state !== 'connected',
       lastSeen: computer.lastSeen,
     },

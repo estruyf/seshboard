@@ -50,7 +50,7 @@ type Step = { kind: 'name' } | { kind: 'waiting'; code: string | null } | { kind
  * Pairing on the phone: a name, then the 6 digits to compare with the computer while it asks "Pair <name>?". The device
  * is only stored once Allow is clicked there.
  */
-export function PairScreen({ link, replaces, onPaired, onLink }: { link: Extract<RemoteLink, { kind: 'pair' }>; replaces: boolean; onPaired: (paired: Paired) => void; onLink: (fragment: string) => void }) {
+export function PairScreen({ link, again, onPaired, onLink, onCancel }: { link: Extract<RemoteLink, { kind: 'pair' }>; /** Already paired with this computer: pairing again replaces that pairing. */ again: boolean; onPaired: (paired: Paired) => void; onLink: (fragment: string) => void; /** Back to the sessions, when the phone is paired with a computer already. */ onCancel: (() => void) | null }) {
   const [name, setName] = useState(suggestedName);
   const [step, setStep] = useState<Step>({ kind: 'name' });
 
@@ -76,7 +76,7 @@ export function PairScreen({ link, replaces, onPaired, onLink }: { link: Extract
             void pair();
           }}
         >
-          {replaces && <p className="rounded-lg bg-warn/10 p-3 text-ui text-text">This device is paired with another computer. Pairing here replaces it.</p>}
+          {again && <p className="rounded-lg bg-warn/10 p-3 text-ui text-text">This device is already paired with this computer. Pairing again replaces that pairing.</p>}
           <label className="flex flex-col gap-1.5">
             <span className="text-ui text-muted">Name this device</span>
             <input
@@ -92,6 +92,11 @@ export function PairScreen({ link, replaces, onPaired, onLink }: { link: Extract
           <Button type="submit" variant="primary" disabled={!name.trim()}>
             Pair
           </Button>
+          {onCancel && (
+            <Button variant="quiet" onClick={onCancel}>
+              Cancel
+            </Button>
+          )}
           {forHomeScreen && <HomeScreenHint link={link} />}
         </form>
       )}
@@ -112,6 +117,11 @@ export function PairScreen({ link, replaces, onPaired, onLink }: { link: Extract
           <p className="text-body text-error">{step.message}</p>
           <p className="text-ui text-muted">Click Pair a device on your computer and scan the new QR code, or open or paste its copied link.</p>
           <LinkEntry onLink={onLink} />
+          {onCancel && (
+            <Button variant="quiet" onClick={onCancel}>
+              Back to your sessions
+            </Button>
+          )}
         </div>
       )}
     </main>

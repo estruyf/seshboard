@@ -1,11 +1,12 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
+import { NewPromptButton, SavedPromptsSettings } from './savedPrompts/SavedPromptsSettings.tsx';
 import { NotificationsSettings } from './notifications/NotificationsSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
@@ -17,6 +18,7 @@ import { ModsSettings } from './mods/ModsSettings.tsx';
 import { EngineDiagnostics } from './EngineDiagnostics.tsx';
 import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
+import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
@@ -97,16 +99,19 @@ function ActivityPreview({ mode }: { mode: ToolActivity }) {
   );
 }
 
-function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+function Section({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children: ReactNode }) {
   const id = useId();
   // minmax(0, 1fr): a long path or command inside wraps or truncates instead of widening the page.
   return (
     <section className="grid grid-cols-[minmax(0,1fr)] gap-3 py-6" aria-labelledby={id}>
-      <div>
-        <h2 id={id} className="text-body font-semibold">
-          {title}
-        </h2>
-        {description && <p className="mt-0.5 text-ui text-muted">{description}</p>}
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 id={id} className="text-body font-semibold">
+            {title}
+          </h2>
+          {description && <p className="mt-0.5 text-ui text-muted">{description}</p>}
+        </div>
+        {action}
       </div>
       {children}
     </section>
@@ -170,12 +175,14 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
   { id: 'sessions', label: 'Sessions', icon: Archive },
+  { id: 'projects', label: 'Projects', icon: FolderGit2 },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
   { id: 'mods', label: 'Mods', icon: Puzzle },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
   { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'prompts', label: 'Prompts', icon: Bookmark },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'remote', label: 'Remote', icon: Smartphone },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
@@ -370,6 +377,12 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <ProfilesSettings />
         </Section>
       );
+    case 'prompts':
+      return (
+        <Section title="Saved prompts" description="Prompts with blanks you fill in when you use them. Type / in any message box." action={<NewPromptButton />}>
+          <SavedPromptsSettings />
+        </Section>
+      );
     case 'memory':
       return (
         <Section
@@ -409,7 +422,21 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               />
             </div>
           </Section>
-          <Section title="Projects">
+          <Section title="Quitting">
+            <Toggle
+              label="Ask before quitting"
+              detail={`${formatKeys(keysFor('quit'))} shows a prompt first; pressing ${formatKeys(keysFor('quit'))} again quits.`}
+              checked={prefs.confirmQuit}
+              attr="data-confirm-quit"
+              onChange={(confirmQuit) => update({ confirmQuit })}
+            />
+          </Section>
+        </>
+      );
+    case 'projects':
+      return (
+        <>
+          <Section title="Order">
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
                 <span className="block text-ui">Project order</span>
@@ -428,14 +455,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               />
             </div>
           </Section>
-          <Section title="Quitting">
-            <Toggle
-              label="Ask before quitting"
-              detail={`${formatKeys(keysFor('quit'))} shows a prompt first; pressing ${formatKeys(keysFor('quit'))} again quits.`}
-              checked={prefs.confirmQuit}
-              attr="data-confirm-quit"
-              onChange={(confirmQuit) => update({ confirmQuit })}
-            />
+          <Section title="Clone from GitHub" description="Paste a GitHub URL in New session, and Switchboard clones it, adds it as a project and starts the session there. Each computer has its own setting and folder.">
+            <CloneSettings />
           </Section>
         </>
       );

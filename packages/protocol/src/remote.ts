@@ -3,6 +3,7 @@ import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
+import { ClonePlan, CloneProgress } from './clone.ts';
 import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
@@ -38,6 +39,11 @@ export const RemoteSession = z.object({
   branch: z.string().nullable(),
   status: CompanionStatus,
   updatedAt: z.number(),
+  /**
+   * When its turn began (Claude Code's registry: when it went busy), which the Working section orders by: the last
+   * write moves all the time. Null when not known; left out by a Switchboard from before phones ordered by it.
+   */
+  workingSince: z.number().nullable().optional(),
   /** Finished since you last looked, on any device: the title shows in bold. */
   unread: z.boolean(),
   pinned: z.boolean(),
@@ -195,6 +201,10 @@ export const RemotePushSubscription = z.object({
 });
 export type RemotePushSubscription = z.infer<typeof RemotePushSubscription>;
 
+/** A device's own VAPID key pair, both base64url: the uncompressed P-256 point (65 bytes) and the private scalar (32). */
+export const RemoteVapidKeys = z.object({ publicKey: z.string().regex(/^[A-Za-z0-9_-]{87}$/), privateKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/) });
+export type RemoteVapidKeys = z.infer<typeof RemoteVapidKeys>;
+
 /** An image a phone sends with a message: the app's attachment, smaller. */
 export const RemoteImage = ImageAttachment.extend({ data: z.string().min(1).max(REMOTE_IMAGE_BYTES) });
 export type RemoteImage = z.infer<typeof RemoteImage>;
@@ -230,6 +240,10 @@ export type RemoteUsageRow = z.infer<typeof RemoteUsageRow>;
 /** Where an account's tokens went on the computer in a period, as the Usage view's Tokens tab shows it there. */
 export const RemoteUsageBreakdown = UsageBreakdown.omit({ rows: true }).extend({ rows: z.array(RemoteUsageRow) });
 export type RemoteUsageBreakdown = z.infer<typeof RemoteUsageBreakdown>;
+
+/** A clone's progress on the computer, with the project's id instead of its folder. */
+export const RemoteCloneProgress = CloneProgress.omit({ root: true }).extend({ projectId: ProjectId.nullable() });
+export type RemoteCloneProgress = z.infer<typeof RemoteCloneProgress>;
 
 /** The most lines `changes.diff` returns. */
 export const REMOTE_DIFF_LINES = 2_000;
@@ -373,11 +387,23 @@ export const remoteContract = {
       params: z.object({ sessionId: SessionId, message: z.string().trim().min(1).max(20_000) }),
       result: z.discriminatedUnion('ok', [z.object({ ok: z.literal(true), sha: z.string() }), z.object({ ok: z.literal(false), output: z.string() })]),
     },
+    /**
+     * Clone from GitHub on the computer, in its own Clone into folder (`REMOTE_FEATURE_CLONE`): where it would go, and
+     * whether its setting is on (`off` otherwise).
+     */
+    'projects.clonePlan': { params: z.object({ url: z.string().max(2_000), name: z.string().max(255).optional() }), result: ClonePlan },
+    /** Clones and adds the project there; `projects.cloneProgress` reports to this connection, as on the computer. */
+    'projects.clone': { params: z.object({ jobId: z.string().min(1).max(100), url: z.string().max(2_000), name: z.string().min(1).max(255) }), result: z.object({}) },
+    'projects.cancelClone': { params: z.object({ jobId: z.string().min(1).max(100) }), result: z.object({}) },
     /** The engine's VAPID public key, for `pushManager.subscribe` (made the first time a phone asks). */
     'push.key': { params: z.object({}), result: z.object({ publicKey: z.string() }) },
-    /** Push to this device when a session needs you, finishes, or both; replaces what it had. */
+    /**
+     * Push to this device when a session needs you, finishes, or both; replaces what it had. With
+     * `REMOTE_FEATURE_PUSH_KEY`: `vapid`, the key the subscription was made with (the device's own, shared by every
+     * computer it is paired with), and `label`, what each push starts with (this computer's name, with more than one).
+     */
     'push.subscribe': {
-      params: z.object({ subscription: RemotePushSubscription, needsYou: z.boolean(), finished: z.boolean() }),
+      params: z.object({ subscription: RemotePushSubscription, needsYou: z.boolean(), finished: z.boolean(), vapid: RemoteVapidKeys.optional(), label: z.string().trim().min(1).max(60).optional() }),
       result: z.object({}),
     },
     'push.unsubscribe': { params: z.object({}), result: z.object({}) },
@@ -395,6 +421,8 @@ export const remoteContract = {
     'usage.changed': z.object({ profileId: z.string(), usage: UsageSnapshot.nullable() }),
     /** The catch-up of the session the phone watches changed. */
     'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
+    /** A clone this connection started moved on (`projects.clone`). */
+    'projects.cloneProgress': RemoteCloneProgress,
   },
 } as const satisfies ContractShape;
 export type RemoteContract = typeof remoteContract;
