@@ -41,12 +41,12 @@ export function MoreMenu({
   cwd: string | null;
   /** How many agents Claude started in this session, and how many of them still run. */
   agents: { total: number; running: number };
-  /** Shows the Agents panel (or brings it to the front). */
-  onAgents(): void;
+  /** Shows the Agents panel (or brings it to the front); null leaves the entry out (a pop-out has no side panels). */
+  onAgents: (() => void) | null;
   /** How many commands Claude ran in the background in this session, and how many of them still run. */
   commands: { total: number; running: number };
-  /** Shows the Commands panel (or brings it to the front). */
-  onCommands(): void;
+  /** Shows the Commands panel (or brings it to the front); null leaves the entry out. */
+  onCommands: (() => void) | null;
   profileId: string | null;
   /** The session's title; null while it has no transcript to keep a new one in. */
   title: string | null;
@@ -120,22 +120,30 @@ export function MoreMenu({
       onSelect: () => setRenaming(true),
       data: { 'data-rename-session': true },
     },
-    {
-      label: 'Agents',
-      icon: <Bot size={13} />,
-      hint: running ? `${running} running` : total ? `${total} finished` : 'None',
-      disabled: total === 0,
-      onSelect: onAgents,
-      data: { 'data-agents-button': true },
-    },
-    {
-      label: 'Commands',
-      icon: <ScrollText size={13} />,
-      hint: commands.running ? `${commands.running} running` : commands.total ? `${commands.total} finished` : 'None',
-      disabled: commands.total === 0,
-      onSelect: onCommands,
-      data: { 'data-commands-button': true },
-    },
+    ...(onAgents
+      ? [
+          {
+            label: 'Agents',
+            icon: <Bot size={13} />,
+            hint: running ? `${running} running` : total ? `${total} finished` : 'None',
+            disabled: total === 0,
+            onSelect: onAgents,
+            data: { 'data-agents-button': true },
+          },
+        ]
+      : []),
+    ...(onCommands
+      ? [
+          {
+            label: 'Commands',
+            icon: <ScrollText size={13} />,
+            hint: commands.running ? `${commands.running} running` : commands.total ? `${commands.total} finished` : 'None',
+            disabled: commands.total === 0,
+            onSelect: onCommands,
+            data: { 'data-commands-button': true },
+          },
+        ]
+      : []),
     {
       label: 'Check transcript…',
       icon: <Stethoscope size={13} />,
