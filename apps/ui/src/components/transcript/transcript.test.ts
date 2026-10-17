@@ -175,7 +175,7 @@ describe('agentRuns', () => {
     const [first, second] = agentRuns([asked, bg, hand], true);
     expect(first).toMatchObject({ type: 'Explore', what: 'Find the tests', prompt: 'Look for every test file.', report: 'Found 3 files', agentId: null });
     // A background agent's own report is the hand-back, not the launch message.
-    expect(second).toMatchObject({ background: true, agentId: 'abc123', report: 'Looks fine.', prompt: null, type: 'agent' });
+    expect(second).toMatchObject({ background: true, agentId: 'abc123', report: 'Looks fine.', prompt: null, type: null });
   });
 
   it('names the model an agent runs on: the one its replies used, else the one the call asked for', () => {
@@ -192,7 +192,7 @@ describe('agentRuns', () => {
 });
 
 describe('agents and the background tasks', () => {
-  const run = (key: string, over: Partial<ReturnType<typeof agentRuns>[number]>) => ({ item: tool(key, 'Agent', {}), running: true, background: true, agentId: null, type: 'agent', what: key, prompt: null, asked: null, report: null, ...over }) as ReturnType<typeof agentRuns>[number];
+  const run = (key: string, over: Partial<ReturnType<typeof agentRuns>[number]>) => ({ item: tool(key, 'Agent', {}), running: true, background: true, agentId: null, type: null, what: key, prompt: null, asked: null, report: null, ...over }) as ReturnType<typeof agentRuns>[number];
   const task = (taskId: string, description: string) => ({ taskId, type: 'local_agent', description, startedAt: 0 });
 
   it('finds the agent a task stands for by its id, else by a description only one running agent has', () => {

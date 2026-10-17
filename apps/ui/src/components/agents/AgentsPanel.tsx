@@ -58,9 +58,11 @@ function AgentRow({ run, model, selected, now, onPick }: { run: AgentRun; model:
       <StateIcon run={run} />
       <span className="sr-only">{stateWord(run)}: </span>
       <span className="min-w-0 flex-1 truncate">{run.what}</span>
-      <span className="shrink-0 rounded bg-border/60 px-1.5 text-meta text-muted" data-tooltip="Agent type">
-        {run.type}
-      </span>
+      {run.type && (
+        <span className="shrink-0 rounded bg-border/60 px-1.5 text-meta text-muted" data-tooltip="Agent type">
+          {run.type}
+        </span>
+      )}
       {model && (
         <span className="shrink-0 rounded bg-border/60 px-1.5 text-meta text-muted" data-tooltip="Model" data-agent-model>
           {modelTitle(model)}
@@ -93,7 +95,7 @@ function AgentDetail({ run, model, sessionId, cwd, task, now, onStop }: { run: A
               <StateIcon run={run} />
               {stateWord(run)}
             </span>
-            <span>{run.type}</span>
+            {run.type && <span>{run.type}</span>}
             {model && <span data-agent-model>{modelTitle(model)}</span>}
             {run.background && <span data-tooltip="Runs in the background while Claude carries on">background</span>}
             {run.item.at !== null && end !== null && <span className="tabular-nums">{formatDuration(end - run.item.at)}</span>}

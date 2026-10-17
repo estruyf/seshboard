@@ -12,8 +12,8 @@ export interface AgentRun {
   background: boolean;
   /** Claude Code's id for a background agent, from the launch's result: the id its background task has too. */
   agentId: string | null;
-  /** The agent type (`general-purpose`, `Explore`…). */
-  type: string;
+  /** The agent type (`general-purpose`, `Explore`…), null when the call named none. */
+  type: string | null;
   /** What the agent was asked to do, in a few words. */
   what: string;
   /** The full instruction it was given. */
@@ -29,7 +29,7 @@ export function describeAgent(item: ToolItem): Pick<AgentRun, 'type' | 'what' | 
   const input = (item.input ?? {}) as { description?: unknown; subagent_type?: unknown; prompt?: unknown; model?: unknown };
   const prompt = typeof input.prompt === 'string' && input.prompt.trim() ? input.prompt : null;
   return {
-    type: typeof input.subagent_type === 'string' ? input.subagent_type : 'agent',
+    type: typeof input.subagent_type === 'string' && input.subagent_type ? input.subagent_type : null,
     what: typeof input.description === 'string' ? input.description : prompt ? prompt.slice(0, 100) : 'Agent',
     prompt,
     asked: typeof input.model === 'string' && input.model.trim() ? input.model : null,
