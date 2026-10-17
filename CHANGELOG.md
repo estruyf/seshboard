@@ -7,6 +7,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### New
 
 - **The Agents panel shows which model each agent runs on.** Every row and the agent's detail now say *Opus 5.5*, *Sonnet 5.5* or the like, next to the agent's type. An agent without a named type no longer shows a generic *agent* label, as the panel is only for agents. Claude picks it when it starts the agent; an agent it gives no model runs on the model its type sets, or on the session's own.
+- **Open a session in its own window, next to the main window or on another screen.** Press ⌘⌥O (Ctrl+Alt+O on Windows), click **Open in new window** in the session's header, or right-click a session in the sidebar and choose **Open in new window**. The window shows the session and its message box, with permission prompts and questions, but not the side panels. A session is open in one window at a time: its pane in the main window closes, and its row in the sidebar shows a small window icon. Clicking that row, or a notification about the session, brings its window to the front. A message you started typing goes with it. Shortcuts for the whole app, such as the command palette, work in the main window. **Move back to main window** puts the session back in a pane. Closing its window leaves the session running.
 
 ### Fixed
 
