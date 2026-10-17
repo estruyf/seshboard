@@ -12,7 +12,7 @@ import { ActivityGroupView } from './ActivityGroup.tsx';
 import { ClampedPrompt } from './ClampedPrompt.tsx';
 import type { DisplayItem, RenderItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
-import { MessageToolbar, messageUuid } from './messageActions.tsx';
+import { MessageToolbar, messageUuid, REVEAL_IN_REPLY_ROW } from './messageActions.tsx';
 import { sentLine } from './turnFormat.ts';
 import { TurnMetaLine, type LiveTurnInfo } from './TurnMeta.tsx';
 import { useRemote } from '../../state/remoteStore.ts';
@@ -338,10 +338,11 @@ function BuiltInItem({
         <div className={`group/message relative text-body ${indent}`} data-remember-from={item.subagent ? undefined : 'claude'} data-message-key={item.key}>
           <Speaker name={item.subagent ? 'Subagent' : 'Claude'} />
           <Markdown text={item.text} />
-          {/* The actions, then (under a turn's last reply) when the turn ended, how long it took and its tokens. */}
-          <div className="-ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
+          {/* The actions, then (under a turn's last reply) when the turn ended, how long it took and its tokens: both
+              hidden until the reply is hovered or the row has focus, with their space kept. */}
+          <div className="group/reply-row -ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
             <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly={item.subagent} />
-            {!item.subagent && <TurnMetaLine itemKey={item.key} />}
+            {!item.subagent && <TurnMetaLine itemKey={item.key} className={REVEAL_IN_REPLY_ROW} />}
           </div>
         </div>
       );

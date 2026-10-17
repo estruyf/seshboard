@@ -1,3 +1,5 @@
+import { REMOTE_FEATURE_PUSH_KEY } from '@switchboard/protocol/remote-client';
+
 /**
  * Whether this browser can get push notifications, and what to say when it can't. Pure: the browser's answers come
  * in as parameters, so iOS's rules are easy to check. iOS only allows push for a page added to the Home Screen and
@@ -32,6 +34,32 @@ export function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(new ArrayBuffer(binary.length));
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+/** Bytes as base64url without padding, as VAPID keys are written. */
+export function base64url(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Which key the subscription is made with for a computer: the phone's own, which every computer that takes it
+ * (`REMOTE_FEATURE_PUSH_KEY`) signs with, so one subscription gets them all; an older computer's own key while it is
+ * the only one paired; or none, for an older computer next to others, whose key would take the subscription away
+ * from them.
+ */
+export type PushKeyFor = 'own' | 'computer' | 'none';
+
+export function pushKeyFor(features: readonly string[], paired: number): PushKeyFor {
+  if (features.includes(REMOTE_FEATURE_PUSH_KEY)) return 'own';
+  return paired <= 1 ? 'computer' : 'none';
+}
+
+/** What a computer's pushes start with: its name, once the phone is paired with more than one. */
+export function pushLabel(name: string, paired: number): string | undefined {
+  const label = name.trim().slice(0, 60);
+  return paired > 1 && label ? label : undefined;
 }
 
 export const sameBytes = (a: ArrayBuffer | Uint8Array | null | undefined, b: Uint8Array) => {

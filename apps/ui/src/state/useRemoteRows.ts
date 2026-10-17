@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { Computer } from '@switchboard/protocol/client';
 import { useComputers } from './computersStore.ts';
-import { remoteRowId, selectionOf } from './remoteSelection.ts';
+import { selectionOf } from './remoteSelection.ts';
 import { remoteRows, THIS_COMPUTER } from './remoteRows.ts';
 import { useSessions, type SessionRowData } from './sessionsStore.ts';
 
@@ -26,12 +26,10 @@ export function useSources(): string[] {
   return useMemo(() => [THIS_COMPUTER, ...computers.map((c) => c.id)], [computers]);
 }
 
-/** The sidebar row of the session the main area shows, local or remote; null on Home and other views. */
+/** The sidebar row of the session in the active pane, local or remote (its id is the row's); null on Home and other views. */
 export function useShownRowId(): string | null {
   const view = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
   const selectedId = useSessions((s) => s.selectedId);
-  const remote = useComputers((s) => s.selected);
-  if (view === 'remote') return remote ? remoteRowId(remote) : null;
   return view === 'session' ? selectedId : null;
 }
 
@@ -39,14 +37,13 @@ export function useShownRowId(): string | null {
 export function shownRowId(): string | null {
   const s = useSessions.getState();
   const view = s.view === 'settings' ? s.settingsFrom : s.view;
-  const remote = useComputers.getState().selected;
-  if (view === 'remote') return remote ? remoteRowId(remote) : null;
   return view === 'session' ? s.selectedId : null;
 }
 
-/** Opens a sidebar row's session: a local one in the active pane, a remote one in the main area. */
-export function openRow(id: string): void {
+/** Opens a sidebar row's session in the active pane, or with `beside` in a new pane next to it; local and remote alike. */
+export function openRow(id: string, options?: { beside?: boolean }): void {
   const selection = selectionOf(id);
-  if (selection.kind === 'remote') useComputers.getState().openSession(selection);
+  if (selection.kind === 'remote') useComputers.getState().openSession(selection, options);
+  else if (options?.beside) useSessions.getState().openBeside(selection.sessionId);
   else useSessions.getState().select(selection.sessionId);
 }

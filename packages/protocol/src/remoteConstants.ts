@@ -16,6 +16,9 @@ export const REMOTE_IMAGE_BYTES = 900_000;
 export const REMOTE_MAX_FILES = 4;
 export const REMOTE_ATTACHMENT_BYTES = 3_600_000;
 
+/** The longest name a paired device or computer may have (`DeviceName`): a computer pairing with another sends its own. */
+export const REMOTE_DEVICE_NAME_MAX = 60;
+
 /** In `hello`'s `features`: `session.send` takes files, and `session.create` images and files. */
 export const REMOTE_FEATURE_ATTACHMENTS = 'attachments';
 
@@ -27,6 +30,16 @@ export const REMOTE_FEATURE_BRANCHES = 'branches';
 
 /** In `hello`'s `features`: `session.markUnread` answers, so Mark as read can be undone. */
 export const REMOTE_FEATURE_MARK_UNREAD = 'session.markUnread';
+
+/** In `hello`'s `features`: `projects.clonePlan`, `projects.clone` and `projects.cancelClone` answer (Clone from GitHub). */
+export const REMOTE_FEATURE_CLONE = 'projects.clone';
+
+/**
+ * In `hello`'s `features`: `push.subscribe` takes the device's own VAPID key (and a label), and pushes carry the
+ * device's id. A phone paired with more than one computer gives them all the same key, so one subscription gets every
+ * computer's notifications.
+ */
+export const REMOTE_FEATURE_PUSH_KEY = 'push.vapid';
 
 /**
  * In `hello`'s `features`: `usage.sessionCost` and `usage.windowCosts` answer, and `usage.tokens` rows carry their

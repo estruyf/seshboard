@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -70,6 +70,43 @@ describe('ActionStore', () => {
     expect(store.list(project).actions.map((a) => a.id)).toEqual(['serve']);
     store.remove(project, 'serve');
     expect(store.list(project).actions).toEqual([]);
+    cache.close();
+  });
+
+  it('saves, renames and deletes shared actions in .switchboard.json, keeping what it does not know', () => {
+    const { store, project, cache } = setup();
+    const file = join(project, '.switchboard.json');
+    writeFileSync(file, `{\n    "icon": "rocket",\n    "actions": [\n        { "name": "Test", "command": "npm test", "note": "keep" }\n    ]\n}\n`);
+    store.saveShared(project, action({ id: 'dev', name: 'Dev', command: 'npm run dev', shortcut: 'cmd+shift+d', confirm: true }));
+    const after = readFileSync(file, 'utf8');
+    expect(after.startsWith('{\n    "icon": "rocket"')).toBe(true);
+    expect(JSON.parse(after).actions).toEqual([
+      { name: 'Test', command: 'npm test', note: 'keep' },
+      { id: 'dev', name: 'Dev', command: 'npm run dev', confirm: true, shortcut: 'cmd+shift+d' },
+    ]);
+    // You saved it, so it is approved for you.
+    expect(store.list(project).actions.find((a) => a.id === 'dev')).toMatchObject({ scope: 'shared', trusted: true, confirm: true });
+
+    // Back to the defaults: those keys go. A hand-written entry gets its id, its place and its own keys kept.
+    store.saveShared(project, action({ id: 'dev', name: 'Dev', command: 'npm run dev' }));
+    store.saveShared(project, action({ id: 'unit', name: 'Unit', command: 'npm test' }), 'test');
+    expect(JSON.parse(readFileSync(file, 'utf8')).actions).toEqual([
+      { id: 'unit', name: 'Unit', command: 'npm test', note: 'keep' },
+      { id: 'dev', name: 'Dev', command: 'npm run dev' },
+    ]);
+
+    store.removeShared(project, 'unit');
+    store.removeShared(project, 'dev');
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ icon: 'rocket' });
+    cache.close();
+  });
+
+  it('creates .switchboard.json for the first shared action, and refuses one that does not read', () => {
+    const { store, project, cache } = setup();
+    store.saveShared(project, action({ id: 'dev', name: 'Dev' }));
+    expect(JSON.parse(readFileSync(join(project, '.switchboard.json'), 'utf8'))).toEqual({ actions: [{ id: 'dev', name: 'Dev', command: 'echo dev' }] });
+    writeFileSync(join(project, '.switchboard.json'), '{ broken');
+    expect(() => store.saveShared(project, action({ id: 'dev' }))).toThrow(/can't be read/);
     cache.close();
   });
 

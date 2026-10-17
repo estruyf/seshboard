@@ -338,9 +338,7 @@ export function SidebarRail() {
   const rowClick = useCallback((event: MouseEvent, data: SessionRowData) => {
     // Picking several sessions happens in the open sidebar.
     if (modKey(event) || event.shiftKey) return useSidebar.getState().setState('open');
-    // A remote session only opens in the main area: it can't sit in a pane beside a local one.
-    if (event.altKey && !data.remote) useSessions.getState().openBeside(data.id);
-    else openRow(data.id);
+    openRow(data.id, { beside: event.altKey });
   }, []);
 
   return (

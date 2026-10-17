@@ -15,14 +15,6 @@ export function settingsIndex(): SettingEntry[] {
     // General
     { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
     {
-      id: 'project-order',
-      page: 'general',
-      label: 'Project order',
-      detail: 'How New session, Home and the command palette list your projects: the ones you used last first, or the order you set in Projects.',
-      keywords: 'sort recent your order',
-      target: '[data-project-order]',
-    },
-    {
       id: 'new-session-mode',
       page: 'general',
       label: 'Permission mode',
@@ -85,6 +77,25 @@ export function settingsIndex(): SettingEntry[] {
     },
     { id: 'all-sessions', page: 'sessions', label: 'All sessions', detail: 'Every session, grouped by month, with filters. Unarchive them or move them to the ' + trash + '.', keywords: 'manage overview table disk size unarchive', target: '[data-session-manager]' },
 
+    // Projects
+    {
+      id: 'project-order',
+      page: 'projects',
+      label: 'Project order',
+      detail: 'How New session, Home and the command palette list your projects: the ones you used last first, or the order you set in Projects.',
+      keywords: 'sort recent your order',
+      target: '[data-project-order]',
+    },
+    {
+      id: 'clone-github',
+      page: 'projects',
+      label: 'Clone from GitHub',
+      detail: 'Start a project from a GitHub URL. New session clones it into the folder below, adds it to your projects and runs your first prompt there.',
+      keywords: 'git clone repository repo url download',
+      target: '[data-clone-enabled]',
+    },
+    { id: 'clone-folder', page: 'projects', label: 'Clone into', detail: 'The folder new projects go in, such as ~/Developer.', keywords: 'clone folder developer code location', target: '[data-clone-folder-choose]' },
+
     // Mods
     {
       id: 'show-mods',
@@ -125,7 +136,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'turn-details',
       page: 'conversation',
       label: 'Under each reply',
-      detail: 'Shown after the actions, in faint text. Nothing, Time, Time and duration, or Time, duration and tokens.',
+      detail: 'Shows next to the actions when you hover a reply. Nothing, Time, Time and duration, or Time, duration and tokens.',
       keywords: 'timestamp time duration tokens turn ended took how long clock usage reply line',
       target: '[data-turn-details-setting]',
     },
@@ -308,6 +319,9 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'memory-import', page: 'memory', label: 'Import from Claude export…', detail: 'Bring in what the Claude app remembers about you.', keywords: 'claude.ai', target: '[data-memory-import-export]', fallback: '[data-settings-page="memory"] section' },
     { id: 'memory-paste', page: 'memory', label: 'Paste from Claude app…', keywords: 'claude.ai import', target: '[data-memory-paste-app]', fallback: '[data-settings-page="memory"] section' },
     { id: 'memory-copy', page: 'memory', label: 'Copy for Claude app…', keywords: 'claude.ai export', target: '[data-memory-copy-for-app]', fallback: '[data-settings-page="memory"] section' },
+    // Prompts
+    { id: 'prompts-new', page: 'prompts', label: 'New prompt', detail: 'Prompts with blanks you fill in when you use them. Type / in any message box.', keywords: 'prompts templates snippets saved blanks create add', target: '[data-saved-prompts-new]' },
+    { id: 'prompts-list', page: 'prompts', label: 'Saved prompts', detail: 'Every project, just for you, or shared with the project.', keywords: 'prompts templates snippets saved blanks share move delete edit', target: '[data-saved-prompts-settings]', fallback: '[data-settings-page="prompts"] section' },
 
     // VS Code
     {

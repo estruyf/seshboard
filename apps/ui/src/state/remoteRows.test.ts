@@ -134,6 +134,15 @@ describe('local and remote sessions together', () => {
     expect(listRows.filter((r) => r.kind === 'session').length).toBe(5);
   });
 
+  it('orders Working by when that computer set each session going', () => {
+    const working: RemoteSessions = {
+      sessions: [session('first', 'working', { updatedAt: NOW, workingSince: NOW - 10 * 60_000 }), session('second', 'working', { updatedAt: NOW - 60_000, workingSince: NOW - 5 * 60_000 })],
+      prompts: [],
+    };
+    const both = remoteRows([mystic], new Map([['m1', working]]));
+    expect(groupsFor(both, NOW)[0]!.rows.map((r) => r.id)).toEqual(['remote:m1:second', 'remote:m1:first']);
+  });
+
   it('finds remote sessions by project and computer name', () => {
     const find = (search: string) => buildSessionList(rows, { search, project: null, now: NOW, archiveAfterDays: 7 }).active.map((r) => r.id);
     expect(find('mystic')).toEqual(['remote:m1:ask', 'remote:m1:run', 'remote:m1:old']);
