@@ -22,8 +22,8 @@ interface DraftsState {
   loaded: boolean;
   /** A message box should take focus with the caret at the end of its text (opened from the Unsent list or ⌘P). */
   focus: { key: string; nonce: number } | null;
-  /** Text to quote at the end of a message box, which then takes focus (Quote in reply from the conversation). */
-  quote: { key: string; text: string; nonce: number } | null;
+  /** Text to quote at the end of a message box, which then takes focus (Quote in reply from the conversation); `plain` adds it as it is. */
+  quote: { key: string; text: string; nonce: number; plain?: boolean } | null;
   /**
    * A saved prompt to fill in a message box (null `prompt`: open its / menu), from the palette or New session's chips.
    * The box with that key takes it, and the focus.
@@ -54,9 +54,11 @@ interface DraftsState {
   settleFirstPrompts(seen: SessionsSeen): void;
   /** Drafts read back after a restart; anything typed meanwhile wins. */
   load(drafts: Record<string, ComposerDraft>, firstPrompts?: Record<string, FirstPrompt<ImageAttachment>>): void;
+  /** Drafts that changed in another window, by key (`null`: gone). That window settles them; this one takes them as they are. */
+  applyRelayed(change: Record<string, ComposerDraft | null>): void;
   requestFocus(key: string): void;
   clearFocus(): void;
-  requestQuote(key: string, text: string): void;
+  requestQuote(key: string, text: string, options?: { plain?: boolean }): void;
   clearQuote(): void;
   requestPrompt(key: string, prompt: SavedPrompt | null): void;
   clearPromptRequest(): void;
@@ -195,9 +197,21 @@ export const useDrafts = create<DraftsState>()((set, get) => {
       if (next) set(next);
     },
     load: (drafts, firstPrompts = {}) => set((s) => ({ drafts: { ...drafts, ...s.drafts }, firstPrompts: { ...firstPrompts, ...s.firstPrompts }, loaded: true })),
+    applyRelayed: (change) => {
+      const keys = Object.keys(change);
+      if (keys.length === 0) return;
+      set((s) => {
+        const drafts = without(s.drafts, keys);
+        for (const key of keys) {
+          const draft = change[key];
+          if (draft) drafts[key] = draft;
+        }
+        return { drafts };
+      });
+    },
     requestFocus: (key) => set({ focus: { key, nonce: ++focusRequests } }),
     clearFocus: () => set({ focus: null }),
-    requestQuote: (key, text) => set({ quote: { key, text, nonce: ++focusRequests } }),
+    requestQuote: (key, text, options) => set({ quote: { key, text, nonce: ++focusRequests, ...(options?.plain ? { plain: true } : {}) } }),
     clearQuote: () => set({ quote: null }),
     requestPrompt: (key, prompt) => set({ promptRequest: { key, prompt, nonce: ++focusRequests } }),
     clearPromptRequest: () => set({ promptRequest: null }),

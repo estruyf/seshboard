@@ -49,8 +49,10 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
       client.call('git.github', { cwd }).catch(() => null),
       // gh's list is cached in the engine, so this is quick after the first time.
       client.call('git.prFor', { cwd }).catch(() => ({ pr: null })),
+      // A recent read is reused, so this is quick while the git button shows them.
+      client.call('git.prChecks', { cwd }).catch(() => ({ checks: null })),
     ]).then(
-      ([status, changes, github, { pr }]) => {
+      ([status, changes, github, { pr }, { checks }]) => {
         if (cancelled) return;
         const plan = planGit(status, busy);
         setGit({
@@ -61,6 +63,7 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
           github: github !== null,
           pr: pr?.state === 'open' ? { number: pr.number, url: pr.url } : null,
           pullable: plan.blocked.pull === null,
+          failingChecks: checks?.checks.filter((check) => check.bucket === 'fail').length ?? 0,
         });
       },
       () => !cancelled && setGit(null),

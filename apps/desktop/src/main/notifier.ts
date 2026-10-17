@@ -15,8 +15,11 @@ export type RecordedAlert = AttentionEvent & { suppressed: boolean } & Alert;
 
 export interface NotifierOptions {
   engine: EngineProcess;
+  /** The main window: its taskbar button flashes, and carries the badge on Windows. */
   window: () => BrowserWindow | undefined;
-  /** The session the user is looking at (reported by the renderer). */
+  /** A Switchboard window (the main one or a pop-out) is in front and not minimized. */
+  focused: () => boolean;
+  /** The session the user is looking at in the window in front (reported by its renderer). */
   focusedSession: () => string | null;
   openSession: (sessionId: string) => void;
   /** Settings → Show sessions from other apps. */
@@ -90,6 +93,7 @@ export class Notifier {
     client.on('sessions.live', ({ live }) => this.handle(this.attention.onLive(live)));
     client.on('terminals.changed', ({ terminals }) => this.handle(this.attention.onTerminals(terminals)));
     client.on('limits.resumed', ({ sessionId }) => this.handle(this.attention.onResumed(sessionId)));
+    client.on('git.checksFinished', (event) => this.handle(this.attention.onChecksFinished(event)));
     client.on('later.changed', (queue) => void (this.queue = queue));
     void client.call('later.list', {}).then((queue) => void (this.queue = queue), () => {});
 
@@ -138,7 +142,7 @@ export class Notifier {
 
   private handle(events: AttentionEvent[], { test = false } = {}): void {
     const win = this.options.window();
-    const focused = !!win && win.isFocused() && !win.isMinimized();
+    const focused = this.options.focused();
     const prefs = this.options.alerts();
     let sound: Alert['sound'] = null;
     for (const event of events) {

@@ -52,6 +52,8 @@ export interface PaletteGit {
   pr: { number: number; url: string } | null;
   /** The branch is behind its upstream and can be pulled now (⌘⇧L). */
   pullable: boolean;
+  /** Checks of the open pull request that failed. */
+  failingChecks: number;
 }
 
 export interface PaletteTerminal {

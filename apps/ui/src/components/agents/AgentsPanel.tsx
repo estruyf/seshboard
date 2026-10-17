@@ -4,9 +4,11 @@ import type { BackgroundTask } from '@switchboard/protocol/client';
 import { useAgentsPanel } from '../../state/agentsPanelStore.ts';
 import { ASK_MAX_SHARE, ASK_MIN_WIDTH, askWidthForKey } from '../ask/askWidth.ts';
 import { formatDuration, useTicker } from '../transcript/ActivityGroup.tsx';
-import { shownAgent, splitAgents, taskForAgent, type AgentRun } from '../transcript/agentRuns.ts';
+import { agentModel, shownAgent, splitAgents, taskForAgent, type AgentRun } from '../transcript/agentRuns.ts';
 import { Markdown } from '../transcript/Markdown.tsx';
 import { SubagentRun } from '../transcript/SubagentRun.tsx';
+import type { AgentTokens } from '../transcript/turns.ts';
+import { modelTitle } from '../transcript/turnFormat.ts';
 import { Button } from '../ui/Button.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 
@@ -15,6 +17,8 @@ interface AgentsPanelProps {
   cwd: string | null;
   /** Newest first. */
   runs: AgentRun[];
+  /** What each agent used, by its call's id: where the model it actually ran on comes from. */
+  tokens: ReadonlyMap<string, AgentTokens> | undefined;
   /** What the session keeps running in the background: a background agent's task is what Stop ends. */
   tasks: BackgroundTask[];
   /** The agent on show (a tool call id), when one was picked. */
@@ -40,7 +44,7 @@ const stateWord = (run: AgentRun) => (run.running ? 'Running' : run.item.result?
 /** A background agent's call returns at once and its own run ends with its report, which we don't time. */
 const endOf = (run: AgentRun, now: number) => (run.running ? now : run.background ? null : (run.item.result?.at ?? null));
 
-function AgentRow({ run, selected, now, onPick }: { run: AgentRun; selected: boolean; now: number; onPick(): void }) {
+function AgentRow({ run, model, selected, now, onPick }: { run: AgentRun; model: string | null; selected: boolean; now: number; onPick(): void }) {
   const end = endOf(run, now);
   return (
     <button
@@ -54,15 +58,22 @@ function AgentRow({ run, selected, now, onPick }: { run: AgentRun; selected: boo
       <StateIcon run={run} />
       <span className="sr-only">{stateWord(run)}: </span>
       <span className="min-w-0 flex-1 truncate">{run.what}</span>
-      <span className="shrink-0 rounded bg-border/60 px-1.5 text-meta text-muted" data-tooltip="Agent type">
-        {run.type}
-      </span>
+      {run.type && (
+        <span className="shrink-0 rounded bg-border/60 px-1.5 text-meta text-muted" data-tooltip="Agent type">
+          {run.type}
+        </span>
+      )}
+      {model && (
+        <span className="shrink-0 rounded bg-border/60 px-1.5 text-meta text-muted" data-tooltip="Model" data-agent-model>
+          {modelTitle(model)}
+        </span>
+      )}
       {run.item.at !== null && end !== null && <span className="shrink-0 text-meta text-muted tabular-nums">{formatDuration(end - run.item.at)}</span>}
     </button>
   );
 }
 
-function AgentDetail({ run, sessionId, cwd, task, now, onStop }: { run: AgentRun; sessionId: string; cwd: string | null; task: BackgroundTask | undefined; now: number; onStop(taskId: string): Promise<void> }) {
+function AgentDetail({ run, model, sessionId, cwd, task, now, onStop }: { run: AgentRun; model: string | null; sessionId: string; cwd: string | null; task: BackgroundTask | undefined; now: number; onStop(taskId: string): Promise<void> }) {
   const [stopping, setStopping] = useState(false);
   const end = endOf(run, now);
   const stop = async () => {
@@ -84,7 +95,8 @@ function AgentDetail({ run, sessionId, cwd, task, now, onStop }: { run: AgentRun
               <StateIcon run={run} />
               {stateWord(run)}
             </span>
-            <span>{run.type}</span>
+            {run.type && <span>{run.type}</span>}
+            {model && <span data-agent-model>{modelTitle(model)}</span>}
             {run.background && <span data-tooltip="Runs in the background while Claude carries on">background</span>}
             {run.item.at !== null && end !== null && <span className="tabular-nums">{formatDuration(end - run.item.at)}</span>}
           </div>
@@ -127,6 +139,7 @@ function AgentDetail({ run, sessionId, cwd, task, now, onStop }: { run: AgentRun
  */
 export function AgentsPanel(props: AgentsPanelProps) {
   const { sessionId, runs } = props;
+  const modelOf = (run: AgentRun) => agentModel(run, props.tokens?.get(run.item.id));
   const asideRef = useRef<HTMLElement>(null);
   const sections = useAgentsPanel((s) => s.sections);
   const toggleSection = useAgentsPanel((s) => s.toggleSection);
@@ -182,7 +195,7 @@ export function AgentsPanel(props: AgentsPanelProps) {
         <SectionHeader tone={tone} count={rows.length} className="h-7 px-3" toggle={{ expanded: sections[key], onToggle: () => toggleSection(key), data: { 'data-agents-section-toggle': key } }}>
           {title}
         </SectionHeader>
-        {sections[key] && rows.map((run) => <AgentRow key={run.item.key} run={run} selected={run.item.id === shown?.item.id} now={now} onPick={() => props.onPick(run.item.id)} />)}
+        {sections[key] && rows.map((run) => <AgentRow key={run.item.key} run={run} model={modelOf(run)} selected={run.item.id === shown?.item.id} now={now} onPick={() => props.onPick(run.item.id)} />)}
       </section>
     );
 
@@ -231,7 +244,7 @@ export function AgentsPanel(props: AgentsPanelProps) {
             {list('Finished', 'neutral', 'finished', finished)}
           </div>
           <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-            {shown && <AgentDetail key={shown.item.id} run={shown} sessionId={sessionId} cwd={props.cwd} task={taskForAgent(shown, props.tasks)} now={now} onStop={props.onStop} />}
+            {shown && <AgentDetail key={shown.item.id} run={shown} model={modelOf(shown)} sessionId={sessionId} cwd={props.cwd} task={taskForAgent(shown, props.tasks)} now={now} onStop={props.onStop} />}
           </div>
         </>
       )}

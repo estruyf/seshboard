@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { agentsToggleStep } from './agentsPanel.ts';
-import { useRightPanel } from './rightPanelStore.ts';
+import { frontTab, useRightPanel } from './rightPanelStore.ts';
 
 /** One session's Agents panel: whether it is open (it may sit behind another tab) and the agent on show (a tool call id). */
 interface SessionAgents {
@@ -40,7 +40,7 @@ export const isAgentsOpen = (sessionId: string | null) => !!sessionId && !!useAg
 /** Opens the panel in front of the other tabs, on `agent` (a tool call id) when given, else on the one that was on show. */
 export function openAgents(sessionId: string, agent?: string): void {
   useAgentsPanel.getState().update(sessionId, { open: true, ...(agent ? { picked: agent } : {}) });
-  useRightPanel.getState().setTab('agents');
+  useRightPanel.getState().setTab(sessionId, 'agents');
 }
 
 export const closeAgents = (sessionId: string) => useAgentsPanel.getState().update(sessionId, { open: false });
@@ -48,7 +48,7 @@ export const pickAgent = (sessionId: string, agent: string) => useAgentsPanel.ge
 
 /** The header's Agents button, its shortcut and the palette: open, bring to the front, or close. `othersOpen`: Changes or Ask is open too. */
 export function toggleAgentsPanel(sessionId: string, othersOpen: boolean): void {
-  const step = agentsToggleStep(isAgentsOpen(sessionId), useRightPanel.getState().tab === 'agents', othersOpen);
+  const step = agentsToggleStep(isAgentsOpen(sessionId), frontTab(sessionId) === 'agents', othersOpen);
   if (step === 'close') closeAgents(sessionId);
   else openAgents(sessionId);
 }

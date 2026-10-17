@@ -64,7 +64,37 @@ export const IpcChannel = {
   notificationPermission: "switchboard:notification-permission",
   openNotificationSettings: "switchboard:open-notification-settings",
   testNotification: "switchboard:test-notification",
+  getPopouts: "switchboard:get-popouts",
+  popOut: "switchboard:pop-out",
+  popIn: "switchboard:pop-in",
+  showSession: "switchboard:show-session",
+  forwardKeys: "switchboard:forward-keys",
+  keysForwarded: "switchboard:keys-forwarded",
+  popoutsChanged: "switchboard:popouts-changed",
+  relayDrafts: "switchboard:relay-drafts",
+  draftsRelayed: "switchboard:drafts-relayed",
+  requestDrafts: "switchboard:request-drafts",
+  draftsRequested: "switchboard:drafts-requested",
 } as const;
+
+/** The query parameter that makes a window a pop-out: the id of the one session it shows. */
+export const POPOUT_QUERY = "popout";
+
+/**
+ * Unsent messages that changed in one window, by draft key (`null`: the draft is gone). Main passes them on to
+ * the other windows, so a session's draft is the same wherever it is shown. Only the main window saves drafts.
+ */
+export type DraftsChange = Record<string, unknown>;
+
+/** A key press a pop-out hands to the main window (an app-wide shortcut: the palette, search, New session…). */
+export interface ForwardedKeys {
+  key: string;
+  code: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -203,6 +233,8 @@ export interface Preferences {
   promptOutline: boolean;
   /** Settings › Conversation: "Under each reply", when a turn ended, how long it took and its tokens. */
   turnDetails: TurnDetails;
+  /** Settings › Conversation: "Fade inactive panes". Off, the panes other than the active one look the same as it; the active one keeps its line. */
+  fadeInactivePanes: boolean;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
   /** Settings › Remote: "Show in the sidebar when nobody is connected", the quiet "Remote on · nobody connected" line. */
@@ -280,6 +312,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   fileLinkClick: "file-manager",
   promptOutline: true,
   turnDetails: "duration",
+  fadeInactivePanes: true,
   confirmQuit: true,
   remoteIdleLine: true,
   sessionScope: "switchboard",
@@ -425,6 +458,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.promptOutline === "boolean") out.promptOutline = raw.promptOutline;
   if (oneOf(["none", "time", "duration", "tokens"] as const, raw.turnDetails))
     out.turnDetails = raw.turnDetails;
+  if (typeof raw.fadeInactivePanes === "boolean") out.fadeInactivePanes = raw.fadeInactivePanes;
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
   if (typeof raw.remoteIdleLine === "boolean") out.remoteIdleLine = raw.remoteIdleLine;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))
@@ -726,6 +760,30 @@ export interface SwitchboardBridge {
   openNotificationSettings(): void;
   /** Shows one notification like a Needs you one, with its sound when sounds are on. */
   testNotification(): void;
+  /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
+  readonly popout: string | null;
+  /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
+  readonly popouts: readonly string[];
+  /** Fires in every window when a pop-out opens or closes. */
+  onPopoutsChanged(listener: (sessionIds: string[]) => void): () => void;
+  /** Shows a session in a window of its own, or brings its pop-out to the front when it has one. */
+  popOut(sessionId: string): void;
+  /** From a pop-out: shows its session in the main window again and closes the pop-out. */
+  popIn(): void;
+  /** Shows a session where it is: its pop-out when it has one, otherwise the main window (both brought to the front). */
+  showSession(sessionId: string): void;
+  /** From a pop-out: brings the main window to the front and presses these keys there. */
+  forwardKeys(keys: ForwardedKeys): void;
+  /** In the main window: keys a pop-out handed over. */
+  onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
+  /** Sends unsent messages that changed here to the other windows. */
+  relayDrafts(change: DraftsChange): void;
+  /** Unsent messages that changed in another window. */
+  onDraftsRelayed(listener: (change: DraftsChange) => void): () => void;
+  /** From a pop-out: asks the main window to relay all its unsent messages, images included (those are never saved). */
+  requestDrafts(): void;
+  /** In the main window: a pop-out asked for every unsent message. */
+  onDraftsRequested(listener: () => void): () => void;
 }
 
 /** `blocked`: notifications are turned off for Switchboard (or for every app) in the system's settings. `unknown` when it can't be told. */

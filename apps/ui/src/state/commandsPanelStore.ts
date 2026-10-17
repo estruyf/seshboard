@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { agentsToggleStep } from './agentsPanel.ts';
-import { useRightPanel } from './rightPanelStore.ts';
+import { frontTab, useRightPanel } from './rightPanelStore.ts';
 
 /** One session's Commands panel: whether it is open (it may sit behind another tab) and the command on show (a task id). */
 interface SessionCommands {
@@ -40,7 +40,7 @@ export const isCommandsOpen = (sessionId: string | null) => !!sessionId && !!use
 /** Opens the panel in front of the other tabs, on `taskId` when given, else on the one that was on show. */
 export function openCommands(sessionId: string, taskId?: string): void {
   useCommandsPanel.getState().update(sessionId, { open: true, ...(taskId ? { picked: taskId } : {}) });
-  useRightPanel.getState().setTab('commands');
+  useRightPanel.getState().setTab(sessionId, 'commands');
 }
 
 export const closeCommands = (sessionId: string) => useCommandsPanel.getState().update(sessionId, { open: false });
@@ -48,7 +48,7 @@ export const pickCommand = (sessionId: string, taskId: string) => useCommandsPan
 
 /** The header's Commands button, its shortcut and the palette: open, bring to the front, or close. `othersOpen`: another right panel is open too. */
 export function toggleCommandsPanel(sessionId: string, othersOpen: boolean): void {
-  const step = agentsToggleStep(isCommandsOpen(sessionId), useRightPanel.getState().tab === 'commands', othersOpen);
+  const step = agentsToggleStep(isCommandsOpen(sessionId), frontTab(sessionId) === 'commands', othersOpen);
   if (step === 'close') closeCommands(sessionId);
   else openCommands(sessionId);
 }

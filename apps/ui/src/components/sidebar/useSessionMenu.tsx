@@ -1,7 +1,9 @@
 import { restoreFrom, trashName } from '../../lib/platform.ts';
+import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { useState, type ReactNode } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
+import { popOut } from '../../state/popoutsStore.ts';
 import { useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { archivesOnMiddleClick, isActive } from '../../state/sidebarRows.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
@@ -93,6 +95,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           ? { label: 'Unarchive', onSelect: () => flag({ archived: false }), disabled: !data.summary }
           : { label: 'Archive', hint: 'until new activity', onSelect: () => flag(ARCHIVE), disabled: !data.summary },
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
+        { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
         { label: 'Open folder in editor', onSelect: () => cwd && void openIn(cwd).catch(() => {}), disabled: !cwd },
         { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(data.id) },
         'separator',

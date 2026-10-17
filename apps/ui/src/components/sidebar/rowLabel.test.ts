@@ -35,6 +35,10 @@ describe('sessionRowLabel', () => {
     );
   });
 
+  it('says when a session is open in its own window', () => {
+    expect(sessionRowLabel({ ...base, ownWindow: true })).toBe('Fix the login bug, switchboard, open in its own window, updated 5 minutes ago');
+  });
+
   it('never reads an empty title', () => {
     expect(sessionRowLabel({ ...base, title: '' })).toMatch(/^Untitled session, /);
   });

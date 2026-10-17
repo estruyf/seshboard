@@ -3,6 +3,7 @@ import { useEngineConnection } from '../engine/useEngine.ts';
 import { connectedRows, connectionAnnouncement, connectionChanges, connectToastDue, dayKey, type ConnectedDevice } from './connectedDevices.ts';
 import { revokeDevice, setToastDay, toastDay, useRemote } from './remoteStore.ts';
 import { toast } from './toastStore.ts';
+import { popoutSession } from './popoutsStore.ts';
 
 /**
  * Mirrors Remote's status and what paired devices do (`remote.changed`, `remote.fromDevice`) into `useRemote`, for
@@ -26,6 +27,8 @@ export function useRemoteSync(): void {
   }, [client]);
 
   useEffect(() => {
+    // The main window says it; a pop-out would say it twice.
+    if (popoutSession) return;
     // Null until the first status: the devices connected at startup are neither announced nor toasted.
     let before: ConnectedDevice[] | null = null;
     return useRemote.subscribe((state, prev) => {

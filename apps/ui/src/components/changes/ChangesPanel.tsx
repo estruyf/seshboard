@@ -145,6 +145,7 @@ const FileDiff = memo(function FileDiff({ id, cwd, base, path, version }: { id: 
  * whole branch compared with where it left its base branch (what a merge or PR contains).
  */
 export function ChangesPanel({
+  sessionId,
   cwd,
   changes,
   base,
@@ -155,6 +156,7 @@ export function ChangesPanel({
   shared,
   outside = [],
 }: {
+  sessionId: string;
   cwd: string;
   changes: GitChanges | null;
   base: ChangesBase;
@@ -225,12 +227,13 @@ export function ChangesPanel({
   // Show in Changes (after sharing a memory): open that file's diff once the list has it.
   const changesFocus = useMemoryView((s) => s.changesFocus);
   useEffect(() => {
-    if (!changesFocus || !files.some((f) => f.path === changesFocus.path)) return;
+    // Only the panel of the session it was asked for: another pane on the same checkout may have Changes open too.
+    if (!changesFocus || changesFocus.sessionId !== sessionId || !files.some((f) => f.path === changesFocus.path)) return;
     const { path } = changesFocus;
     useMemoryView.setState({ changesFocus: null });
     setOpen((s) => new Set(s).add(path));
     requestAnimationFrame(() => document.querySelector(`[data-changed-file="${CSS.escape(path)}"]`)?.scrollIntoView({ block: 'nearest' }));
-  }, [changesFocus, files]);
+  }, [changesFocus, files, sessionId]);
 
   // Closing the panel (or moving it to the other pane) brings the conversation back.
   useEffect(() => () => useChangesLayout.getState().toggleExpanded(false), []);

@@ -5,7 +5,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
@@ -27,7 +27,7 @@ import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { updatesDisabledReason } from './updateState.ts';
-import { placeWindow, WindowStateStore } from './windowState.ts';
+import { placePopout, placeWindow, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
 const here = import.meta.dirname;
@@ -265,7 +265,18 @@ ipcMain.handle(IpcChannel.themeCommand, async (event, command: ThemeCommand) => 
 
 let engine: EngineProcess;
 let notifier: Notifier;
-let focusedSession: string | null = null;
+/** The window with the sidebar; null while it is closed (macOS keeps running without it). */
+let mainWindow: BrowserWindow | null = null;
+/** Pop-out windows by the session each one shows. */
+const popouts = new Map<string, BrowserWindow>();
+/** The session on screen in each window (by webContents id), as its renderer reports it. */
+const focusedSessions = new Map<number, string | null>();
+
+/** The session on screen in the window in front, or null when no Switchboard window has focus. */
+function sessionOnScreen(): string | null {
+  const win = BrowserWindow.getFocusedWindow();
+  return win ? (focusedSessions.get(win.webContents.id) ?? null) : null;
+}
 const recordedNotifications: RecordedAlert[] = [];
 /** Sounds the smoke run would have played (it never makes a sound). */
 const recordedSounds: Array<{ id: string; volume: number }> = [];
@@ -299,8 +310,8 @@ ipcMain.on(IpcChannel.windowButtons, (event, position: unknown) => {
   win.setWindowButtonPosition(position === 'rail' ? WINDOW_BUTTONS.rail : WINDOW_BUTTONS.default);
 });
 
-ipcMain.on(IpcChannel.focusSession, (_event, sessionId: unknown) => {
-  focusedSession = typeof sessionId === 'string' ? sessionId : null;
+ipcMain.on(IpcChannel.focusSession, (event, sessionId: unknown) => {
+  focusedSessions.set(event.sender.id, typeof sessionId === 'string' ? sessionId : null);
 });
 
 // The VS Code companion sent context and asked to see it: the editor is in front, so take focus from it.
@@ -313,7 +324,10 @@ ipcMain.on(IpcChannel.focusWindow, (event) => {
   win.focus();
 });
 
+/** Shows a session: in its pop-out when it has one, otherwise in the main window. */
 function openSession(sessionId: string): void {
+  const popout = popouts.get(sessionId);
+  if (popout && !popout.isDestroyed()) return bringToFront(popout);
   sendToWindow(showWindow(), IpcChannel.selectSession, sessionId, { latestOnly: true });
 }
 
@@ -374,7 +388,7 @@ let quitRecorded = false;
 
 const quitGuard = new QuitGuard({
   ask() {
-    const win = BrowserWindow.getAllWindows()[0];
+    const win = mainWindow;
     if (win && readyRenderers.has(win.webContents.id)) {
       if (win.isMinimized()) win.restore();
       win.show();
@@ -412,12 +426,16 @@ const asksBeforeQuit = () => preferences.get().confirmQuit || quitContext;
  */
 const pendingMessages = new RendererQueue();
 
-/** The window to show something in, created if they were all closed, and brought to the front. */
-function showWindow(): BrowserWindow {
-  const win = BrowserWindow.getAllWindows()[0] ?? createWindow();
+function bringToFront(win: BrowserWindow): void {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+}
+
+/** The main window, to show something in: created if it was closed, and brought to the front. */
+function showWindow(): BrowserWindow {
+  const win = mainWindow ?? createWindow();
+  bringToFront(win);
   return win;
 }
 
@@ -545,6 +563,22 @@ function rememberWindowState(win: BrowserWindow): void {
   windowState.save({ bounds: win.isMaximized() ? win.getNormalBounds() : win.getBounds(), maximized: win.isMaximized() });
 }
 
+/** Every window's page: sandboxed, with the preload as its only way to main. */
+const webPreferences = (): Electron.WebPreferences => ({
+  preload: join(here, '../preload/index.cjs'),
+  sandbox: true,
+  contextIsolation: true,
+  nodeIntegration: false,
+  spellcheck: false,
+});
+
+/**
+ * macOS: the traffic lights over the content. Elsewhere the system's own title bar, which follows light and dark
+ * mode, and the menu bar shows with Alt (the command palette has every command).
+ */
+const titleBar = (): Electron.BrowserWindowConstructorOptions =>
+  process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: WINDOW_BUTTONS.default } : { autoHideMenuBar: true };
+
 function createWindow(): BrowserWindow {
   const saved = windowState?.get();
   const placed = saved && placeWindow(saved.bounds, screen.getAllDisplays().map((d) => d.workArea), WINDOW_MIN);
@@ -558,18 +592,11 @@ function createWindow(): BrowserWindow {
     // same layout everywhere. macOS otherwise shrinks the window to fit; other systems allow it as is.
     enableLargerThanScreen: scripted,
     show: false,
-    // macOS: the traffic lights over the content. Elsewhere the system's own title bar, which follows light and dark
-    // mode, and the menu bar shows with Alt (the command palette has every command).
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: WINDOW_BUTTONS.default } : { autoHideMenuBar: true }),
+    ...titleBar(),
     backgroundColor: windowBackground(),
-    webPreferences: {
-      preload: join(here, '../preload/index.cjs'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      spellcheck: false,
-    },
+    webPreferences: webPreferences(),
   });
+  mainWindow = win;
 
   win.once('ready-to-show', () => {
     // maximize() shows the window, so it waits for the first paint like show().
@@ -600,6 +627,17 @@ function createWindow(): BrowserWindow {
     event.preventDefault();
     quitGuard.request();
   });
+  // Pop-outs go with the main window: without it there is no sidebar to come back to.
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+    for (const popout of [...popouts.values()]) if (!popout.isDestroyed()) popout.close();
+  });
+  loadRenderer(win);
+  return win;
+}
+
+/** What every window's page needs: ready tracking, a reload after a crash, links in the browser, and the page itself. */
+function loadRenderer(win: BrowserWindow, popout?: string): void {
   const contentsId = win.webContents.id;
   win.webContents.on('did-start-loading', () => readyRenderers.delete(contentsId));
   // A crashed page leaves the window blank: reload it, unless it keeps crashing.
@@ -614,7 +652,10 @@ function createWindow(): BrowserWindow {
       console.error(`[main] renderer gone (${details.reason}); not reloading, it crashed too often`);
     }
   });
-  win.on('closed', () => readyRenderers.delete(contentsId));
+  win.on('closed', () => {
+    readyRenderers.delete(contentsId);
+    focusedSessions.delete(contentsId);
+  });
 
   // The renderer is a local app: links open in the browser, never inside the window.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -626,10 +667,93 @@ function createWindow(): BrowserWindow {
   });
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (devUrl) void win.loadURL(devUrl);
-  else void win.loadFile(join(here, '../renderer/index.html'));
-  return win;
+  if (devUrl) {
+    const url = new URL(devUrl);
+    if (popout) url.searchParams.set(POPOUT_QUERY, popout);
+    void win.loadURL(url.toString());
+  } else {
+    void win.loadFile(join(here, '../renderer/index.html'), popout ? { query: { [POPOUT_QUERY]: popout } } : undefined);
+  }
 }
+
+/** A pop-out's size when there is room for it; it is never smaller than the minimum. */
+const POPOUT_SIZE = { width: 760, height: 820 };
+const POPOUT_MIN = { width: 480, height: 400 };
+
+/** Tells every window which sessions have a window of their own. */
+function broadcastPopouts(): void {
+  const ids = [...popouts.keys()];
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.popoutsChanged, ids);
+}
+
+/**
+ * Shows a session in a window of its own, beside the main window, or brings its pop-out to the front. It shows
+ * the session and nothing else; closing it only closes the window (the session keeps running) and never asks
+ * to quit. Pop-outs aren't saved: they close with the main window and don't come back after a restart.
+ */
+function popOut(sessionId: string): void {
+  const open = popouts.get(sessionId);
+  if (open && !open.isDestroyed()) return bringToFront(open);
+  const from = mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized() ? mainWindow.getBounds() : null;
+  const placed = from ? placePopout(from, screen.getDisplayMatching(from).workArea, POPOUT_SIZE, POPOUT_MIN, popouts.size) : undefined;
+  const win = new BrowserWindow({
+    ...POPOUT_SIZE,
+    ...placed,
+    minWidth: POPOUT_MIN.width,
+    minHeight: POPOUT_MIN.height,
+    show: false,
+    ...titleBar(),
+    backgroundColor: windowBackground(),
+    webPreferences: webPreferences(),
+  });
+  popouts.set(sessionId, win);
+  win.once('ready-to-show', () => win.show());
+  // Looking at a pop-out is looking at Switchboard: the main window's taskbar button stops flashing (Notifier).
+  if (process.platform !== 'darwin') win.on('focus', () => mainWindow?.flashFrame(false));
+  win.on('closed', () => {
+    if (popouts.get(sessionId) !== win) return;
+    popouts.delete(sessionId);
+    broadcastPopouts();
+  });
+  loadRenderer(win, sessionId);
+  broadcastPopouts();
+}
+
+ipcMain.on(IpcChannel.getPopouts, (event) => {
+  event.returnValue = [...popouts.keys()];
+});
+ipcMain.on(IpcChannel.popOut, (_event, sessionId: unknown) => {
+  if (typeof sessionId === 'string' && sessionId) popOut(sessionId);
+});
+// Move back to main window: the session leaves its pop-out first, so the main window shows it in a pane.
+ipcMain.on(IpcChannel.popIn, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...popouts].find(([, popout]) => popout === win);
+  if (!win || !entry) return;
+  popouts.delete(entry[0]);
+  broadcastPopouts();
+  win.close();
+  openSession(entry[0]);
+});
+ipcMain.on(IpcChannel.showSession, (_event, sessionId: unknown) => {
+  if (typeof sessionId === 'string' && sessionId) openSession(sessionId);
+});
+// An app-wide shortcut pressed in a pop-out runs in the main window, which comes to the front for it.
+ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
+  if (!keys || typeof keys !== 'object' || typeof (keys as { key?: unknown }).key !== 'string') return;
+  sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
+});
+// Unsent messages typed in one window show in the others (only the main window saves them).
+ipcMain.on(IpcChannel.relayDrafts, (event, change: unknown) => {
+  if (!change || typeof change !== 'object') return;
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.webContents.id !== event.sender.id) win.webContents.send(IpcChannel.draftsRelayed, change);
+  }
+});
+// A new pop-out takes the main window's drafts, with their images (saved drafts have none).
+ipcMain.on(IpcChannel.requestDrafts, (event) => {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id !== event.sender.id) mainWindow.webContents.send(IpcChannel.draftsRequested);
+});
 
 /** Each request gets a fresh channel: one end to the engine, the other to the asking window. */
 ipcMain.on(IpcChannel.requestEnginePort, (event) => {
@@ -792,13 +916,15 @@ ipcMain.on(IpcChannel.rendererReady, (event, report: RendererReadyReport) => {
   };
   readyReports.push(timed);
   readyRenderers.add(event.sender.id);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  // What waited for a window is for the main one; a pop-out only shows its session.
+  if (!win || win !== mainWindow) return;
   for (const { channel, payload } of pendingMessages.drain()) event.sender.send(channel, payload);
   if (readyReports.length === 1) {
     console.log(`[main] engine connected ${timed.connectedMs}ms, diagnostics loaded ${timed.loadedMs}ms after process start`);
   }
-  if (smokeOutDir) void runSmokeStep(BrowserWindow.fromWebContents(event.sender));
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (screenshotOutDir && win && readyReports.length === 1) {
+  if (smokeOutDir) void runSmokeStep(win);
+  if (screenshotOutDir && readyReports.length === 1) {
     void runScreenshotTour(win, screenshotOutDir, { setColorScheme: (colorScheme) => updatePreferences({ colorScheme }) })
       .then(() => exitApp(0))
       .catch((error: Error) => {
@@ -1152,7 +1278,7 @@ let crashedAt = 0;
 let smokeSessionId: string | null = null;
 /** What was on screen when the steps finished, for the report (not checked). */
 let rendering: Record<string, number> = {};
-const smokeRun = new SmokeRun({ log: (line) => console.log(line), cleanup: () => closeOverlays(BrowserWindow.getAllWindows()[0]) });
+const smokeRun = new SmokeRun({ log: (line) => console.log(line), cleanup: () => closeOverlays(mainWindow ?? undefined) });
 
 /**
  * Adds a project action through the editor (saving closes it, says "Action saved" and adds its pill),
@@ -7504,8 +7630,12 @@ app.whenReady().then(() => {
   installMenu();
   notifier = new Notifier({
     engine,
-    window: () => BrowserWindow.getAllWindows()[0],
-    focusedSession: () => focusedSession,
+    window: () => mainWindow ?? undefined,
+    focused: () => {
+      const win = BrowserWindow.getFocusedWindow();
+      return !!win && !win.isMinimized();
+    },
+    focusedSession: sessionOnScreen,
     openSession,
     showAllSessions: () => preferences.get().sessionScope === 'all',
     alerts: () => preferences.get(),
@@ -7514,6 +7644,11 @@ app.whenReady().then(() => {
     ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event) } : {}),
   });
   notifier.connect();
+  // Running pull request checks are read every 30 seconds while a window has focus, else every 5 minutes. A blur
+  // comes before the next window's focus, so it looks once that has settled.
+  const sendForeground = () => engine.sendStanding({ type: 'foreground', foreground: BrowserWindow.getFocusedWindow() !== null });
+  app.on('browser-window-focus', sendForeground);
+  app.on('browser-window-blur', () => setTimeout(sendForeground, 100));
   createWindow();
   updater.start();
   // The packaged app declares the scheme in Info.plist; this also takes it back if another app claimed it.
@@ -7523,7 +7658,7 @@ app.whenReady().then(() => {
   if (launchLink) openDeepLink(launchLink);
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!mainWindow) createWindow();
   });
   // A last resort for a run that hangs outside a step (each step has its own time limit): it stops once no step has
   // finished for a while, and still writes what ran. Not a limit on the whole run: as steps were added, a slow CI
