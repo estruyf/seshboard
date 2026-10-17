@@ -1,0 +1,62 @@
+---
+title: Review what Claude did, fast
+description: A session finished. See what it did, question it, check the diff and ship it in a few minutes, without scrolling through the conversation.
+sidebar:
+  label: Review a finished session
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import Related from '../../../components/Related.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+Claude finished a turn, and the session turns blue in the sidebar. You could scroll through the whole conversation, but you don't have to. This guide goes from the briefing over the session to a pull request with passing checks.
+
+## Start with the catch-up
+
+Open the session. The catch-up banner over the conversation shows your ask, how long it takes to review ("~2 min to review") and the one thing it needs from you. The chips under it show the tests (**14 tests passed** or **2 of 9 tests fail**), the changes (**+120 −40 · 6 files**), files outside what you asked for, and **Followed the plan** or **Deviated from the plan**. These signals come from what Claude ran and from git, never from a model.
+
+<Screenshot name="catch-up-banner" alt="The catch-up banner above the conversation: Finished, the ask, about 3 minutes to review, Commit and Details, and the chips 14 tests passed, +120 −40 · 6 files and Followed the plan" />
+
+**Details** (<Kbd shortcut="catchup.expand" />) adds **What it did** and **Skipped or not finished**. <Kbd shortcut="catchup.primary" /> runs the main action: **Commit**, **Reply**, **Review changes** or **Archive**. See [Catch-up](/sessions/catch-up/).
+
+When several sessions finished, choose **Quickest to unblock** at the top of the sidebar to sort them by how long each takes to review. See [Quickest to unblock](/sessions/catch-up/#quickest-to-unblock).
+
+## If it stopped to ask
+
+A session that waits for a permission has no catch-up: the card above the message box asks instead. Its **Why?** button opens **Why Claude asks**, with why Claude needs it, what the command does and what Claude said before it asked. You still answer in the card. See [Why is Claude asking?](/permissions/#why-is-claude-asking).
+
+## Ask before you read the diff
+
+Not sure why Claude did something? Click **Ask** next to **Send** and ask in the panel. It offers *What changed so far?*, *Which files did it touch?*, *Why this approach?* and *What is left to do?* to start with. Nothing is added to the conversation, and Claude isn't stopped or steered. It can read files and git, but it doesn't change anything. **Quote in message** puts an answer in the message box. See [Ask about this session](/sessions/ask/).
+
+## Check what ran in the background
+
+If Claude started agents, the **Agents** panel (<Kbd shortcut="agents.toggle" />) shows each one's **Prompt** and **Report**. The **Commands** panel (<Kbd shortcut="commands.toggle" />) shows the commands Claude ran in the background, how they ended and their output, such as a test run that failed. Each button shows in the header once the session has something for it. See [Agents](/sessions/agents/) and [Commands](/sessions/commands/).
+
+## Go through the changes
+
+Press **Review changes** (<Kbd shortcut="catchup.review" />) on the banner, or <Kbd shortcut="changes.toggle" />. The **Changes** panel lists every file with its status and line counts; click one to open its diff inline. In **Uncommitted**, tick a file to stage it, or use **Revert this file…** to drop its changes. Reverted new files go to the <Os mac="Trash" windows="Recycle Bin" />. See [Changes](/terminal-changes-git/changes/).
+
+## Commit and open a pull request
+
+The git button in the session header runs the next step for the branch: **Commit 3** (Claude writes the commit), **Push ↑1**, then **Create PR**. For your own message, choose **Commit…** in its ▾ menu; it commits what you staged. **Create PR…** opens the **Create pull request** dialog, with the title, a description from the repository's template and **Draft**. It pushes the branch first. Pull requests need the [GitHub CLI](https://cli.github.com). See [Git](/terminal-changes-git/git/).
+
+## Fix failing checks with Claude
+
+Once the pull request is open, **View PR #123** on the git button gets an icon for its checks, and a notification says **Checks failed on PR #123** when one fails. **Fix failing checks with Claude** in the git menu puts a prompt in the message box that names the checks, with each log as a chip. Nothing is sent until you send it. See [Checks](/terminal-changes-git/git/#checks).
+
+<Screenshot name="git-checks" alt="The git menu with View PR #42 and a Checks group: a failed test job with a Fix with Claude button, a running deploy preview, build and lint passed, then Fix failing checks with Claude" />
+
+## Finish up
+
+In a worktree, click the branch in the header for **Merge into &lt;base&gt;…** or **Remove worktree…**. See [Finish a worktree](/terminal-changes-git/git/#finish-a-worktree).
+
+<Aside type="tip">
+**Archive** (<Kbd shortcut="catchup.archive" />) on the banner archives the session and opens the next one in the sidebar's order, so you can go through a row of finished sessions one key at a time.
+</Aside>
+
+## Related
+
+<Related pages={['guides/parallel-sessions', 'permissions', 'focus-limit']} />

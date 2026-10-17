@@ -1,0 +1,105 @@
+---
+/**
+ * Every docs page as a card, grouped like the sidebar, for the All features page. Built from sidebar.mjs and each
+ * page's frontmatter, so a new page shows up here once it is in the sidebar. The Guides group is left out
+ * (`skip`), since the page lists features, not walkthroughs. What it wraps goes between the jump links and the
+ * groups.
+ */
+import GithubSlugger from 'github-slugger';
+import { pageGroups } from '../lib/docsPages.ts';
+import PageCards from './PageCards.astro';
+
+interface Props {
+  skip?: string[];
+}
+const { skip = [] } = Astro.props;
+const slugger = new GithubSlugger();
+const groups = (await pageGroups()).filter((group) => !skip.includes(group.label)).map((group) => ({ ...group, id: slugger.slug(group.label) }));
+---
+
+<nav class="sb-jump not-content" aria-label="Groups on this page">
+  {groups.map((group) => <a href={`#${group.id}`}>{group.label}</a>)}
+</nav>
+
+<slot />
+
+{
+  groups.map((group) => (
+    <section class="sb-feature-group">
+      <h2 id={group.id}>{group.label}</h2>
+      <PageCards pages={group.pages} size="compact" />
+    </section>
+  ))
+}
+
+<script>
+  // Mark the group you are reading in the row, and keep its pill in view on a phone, where the row scrolls.
+  document.querySelectorAll<HTMLElement>('.sb-jump').forEach((nav) => {
+    const links = new Map([...nav.querySelectorAll<HTMLAnchorElement>('a')].map((link) => [decodeURIComponent(link.hash.slice(1)), link]));
+    const mark = (id: string) => {
+      links.forEach((link, key) => (key === id ? link.setAttribute('aria-current', 'true') : link.removeAttribute('aria-current')));
+      const link = links.get(id);
+      if (link) nav.scrollTo({ left: link.offsetLeft - nav.clientWidth / 2 + link.offsetWidth / 2, behavior: 'smooth' });
+    };
+    const observer = new IntersectionObserver(
+      (entries) => entries.filter((entry) => entry.isIntersecting).forEach((entry) => mark(entry.target.id)),
+      { rootMargin: '-30% 0px -60% 0px' },
+    );
+    links.forEach((_, id) => {
+      const heading = document.getElementById(id);
+      if (heading) observer.observe(heading);
+    });
+  });
+</script>
+
+<style>
+  /* The groups, always at hand: the row sticks under the header while you scroll the cards. */
+  .sb-jump {
+    position: sticky;
+    top: var(--sl-nav-height, 3.5rem);
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    padding-block: 0.6rem;
+    background: var(--sb-bg);
+  }
+  .sb-jump a {
+    flex: none;
+    background: var(--sb-bg);
+  }
+  /* On a phone the groups are one row to swipe, not a screen of pills. */
+  @media (max-width: 50rem) {
+    .sb-jump {
+      flex-wrap: nowrap;
+      margin-inline: calc(-1 * var(--sl-content-pad-x, 1rem));
+      padding-inline: var(--sl-content-pad-x, 1rem);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+  }
+  .sb-jump a {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--sb-border);
+    border-radius: 999px;
+    font-size: var(--sb-text-meta);
+    color: var(--sb-muted);
+    text-decoration: none;
+  }
+  .sb-jump a:hover {
+    border-color: var(--sb-overlay-border);
+    color: var(--sb-text);
+  }
+  .sb-jump a[aria-current] {
+    border-color: color-mix(in srgb, var(--sb-accent-ink) 55%, transparent);
+    background: color-mix(in srgb, var(--sb-accent) 14%, var(--sb-bg));
+    color: var(--sb-text);
+  }
+  .sb-feature-group h2 {
+    scroll-margin-top: calc(var(--sl-nav-height, 3.5rem) + 4rem);
+  }
+  .sb-feature-group {
+    margin-top: 2.5rem;
+  }
+</style>

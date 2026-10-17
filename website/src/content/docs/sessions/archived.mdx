@@ -8,6 +8,7 @@ import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 Sessions you haven't touched for a while move to **Archived**, out of the way, so the sidebar shows what matters now. Nothing is deleted: an archived session comes back as soon as there is something new, and you can open, continue or unarchive it at any time.
 
@@ -76,3 +77,7 @@ Claude Code also deletes old transcripts by itself, after 30 days unless you cha
 ## Settings
 
 [Settings › Sessions](/settings/sessions/) sets when sessions are archived and deleted. [Settings, Backup](/settings/#backup) can include your archived sessions in an export when you tick them.
+
+## Related
+
+<Related pages={['settings/sessions', 'sessions/pinned', 'sessions/catch-up', 'settings/backup']} />

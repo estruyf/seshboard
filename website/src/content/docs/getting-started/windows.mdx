@@ -7,6 +7,7 @@ sidebar:
 
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
+import Related from '../../../components/Related.astro';
 import { Aside } from '@astrojs/starlight/components';
 
 Switchboard runs on Windows 10 and 11, on x64 and Arm64 PCs, with the same features as on a Mac. This page lists what you notice that is different on Windows, in one place, and links the page that covers each part.
@@ -102,3 +103,7 @@ There are no settings only for Windows. There is no setting to pick another shel
 <Aside type="note">
 Something that works on a Mac but not on your PC? Report it on [GitHub](https://github.com/estruyf/switchboard/issues) with the version from [Settings → About](/settings/#about).
 </Aside>
+
+## Related
+
+<Related pages={['getting-started/install', 'troubleshooting', 'settings/backup', 'links']} />

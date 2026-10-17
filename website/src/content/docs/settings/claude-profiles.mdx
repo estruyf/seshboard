@@ -8,8 +8,9 @@ import OnlyOn from '../../../components/OnlyOn.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-A Claude profile is one Claude Code config folder with its own login, settings, plugins and sessions. Add a profile for each account you use, and Switchboard lists all their sessions together, shows which account each one runs on, and keeps their usage apart.
+If you use more than one Claude account, such as a personal plan and a work one, profiles let you use them side by side in one app. A Claude profile is one Claude Code config folder with its own login, settings, plugins and sessions. Add a profile for each account you use, and Switchboard lists all their sessions together, shows which account each one runs on, and keeps their usage apart.
 
 <Screenshot name="settings-profiles" alt="Settings on Claude profiles: a Personal profile in yellow and a Work profile in blue, each with its config folder, the account it is signed in with and the Default choice, then Add profile and How to set up another profile" eager />
 
@@ -124,3 +125,7 @@ A profile whose folder is gone says **folder not found**.
 ## Settings
 
 Profiles and their defaults for new sessions are managed in [Settings → Claude profiles](/settings/#claude-profiles). The link between a project and a profile is part of the project, in its [Settings tab](/projects/settings/).
+
+## Related
+
+<Related pages={['usage', 'projects/settings', 'new-session/models-and-options', 'memory/personal-memory']} />

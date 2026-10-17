@@ -5,6 +5,7 @@ description: Link memories to each other with [[name]], and search memory next t
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
@@ -63,3 +64,7 @@ Search keeps its own index of your memory files, read again when a file changes.
 ## Settings
 
 Links and search have no settings.
+
+## Related
+
+<Related pages={['sessions/search', 'memory/adding-memory', 'memory/health', 'command-palette']} />
