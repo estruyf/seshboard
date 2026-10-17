@@ -175,13 +175,27 @@ To close the drawer, tap next to it, swipe it to the left, or use the back gestu
 
 ## Your computer's menu
 
-<Screenshot name="remote-phone-computer-menu" width={390} alt="The computer's name opened as a menu: Studio Mac, Connected for under a minute · encrypted, then Disconnect, and Forget this computer… in red." />
+<Screenshot name="remote-phone-computer-menu" width={390} alt="The computer's name opened as a menu: Studio Mac, Connected for under a minute · encrypted, then Disconnect, Pair another computer…, and Forget this computer… in red." />
 
 The line under your computer's name has a green dot and **Connected** while your phone is connected. It turns orange with **Reconnecting…** while your phone tries again, red with **Offline** when it stopped trying, and grey with **Disconnected** after you disconnect. In the drawer, and in a wide window, the chip with your computer's name shows the same dot. Tap the name, or the chip, for your computer's menu:
 
 - Its name and how it's connected, such as **Connected for 2h · encrypted**.
 - **Disconnect** closes the connection and keeps the pairing. The app says **Disconnected from** your computer, with **Connect**, and shows your last list greyed out. It stays disconnected until you tap **Connect**, also after a reload. When you open the app again later, it connects by itself.
-- **Forget this computer…** asks first, then removes the pairing from this phone. To use Remote again, pair the phone again.
+- Your other computers, if you paired more than one, each with how many sessions need you there, or **Offline** or **Disconnected**. Tap one to switch to it.
+- **Pair another computer…** pairs this phone with one more computer. See [More than one computer](#more-than-one-computer).
+- **Forget this computer…** asks first, then removes the pairing from this phone. Your other computers stay paired, and the app shows one of them. To use Remote with this computer again, pair the phone again.
+
+## More than one computer
+
+Your phone can be paired with several computers, such as a laptop and a desktop. Each one runs Switchboard with Remote on, and you pair the phone with each of them.
+
+1. In the computer's menu (tap its name at the top), tap **Pair another computer…**.
+2. On the other computer, open Settings → Remote, turn on **Allow access from my phone** and click **Pair a device**.
+3. Scan its QR code with your phone's camera, or click **Copy link** under the code and paste the link on your phone. On an iPhone with Switchboard Remote on the Home Screen, tap **Copy link** on the page that the camera opens, and paste it in the app.
+
+The app shows one computer at a time, but stays connected to all of them. When sessions on another computer need you, a row above your sessions says so, such as **mystic · 2 need you**. Tap it to switch to that computer. You can also switch from the computer's menu, or with **Switch to** in the search (<Kbd keys="mod+k" />) in a wide window.
+
+The count on the drawer button and in the browser tab adds up what needs you on every computer. The app opens on the computer you looked at last. Each computer keeps its own pairing: **Disconnect** and **Forget this computer…** only affect the computer on screen.
 
 ## A session
 
@@ -265,7 +279,7 @@ Microsoft Edge keeps <Kbd keys="mod+shift+u" /> for Read aloud: use <Kbd keys="u
 
 ### Search and jump
 
-<Kbd keys="mod+k" />, or **Search or jump to…** at the top of the list, opens the search. Type a few letters of a session's title, its project or its branch. Sessions that need you come first. Under them, **New session in** a project that matches, and actions: **Next that needs you**, **New session**, **Go to Home**, **Turn on notifications**, **Mark all as read** and **Forget this computer**. Use the arrow keys and <Kbd keys="enter" /> to pick one.
+<Kbd keys="mod+k" />, or **Search or jump to…** at the top of the list, opens the search. Type a few letters of a session's title, its project or its branch. Sessions that need you come first. Under them, **New session in** a project that matches, and actions: **Next that needs you**, **New session**, **Go to Home**, **Turn on notifications**, **Mark all as read**, **Switch to** each of your other computers, **Pair another computer** and **Forget this computer**. Use the arrow keys and <Kbd keys="enter" /> to pick one.
 
 ### A session and its Changes
 
@@ -286,6 +300,8 @@ Notifications only work when Switchboard Remote is on your Home Screen. In Safar
 </Aside>
 
 A notification goes from your computer to your browser's push service (Apple's, Google's, Mozilla's or Microsoft's), and from there to your phone. It is encrypted for your phone, so the push service can't read it. Your computer needs to reach those services over HTTPS: behind a strict proxy, notifications may not arrive.
+
+With more than one computer, every computer sends you notifications, and each one starts with the computer's name, such as *mystic · tideline · Allow Bash: npm publish*. Only the computer on screen holds them back while the app is open in front of you. Tap a notification to open its session on the right computer. A computer with a version of Switchboard from before this one can't send notifications next to other computers: **Notifications** names it, and updating Switchboard there fixes it.
 
 Tap a notification to open its session. In Chrome, Edge and Firefox on a computer, a notification about a command or an edit also has **Deny** and **Allow**. They open Switchboard Remote, which answers once it's connected, and says **Already answered** if you, or someone else, answered first.
 

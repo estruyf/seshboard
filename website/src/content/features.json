@@ -1452,6 +1452,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-multiple-computers",
+      "name": "Remote: pair with more than one computer, switch between them, and get notifications from all of them",
+      "page": "remote-access"
+    },
+    {
       "id": "project-tab:actions",
       "name": "Actions tab",
       "page": "projects/actions"
