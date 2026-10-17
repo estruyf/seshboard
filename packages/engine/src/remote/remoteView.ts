@@ -60,6 +60,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     branch: s.branch,
     status: s.status,
     updatedAt: s.updatedAt,
+    workingSince: live.get(s.id)?.updatedAt ?? live.get(s.id)?.startedAt ?? null,
     unread: flags.get(s.id)?.unread ?? false,
     pinned: flags.get(s.id)?.pinned ?? false,
     model: running.get(s.id)?.model ?? null,

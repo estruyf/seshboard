@@ -29,6 +29,12 @@ describe('groupSessions', () => {
     ]);
   });
 
+  it('orders Working by when you set each session going, not by its last write', () => {
+    const working = (id: string, workingSince: number | null, updatedAt: number) => ({ ...session(id, 'working', updatedAt), workingSince });
+    const groups = groupSessions([working('first', NOW - 10 * 60_000, NOW), working('second', NOW - 5 * 60_000, NOW - 60_000), working('older-app', null, NOW - HOUR)], NOW);
+    expect(groups[0]!.sessions.map((s) => s.id)).toEqual(['second', 'first', 'older-app']);
+  });
+
   it('leaves out empty sections', () => {
     expect(groupSessions([session('a', 'idle', NOW)], NOW).map((g) => g.group)).toEqual(['today']);
     expect(groupSessions([], NOW)).toEqual([]);
