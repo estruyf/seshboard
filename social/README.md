@@ -29,3 +29,4 @@ It needs Google Chrome (or set `CHROME` to another Chromium binary). The `social
 | [release-0.0.18](release-0.0.18/posts.md) | Release 0.0.18: Remote on your phone, Catch-up, Ask, Agents panel |
 | [try-switchboard](try-switchboard/posts.md) | Switchboard in general, to get people to try it (real screenshots, any time) |
 | [release-0.0.21](release-0.0.21/posts.md) | Release 0.0.21: Run and send, Commands panel, Claude Code mods |
+| [release-0.0.23](release-0.0.23/posts.md) | Release 0.0.23: saved prompts and token costs at API prices (not released yet) |
