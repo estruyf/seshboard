@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } fr
 import { ACTION_ICONS, joinPath, type ActionIcon, type ActionSuggestion, type ListedAction } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { showInChanges } from '../../state/memoryStore.ts';
+import { showInChanges } from '../../state/showInChanges.ts';
 import { toast } from '../../state/toastStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
