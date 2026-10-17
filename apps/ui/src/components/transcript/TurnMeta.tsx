@@ -28,7 +28,8 @@ const Sep = () => (
 /**
  * A finished turn's line, after the actions under its last reply: when it ended, how long it took and its tokens, as
  * the setting says ("14:32 · 2m 14s · 18.4k tokens"). Faint and on one line; a narrow pane drops the tokens, then the
- * duration, and the time's tooltip still has everything.
+ * duration, and the time's tooltip still has everything. In the session view it shows with the actions, on hover or
+ * focus (`REVEAL_IN_REPLY_ROW`); its label stays in the page for screen readers either way.
  */
 export function TurnMetaLine({ itemKey, className = '' }: { itemKey: string; className?: string }) {
   const value = useContext(TurnMetaContext);

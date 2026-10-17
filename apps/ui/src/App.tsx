@@ -16,6 +16,8 @@ import { CommandPalette } from './components/palette/CommandPalette.tsx';
 import { PaletteDialogs } from './components/palette/PaletteDialogs.tsx';
 import { ClaudeInstallDialog } from './components/updates/ClaudeInstallDialog.tsx';
 import { SearchDialog } from './components/search/SearchDialog.tsx';
+import { CloneProjectDialog } from './components/clone/CloneProjectDialog.tsx';
+import { useClone, useCloneSync } from './state/cloneStore.ts';
 import { AddProjectDialog } from './components/projects/AddProjectDialog.tsx';
 import { BackupDialogs } from './components/backup/BackupDialogs.tsx';
 import { ProjectManagerView } from './components/projects/ProjectManagerView.tsx';
@@ -35,6 +37,7 @@ import { useLaterSync } from './state/laterStore.ts';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
+import { useSavedPromptsSync } from './components/savedPrompts/savedPromptsStore.ts';
 import { useLimitsSync } from './state/limitsStore.ts';
 import { useAskSync } from './state/askStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
@@ -60,7 +63,10 @@ import { useHostsSync } from './state/useHostsSync.ts';
 import { useComputersSync } from './state/useComputersSync.ts';
 import { useRemoteSync } from './state/useRemoteSync.ts';
 import { RemoteView } from './components/computers/RemoteView.tsx';
+import { localSessionId } from './state/remoteSelection.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
+import { popOut } from './state/popoutsStore.ts';
+import { usePopoutsSync } from './state/usePopoutsSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 
@@ -69,10 +75,13 @@ function terminalView(view: MainView, sessionId: string | null): TerminalView {
   return view === 'new' ? 'new-session' : view === 'session' ? (sessionId ? 'session' : 'home') : view;
 }
 
-/** The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere (Settings too). */
+/**
+ * The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere (Settings too). None
+ * for a session on another computer: its terminal is there.
+ */
 function currentTerminalOwner(): string | null {
   const { view, selectedId } = useSessions.getState();
-  return terminalOwner(terminalView(view, selectedId), selectedId);
+  return terminalOwner(terminalView(view, selectedId), localSessionId(selectedId));
 }
 
 /** A dialog, menu or popover is open: it keeps Tab for itself, so ⌃⇥ doesn't switch sessions behind it. */
@@ -181,6 +190,11 @@ function useShortcuts() {
         event.preventDefault();
         startIn(questionsDir);
         useSessions.getState().openNewSession();
+      } else if (matches(event, 'session.new-window')) {
+        const { view, selectedId } = useSessions.getState();
+        if (view !== 'session' || !selectedId) return;
+        event.preventDefault();
+        popOut(selectedId);
       } else if (matches(event, 'editor.open')) {
         const { view, selectedId, sessions, live } = useSessions.getState();
         if (view !== 'session' || !selectedId) return;
@@ -202,11 +216,19 @@ function useWindowFocus() {
   const view = useSessions((s) => s.view);
   const selectedId = useSessions((s) => s.selectedId);
   useEffect(() => {
-    window.switchboard?.reportFocus(view === 'session' ? selectedId : null);
+    window.switchboard?.reportFocus(view === 'session' ? localSessionId(selectedId) : null);
   }, [view, selectedId]);
   useEffect(() => window.switchboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
   // Switchboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.
   useEffect(() => window.switchboard?.onOpenSettings((section) => useSessions.getState().openSettings(section ?? undefined)), []);
+  // An app-wide shortcut pressed in a pop-out: main brought this window to the front, and the keys run here.
+  useEffect(
+    () =>
+      window.switchboard?.onKeysForwarded((keys) => {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { ...keys, bubbles: true, cancelable: true }));
+      }),
+    [],
+  );
   // Help › Keyboard Shortcuts (⌘/) in the menu bar.
   useEffect(() => window.switchboard?.onToggleShortcuts(() => !otherModalOpen() && useOverlay.getState().toggleShortcuts()), []);
 }
@@ -217,12 +239,14 @@ export function App() {
   useComputersSync();
   useRemoteSync();
   useProjectsSync();
+  useCloneSync();
   useProfilesSync();
   useTerminalsSync();
   useUpdatesSync();
   useClaudeUpdateSync();
   useSidebarSync();
   useDraftsSync();
+  usePopoutsSync();
   useUsageSync();
   usePreferencesSync();
   useThemesSync();
@@ -231,6 +255,7 @@ export function App() {
   useUpNextSync();
   useModsSync();
   useLimitsSync();
+  useSavedPromptsSync();
   useAskSync();
   useQueueToasts();
   useSidebarSectionsSync();
@@ -251,6 +276,7 @@ export function App() {
   const shownView = view === 'settings' ? 'settings' : terminalView(behind, selectedId);
   const overlay = useOverlay((s) => s.open);
   const adding = useProjects((s) => s.adding);
+  const cloning = useClone((s) => s.dialog);
 
   return (
     <div className="flex h-full">
@@ -289,6 +315,7 @@ export function App() {
       <UnsentList />
       <ArchiveDraftDialog />
       {adding && <AddProjectDialog onClose={() => useProjects.getState().showAdd(false)} />}
+      {cloning && <CloneProjectDialog />}
       <BackupDialogs />
       <ThemeImportDialogs />
       <FocusGateDialog />

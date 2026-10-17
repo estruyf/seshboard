@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  changedDrafts,
   DRAFT_SETTLE_MS,
   draftList,
   draftPreview,
@@ -18,6 +19,7 @@ import {
   type Draft,
   type FirstPrompt,
   type SessionsSeen,
+  draftMessage,
 } from './drafts.ts';
 import type { HostState } from '@switchboard/protocol/client';
 
@@ -211,5 +213,45 @@ describe('first prompts', () => {
     // No first prompts saved: nothing to read; one without its choices can't go back to New session.
     expect(serializeDrafts({})).toEqual({ version: 1, drafts: {} });
     expect(parseFirstPrompts({ version: 1, drafts: {}, firstPrompts: { 's-1': { text: 'x', updatedAt: 1, images: 0, startIn: '/work/app' } } })).toEqual({});
+  });
+});
+
+describe('changedDrafts', () => {
+  it('lists the drafts that changed, came or went', () => {
+    const kept = draft('same');
+    const before = { a: kept, b: draft('old'), c: draft('gone') };
+    const edited = draft('new');
+    const added = draft('added');
+    expect(changedDrafts(before, { a: kept, b: edited, d: added })).toEqual({ b: edited, c: null, d: added });
+  });
+
+  it('is empty when nothing changed', () => {
+    const kept = draft('same');
+    expect(changedDrafts({ a: kept }, { a: kept })).toEqual({});
+  });
+});
+
+describe('a saved prompt in a draft', () => {
+  const fill = { prompt: { id: 'fix-pr', name: 'Fix PR', scope: { kind: 'global' as const } }, text: 'Fix {{pr:pr}} on {{branch:branch}}', values: { pr: '#142' }, displays: {} };
+
+  it('counts as something unsent, even with nothing typed under it', () => {
+    const draft = nextDraft(undefined, { text: '', attachments: [], fill }, 1);
+    expect(draft?.fill).toBe(fill);
+    // Only the chips changed: the prompt stays; the box without one says null.
+    expect(nextDraft(draft!, { text: '', attachments: [], context: [] }, 2)?.fill).toBe(fill);
+    expect(nextDraft(draft!, { text: '', attachments: [], fill: null }, 3)).toBeNull();
+  });
+
+  it('is kept across a restart, with its values', () => {
+    const draft = { ...nextDraft(undefined, { text: 'Keep the tests.', attachments: [], fill }, 1)!, counted: true };
+    const back = parseDrafts(JSON.parse(JSON.stringify(serializeDrafts({ s1: draft }))));
+    expect(back.s1?.fill).toEqual(fill);
+    expect(back.s1?.text).toBe('Keep the tests.');
+  });
+
+  it('shows as filled so far in the lists, and sends the filled prompt then the text', () => {
+    const draft = nextDraft(undefined, { text: 'Keep the tests.', attachments: [], fill }, 1)!;
+    expect(draftList({ s1: { ...draft, counted: true } })[0]?.preview).toBe('Fix #142 on [Branch]');
+    expect(draftMessage(draft)).toBe('Fix #142 on\n\nKeep the tests.');
   });
 });

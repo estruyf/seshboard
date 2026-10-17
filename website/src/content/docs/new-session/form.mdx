@@ -30,7 +30,7 @@ The view opens with the heading *Where do we start?* and your first four project
 - **Filter**, at the right of the *Project* heading, opens all projects with a filter field. With more than four projects, the fifth tile, **+N more**, does the same. Type a few letters of a name; the field shows how many match, such as "2 of 9". Typing a letter while a tile has focus opens the list filtered by it. <Kbd keys="enter" /> picks the highlighted project, the arrow keys move.
 - **Quick question**, under the tiles, starts without a project. See [Quick questions](/new-session/quick-questions/).
 
-The order of the tiles follows *Project order* in [Settings → General](/settings/#general): *Recent* (the ones you used last first) or *Your order*. New session remembers the last project you picked and opens on it next time. A project you filtered the sidebar to is picked first.
+The order of the tiles follows *Project order* in [Settings → Projects](/settings/#projects): *Recent* (the ones you used last first) or *Your order*. New session remembers the last project you picked and opens on it next time. A project you filtered the sidebar to is picked first.
 
 ### Add a folder
 
@@ -42,6 +42,10 @@ Adding a folder takes one step. The folder becomes a project and is picked right
 - Drag a folder from <Os mac="Finder" windows="File Explorer" /> onto the projects and drop it. Files, or several items at once, are not added.
 
 Without any projects yet, one wide tile, **Add project…**, opens the same dialog. You can also start typing a path there.
+
+### Clone from GitHub
+
+With [Clone from GitHub](/projects/clone-from-github/) on in Settings › Projects, **Clone from GitHub…** sits next to **Add project…**. It replaces the tiles with a form: paste a repository's URL, check the folder it goes in, and press <Kbd keys="enter" /> to clone. A GitHub URL pasted in the filter field offers **Clone owner/name** too. Type the prompt while it clones: Start waits for the clone, then starts the session in it. **Pick a project instead** goes back to the tiles.
 
 When you pick a folder that isn't one of your projects yet, a checkbox under the message box, **Add &lt;folder&gt; to your projects**, adds it when the session starts. Leave it ticked to find the folder in New session next time.
 
@@ -123,6 +127,7 @@ With [another computer paired](/remote-access/#other-computers), **Run on** sits
 - The chips start from the project's defaults on that computer. With more than one Claude profile there, the first chip is the profile: the project's own, else that computer's default, marked "(project)" or "(default)" in the menu. Pick another for this session only, and the other chips show that profile's defaults where the project sets none. With [Auto model](/new-session/auto-model/) on there, the model list starts with **Auto**. The effort chip only shows for a model that takes an effort.
 - **Start on mystic** (<Kbd shortcut="new-session.start" />) starts the session there and opens it here.
 - Attach images and files with the paperclip button, or paste or drop them on the message box, as for [a session there](/remote-access/#send-images-and-files). They go to the other computer with the prompt. Quick question, **Add to queue** and the focus limit are for this computer only.
+- With [Clone from GitHub](/projects/clone-from-github/#on-another-computer) on here, **Clone from GitHub…** clones on that computer, into its own **Clone into** folder, and starts the session there.
 
 An offline computer stays in the switch, greyed out, with when it was last seen. **Run on** remembers your last choice for the **+** button in the sidebar. <Kbd shortcut="session.new" /> always starts on this computer. **New session on mystic…** in the command palette opens New session with that computer picked.
 
@@ -156,7 +161,8 @@ A `switchboard://new-session` link opens New session with a project and a prompt
 
 ## Settings
 
-- [Settings → General](/settings/#general): *Project order* sets how the tiles are ordered, and Switchboard can open on New session.
+- [Settings → General](/settings/#general): Switchboard can open on New session.
+- [Settings → Projects](/settings/#projects): *Project order* sets how the tiles are ordered, and [Clone from GitHub](/projects/clone-from-github/) turns on cloning a repository from New session.
 - [Settings → Claude profiles](/settings/#claude-profiles): the profiles you can pick from.
 - [Settings → Focus](/settings/#focus): the focus limit.
 - A project's [Settings tab](/projects/settings/): its defaults and profile.

@@ -15,8 +15,8 @@ export type LineRange = z.infer<typeof LineRange>;
  * - `file`: a file or folder by reference, optionally a range of lines. Claude reads it itself, so a large
  *   selection stays small.
  * - `text`: text that isn't a file on disk, or not as it is on disk: a selection with unsaved changes,
- *   problems, terminal output, or a long paste into the message box (`paste`). `path` and `range` say where it came
- *   from, when it came from a file.
+ *   problems, terminal output, a long paste into the message box (`paste`), or a failed check's log (`checks`).
+ *   `path` and `range` say where it came from, when it came from a file.
  */
 export const ContextItem = z.discriminatedUnion('kind', [
   z.object({
@@ -27,7 +27,7 @@ export const ContextItem = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('text'),
-    source: z.enum(['selection', 'problems', 'terminal', 'output', 'paste']),
+    source: z.enum(['selection', 'problems', 'terminal', 'output', 'paste', 'checks']),
     /** What the chip says, such as "Problems in auth.ts". */
     label: z.string().trim().min(1).max(200),
     text: z.string().max(MAX_PROMPT_LENGTH),

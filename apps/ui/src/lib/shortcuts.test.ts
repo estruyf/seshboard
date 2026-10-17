@@ -234,6 +234,7 @@ describe('the shortcut registry', () => {
       'terminal.stop-action': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: true } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],
       'git.pull': [{ ...SESSION, behind: true }, SESSION],
       'pr.create': [SESSION, HOME],
+      'session.new-window': [SESSION, HOME],
       'editor.open': [SESSION, at({ view: 'new-session' })],
       'claude.stop': [{ ...SESSION, running: true }, SESSION],
       'composer.send-now': [{ ...SESSION, running: true }, SESSION],
@@ -246,6 +247,8 @@ describe('the shortcut registry', () => {
       'composer.newline': [SESSION, at({ view: 'settings' })],
       'composer.commands': [at({ view: 'new-session' }), at({ view: 'projects' })],
       'composer.mention': [SESSION, HOME],
+      'composer.next-blank': [SESSION, HOME],
+      'composer.previous-blank': [at({ view: 'new-session' }), HOME],
       'composer.history': [SESSION, at({ view: 'new-session' })],
       'composer.add-context': [at({ view: 'new-session' }), HOME],
       'permission.allow': [{ ...SESSION, pending: 'permission' }, SESSION],
@@ -286,6 +289,7 @@ const INTENDED_OVERLAPS: Record<string, string> = {
   escape: 'Esc closes or cancels what is nearest: a menu or dialog first, then a waiting card, then the message box stops Claude.',
   'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session). Create pull request is a dialog: while it is open, ⌘↩ is its own.',
   'cmd+k': 'In the terminal ⌘K clears it, as in Terminal; the palette is ⌘⇧P there.',
+  'shift+tab': 'In the text of the message box ⇧⇥ switches the permission mode; on the blanks of a saved prompt (above that text) it goes to the previous blank.',
 };
 
 describe('shortcut collisions', () => {

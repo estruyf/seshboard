@@ -17,7 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sharesOf, weightOf, type AskThread, type CatchUp, type GitChanges, type PermissionRequest, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
+import { costOf, sharesOf, weightOf, type AskThread, type CatchUp, type GitChanges, type PermissionRequest, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub } from '../packages/engine/src/remote/remoteHub.ts';
@@ -116,6 +116,7 @@ function demoTokens(params: { period: UsagePeriod; groupBy: UsageGroup; model: s
       turns: g.turns,
       fastTurns: 0,
       tokens: g.tokens,
+      cost: g.sessions.reduce((sum, s) => sum + (costOf(TOKENS[s.id]!.tokens, TOKENS[s.id]!.model) ?? 0), 0),
       largestContext: Math.round(largest),
       share: shares.get(key)!.share,
       measured: false,
@@ -127,10 +128,10 @@ function demoTokens(params: { period: UsagePeriod; groupBy: UsageGroup; model: s
     from,
     to: now,
     bucket: hours > 24 ? 'day' : 'hour',
-    totals: { tokens: totals, sessions: used.length, turns: used.reduce((n, s) => n + TOKENS[s.id]!.turns, 0), fastTurns: 0, largestContext: Math.max(0, ...rows.map((r) => r.largestContext)) },
+    totals: { tokens: totals, cost: used.reduce((sum, s) => sum + (costOf(TOKENS[s.id]!.tokens, TOKENS[s.id]!.model) ?? 0), 0), sessions: used.length, turns: used.reduce((n, s) => n + TOKENS[s.id]!.turns, 0), fastTurns: 0, largestContext: Math.max(0, ...rows.map((r) => r.largestContext)) },
     rows,
     // The app adds each of these to its own hour or day.
-    buckets: used.map((s) => ({ start: Math.floor((now - s.minutesAgo * MINUTE) / HOUR) * HOUR, tokens: TOKENS[s.id]!.tokens, turns: TOKENS[s.id]!.turns })),
+    buckets: used.map((s) => ({ start: Math.floor((now - s.minutesAgo * MINUTE) / HOUR) * HOUR, tokens: TOKENS[s.id]!.tokens, turns: TOKENS[s.id]!.turns, cost: costOf(TOKENS[s.id]!.tokens, TOKENS[s.id]!.model) ?? 0 })),
     scan: null,
   };
 }
@@ -491,6 +492,17 @@ const hub: RemoteHub = new RemoteHub({
   usage: async (profileId) => ({ usage: USAGE[profileId as keyof typeof USAGE] ?? null, error: null }),
   // A demo answers for whichever account asks, so the app's Usage view has another computer to count.
   tokens: (_account, params) => demoTokens(params),
+  // Each demo session's tokens at list prices; a window counts the sessions that last worked in it.
+  sessionCost: (sessionId) => (TOKENS[sessionId] ? { usd: costOf(TOKENS[sessionId]!.tokens, TOKENS[sessionId]!.model) ?? 0, partial: false } : null),
+  windowCosts: (_account, windows) =>
+    windows.map((w) => {
+      const family = w.scope?.split(/ /)[0]?.toLowerCase() ?? null;
+      const usd = SESSIONS.filter((s) => TOKENS[s.id] && now - s.minutesAgo * MINUTE >= w.from && (!family || TOKENS[s.id]!.model.includes(family))).reduce(
+        (sum, s) => sum + (costOf(TOKENS[s.id]!.tokens, TOKENS[s.id]!.model) ?? 0),
+        0,
+      );
+      return { ...w, usd, partial: false };
+    }),
   catchUp: (sessionId) => (sessionId === CATCH_UP.sessionId && !committed ? CATCH_UP : null),
   changes: async () => (committed ? { ...CHANGES, files: [] } : CHANGES),
   diff: async () => ({ diff: DIFF, truncated: false }),

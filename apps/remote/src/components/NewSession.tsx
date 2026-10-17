@@ -34,7 +34,7 @@ const DRAFT = 'switchboard-remote:new-draft';
  * view takes what the keyboard leaves (as the session's message box does, `lib/viewport.ts`), so Start session sits
  * right above it, and Hide keyboard brings the tiles and the chips back.
  */
-export function NewSession({ client, features, sessions, banner, onBack, lead = null, onStarted, initialProject = null }: { client: Client; /** What the computer takes beyond what every version does (its hello). */ features: readonly string[]; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; /** In Back's place on a wide screen whose sidebar folded away: the drawer button. */ lead?: ReactNode; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
+export function NewSession({ client, computer, features, sessions, banner, onBack, lead = null, onStarted, initialProject = null }: { client: Client; /** The computer's id on this phone: New session remembers its last project per computer. */ computer: string; /** What the computer takes beyond what every version does (its hello). */ features: readonly string[]; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; /** In Back's place on a wide screen whose sidebar folded away: the drawer button. */ lead?: ReactNode; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
   const [projectId, setProjectId] = useState<string | null>(initialProject);
   const [filter, setFilter] = useState('');
@@ -68,7 +68,7 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
     void client.call('projects.list', {}).then(
       ({ projects }) => {
         setProjects(projects);
-        setProjectId((current) => current ?? suggestedProject(projects, latest.current, lastProject()));
+        setProjectId((current) => current ?? suggestedProject(projects, latest.current, lastProject(computer)));
       },
       (e: Error) => setError(e.message),
     );
@@ -128,7 +128,7 @@ export function NewSession({ client, features, sessions, banner, onBack, lead = 
     setError(null);
     try {
       const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
-      rememberProject(projectId!);
+      rememberProject(computer, projectId!);
       sessionStorage.removeItem(DRAFT);
       onStarted(sessionId);
     } catch (e) {

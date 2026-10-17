@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Bell, X } from 'lucide-react';
 import type { PushSupport } from '../lib/pushSupport.ts';
-import { currentSupport, loadPrefs, markOffered, turnOn, update } from '../lib/push.ts';
-import type { Client } from './Connected.tsx';
+import { currentSupport, loadPrefs, markOffered, outdated, turnOn, update, type PushComputers } from '../lib/push.ts';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button } from './ui.tsx';
@@ -19,7 +18,7 @@ const HOME_SCREEN_STEPS = 'Tap Share, then Add to Home Screen. Open Switchboard 
  * The one-time offer at the top of the list, after pairing. On an iPhone outside the Home Screen it explains how to
  * add it first, because iOS only allows notifications there.
  */
-export function PushOffer({ client, onDone }: { client: Client; onDone: () => void }) {
+export function PushOffer({ push, onDone }: { push: PushComputers; onDone: () => void }) {
   const support = currentSupport();
   const [busy, setBusy] = useState(false);
   const close = () => {
@@ -27,10 +26,10 @@ export function PushOffer({ client, onDone }: { client: Client; onDone: () => vo
     onDone();
   };
   const on = async () => {
-    if (!client) return;
+    if (!push.targets.length) return;
     setBusy(true);
     try {
-      await turnOn(client);
+      await turnOn(push);
       toast('Notifications are on');
       close();
     } catch (error) {
@@ -64,7 +63,7 @@ export function PushOffer({ client, onDone }: { client: Client; onDone: () => vo
           <Button onClick={close} className="flex-1">
             Not now
           </Button>
-          <Button variant="primary" onClick={() => void on()} disabled={!client || busy} className="flex-1" data-remote-push-on>
+          <Button variant="primary" onClick={() => void on()} disabled={!push.targets.length || busy} className="flex-1" data-remote-push-on>
             Turn on
           </Button>
         </div>
@@ -77,17 +76,17 @@ export function PushOffer({ client, onDone }: { client: Client; onDone: () => vo
  * The offer on a wide screen: a one-time strip above the main view rather than a card in the list. The words say
  * "tab", since a computer's browser keeps the page in one.
  */
-export function PushStrip({ client, onDone }: { client: Client; onDone: () => void }) {
+export function PushStrip({ push, onDone }: { push: PushComputers; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const close = () => {
     markOffered();
     onDone();
   };
   const on = async () => {
-    if (!client) return;
+    if (!push.targets.length) return;
     setBusy(true);
     try {
-      await turnOn(client);
+      await turnOn(push);
       toast('Notifications are on');
       close();
     } catch (error) {
@@ -102,7 +101,7 @@ export function PushStrip({ client, onDone }: { client: Client; onDone: () => vo
       <Button size="md" onClick={close}>
         Not now
       </Button>
-      <Button variant="primary" size="md" onClick={() => void on()} disabled={!client || busy} data-remote-push-on>
+      <Button variant="primary" size="md" onClick={() => void on()} disabled={!push.targets.length || busy} data-remote-push-on>
         Turn on
       </Button>
     </section>
@@ -116,17 +115,19 @@ export function shouldOffer(alreadyOffered: boolean): boolean {
 }
 
 /** Notifications, from the `⋯` menu: Needs you and Finished, as on the computer. */
-export function NotificationsSheet({ client, onClose }: { client: Client; onClose: () => void }) {
+export function NotificationsSheet({ push, onClose }: { push: PushComputers; onClose: () => void }) {
+  const connected = push.targets.length > 0;
+  const older = outdated(push);
   const support = currentSupport();
   const [prefs, setPrefs] = useState(loadPrefs);
   const [busy, setBusy] = useState(false);
   const toggle = async (key: 'needsYou' | 'finished') => {
-    if (!client || busy) return;
+    if (!connected || busy) return;
     setBusy(true);
     // Off, a switch turns notifications on with just that moment; on, it changes that moment.
     const change = prefs.on ? { [key]: !prefs[key] } : { needsYou: key === 'needsYou', finished: key === 'finished' };
     try {
-      setPrefs(await update(client, change));
+      setPrefs(await update(push, change));
     } catch (error) {
       toast(error instanceof Error ? error.message : "That didn't reach your computer.", { tone: 'error' });
     } finally {
@@ -140,7 +141,7 @@ export function NotificationsSheet({ client, onClose }: { client: Client; onClos
         ? "Notifications are blocked for this page. Allow them in the browser's settings, then come back here."
         : support === 'unsupported'
           ? "This browser can't show notifications from Switchboard Remote."
-          : !client
+          : !connected
             ? 'Changing these needs the connection.'
             : null;
   return (
@@ -155,7 +156,7 @@ export function NotificationsSheet({ client, onClose }: { client: Client; onClos
               type="button"
               role="switch"
               aria-checked={checked}
-              disabled={support !== 'ready' || !client || busy}
+              disabled={support !== 'ready' || !connected || busy}
               onClick={() => void toggle(moment.key)}
               className={`flex min-h-14 items-center gap-3 px-3 py-2.5 text-left disabled:opacity-60 ${i > 0 ? 'border-t border-border' : ''}`}
               data-remote-push-switch={moment.key}
@@ -173,7 +174,16 @@ export function NotificationsSheet({ client, onClose }: { client: Client; onClos
           );
         })}
       </div>
-      <p className="pt-3 text-meta text-faint">Your computer sends them through your browser's push service, encrypted for this device. Nothing comes while this page is open in front of you.</p>
+      {older.length > 0 && (
+        <p className="mt-3 rounded-lg bg-caution/10 px-3 py-2 text-ui text-text" data-remote-push-outdated>
+          {older.join(', ')} can't send notifications next to your other computers yet. Update Switchboard there to get them.
+        </p>
+      )}
+      <p className="pt-3 text-meta text-faint">
+        {push.paired > 1
+          ? "Each of your computers sends them through your browser's push service, encrypted for this device. Nothing comes from the computer on screen while this page is open in front of you."
+          : "Your computer sends them through your browser's push service, encrypted for this device. Nothing comes while this page is open in front of you."}
+      </p>
     </Sheet>
   );
 }

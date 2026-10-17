@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Info, Monitor, Zap } from 'lucide-react';
 import type { UsageLimit, UsagePeriod, UsageScan } from '@switchboard/protocol/client';
 import { basename } from '../../lib/format.ts';
+import { thisComputerName } from '../../lib/platform.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { remoteProjectKey } from '../../state/remoteRows.ts';
@@ -10,7 +11,9 @@ import { ComputerChip } from '../computers/ComputerChip.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { useUsageFor } from '../UsageBand.tsx';
-import { usageMessage, visibleLimits } from '../usageFormat.ts';
+import { usageMessage, visibleLimits, windowCostOf } from '../usageFormat.ts';
+import { useCostFormat } from './useCost.ts';
+import { useWindowCosts } from './useWindowCosts.ts';
 import { ChartCard, ChartTable, LegendItem, PercentLines } from './charts.tsx';
 import { ShareInfo } from './ShareInfo.tsx';
 import type { MergedRow, Uncounted } from './usageMerge.ts';
@@ -18,7 +21,7 @@ import { useBreakdown, useCountedBreakdown, usePlanHistory } from './useUsageDat
 import { computersLabel, foldRows, formatShare, historyTooShort, isLow, limitTitle, modelName, percentLeft, PERIOD_SHORT, recordedSince, resetsIn, seriesColor, seriesName, sinceLabel, visibleSeries } from './usageModel.ts';
 
 /** One plan window: what's left in large type, a bar whose used part is hatched (it comes back at the reset), and when. */
-function LimitCard({ limit, now }: { limit: UsageLimit; now: number }) {
+function LimitCard({ limit, now, cost, costWhere }: { limit: UsageLimit; now: number; /** The window's estimated cost ("≈$23.14"), when it is shown. */ cost: string | null; /** "on This PC and mystic": whose tokens it counts. */ costWhere: string }) {
   const { name, scope } = limitTitle(limit);
   const left = percentLeft(limit);
   const low = isLow(left);
@@ -50,6 +53,11 @@ function LimitCard({ limit, now }: { limit: UsageLimit; now: number }) {
           </span>
         )}
       </p>
+      {cost && (
+        <p className="text-meta text-muted" data-tooltip={`What this window's tokens ${costWhere} would cost at Anthropic's API prices. Your plan is not billed per token.`} data-usage-limit-cost>
+          <span className="font-semibold text-text tabular-nums">{cost}</span> at API prices
+        </p>
+      )}
     </article>
   );
 }
@@ -157,6 +165,9 @@ function WindowSessions({ profileId }: { profileId: string }) {
   const nameOf = useProjectName();
   const open = useOpenSession();
   const { shown, rest } = useMemo(() => foldRows(data?.rows ?? [], 5), [data]);
+  const cost = useCostFormat();
+  // Session, model, cost (while it shows) and share.
+  const cols = cost ? 'grid-cols-[minmax(0,1fr)_auto_auto_auto]' : 'grid-cols-[minmax(0,1fr)_auto_auto]';
   return (
     <section className="grid min-w-0 content-start rounded-xl border border-border bg-card" aria-label="What used this window" data-usage-window>
       <header className="flex flex-wrap items-baseline gap-x-2 px-4 pt-4 pb-3">
@@ -173,9 +184,10 @@ function WindowSessions({ profileId }: { profileId: string }) {
           <NotCounted uncounted={uncounted} noAccount={noAccount} inline />
         </div>
       )}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 border-b border-border px-4 pb-2 text-meta tracking-wide text-muted uppercase">
+      <div className={`grid ${cols} items-center gap-x-4 border-b border-border px-4 pb-2 text-meta tracking-wide text-muted uppercase`}>
         <span>Session</span>
         <span className="w-14">Model</span>
+        {cost && <span className="w-16 text-right">Cost (est.)</span>}
         <ShareInfo className="w-24 text-right uppercase hover:text-text" data-usage-share-header>
           Share (est.)
         </ShareInfo>
@@ -189,7 +201,7 @@ function WindowSessions({ profileId }: { profileId: string }) {
             type="button"
             disabled={!onOpen}
             onClick={onOpen ?? undefined}
-            className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 border-b border-border px-4 py-2 text-left text-ui enabled:hover:bg-border/45"
+            className={`grid ${cols} items-center gap-x-4 border-b border-border px-4 py-2 text-left text-ui enabled:hover:bg-border/45`}
             data-usage-row={row.sessionId ?? row.key}
           >
             <span className="flex min-w-0 items-center gap-2.5">
@@ -205,6 +217,7 @@ function WindowSessions({ profileId }: { profileId: string }) {
             <span className="w-14 text-muted">
               <ModelCell model={row.model} fastTurns={row.fastTurns} />
             </span>
+            {cost && <span className="w-16 text-right text-muted tabular-nums">{cost(row.cost)}</span>}
             <span className="w-24">
               <ShareBar share={row.share} compact />
             </span>
@@ -212,9 +225,11 @@ function WindowSessions({ profileId }: { profileId: string }) {
         );
       })}
       {rest && (
-        <p className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b border-border px-4 py-2 text-ui text-muted">
+        <p className={`grid ${cols} gap-x-4 border-b border-border px-4 py-2 text-ui text-muted`}>
           <span>{rest.count} more</span>
-          <span className="tabular-nums">{formatShare(rest.share)}</span>
+          <span className="w-14" />
+          {cost && <span className="w-16 text-right tabular-nums">{cost(rest.cost)}</span>}
+          <span className="w-24 text-right tabular-nums">{formatShare(rest.share)}</span>
         </p>
       )}
       <p className="flex gap-2 px-4 py-3 text-meta text-muted">
@@ -239,6 +254,11 @@ export function LimitsTab({ profileId, period }: { profileId: string; period: Us
     return () => clearInterval(timer);
   }, []);
   const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
+  const cost = useCostFormat();
+  const priced = useWindowCosts(profileId, cost !== null && limits.length > 0);
+  const windowCosts = priced.windows;
+  // Which computers the cards' costs count, once others are paired.
+  const costWhere = priced.counted.length > 0 ? `on ${[thisComputerName(), ...priced.counted.map((c) => c.name)].join(' and ')}` : 'on this computer';
   const series = useMemo(() => visibleSeries(period, history?.series ?? []), [period, history]);
   const range = useMemo(() => {
     const to = now;
@@ -262,7 +282,7 @@ export function LimitsTab({ profileId, period }: { profileId: string; period: Us
       ) : (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
           {limits.map((limit) => (
-            <LimitCard key={`${limit.kind}:${limit.scope ?? ''}`} limit={limit} now={now} />
+            <LimitCard key={`${limit.kind}:${limit.scope ?? ''}`} limit={limit} now={now} costWhere={costWhere} cost={cost && windowCostOf(limit, windowCosts) ? cost(windowCostOf(limit, windowCosts)!.usd) : null} />
           ))}
         </div>
       )}

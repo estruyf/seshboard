@@ -56,7 +56,7 @@ function ChartTooltip({ x, y, width, title, rows }: { x: number; y: number; widt
 export function ChartCard({ title, subtitle, legend, controls, table, children, className = '', ...rest }: { title: string; subtitle?: ReactNode; legend?: ReactNode; controls?: ReactNode; table: ReactNode; children: ReactNode; className?: string; [data: `data-${string}`]: unknown }) {
   const [asTable, setAsTable] = useState(false);
   return (
-    <section className={`grid min-w-0 content-start gap-3 rounded-xl border border-border bg-card p-4 ${className}`} aria-label={title} {...rest}>
+    <section className={`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3 rounded-xl border border-border bg-card p-4 ${className}`} aria-label={title} {...rest}>
       <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
         <h2 className="text-ui font-semibold text-text">{title}</h2>
         {subtitle && <p className="min-w-0 truncate text-meta text-muted">{subtitle}</p>}

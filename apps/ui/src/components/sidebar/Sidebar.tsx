@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2, TriangleAlert } from 'lucide-react';
+import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2, TriangleAlert } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { CatchUp } from '@switchboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -33,6 +33,7 @@ import type { MenuEntry } from '../Menu.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { RAIL_TONE, railShape } from './rail.ts';
 import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
+import { usePopouts } from '../../state/popoutsStore.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
@@ -310,6 +311,9 @@ export const SessionRow = memo(function SessionRow({
   const pin = data.pinned && <Pin size={11} className="shrink-0 text-faint" aria-hidden />;
   // An unsent message: a pen in the same corner, never in a status colour.
   const pen = draft !== null && <PencilLine size={11} className="shrink-0 text-faint" aria-hidden data-row-pen />;
+  // Open in a window of its own: a click brings that window to the front.
+  const ownWindow = usePopouts((s) => s.ids.has(data.id));
+  const windowMark = ownWindow && <AppWindow size={11} className="shrink-0 text-faint" aria-hidden data-row-own-window />;
   // Files changed outside the plan: worth a look before anything else is done with it.
   const warning = outside && (
     <span className="flex shrink-0 text-caution" data-tooltip="Files outside the plan" aria-label="Files outside the plan" role="img" data-row-outside>
@@ -343,7 +347,7 @@ export const SessionRow = memo(function SessionRow({
     'data-archived': archived || undefined,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, draft: draft !== null, updatedAt: data.updatedAt, now }), limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, updatedAt: data.updatedAt, now }), limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -401,6 +405,7 @@ export const SessionRow = memo(function SessionRow({
         {icon(16)}
         <span className={`min-w-0 flex-1 truncate text-body ${titleTone}`}>{data.title}</span>
         {pin}
+        {windowMark}
         {pen}
         {warning}
         {remote && <ComputerChip name={remote.computerName} offline={remote.offline} />}
@@ -418,6 +423,7 @@ export const SessionRow = memo(function SessionRow({
         {/* The pin sits with the age in the title's corner, as in the compact row. */}
         <span className="flex shrink-0 items-center gap-1">
           {pin}
+          {windowMark}
           {pen}
           {warning}
           {age}
@@ -774,7 +780,7 @@ export function Sidebar() {
   const rowClick = (event: MouseEvent, data: SessionRowData) => {
     if (data.remote) {
       setPicks(NO_PICKS);
-      return openRow(data.id);
+      return openRow(data.id, { beside: event.altKey });
     }
     if (modKey(event)) togglePicked(data.id);
     else if (event.shiftKey) setPicks((p) => rangePick(p, data.id, selectedId, order));

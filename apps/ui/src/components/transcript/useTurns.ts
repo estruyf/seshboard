@@ -9,11 +9,10 @@ const AGENT_TOOLS = new Set(['Task', 'Agent']);
 
 /**
  * The conversation's turns, kept up to date as messages land: only the open turn is grouped again (`updateTurns`).
- * Subagents' tokens come from their own transcripts, asked for again when a subagent starts or a turn ends.
+ * `agents` is what `useAgentTokens` read.
  */
-export function useTurns(client: RpcClient<Contract> | null, sessionId: string, items: readonly DisplayItem[], working: boolean): Turn[] {
+export function useTurns(sessionId: string, items: readonly DisplayItem[], agents: ReadonlyMap<string, AgentTokens> | undefined): Turn[] {
   const waits = useHosts((s) => s.waits.get(sessionId) ?? NO_WAITS);
-  const agents = useAgentTokens(client, sessionId, items, working);
   const context = useMemo<TurnContext>(() => ({ waits, agents }), [waits, agents]);
   const state = useRef<TurnsState | null>(null);
   const turns = useMemo(() => {
@@ -30,7 +29,8 @@ function agentCalls(items: readonly DisplayItem[]): string {
   return ids.join(',');
 }
 
-function useAgentTokens(client: RpcClient<Contract> | null, sessionId: string, items: readonly DisplayItem[], working: boolean): ReadonlyMap<string, AgentTokens> | undefined {
+/** Subagents' tokens and models, from their own transcripts: asked for again when a subagent starts or a turn ends. */
+export function useAgentTokens(client: RpcClient<Contract> | null, sessionId: string, items: readonly DisplayItem[], working: boolean): ReadonlyMap<string, AgentTokens> | undefined {
   const calls = useMemo(() => agentCalls(items), [items]);
   const [agents, setAgents] = useState<{ sessionId: string; map: ReadonlyMap<string, AgentTokens> } | null>(null);
   useEffect(() => {

@@ -3,9 +3,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
-import { basename, join } from 'node:path';
+import { basename, join, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
@@ -27,7 +27,7 @@ import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { updatesDisabledReason } from './updateState.ts';
-import { placeWindow, WindowStateStore } from './windowState.ts';
+import { placePopout, placeWindow, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
 const here = import.meta.dirname;
@@ -70,6 +70,8 @@ if (scripted) {
   process.env.SWITCHBOARD_STUB_BTW = '1';
   // Catch-up cards are written from the tool calls, never by a model.
   process.env.SWITCHBOARD_STUB_CATCHUP = '1';
+  // Clone from GitHub clones from local bare repositories in the throwaway profile, never from the network.
+  process.env.SWITCHBOARD_CLONE_SOURCE ??= join(app.getPath('userData'), 'clone-source');
 }
 
 // The single-instance lock belongs to the data folder. Development builds keep their own ("Switchboard Dev"), so
@@ -154,6 +156,7 @@ function updatePreferences(patch: unknown): void {
   if (item) item.checked = true;
   updateWindowBackgrounds();
   sendEngineSettings(next);
+  notifier?.prefsChanged();
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.preferencesChanged, next);
 }
 
@@ -262,7 +265,18 @@ ipcMain.handle(IpcChannel.themeCommand, async (event, command: ThemeCommand) => 
 
 let engine: EngineProcess;
 let notifier: Notifier;
-let focusedSession: string | null = null;
+/** The window with the sidebar; null while it is closed (macOS keeps running without it). */
+let mainWindow: BrowserWindow | null = null;
+/** Pop-out windows by the session each one shows. */
+const popouts = new Map<string, BrowserWindow>();
+/** The session on screen in each window (by webContents id), as its renderer reports it. */
+const focusedSessions = new Map<number, string | null>();
+
+/** The session on screen in the window in front, or null when no Switchboard window has focus. */
+function sessionOnScreen(): string | null {
+  const win = BrowserWindow.getFocusedWindow();
+  return win ? (focusedSessions.get(win.webContents.id) ?? null) : null;
+}
 const recordedNotifications: RecordedAlert[] = [];
 /** Sounds the smoke run would have played (it never makes a sound). */
 const recordedSounds: Array<{ id: string; volume: number }> = [];
@@ -296,8 +310,8 @@ ipcMain.on(IpcChannel.windowButtons, (event, position: unknown) => {
   win.setWindowButtonPosition(position === 'rail' ? WINDOW_BUTTONS.rail : WINDOW_BUTTONS.default);
 });
 
-ipcMain.on(IpcChannel.focusSession, (_event, sessionId: unknown) => {
-  focusedSession = typeof sessionId === 'string' ? sessionId : null;
+ipcMain.on(IpcChannel.focusSession, (event, sessionId: unknown) => {
+  focusedSessions.set(event.sender.id, typeof sessionId === 'string' ? sessionId : null);
 });
 
 // The VS Code companion sent context and asked to see it: the editor is in front, so take focus from it.
@@ -310,7 +324,10 @@ ipcMain.on(IpcChannel.focusWindow, (event) => {
   win.focus();
 });
 
+/** Shows a session: in its pop-out when it has one, otherwise in the main window. */
 function openSession(sessionId: string): void {
+  const popout = popouts.get(sessionId);
+  if (popout && !popout.isDestroyed()) return bringToFront(popout);
   sendToWindow(showWindow(), IpcChannel.selectSession, sessionId, { latestOnly: true });
 }
 
@@ -371,7 +388,7 @@ let quitRecorded = false;
 
 const quitGuard = new QuitGuard({
   ask() {
-    const win = BrowserWindow.getAllWindows()[0];
+    const win = mainWindow;
     if (win && readyRenderers.has(win.webContents.id)) {
       if (win.isMinimized()) win.restore();
       win.show();
@@ -393,17 +410,32 @@ ipcMain.on(IpcChannel.quitAnswer, (_event, answer: unknown) => {
 });
 
 /**
+ * A session with a large context is open and Settings › Usage warns about it on quitting (or hasn't said yet that it
+ * can): the window reports it, so quitting asks even with Ask before quitting off.
+ */
+let quitContext = false;
+ipcMain.on(IpcChannel.quitContext, (_event, ask: unknown) => {
+  quitContext = ask === true;
+});
+/** Whether ⌘Q (or closing the window on Windows and Linux) asks first. */
+const asksBeforeQuit = () => preferences.get().confirmQuit || quitContext;
+
+/**
  * Messages that arrived before a window could take them: the link that launched the app, a notification
  * clicked after the window was closed (a new one is still loading), Settings… with no window open.
  */
 const pendingMessages = new RendererQueue();
 
-/** The window to show something in, created if they were all closed, and brought to the front. */
-function showWindow(): BrowserWindow {
-  const win = BrowserWindow.getAllWindows()[0] ?? createWindow();
+function bringToFront(win: BrowserWindow): void {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+}
+
+/** The main window, to show something in: created if it was closed, and brought to the front. */
+function showWindow(): BrowserWindow {
+  const win = mainWindow ?? createWindow();
+  bringToFront(win);
   return win;
 }
 
@@ -454,7 +486,7 @@ function checkForUpdates(): void {
  */
 function installMenu(): void {
   const mac = process.platform === 'darwin';
-  const quit: MenuItemConstructorOptions = { id: 'quit', label: mac ? 'Quit Switchboard' : 'Exit', accelerator: 'CmdOrCtrl+Q', click: () => (preferences.get().confirmQuit ? quitGuard.request() : quitApp()) };
+  const quit: MenuItemConstructorOptions = { id: 'quit', label: mac ? 'Quit Switchboard' : 'Exit', accelerator: 'CmdOrCtrl+Q', click: () => (asksBeforeQuit() ? quitGuard.request() : quitApp()) };
   const settings: MenuItemConstructorOptions = { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() };
   const checkUpdates: MenuItemConstructorOptions = { id: 'check-updates', label: 'Check for Updates…', click: () => checkForUpdates() };
   const top: MenuItemConstructorOptions[] = mac
@@ -531,6 +563,22 @@ function rememberWindowState(win: BrowserWindow): void {
   windowState.save({ bounds: win.isMaximized() ? win.getNormalBounds() : win.getBounds(), maximized: win.isMaximized() });
 }
 
+/** Every window's page: sandboxed, with the preload as its only way to main. */
+const webPreferences = (): Electron.WebPreferences => ({
+  preload: join(here, '../preload/index.cjs'),
+  sandbox: true,
+  contextIsolation: true,
+  nodeIntegration: false,
+  spellcheck: false,
+});
+
+/**
+ * macOS: the traffic lights over the content. Elsewhere the system's own title bar, which follows light and dark
+ * mode, and the menu bar shows with Alt (the command palette has every command).
+ */
+const titleBar = (): Electron.BrowserWindowConstructorOptions =>
+  process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: WINDOW_BUTTONS.default } : { autoHideMenuBar: true };
+
 function createWindow(): BrowserWindow {
   const saved = windowState?.get();
   const placed = saved && placeWindow(saved.bounds, screen.getAllDisplays().map((d) => d.workArea), WINDOW_MIN);
@@ -544,18 +592,11 @@ function createWindow(): BrowserWindow {
     // same layout everywhere. macOS otherwise shrinks the window to fit; other systems allow it as is.
     enableLargerThanScreen: scripted,
     show: false,
-    // macOS: the traffic lights over the content. Elsewhere the system's own title bar, which follows light and dark
-    // mode, and the menu bar shows with Alt (the command palette has every command).
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: WINDOW_BUTTONS.default } : { autoHideMenuBar: true }),
+    ...titleBar(),
     backgroundColor: windowBackground(),
-    webPreferences: {
-      preload: join(here, '../preload/index.cjs'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      spellcheck: false,
-    },
+    webPreferences: webPreferences(),
   });
+  mainWindow = win;
 
   win.once('ready-to-show', () => {
     // maximize() shows the window, so it waits for the first paint like show().
@@ -582,10 +623,21 @@ function createWindow(): BrowserWindow {
     quitting = true;
   });
   win.on('close', (event) => {
-    if (process.platform === 'darwin' || quitting || scripted || !preferences.get().confirmQuit) return;
+    if (process.platform === 'darwin' || quitting || scripted || !asksBeforeQuit()) return;
     event.preventDefault();
     quitGuard.request();
   });
+  // Pop-outs go with the main window: without it there is no sidebar to come back to.
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+    for (const popout of [...popouts.values()]) if (!popout.isDestroyed()) popout.close();
+  });
+  loadRenderer(win);
+  return win;
+}
+
+/** What every window's page needs: ready tracking, a reload after a crash, links in the browser, and the page itself. */
+function loadRenderer(win: BrowserWindow, popout?: string): void {
   const contentsId = win.webContents.id;
   win.webContents.on('did-start-loading', () => readyRenderers.delete(contentsId));
   // A crashed page leaves the window blank: reload it, unless it keeps crashing.
@@ -600,7 +652,10 @@ function createWindow(): BrowserWindow {
       console.error(`[main] renderer gone (${details.reason}); not reloading, it crashed too often`);
     }
   });
-  win.on('closed', () => readyRenderers.delete(contentsId));
+  win.on('closed', () => {
+    readyRenderers.delete(contentsId);
+    focusedSessions.delete(contentsId);
+  });
 
   // The renderer is a local app: links open in the browser, never inside the window.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -612,10 +667,93 @@ function createWindow(): BrowserWindow {
   });
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (devUrl) void win.loadURL(devUrl);
-  else void win.loadFile(join(here, '../renderer/index.html'));
-  return win;
+  if (devUrl) {
+    const url = new URL(devUrl);
+    if (popout) url.searchParams.set(POPOUT_QUERY, popout);
+    void win.loadURL(url.toString());
+  } else {
+    void win.loadFile(join(here, '../renderer/index.html'), popout ? { query: { [POPOUT_QUERY]: popout } } : undefined);
+  }
 }
+
+/** A pop-out's size when there is room for it; it is never smaller than the minimum. */
+const POPOUT_SIZE = { width: 760, height: 820 };
+const POPOUT_MIN = { width: 480, height: 400 };
+
+/** Tells every window which sessions have a window of their own. */
+function broadcastPopouts(): void {
+  const ids = [...popouts.keys()];
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.popoutsChanged, ids);
+}
+
+/**
+ * Shows a session in a window of its own, beside the main window, or brings its pop-out to the front. It shows
+ * the session and nothing else; closing it only closes the window (the session keeps running) and never asks
+ * to quit. Pop-outs aren't saved: they close with the main window and don't come back after a restart.
+ */
+function popOut(sessionId: string): void {
+  const open = popouts.get(sessionId);
+  if (open && !open.isDestroyed()) return bringToFront(open);
+  const from = mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized() ? mainWindow.getBounds() : null;
+  const placed = from ? placePopout(from, screen.getDisplayMatching(from).workArea, POPOUT_SIZE, POPOUT_MIN, popouts.size) : undefined;
+  const win = new BrowserWindow({
+    ...POPOUT_SIZE,
+    ...placed,
+    minWidth: POPOUT_MIN.width,
+    minHeight: POPOUT_MIN.height,
+    show: false,
+    ...titleBar(),
+    backgroundColor: windowBackground(),
+    webPreferences: webPreferences(),
+  });
+  popouts.set(sessionId, win);
+  win.once('ready-to-show', () => win.show());
+  // Looking at a pop-out is looking at Switchboard: the main window's taskbar button stops flashing (Notifier).
+  if (process.platform !== 'darwin') win.on('focus', () => mainWindow?.flashFrame(false));
+  win.on('closed', () => {
+    if (popouts.get(sessionId) !== win) return;
+    popouts.delete(sessionId);
+    broadcastPopouts();
+  });
+  loadRenderer(win, sessionId);
+  broadcastPopouts();
+}
+
+ipcMain.on(IpcChannel.getPopouts, (event) => {
+  event.returnValue = [...popouts.keys()];
+});
+ipcMain.on(IpcChannel.popOut, (_event, sessionId: unknown) => {
+  if (typeof sessionId === 'string' && sessionId) popOut(sessionId);
+});
+// Move back to main window: the session leaves its pop-out first, so the main window shows it in a pane.
+ipcMain.on(IpcChannel.popIn, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...popouts].find(([, popout]) => popout === win);
+  if (!win || !entry) return;
+  popouts.delete(entry[0]);
+  broadcastPopouts();
+  win.close();
+  openSession(entry[0]);
+});
+ipcMain.on(IpcChannel.showSession, (_event, sessionId: unknown) => {
+  if (typeof sessionId === 'string' && sessionId) openSession(sessionId);
+});
+// An app-wide shortcut pressed in a pop-out runs in the main window, which comes to the front for it.
+ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
+  if (!keys || typeof keys !== 'object' || typeof (keys as { key?: unknown }).key !== 'string') return;
+  sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
+});
+// Unsent messages typed in one window show in the others (only the main window saves them).
+ipcMain.on(IpcChannel.relayDrafts, (event, change: unknown) => {
+  if (!change || typeof change !== 'object') return;
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.webContents.id !== event.sender.id) win.webContents.send(IpcChannel.draftsRelayed, change);
+  }
+});
+// A new pop-out takes the main window's drafts, with their images (saved drafts have none).
+ipcMain.on(IpcChannel.requestDrafts, (event) => {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id !== event.sender.id) mainWindow.webContents.send(IpcChannel.draftsRequested);
+});
 
 /** Each request gets a fresh channel: one end to the engine, the other to the asking window. */
 ipcMain.on(IpcChannel.requestEnginePort, (event) => {
@@ -637,6 +775,12 @@ interface TimedReport extends RendererReadyReport {
   loadedMs: number;
 }
 ipcMain.handle(IpcChannel.pickFolder, async (event, defaultPath: unknown) => {
+  // A smoke or screenshot run has no one to answer the dialog: a step that needs one sets the folder to pick, once.
+  const answer = scripted ? process.env.SWITCHBOARD_PICK_FOLDER : undefined;
+  if (answer) {
+    delete process.env.SWITCHBOARD_PICK_FOLDER;
+    return answer;
+  }
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
     title: 'Choose a folder for the new session',
@@ -772,13 +916,15 @@ ipcMain.on(IpcChannel.rendererReady, (event, report: RendererReadyReport) => {
   };
   readyReports.push(timed);
   readyRenderers.add(event.sender.id);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  // What waited for a window is for the main one; a pop-out only shows its session.
+  if (!win || win !== mainWindow) return;
   for (const { channel, payload } of pendingMessages.drain()) event.sender.send(channel, payload);
   if (readyReports.length === 1) {
     console.log(`[main] engine connected ${timed.connectedMs}ms, diagnostics loaded ${timed.loadedMs}ms after process start`);
   }
-  if (smokeOutDir) void runSmokeStep(BrowserWindow.fromWebContents(event.sender));
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (screenshotOutDir && win && readyReports.length === 1) {
+  if (smokeOutDir) void runSmokeStep(win);
+  if (screenshotOutDir && readyReports.length === 1) {
     void runScreenshotTour(win, screenshotOutDir, { setColorScheme: (colorScheme) => updatePreferences({ colorScheme }) })
       .then(() => exitApp(0))
       .catch((error: Error) => {
@@ -1132,7 +1278,7 @@ let crashedAt = 0;
 let smokeSessionId: string | null = null;
 /** What was on screen when the steps finished, for the report (not checked). */
 let rendering: Record<string, number> = {};
-const smokeRun = new SmokeRun({ log: (line) => console.log(line), cleanup: () => closeOverlays(BrowserWindow.getAllWindows()[0]) });
+const smokeRun = new SmokeRun({ log: (line) => console.log(line), cleanup: () => closeOverlays(mainWindow ?? undefined) });
 
 /**
  * Adds a project action through the editor (saving closes it, says "Action saved" and adds its pill),
@@ -1539,6 +1685,8 @@ async function actionMenuChecks(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-current-session] [data-more-actions]').click()");
   if (!(await waitInPage(win, "document.querySelector('[role=menu] [role=menuitem][data-action]')", 2_000))) return 'failed: "N more" did not open';
   const hidden = (await js("document.querySelector('[role=menu] [role=menuitem][data-action]').dataset.action")) as string;
+  // The menu places itself once it has measured; a point taken before then can miss the item when the click lands.
+  await settle(win);
   const overflow = await clickLikeAUser(win, `[role=menu] [role=menuitem][data-action="${hidden}"]`, 'right');
   if (!(await waitInPage(win, `${items} === 'run,edit,delete'`, 2_000))) return `failed: a right-click in "N more" (landed on ${overflow.at}) showed "${await js(items)}"`;
   await js("document.querySelector('[role=menu] [data-action-menu-item=\"delete\"]').click()");
@@ -1746,9 +1894,10 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   const scoped = await withSettingsClosed("document.querySelector('[data-session-list]') && !document.querySelector('[data-session-id][data-in-app=\"false\"]')");
   await section('sidebar');
 
+  await section('projects');
+  await click('[data-project-order="yours"]');
   await section('general');
   await click('[data-startup-view="new"]');
-  await click('[data-project-order="yours"]');
   await click('[data-confirm-quit]');
   await until(() => !preferences.get().confirmQuit);
   Menu.getApplicationMenu()?.getMenuItemById('quit')?.click();
@@ -1759,6 +1908,7 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
 
   await click('[data-confirm-quit]');
   await click('[data-startup-view="home"]');
+  await section('projects');
   await click('[data-project-order="recent"]');
   await section('sidebar');
   await click('[data-session-scope]');
@@ -3035,6 +3185,8 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (chip !== 'on Smoke Mac') return `the header chip says "${chip}", not "on Smoke Mac"`;
   if (!(await js(`[...document.querySelectorAll(${JSON.stringify(row)})].some((r) => r.getAttribute('aria-current') === 'true')`))) return 'the opened remote session is not selected in the sidebar';
   if (!(await waitInPage(win, "document.querySelector('[data-transcript] [data-prompt-bubble], [data-transcript] [data-remote-tools]')", 10_000))) return 'the remote conversation did not load';
+  // Its cost, as that computer counts it, under the message box (while the estimate is on).
+  if (preferences.get().showCost && !(await waitInPage(win, "document.querySelector('[data-remote-session-footer] [data-session-cost]')?.innerText.includes('≈')", 5_000))) return 'the remote session shows no cost under its message box';
 
   // 3. The terminal is on that computer: its button stays, disabled, with the reason.
   if (!(await js("document.querySelector('[data-remote-terminal]')?.disabled === true"))) return 'the terminal button of a remote session is not disabled';
@@ -4018,9 +4170,10 @@ async function runReplyActionsStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Under each reply: a finished turn's line ("14:32 · 2m 14s · 18.4k tokens") after the reply's actions, its tokens'
- * tooltip on hover, the prompt's "Sent …" tooltip, and Nothing in Settings › Conversation hiding the line. Shows all
- * three parts for the step and puts the setting back. Read-only: it only scrolls and hovers.
+ * Under each reply: a finished turn's line ("14:32 · 2m 14s · 18.4k tokens") after the reply's actions, hidden with
+ * them until the reply is hovered or the row has focus and then shown in the same space, its tokens' tooltip on hover,
+ * the prompt's "Sent …" tooltip, and Nothing in Settings › Conversation hiding the line. Shows all three parts for the
+ * step and puts the setting back. Read-only: it only scrolls, hovers and focuses.
  */
 async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -4061,7 +4214,36 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
     // The line: the time, then parts joined by a · in the border colour, on one row with the actions.
     // The one with tokens if any (sessions without usage have none), in the middle of the view.
     await js(`(() => { const line = ${lines}.find((l) => l.querySelector('[data-turn-tokens]')) ?? ${lines}.at(-1); line.dataset.smokeTurnLine = '1'; line.scrollIntoView({ block: 'center' }); })()`);
-    await settle(win);
+    // A scroll from a script doesn't leave the end, so the view would still follow it as rows are measured and take the
+    // line off screen before the pointer gets there. A wheel up, as you would, stops following.
+    await js(`document.querySelector('${view} [data-transcript]')?.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }))`);
+    // Scrolls the conversation until the reply's row is in it and in the window, and stays put between two looks: rows
+    // around it are still being measured and move it. Run again right before the pointer goes there.
+    const inView = `(() => {
+      const el = document.querySelector('${view} [data-transcript]');
+      const row = document.querySelector('[data-smoke-turn-line]')?.parentElement;
+      if (!el || !row) return false;
+      const box = el.getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      const top = Math.max(box.top, 0);
+      const bottom = Math.min(box.bottom, innerHeight);
+      if (r.top >= top + 8 && r.bottom <= bottom - 8) {
+        const still = window.__smokeRowTop === Math.round(r.top);
+        window.__smokeRowTop = Math.round(r.top);
+        return still;
+      }
+      window.__smokeRowTop = null;
+      el.scrollTop += r.top + r.height / 2 - (top + bottom) / 2;
+      return false;
+    })()`;
+    const intoView = async (): Promise<string | null> => {
+      await settle(win);
+      if (await waitInPage(win, inView, 3_000)) return null;
+      const where = await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); const r = document.querySelector('[data-smoke-turn-line]').parentElement.getBoundingClientRect(); const box = el.getBoundingClientRect(); return 'row ' + Math.round(r.top) + '-' + Math.round(r.bottom) + ', conversation ' + Math.round(box.top) + '-' + Math.round(box.bottom) + ' scrolled ' + Math.round(el.scrollTop) + ' of ' + (el.scrollHeight - el.clientHeight) + ', window ' + innerHeight; })()`);
+      return `could not keep the reply's row in view (${where})`;
+    };
+    const away = await intoView();
+    if (away) return away;
     const line = (await js(`(() => {
       const line = document.querySelector('[data-smoke-turn-line]');
       const actions = line.parentElement.querySelector('[data-message-actions]');
@@ -4080,6 +4262,31 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
     if (!line.oneLine) return 'the line wraps';
     if (!line.label.startsWith('Ended at ')) return `the line's label reads "${line.label}"`;
 
+    // Hidden with the actions until the reply is hovered or the row has focus, then shown with them, in the same space.
+    // What the pointer is on, for a failure: tells a covered point from a pointer that never reached the page.
+    const pointerAt = (x: number, y: number) =>
+      js(
+        `(() => { const name = (el) => el ? el.tagName.toLowerCase() + Object.keys(el.dataset ?? {}).map((k) => '[data-' + k + ']').join('') : 'nothing'; const at = document.elementFromPoint(${x}, ${y}); const reply = document.querySelector('[data-smoke-turn-line]').closest('[data-message-key]'); return '${x},${y} in ' + innerWidth + 'x' + innerHeight + ' at ' + name(at) + (at && reply.contains(at) ? ' in the reply' : ' outside the reply') + ', hovered ' + name([...document.querySelectorAll(':hover')].at(-1)) + ', window focused ' + document.hasFocus(); })()`,
+      ) as Promise<string>;
+    const shown = `(() => { const line = document.querySelector('[data-smoke-turn-line]'); const actions = line.parentElement.querySelector('[data-message-actions]'); return [getComputedStyle(line).opacity, actions ? getComputedStyle(actions).opacity : '']; })()`;
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
+    await js(`document.activeElement instanceof HTMLElement && document.activeElement.blur()`);
+    if (!(await waitInPage(win, `${shown}[0] === '0'`, 2_000))) return `the line shows (opacity ${(await js(shown))[0]}) without hover or focus`;
+    await js(`document.querySelector('[data-smoke-turn-line]').parentElement.querySelector('[data-message-actions] button[aria-label^="Copy"]')?.focus()`);
+    if (!(await waitInPage(win, `${shown}.join() === '1,1'`, 2_000))) return `tabbing to Copy did not show the line with the actions (${(await js(shown)).join(', ')})`;
+    await js(`document.activeElement instanceof HTMLElement && document.activeElement.blur()`);
+    if (!(await waitInPage(win, `${shown}[0] === '0'`, 2_000))) return 'the line stayed after Copy lost focus';
+    // The pointer goes to the empty end of the reply's row, past the line: on the reply, on neither the actions nor the line.
+    const moved = await intoView();
+    if (moved) return moved;
+    const hidden = (await js(`(() => { const line = document.querySelector('[data-smoke-turn-line]'); const r = line.parentElement.getBoundingClientRect(); return { height: line.closest('[data-message-key]').getBoundingClientRect().height, x: Math.round(r.right - 12), y: Math.round(r.top + r.height / 2) }; })()`)) as { height: number; x: number; y: number };
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: hidden.x, y: hidden.y });
+    if (!(await waitInPage(win, `${shown}.join() === '1,1'`, 2_000))) {
+      return `hovering the reply did not show the line with the actions (${(await js(shown)).join(', ')}; ${await pointerAt(hidden.x, hidden.y)})`;
+    }
+    const height = (await js(`document.querySelector('[data-smoke-turn-line]').closest('[data-message-key]').getBoundingClientRect().height`)) as number;
+    if (Math.abs(height - hidden.height) > 0.5) return `showing the line changed the reply's height from ${hidden.height}px to ${height}px`;
+
     // The tokens' tooltip, on hover: the turn's total, a bar, a row per part.
     const tokens = (await js(`(() => {
       const el = document.querySelector('[data-smoke-turn-line] [data-turn-tokens]');
@@ -4090,7 +4297,7 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
     let hovered = 'no tokens on screen (sessions without usage)';
     if (tokens) {
       win.webContents.sendInputEvent({ type: 'mouseMove', x: tokens.x, y: tokens.y });
-      if (!(await waitInPage(win, "document.querySelector('[data-turn-tokens-tooltip]')", 3_000))) return 'hovering the tokens showed no tooltip';
+      if (!(await waitInPage(win, "document.querySelector('[data-turn-tokens-tooltip]')", 3_000))) return `hovering the tokens showed no tooltip (${await pointerAt(tokens.x, tokens.y)})`;
       const tip = (await js(`(() => { const t = document.querySelector('[data-turn-tokens-tooltip]'); return { heading: t.querySelector('p')?.textContent ?? '', rows: t.querySelectorAll('dd').length }; })()`)) as { heading: string; rows: number };
       if (!/tokens · this turn · \d+ repl(y|ies)$/.test(tip.heading)) return `the tooltip is headed "${tip.heading}"`;
       if (tip.rows !== 4) return `the tooltip has ${tip.rows} rows, not one per part`;
@@ -4099,16 +4306,21 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
       if (!(await waitInPage(win, "!document.querySelector('[data-turn-tokens-tooltip]')", 2_000))) return 'the tooltip stayed after the pointer left';
       hovered = `tooltip "${tip.heading}"`;
     }
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
+    if (!(await waitInPage(win, `${shown}[0] === '0'`, 2_000))) return 'the line stayed after the pointer left the reply';
     const sent = (await js(`document.querySelector('${view} [data-prompt-bubble][data-tooltip]')?.dataset.tooltip ?? ''`)) as string;
     if (sent && !sent.startsWith('Sent ')) return `a prompt's tooltip reads "${sent}"`;
 
     // Nothing: no line.
     updatePreferences({ turnDetails: 'none' });
     if (!(await waitInPage(win, `${lines}.length === 0`, 2_000))) return 'Nothing in Under each reply left the lines';
-    return `ok: "${line.label}", ${hovered}, gone with Nothing`;
+    return `ok: "${line.label}", hidden until hover or focus with the actions, no jump, ${hovered}, gone with Nothing`;
   } finally {
     updatePreferences({ turnDetails: before });
-    await js(`document.querySelector('[data-smoke-turn-line]')?.removeAttribute('data-smoke-turn-line')`);
+    await js(`(document.querySelector('[data-smoke-turn-line]')?.removeAttribute('data-smoke-turn-line'), delete window.__smokeRowTop)`);
+    // Back to the end, which follows the conversation again, and let it settle before the next step selects text.
+    await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); if (el) el.scrollTop = el.scrollHeight; })()`);
+    await settle(win);
     if (borrowed && back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
   }
 }
@@ -4477,7 +4689,8 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   pressKey(win, 'Tab');
   if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(dir)}`, 2_000))) return `Tab did not complete the folder (${String(await js(`${one(field)}.value`))})`;
   pressKey(win, 'Tab');
-  if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(`${dir}/`)} && ${suggestion(join(dir, 'inner'))} && ${suggestion(dir)}`, 3_000))) return 'Tab on a whole folder did not list what is inside';
+  // The separator the path uses goes after it: a backslash on Windows.
+  if (!(await waitInPage(win, `${one(field)}.value === ${JSON.stringify(`${dir}${sep}`)} && ${suggestion(join(dir, 'inner'))} && ${suggestion(dir)}`, 3_000))) return `Tab on a whole folder did not list what is inside (${String(await js(`${one(field)}.value`))})`;
   await setFieldValue(win, field, `${dir}/no-such-folder`);
   if (!(await waitInPage(win, one('[data-path-missing]'), 3_000))) return 'a missing folder did not say so';
 
@@ -4501,9 +4714,119 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   if (before) {
     openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
     if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(before)}`, 5_000))) return 'New session did not go back to its folder';
-    rmSync(dir, { recursive: true, force: true });
+  }
+  // On Windows the folder can't be removed while a process still runs in it (New session warms Claude Code up for the
+  // folder it picked): try for a while, then leave it in the temp folder rather than fail the step.
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (error) {
+    console.log(`[smoke] could not remove ${dir}: ${(error as Error).message}`);
   }
   return 'ok: Add project… opened the Add project dialog and Esc left New session as it was, a refused file drop, Filter opened the field, ghost text and Tab, Tab into a folder, a missing folder, ↩ added and picked it; removed again';
+}
+
+/**
+ * Clone from GitHub, never from the network and never starting a session: Settings › Projects turns it on with a
+ * throwaway Clone into folder (the folder dialog answered here), a GitHub URL in New session's folder field offers
+ * Clone owner/name, and ↩ clones a local bare repository (the engine clones from SWITCHBOARD_CLONE_SOURCE in a smoke
+ * run), which is added as a project and picked, without a worktree. Start then asks about the hook the repository
+ * brings; Cancel keeps the prompt and starts nothing. Ends as it started: the project removed, the setting off, the
+ * folders gone.
+ */
+async function runCloneStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const source = process.env.SWITCHBOARD_CLONE_SOURCE;
+  if (!source) return 'no SWITCHBOARD_CLONE_SOURCE: the engine would clone from GitHub';
+  const sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-clone-')));
+  const bare = join(source, 'acme', 'smoke-clone.git');
+  const folder = join(sandbox, 'Developer');
+  const target = join(folder, 'smoke-clone');
+  const cleanUp = () => {
+    rmSync(sandbox, { recursive: true, force: true });
+    rmSync(bare, { recursive: true, force: true });
+  };
+  // "GitHub": acme/smoke-clone, a bare repository whose project settings bring a hook.
+  const work = join(sandbox, 'work');
+  mkdirSync(join(work, '.claude'), { recursive: true });
+  const git = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, stdio: 'ignore' });
+  git(work, ['init', '-q']);
+  writeFileSync(join(work, 'README.md'), '# Smoke clone\n');
+  writeFileSync(join(work, '.claude', 'settings.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo smoke' }] }] } }));
+  git(work, ['add', '.']);
+  git(work, ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '-m', 'first']);
+  mkdirSync(join(source, 'acme'), { recursive: true });
+  git(sandbox, ['clone', '-q', '--bare', work, bare]);
+  mkdirSync(folder);
+
+  // Settings › Projects: turning it on asks for the folder first.
+  await js(`${one('[data-open-settings]')}.click()`);
+  if (!(await waitInPage(win, one('[data-settings-section="projects"]'), 3_000))) return (cleanUp(), 'Settings has no Projects page');
+  await js(`${one('[data-settings-section="projects"]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-settings-page="projects"]')} && ${one('[data-clone-enabled]')} && ${one('[data-project-order]')}`, 3_000))) return (cleanUp(), 'Settings › Projects has no Clone from GitHub or Project order');
+  process.env.SWITCHBOARD_PICK_FOLDER = folder;
+  await js(`${one('[data-clone-enabled]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-clone-enabled]')}.getAttribute('aria-checked') === 'true' && ${one(`[data-clone-folder-path=${JSON.stringify(folder)}]`)}`, 3_000))) {
+    delete process.env.SWITCHBOARD_PICK_FOLDER;
+    return (cleanUp(), 'turning on Clone from GitHub did not ask for its folder and turn on');
+  }
+  await js(`${one('[data-close-settings]')}.click()`);
+
+  const turnOff = async () => {
+    await js(`${one('[data-open-settings]')}.click()`);
+    await waitInPage(win, one('[data-settings-page="projects"] [data-clone-enabled]'), 3_000);
+    if ((await js(`${one('[data-clone-enabled]')}?.getAttribute('aria-checked')`)) === 'true') await js(`${one('[data-clone-enabled]')}.click()`);
+    const off = await waitInPage(win, `${one('[data-clone-enabled]')}?.getAttribute('aria-checked') === 'false'`, 3_000);
+    await js(`${one('[data-close-settings]')}?.click()`);
+    return off;
+  };
+  const fail = async (why: string) => {
+    await js(`${one('[data-clone-close]')}?.click()`);
+    await turnOff();
+    cleanUp();
+    return why;
+  };
+
+  // New session: Clone from GitHub… next to Add project…, and a URL pasted in the folder field offers the clone.
+  pressKey(win, 'N', ['meta']);
+  if (!(await waitInPage(win, `${one('[data-new-session-view] [data-clone-from-github]')} && ${one('[data-new-session-view] [data-filter-projects]')}`, 3_000))) return fail('New session has no Clone from GitHub…');
+  await js(`${one('[data-new-session-view] [data-filter-projects]')}.click()`);
+  if (!(await waitInPage(win, one('[data-folder-list] input'), 3_000))) return fail('Filter did not open the folder field');
+  await setFieldValue(win, '[data-folder-list] input', 'https://github.com/acme/smoke-clone');
+  if (!(await waitInPage(win, `${one('[data-clone-option="acme/smoke-clone"]')}?.dataset.active === 'true'`, 3_000))) return fail('a GitHub URL in the folder field did not offer Clone acme/smoke-clone');
+  pressKey(win, 'Return');
+  if (!(await waitInPage(win, `${one('[data-clone-repo]')}?.dataset.cloneState === 'done' && ${one('[data-clone-progress="done"]')}`, 20_000))) {
+    return fail(`the clone did not finish: ${String(await js(`${one('[data-clone-repo]')}?.innerText ?? 'no clone form'`))}`);
+  }
+  if (!existsSync(join(target, 'README.md'))) return fail('the clone is not in the Clone into folder');
+  const picked = `${one('[data-route-project]')}?.dataset.tooltip === ${JSON.stringify(target)}`;
+  if (!(await waitInPage(win, `${picked} && ${one('[data-worktree-switch]')}?.disabled === true`, 5_000))) return fail('the clone was not picked as the project, or a fresh clone still offers a worktree');
+  await shot(win, 'clone-from-github.png');
+
+  // Start asks about the hook it brings; Cancel starts nothing and keeps the prompt.
+  const box = '[data-new-session-view] [data-composer]';
+  await setFieldValue(win, box, 'Smoke: never sent');
+  await js(`${one('[data-new-session-view] [data-composer-submit]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-clone-trust]')}?.innerText.includes('echo smoke') && document.activeElement === ${one('[data-clone-trust-cancel]')}`, 5_000))) return fail('Start did not ask about the hook the repository brings, with Cancel focused');
+  await js(`${one('[data-clone-trust-cancel]')}.click()`);
+  if (!(await waitInPage(win, `!${one('[data-clone-trust]')} && ${one('[data-new-session-view]')} && ${one(box)}?.value === 'Smoke: never sent'`, 3_000))) return fail('Cancel left New session or lost the prompt');
+  await setFieldValue(win, box, '');
+
+  // Clean up: the form closed, the project removed, the setting off, the folders gone.
+  await js(`${one('[data-clone-close]')}.click()`);
+  if (!(await waitInPage(win, `!${one('[data-clone-repo]')} && ${one(`[data-folder-option=${JSON.stringify(target)}]`)}`, 3_000))) return fail('Done did not show the clone as a project tile');
+  await js(`${one('[data-open-projects]')}.click()`);
+  const row = one(`[data-project-row=${JSON.stringify(target)}] [data-project-more-button]`);
+  if (!(await waitInPage(win, row, 3_000))) return fail('the clone is not in Projects');
+  await js(`${row}.click()`);
+  if (!(await waitInPage(win, one('[role=menu] [data-remove-project]'), 2_000))) return fail("no Remove in the project's ⋯ menu");
+  await js(`${one('[role=menu] [data-remove-project]')}.click()`);
+  if (!(await waitInPage(win, one('[data-confirm]'), 3_000))) return fail('no confirmation before removing');
+  await js(`${one('[data-confirm]')}.click()`);
+  if (!(await waitInPage(win, `!${one(`[data-project-row=${JSON.stringify(target)}]`)}`, 3_000))) return fail('the clone was not removed from the projects');
+  if (!(await turnOff())) return (cleanUp(), 'Clone from GitHub did not turn off again');
+  cleanUp();
+  return 'ok: Settings › Projects asked for the folder and turned it on, a URL in the folder field offered the clone, ↩ cloned the local repository and picked it without a worktree, Start asked about its hook and Cancel kept the prompt; removed and turned off again';
 }
 
 /**
@@ -4774,6 +5097,150 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
     client.dispose();
     socket.destroy();
     if (smokeSessionId) await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  }
+}
+
+/**
+ * Saved prompts, in a sandbox (a throwaway git repository, opened in New session with a link): a prompt for
+ * every project with a pull request and a text blank, made in Settings › Prompts; picked with / in New session, both
+ * blanks filled (the pull request typed, as without gh), more context under it, and sent to the queue (never to
+ * Claude), where it is the filled text without braces; then moved to just for you, shared (in the sandbox's
+ * .switchboard.json) and back to every project (out of that file), and deleted.
+ */
+async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const click = (selector: string) => js(`${one(selector)}?.click()`);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-prompts-')));
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  git('-c', 'user.email=smoke@example.com', '-c', 'user.name=Smoke', 'commit', '-q', '--allow-empty', '-m', 'initial');
+  git('branch', 'feat/smoke-prompts');
+  const sharedFile = join(dir, '.switchboard.json');
+  const readShared = () => (existsSync(sharedFile) ? (JSON.parse(readFileSync(sharedFile, 'utf8')) as { prompts?: Array<{ id: string; text: string }> }) : null);
+  const id = 'smoke-fix-a-pull-request';
+  const row = `[data-saved-prompt-row="${id}"]`;
+  const box = '[data-new-session-view] [data-composer]';
+
+  /** Closes what a failure left open, and removes the sandbox. */
+  const cleanUp = async () => {
+    if (await js("!!document.querySelector('[role=dialog], [role=menu]')")) pressKey(win, 'Escape');
+    await click('[data-close-settings]');
+    await click('[data-go-home]');
+    rmSync(dir, { recursive: true, force: true });
+  };
+  try {
+    // New session on the sandbox, through a link (so it isn't remembered as New session's folder).
+    openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(dir)}`);
+    if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(dir)} && ${one(box)}`, 5_000))) return 'New session did not open on the sandbox';
+    // Typed in once, so Settings knows the project "just for you" and "Share" mean.
+    await js(`${one(box)}.focus()`);
+
+    // 1. A prompt for every project, with a pull request and a text blank, from Settings › Prompts.
+    await click('[data-open-settings]');
+    if (!(await waitInPage(win, one('[data-settings-section="prompts"]'), 3_000))) return 'Settings has no Prompts page';
+    await click('[data-settings-section="prompts"]');
+    if (!(await waitInPage(win, one('[data-saved-prompts-new]'), 3_000))) return 'Settings › Prompts has no New prompt';
+    await click('[data-saved-prompts-new]');
+    if (!(await waitInPage(win, `${one('[data-prompt-editor-dialog]')} && ${one('[data-prompt-use-in="personal"]')}?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'New prompt did not open with "just for you" picked';
+    await setFieldValue(win, '[data-prompt-editor-name]', 'Smoke: fix a pull request');
+    await click('[data-prompt-use-in="global"]');
+    await js(`${one('[data-prompt-editor] [data-prompt-run]')}.focus()`);
+    await win.webContents.insertText('Fix ');
+    await click('[data-add-blank]');
+    if (!(await waitInPage(win, one('[role=menu] [data-add-blank-type="pr"]'), 2_000))) return 'Add blank did not list Pull request';
+    await click('[role=menu] [data-add-blank-type="pr"]');
+    if (!(await waitInPage(win, `${one('[data-editor-blank="pr"]')} && document.activeElement === document.querySelectorAll('[data-prompt-editor] [data-prompt-run]')[1]`, 2_000))) return 'Add blank did not put a pull request blank in the text, with the caret after it';
+    // Typing {{ opens the same list.
+    await win.webContents.insertText(' because {{');
+    if (!(await waitInPage(win, one('[role=menu] [data-add-blank-type="text"]'), 2_000))) return 'typing {{ did not open the Add blank list';
+    await click('[role=menu] [data-add-blank-type="text"]');
+    if (!(await waitInPage(win, one('[data-blank-form] [data-blank-form-name]'), 2_000))) return 'a text blank did not open its form';
+    await setFieldValue(win, '[data-blank-form-name]', 'reason');
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `!${one('[data-blank-form]')} && ${one('[data-prompt-editor-preview]')}?.innerText === '2 blanks · pull request, text'`, 2_000))) return `the preview did not say 2 blanks (${String(await js(`${one('[data-prompt-editor-preview]')}?.innerText`))})`;
+    await shot(win, 'saved-prompt-editor.png');
+    await click('[data-prompt-editor-save]');
+    if (!(await waitInPage(win, `!${one('[data-prompt-editor-dialog]')} && ${one(row)}?.dataset.savedPromptScope === 'global'`, 3_000))) return `the prompt was not listed under Every project (${String(await js(`${one('[data-prompt-editor-problem]')}?.innerText`))})`;
+    await click('[data-close-settings]');
+
+    // 2. Picked with / in New session's message box.
+    if (!(await waitInPage(win, one(box), 3_000))) return 'New session did not come back after Settings';
+    await setFieldValue(win, box, '');
+    await js(`${one(box)}.focus()`);
+    await win.webContents.insertText('/smoke');
+    if (!(await waitInPage(win, `${one('[data-palette] [data-palette-heading]')}?.innerText.toLowerCase() === 'saved prompts' && ${one(`[data-palette] [data-saved-prompt-option="${id}"]`)}?.getAttribute('aria-selected') === 'true'`, 3_000))) return 'the / menu did not list the prompt first under Saved prompts';
+    await shot(win, 'saved-prompt-slash.png');
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `${one('[data-saved-prompt-header]')} && document.querySelectorAll('[data-blank][data-blank-empty]').length === 2 && document.activeElement?.matches('[data-blank="pr"]')`, 3_000))) return 'picking it did not show its two empty blanks, with the focus on the first';
+    if (!(await waitInPage(win, `${one('[data-blanks-left]')}?.innerText === '2 blanks left' && ${one(box)}.value === ''`, 2_000))) return 'the box did not say 2 blanks left';
+
+    // 3. Both filled: the pull request typed (gh lists none here), the reason typed in its chip, then more context.
+    pressKey(win, '1');
+    if (!(await waitInPage(win, `document.activeElement?.matches('[data-blank-popover] [data-blank-field]')`, 2_000))) return 'typing on the pull request blank did not open its field';
+    await win.webContents.insertText('42');
+    if (!(await waitInPage(win, one('[data-blank-popover] [data-blank-option="#142"]'), 3_000))) return 'a typed number was not offered';
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `${one('[data-blank="pr"]')}?.getAttribute('aria-label') === 'Pull request: #142' && document.activeElement?.matches('[data-blank="reason"] input')`, 2_000))) return 'picking #142 did not fill the blank and move on to the next';
+    await win.webContents.insertText('the tests fail on main');
+    if (!(await waitInPage(win, `!${one('[data-blanks-left]')} && !document.querySelector('[data-blank-empty]')`, 2_000))) return 'the blanks still counted as empty';
+    pressKey(win, 'Tab');
+    if (!(await waitInPage(win, `document.activeElement === ${one(box)}`, 2_000))) return 'Tab after the last blank did not go to the text under the prompt';
+    await win.webContents.insertText('Smoke context after the prompt.');
+    await shot(win, 'saved-prompt-filled.png');
+
+    // 4. Sent to the queue (Claude is never asked): the filled text, no braces, the context after a blank line.
+    const expected = 'Fix #142 because the tests fail on main\n\nSmoke context after the prompt.';
+    await click('[data-new-session-view] [data-start-menu]');
+    if (!(await waitInPage(win, `${one('[role=menu] [data-queue-add]')} && !${one('[role=menu] [data-queue-add]')}.disabled`, 2_000))) return 'Add to queue was not offered';
+    await click('[role=menu] [data-queue-add]');
+    if (!(await waitInPage(win, `!${one('[data-saved-prompt-header]')} && [...document.querySelectorAll('[data-toast]')].some((t) => t.innerText.includes('Added to the queue'))`, 3_000))) return 'Add to queue did not take the filled prompt';
+    const items = "[...document.querySelectorAll('[data-session-list] [data-queue-item]')].map((el) => el.dataset.queueItem)";
+    const [item] = (await js(items)) as string[];
+    if (!item) return 'the queue has no item';
+    await click(`[data-session-list] [data-queue-item="${item}"]`);
+    await waitInPage(win, `${one(box)}?.value.includes('#142')`, 3_000);
+    const sent = (await js(`${one(box)}?.value ?? ''`)) as string;
+    await click('[data-close-queued]');
+    await js(`${one(`[data-session-list] [data-queue-item="${item}"]`)}?.focus()`);
+    pressKey(win, 'Backspace');
+    if (sent !== expected) return `the queued prompt was not the filled text: ${JSON.stringify(sent)}`;
+    if (!(await waitInPage(win, `!${one(`[data-session-list] [data-queue-item="${item}"]`)}`, 3_000))) return 'the queued item was not removed';
+
+    // 5. Moved: just for you, shared (in the sandbox's file), every project again (out of it). Then deleted.
+    await click('[data-open-settings]');
+    await click('[data-settings-section="prompts"]');
+    if (!(await waitInPage(win, `${one(row)}?.innerText.includes('used 1×')`, 3_000))) return `sending did not count a use (${String(await js(`${one(row)}?.innerText`))})`;
+    const moveTo = async (kind: 'personal' | 'shared' | 'global') => {
+      await click(`${row} [data-saved-prompt-menu]`);
+      if (!(await waitInPage(win, one(`[role=menu] [data-prompt-move="${kind}"]`), 2_000))) return false;
+      await click(`[role=menu] [data-prompt-move="${kind}"]`);
+      return waitInPage(win, `${one(row)}?.dataset.savedPromptScope === '${kind}'`, 3_000);
+    };
+    if (!(await moveTo('personal'))) return 'Use in › just for you did not move it to the sandbox';
+    if (readShared()?.prompts?.length) return 'just for you wrote the shared file';
+    if (!(await moveTo('shared'))) return 'Share with the project did not move it';
+    if (!(await waitInPage(win, "!!document.querySelector('[data-prompt-share-toast=\"shared\"] [data-prompt-show-change]')", 2_000))) return 'sharing did not say to commit the file, with Show the change';
+    await shot(win, 'saved-prompt-shared.png');
+    const shared = readShared()?.prompts?.find((p) => p.id === id);
+    if (shared?.text !== 'Fix {{pr:pr}} because {{reason}}') return `the sandbox's .switchboard.json did not have the prompt (${JSON.stringify(readShared())})`;
+    if (!(await moveTo('global'))) return 'Use in › Every project did not move it back';
+    if (readShared()?.prompts) return `making it global again left it in .switchboard.json (${JSON.stringify(readShared())})`;
+    await click(`${row} [data-saved-prompt-menu]`);
+    await click('[role=menu] [data-prompt-delete]');
+    if (!(await waitInPage(win, `!${one(row)} && !!document.querySelector('[data-prompt-deleted-toast]')`, 3_000))) return 'Delete did not take it out, with Undo';
+    await click('[data-close-settings]');
+    // Its toasts (saved, queued, moved, shared, deleted) would cover what later steps click.
+    // Not the update toasts, which stay until they're dealt with.
+    const ours = '[data-toasts] [data-toast]:not([data-update-toast]):not([data-claude-update-toast])';
+    const closeToasts = `document.querySelectorAll('${ours} [data-toast-close], ${ours} button[aria-label="Dismiss"]').forEach((b) => b.click())`;
+    for (let i = 0; i < 5 && (await js(`!!document.querySelector('${ours}')`)); i++) {
+      await js(closeToasts);
+      await settle(win);
+    }
+    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .switchboard.json, with Show the change) and back (out of it), deleted';
+  } finally {
+    await cleanUp();
   }
 }
 
@@ -5111,6 +5578,44 @@ const PALETTE_STEP = "document.querySelector('[data-command-palette]')?.dataset.
  * without a login), the tabs and periods switch, a row of the breakdown opens its session, and Esc goes back. Only
  * reads: the transcripts' tokens go into the throwaway profile's cache.
  */
+/** Settings › Usage: Show estimated cost and Currency are saved, and Open usage opens the Usage view. */
+async function runUsageSettingsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const before = { showCost: preferences.get().showCost, costCurrency: preferences.get().costCurrency };
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await js("document.querySelector('[data-open-settings]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"usage\"]')", 3_000))) return 'Settings has no Usage section';
+  await js("document.querySelector('[data-settings-section=\"usage\"]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-page=\"usage\"] [data-show-cost]')", 2_000))) return 'the Usage page did not open';
+  const missing = (await js("['[data-settings-open-usage]', '[data-show-cost]', '[data-cost-currency]'].filter((s) => !document.querySelector(s))")) as string[];
+  if (missing.length > 0) return `missing: ${missing.join(', ')}`;
+  await js("document.querySelector('[data-show-cost]').click()");
+  if (!(await until(() => preferences.get().showCost === !before.showCost, 2_000))) return 'Show estimated cost was not saved';
+  if (!(await waitInPage(win, `document.querySelector('[data-cost-currency]').disabled === ${before.showCost}`, 2_000))) return 'Currency does not follow Show estimated cost';
+  await js("document.querySelector('[data-show-cost]').click()");
+  updatePreferences({ costCurrency: before.costCurrency === 'EUR' ? 'GBP' : 'EUR' });
+  const picked = preferences.get().costCurrency;
+  if (!(await waitInPage(win, `document.querySelector('[data-cost-currency]').innerText.includes(${JSON.stringify(picked)})`, 2_000))) return `Currency does not show ${picked}`;
+  updatePreferences({ costCurrency: before.costCurrency });
+  // Large context: its four rows, and Warn when quitting saves (and is put back).
+  const large = (await js("['[data-large-context-enabled]', '[data-large-context-percent]', '[data-large-context-notify]', '[data-large-context-quit]'].filter((s) => !document.querySelector(s))")) as string[];
+  if (large.length > 0) return `Large context is missing: ${large.join(', ')}`;
+  const warning = preferences.get().contextWarning;
+  if (!(await waitInPage(win, `document.querySelector('[data-large-context-percent]').innerText.includes('${warning.percent}%')`, 2_000))) return `Large from does not show ${warning.percent}%`;
+  await js("document.querySelector('[data-large-context-quit]').click()");
+  if (!(await until(() => preferences.get().contextWarning.onQuit === !warning.onQuit, 2_000))) return 'Warn when quitting was not saved';
+  await js("document.querySelector('[data-large-context-quit]').click()");
+  if (!(await until(() => preferences.get().contextWarning.onQuit === warning.onQuit, 2_000))) return 'Warn when quitting did not go back';
+  await shot(win, 'settings-usage.png');
+  await js("document.querySelector('[data-settings-open-usage]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-usage-view]') && !document.querySelector('[data-settings]')", 3_000))) return 'Open usage did not open the Usage view';
+  // The Tokens tab shows the period's cost while the estimate is on (the transcripts are real, so the amount isn't checked).
+  await js("document.querySelector('[data-usage-tab=\"tokens\"]')?.click()");
+  if (preferences.get().showCost && !(await waitInPage(win, "document.querySelector('[data-usage-tile=\"cost\"]')?.innerText.includes('≈')", 10_000))) return 'the Tokens tab shows no Cost (est.) tile';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000))) return 'Esc did not leave the Usage view';
+  return `ok: cost estimate ${preferences.get().showCost ? 'on' : 'off'}, ${preferences.get().costCurrency}`;
+}
+
 async function runUsageViewStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const opened = [];
@@ -5589,6 +6094,7 @@ async function runSplitEdgeStep(win: BrowserWindow): Promise<string> {
   const { js, box, slot, activePane, slots, mark, changed, stickingOut, tiles, drag, ended, handleOf } = splitTools(win);
   const smoke = smokeSessionId;
   if (!smoke || !(await waitInPage(win, `document.querySelector('[data-current-session="${smoke}"]')`, 3_000))) return 'failed: no session open to split';
+  await openSidebarSections(win);
   const others = (await js(`[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId).filter((id) => id !== '${smoke}').slice(0, 3)`)) as string[];
   if (others.length < 3) return `failed: needs four sessions in the sidebar to arrange, found ${others.length + 1}`;
   const [one, two, three] = others as [string, string, string];
@@ -5633,7 +6139,8 @@ async function runSplitEdgeStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, ended, 2_000))) return 'failed: the indicator stayed after the drop';
     const equalThirds = await columns([smoke, one, two]);
     if (equalThirds) return `failed: docking on the right edge did not give three equal columns: ${equalThirds}`;
-    if (await changed()) return 'failed: docking on the window edge remounted a pane';
+    const edgeLost = await changed();
+    if (edgeLost) return `failed: docking on the window edge remounted a pane (${edgeLost})`;
 
     // The bottom edge: the first pane takes the whole width under the other two; the left edge puts it back as a column.
     const toBottom = await drag(handleOf(smoke), { edge: 'bottom' }, 'drop', {
@@ -5651,7 +6158,8 @@ async function runSplitEdgeStep(win: BrowserWindow): Promise<string> {
     if (toLeft) return `failed: ${toLeft}`;
     const back = await columns([smoke, one, two]);
     if (back) return `failed: docking on the left edge did not give three equal columns again: ${back}`;
-    if (await changed()) return 'failed: docking along the edges remounted a pane';
+    const alongLost = await changed();
+    if (alongLost) return `failed: docking along the edges remounted a pane (${alongLost})`;
 
     // Aiming anywhere over a pane finds it: over its message box, its header and its terminal, a session's row from the sidebar still shows where it lands.
     const view = `[data-current-session="${smoke}"]`;
@@ -5723,6 +6231,17 @@ async function runSplitEdgeStep(win: BrowserWindow): Promise<string> {
 
 type DragTarget = { pane: string; zone: 'left' | 'right' | 'top' | 'bottom' | 'center' } | { edge: 'left' | 'right' | 'top' | 'bottom' } | { at: { x: number; y: number } };
 
+/**
+ * Opens every closed section of the sidebar, so its rows are in the page. Earlier starts closed, and which demo
+ * sessions fall in it depends on the time of day the run starts: after midnight the sessions of a few hours ago are
+ * there, and steps that pick rows from the sidebar found too few.
+ */
+async function openSidebarSections(win: BrowserWindow): Promise<void> {
+  const closed = "document.querySelector('[data-section-list], [data-sidebar]')?.querySelectorAll('[data-section-toggle][data-open=\"false\"]') ?? []";
+  await win.webContents.executeJavaScript(`for (const toggle of ${closed}) toggle.click()`);
+  await waitInPage(win, `${closed}.length === 0`, 2_000);
+}
+
 /** What the split view's smoke steps share: reading the panes' places, marking them to see a remount, and dragging with the mouse. */
 function splitTools(win: BrowserWindow) {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -5735,18 +6254,26 @@ function splitTools(win: BrowserWindow) {
   const slots = () => js("[...document.querySelectorAll('[data-pane-slot]')].map((el) => { const r = el.getBoundingClientRect(); return { id: el.dataset.paneSlot, hidden: el.hasAttribute('data-pane-hidden'), left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }; })") as Promise<Array<{ id: string; hidden: boolean; left: number; top: number; width: number; height: number }>>;
   // Tags each pane's view and notes its scroll position: a remounted or moved view loses both.
   const mark = async () => {
-    // Scrolled up a little, then left alone until the conversations stop moving (they open at their end).
-    await js("for (const t of document.querySelectorAll('[data-current-session] [data-transcript]')) t.scrollTop = 30");
+    // Scrolled up a little, then left alone until the conversations stop moving (they open at their end). A wheel up
+    // first, as a person scrolls: a scroll from a script alone doesn't stop a conversation following its end (the list
+    // moves itself while rows are measured), so it would snap back to the end on the next resize.
+    await js("for (const t of document.querySelectorAll('[data-current-session] [data-transcript]')) { t.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true })); t.scrollTop = 30; }");
     await waitInPage(
       win,
       "(() => { const now = [...document.querySelectorAll('[data-current-session] [data-transcript]')].map((t) => t.scrollTop + '/' + t.scrollHeight).join(); const at = performance.now(); if (window.__smokeScroll?.now !== now) { window.__smokeScroll = { now, at }; return false; } return at - window.__smokeScroll.at > 500; })()",
       6_000,
     );
-    await js("for (const view of document.querySelectorAll('[data-current-session]')) { view.dataset.smokeMark = view.dataset.currentSession; const t = view.querySelector('[data-transcript]'); if (t) view.dataset.smokeScroll = String(t.scrollHeight - t.scrollTop - t.clientHeight); }");
+    await js("for (const view of document.querySelectorAll('[data-current-session]')) { view.dataset.smokeMark = view.dataset.currentSession; const t = view.querySelector('[data-transcript]'); if (t) view.dataset.smokeScroll = String(t.scrollTop); }");
   };
-  /** What changed in a pane since `mark()` (remounted, or how far its conversation is from the end), or an empty string when nothing did. */
+  /**
+   * What changed in a pane since `mark()`, or an empty string when nothing did: remounted (its mark is gone), or moved
+   * in the DOM, which resets its conversation's scroll to the top. How far it is from the end isn't compared: a pane
+   * that changes width wraps its text again, so that changes when nothing is wrong. A hidden pane (a window too small
+   * for every pane) reads as scrolled to the top, so only its mark counts, and so does one that got so much room that
+   * its conversation no longer scrolls as far (the browser holds the scroll to what is left).
+   */
   const changed = () =>
-    js("[...document.querySelectorAll('[data-current-session]')].map((view) => { const t = view.querySelector('[data-transcript]'); return (view.dataset.smokeMark !== view.dataset.currentSession ? 'remounted' : '') + (String(t ? t.scrollHeight - t.scrollTop - t.clientHeight : '') !== (view.dataset.smokeScroll ?? '') ? 'scrolled, ' + view.dataset.smokeScroll + 'px from the end to ' + (t.scrollHeight - t.scrollTop - t.clientHeight) : ''); }).filter(Boolean).join('; ')") as Promise<string>;
+    js("[...document.querySelectorAll('[data-current-session]')].map((view) => { const t = view.querySelector('[data-transcript]'); return (view.dataset.smokeMark !== view.dataset.currentSession ? view.dataset.currentSession.slice(0, 8) + ' remounted' : '') + (t && t.clientHeight > 0 && Number(view.dataset.smokeScroll ?? 0) > 0 && t.scrollTop === 0 && t.scrollHeight - t.clientHeight >= Number(view.dataset.smokeScroll) ? view.dataset.currentSession.slice(0, 8) + ' scrolled back to the top from ' + view.dataset.smokeScroll + 'px' : ''); }).filter(Boolean).join('; ')") as Promise<string>;
   /** What sticks out of its pane, or overlaps: the header, the message box with its chips and Send, and the conversation above it. */
   const stickingOut = () =>
     js(`[...document.querySelectorAll('[data-pane-slot]:not([data-pane-hidden]) [data-current-session]')].flatMap((view) => {
@@ -5841,6 +6368,7 @@ async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
 
   const smoke = smokeSessionId;
   if (!smoke || !(await waitInPage(win, `document.querySelector('[data-current-session="${smoke}"]')`, 3_000))) return 'failed: no session open to split';
+  await openSidebarSections(win);
   const others = (await js(`[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId).filter((id) => id !== '${smoke}').slice(0, 3)`)) as string[];
   if (others.length < 3) return `failed: needs four sessions in the sidebar to arrange, found ${others.length + 1}`;
   const [one, two, three] = others as [string, string, string];
@@ -6002,7 +6530,8 @@ async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
     const smallSticking = await stickingOut();
     if (smallSticking.length) return `failed: in the small window these stick out of the pane: ${smallSticking.join(', ')}`;
     await shot(win, 'split-small-window.png');
-    if (await changed()) return 'failed: shrinking the window remounted a pane';
+    const shrinkLost = await changed();
+    if (shrinkLost) return `failed: shrinking the window remounted a pane (${shrinkLost})`;
     win.setBounds(bounds);
     if (!(await waitInPage(win, "!document.querySelector('[data-split-fallback]')", 3_000))) return 'failed: the panes did not come back in the larger window';
     await settle(win);
@@ -6356,7 +6885,8 @@ async function runAskStep(win: BrowserWindow): Promise<string> {
   if (!smokeSessionId || running.ids.has(smokeSessionId)) return 'ok: skipped, no idle smoke session to ask in';
   await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
   if (!(await waitInPage(win, `${box} && !${box}.disabled && ${box}.value === ''`, 5_000))) return 'the smoke session has no empty message box';
-  const transcript = `document.querySelectorAll('${pane} [data-transcript-item]').length`;
+  // The conversation's own count: its list is virtualised, so the rows in the DOM change when the Ask panel narrows it.
+  const transcript = `Number(document.querySelector('${pane} [data-transcript]')?.dataset.transcriptCount ?? -1)`;
   const before = (await js(transcript)) as number;
   const askButton = `document.querySelector('${pane} [data-ask-button]')`;
   const close = async () => {
@@ -6986,7 +7516,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
-  await step('under each reply: the turn line, its tokens on hover, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
+  await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
@@ -7014,6 +7544,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
+  await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('star on GitHub', () => runStarStep(win));
@@ -7027,6 +7558,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     return `ok: ${await js("document.querySelector('[data-usage-band]').innerText.replace(/\\s+/g, ' ')")}`;
   });
   await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
+  await step('settings › usage: Show estimated cost and Currency are saved, Open usage opens the view with its cost', () => runUsageSettingsStep(win));
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
   await step('settings: theme, sidebar style, session scope, tool activity, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('settings search: ⌘F, results per page, Enter and Escape, and every setting opens at its row', () => runSettingsSearchStep(win), { timeoutMs: 90_000 });
@@ -7044,6 +7576,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('profiles', () => runProfilesStep(win));
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
+  await step('clone from GitHub: the setting with its folder, a URL in the folder field, the clone of a local repository, the trust question (no session)', () => runCloneStep(win), { timeoutMs: 60_000 });
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
@@ -7097,15 +7630,25 @@ app.whenReady().then(() => {
   installMenu();
   notifier = new Notifier({
     engine,
-    window: () => BrowserWindow.getAllWindows()[0],
-    focusedSession: () => focusedSession,
+    window: () => mainWindow ?? undefined,
+    focused: () => {
+      const win = BrowserWindow.getFocusedWindow();
+      return !!win && !win.isMinimized();
+    },
+    focusedSession: sessionOnScreen,
     openSession,
     showAllSessions: () => preferences.get().sessionScope === 'all',
     alerts: () => preferences.get(),
+    cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),
     sounds,
     ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event) } : {}),
   });
   notifier.connect();
+  // Running pull request checks are read every 30 seconds while a window has focus, else every 5 minutes. A blur
+  // comes before the next window's focus, so it looks once that has settled.
+  const sendForeground = () => engine.sendStanding({ type: 'foreground', foreground: BrowserWindow.getFocusedWindow() !== null });
+  app.on('browser-window-focus', sendForeground);
+  app.on('browser-window-blur', () => setTimeout(sendForeground, 100));
   createWindow();
   updater.start();
   // The packaged app declares the scheme in Info.plist; this also takes it back if another app claimed it.
@@ -7115,14 +7658,24 @@ app.whenReady().then(() => {
   if (launchLink) openDeepLink(launchLink);
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!mainWindow) createWindow();
   });
-  // A last resort for a run that hangs outside a step (each step has its own time limit); it still writes what ran.
+  // A last resort for a run that hangs outside a step (each step has its own time limit): it stops once no step has
+  // finished for a while, and still writes what ran. Not a limit on the whole run: as steps were added, a slow CI
+  // runner needed more than three minutes for all of them and was stopped halfway, every step after it failing.
   if (smokeOutDir) {
-    setTimeout(() => {
-      writeSmokeResult();
-      exitApp(2);
-    }, process.env.SWITCHBOARD_SMOKE_LIVE_CWD ? 300_000 : 180_000).unref();
+    const quietMs = process.env.SWITCHBOARD_SMOKE_LIVE_CWD ? 300_000 : 180_000;
+    let finished = -1;
+    let since = Date.now();
+    setInterval(() => {
+      if (smokeRun.steps.length !== finished) {
+        finished = smokeRun.steps.length;
+        since = Date.now();
+      } else if (Date.now() - since > quietMs) {
+        writeSmokeResult();
+        exitApp(2);
+      }
+    }, 5_000).unref();
   }
   if (screenshotOutDir) setTimeout(() => exitApp(2), 240_000).unref();
 });

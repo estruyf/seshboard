@@ -3,6 +3,7 @@ import type { LiveSession, SessionHostInfo, SessionsChanged, SessionsSnapshot, S
 import { hostAsLive, isActiveHost } from './hostsStore.ts';
 import { mergeSessionChanges, patchedSessions } from './sessionChanges.ts';
 import * as panes from './paneState.ts';
+import { shownElsewhere } from './popoutsStore.ts';
 import { leafIds, type Tile } from './tiling.ts';
 import { useTilingArea } from './tilingArea.ts';
 import type { DropTarget, Way } from './tilingGeometry.ts';
@@ -16,7 +17,7 @@ import { toast } from './toastStore.ts';
  */
 export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote';
 /** The pages of Settings, listed in its own sidebar. */
-export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'memory' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
+export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'projects' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'usage' | 'memory' | 'prompts' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
 
 /** Shown when there is no room for another pane (a session opened beside, or a pane dropped where it doesn't fit). */
 const NO_ROOM = 'There is no room for that. Make the window larger or close a pane first.';
@@ -108,6 +109,16 @@ interface SessionsState {
   setFilter(filter: string): void;
 }
 
+/**
+ * A session is open in one window at a time: one shown in another window (a pop-out, or the main window from a
+ * pop-out) is brought to the front there instead of opening here.
+ */
+function showElsewhere(id: string): boolean {
+  if (!shownElsewhere(id)) return false;
+  window.switchboard?.showSession(id);
+  return true;
+}
+
 /** Claude Code records `HEAD` when there is no branch (e.g. before the first commit); that is not a name worth showing. */
 export const realBranch = (branch: string | null) => (branch && branch !== 'HEAD' ? branch : null);
 
@@ -137,13 +148,18 @@ export const useSessions = create<SessionsState>()((set) => ({
   },
   setLive: (live) => set({ live: new Map(live.map((l) => [l.sessionId, l])) }),
   patchSummary: (id, patch) => set((state) => ({ sessions: patchedSessions(state.sessions, id, patch) })),
-  select: (id) => set((s) => ({ ...apply(s, panes.showSession(now(s), id)), view: 'session' })),
+  select: (id) => {
+    if (id && showElsewhere(id)) return;
+    set((s) => ({ ...apply(s, panes.showSession(now(s), id)), view: 'session' }));
+  },
   openBeside: (id) => {
+    if (showElsewhere(id)) return;
     const out = panes.openBeside(now(useSessions.getState()), id, useTilingArea.getState().size);
     if (!out.opened) return toast(NO_ROOM);
     set((s) => ({ ...apply(s, out.state), view: 'session' }));
   },
   dropOn: (id, target) => {
+    if (showElsewhere(id)) return;
     const out = panes.drop(now(useSessions.getState()), id, target, useTilingArea.getState().size);
     if (out.outcome === 'no-room') return toast(NO_ROOM);
     if (out.outcome === 'done') set((s) => ({ ...apply(s, out.state), view: 'session' }));

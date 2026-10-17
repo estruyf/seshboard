@@ -156,7 +156,7 @@ export function sessionGroup(row: SessionRowData, now: number): SessionGroup {
  * When a working session's turn began: when you last sent it a message (Claude Code's registry: when it
  * went busy). The Working list orders by this rather than by the last write, which moves all the time.
  */
-export const workingSince = (row: SessionRowData): number => row.live?.updatedAt ?? row.live?.startedAt ?? row.updatedAt;
+export const workingSince = (row: SessionRowData): number => row.live?.updatedAt ?? row.live?.startedAt ?? row.remote?.workingSince ?? row.updatedAt;
 
 /** Working sessions, pinned first, then the one you set going last. */
 export const byWorkingSince = (a: SessionRowData, b: SessionRowData): number => Number(b.pinned) - Number(a.pinned) || workingSince(b) - workingSince(a);

@@ -10,7 +10,8 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { isAskOpen } from '../../state/askStore.ts';
 import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
 import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
-import { toggleChangesPanel, toggleTerminalPanel } from '../../state/rightPanelStore.ts';
+import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
+import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { cleanUpWorktrees, openProject } from '../../state/projectPageStore.ts';
@@ -18,6 +19,7 @@ import { copyForClaudeApp, importFromClaudeExport, pasteFromClaudeApp } from '..
 import { useProjects } from '../../state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from '../../state/sessionNav.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
+import { popOut } from '../../state/popoutsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
@@ -26,6 +28,9 @@ import { ownerSession } from '../terminal/appTerminal.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
+import { useSavedPromptsStore } from '../savedPrompts/savedPromptsStore.ts';
+import { sameScope } from '../savedPrompts/fillModel.ts';
+
 import { useDrafts } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { lastLimit } from '../focus/focusLimit.ts';
@@ -154,19 +159,27 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     newTerminalTab: () => owner && call('open a terminal', (c) => openTerminal(c, owner, ctx.terminal.cwd, 'shell')),
     toggleChanges: () => {
       const id = useSessions.getState().selectedId;
-      toggleChangesPanel(isAskOpen(id) || isAgentsOpen(id) || isCommandsOpen(id));
+      if (id) toggleChangesPanel(id, isAskOpen(id) || isAgentsOpen(id) || isCommandsOpen(id));
     },
     toggleAgents: () => {
       const id = useSessions.getState().selectedId;
-      if (id) toggleAgentsPanel(id, useOverlay.getState().changesOpen || isAskOpen(id) || isCommandsOpen(id));
+      if (id) toggleAgentsPanel(id, isChangesOpen(id) || isAskOpen(id) || isCommandsOpen(id));
     },
     toggleCommands: () => {
       const id = useSessions.getState().selectedId;
-      if (id) toggleCommandsPanel(id, useOverlay.getState().changesOpen || isAskOpen(id) || isAgentsOpen(id));
+      if (id) toggleCommandsPanel(id, isChangesOpen(id) || isAskOpen(id) || isAgentsOpen(id));
     },
     // After the palette's own close, so the Tools dialog isn't closed along with it.
     showTools: () => setTimeout(() => useOverlay.getState().show('tools')),
     openInEditor: () => cwd && void openIn(cwd).catch(failed('open the folder')),
+    usePrompt: (scope, id) => {
+      const prompt = Object.values(useSavedPromptsStore.getState().lists)
+        .flatMap((list) => list.prompts)
+        .find((p) => p.id === id && sameScope(p.scope, scope));
+      // After the palette's own close, so the focus lands in the message box.
+      if (prompt && ctx.composer) setTimeout(() => useDrafts.getState().requestPrompt(ctx.composer!.key, prompt));
+    },
+    newPrompt: () => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, root: ctx.currentProject?.root ?? null }),
     addContext: () => {
       // After the palette's own close, so the picker isn't closed along with it.
       if (ctx.composer) setTimeout(() => useComposerTargets.getState().openPicker(ctx.composer!));
@@ -243,6 +256,10 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     flipSplit: () => useSessions.getState().flipSplit(),
     closePane: () => useSessions.getState().closePane(),
     closeOtherPanes: () => useSessions.getState().closeOtherPanes(),
+    openInNewWindow: () => {
+      const { selectedId } = useSessions.getState();
+      if (selectedId) popOut(selectedId);
+    },
     newSessionRequest: (kind) => usePaletteBus.getState().requestNewSession(kind),
     openNewSession: () => useSessions.getState().openNewSession(),
     newSessionOn: (computerId) => newSessionOn(computerId),

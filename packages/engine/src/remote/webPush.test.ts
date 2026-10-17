@@ -1,6 +1,6 @@
 import { verify } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { encryptPayload, generateVapidKeys, isPushEndpoint, sendPush, vapidAuthorization, vapidPublicKey } from './webPush.ts';
+import { encryptPayload, generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, vapidAuthorization, vapidPublicKey } from './webPush.ts';
 
 const b64 = (text: string) => new Uint8Array(Buffer.from(text, 'base64url'));
 
@@ -27,6 +27,23 @@ describe('VAPID', () => {
     const [h, c, s] = token!.split('.');
     expect(JSON.parse(Buffer.from(c!, 'base64url').toString())).toEqual({ aud: 'https://fcm.googleapis.com', exp: 1_000 + 12 * 3600, sub: 'https://switchboard.struyfconsulting.com' });
     expect(verify('sha256', Buffer.from(`${h}.${c}`), { key: vapidPublicKey(keys), dsaEncoding: 'ieee-p1363' }, Buffer.from(s!, 'base64url'))).toBe(true);
+  });
+});
+
+describe('a device\'s own VAPID key', () => {
+  it('takes a key pair made with WebCrypto, as the remote app makes it, and signs with it', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+    const jwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
+    const keys = { publicKey: Buffer.concat([Buffer.from([4]), b64(jwk.x!), b64(jwk.y!)]).toString('base64url'), privateKey: jwk.d! };
+    expect(keys.publicKey).toHaveLength(87);
+    expect(keys.privateKey).toHaveLength(43);
+    expect(validVapidKeys(keys)).toBe(true);
+    expect(vapidAuthorization('https://web.push.apple.com/x', keys, 'https://switchboard.struyfconsulting.com').endsWith(`k=${keys.publicKey}`)).toBe(true);
+  });
+
+  it('refuses a private key that isn\'t the public key\'s, or no key at all', () => {
+    expect(validVapidKeys({ publicKey: generateVapidKeys().publicKey, privateKey: generateVapidKeys().privateKey })).toBe(false);
+    expect(validVapidKeys({ publicKey: 'A'.repeat(87), privateKey: 'A'.repeat(43) })).toBe(false);
   });
 });
 
