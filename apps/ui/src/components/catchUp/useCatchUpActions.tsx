@@ -3,7 +3,7 @@ import type { CatchUp, GitChanges } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
-import { useOverlay } from '../../state/overlayStore.ts';
+import { closeChanges, isChangesOpen, openChanges } from '../../state/changesPanelStore.ts';
 import { currentOrder } from '../../state/sessionNav.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
@@ -38,7 +38,8 @@ export function useCatchUpActions({ card, cwd, changes }: { card: CatchUp; cwd: 
     const store = useCatchUp.getState();
     switch (id) {
       case 'review':
-        useOverlay.getState().toggleChanges();
+        if (isChangesOpen(sessionId)) closeChanges(sessionId);
+        else openChanges(sessionId);
         return;
       case 'commit':
         if (!cwd) return setError('The folder for this session is unknown.');

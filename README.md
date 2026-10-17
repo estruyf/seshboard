@@ -214,6 +214,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌃⇥ | Next session (in the sidebar's order) |
 | ⌃⇧⇥ | Previous session (in the sidebar's order) |
 | ⌘⇧U | Next session that needs you |
+| ⌘⌥O | Open this session in a new window (in a session; Closing that window puts nothing away: the session keeps running) |
 | ↑ or ↓ | Move through sessions (in the sidebar) |
 | ⌘-click or ⇧-click or ⇧↑ or ⇧↓ | Select several sessions (in the sidebar) |
 | ⌘A | Select every session in the group (in the sidebar) |

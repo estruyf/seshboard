@@ -387,6 +387,11 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "palette:open-in-new-window",
+      "name": "Open in new window",
+      "page": "sessions/own-window"
+    },
+    {
       "id": "palette:open-in-editor",
       "name": "Open folder in editor",
       "page": "sessions/conversation"
@@ -955,6 +960,11 @@
       "id": "shortcut:pane.focus-down",
       "name": "pane.focus-down",
       "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:session.new-window",
+      "name": "session.new-window",
+      "page": "sessions/own-window"
     },
     {
       "id": "shortcut:pane.swap",

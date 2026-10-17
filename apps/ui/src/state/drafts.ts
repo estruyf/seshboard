@@ -396,3 +396,11 @@ export function quitSummary(impact: string | null, unsent: number): string[] {
   const kept = unsent === 1 ? 'It is kept and comes back next time.' : 'Unsent messages are kept and come back next time.';
   return [impact ? `${impact.replace(/\.$/, '')}, and you have ${messages}.` : `You have ${messages}.`, kept];
 }
+
+/** The drafts that differ between two sets, by key (`null`: gone), for the other windows. */
+export function changedDrafts<D>(previous: Readonly<Record<string, D>>, next: Readonly<Record<string, D>>): Record<string, D | null> {
+  const change: Record<string, D | null> = {};
+  for (const [key, draft] of Object.entries(next)) if (previous[key] !== draft) change[key] = draft;
+  for (const key of Object.keys(previous)) if (!(key in next)) change[key] = null;
+  return change;
+}

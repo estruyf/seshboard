@@ -234,6 +234,7 @@ describe('the shortcut registry', () => {
       'terminal.stop-action': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: true } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],
       'git.pull': [{ ...SESSION, behind: true }, SESSION],
       'pr.create': [SESSION, HOME],
+      'session.new-window': [SESSION, HOME],
       'editor.open': [SESSION, at({ view: 'new-session' })],
       'claude.stop': [{ ...SESSION, running: true }, SESSION],
       'composer.send-now': [{ ...SESSION, running: true }, SESSION],

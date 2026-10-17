@@ -172,3 +172,23 @@ describe('a new session that fails before it starts', () => {
     expect(store().drafts[newDraftKey('/repo')]).toMatchObject({ text: 'A prompt that must not get lost', counted: true, lostImages: 1, form });
   });
 });
+
+describe('drafts from another window', () => {
+  it('takes them as they are, and forgets the ones gone there', () => {
+    type('s-1', 'here');
+    type('s-2', 'stays');
+    const there = { text: 'typed in the pop-out', attachments: [image], updatedAt: 5, counted: true, lostImages: 0 };
+    store().applyRelayed({ 's-1': null, 's-3': there });
+    expect(store().drafts['s-1']).toBeUndefined();
+    expect(store().drafts['s-2']!.text).toBe('stays');
+    expect(store().drafts['s-3']).toBe(there);
+  });
+
+  it("leaves settling to the window it was typed in", () => {
+    type('s-1', 'a');
+    const there = { text: 'ab', attachments: [], updatedAt: 5, counted: false, lostImages: 0 };
+    store().applyRelayed({ 's-1': there });
+    vi.advanceTimersByTime(DRAFT_SETTLE_MS * 2);
+    expect(store().drafts['s-1']).toBe(there);
+  });
+});

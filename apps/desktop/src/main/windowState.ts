@@ -77,3 +77,31 @@ export class WindowStateStore {
     }
   }
 }
+
+/**
+ * Where a pop-out opens: beside the window it came from, on the side of its display with the most room, at
+ * `size` or narrower to fit there. When neither side has `min.width` free, it overlaps the window, moved down
+ * and right a little. `offset` is how many pop-outs are open already: each one opens a little lower than the last.
+ */
+export function placePopout(
+  from: Rect,
+  workArea: Rect,
+  size: { width: number; height: number },
+  min: { width: number; height: number },
+  offset = 0,
+): Rect {
+  const gap = 8;
+  const height = Math.max(Math.min(size.height, workArea.height), min.height);
+  const right = workArea.x + workArea.width - (from.x + from.width + gap);
+  const left = from.x - gap - workArea.x;
+  const clampY = (y: number) => Math.min(Math.max(y, workArea.y), workArea.y + workArea.height - height);
+  if (Math.max(right, left) >= min.width) {
+    const width = Math.min(size.width, Math.max(right, left));
+    const x = right >= left ? from.x + from.width + gap : from.x - gap - width;
+    return { x, y: clampY(from.y + 32 * offset), width, height };
+  }
+  const width = Math.max(Math.min(size.width, workArea.width), min.width);
+  const step = 32 * (offset + 1);
+  const x = Math.min(Math.max(from.x + from.width - width + step, workArea.x), workArea.x + workArea.width - width);
+  return { x, y: clampY(from.y + step), width, height };
+}

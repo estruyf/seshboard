@@ -65,6 +65,8 @@ import { useRemoteSync } from './state/useRemoteSync.ts';
 import { RemoteView } from './components/computers/RemoteView.tsx';
 import { localSessionId } from './state/remoteSelection.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
+import { popOut } from './state/popoutsStore.ts';
+import { usePopoutsSync } from './state/usePopoutsSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 
@@ -188,6 +190,11 @@ function useShortcuts() {
         event.preventDefault();
         startIn(questionsDir);
         useSessions.getState().openNewSession();
+      } else if (matches(event, 'session.new-window')) {
+        const { view, selectedId } = useSessions.getState();
+        if (view !== 'session' || !selectedId) return;
+        event.preventDefault();
+        popOut(selectedId);
       } else if (matches(event, 'editor.open')) {
         const { view, selectedId, sessions, live } = useSessions.getState();
         if (view !== 'session' || !selectedId) return;
@@ -214,6 +221,14 @@ function useWindowFocus() {
   useEffect(() => window.switchboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
   // Switchboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.
   useEffect(() => window.switchboard?.onOpenSettings((section) => useSessions.getState().openSettings(section ?? undefined)), []);
+  // An app-wide shortcut pressed in a pop-out: main brought this window to the front, and the keys run here.
+  useEffect(
+    () =>
+      window.switchboard?.onKeysForwarded((keys) => {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { ...keys, bubbles: true, cancelable: true }));
+      }),
+    [],
+  );
   // Help › Keyboard Shortcuts (⌘/) in the menu bar.
   useEffect(() => window.switchboard?.onToggleShortcuts(() => !otherModalOpen() && useOverlay.getState().toggleShortcuts()), []);
 }
@@ -231,6 +246,7 @@ export function App() {
   useClaudeUpdateSync();
   useSidebarSync();
   useDraftsSync();
+  usePopoutsSync();
   useUsageSync();
   usePreferencesSync();
   useThemesSync();

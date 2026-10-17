@@ -394,6 +394,15 @@ export const SHORTCUTS = [
     section: "sessions",
   },
   {
+    id: "session.new-window",
+    keys: ["mod+alt+o"],
+    action: "Open this session in a new window",
+    section: "sessions",
+    context: "In a session",
+    note: "Closing that window puts nothing away: the session keeps running",
+    when: (ctx) => ctx.view === "session" && ctx.session,
+  },
+  {
     id: "sidebar.move",
     keys: ["arrowup", "arrowdown"],
     action: "Move through sessions",

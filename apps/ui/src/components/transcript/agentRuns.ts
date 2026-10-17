@@ -1,6 +1,7 @@
 import type { BackgroundTask } from '@switchboard/protocol/client';
 import type { DisplayItem } from './displayItems.ts';
 import type { ToolItem } from './ToolDetails.tsx';
+import type { AgentTokens } from './turns.ts';
 
 const isAgent = (item: DisplayItem): item is ToolItem => item.kind === 'tool' && !item.subagent && (item.name === 'Agent' || item.name === 'Task');
 
@@ -11,25 +12,33 @@ export interface AgentRun {
   background: boolean;
   /** Claude Code's id for a background agent, from the launch's result: the id its background task has too. */
   agentId: string | null;
-  /** The agent type (`general-purpose`, `Explore`…). */
-  type: string;
+  /** The agent type (`general-purpose`, `Explore`…), null when the call named none. */
+  type: string | null;
   /** What the agent was asked to do, in a few words. */
   what: string;
   /** The full instruction it was given. */
   prompt: string | null;
+  /** The model the call asked for (`sonnet`, `opus`…), null when it left it to the agent type or the session's model. */
+  asked: string | null;
   /** What it reported back, once done: the call's result, or a background agent's hand-back. */
   report: string | null;
 }
 
 /** An agent's type, short description and full prompt, from the call that started it. */
-export function describeAgent(item: ToolItem): Pick<AgentRun, 'type' | 'what' | 'prompt'> {
-  const input = (item.input ?? {}) as { description?: unknown; subagent_type?: unknown; prompt?: unknown };
+export function describeAgent(item: ToolItem): Pick<AgentRun, 'type' | 'what' | 'prompt' | 'asked'> {
+  const input = (item.input ?? {}) as { description?: unknown; subagent_type?: unknown; prompt?: unknown; model?: unknown };
   const prompt = typeof input.prompt === 'string' && input.prompt.trim() ? input.prompt : null;
   return {
-    type: typeof input.subagent_type === 'string' ? input.subagent_type : 'agent',
+    type: typeof input.subagent_type === 'string' && input.subagent_type ? input.subagent_type : null,
     what: typeof input.description === 'string' ? input.description : prompt ? prompt.slice(0, 100) : 'Agent',
     prompt,
+    asked: typeof input.model === 'string' && input.model.trim() ? input.model : null,
   };
+}
+
+/** The model an agent runs on: the one its replies used, else the one the call asked for. Null before it has replied and when the call left it open. */
+export function agentModel(run: AgentRun, usage: AgentTokens | undefined): string | null {
+  return usage?.model ?? run.asked;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { fileManagerName } from '../../lib/platform.ts';
 import {
   Activity,
+  AppWindow,
   Archive,
   ArchiveRestore,
   ArrowDown,
@@ -213,6 +214,8 @@ export interface PaletteApi {
   flipSplit(): void;
   closePane(): void;
   closeOtherPanes(): void;
+  /** Shows the session on screen in a window of its own. */
+  openInNewWindow(): void;
   newSessionRequest(kind: NewSessionRequest): void;
   /** Opens the New session view (Add to queue… outside it). */
   openNewSession(): void;
@@ -644,6 +647,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'toggle-commands', title: 'Toggle commands', group: 'session', shortcut: keysFor('commands.toggle'), icon: ScrollText, keywords: 'background shell output monitor panel', when: hasSession, run: (api) => api.toggleCommands() },
   { id: 'toggle-changes', title: 'Toggle changes', group: 'session', shortcut: keysFor('changes.toggle'), icon: FileDiff, keywords: 'diff git panel', when: inGit, run: (api) => api.toggleChanges() },
   { id: 'tools', title: 'Tools: MCP servers, skills, agents, plugins', group: 'session', icon: Blocks, keywords: 'mcp extensions capabilities', when: withCwd, run: (api) => api.showTools() },
+  { id: 'open-in-new-window', title: 'Open in new window', group: 'session', shortcut: keysFor('session.new-window'), icon: AppWindow, keywords: 'pop out popout detach separate window monitor screen tile', when: hasSession, run: (api) => api.openInNewWindow() },
   { id: 'open-in-editor', title: 'Open folder in editor', group: 'session', shortcut: keysFor('editor.open'), icon: Code, keywords: 'vscode cursor', when: withCwd, run: (api) => api.openInEditor() },
   { id: 'reveal-in-finder', title: `Reveal folder in ${fileManagerName()}`, group: 'session', icon: Folder, keywords: 'show files', when: withCwd, run: (api) => api.revealInFinder() },
   {

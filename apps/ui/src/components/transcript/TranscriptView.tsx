@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -15,6 +15,8 @@ import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../sta
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { realBranch, useSessions } from '../../state/sessionsStore.ts';
+import { popOut, popoutSession } from '../../state/popoutsStore.ts';
+import { currentPlatform } from '../../lib/platform.ts';
 import { runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
@@ -81,7 +83,7 @@ import { buildDisplayItems, groupActivity, type RenderItem } from './displayItem
 import { durationWords, liveParts, tokenWords } from './turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, type LiveTurnInfo, type TurnMetaValue } from './TurnMeta.tsx';
 import { claudeMs, liveTurn, type Turn } from './turns.ts';
-import { useTurns } from './useTurns.ts';
+import { useAgentTokens, useTurns } from './useTurns.ts';
 import { memoryWriteOf } from './memoryWrites.ts';
 import { useKnownMemoryFolders, useMemoryFoldersSync } from '../memory/useMemoryFolders.ts';
 import { MessageMenuContext, useRememberLayer } from '../memory/RememberLayer.tsx';
@@ -98,7 +100,8 @@ import { itemCount } from '../../state/ask.ts';
 import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
 import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
 import { closeCommands, openCommands, pickCommand, toggleCommandsPanel, useSessionCommands } from '../../state/commandsPanelStore.ts';
-import { toggleChangesPanel, toggleTerminalPanel, useRightPanel } from '../../state/rightPanelStore.ts';
+import { closeChanges, toggleChangesPanel, useSessionChanges } from '../../state/changesPanelStore.ts';
+import { toggleTerminalPanel, useRightPanel, useRightTab } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
@@ -449,18 +452,19 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const actionsMenu = useActionsMenu({ sessionId, projectRoot: options.projectActions ? projectRoot : null, cwd, active });
 
   // The Changes panel (⌘⇧D): the checkout's git diff, with stage and revert.
-  const changesOpen = useOverlay((s) => s.changesOpen);
-  // With two panes, panels and dialogs belong to the active one.
+  const changesOpen = useSessionChanges(sessionId);
+  // With two panes, dialogs belong to the active one; the side panels are each session's own.
   const toolsOpen = useOverlay((s) => s.open === 'tools') && active;
-  const toggleChanges = useOverlay((s) => s.toggleChanges);
   const [changesBase, setChangesBase] = useState<ChangesBase>('uncommitted');
   // A branch switch (here or in another pane on the same checkout) changes what the panel shows.
   const branchSwitches = useCheckoutBranches((s) => s.switches);
-  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, `${items.length}:${live?.status ?? ''}:${branchSwitches}`, changesOpen && active);
+  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, `${items.length}:${live?.status ?? ''}:${branchSwitches}`, changesOpen);
   const isRepo = options.git && inRepo;
   // The badge on the Changes button counts uncommitted files only (the panel can compare with a branch too).
   const changedCount = changesBase === 'uncommitted' && changes ? changes.files.length : 0;
-  const showChanges = Boolean(changesOpen && active && cwd && isRepo);
+  // A session in its own window (a pop-out) shows the conversation only: its side panels stay in the main window.
+  const sidePanels = popoutSession !== sessionId;
+  const showChanges = sidePanels && Boolean(changesOpen && cwd && isRepo);
   // "Why is Claude asking?" on a permission card: its panel takes the Changes panel's place while it is open.
   const whyOpen = useWhy((s) => s.open);
   const whyRequest = active && whyOpen?.sessionId === sessionId ? (permissions.find((p) => p.requestId === whyOpen.requestId) ?? null) : null;
@@ -471,21 +475,22 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const changesExpanded = useChangesLayout((s) => s.expanded);
   // Ask about this session shares the right side with Changes: both open, they are tabs (the last one picked in front).
   const ask = useSessionAsk(sessionId);
-  const rightTab = useRightPanel((s) => s.tab);
+  const rightTab = useRightTab(sessionId);
   const rightWidth = useRightPanel((s) => s.width);
   const setRightWidth = useRightPanel((s) => s.setWidth);
   // Agents joins them: the agents Claude started in this session, with the running ones counted on their tab.
   const { agents, running: agentsRunning } = useAgentRuns(items, live !== null);
   const agentsState = useSessionAgents(sessionId);
-  const showAgents = Boolean(agentsState.open && active);
+  // Their open state is per session, so unlike Changes (one flag for the window) they stay when another pane is focused.
+  const showAgents = sidePanels && agentsState.open;
   // And Commands: the shell commands and monitors Claude ran in the background, with their output.
   const { commands: backgroundCommands, running: commandsRunning } = useCommandRuns(items, live !== null, activeHost?.backgroundTasks ?? null);
   const commandsState = useSessionCommands(sessionId);
-  const showCommands = Boolean(commandsState.open && active);
+  const showCommands = sidePanels && commandsState.open;
   // The terminal docks below or on the right. On the right it is a tab like the others, so opening Changes, Ask,
   // Agents or Commands next to it keeps it there. Maximized, it takes the whole view: the conversation (and the other panels) stay
   // mounted but hidden. Each pane shows its own session's terminal, so with two panes both can have one.
-  const terminalShown = panelOpen;
+  const terminalShown = sidePanels && panelOpen;
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyWidth = useWidth(bodyRef);
   const bodyHeight = useHeight(bodyRef);
@@ -500,10 +505,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const hiddenMods = usePreferences((s) => s.prefs.hiddenMods);
   const modPrefs = useMemo(() => ({ showMods, hiddenMods }), [showMods, hiddenMods]);
   const modPanes = useMemo(
-    () => (active && sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
-    [active, sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
+    () => (sidePanels && sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
+    [sidePanels, sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
   );
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  const right = rightPanel({ changes: showChanges, ask: sidePanels && ask.open, agents: showAgents, commands: showCommands, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
@@ -513,13 +518,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const commandsFront = right.tabs && showCommands ? right.tab === 'commands' : undefined;
   const terminalFront = right.tabs && terminalOnRight ? right.tab === 'terminal' : undefined;
   const panesOpen = modPanes.length > 0;
-  const toggleChangesHere = () => toggleChangesPanel(ask.open || showAgents || showCommands || terminalOnRight || panesOpen);
+  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || terminalOnRight || panesOpen);
   const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || terminalOnRight || panesOpen);
   const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || terminalOnRight || panesOpen);
   const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || terminalOnRight || panesOpen);
   // Picking a mod's tab tells Claude Code which pane is shown.
   const pickRightTab = (tab: RightTab) => {
-    useRightPanel.getState().setTab(tab);
+    useRightPanel.getState().setTab(sessionId, tab);
     const pane = paneOfTab(tab);
     if (pane && client) void client.call('mods.pane', { sessionId, action: 'show', id: pane }).catch(() => {});
   };
@@ -542,13 +547,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const focusRequested = active ? sessionMods.panes.focusRequestedId : null;
   useEffect(() => {
     if (!focusRequested || !modPanes.some((p) => p.id === focusRequested)) return;
-    useRightPanel.getState().setTab(modPaneTab(focusRequested));
+    useRightPanel.getState().setTab(sessionId, modPaneTab(focusRequested));
     setPaneFocus((f) => ({ id: focusRequested, nonce: f.nonce + 1 }));
   }, [focusRequested, modPanes]);
   // The terminal coming to the right (opened, or docked there) comes to the front, as a panel opened there does.
   const terminalWasOnRight = useRef(terminalOnRight);
   useEffect(() => {
-    if (terminalOnRight && !terminalWasOnRight.current) useRightPanel.getState().setTab('terminal');
+    if (terminalOnRight && !terminalWasOnRight.current) useRightPanel.getState().setTab(sessionId, 'terminal');
     terminalWasOnRight.current = terminalOnRight;
   }, [terminalOnRight]);
   // Docked below, the terminal takes the room of the footer under the message box: a ring in the box stands in for it.
@@ -605,7 +610,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     live?.status === 'needs-you' ? 'Waiting for you' : streamKind === 'thinking' ? 'Thinking' : streamKind === 'tool' && streamTool ? `Using ${streamTool}` : null;
   // When your last message went in, for the "9s · Thinking" timer.
   // Turns: the line under each finished one, and the working line's numbers for the open one.
-  const turns = useTurns(client, sessionId, items, working);
+  const agentTokens = useAgentTokens(client, sessionId, items, working);
+  const turns = useTurns(sessionId, items, agentTokens);
   const turnDetails = usePreferences((s) => s.prefs.turnDetails);
   const openTurn = working ? (turns.at(-1) ?? null) : null;
   const finishedByReply = useMemo(() => {
@@ -1222,7 +1228,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         data-pane-active={tiled ? active : undefined}
       >
         {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
-        {leading && <SidebarToggle />}
+        {leading && sidePanels && <SidebarToggle />}
+        {/* A pop-out's traffic lights sit over its header's left end (macOS); elsewhere the window has its own title bar. */}
+        {!sidePanels && currentPlatform() === 'darwin' && <span className="w-11 shrink-0" aria-hidden />}
         {/* In a pane under 400px wide the header has no room for the icon: the title and the buttons come first. */}
         {projectRoot && (
           <span className="flex shrink-0 @max-[400px]:hidden">
@@ -1275,6 +1283,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           </div>
         </div>
         {/* Changes | Ask | Agents | Commands | Terminal: the side panels as one compact, icon-only segmented control. */}
+        {sidePanels && (
         <SegmentedControl
           mode="toggle"
           label="Panels"
@@ -1295,7 +1304,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     ariaLabel: `${changesFront === false ? 'Bring changed files to the front' : changesOpen ? 'Hide changed files' : 'Show changed files'}${changedCount ? `, ${changedCount} changed` : ''} (${formatKeys(keysFor('changes.toggle'))})`,
                     kbd: keysFor('changes.toggle'),
                     front: changesFront,
-                    expanded: changesOpen && active && changesFront !== false,
+                    expanded: changesOpen && changesFront !== false,
                     data: { 'data-toggle-changes': true },
                   },
                 ]
@@ -1364,6 +1373,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             },
           ]}
         />
+        )}
         {cwd && isRepo && (
           <GitButton
             sessionId={sessionId}
@@ -1387,14 +1397,49 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           actions={actionsMenu}
           cwd={cwd}
           agents={{ total: agents.length, running: agentsRunning }}
-          onAgents={() => openAgents(sessionId)}
+          onAgents={sidePanels ? () => openAgents(sessionId) : null}
           commands={{ total: backgroundCommands.length, running: commandsRunning }}
-          onCommands={() => openCommands(sessionId)}
+          onCommands={sidePanels ? () => openCommands(sessionId) : null}
           profileId={profileId}
           title={summary ? title : null}
           onStop={activeHost ? () => void client?.call('session.close', { sessionId }) : null}
         />
-        {!tiled && (
+        {sidePanels ? (
+          <Button
+            variant="quiet"
+            iconOnly
+            icon={<AppWindow size={15} aria-hidden />}
+            data-open-in-new-window
+            onClick={() => popOut(sessionId)}
+            aria-label="Open in new window"
+            shortcut="session.new-window"
+            className="no-drag shrink-0 @max-[420px]:hidden"
+          />
+        ) : (
+          <Button
+            variant="quiet"
+            iconOnly
+            icon={<SquareArrowDownLeft size={15} aria-hidden />}
+            data-move-to-main-window
+            onClick={() => window.switchboard?.popIn()}
+            data-tooltip="Move back to main window"
+            aria-label="Move back to main window"
+            className="no-drag shrink-0"
+          />
+        )}
+        {!sidePanels && (
+          <Button
+            variant="quiet"
+            iconOnly
+            icon={<X size={15} />}
+            data-close-window
+            onClick={() => window.close()}
+            data-tooltip="Close window (the session keeps running)"
+            aria-label="Close window"
+            className="no-drag shrink-0"
+          />
+        )}
+        {!tiled && sidePanels && (
           <Button
             variant="quiet"
             iconOnly
@@ -1745,7 +1790,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       : undefined
                   }
                   onInterrupt={() => void client?.call('session.interrupt', { sessionId })}
-                  ask={{ onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready }}
+                  ask={sidePanels ? { onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready } : undefined}
                   onEscape={() => {
                     // Esc after Reply leaves the message box and goes back to the catch-up.
                     if (useCatchUp.getState().replying !== sessionId) return false;
@@ -1809,12 +1854,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         {whyRequest && !terminalMaximized && <WhyPanel request={whyRequest} cwd={cwd} />}
         {!whyRequest && right.tab === 'changes' && cwd && !terminalMaximized && (
           <ChangesPanel
+            sessionId={sessionId}
             cwd={cwd}
             changes={changes}
             base={changesBase}
             onBase={setChangesBase}
             onRefresh={refreshChanges}
-            onClose={() => toggleChanges(false)}
+            onClose={() => closeChanges(sessionId)}
             outside={catchUp?.signals.outOfScope}
             tabs={right.tabs ? rightTabs : undefined}
             shared={right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
@@ -1854,6 +1900,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             sessionId={sessionId}
             cwd={cwd}
             runs={agents}
+            tokens={agentTokens}
             tasks={backgroundTasks}
             picked={agentsState.picked}
             onPick={(agent) => pickAgent(sessionId, agent)}

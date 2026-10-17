@@ -1,6 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
+import { PopoutApp } from './components/popout/PopoutApp.tsx';
+import { popoutSession } from './state/popoutsStore.ts';
 import './styles.css';
 // Applies the theme (a generated style element) before the first render.
 import './state/themeStore.ts';
@@ -18,6 +20,7 @@ window.addEventListener('pointerdown', () => root.removeAttribute('data-keyboard
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {/* A pop-out window shows one session (`?popout=<id>`); the main window shows the whole app. */}
+    {popoutSession ? <PopoutApp sessionId={popoutSession} /> : <App />}
   </StrictMode>,
 );

@@ -23,6 +23,7 @@ export const sidebar = [
       'sessions/home',
       'sessions/search',
       'sessions/split-view',
+      'sessions/own-window',
       'sessions/pinned',
       'sessions/archived',
       'sessions/unsent-drafts',
