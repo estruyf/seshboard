@@ -5,6 +5,8 @@ import { TooltipLayer } from './components/ui/Tooltip.tsx';
 import { ToastLayer } from './components/ui/Toast.tsx';
 import { FocusGateDialog } from './components/focus/FocusGateDialog.tsx';
 import { useSessionShortcuts } from './components/session/useSessionShortcuts.ts';
+import { useOverlayShortcuts } from './components/palette/useOverlayShortcuts.ts';
+import { otherModalOpen, overlayOpen } from './lib/modalGuards.ts';
 import { LinkError } from './components/LinkError.tsx';
 import { QuitPrompt } from './components/QuitPrompt.tsx';
 import { ArchiveDraftDialog } from './components/drafts/ArchiveDraftDialog.tsx';
@@ -83,18 +85,6 @@ function currentTerminalOwner(): string | null {
   return terminalOwner(terminalView(view, selectedId), localSessionId(selectedId));
 }
 
-/** A dialog, menu or popover is open: it keeps Tab for itself, so ⌃⇥ doesn't switch sessions behind it. */
-const overlayOpen = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [data-popover]') !== null;
-
-/** The palette, Search and the shortcuts sheet: their shortcuts close them or switch between them. */
-const OWN_OVERLAYS = '[data-command-palette], [data-search], [data-shortcuts-sheet]';
-
-/**
- * Another modal is open (Add context, Rename session…). The palette, Search and the shortcuts sheet would
- * open under it, half hidden, and take the keys, so their shortcuts do nothing until it closes.
- */
-const otherModalOpen = () => Array.from(document.querySelectorAll('[aria-modal="true"]')).some((el) => !el.matches(OWN_OVERLAYS));
-
 /** What each key of the panes does (keys in `lib/shortcuts.ts`). */
 const PANE_KEYS: ReadonlyArray<readonly [ShortcutId, (sessions: ReturnType<typeof useSessions.getState>) => void]> = [
   ['pane.close', (s) => s.closePane()],
@@ -108,8 +98,8 @@ const PANE_KEYS: ReadonlyArray<readonly [ShortcutId, (sessions: ReturnType<typeo
 ];
 
 /**
- * The window's own shortcuts (keys in `lib/shortcuts.ts`): new session, the command palette and go-to, search,
- * Home, the sidebar, moving between sessions, the panes (close, focus, swap, turn) and the shortcuts sheet, plus
+ * The window's own shortcuts (keys in `lib/shortcuts.ts`): new session, go-to, search, Home, the sidebar, moving
+ * between sessions and the panes (close, focus, swap, turn), plus the command palette and the shortcuts sheet and
  * the session's own (the terminal, open in editor, open in new window), which a pop-out has too. The terminal
  * passes ⌘ keys and ⌃⇥ on to the window (XTerm.tsx), so these work there too.
  */
@@ -120,13 +110,7 @@ function useShortcuts() {
       // one of them keeps it. These run once the key has been through every listener, and only if none
       // took it (the actions' listener may come before or after this one). They have no default to stop.
       const later = (run: () => void) => setTimeout(() => !event.defaultPrevented && run(), 0);
-      if (matches(event, 'shortcuts')) {
-        // From anywhere, the terminal and the message box included; a shortcut recorder that took the key
-        // keeps it, and another dialog keeps the window until it closes.
-        if (event.defaultPrevented || otherModalOpen()) return;
-        event.preventDefault();
-        useOverlay.getState().toggleShortcuts();
-      } else if (matches(event, 'session.next') || matches(event, 'session.previous')) {
+      if (matches(event, 'session.next') || matches(event, 'session.previous')) {
         if (!event.defaultPrevented && !overlayOpen()) later(() => goToAdjacentSession(matches(event, 'session.previous') ? -1 : 1));
       } else if (matches(event, 'session.next-needs-you')) {
         later(goToNextNeedsYou);
@@ -141,12 +125,6 @@ function useShortcuts() {
         const overlay = useOverlay.getState();
         if (overlay.open === 'search') overlay.close();
         else overlay.show('search');
-      } else if (matches(event, 'palette.commands')) {
-        // In the terminal, ⌘K clears the screen as usual; ⌘⇧P (as in VS Code) is the way to the palette there.
-        if (matches(event, 'terminal.clear') && (event.target as HTMLElement | null)?.closest?.('.xterm')) return;
-        if (otherModalOpen()) return;
-        event.preventDefault();
-        useOverlay.getState().togglePalette('commands');
       } else if (matches(event, 'palette.goto')) {
         if (otherModalOpen()) return;
         event.preventDefault();
@@ -176,6 +154,8 @@ function useShortcuts() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  // The palette and the shortcuts sheet open in whichever window the key is pressed in (`useOverlayShortcuts`).
+  useOverlayShortcuts();
   // The terminal, Open in editor and Open in new window: shared with the pop-out (`useSessionShortcuts`).
   useSessionShortcuts(() => {
     const { view, selectedId } = useSessions.getState();
@@ -203,8 +183,6 @@ function useWindowFocus() {
       }),
     [],
   );
-  // Help › Keyboard Shortcuts (⌘/) in the menu bar.
-  useEffect(() => window.switchboard?.onToggleShortcuts(() => !otherModalOpen() && useOverlay.getState().toggleShortcuts()), []);
 }
 
 export function App() {

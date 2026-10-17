@@ -3,6 +3,7 @@ import { useReadyReport } from '../../engine/useReadyReport.ts';
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { useAskSync } from '../../state/askStore.ts';
 import { useLimitsSync } from '../../state/limitsStore.ts';
+import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferencesSync } from '../../state/preferencesStore.ts';
 import { useProfilesSync } from '../../state/profilesStore.ts';
 import { useProjectsSync } from '../../state/projectsStore.ts';
@@ -22,7 +23,10 @@ import { AddContextDialogHost } from '../composer/AddContextDialog.tsx';
 import { ArchiveDraftDialog } from '../drafts/ArchiveDraftDialog.tsx';
 import { EngineStalledNotice } from '../EngineStalledNotice.tsx';
 import { FocusGateDialog } from '../focus/FocusGateDialog.tsx';
+import { CommandPalette } from '../palette/CommandPalette.tsx';
 import { PaletteDialogs } from '../palette/PaletteDialogs.tsx';
+import { useOverlayShortcuts } from '../palette/useOverlayShortcuts.ts';
+import { ShortcutsSheet } from '../shortcuts/ShortcutsSheet.tsx';
 import { useSavedPromptsSync } from '../savedPrompts/savedPromptsStore.ts';
 import { useSessionShortcuts } from '../session/useSessionShortcuts.ts';
 import { TranscriptView } from '../transcript/TranscriptView.tsx';
@@ -31,17 +35,16 @@ import { TooltipLayer } from '../ui/Tooltip.tsx';
 import { useUsageSync } from '../UsageBand.tsx';
 
 /**
- * The app's own shortcuts, which need the sidebar, the palette or another session: pressed in a pop-out, they
- * run in the main window, which comes to the front. The session's own shortcuts work here as in a pane.
+ * The app's own shortcuts, which need the sidebar, the list of sessions or another session: pressed in a pop-out, they
+ * run in the main window, which comes to the front. The session's own shortcuts work here as in a pane, and the
+ * command palette and the shortcuts sheet open here, for this session.
  */
 const MAIN_WINDOW_KEYS: readonly ShortcutId[] = [
   'session.new',
   'session.question',
-  'palette.commands',
   'palette.goto',
   'search',
   'home',
-  'shortcuts',
   'sidebar.toggle',
   'session.next',
   'session.previous',
@@ -54,7 +57,8 @@ const MAIN_WINDOW_KEYS: readonly ShortcutId[] = [
  * stays in the main window. It saves nothing of the main window's (its selection, the sidebar's filter, the
  * terminal panel's sizes, unsent messages: those reach the main window through main), and does none of the app-wide
  * work the main window does (the first session shown at launch, links, the editor companion, queue toasts, updates).
- * Settings, Usage, project pages and New session open in the main window (`showInMain`).
+ * Settings, Usage, project pages and New session open in the main window (`showInMain`), as do Go to, Search and the
+ * palette's commands that start or find another session. The palette and the shortcuts sheet open here, for this session.
  */
 export function PopoutApp({ sessionId }: { sessionId: string }) {
   useSessionsSync();
@@ -81,11 +85,16 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   usePopoutViewReport(sessionId);
   // The terminal, Open in editor: as in the main window, for this window's session.
   useSessionShortcuts(() => ({ terminalOwner: sessionId, sessionId }));
+  // The command palette (⌘K) and the shortcuts sheet (⌘/): here, with this session's commands.
+  useOverlayShortcuts();
   const shown = useSessions((s) => s.layout !== null);
+  const overlay = useOverlay((s) => s.open);
 
   return (
     <div className="flex h-full">
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">{shown && <TranscriptView sessionId={sessionId} leading={false} />}</main>
+      {overlay === 'palette' && <CommandPalette />}
+      {overlay === 'shortcuts' && <ShortcutsSheet />}
       <PaletteDialogs />
       <AddContextDialogHost />
       {/* Starting, resuming or forking from here can hit the focus limit; archiving can hold an unsent message. */}
@@ -122,8 +131,6 @@ function usePopoutWindow(sessionId: string): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || !MAIN_WINDOW_KEYS.some((id) => matches(event, id))) return;
-      // In the terminal, ⌘K clears the screen as usual.
-      if (matches(event, 'terminal.clear') && (event.target as HTMLElement | null)?.closest?.('.xterm')) return;
       event.preventDefault();
       const { key, code, metaKey, ctrlKey, altKey, shiftKey } = event;
       window.switchboard?.forwardKeys({ key, code, metaKey, ctrlKey, altKey, shiftKey });

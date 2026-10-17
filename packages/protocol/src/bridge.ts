@@ -109,15 +109,19 @@ export interface ForwardedKeys {
 }
 
 /**
- * Something a pop-out asks the main window to show, because it has no such view itself: a page of Settings, the Usage
- * view, a project's page, or New session (on a folder, in a new worktree). `section` and `tab` are the names the
- * main window's views use; it ignores one it doesn't know.
+ * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the
+ * Usage view, a project's page, New session (on a folder, in a new worktree), Go to, Search, or a step to another
+ * session in the sidebar's order. `section` and `tab` are the names the main window's views use; it ignores one it
+ * doesn't know.
  */
 export type MainWindowRequest =
   | { kind: "settings"; section: string | null }
   | { kind: "usage"; profileId: string | null }
   | { kind: "project"; root: string; tab: string | null }
-  | { kind: "new-session"; cwd: string | null; worktree: boolean };
+  | { kind: "new-session"; cwd: string | null; worktree: boolean }
+  | { kind: "go-to" }
+  | { kind: "search"; memory: boolean }
+  | { kind: "navigate"; to: "next" | "previous" | "needs-you" };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
