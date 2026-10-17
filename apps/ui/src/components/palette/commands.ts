@@ -98,6 +98,7 @@ import {
   Users,
   Volume2,
   VolumeX,
+  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -115,7 +116,7 @@ import type { PaletteContext } from './paletteContext.ts';
 import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteState.ts';
 
 /** Requests the session view answers, because the dialog or menu they open lives there. */
-export type SessionRequest = 'commit' | 'create-pr' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next';
+export type SessionRequest = 'commit' | 'create-pr' | 'fix-checks' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next';
 /** Requests the New session view answers: they change its own choices. */
 export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up' | 'add-project';
 
@@ -688,6 +689,15 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'git github pr gh open view',
     when: (ctx) => inGit(ctx) && ctx.git!.github && (ctx.git!.pr !== null || ctx.git!.prBlocked === null),
     run: (api, ctx) => (ctx.git?.pr ? api.openUrl(ctx.git.pr.url) : api.sessionRequest('create-pr')),
+  },
+  {
+    id: 'fix-checks',
+    title: 'Fix failing checks with Claude',
+    group: 'git',
+    icon: Wrench,
+    keywords: 'git github pr ci checks actions failed red build tests logs',
+    when: (ctx) => inGit(ctx) && ctx.git!.failingChecks > 0 && ctx.composer !== null,
+    run: (api) => api.sessionRequest('fix-checks'),
   },
   { id: 'sync', title: 'Sync with remote', group: 'git', icon: RefreshCw, keywords: 'git pull push fetch', when: (ctx) => inGit(ctx) && ctx.git!.hasRemote, run: (api) => api.syncWithRemote() },
   { id: 'switch-branch', title: 'Switch branch…', group: 'git', icon: GitBranch, keywords: 'git checkout', when: (ctx) => inGit(ctx) && !session(ctx)!.isWorktree && !session(ctx)!.running, run: (api) => api.sessionRequest('branch-menu') },

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, type SoundPrefs } from '@switchboard/protocol/bridge';
 import { alertFor, louder, soundEventOf, type AlertPrefs } from './alerts.ts';
 
-const KINDS = ['needs-you', 'finished', 'failed', 'action-done', 'resumed'] as const;
+const KINDS = ['needs-you', 'finished', 'failed', 'action-done', 'resumed', 'checks-failed', 'checks-passed'] as const;
 const prefs = ({ notifications = true, ...sounds }: Partial<SoundPrefs> & { notifications?: boolean } = {}): AlertPrefs => ({
   notifications: { enabled: notifications },
   sounds: { ...DEFAULT_SOUNDS, ...sounds },
@@ -21,6 +21,8 @@ describe('alertFor', () => {
     expect(alertFor('finished', false, on)).toEqual({ notify: true, sound: 'finished' });
     expect(alertFor('failed', false, on)).toEqual({ notify: true, sound: 'error' });
     expect(alertFor('action-done', false, on)).toEqual({ notify: true, sound: 'actionEnded' });
+    expect(alertFor('checks-failed', false, on)).toEqual({ notify: true, sound: 'error' });
+    expect(alertFor('checks-passed', false, on)).toEqual({ notify: true, sound: 'actionEnded' });
   });
 
   it('plays nothing for a moment set to none, and the others still play', () => {
@@ -52,7 +54,7 @@ describe('alertFor', () => {
 
 describe('sounds for events that arrive together', () => {
   it('maps kinds to moments', () => {
-    expect(KINDS.map(soundEventOf)).toEqual(['needsYou', 'finished', 'error', 'actionEnded', 'finished']);
+    expect(KINDS.map(soundEventOf)).toEqual(['needsYou', 'finished', 'error', 'actionEnded', 'finished', 'error', 'actionEnded']);
   });
 
   it('plays one: needing you, then an error, a finished turn, an action', () => {

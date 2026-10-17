@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendQuote, asQuote, continueList, wrapInCode, type TextEdit } from './editing.ts';
+import { appendQuote, appendText, asQuote, continueList, wrapInCode, type TextEdit } from './editing.ts';
 
 /** Presses ⇧↵ with the caret at `|` and returns the text with the caret after the edit. */
 function press(withCaret: string): string | null {
@@ -117,5 +117,14 @@ describe('appendQuote', () => {
 
   it('does nothing with only white space', () => {
     expect(quote('Hi', ' \n\n ')).toBeNull();
+  });
+});
+
+describe('appendText', () => {
+  it('adds a prompt as it is, after a blank line under what is there', () => {
+    expect(appendText('', '  Fix it.\r\n')).toEqual({ from: 0, to: 0, insert: 'Fix it.' });
+    expect(appendText('Also this.', 'Fix it.')).toEqual({ from: 10, to: 10, insert: '\n\nFix it.' });
+    expect(appendText('Also this.\n', 'Fix it.')?.insert).toBe('\nFix it.');
+    expect(appendText('Hi', ' \n ')).toBeNull();
   });
 });

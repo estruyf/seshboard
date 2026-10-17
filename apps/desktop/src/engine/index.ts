@@ -97,6 +97,11 @@ process.parentPort.on('message', (event) => {
     void engine.startModsSmoke();
     return;
   }
+  // Whether a window has focus: running pull request checks are read less often without one.
+  if (data?.type === 'foreground') {
+    engine.setForeground((data as { foreground?: unknown }).foreground !== false);
+    return;
+  }
   // Settings › Mods › Show mods.
   if (data?.type === 'mods') {
     engine.setShowMods((data as { show?: unknown }).show !== false);

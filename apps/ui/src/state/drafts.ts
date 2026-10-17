@@ -187,7 +187,7 @@ function parseContext(value: unknown): ContextItem[] {
     if (!isRecord(raw) || (raw.range !== undefined && !isRange(raw.range))) continue;
     const range = raw.range === undefined ? {} : { range: raw.range as { start: number; end: number } };
     if (raw.kind === 'file' && typeof raw.path === 'string' && isAbsolutePath(raw.path)) out.push({ kind: 'file', path: raw.path, directory: raw.directory === true, ...range });
-    else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output' || raw.source === 'paste')) {
+    else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output' || raw.source === 'paste' || raw.source === 'checks')) {
       out.push({
         kind: 'text',
         source: raw.source,

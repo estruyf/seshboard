@@ -19,6 +19,8 @@ export interface MenuItem {
   onSelect(): void;
   /** The item's own context menu (right-click, Shift+F10): this menu closes and the caller opens that one at `at`. */
   contextMenu?(at: ContextMenuPoint): void;
+  /** A second, icon-only action at the end of the row (Fix with Claude on a failed check); ↑ ↓ reach it too. */
+  action?: { label: string; icon: ReactNode; onSelect(): void; data?: Record<`data-${string}`, string | boolean> };
 }
 /**
  * `heading`: a small label over a group of items. `title`: the menu's subject in bold, with a line
@@ -120,54 +122,82 @@ export function Menu({
             {entry.note}
           </p>
         ) : (
-          <button
-            key={i}
-            type="button"
-            role={entry.checked === undefined ? 'menuitem' : 'menuitemradio'}
-            aria-checked={entry.checked}
-            disabled={entry.disabled}
-            {...entry.data}
-            onClick={() => {
-              onClose();
-              entry.onSelect();
-            }}
-            onContextMenu={
-              entry.contextMenu &&
-              ((event) => {
-                event.preventDefault();
-                openItemMenu(entry, event.currentTarget, pointerOf(event));
-              })
-            }
-            onKeyDown={
-              entry.contextMenu &&
-              ((event) => {
-                if (!isContextMenuKey(event)) return;
-                event.preventDefault();
-                event.stopPropagation();
-                openItemMenu(entry, event.currentTarget, null);
-              })
-            }
-            className={`flex w-full items-center gap-2 px-3 py-1 text-left text-ui hover:bg-accent/15 focus-visible:bg-accent/15 disabled:opacity-40 ${entry.danger ? 'text-error' : 'text-text'}`}
-          >
-            {entry.icon && (
-              <span aria-hidden className="flex w-4 shrink-0 justify-center text-muted">
-                {entry.icon}
-              </span>
-            )}
-            {entry.detail ? (
-              <span className="grid min-w-0 flex-1">
-                <span className="truncate">{entry.label}</span>
-                <span className="truncate text-meta text-muted">{entry.detail}</span>
-              </span>
-            ) : (
-              <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-            )}
-            {entry.hint && <span className="shrink-0 text-meta text-faint">{localizeKeys(entry.hint)}</span>}
-            {entry.checked && <Check size={13} className="shrink-0 text-accent-ink" aria-hidden />}
-          </button>
+          <MenuRow key={i} entry={entry} onClose={onClose}>
+            <button
+              type="button"
+              role={entry.checked === undefined ? 'menuitem' : 'menuitemradio'}
+              aria-checked={entry.checked}
+              disabled={entry.disabled}
+              {...entry.data}
+              onClick={() => {
+                onClose();
+                entry.onSelect();
+              }}
+              onContextMenu={
+                entry.contextMenu &&
+                ((event) => {
+                  event.preventDefault();
+                  openItemMenu(entry, event.currentTarget, pointerOf(event));
+                })
+              }
+              onKeyDown={
+                entry.contextMenu &&
+                ((event) => {
+                  if (!isContextMenuKey(event)) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  openItemMenu(entry, event.currentTarget, null);
+                })
+              }
+              className={`flex w-full items-center gap-2 px-3 py-1 text-left text-ui hover:bg-accent/15 focus-visible:bg-accent/15 disabled:opacity-40 ${entry.danger ? 'text-error' : 'text-text'}`}
+            >
+              {entry.icon && (
+                <span aria-hidden className="flex w-4 shrink-0 justify-center text-muted">
+                  {entry.icon}
+                </span>
+              )}
+              {entry.detail ? (
+                <span className="grid min-w-0 flex-1">
+                  <span className="truncate">{entry.label}</span>
+                  <span className="truncate text-meta text-muted">{entry.detail}</span>
+                </span>
+              ) : (
+                <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+              )}
+              {entry.hint && <span className="shrink-0 text-meta text-faint">{localizeKeys(entry.hint)}</span>}
+              {entry.checked && <Check size={13} className="shrink-0 text-accent-ink" aria-hidden />}
+            </button>
+          </MenuRow>
         ),
       )}
     </Popover>
+  );
+}
+
+/** An item, with its `action` beside it when it has one (two buttons side by side: a button can't hold another). */
+function MenuRow({ entry, onClose, children }: { entry: MenuItem; onClose(): void; children: ReactNode }) {
+  const action = entry.action;
+  if (!action) return children;
+  return (
+    <div role="none" className="flex items-center pr-1.5">
+      <div role="none" className="min-w-0 flex-1">
+        {children}
+      </div>
+      <button
+        type="button"
+        role="menuitem"
+        aria-label={action.label}
+        data-tooltip={action.label}
+        {...action.data}
+        onClick={() => {
+          onClose();
+          action.onSelect();
+        }}
+        className="flex size-6 shrink-0 items-center justify-center rounded text-muted hover:bg-accent/15 hover:text-text focus-visible:bg-accent/15 focus-visible:text-text"
+      >
+        {action.icon}
+      </button>
+    </div>
   );
 }
 

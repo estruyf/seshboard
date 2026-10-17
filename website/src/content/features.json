@@ -152,6 +152,11 @@
       "page": "terminal-changes-git/git"
     },
     {
+      "id": "palette:fix-checks",
+      "name": "Fix failing checks with Claude",
+      "page": "terminal-changes-git/git"
+    },
+    {
       "id": "palette:delete-session",
       "name": "Delete session…",
       "page": "sessions/sidebar"
@@ -1949,6 +1954,16 @@
     {
       "id": "feature:view-pr",
       "name": "View PR #123 on the git button once the branch has an open pull request, and Mark ready for review",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:pr-checks",
+      "name": "Pull request checks on the git button and in its menu, read again while they run, with a notification when they finish",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:fix-checks",
+      "name": "Fix failing checks with Claude: the failed jobs' logs as chips under a prompt in the message box",
       "page": "terminal-changes-git/git"
     },
     {

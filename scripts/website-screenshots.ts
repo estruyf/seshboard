@@ -56,15 +56,31 @@ function commitFile(cwd: string, path: string, content: string, message: string,
 
 /**
  * The tour's gh (SWITCHBOARD_GH): signed in, unless the file `.fake-gh-signed-out` is in the demo home, and nothing
- * else works, so pull request lists stay empty and nothing ever reaches GitHub.
+ * else works, so pull request lists stay empty and nothing ever reaches GitHub. While `.fake-gh-checks` is there (the
+ * checks it holds), feat/dark-mode has pull request #42 with those checks.
  */
 function fakeGh(home: string): string {
   const path = join(home, '.local', 'bin', 'fake-gh');
   mkdirSync(join(path, '..'), { recursive: true });
   const signedOut = join(home, '.fake-gh-signed-out');
+  const checks = join(home, '.fake-gh-checks');
+  const pr = JSON.stringify([{ number: 42, state: 'OPEN', headRefName: 'feat/dark-mode', url: 'https://github.com/acme/acme-store/pull/42', isDraft: false }]);
   writeFileSync(
     path,
-    `#!/bin/sh\nif [ "$1 $2" = "auth status" ]; then\n  if [ -f '${signedOut}' ]; then echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1; fi\n  exit 0\nfi\necho "the screenshot tour's gh never reaches GitHub" >&2\nexit 1\n`,
+    [
+      '#!/bin/sh',
+      'if [ "$1 $2" = "auth status" ]; then',
+      `  if [ -f '${signedOut}' ]; then echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1; fi`,
+      '  exit 0',
+      'fi',
+      `if [ -f '${checks}' ]; then`,
+      `  if [ "$1 $2" = "pr list" ]; then echo '${pr}'; exit 0; fi`,
+      `  if [ "$1 $2" = "pr checks" ]; then cat '${checks}'; exit 1; fi`,
+      'fi',
+      `echo "the screenshot tour's gh never reaches GitHub" >&2`,
+      'exit 1',
+      '',
+    ].join('\n'),
   );
   chmodSync(path, 0o755);
   return path;
@@ -856,6 +872,43 @@ const screens: Screen[] = [
       } finally {
         rmSync(signedOut, { force: true });
         restore();
+      }
+    },
+  },
+  {
+    name: 'git-checks',
+    async take(t) {
+      // The checks of a pull request for feat/dark-mode, with times around now. The Branches tab's refresh reads the
+      // pull requests again (they are kept for a few minutes); it runs again at the end, so later pictures have none.
+      const minutes = (n: number) => new Date(Date.now() - n * 60_000).toISOString();
+      const run = (job: number) => `https://github.com/acme/acme-store/actions/runs/1001/job/${job}`;
+      const checks = [
+        { name: 'test (ubuntu-latest)', state: 'FAILURE', bucket: 'fail', link: run(2001), workflow: 'CI', description: '', startedAt: minutes(9), completedAt: minutes(5.3) },
+        { name: 'lint', state: 'SUCCESS', bucket: 'pass', link: run(2002), workflow: 'CI', description: '', startedAt: minutes(9), completedAt: minutes(8.2) },
+        { name: 'build', state: 'SUCCESS', bucket: 'pass', link: run(2003), workflow: 'CI', description: '', startedAt: minutes(9), completedAt: minutes(7.75) },
+        { name: 'deploy-preview', state: 'IN_PROGRESS', bucket: 'pending', link: run(2004), workflow: 'Preview', description: '', startedAt: minutes(1.2), completedAt: '0001-01-01T00:00:00Z' },
+      ];
+      const marker = join(t.world.home, '.fake-gh-checks');
+      const readPullRequests = async () => {
+        await openProjectPage(t, 'acme-store');
+        await t.click('[data-project-tab="branches"]');
+        await t.need('[data-branches-table] [data-branch-row]', 'the branches tab showed nothing', 30_000);
+        await t.click('[data-branch-refresh]');
+        await t.gone('[data-branches-loading]', 'the branches kept loading');
+        await t.until('!document.querySelector("[data-branch-refresh]:disabled")', 'the branches did not refresh', 30_000);
+      };
+      writeFileSync(marker, JSON.stringify(checks));
+      try {
+        await readPullRequests();
+        await t.openSession(HERO);
+        await t.click('[data-git-button] [data-git-menu]');
+        await t.need('[role="menu"] [data-check="fail"]', 'the git menu listed no failed check', 15_000);
+        await t.shot('git-checks', { keepFocus: true });
+        await t.escape();
+      } finally {
+        rmSync(marker, { force: true });
+        await readPullRequests();
+        await t.home();
       }
     },
   },
