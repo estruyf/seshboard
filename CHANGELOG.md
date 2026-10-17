@@ -6,7 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
-- **The Agents panel shows an agent that runs again.** A background agent that stopped, such as at the 5-hour usage limit, and was then sent on again, stayed under **Finished**. It now moves back to **Active** until it reports back, also for a finished agent you give more work.
+- **The Agents panel shows an agent that runs again, and one that failed.** A background agent that stopped, such as at the 5-hour usage limit, and was then sent on again, stayed under **Finished**. It now moves back to **Active** until it reports back, also for a finished agent you give more work. An agent that ended on an error, hit the usage limit or was stopped now says **Failed** with a red mark, where it said **Finished** with a green one.
 
 ## [0.0.23] - 2026-10-17
 

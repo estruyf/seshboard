@@ -8,6 +8,8 @@ const isAgent = (item: DisplayItem): item is ToolItem => item.kind === 'tool' &&
 export interface AgentRun {
   item: ToolItem;
   running: boolean;
+  /** It ended without finishing: its call returned an error, or its last report says it failed or was stopped (the usage limit, Stop). Never while it runs. */
+  failed: boolean;
   /** Launched in the background (the call returns at once; the agent reports back later). */
   background: boolean;
   /** Claude Code's id for a background agent, from the launch's result: the id its background task has too. */
@@ -65,7 +67,9 @@ export function agentRuns(items: readonly DisplayItem[], sessionOpen: boolean): 
     const resumed = agentId !== null && items.some((i, at) => at > lastReport && at > from && isMessageTo(i, agentId));
     const working = item.result === null || (launched && (lastReport === -1 || resumed));
     const report = launched ? (reports[reports.length - 1]?.text ?? null) : (item.result?.text ?? null);
-    return { item, background: launched, running: sessionOpen && working, agentId, ...describeAgent(item), report };
+    const running = sessionOpen && working;
+    const failed = !working && (launched ? reports.length > 0 && reports[reports.length - 1]!.status !== 'completed' : (item.result?.isError ?? false));
+    return { item, background: launched, running, failed, agentId, ...describeAgent(item), report };
   });
 }
 

@@ -173,17 +173,26 @@ describe('agentRuns', () => {
     const stopped = report('r1', 'failed', 'Agent terminated early: You\'ve hit your session limit');
     const state = (items: DisplayItem[]) => agentRuns(items, true)[0]!;
 
-    expect(state([bg, stopped]).running).toBe(false);
+    expect(state([bg, stopped])).toMatchObject({ running: false, failed: true });
+    expect(state([bg, report('r0', 'killed', 'Stopped')]).failed).toBe(true);
+    expect(state([bg, report('r0', 'completed', 'Done')]).failed).toBe(false);
+    expect(state([bg]).failed).toBe(false);
     // The user (or Claude) sends it on again: it runs until its next report.
-    expect(state([bg, stopped, send('s1', 'abc123')]).running).toBe(true);
+    expect(state([bg, stopped, send('s1', 'abc123')])).toMatchObject({ running: true, failed: false });
     const second = report('r2', 'completed', 'Done after the resume');
-    expect(state([bg, stopped, send('s1', 'abc123'), second])).toMatchObject({ running: false, report: 'Done after the resume' });
+    expect(state([bg, stopped, send('s1', 'abc123'), second])).toMatchObject({ running: false, failed: false, report: 'Done after the resume' });
     expect(state([bg, stopped, send('s1', 'abc123'), second, send('s2', 'abc123')]).running).toBe(true);
     // A message before the report, to another agent, or one that failed, changes nothing.
     expect(state([bg, send('s0', 'abc123'), stopped]).running).toBe(false);
     expect(state([bg, stopped, send('s1', 'other')]).running).toBe(false);
     expect(state([bg, stopped, send('s1', 'abc123', true)]).running).toBe(false);
     expect(agentRuns([bg, stopped, send('s1', 'abc123')], false)[0]!.running).toBe(false);
+  });
+
+  it('marks a foreground agent whose call returned an error as failed', () => {
+    const errored = { ...agent('fg', 'API Error'), result: { text: 'API Error', isError: true, truncated: false, images: [], at: null } } as DisplayItem;
+    expect(agentRuns([errored], true)[0]).toMatchObject({ running: false, failed: true });
+    expect(agentRuns([agent('ok', 'Found 3 files')], true)[0]!.failed).toBe(false);
   });
 
   it('keeps what each agent was asked, its type and what it reported', () => {
