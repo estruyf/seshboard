@@ -5175,6 +5175,22 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${one('[data-saved-prompt-header]')} && document.querySelectorAll('[data-blank][data-blank-empty]').length === 2 && document.activeElement?.matches('[data-blank="pr"]')`, 3_000))) return 'picking it did not show its two empty blanks, with the focus on the first';
     if (!(await waitInPage(win, `${one('[data-blanks-left]')}?.innerText === '2 blanks left' && ${one(box)}.value === ''`, 2_000))) return 'the box did not say 2 blanks left';
 
+    // Backspace in an empty blank takes it out; Clear takes the prompt out and keeps what was typed under it. Then picked again.
+    pressKey(win, 'Tab');
+    if (!(await waitInPage(win, `document.activeElement?.matches('[data-blank="reason"] input')`, 2_000))) return 'Tab did not go to the reason blank';
+    pressKey(win, 'Backspace');
+    if (!(await waitInPage(win, `!${one('[data-blank="reason"]')} && ${one('[data-blank="pr"]')} && ${one('[data-blanks-left]')}?.innerText === '1 blank left' && document.activeElement?.matches('[data-prompt-run]')`, 2_000))) return 'Backspace in the empty reason blank did not take it out, with the caret in the text';
+    await js(`${one(box)}.focus()`);
+    await win.webContents.insertText('Smoke kept text');
+    await click('[data-saved-prompt-clear]');
+    if (!(await waitInPage(win, `!${one('[data-saved-prompt-header]')} && ${one(box)}.value === 'Smoke kept text'`, 2_000))) return `Clear did not take the prompt out and keep the text under it (${String(await js(`${one(box)}.value`))})`;
+    await setFieldValue(win, box, '');
+    await js(`${one(box)}.focus()`);
+    await win.webContents.insertText('/smoke');
+    if (!(await waitInPage(win, one(`[data-palette] [data-saved-prompt-option="${id}"]`), 3_000))) return 'the / menu did not list the prompt again';
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `document.querySelectorAll('[data-blank][data-blank-empty]').length === 2 && document.activeElement?.matches('[data-blank="pr"]')`, 3_000))) return 'picking it again did not show its two empty blanks';
+
     // 3. Both filled: the pull request typed (gh lists none here), the reason typed in its chip, then more context.
     pressKey(win, '1');
     if (!(await waitInPage(win, `document.activeElement?.matches('[data-blank-popover] [data-blank-field]')`, 2_000))) return 'typing on the pull request blank did not open its field';
@@ -5238,7 +5254,7 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
       await js(closeToasts);
       await settle(win);
     }
-    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .switchboard.json, with Show the change) and back (out of it), deleted';
+    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, ⌫ took out an empty blank, Clear took the prompt out and kept the text under it, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .switchboard.json, with Show the change) and back (out of it), deleted';
   } finally {
     await cleanUp();
   }

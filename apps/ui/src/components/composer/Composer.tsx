@@ -1,6 +1,6 @@
 import { ImagePlus, MessageCircleQuestion, Paperclip } from 'lucide-react';
 import { Fragment, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { blanksLeftText, blanksOf, joinPath, MAX_SIDE_QUESTION_LENGTH, promptPreview, toPlainText, type ContextItem, type ImageAttachment, type SavedPrompt, type SlashCommand } from '@switchboard/protocol/client';
+import { blanksLeftText, blanksOf, joinPath, MAX_SIDE_QUESTION_LENGTH, promptPreview, type ContextItem, type ImageAttachment, type SavedPrompt, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { attachmentsAfterSend, textAfterSend } from './afterSend.ts';
@@ -451,12 +451,10 @@ export function Composer(props: ComposerProps) {
       else ref.current?.focus();
     });
   };
-  /** Clear ×: the prompt becomes plain text in the box (empty blanks as their name in brackets), before what was typed under it. */
+  /** Clear ×: the prompt leaves the box, with what its blanks held; what was typed under it stays. */
   const clearFill = () => {
     if (!fillState) return;
-    const plain = toPlainText(fillState.text, fillState.values).trim();
     setFill(null);
-    setText((current) => [plain, current.trim()].filter(Boolean).join('\n\n'));
     requestAnimationFrame(() => {
       const el = ref.current;
       if (!el) return;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blankAria, blanksLeft, chipLabel, fillMessage, fromSegments, insertBlank, promptMeta, removeBlank, replaceBlank, sameScope, slashScore, toSegments } from './fillModel.ts';
+import { blankAria, blanksLeft, chipLabel, fillMessage, fromSegments, insertBlank, promptMeta, removeBlank, replaceBlank, sameScope, slashScore, toSegments, withoutBlank } from './fillModel.ts';
 
 describe('segments', () => {
   it('always has text around the blanks', () => {
@@ -35,6 +35,18 @@ describe('filling', () => {
   it('counts the required blanks left', () => {
     expect(blanksLeft({ text: state.text, values: {} })).toEqual(['pr']);
     expect(blanksLeft(state)).toEqual([]);
+  });
+
+  it('takes a blank out, with what it held unless the blank is used again', () => {
+    const filling = { prompt: { id: 'p', name: 'Fix', scope: { kind: 'global' } as const }, text: 'Fix {{pr:pr}} on {{branch:branch}}, {{pr:pr}}', values: { pr: '#142', branch: 'main' }, displays: { pr: '#142 Mods' } };
+    const noBranch = withoutBlank(filling, 1);
+    expect(noBranch.text).toBe('Fix {{pr:pr}} on , {{pr:pr}}');
+    expect(noBranch.values).toEqual({ pr: '#142' });
+    const onePr = withoutBlank(filling, 0);
+    expect(onePr.text).toBe('Fix  on {{branch:branch}}, {{pr:pr}}');
+    expect(onePr.values).toEqual(filling.values);
+    expect(onePr.displays).toEqual(filling.displays);
+    expect(withoutBlank(onePr, 1)).toMatchObject({ text: 'Fix  on {{branch:branch}}, ', values: { branch: 'main' }, displays: {} });
   });
 
   it('labels chips for screen readers', () => {

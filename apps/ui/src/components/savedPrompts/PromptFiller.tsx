@@ -6,7 +6,7 @@ import { submitKey } from '../newSession/startMenu.ts';
 import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { BlankPopover } from './BlankPopover.tsx';
-import { blankAria, chipLabel, fromSegments, toSegments, type FillState } from './fillModel.ts';
+import { blankAria, chipLabel, fromSegments, toSegments, withoutBlank, type FillState } from './fillModel.ts';
 import { BLANK_ICONS, PromptIcon, ScopeTag } from './ScopeTag.tsx';
 
 export interface PromptFillerHandle {
@@ -25,7 +25,7 @@ export interface PromptFillerProps {
   root: string | null;
   cwd: string | null;
   disabled?: boolean;
-  /** Clear ×: the box goes back to plain text. */
+  /** Clear ×: the prompt leaves the box; what was typed under it stays. */
   onClear(): void;
   /** The send keys, from a blank or the text: the box sends, or jumps to a blank that is still empty. */
   onSend(): void;
@@ -48,13 +48,18 @@ function caretIn(el: HTMLElement): { start: number; end: number } | null {
   return { start, end: start + range.toString().length };
 }
 
-function caretTo(el: HTMLElement, where: 'start' | 'end'): void {
+function caretTo(el: HTMLElement, where: 'start' | 'end' | number): void {
   el.focus();
   const selection = window.getSelection();
   if (!selection) return;
   const range = document.createRange();
   range.selectNodeContents(el);
-  range.collapse(where === 'start');
+  if (typeof where === 'number') {
+    // A run holds one text node (TextRun sets its textContent).
+    const node = el.firstChild ?? el;
+    range.setStart(node, Math.min(where, node.textContent?.length ?? 0));
+    range.collapse(true);
+  } else range.collapse(where === 'start');
   selection.removeAllRanges();
   selection.addRange(range);
 }
@@ -62,7 +67,8 @@ function caretTo(el: HTMLElement, where: 'start' | 'end'): void {
 /**
  * A saved prompt being filled in, in the message box: a header (its name, where it is kept, "Tab next blank", Clear ×)
  * over its text, with each blank as a chip. The text around the blanks edits like text; a chip is filled by typing
- * (a text blank) or from its popover. Tab and Shift+Tab move between blanks; Backspace in an empty one goes back.
+ * (a text blank) or from its popover. Tab and Shift+Tab move between blanks; Backspace or Delete in an empty one takes
+ * it out of the prompt.
  */
 export function PromptFiller(props: PromptFillerProps) {
   const { state, onChange } = props;
@@ -128,15 +134,29 @@ export function PromptFiller(props: PromptFillerProps) {
     return true;
   };
 
-  /** Keys every chip shares; true when one was used. */
+  /** Takes the blank out of the prompt; the caret goes where it was, between the text on both sides. */
+  const remove = (index: number) => {
+    const offset = segments.texts[index]?.length ?? 0;
+    setOpen(null);
+    setFocused(null);
+    const next = withoutBlank(stateNow.current, index);
+    stateNow.current = next;
+    onChange(next);
+    requestAnimationFrame(() => {
+      const run = runs.current[index];
+      if (run) caretTo(run, offset);
+    });
+  };
+
+  /** Keys every chip shares; true when one was used. `empty`: nothing in it, so Backspace and Delete take it out. */
   const chipKey = (event: KeyboardEvent<HTMLElement>, index: number, empty: boolean): boolean => {
     if (event.key === 'Tab' && plainKey(event)) {
       if (move(index, event.shiftKey ? -1 : 1)) event.preventDefault();
       return true;
     }
-    if (event.key === 'Backspace' && empty && plainKey(event)) {
+    if ((event.key === 'Backspace' || event.key === 'Delete') && empty && plainKey(event)) {
       event.preventDefault();
-      move(index, -1);
+      remove(index);
       return true;
     }
     return false;
@@ -213,7 +233,7 @@ export function PromptFiller(props: PromptFillerProps) {
             spellCheck
             onChange={(e) => setValue(blank.name, e.target.value)}
             onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing || chipKey(e, index, empty)) return;
+              if (e.nativeEvent.isComposing || chipKey(e, index, value === '')) return;
               const el = e.currentTarget;
               if (submitKey(e.nativeEvent)) {
                 e.preventDefault();
@@ -338,7 +358,7 @@ export function PromptFiller(props: PromptFillerProps) {
           <Kbd shortcut="composer.next-blank" />
           next blank
         </span>
-        <Button variant="quiet" size="sm" onClick={props.onClear} disabled={props.disabled} data-tooltip="Back to plain text: empty blanks become their name in brackets" data-saved-prompt-clear>
+        <Button variant="quiet" size="sm" onClick={props.onClear} disabled={props.disabled} data-tooltip="Take the prompt out of the message box" data-saved-prompt-clear>
           Clear
           <X size={12} aria-hidden />
         </Button>

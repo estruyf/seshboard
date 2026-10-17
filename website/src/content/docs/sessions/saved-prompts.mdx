@@ -58,11 +58,11 @@ The text around the blanks can be edited like any text. A blank holds what you f
 | **Branch** | Pick one of the local branches. The one checked out is first. |
 | **File** | Search the project's files, as with `@`. |
 
-Typing on a blank opens its list with what you typed. <Kbd keys="backspace" /> in an empty blank goes back to the one before. <Kbd keys="escape" /> closes a list and leaves the cursor on its blank.
+Typing on a blank opens its list with what you typed. <Kbd keys="backspace" /> in an empty blank takes it out of the prompt, for a blank you don't need. In a filled one, the first press empties it. <Kbd keys="escape" /> closes a list and leaves the cursor on its blank.
 
 Pull requests and issues come from the GitHub CLI (`gh`). Without it, or without a remote on GitHub, the list says why, and you can still type a number or paste a link.
 
-**Clear** in the prompt's header turns it back into plain text: what you filled in stays, and an empty blank becomes its name in brackets, such as `[Branch]`.
+**Clear** in the prompt's header takes the prompt out of the message box, with what you filled in. What you wrote under it stays.
 
 A prompt you are filling in is kept like any [unsent message](/sessions/unsent-drafts/): switch to another session and back, or quit, and it is still there with what you filled in.
 
