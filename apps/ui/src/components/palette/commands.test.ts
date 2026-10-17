@@ -44,6 +44,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     ],
     currentProject: null,
     actions: [],
+    prompts: [],
     canEditActions: false,
     colorScheme: 'system',
     themes: [
@@ -56,6 +57,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     settingsSection: 'general',
     newSession: null,
     questionsDir: '/data/questions',
+    cloneEnabled: false,
     composer: null,
     canContinueInVSCode: false,
     computers: [],
@@ -133,6 +135,14 @@ describe('when(): always', () => {
     expect(ask.next!(ctx)).toEqual({ kind: 'prompt', root: '/data/questions', worktree: false, chip: 'Quick question' });
     expect(ids(context({ questionsDir: null }))).not.toContain('quick-question');
     expect(ids(context({ connected: false }))).not.toContain('quick-question');
+  });
+
+  it('starts from a GitHub repository only while Clone from GitHub is on', () => {
+    expect(ids(context())).not.toContain('new-session-clone');
+    const ctx = context({ cloneEnabled: true });
+    const clone = visibleCommands(ctx).find((c) => c.id === 'new-session-clone')!;
+    expect(titleOf(clone, ctx)).toBe('New session from a GitHub repository…');
+    expect(clone.next!(ctx)).toEqual({ kind: 'clone', chip: 'Clone from GitHub' });
   });
 
   it('names the current project in "New session in …", and needs projects to rename one', () => {

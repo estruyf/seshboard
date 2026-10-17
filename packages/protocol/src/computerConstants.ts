@@ -38,9 +38,14 @@ export const COMPUTER_METHODS = [
   'options.get',
   'usage.get',
   'usage.tokens',
+  'usage.sessionCost',
+  'usage.windowCosts',
   'catchup.get',
   'changes.get',
   'changes.diff',
   'changes.commit',
+  'projects.clonePlan',
+  'projects.clone',
+  'projects.cancelClone',
 ] as const satisfies ReadonlyArray<MethodName<RemoteContract>>;
 export type ComputerMethod = (typeof COMPUTER_METHODS)[number];

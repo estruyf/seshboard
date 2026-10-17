@@ -77,6 +77,21 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "palette:new-saved-prompt",
+      "name": "New saved prompt…",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "palette:prompt:*",
+      "name": "Prompt: <name>",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "palette:settings-prompts",
+      "name": "Settings: Prompts",
+      "page": "settings"
+    },
+    {
       "id": "palette:swap-panes",
       "name": "Swap panes",
       "page": "sessions/split-view"
@@ -347,6 +362,11 @@
       "page": "new-session/form"
     },
     {
+      "id": "palette:new-session-clone",
+      "name": "New session from a GitHub repository…",
+      "page": "projects/clone-from-github"
+    },
+    {
       "id": "palette:new-session-worktree",
       "name": "New session in a worktree…",
       "page": "new-session/worktrees"
@@ -517,6 +537,11 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-usage",
+      "name": "settings-usage",
+      "page": "settings"
+    },
+    {
       "id": "palette:settings-sidebar",
       "name": "settings-sidebar",
       "page": "settings"
@@ -525,6 +550,11 @@
       "id": "palette:settings-sessions",
       "name": "Settings: Sessions",
       "page": "settings/sessions"
+    },
+    {
+      "id": "palette:settings-projects",
+      "name": "Settings: Projects",
+      "page": "settings"
     },
     {
       "id": "palette:settings-theme",
@@ -682,6 +712,11 @@
       "page": "remote-access"
     },
     {
+      "id": "palette:use-saved-prompt",
+      "name": "Use saved prompt…",
+      "page": "sessions/saved-prompts"
+    },
+    {
       "id": "palette:vscode-extension",
       "name": "VS Code extension",
       "page": "vscode-companion"
@@ -695,6 +730,26 @@
       "id": "palette:worktrees-here",
       "name": "worktrees-here",
       "page": "projects/worktrees"
+    },
+    {
+      "id": "saved-prompts:new-session-chips",
+      "name": "Saved prompts above New session's message box",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "saved-prompts:save-as-prompt",
+      "name": "Save as prompt… on a message you sent",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "saved-prompts:shared",
+      "name": "Shared prompts in .switchboard.json",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "saved-prompts:slash",
+      "name": "Saved prompts in the / menu",
+      "page": "sessions/saved-prompts"
     },
     {
       "id": "shortcut:changes.toggle",
@@ -745,6 +800,16 @@
       "id": "shortcut:composer.newline",
       "name": "composer.newline",
       "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.next-blank",
+      "name": "Next blank",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "shortcut:composer.previous-blank",
+      "name": "Previous blank",
+      "page": "sessions/saved-prompts"
     },
     {
       "id": "shortcut:composer.send",
@@ -1137,6 +1202,16 @@
       "page": "projects/settings"
     },
     {
+      "id": "settings:prompts",
+      "name": "Settings: Prompts",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "settings:usage",
+      "name": "Settings › Usage: Open usage, Show estimated cost, Currency and Large context",
+      "page": "settings"
+    },
+    {
       "id": "settings:sidebar",
       "name": "Settings: Sidebar",
       "page": "sessions/sidebar"
@@ -1145,6 +1220,11 @@
       "id": "settings:sessions",
       "name": "Settings: Sessions",
       "page": "settings/sessions"
+    },
+    {
+      "id": "settings:projects",
+      "name": "Settings: Projects (Project order, Clone from GitHub)",
+      "page": "projects/clone-from-github"
     },
     {
       "id": "settings:theme",
@@ -1402,6 +1482,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-multiple-computers",
+      "name": "Remote: pair with more than one computer, switch between them, and get notifications from all of them",
+      "page": "remote-access"
+    },
+    {
       "id": "project-tab:actions",
       "name": "Actions tab",
       "page": "projects/actions"
@@ -1630,6 +1715,41 @@
       "id": "feature:usage-limit-hold",
       "name": "Up next and the queue wait while a profile is at its usage limit",
       "page": "usage"
+    },
+    {
+      "id": "feature:usage-cost-estimate",
+      "name": "Estimated API cost after the 5-hour and weekly usage bars, in a currency you pick",
+      "page": "usage"
+    },
+    {
+      "id": "feature:large-context-warning",
+      "name": "Large context: the ring turns orange from a percentage you pick, and a note says when the prompt cache expires and what the next message costs after",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:cache-expiry-notification",
+      "name": "A notification before a large session's hour-long prompt cache expires",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:quit-large-context",
+      "name": "Quitting with a large session open warns once, or every time with Warn when quitting",
+      "page": "settings"
+    },
+    {
+      "id": "feature:usage-cost-breakdown",
+      "name": "Usage view: estimated cost per window, session, project, model, day and computer",
+      "page": "usage"
+    },
+    {
+      "id": "feature:session-cost",
+      "name": "A session's estimated cost next to Context under its message box",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:remote-costs",
+      "name": "Other computers: a remote session's cost, and plan window costs added up across paired computers",
+      "page": "remote-access"
     },
     {
       "id": "feature:usage-limit-setting",
@@ -3510,6 +3630,31 @@
       "id": "feature:mods-chip",
       "name": "The mods chip in the session header and its popover",
       "page": "sessions/mods"
+    },
+    {
+      "id": "feature:clone-from-github",
+      "name": "Clone from GitHub: start a project from a GitHub URL in New session, with the clone's progress and Cancel",
+      "page": "projects/clone-from-github"
+    },
+    {
+      "id": "feature:clone-sidebar",
+      "name": "Sidebar: Clone from GitHub… in the add project menu, clones and adds the project",
+      "page": "projects/clone-from-github"
+    },
+    {
+      "id": "feature:clone-trust",
+      "name": "Clone from GitHub: asks before the first session when the repository brings hooks, MCP servers or rules",
+      "page": "projects/clone-from-github"
+    },
+    {
+      "id": "feature:clone-link",
+      "name": "Links: Clone owner/name when no checkout of a link's repo is found",
+      "page": "links"
+    },
+    {
+      "id": "feature:clone-other-computer",
+      "name": "Clone from GitHub on another computer (Run on)",
+      "page": "remote-access"
     }
   ]
 }

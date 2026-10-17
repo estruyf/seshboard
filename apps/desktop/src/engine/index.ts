@@ -70,6 +70,8 @@ const engine = createEngine({
   stubRouter: process.env.SWITCHBOARD_STUB_ROUTER === '1',
   stubSideQuestions: process.env.SWITCHBOARD_STUB_BTW === '1',
   stubCatchUp: process.env.SWITCHBOARD_STUB_CATCHUP === '1',
+  // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
+  ...(process.env.SWITCHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SWITCHBOARD_CLONE_SOURCE } : {}),
 });
 
 // One misbehaving session must never take the whole engine (and every other session) down.

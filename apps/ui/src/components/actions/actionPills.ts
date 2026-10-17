@@ -1,5 +1,3 @@
-import type { ActionScope } from '@switchboard/protocol/client';
-
 /** How many project actions get a pill above the message box; the rest are behind "N more". */
 export const MAX_ACTION_PILLS = 3;
 
@@ -19,23 +17,13 @@ export interface ActionContextItem {
   command: ActionCommand;
   label: string;
   danger?: boolean;
-  /** Why it can't be chosen, for its tooltip. */
-  disabledReason?: string;
 }
 
-/**
- * What right-clicking a project action offers: Run, Edit… and Delete…. Shared actions come from the
- * repository's .switchboard.json, so Edit… shows them read-only and they can't be deleted here.
- */
-export function actionContextItems(action: { scope: ActionScope }): ActionContextItem[] {
+/** What right-clicking a project action offers: Run, Edit… and Delete…. */
+export function actionContextItems(): ActionContextItem[] {
   return [
     { command: 'run', label: 'Run' },
     { command: 'edit', label: 'Edit…' },
-    {
-      command: 'delete',
-      label: 'Delete…',
-      danger: true,
-      ...(action.scope === 'shared' ? { disabledReason: 'Shared actions are removed from .switchboard.json' } : {}),
-    },
+    { command: 'delete', label: 'Delete…', danger: true },
   ];
 }

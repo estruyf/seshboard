@@ -1,5 +1,6 @@
-import { Folder, FolderGit2, FolderPlus, ListFilter, MessageCircleQuestion, Search } from 'lucide-react';
+import { Folder, FolderDown, FolderGit2, FolderPlus, ListFilter, MessageCircleQuestion, Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { parseGithubRepo, repoLabel } from '@switchboard/protocol/client';
 import { basename, tildify } from '../../lib/format.ts';
 import { currentPlatform } from '../../lib/platform.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -35,6 +36,8 @@ type DropState = { ok: boolean } | null;
  * does dropping a folder on the area. A folder that is already a project is selected instead. ⌘1 to ⌘9 pick the tiles
  * in view. The open list is a combobox: focus stays in the field and `aria-activedescendant` says which option the
  * arrows are on. Under the tiles, Quick question starts without a project (in the scratch folder the engine keeps).
+ * With Clone from GitHub on, Clone from GitHub… opens its form, and a GitHub URL typed or pasted in the field offers
+ * Clone owner/name (↩ clones it at once).
  */
 export function FolderPicker({
   value,
@@ -49,6 +52,7 @@ export function FolderPicker({
   shortcuts,
   openRequest = 0,
   question = null,
+  onClone,
 }: {
   value: string | null;
   /** Your projects, most recently used first or in your order (the `projectOrder` preference). */
@@ -70,6 +74,8 @@ export function FolderPicker({
   openRequest?: number;
   /** The Quick question choice: picked or not, and picking it. Null until the engine has said where questions run. */
   question?: { selected: boolean; onSelect(): void } | null;
+  /** Clone from GitHub, when it is on: the form, empty or with a URL typed in the field (`start`: clone it now). */
+  onClone?(url: string | null, start: boolean): void;
 }) {
   const projects = useProjects((s) => s.projects);
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
@@ -91,8 +97,11 @@ export function FolderPicker({
   const options = useMemo(() => filterFolders(all, filter, (folder) => projects.get(folder)?.name ?? basename(folder), home), [all, filter, home, projects]);
   const fifth = fifthTile(folders.length, quick.length, folders.filter((folder) => !quick.includes(folder)).length);
 
+  // Clone mode: the field holds a GitHub URL, and the one row clones it.
+  const cloneRepo = open && onClone ? parseGithubRepo(filter, { shorthand: false }) : null;
+  const cloneMode = cloneRepo?.ok === true;
   // Path mode: the field holds a path, and the list shows the folders in it.
-  const pathMode = open && isPathInput(filter, platform);
+  const pathMode = open && !cloneMode && isPathInput(filter, platform);
   const typed = pathMode ? splitPathInput(filter, platform) : null;
   const suggestions = useFolderSuggestions(typed?.dir ?? null, typed?.prefix ?? '');
   const fresh = !!typed && suggestions.dir === typed.dir;
@@ -101,12 +110,12 @@ export function FolderPicker({
   const missing = fresh && typed !== null && suggestions.prefix === typed.prefix && paths.length === 0;
 
   // No project matches a name: the folders Claude Code has sessions for, then the system dialog.
-  const fallback = open && !pathMode && options.length === 0;
+  const fallback = open && !pathMode && !cloneMode && options.length === 0;
   const known = useMemo(() => (fallback ? knownFolderRows(projects, filter, home) : []), [fallback, projects, filter, home]);
 
-  const mode: 'tiles' | 'paths' | 'known' = pathMode ? 'paths' : fallback ? 'known' : 'tiles';
+  const mode: 'tiles' | 'paths' | 'known' | 'clone' = cloneMode ? 'clone' : pathMode ? 'paths' : fallback ? 'known' : 'tiles';
   // In the known-folder list, the last row is Choose a folder….
-  const count = mode === 'paths' ? paths.length : mode === 'known' ? known.length + 1 : options.length;
+  const count = mode === 'clone' ? 1 : mode === 'paths' ? paths.length : mode === 'known' ? known.length + 1 : options.length;
   const shown = !open ? quick : mode === 'tiles' ? options : [];
   const activePath = mode === 'paths' ? paths[active] : undefined;
   // Tab and the faint text complete the highlighted folder, or the first one in it while the folder itself is highlighted.
@@ -165,8 +174,13 @@ export function FolderPicker({
     close(false);
     onAddProject();
   };
+  const clone = (url: string | null) => {
+    close(false);
+    onClone?.(url, url !== null);
+  };
   const pick = (index: number) => {
-    if (mode === 'paths') {
+    if (mode === 'clone') clone(filter.trim());
+    else if (mode === 'paths') {
       if (paths[index]) add(paths[index]!.path);
     } else if (mode === 'known') {
       if (index === known.length) chooseOther();
@@ -334,6 +348,12 @@ export function FolderPicker({
       Add project…
     </Button>
   );
+  const cloneButton = (size: 'sm' | 'lg') =>
+    onClone && (
+      <Button size={size} icon={<FolderDown size={14} aria-hidden />} data-clone-from-github onClick={() => clone(null)} className="shrink-0">
+        Clone from GitHub…
+      </Button>
+    );
 
   // Not a project, so not a tile: one line under them, in neutral colours (a question has no project colour).
   const questionRow = question && (
@@ -360,7 +380,22 @@ export function FolderPicker({
       : 'Paths start with ~/ or /. Folders only. A folder that is already a project selects it instead.';
 
   const list =
-    mode === 'paths' ? (
+    mode === 'clone' && cloneRepo?.ok ? (
+      <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Clone from GitHub" className="grid gap-0.5" data-clone-suggestion>
+        {row(
+          0,
+          <>
+            <FolderDown size={15} className="shrink-0 text-muted" aria-hidden />
+            <span className="min-w-0 truncate text-ui text-text">
+              Clone <span className="font-semibold">{repoLabel(cloneRepo.repo)}</span>
+              {cloneRepo.repo.branch && <span className="font-mono text-meta text-muted"> · {cloneRepo.repo.branch}</span>}
+            </span>
+          </>,
+          'Clone and start here',
+          { 'data-clone-option': repoLabel(cloneRepo.repo) },
+        )}
+      </div>
+    ) : mode === 'paths' ? (
       <>
         <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Folders" className="grid max-h-80 gap-0.5 overflow-y-auto" data-path-list>
           {paths.map((folder, index) =>
@@ -430,6 +465,7 @@ export function FolderPicker({
               <Button size="sm" icon={<ListFilter size={13} aria-hidden />} data-filter-projects onClick={() => setOpen(true)}>
                 Filter
               </Button>
+              {cloneButton('sm')}
               {addButton('sm')}
             </div>
           )
@@ -456,8 +492,8 @@ export function FolderPicker({
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   onKeyDown={onFieldKey}
-                  placeholder="Filter projects, or type a path"
-                  aria-label="Filter projects, or type a path"
+                  placeholder={onClone ? 'Filter projects, type a path, or paste a GitHub URL' : 'Filter projects, or type a path'}
+                  aria-label={onClone ? 'Filter projects, type a path, or paste a GitHub URL' : 'Filter projects, or type a path'}
                   spellCheck={false}
                   className={`w-full min-w-0 bg-transparent text-ui text-text outline-none placeholder:text-faint ${pathMode ? 'font-mono' : ''}`}
                 />

@@ -21,19 +21,11 @@ describe('splitActionPills', () => {
 });
 
 describe('actionContextItems', () => {
-  it('offers Run, Edit… and Delete… for your own actions', () => {
-    expect(actionContextItems({ scope: 'project' })).toEqual([
+  it('offers Run, Edit… and Delete…', () => {
+    expect(actionContextItems()).toEqual([
       { command: 'run', label: 'Run' },
       { command: 'edit', label: 'Edit…' },
       { command: 'delete', label: 'Delete…', danger: true },
     ]);
-    expect(actionContextItems({ scope: 'global' }).every((item) => !item.disabledReason)).toBe(true);
-  });
-
-  it("can't delete a shared action, which lives in .switchboard.json", () => {
-    const items = actionContextItems({ scope: 'shared' });
-    expect(items.map((i) => i.command)).toEqual(['run', 'edit', 'delete']);
-    expect(items.find((i) => i.command === 'delete')?.disabledReason).toMatch(/switchboard\.json/);
-    expect(items.filter((i) => i.disabledReason)).toHaveLength(1);
   });
 });

@@ -70,6 +70,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - A notification and Dock badge when a session needs you or finishes, so you can leave it running in the background.
 - A **queue** of prompts to start next, each one saying when it's ready (when its project is free). See [Queue](#queue).
 - **Unsent messages** are kept, also after you quit. See [Unsent messages](#unsent-messages).
+- **Saved prompts** with blanks: type / in any message box, pick one, fill in an issue, a pull request, a branch or your own options, and send. Keep them for every project, for one project just for you, or share them with the project in its `.switchboard.json`. See [Saved prompts](https://switchboard.struyfconsulting.com/sessions/saved-prompts/).
 - An optional **focus limit**: how many sessions you want going at the same time, so starting another doesn't come at the cost of the ones already running. See [Focus limit](#focus-limit).
 - **Remote:** follow your sessions from your phone's browser. See what needs you, allow or deny, answer questions, send prompts, review changes and commit, end-to-end encrypted. Turn it on in Settings › Remote and pair a phone with a QR code. While it is on, **Connected to this Mac** at the bottom of the sidebar shows which devices are connected, what they did last, and Revoke.
 - Your plan usage under the message box: how much of your 5-hour and weekly limits you've used (hover for when they reset).
@@ -276,6 +277,8 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | / | Commands and skills (at the start of the message) |
 | @ | Mention a file |
 | ⌘⇧A | Add files as context (Several at once; they show as chips) |
+| ⇥ | Next blank (in a saved prompt; After the last blank, on to the text under the prompt) |
+| ⇧⇥ | Previous blank (in a saved prompt; Backspace in an empty blank goes back too) |
 | ↑ or ↓ | Bring back an earlier message (at the start of your text; Esc goes back to what you were typing) |
 
 **Permissions and questions**
@@ -326,10 +329,11 @@ Drag the sidebar's right edge to make it wider or narrower; double-click the edg
 
 Open Settings with ⌘, or the gear at the bottom of the sidebar. While it is open, the sidebar lists its sections; close it with the × button, *Back to sessions* or Escape.
 
-- **General:** what Switchboard shows when it opens: *The last session* (the default; only if the sidebar lists it, so not a session from another app while those are hidden) or *New session*. *Project order* picks how New session, Home and the command palette list your projects: *Recent* (the ones you used last first, the default) or *Your order* (the order you set in Projects). You can also turn off the "Ask before quitting" prompt.
+- **General:** what Switchboard shows when it opens: *The last session* (the default; only if the sidebar lists it, so not a session from another app while those are hidden) or *New session*. You can also turn off the "Ask before quitting" prompt.
 
 - **Theme:** *Appearance* is Match System, Light or Dark. Under it, pick a [theme](#themes): Demo Time (the default), Catppuccin, Claude, Nord (dark only), Solarized, The unnamed (dark only), or one you imported.
 - **Sidebar:** *Large icons* (easy to spot each project), *Standard*, or *Compact* (one line per session). *When collapsed* picks what ⌘B does: a *Minimal rail* of project icons, or *Hidden*. *Show sessions from other apps* also lists sessions from the terminal, Claude desktop and your editor (off by default), and notifies you when a terminal session is waiting.
+- **Projects:** *Project order* picks how New session, Home and the command palette list your projects: *Recent* (the ones you used last first, the default) or *Your order* (the order you set in Projects). *Clone from GitHub* (off by default) starts a project from a GitHub URL: New session clones it into the *Clone into* folder, adds it to your projects and runs your first prompt there. Before the first session in a clone that brings hooks, MCP servers or permission rules, Switchboard lists them and asks.
 - **Conversation:** *Summarised* (the default) shows each run of tool calls as one line, like Claude Code: what Claude is doing right now, or what it did, with how long it took. Click it to see the steps, and a step to see its details. *Every step* shows each tool call as its own card.
 - **Notifications and sounds:** two cards, each with its own switch. *Notifications* (on by default) turns the notifications for sessions that need you, finish or stop with an error, and for project actions that end, on or off; the Dock badge stays either way. *Send a test notification* checks that they come through, and the page says so when notifications are off for Switchboard in System Settings. *Sounds* (off by default) plays a sound per moment, with notifications on or off: pick the sound for *Needs you*, *Finished*, *Stopped with an error* and *Project action ended* from the system sounds (or *None*), hover one to hear it, play it with ▶, and set the *Volume* for all. Turning sounds off keeps your picks. Neither shows for the session you're looking at.
 - **Focus:** the [focus limit](#focus-limit): on or off, how many sessions at the same time (1 to 10, 3 to start with), *Nudge* or *Strict*, and whether sessions from the terminal and your editor count.
