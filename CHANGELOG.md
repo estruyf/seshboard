@@ -2,6 +2,12 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### Fixed
+
+- **The Agents panel shows an agent that runs again.** A background agent that stopped, such as at the 5-hour usage limit, and was then sent on again, stayed under **Finished**. It now moves back to **Active** until it reports back, also for a finished agent you give more work.
+
 ## [0.0.23] - 2026-10-17
 
 ### New

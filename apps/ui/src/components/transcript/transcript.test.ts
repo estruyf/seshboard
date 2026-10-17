@@ -165,6 +165,27 @@ describe('agentRuns', () => {
     expect(agentRuns(items, false).some((r) => r.running)).toBe(false);
   });
 
+  it('runs a background agent again when a message to it follows its last report (resumed after the usage limit)', () => {
+    const report = (key: string, status: string, text: string) => ({ kind: 'agent-report', key, at: null, agentId: 'abc123', toolUseId: null, status, title: text, text }) as DisplayItem;
+    const send = (key: string, to: string, isError = false) =>
+      ({ ...tool(key, 'SendMessage', { to, message: 'Carry on' }), result: { text: '{"success":true}', isError, truncated: false, images: [], at: null } }) as DisplayItem;
+    const bg = agent('bg', launched('abc123'));
+    const stopped = report('r1', 'failed', 'Agent terminated early: You\'ve hit your session limit');
+    const state = (items: DisplayItem[]) => agentRuns(items, true)[0]!;
+
+    expect(state([bg, stopped]).running).toBe(false);
+    // The user (or Claude) sends it on again: it runs until its next report.
+    expect(state([bg, stopped, send('s1', 'abc123')]).running).toBe(true);
+    const second = report('r2', 'completed', 'Done after the resume');
+    expect(state([bg, stopped, send('s1', 'abc123'), second])).toMatchObject({ running: false, report: 'Done after the resume' });
+    expect(state([bg, stopped, send('s1', 'abc123'), second, send('s2', 'abc123')]).running).toBe(true);
+    // A message before the report, to another agent, or one that failed, changes nothing.
+    expect(state([bg, send('s0', 'abc123'), stopped]).running).toBe(false);
+    expect(state([bg, stopped, send('s1', 'other')]).running).toBe(false);
+    expect(state([bg, stopped, send('s1', 'abc123', true)]).running).toBe(false);
+    expect(agentRuns([bg, stopped, send('s1', 'abc123')], false)[0]!.running).toBe(false);
+  });
+
   it('keeps what each agent was asked, its type and what it reported', () => {
     const asked = {
       ...tool('a', 'Agent', { description: 'Find the tests', subagent_type: 'Explore', prompt: 'Look for every test file.' }),
