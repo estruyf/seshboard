@@ -26,6 +26,9 @@ import { ownerSession } from '../terminal/appTerminal.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
+import { useSavedPromptsStore } from '../savedPrompts/savedPromptsStore.ts';
+import { sameScope } from '../savedPrompts/fillModel.ts';
+
 import { useDrafts } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { lastLimit } from '../focus/focusLimit.ts';
@@ -167,6 +170,14 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     // After the palette's own close, so the Tools dialog isn't closed along with it.
     showTools: () => setTimeout(() => useOverlay.getState().show('tools')),
     openInEditor: () => cwd && void openIn(cwd).catch(failed('open the folder')),
+    usePrompt: (scope, id) => {
+      const prompt = Object.values(useSavedPromptsStore.getState().lists)
+        .flatMap((list) => list.prompts)
+        .find((p) => p.id === id && sameScope(p.scope, scope));
+      // After the palette's own close, so the focus lands in the message box.
+      if (prompt && ctx.composer) setTimeout(() => useDrafts.getState().requestPrompt(ctx.composer!.key, prompt));
+    },
+    newPrompt: () => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, root: ctx.currentProject?.root ?? null }),
     addContext: () => {
       // After the palette's own close, so the picker isn't closed along with it.
       if (ctx.composer) setTimeout(() => useComposerTargets.getState().openPicker(ctx.composer!));
