@@ -1,6 +1,8 @@
-import { GitBranchPlus, PencilLine, Search, SquarePen } from 'lucide-react';
+import { FolderDown, GitBranchPlus, PencilLine, Search, SquarePen } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN } from '@switchboard/protocol/bridge';
+import { parseGithubRepo, repoLabel } from '@switchboard/protocol/client';
+import { useClone } from '../../state/cloneStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
@@ -49,7 +51,8 @@ type Row =
   | { kind: 'project'; key: string; root: string; indices: number[]; number: number | null; compact: boolean }
   | { kind: 'folder'; key: string }
   | { kind: 'option'; key: string; value: string; title: string; detail?: string; dot?: string; current: boolean; indices: number[]; number: number | null }
-  | { kind: 'help'; key: string; mode: PaletteMode; prefix: string; title: string; detail: string; sheet?: boolean };
+  | { kind: 'help'; key: string; mode: PaletteMode; prefix: string; title: string; detail: string; sheet?: boolean }
+  | { kind: 'clone'; key: string; url: string; title: string; detail?: string };
 
 interface Section {
   id: string;
@@ -94,7 +97,7 @@ const PICK_PLACEHOLDER: Record<PickList, string> = {
   prompt: 'Pick a saved prompt',
 };
 /** What a command that asks for more shows next, on its row while it's highlighted. */
-const NEXT_HINT: Record<PaletteStep['kind'], string> = { projects: 'picks a project next', prompt: 'write the prompt next', pick: 'pick one next' };
+const NEXT_HINT: Record<PaletteStep['kind'], string> = { projects: 'picks a project next', prompt: 'write the prompt next', pick: 'pick one next', clone: 'paste the URL next' };
 
 const HELP: Array<{ mode: PaletteMode; prefix: string; title: string; detail: string }> = [
   { mode: 'goto', prefix: '', title: 'Go to a session or project', detail: `no prefix · ${formatKeys(keysFor('palette.goto'))}` },
@@ -178,6 +181,13 @@ export function CommandPalette() {
     if (step?.kind === 'prompt') return [];
     if (step?.kind === 'projects') return projectSections(step, query);
     if (step?.kind === 'pick') return pickSections(step.list, query);
+    if (step?.kind === 'clone') {
+      // One row once the text names a repository; the reason it doesn't shows where the list would be.
+      const parsed = parseGithubRepo(query);
+      if (!parsed?.ok) return [];
+      const { repo } = parsed;
+      return [{ id: 'clone', label: 'Clone from GitHub', rows: [{ kind: 'clone', key: 'clone', url: query.trim(), title: `Clone ${repoLabel(repo)}`, ...(repo.branch ? { detail: `branch ${repo.branch}` } : {}) }] }];
+    }
     switch (state.mode) {
       case 'goto':
         return gotoSections(query);
@@ -378,8 +388,7 @@ export function CommandPalette() {
       }
       case 'session':
         close();
-        if (alt && !row.data.remote) useSessions.getState().openBeside(row.data.id);
-        else openRow(row.data.id);
+        openRow(row.data.id, { beside: alt });
         return;
       case 'draft':
         close();
@@ -407,6 +416,11 @@ export function CommandPalette() {
       case 'help':
         if (row.sheet) return useOverlay.getState().show('shortcuts');
         return setState(switchMode(row.mode));
+      case 'clone':
+        // New session clones it at once; Start there waits for it and asks about what it brings.
+        close();
+        useClone.getState().cloneInNewSession(row.url, { start: true });
+        return;
     }
   };
 
@@ -463,11 +477,11 @@ export function CommandPalette() {
               aria-controls={listId}
               aria-autocomplete="list"
               aria-activedescendant={rows[active] ? optionId(active) : undefined}
-              aria-label={step ? `${step.chip}: ${step.kind === 'pick' ? PICK_PLACEHOLDER[step.list] : 'Pick a project'}` : PLACEHOLDER[state.mode]}
+              aria-label={step ? `${step.chip}: ${stepPlaceholder(step)}` : PLACEHOLDER[state.mode]}
               value={state.query}
               onChange={(e) => setState((s) => typeQuery(s, e.target.value))}
               onKeyDown={onKeyDown}
-              placeholder={step?.kind === 'pick' ? PICK_PLACEHOLDER[step.list] : step ? 'Pick a project' : PLACEHOLDER[state.mode]}
+              placeholder={step ? stepPlaceholder(step) : PLACEHOLDER[state.mode]}
               spellCheck={false}
               className="h-full min-w-0 flex-1 bg-transparent text-body text-text outline-none placeholder:text-faint"
               data-palette-input
@@ -503,13 +517,20 @@ export function CommandPalette() {
   );
 }
 
+/** What a step's field asks for. */
+function stepPlaceholder(step: PaletteStep): string {
+  if (step.kind === 'pick') return PICK_PLACEHOLDER[step.list];
+  if (step.kind === 'clone') return 'Paste a GitHub URL, or type owner/name';
+  return 'Pick a project';
+}
+
 /** Before the field: the mode's prefix (or a search glyph for go-to), or the chips of the steps taken so far. */
 function FieldStart({ state }: { state: PaletteState }) {
   if (state.steps.length > 0) {
     return (
       <span className="flex shrink-0 items-center gap-1.5" data-palette-chips>
         {state.steps.map((s, i) => (
-          <Pill key={i} icon={s.kind === 'projects' && s.worktree ? <GitBranchPlus size={12} aria-hidden /> : s.kind === 'projects' ? <SquarePen size={12} aria-hidden /> : undefined}>
+          <Pill key={i} icon={s.kind === 'projects' && s.worktree ? <GitBranchPlus size={12} aria-hidden /> : s.kind === 'projects' ? <SquarePen size={12} aria-hidden /> : s.kind === 'clone' ? <FolderDown size={12} aria-hidden /> : undefined}>
             {s.chip}
           </Pill>
         ))}
@@ -534,6 +555,10 @@ function Empty({ state, ctx }: { state: PaletteState; ctx: PaletteContext }) {
         : ['No projects yet.', 'Add one from Manage projects.']
       : step?.kind === 'pick'
         ? [typed ? `Nothing matches “${typed}”.` : 'Nothing to pick from here.', '⌫ goes back.']
+        : step?.kind === 'clone'
+          ? typed
+            ? [parseGithubRepo(typed)?.ok === false ? (parseGithubRepo(typed) as { error: string }).error : 'That isn’t a GitHub repository.', 'Paste its URL, such as https://github.com/owner/name, or type owner/name.']
+            : ['Paste a GitHub URL, or type owner/name.', 'It is cloned into the folder set in Settings › Projects, then New session starts there.']
         : state.mode === 'actions'
           ? [ctx.session ? 'This session’s project has no actions.' : 'Open a session to run its project actions.', '"!" lists them; ⌫ goes back.']
           : state.mode === 'goto'
@@ -556,6 +581,7 @@ function footerKeys(state: PaletteState): FooterKey[] {
     return [...keys, { keys: '⌫', label: backTo }, { keys: 'Esc', label: 'close' }];
   }
   if (step?.kind === 'pick') return [{ keys: '↑ ↓', label: 'move' }, { keys: '↩', label: 'choose' }, { keys: '⌫', label: backTo }, { keys: 'Esc', label: 'close' }];
+  if (step?.kind === 'clone') return [{ keys: '↩', label: 'clone' }, { keys: '⌫', label: backTo }, { keys: 'Esc', label: 'close' }];
   if (state.mode === 'goto') {
     return [
       { keys: PREFIXES.commands, label: 'commands', prefix: true },
@@ -636,6 +662,8 @@ function RowView({
       return <FolderRow {...common} />;
     case 'option':
       return <OptionRow {...common} value={row.value} title={row.title} indices={row.indices} detail={row.detail} dot={row.dot} current={row.current} number={row.number} />;
+    case 'clone':
+      return <OptionRow {...common} value="clone" title={row.title} indices={[]} detail={row.detail} current={false} number={null} />;
     case 'help':
       return <HelpRow {...common} prefix={row.prefix} title={row.title} detail={row.detail} hook={row.sheet ? 'shortcuts' : undefined} />;
   }

@@ -26,7 +26,9 @@ export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-
 export type PaletteStep =
   | { kind: 'projects'; purpose: 'new-session' | 'rename-project' | 'worktrees' | 'branches'; worktree: boolean; chip: string; from?: string }
   | { kind: 'prompt'; root: string; worktree: boolean; chip: string; from?: string }
-  | { kind: 'pick'; list: PickList; chip: string };
+  | { kind: 'pick'; list: PickList; chip: string }
+  /** Clone from GitHub: the repository's URL (or owner/name) is typed or pasted, then New session clones it. */
+  | { kind: 'clone'; chip: string };
 
 export interface PaletteState {
   mode: PaletteMode;

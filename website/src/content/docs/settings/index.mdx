@@ -8,7 +8,7 @@ import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, notifications and sounds, your Claude profiles, memory, backups and updates. Changes apply at once; there is nothing to save.
+Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, notifications and sounds, your Claude profiles, usage, memory, backups and updates. Changes apply at once; there is nothing to save.
 
 ## Open it
 
@@ -29,7 +29,7 @@ Click a result, or pick one with <Kbd keys="arrowup|arrowdown" /> and press <Kbd
 
 ## General
 
-<Screenshot name="settings-general" alt="Settings on General: On startup with Home, The last session and New session, Project order with Recent and Your order, and the Ask before quitting switch" />
+<Screenshot name="settings-general" alt="Settings on General: On startup with Home, The last session and New session, the permission mode for new sessions, and the Ask before quitting switch" />
 
 ### On startup
 
@@ -48,16 +48,9 @@ What Switchboard shows when it opens:
 
 A project's own default mode comes first (its [Settings tab](/projects/settings/)), then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions). A session started by a link never starts in Auto mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
 
-### Projects
-
-**Project order** sets how New session, Home and the command palette list your projects:
-
-- **Recent** (the default): the ones you used last first.
-- **Your order**: the order you set in the [Projects view](/projects/projects-view/).
-
 ### Quitting
 
-**Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press. On Windows, closing the window quits Switchboard, so it asks then too (but not while Windows shuts down or signs you out).
+**Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press. On Windows, closing the window quits Switchboard, so it asks then too (but not while Windows shuts down or signs you out). With **Warn when quitting** on under [Large context](#large-context), quitting with a large session open asks even with Ask before quitting off.
 
 ## Theme
 
@@ -93,6 +86,17 @@ See [Sidebar](/sessions/sidebar/).
 
 See [Sessions](/settings/sessions/) for the details.
 
+## Projects
+
+<Screenshot name="settings-projects" alt="Settings on Projects: Project order with Recent and Your order, and Clone from GitHub off, with Clone into and its Choose… button" />
+
+**Project order** sets how New session, Home and the command palette list your projects:
+
+- **Recent** (the default): the ones you used last first.
+- **Your order**: the order you set in the [Projects view](/projects/projects-view/).
+
+**Clone from GitHub** (off by default) starts a project from a GitHub URL: New session clones it, adds it to your projects and runs your first prompt there. Turning it on asks for the folder new projects go in, shown as **Clone into**, with **Choose…** to change it. Each computer has its own setting and folder. See [Clone from GitHub](/projects/clone-from-github/).
+
 ## Conversation
 
 <Screenshot name="settings-conversation" alt="Settings on Conversation: two previews, Summarised and Every step" />
@@ -106,7 +110,7 @@ See [Conversation](/sessions/conversation/).
 
 **Show prompt outline** (on by default) puts a thin rail beside the conversation with a mark for each of your prompts. Click a mark to go back to it. See [Go back to a prompt](/sessions/conversation/#go-back-to-a-prompt).
 
-**Under each reply** sets the faint line after the buttons under the last reply of each turn:
+**Under each reply** sets the faint line under the last reply of each turn. It shows next to the reply's buttons when you hover the reply:
 
 - **Nothing**: no line.
 - **Time**: when the turn ended, such as `14:32`.
@@ -178,6 +182,23 @@ Below the list:
 - **How to set up another profile**: the steps, from signing in to linking projects.
 
 See [Claude profiles](/settings/claude-profiles/).
+
+## Usage
+
+How much of your plan's 5-hour and weekly limits you have used.
+
+- **Usage view**: **Open usage** opens the [Usage view](/usage/), which shows what used your plan.
+- **Show estimated cost** (on by default): what your tokens would cost at Anthropic's API prices: after the 5-hour and weekly bars, such as *5h 38% ≈$4.10*, next to Context under a session's message box, and in the Usage view. Your plan is not billed per token, so this is never a charge. See [Estimated cost](/usage/#estimated-cost).
+- **Currency**: the currency the estimate is shown in, such as US dollar, Euro, British pound or Japanese yen. The estimate is worked out in US dollars and converted at fixed exchange rates; the line under it says which day they are from.
+
+### Large context
+
+When a session's context is large, its next message after the prompt cache expires reads all of it again. See [Large context](/sessions/conversation/#large-context).
+
+- **Warn about a large context** (on by default): a note above the message box says how large the context is and when its cache expires, while the session waits for you.
+- **Large from** (60% by default): how full the context window is before it counts as large. The context ring turns orange from here too.
+- **Notify before the cache expires** (on by default): a notification 5 minutes before a large session's hour-long cache expires. It follows your [notification settings](#notifications).
+- **Warn when quitting** (off by default): quitting with a large session open asks first, and says what picking it up later would cost. Until you turn it on, the quit prompt says this once.
 
 ## Memory
 

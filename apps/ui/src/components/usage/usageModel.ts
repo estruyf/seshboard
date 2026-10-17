@@ -122,15 +122,15 @@ export function recordedSince(period: UsagePeriod, since: number | null, from: n
     : new Date(since).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false, timeZone });
 }
 
-/** The first `count` rows, and the rest folded into one line with their totals. */
-export function foldRows<R extends UsageRow>(rows: readonly R[], count: number): { shown: R[]; rest: { count: number; turns: number; tokens: TokenCounts; share: number } | null } {
+/** The first `count` rows, and the rest folded into one line with their totals (`cost` undefined when none of them has one). */
+export function foldRows<R extends UsageRow>(rows: readonly R[], count: number): { shown: R[]; rest: { count: number; turns: number; tokens: TokenCounts; cost: number | undefined; share: number } | null } {
   if (rows.length <= count) return { shown: [...rows], rest: null };
   const others = rows.slice(count);
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   for (const row of others) for (const type of TOKEN_TYPES) tokens[type] += row.tokens[type];
   return {
     shown: rows.slice(0, count),
-    rest: { count: others.length, turns: others.reduce((sum, r) => sum + r.turns, 0), tokens, share: others.reduce((sum, r) => sum + r.share, 0) },
+    rest: { count: others.length, turns: others.reduce((sum, r) => sum + r.turns, 0), tokens, cost: others.some((r) => r.cost !== undefined) ? others.reduce((sum, r) => sum + (r.cost ?? 0), 0) : undefined, share: others.reduce((sum, r) => sum + r.share, 0) },
   };
 }
 
@@ -198,4 +198,14 @@ export function dayLabel(key: string, locale?: string): string {
 /** When the current window started, as a time ("14:30"). */
 export function sinceLabel(from: number, locale?: string, timeZone?: string): string {
   return new Date(from).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false, timeZone });
+}
+
+/**
+ * The narrowest a breakdown table can be with every column at its smallest (a track's px, or the minimum of its
+ * minmax), the 12px gaps and the rows' 16px padding: below it the card scrolls sideways instead of the cells running
+ * out of their rows.
+ */
+export function tableMinWidth(columns: ReadonlyArray<{ width: string }>): number {
+  const smallest = (track: string) => Number(/(\d+)px/.exec(track)?.[1] ?? 0);
+  return columns.reduce((sum, c) => sum + smallest(c.width), 0) + 12 * (columns.length - 1) + 32;
 }

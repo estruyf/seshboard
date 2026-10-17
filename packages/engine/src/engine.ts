@@ -7,6 +7,7 @@ import {
   BUILTIN_PROFILE_ID,
   COMPANION_DIR,
   contract,
+  isSameOrInside,
   RpcError,
   serveRpc,
   type Contract,
@@ -25,6 +26,7 @@ import {
   type SystemInfo,
   type PrError,
   type PrProgress,
+  type CloneProgress,
   type WorktreePullRequest,
   type WorktreeSize,
   type Transport,
@@ -108,6 +110,7 @@ import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
 import { RemoteHub } from './remote/remoteHub.ts';
+import { CloneService } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { listFolders } from './system/folders.ts';
@@ -183,6 +186,11 @@ export interface EngineOptions {
    * must never call a model. Never set in normal use.
    */
   stubCatchUp?: boolean;
+  /**
+   * Clone from GitHub clones from this folder (`<folder>/<owner>/<name>.git`) instead of GitHub, never with gh: the
+   * smoke test and the screenshots, which must never clone from the network. Never set in normal use.
+   */
+  cloneSource?: string;
 }
 
 /** See `EngineOptions.demoUsage`. */
@@ -347,6 +355,25 @@ export function createEngine(options: EngineOptions): Engine {
   /** Where quick questions run: never one of the projects, so it is left out of every project list. */
   const questions = new QuestionsFolder(join(options.dataDir, 'questions'));
   const listProjects = () => projects.list(folderActivity()).filter((p) => !questions.contains(p.root));
+  // --- Clone from GitHub: Settings › Projects ----------------------------------------------------------------------
+  /** Clones started from a phone or another computer, by job id: their progress goes back to that connection too. */
+  const cloneListeners = new Map<string, (progress: CloneProgress) => void>();
+  const clones = new CloneService({
+    appState,
+    home: homedir(),
+    env: async () => (await shell.ready).env,
+    gh: defaultGh(),
+    ...(options.cloneSource ? { source: options.cloneSource } : {}),
+    addProject: (root) => projects.add(root),
+    isProject: (root) => listProjects().some((p) => p.added && isSameOrInside(p.root, root) && isSameOrInside(root, p.root)),
+    progress: (progress) => {
+      broadcast('projects.cloneProgress', progress);
+      cloneListeners.get(progress.jobId)?.(progress);
+      if (progress.state !== 'running') cloneListeners.delete(progress.jobId);
+    },
+    settingsChanged: (settings) => broadcast('projects.cloneSettings', settings),
+    log,
+  });
   const sessions = new SessionIndex({
     baseline,
     isOwned: (id) => owned.has(id),
@@ -1120,6 +1147,16 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   if (options.remote) {
+    /** The profile here signed in to an account (its `accountKey`), the default one first when more than one is. */
+    const profileOfAccount = (account: string): string | null => {
+      const defaultId = profiles.defaultId();
+      return (
+        profiles
+          .accounts()
+          .filter((p) => accountKey(p.account) === account)
+          .sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId))[0]?.id ?? null
+      );
+    };
     remote = new RemoteHub({
       db: cache.db,
       appState,
@@ -1171,13 +1208,13 @@ export function createEngine(options: EngineOptions): Engine {
       autoModel: () => ({ enabled: autoModel.enabled, allowed: [...autoModel.allowed] }),
       usage: (profileId, refresh) => usageFor(profileId).get(refresh),
       tokens: (account, params) => {
-        // The default profile first, when more than one here signs in to the account.
-        const defaultId = profiles.defaultId();
-        const match = profiles
-          .accounts()
-          .filter((p) => accountKey(p.account) === account)
-          .sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId))[0];
-        return match ? insights.breakdown(match.id, params) : null;
+        const match = profileOfAccount(account);
+        return match ? insights.breakdown(match, params) : null;
+      },
+      sessionCost: (sessionId) => insights.sessionCost(sessions.get(sessionId)?.profileId ?? profiles.defaultId(), sessionId),
+      windowCosts: (account, windows) => {
+        const match = profileOfAccount(account);
+        return match ? insights.windowCostsFrom(match, windows) : null;
       },
       // `asker` is made further down; a phone can only ask once the engine is running.
       ask: (sessionId, question, threadId, replaces) => asker.ask(sessionId, question, threadId, replaces),
@@ -1211,6 +1248,17 @@ export function createEngine(options: EngineOptions): Engine {
           throw new RpcError('GIT_FAILED', (error as Error).message);
         }
       },
+      clonePlan: (url, name) => clones.plan(url, name),
+      clone: async (jobId, url, name, onProgress) => {
+        cloneListeners.set(jobId, onProgress);
+        try {
+          await clones.start(jobId, url, name);
+        } catch (error) {
+          cloneListeners.delete(jobId);
+          throw error;
+        }
+      },
+      cancelClone: (jobId) => clones.cancel(jobId),
       onStatus: (status) => broadcast('remote.changed', status),
       onFromDevice: (event) => broadcast('remote.fromDevice', event),
       log,
@@ -1471,6 +1519,17 @@ export function createEngine(options: EngineOptions): Engine {
       const folders = listProjects().filter((p) => p.exists).map((p) => p.root);
       return { root: await findCheckout(folders, repo) };
     },
+    'projects.cloneSettings': () => clones.settings(),
+    'projects.setCloneSettings': (change) => clones.setSettings(change),
+    'projects.clonePlan': ({ url, name }) => clones.plan(url, name),
+    'projects.clone': async ({ jobId, url, name }) => {
+      await clones.start(jobId, url, name);
+      return {};
+    },
+    'projects.cancelClone': ({ jobId }) => {
+      clones.cancel(jobId);
+      return {};
+    },
     'projects.add': ({ path }) => {
       questions.assertNotProject(path);
       projects.add(path);
@@ -1727,6 +1786,8 @@ export function createEngine(options: EngineOptions): Engine {
     'usage.get': ({ refresh, profileId }) => usageFor(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()).get(refresh),
     'usage.breakdown': ({ profileId, ...params }) => insights.breakdown(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.history': ({ profileId, ...params }) => insights.planHistory(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
+    'usage.cost': ({ profileId }) => ({ windows: insights.windowCosts(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()) }),
+    'usage.sessionCost': ({ sessionId, profileId }) => ({ cost: insights.sessionCost(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), sessionId) }),
 
     'questions.folder': () => ({ path: questions.ensure() }),
     'projects.inspect': ({ path }) => {
@@ -2536,6 +2597,7 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      clones.close();
       clearTimeout(settingTimer);
       companion?.stop();
       remote?.stop();

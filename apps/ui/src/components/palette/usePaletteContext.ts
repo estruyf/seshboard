@@ -13,6 +13,7 @@ import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjectPage } from '../../state/projectPageStore.ts';
+import { useCloneEnabled } from '../../state/cloneStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { isQuestionsFolder } from '../../lib/questions.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
@@ -31,6 +32,7 @@ import { planGit } from '../git/gitPlan.ts';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './paletteContext.ts';
 import { useComputers } from '../../state/computersStore.ts';
+import { localSessionId } from '../../state/remoteSelection.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
 function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
@@ -89,6 +91,7 @@ export function usePaletteContext(): PaletteContext {
   const projects = useProjects((s) => s.projects);
   const projectFilter = useProjects((s) => s.filter);
   const questionsDir = useProjects((s) => s.questionsDir);
+  const cloneEnabled = useCloneEnabled();
   const prefs = usePreferences((s) => s.prefs);
   const themes = useThemes((s) => s.themes);
   const activeTheme = useThemes((s) => s.active.entry.id);
@@ -108,7 +111,8 @@ export function usePaletteContext(): PaletteContext {
 
   const pageRoot = useProjectPage((s) => s.root);
   const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
-  const id = view === 'session' ? selectedId : null;
+  // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
+  const id = view === 'session' ? localSessionId(selectedId) : null;
 
   const catchUps = useCatchUp((s) => s.cards);
   const collapsedCatchUps = useCatchUp((s) => s.collapsed);
@@ -195,6 +199,7 @@ export function usePaletteContext(): PaletteContext {
     composer,
     prompts: composer ? savedPrompts.map((p) => ({ id: p.id, name: p.name, scope: p.scope })) : [],
     canContinueInVSCode: editors.some((e) => e.id === 'vscode'),
+    cloneEnabled,
     computers: (computers ?? []).filter((c) => c.state === 'connected').map((c) => ({ id: c.id, name: c.name })),
   };
 }

@@ -989,6 +989,60 @@ const screens: Screen[] = [
     },
   },
   {
+    // Clone from GitHub, from a bare repository in the clone source a driven run clones from (never the network):
+    // turned on with ~/Developer as its folder, the form filled in and the clone done, with a prompt. Turned off after.
+    name: 'clone-from-github',
+    async take(t) {
+      const userData = await t.app.evaluate(({ app }) => app.getPath('userData'));
+      const work = join(t.world.home, '.tmp-clone', 'design-tokens');
+      const bare = join(userData, 'clone-source', 'acme', 'design-tokens.git');
+      // Taken once per scheme: start from nothing each time.
+      rmSync(work, { recursive: true, force: true });
+      rmSync(bare, { recursive: true, force: true });
+      mkdirSync(work, { recursive: true });
+      git(work, ['init', '-q', '-b', 'main']);
+      commitFile(work, 'README.md', '# Design tokens\n\nColours, type and spacing for the Acme apps.\n', 'Add the README');
+      mkdirSync(join(userData, 'clone-source', 'acme'), { recursive: true });
+      git(work, ['clone', '-q', '--bare', work, bare]);
+      const folder = join(t.world.home, 'Developer');
+      await t.app.evaluate((_electron, dir) => {
+        process.env.SWITCHBOARD_PICK_FOLDER = dir;
+      }, folder);
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="projects"]');
+      await t.click('[data-clone-enabled]');
+      await t.until(`document.querySelector('[data-clone-enabled]')?.getAttribute('aria-checked') === 'true'`, 'Clone from GitHub did not turn on');
+      await t.click('[data-close-settings]');
+
+      await openNewSession(t, 'acme-store');
+      await t.click('[data-new-session-view] [data-clone-from-github]');
+      await t.page.locator('[data-clone-url]').fill('https://github.com/acme/design-tokens');
+      await t.until(`document.querySelector('[data-clone-repo]')?.dataset.clonePlan === 'free'`, 'the clone form did not say where it goes');
+      await t.press('Enter');
+      await t.until(`document.querySelector('[data-clone-repo]')?.dataset.cloneState === 'done'`, 'the clone did not finish');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('Read the tokens and list the colours that fail contrast in dark mode.');
+      await t.settle();
+      await t.shot('clone-from-github');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+
+      // Back as it was: the form closed, the project removed, the setting off, the clone gone.
+      await t.click('[data-clone-close]');
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="projects"]');
+      await t.click('[data-clone-enabled]');
+      await t.until(`document.querySelector('[data-clone-enabled]')?.getAttribute('aria-checked') === 'false'`, 'Clone from GitHub did not turn off');
+      await t.click('[data-close-settings]');
+      const clone = JSON.stringify(join(folder, 'design-tokens'));
+      await t.click('[data-open-projects]');
+      await t.click(`[data-project-row=${clone}] [data-project-more-button]`);
+      await t.click('[role=menu] [data-remove-project]');
+      await t.click('[data-confirm]');
+      await t.gone(`[data-project-row=${clone}]`, 'the clone was not removed from the projects');
+      rmSync(join(folder, 'design-tokens'), { recursive: true, force: true });
+      rmSync(join(t.world.home, '.tmp-clone'), { recursive: true, force: true });
+    },
+  },
+  {
     name: 'queue',
     async take(t) {
       await t.home();
@@ -1471,7 +1525,7 @@ const screens: Screen[] = [
       await t.page.keyboard.press('Escape');
     },
   },
-  ...(['general', 'theme', 'sidebar', 'conversation', 'mods', 'focus', 'profiles', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
+  ...(['general', 'theme', 'sidebar', 'projects', 'conversation', 'mods', 'focus', 'profiles', 'usage', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
     (section): Screen => ({
       name: `settings-${section}`,
       async take(t) {

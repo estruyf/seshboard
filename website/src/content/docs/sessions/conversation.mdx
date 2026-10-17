@@ -108,7 +108,7 @@ Use the save button on an image, right-click it and choose **Save image…**, or
 
 ## How long a turn took
 
-A turn is your prompt and everything Claude does until it stops and waits for you again. Under the last reply of each turn, after the reply's buttons, a faint line says when the turn ended and how long it took, such as `14:32 · 2m 14s`.
+A turn is your prompt and everything Claude does until it stops and waits for you again. Under the last reply of each turn, a faint line says when the turn ended and how long it took, such as `14:32 · 2m 14s`. Like the reply's buttons, it shows when you hover the reply, next to them. Moving to the buttons with <Kbd keys="tab" /> shows it too.
 
 <Screenshot name="turn-details" alt="Under Claude's last reply, the time, duration and tokens of the turn, with the tokens' tooltip open: the total, a bar of the token types, a row for each and the model" />
 
@@ -153,9 +153,22 @@ In a narrow pane the chips get shorter (effort and mode show only their icon) in
 
 ### Context window and usage
 
-Under the message box, a line shows your plan usage (your 5-hour and weekly limits; hover for when they reset) and a ring for how full the **context window** is. Click the ring to see what fills it, like `/context`, and **Compact now** to compact the conversation. *Compact context* in the command palette does the same.
+Under the message box, a line shows your plan usage (your 5-hour and weekly limits; hover for when they reset), what the session would cost at API prices (*Cost ≈$12.40*, see [Estimated cost](/usage/#estimated-cost)), and a ring for how full the **context window** is. Click the ring to see what fills it, like `/context`, and **Compact now** to compact the conversation. *Compact context* in the command palette does the same.
 
 After a compaction the whole conversation stays: a *Conversation compacted* line marks each place it was compacted, and you can scroll back past it.
+
+### Large context
+
+Anthropic keeps a conversation's context in its prompt cache for a while after the last message: an hour or 5 minutes, depending on what Claude Code asks for. Each message that reads from the cache starts that time again. Once the cache expires, the next message reads the whole context again, at a price several times higher than reading it from the cache. It doesn't matter whether Switchboard is open: only the time since the last message counts.
+
+When a session's context is large (60% full or more, by default), the ring turns orange and a note above the message box says so while the session waits for you:
+
+- While the cache is kept: *Large context: 412k tokens (82%). Its cache expires in 48 min. After that, your next message reads all of it again (≈$3.20).* **Compact now** compacts it while that is still cheap.
+- After the cache expired, such as the next morning: *Its cache expired 14 h ago, so your next message reads all of it again (≈$3.20).* Compacting now would read it all again too, so the note doesn't offer it.
+
+The cost shows with **Show estimated cost** on, and reading it all again counts toward your plan's limits too. For a session that isn't running in Switchboard, the size is an estimate from the last reply. Close the note with its **×**; it comes back the next time Switchboard starts.
+
+With **Notify before the cache expires** on, you get a notification 5 minutes before a large session's hour-long cache expires, while it waits for you. Quitting Switchboard with a large session open says so once, and **Warn me about this every time I quit** turns that on for good. Change the percentage or turn any of this off in [Settings › Usage](/settings/#large-context).
 
 ## The hover toolbar
 

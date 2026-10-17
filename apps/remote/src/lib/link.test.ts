@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateKeyPair, newPairingSecret, remoteLinkFragment, type RemoteMessage } from '@switchboard/protocol/remote-client';
-import { pastedLink, reconnectDelay, startFrom, type Paired } from './link.ts';
+import { computerId, currentComputer, pastedLink, reconnectDelay, startFrom, type Paired } from './link.ts';
 import { appendMessages, applyStream, applyUpdate, editLines, NOT_STREAMING, prependMessages, resultsByCall, toolSummary, visibleMessages } from './transcript.ts';
 
 const engine = generateKeyPair().publicKey;
@@ -9,34 +9,44 @@ const pairLink = (key = engine) => `#${remoteLinkFragment({ kind: 'pair', engine
 const connectLink = (key = engine) => `#${remoteLinkFragment({ kind: 'connect', enginePublicKey: key, address: 'https://new.trycloudflare.com' })}`;
 
 describe('opening the remote app', () => {
-  it('connects to the paired computer without a link, and explains how to pair without one', () => {
-    expect(startFrom('', paired)).toEqual({ kind: 'connect', paired });
-    expect(startFrom('', null)).toEqual({ kind: 'welcome' });
+  const other: Paired = { ...paired, enginePublicKey: generateKeyPair().publicKey, deviceId: 'd2', pairedAt: 2 };
+
+  it('opens the computer shown last without a link, and explains how to pair without one', () => {
+    expect(startFrom('', [paired, other], other)).toEqual({ kind: 'connect', paired: other });
+    expect(startFrom('', [], null)).toEqual({ kind: 'welcome' });
   });
 
-  it('pairs from a pairing link, and says when that replaces another computer', () => {
-    expect(startFrom(pairLink(), null)).toMatchObject({ kind: 'pair', replaces: false, link: { address: 'https://new.trycloudflare.com' } });
-    expect(startFrom(pairLink(), paired)).toMatchObject({ kind: 'pair', replaces: false });
-    expect(startFrom(pairLink(generateKeyPair().publicKey), paired)).toMatchObject({ kind: 'pair', replaces: true });
+  it('pairs from a pairing link, adding a computer, and says when it is one the phone is paired with already', () => {
+    expect(startFrom(pairLink(), [], null)).toMatchObject({ kind: 'pair', again: false, link: { address: 'https://new.trycloudflare.com' } });
+    expect(startFrom(pairLink(), [paired], paired)).toMatchObject({ kind: 'pair', again: true });
+    expect(startFrom(pairLink(generateKeyPair().publicKey), [paired], paired)).toMatchObject({ kind: 'pair', again: false });
   });
 
-  it('moves to the computer\'s new address from a connect link, for that computer only', () => {
-    expect(startFrom(connectLink(), paired)).toEqual({ kind: 'connect', paired: { ...paired, address: 'https://new.trycloudflare.com' } });
-    expect(startFrom(connectLink(generateKeyPair().publicKey), paired)).toEqual({ kind: 'other-computer' });
-    expect(startFrom(connectLink(), null)).toEqual({ kind: 'other-computer' });
+  it('moves a computer to its new address from a connect link and opens it, for a paired computer only', () => {
+    expect(startFrom(connectLink(), [other, paired], other)).toEqual({ kind: 'connect', paired: { ...paired, address: 'https://new.trycloudflare.com' } });
+    expect(startFrom(connectLink(generateKeyPair().publicKey), [paired], paired)).toEqual({ kind: 'other-computer' });
+    expect(startFrom(connectLink(), [], null)).toEqual({ kind: 'other-computer' });
   });
 
   it('ignores a broken link when it is paired', () => {
-    expect(startFrom('#nonsense', paired)).toEqual({ kind: 'connect', paired });
-    expect(startFrom('#nonsense', null)).toEqual({ kind: 'bad-link' });
+    expect(startFrom('#nonsense', [paired], paired)).toEqual({ kind: 'connect', paired });
+    expect(startFrom('#nonsense', [], null)).toEqual({ kind: 'bad-link' });
+  });
+
+  it('shows the computer shown last, else the one paired last, and knows each by its engine key', () => {
+    expect(currentComputer([paired, other], computerId(paired))).toBe(paired);
+    expect(currentComputer([paired, other], 'gone')).toBe(other);
+    expect(currentComputer([], null)).toBeNull();
+    expect(computerId(paired)).toMatch(/^[0-9a-f]{64}$/);
+    expect(computerId({ enginePublicKey: paired.enginePublicKey.slice() })).toBe(computerId(paired));
   });
 
   it('takes the link out of what was pasted, a whole link or only its fragment', () => {
     const fragment = pairLink().slice(1);
     expect(pastedLink(`  https://switchboard.struyfconsulting.com/remote/#${fragment}\n`)).toBe(fragment);
     expect(pastedLink(fragment)).toBe(fragment);
-    expect(startFrom(pastedLink(`https://x/remote/#${fragment}`), null)).toMatchObject({ kind: 'pair' });
-    expect(startFrom(pastedLink('hello'), null)).toEqual({ kind: 'bad-link' });
+    expect(startFrom(pastedLink(`https://x/remote/#${fragment}`), [], null)).toMatchObject({ kind: 'pair' });
+    expect(startFrom(pastedLink('hello'), [], null)).toEqual({ kind: 'bad-link' });
   });
 
   it('waits longer between reconnects, up to 30 seconds', () => {

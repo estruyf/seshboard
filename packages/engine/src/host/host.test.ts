@@ -115,7 +115,11 @@ class FakeQuery {
         for (const chunk of ['Hel', 'lo']) {
           this.out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text: chunk } } });
         }
-        assistant('Hello');
+        if (text === 'cache') {
+          // A reply that wrote to the hour-long prompt cache.
+          const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 5, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 5 } };
+          this.out.push({ type: 'assistant', uuid: 'a-cache', parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: [{ type: 'text', text: 'Hello' }], usage } });
+        } else assistant('Hello');
       }
       this.out.push({ type: 'result', subtype: text === 'fail' ? 'error_during_execution' : 'success', is_error: text === 'fail', total_cost_usd: 0.01, session_id: sessionId });
       state('idle');
@@ -303,6 +307,19 @@ describe('HostManager', () => {
     // The Working list orders by when you last sent a message.
     expect(t.infos.at(-1)!.promptedAt).toBeGreaterThanOrEqual(t.infos.at(-1)!.startedAt);
     await expect(t.manager.commands(id, undefined, 'default')).resolves.toEqual([{ name: 'review', description: 'Review the diff', argumentHint: '' }]);
+    t.manager.closeAll();
+  });
+
+  it('reports when a turn last used the prompt cache, and which cache it is', async () => {
+    const t = setup();
+    const before = Date.now();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    // A reply without usage says nothing about the cache.
+    expect(t.infos.at(-1)!.cacheAt).toBeUndefined();
+    await t.manager.send({ sessionId: id, text: 'cache', attachments: [], fork: false });
+    await until(() => t.infos.at(-1)!.cacheTtl === '1h');
+    expect(t.infos.at(-1)!.cacheAt).toBeGreaterThanOrEqual(before);
     t.manager.closeAll();
   });
 

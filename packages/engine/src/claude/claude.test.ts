@@ -31,6 +31,16 @@ describe('normaliseMessage', () => {
     expect(m.usage).toEqual({ input: 3, output: 40, cacheRead: 45_000, cacheCreation: 1_200 });
   });
 
+  it('keeps which prompt cache a reply wrote to', () => {
+    const m = normaliseMessage({
+      type: 'assistant',
+      uuid: 'a1',
+      parent_tool_use_id: null,
+      message: { role: 'assistant', content: [], usage: { input_tokens: 3, output_tokens: 40, cache_creation_input_tokens: 1_200, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1_200 } } },
+    });
+    expect(m.usage).toEqual({ input: 3, output: 40, cacheRead: 0, cacheCreation: 1_200, cacheTtl: '1h' });
+  });
+
   it('keeps the response id, so a reply written as several messages counts once', () => {
     const m = normaliseMessage({
       type: 'assistant',

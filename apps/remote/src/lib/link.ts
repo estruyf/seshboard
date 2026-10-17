@@ -1,6 +1,6 @@
 import { parseRemoteLink, type RemoteLink } from '@switchboard/protocol/remote-client';
 
-/** What the phone keeps after pairing (in IndexedDB, on this site only). */
+/** What the phone keeps after pairing with a computer (in IndexedDB, on this site only), one per computer. */
 export interface Paired {
   /** The phone's device key: its secret half never leaves the phone. */
   deviceSecret: Uint8Array;
@@ -14,10 +14,16 @@ export interface Paired {
   computerName?: string;
 }
 
-/** What to do with the page's link and what the phone has kept. */
+/** A paired computer's id on this phone: its engine key in hex. It stays the same across addresses and pairings. */
+export function computerId(paired: Pick<Paired, 'enginePublicKey'>): string {
+  return Array.from(paired.enginePublicKey, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/** What to do with the page's link and the computers the phone is paired with. */
 export type Start =
   | { kind: 'welcome' }
-  | { kind: 'pair'; link: Extract<RemoteLink, { kind: 'pair' }>; replaces: boolean }
+  /** `again`: the phone is paired with that computer already, and pairing again replaces that pairing. */
+  | { kind: 'pair'; link: Extract<RemoteLink, { kind: 'pair' }>; again: boolean }
   | { kind: 'connect'; paired: Paired }
   | { kind: 'other-computer' }
   | { kind: 'bad-link' };
@@ -25,17 +31,24 @@ export type Start =
 const sameKey = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((byte, i) => byte === b[i]);
 
 /**
- * Pure, so it is easy to check: a pairing link pairs (replacing a pairing with another computer only after asking),
- * a connect link moves a paired phone to the computer's new address, and no link connects to what the phone has.
+ * Pure, so it is easy to check: a pairing link pairs (another computer is added; the same one is paired again), a
+ * connect link moves the computer it is for to its new address and opens it, and no link opens `current`, the
+ * computer the phone showed last.
  */
-export function startFrom(hash: string, paired: Paired | null): Start {
+export function startFrom(hash: string, computers: readonly Paired[], current: Paired | null): Start {
   const fragment = hash.replace(/^#/, '');
-  if (!fragment) return paired ? { kind: 'connect', paired } : { kind: 'welcome' };
+  if (!fragment) return current ? { kind: 'connect', paired: current } : { kind: 'welcome' };
   const link = parseRemoteLink(fragment);
-  if (!link) return paired ? { kind: 'connect', paired } : { kind: 'bad-link' };
-  if (link.kind === 'pair') return { kind: 'pair', link, replaces: paired !== null && !sameKey(paired.enginePublicKey, link.enginePublicKey) };
-  if (!paired || !sameKey(paired.enginePublicKey, link.enginePublicKey)) return { kind: 'other-computer' };
-  return { kind: 'connect', paired: { ...paired, address: link.address } };
+  if (!link) return current ? { kind: 'connect', paired: current } : { kind: 'bad-link' };
+  if (link.kind === 'pair') return { kind: 'pair', link, again: computers.some((c) => sameKey(c.enginePublicKey, link.enginePublicKey)) };
+  const known = computers.find((c) => sameKey(c.enginePublicKey, link.enginePublicKey));
+  if (!known) return { kind: 'other-computer' };
+  return { kind: 'connect', paired: { ...known, address: link.address } };
+}
+
+/** The computer to show: the one shown last, else the one paired last. */
+export function currentComputer(computers: readonly Paired[], lastId: string | null): Paired | null {
+  return computers.find((c) => computerId(c) === lastId) ?? [...computers].sort((a, b) => b.pairedAt - a.pairedAt)[0] ?? null;
 }
 
 /**

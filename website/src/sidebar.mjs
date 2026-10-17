@@ -37,7 +37,7 @@ export const sidebar = [
   { label: 'Keyboard shortcuts', link: '/keyboard-shortcuts/' },
   {
     label: 'Projects',
-    items: ['projects/projects-view', 'projects/overview', 'projects/sessions', 'projects/worktrees', 'projects/branches', 'projects/memory', 'projects/actions', 'projects/settings'],
+    items: ['projects/projects-view', 'projects/clone-from-github', 'projects/overview', 'projects/sessions', 'projects/worktrees', 'projects/branches', 'projects/memory', 'projects/actions', 'projects/settings'],
   },
   {
     label: 'Memory and knowledge',

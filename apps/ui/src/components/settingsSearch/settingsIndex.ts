@@ -15,14 +15,6 @@ export function settingsIndex(): SettingEntry[] {
     // General
     { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
     {
-      id: 'project-order',
-      page: 'general',
-      label: 'Project order',
-      detail: 'How New session, Home and the command palette list your projects: the ones you used last first, or the order you set in Projects.',
-      keywords: 'sort recent your order',
-      target: '[data-project-order]',
-    },
-    {
       id: 'new-session-mode',
       page: 'general',
       label: 'Permission mode',
@@ -85,6 +77,25 @@ export function settingsIndex(): SettingEntry[] {
     },
     { id: 'all-sessions', page: 'sessions', label: 'All sessions', detail: 'Every session, grouped by month, with filters. Unarchive them or move them to the ' + trash + '.', keywords: 'manage overview table disk size unarchive', target: '[data-session-manager]' },
 
+    // Projects
+    {
+      id: 'project-order',
+      page: 'projects',
+      label: 'Project order',
+      detail: 'How New session, Home and the command palette list your projects: the ones you used last first, or the order you set in Projects.',
+      keywords: 'sort recent your order',
+      target: '[data-project-order]',
+    },
+    {
+      id: 'clone-github',
+      page: 'projects',
+      label: 'Clone from GitHub',
+      detail: 'Start a project from a GitHub URL. New session clones it into the folder below, adds it to your projects and runs your first prompt there.',
+      keywords: 'git clone repository repo url download',
+      target: '[data-clone-enabled]',
+    },
+    { id: 'clone-folder', page: 'projects', label: 'Clone into', detail: 'The folder new projects go in, such as ~/Developer.', keywords: 'clone folder developer code location', target: '[data-clone-folder-choose]' },
+
     // Mods
     {
       id: 'show-mods',
@@ -125,7 +136,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'turn-details',
       page: 'conversation',
       label: 'Under each reply',
-      detail: 'Shown after the actions, in faint text. Nothing, Time, Time and duration, or Time, duration and tokens.',
+      detail: 'Shows next to the actions when you hover a reply. Nothing, Time, Time and duration, or Time, duration and tokens.',
       keywords: 'timestamp time duration tokens turn ended took how long clock usage reply line',
       target: '[data-turn-details-setting]',
     },
@@ -234,6 +245,64 @@ export function settingsIndex(): SettingEntry[] {
     },
     { id: 'add-profile', page: 'profiles', label: 'Add profile', detail: 'A Claude Code config folder with its own login.', keywords: 'account new', target: '[data-add-profile]', fallback: '[data-profiles]' },
     { id: 'profile-guide', page: 'profiles', label: 'How to set up another profile', detail: 'Create a config folder and sign in, add it here, and link your projects.', keywords: 'account help', target: '[data-profile-guide-toggle]' },
+
+    // Usage
+    {
+      id: 'usage-view',
+      page: 'usage',
+      label: 'Usage view',
+      detail: 'Which sessions, projects and models used your plan, and how your limits filled up over time.',
+      keywords: 'open usage plan limits tokens insights 5-hour weekly',
+      target: '[data-usage-view-setting]',
+    },
+    {
+      id: 'show-cost',
+      page: 'usage',
+      label: 'Show estimated cost',
+      detail: "What your tokens would cost at Anthropic's API prices: after the usage bars, for each session, and in the Usage view.",
+      keywords: 'cost price money dollars euro spend api estimate usage bar footer session project model tokens',
+      target: '[data-show-cost]',
+    },
+    {
+      id: 'cost-currency',
+      page: 'usage',
+      label: 'Currency',
+      detail: 'The currency of the estimated cost.',
+      keywords: 'money dollars euro pounds yen exchange rate cost price',
+      target: '[data-cost-currency]',
+    },
+    {
+      id: 'large-context',
+      page: 'usage',
+      label: 'Warn about a large context',
+      detail: 'Says above the message box how large it is and when its cache expires.',
+      keywords: 'context window full percent prompt cache expire expiry compact tokens warning alert ring',
+      target: '[data-large-context-enabled]',
+    },
+    {
+      id: 'large-context-percent',
+      page: 'usage',
+      label: 'Large from',
+      detail: 'How full the context window is before it counts as large. The context ring turns orange here too.',
+      keywords: 'context window percent threshold full warning ring orange',
+      target: '[data-large-context-percent]',
+    },
+    {
+      id: 'large-context-notify',
+      page: 'usage',
+      label: 'Notify before the cache expires',
+      detail: "5 minutes before a large session's hour-long cache expires.",
+      keywords: 'prompt cache expire expiry notification reminder context hour',
+      target: '[data-large-context-notify]',
+    },
+    {
+      id: 'large-context-quit',
+      page: 'usage',
+      label: 'Warn when quitting',
+      detail: 'Quitting with a large session open asks first.',
+      keywords: 'quit exit close context cache prompt warning end of day',
+      target: '[data-large-context-quit]',
+    },
 
     // Memory
     {

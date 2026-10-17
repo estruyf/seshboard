@@ -531,4 +531,14 @@ export const migrations: readonly string[] = [
     PRIMARY KEY (project_root, id)
   );
   `,
+
+  // v31: Writes to the hour-long prompt cache cost more than to the 5-minute one, so the cost estimate keeps them apart:
+  // `cache_write_1h` is the part of `cache_write` that went to it. Responses counted before have no split yet
+  // (`split` 0): every transcript is read once more to add it, without counting anything twice. The usage of
+  // transcripts that are gone stays as it was, priced as 5-minute writes.
+  `
+  ALTER TABLE session_usage ADD COLUMN cache_write_1h INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE usage_messages ADD COLUMN split INTEGER NOT NULL DEFAULT 0;
+  UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL;
+  `,
 ];

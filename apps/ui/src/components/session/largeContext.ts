@@ -1,0 +1,122 @@
+import { cacheExpiresAt, type CacheTtl, type ContextWarningPrefs, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { HIGH_AT, levelOf, type Level } from '../../lib/levels.ts';
+
+/**
+ * A session's context is "large" from the percentage in Settings › Usage on: its ring turns orange there, and the
+ * session says when its prompt cache lapses (`@switchboard/protocol` `contextCache.ts`).
+ */
+
+/** 46k, 1.2M. */
+export const compactTokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : String(n));
+
+/** When the conversation last used the prompt cache, and for how long the cache keeps it. */
+export interface CacheUse {
+  at: number;
+  ttl: CacheTtl;
+}
+
+/** The window size to assume for a session not running here (Claude Code reports it only to a running one). */
+const ASSUMED_WINDOW = 200_000;
+const LARGE_WINDOW = 1_000_000;
+
+/**
+ * How full the context window is, as a percentage: the reported one for a session running here, or an estimate from
+ * the last turn's tokens otherwise (a 200k window, or 1M once it holds more than 200k).
+ */
+export function contextPercentOf(known: { percent: number } | null, estimate: number | null): number | null {
+  if (known) return known.percent;
+  if (estimate === null) return null;
+  return (estimate / (estimate > ASSUMED_WINDOW ? LARGE_WINDOW : ASSUMED_WINDOW)) * 100;
+}
+
+/** The context ring's level: orange from the warning's percentage (and red from 85%, or from there when it is higher). */
+export function contextLevel(percent: number, warning: ContextWarningPrefs): Level {
+  if (!warning.enabled) return levelOf(percent);
+  if (!Number.isFinite(percent) || percent < warning.percent) return 'ok';
+  return percent < Math.max(HIGH_AT, warning.percent) ? 'caution' : 'high';
+}
+
+export const isLargeContext = (percent: number | null, warning: ContextWarningPrefs): boolean => warning.enabled && percent !== null && percent >= warning.percent;
+
+/**
+ * The cache from the transcript: the last reply that read or wrote it (subagents have their own), and the cache it
+ * last wrote to. Null when the transcript doesn't say which cache (older Claude Code) or nothing used one.
+ */
+export function transcriptCache(messages: readonly TranscriptMessage[]): CacheUse | null {
+  let at: number | null = null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role !== 'assistant' || m.parentToolUseId !== null || !m.usage) continue;
+    if (at === null && m.timestamp !== null && m.usage.cacheRead + m.usage.cacheCreation > 0) at = m.timestamp;
+    if (at !== null && m.usage.cacheTtl) return { at, ttl: m.usage.cacheTtl };
+  }
+  return null;
+}
+
+/** The latest of what the running session reported and what its transcript says. */
+export function cacheUseOf(host: Pick<SessionHostInfo, 'cacheAt' | 'cacheTtl'> | null | undefined, messages: readonly TranscriptMessage[]): CacheUse | null {
+  const fromTranscript = transcriptCache(messages);
+  const live = host?.cacheAt != null && host.cacheTtl ? { at: host.cacheAt, ttl: host.cacheTtl } : null;
+  if (!live) return fromTranscript;
+  return !fromTranscript || live.at >= fromTranscript.at ? live : fromTranscript;
+}
+
+/** Where the cache stands now: still kept (and until when), lapsed (and since when), or unknown. */
+export type CacheState = { kind: 'warm'; expiresAt: number } | { kind: 'cold'; since: number } | { kind: 'unknown' };
+
+export function cacheState(use: CacheUse | null, now: number): CacheState {
+  if (!use) return { kind: 'unknown' };
+  const expiresAt = cacheExpiresAt(use.at, use.ttl);
+  return now < expiresAt ? { kind: 'warm', expiresAt } : { kind: 'cold', since: expiresAt };
+}
+
+/** "48 min", "under a minute": how long until the cache lapses. */
+export function untilText(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  return minutes < 1 ? 'under a minute' : `${minutes} min`;
+}
+
+/** "3 min", "2 h", "4 days": how long ago the cache lapsed. */
+export function agoText(ms: number): string {
+  const minutes = Math.max(1, Math.floor(ms / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.floor(hours / 24)} days`;
+}
+
+/** An open session with a large context, for the quit prompt. */
+export interface LargeSession {
+  sessionId: string;
+  tokens: number;
+  /** What reading it all again costs at API prices (null: unknown model or cache). */
+  usd: number | null;
+  ttl: CacheTtl | null;
+}
+
+/** The sessions running here whose context is large, largest first. */
+export function largeSessions(hosts: Iterable<SessionHostInfo>, warning: ContextWarningPrefs, rewriteCost: (tokens: number, model: string, ttl: CacheTtl) => number | null): LargeSession[] {
+  const out: LargeSession[] = [];
+  for (const h of hosts) {
+    if (h.state === 'closed' || h.state === 'error' || !h.contextTokens || !h.contextMax) continue;
+    if (!isLargeContext(h.contextPercent ?? (h.contextTokens / h.contextMax) * 100, warning)) continue;
+    const ttl = h.cacheTtl ?? null;
+    out.push({ sessionId: h.sessionId, tokens: h.contextTokens, ttl, usd: ttl && h.model ? rewriteCost(h.contextTokens, h.model, ttl) : null });
+  }
+  return out.sort((a, b) => b.tokens - a.tokens);
+}
+
+/**
+ * The quit prompt's sentence about them: "2 open sessions have a large context (412k and 180k tokens). Their cache
+ * lapses within the hour, so picking them up later reads all of it again (≈$4.64)."
+ */
+export function largeSessionsText(large: readonly LargeSession[], format: ((usd: number) => string) | null): string | null {
+  if (large.length === 0) return null;
+  const one = large.length === 1;
+  const sizes = large.map((s) => compactTokens(s.tokens));
+  const list = sizes.length <= 2 ? sizes.join(' and ') : `${sizes.slice(0, -1).join(', ')} and ${sizes.at(-1)}`;
+  const known = large.filter((s) => s.usd !== null);
+  const cost = format && known.length > 0 ? ` (${format(known.reduce((sum, s) => sum + s.usd!, 0))})` : '';
+  const within = large.some((s) => s.ttl === '1h') ? 'within the hour' : large.some((s) => s.ttl === '5m') ? 'within minutes' : 'soon after its last message';
+  return `${one ? 'One open session has' : `${large.length} open sessions have`} a large context (${list} tokens). ${one ? 'Its cache lapses' : 'Their caches lapse'} ${within}, so picking ${one ? 'it' : 'them'} up later reads all of it again${cost}.`;
+}

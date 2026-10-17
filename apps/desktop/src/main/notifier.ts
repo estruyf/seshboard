@@ -4,6 +4,7 @@ import { createRpcClient, type Contract, type LaterItem, type QueueStarted, type
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
+import { CacheReminder, REMIND_BEFORE_MS, type CacheReminderPrefs } from './cacheReminder.ts';
 import type { EngineProcess } from './engineProcess.ts';
 import { queueHint } from './queueHint.ts';
 import type { SoundPlayer } from './sounds.ts';
@@ -22,6 +23,8 @@ export interface NotifierOptions {
   showAllSessions: () => boolean;
   /** Settings › Notifications: notifications on or off, and the sounds. */
   alerts: () => AlertPrefs;
+  /** Settings › Usage: Large context, and how a cost reads. */
+  cachePrefs: () => CacheReminderPrefs;
   sounds: SoundPlayer;
   /** Smoke tests record events (whether they'd be suppressed, and what they'd do) instead of showing notifications. */
   record?: (event: RecordedAlert) => void;
@@ -40,22 +43,45 @@ export class Notifier {
   private dot: NativeImage | undefined;
   /** The queue, so a finished turn can say what is next there. */
   private queue: { items: LaterItem[]; started: QueueStarted[] } = { items: [], started: [] };
+  /** Reminds you before a large session's cache lapses (Settings › Usage). */
+  private readonly cache: CacheReminder;
 
   constructor(private readonly options: NotifierOptions) {
     this.attention = new Attention({ external: options.showAllSessions });
+    this.cache = new CacheReminder({
+      prefs: options.cachePrefs,
+      remind: ({ sessionId, tokens, cost }) =>
+        this.handle([
+          {
+            kind: 'cache-expiring',
+            sessionId,
+            title: `Cache expires in ${REMIND_BEFORE_MS / 60_000} minutes`,
+            body: `${this.attention.label(sessionId, null)}: after that, your next message re-reads its ${tokens} tokens of context${cost ? ` (${cost})` : ''}.`,
+          },
+        ]),
+    });
+  }
+
+  /** Settings changed: the cache reminder may be due sooner or not at all. */
+  prefsChanged(): void {
+    this.cache.prefsChanged();
   }
 
   /** (Re)connects; call again after the engine restarts. */
   connect(): void {
     this.client?.dispose();
     this.attention.reset();
+    this.cache.reset();
     const { port1, port2 } = new MessageChannelMain();
     this.options.engine.connect(port1);
     const client = createRpcClient<Contract>(mainPortTransport(port2), { timeoutMs: 15_000 });
     this.client = client;
 
     client.on('sessions.changed', ({ upserted }) => upserted.forEach((s) => this.attention.setTitle(s.id, s.title)));
-    client.on('session.host', (info) => this.handle(this.attention.onHost(info)));
+    client.on('session.host', (info) => {
+      this.handle(this.attention.onHost(info));
+      this.cache.onHost(info);
+    });
     client.on('session.permission', (request) => this.handle(this.attention.onPermission(request)));
     client.on('session.permissionResolved', ({ requestId }) => {
       this.attention.onPermissionResolved(requestId);
@@ -71,7 +97,10 @@ export class Notifier {
     void Promise.all([client.call('sessions.list', {}), client.call('hosts.list', {}), client.call('terminal.list', {})])
       .then(([sessions, hosts, terminals]) => {
         sessions.sessions.forEach((s) => this.attention.setTitle(s.id, s.title));
-        hosts.hosts.forEach((h) => this.attention.onHost(h));
+        hosts.hosts.forEach((h) => {
+          this.attention.onHost(h);
+          this.cache.onHost(h);
+        });
         hosts.permissions.forEach((p) => this.attention.onPermission(p));
         this.attention.onLive(sessions.live);
         this.attention.onTerminals(terminals.terminals);

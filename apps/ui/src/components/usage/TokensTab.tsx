@@ -13,6 +13,7 @@ import { ModelCell, NotCounted, RowComputer, RowProjectIcon, rowProjectName, Sca
 import { ShareInfo } from './ShareInfo.tsx';
 import type { ComputerRef, MergedBreakdown, MergedRow, UsageViewGroup } from './usageMerge.ts';
 import { useCountedBreakdown } from './useUsageData.ts';
+import { useCostFormat } from './useCost.ts';
 import {
   bucketLabel,
   cacheHitRate,
@@ -26,6 +27,7 @@ import {
   modelName,
   PERIOD_SHORT,
   sumTokens,
+  tableMinWidth,
   TOKEN_COLOR,
   TOKEN_LABEL,
   TOKEN_TYPES,
@@ -34,7 +36,8 @@ import {
 const percent = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : '0%');
 
 /** The period's totals: all tokens with sessions and turns, each type with its part of the whole, and the cache hit rate. */
-function Headline({ data, profileName, period, counted }: { data: UsageBreakdown; profileName: string; period: UsagePeriod; counted: readonly ComputerRef[] }) {
+function Headline({ data, profileName, period, counted }: { data: MergedBreakdown; profileName: string; period: UsagePeriod; counted: readonly ComputerRef[] }) {
+  const cost = useCostFormat();
   const total = sumTokens(data.totals.tokens);
   const hit = cacheHitRate(data.totals.tokens);
   const tile = (label: ReactNode, value: string, note: string, key: string) => (
@@ -78,12 +81,21 @@ function Headline({ data, profileName, period, counted }: { data: UsageBreakdown
         ),
       )}
       {tile('Cache hit rate', hit === null ? 'None' : `${Math.round(hit * 100)}%`, 'cache read / all input', 'hit')}
+      {cost &&
+        data.totals.cost !== undefined &&
+        tile(
+          <span data-tooltip="What these tokens would cost at Anthropic's API prices, each model at its own price. Your plan is not billed per token.">Cost (est.)</span>,
+          cost(data.totals.cost),
+          data.uncosted?.length ? `at API prices, without ${data.uncosted.map((c) => c.name).join(', ')}` : 'at API prices',
+          'cost',
+        )}
     </section>
   );
 }
 
 /** Tokens per hour (5 hours, 24 hours) or day, stacked by type. Cache reads are left out by default. */
 function TokensChart({ data, period }: { data: UsageBreakdown; period: UsagePeriod }) {
+  const cost = useCostFormat();
   const [mode, setMode] = useState<'all' | 'without'>('without');
   const types = chartTypes(mode === 'all');
   const per = data.bucket === 'hour' ? 'hour' : 'day';
@@ -109,8 +121,13 @@ function TokensChart({ data, period }: { data: UsageBreakdown; period: UsagePeri
       table={
         <ChartTable
           caption={`Tokens per ${per}`}
-          head={[per === 'hour' ? 'Hour' : 'Day', ...[...TOKEN_TYPES].reverse().map((t) => TOKEN_LABEL[t]), 'Total']}
-          rows={data.buckets.map((b) => [bucketLabel(b.start, data.bucket, period), ...[...TOKEN_TYPES].reverse().map((t) => formatTokens(b.tokens[t])), formatTokens(sumTokens(b.tokens))])}
+          head={[per === 'hour' ? 'Hour' : 'Day', ...[...TOKEN_TYPES].reverse().map((t) => TOKEN_LABEL[t]), 'Total', ...(cost ? ['Cost (est.)'] : [])]}
+          rows={data.buckets.map((b) => [
+            bucketLabel(b.start, data.bucket, period),
+            ...[...TOKEN_TYPES].reverse().map((t) => formatTokens(b.tokens[t])),
+            formatTokens(sumTokens(b.tokens)),
+            ...(cost ? [cost(b.cost)] : []),
+          ])}
         />
       }
       data-usage-chart
@@ -188,6 +205,11 @@ function Named({ row, children }: { row: MergedRow; children: ReactNode }) {
 /** The columns for each grouping. Numbers are right-aligned in tabular figures. */
 function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
   const nameOf = useProjectName();
+  const format = useCostFormat();
+  // What each row would cost at API prices, before its share; left out while Show estimated cost is off.
+  const cost: Column[] = format
+    ? [{ head: <span data-tooltip="At Anthropic's API prices, each model at its own price. Your plan is not billed per token.">Cost (est.)</span>, width: '84px', align: 'right', cell: (r) => format(r.cost), total: (rest) => format(rest.cost) }]
+    : [];
   const share: Column = {
     head: (
       <ShareInfo className="w-full text-right uppercase hover:text-text" data-usage-share-header>
@@ -246,6 +268,7 @@ function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
       { head: 'Model', width: '72px', cell: (r) => <ModelCell model={r.model} fastTurns={r.fastTurns} /> },
       ...tokens,
       largest,
+      ...cost,
       share,
     ];
   }
@@ -268,6 +291,7 @@ function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
       sessions,
       ...tokens,
       largest,
+      ...cost,
       share,
     ];
   }
@@ -298,6 +322,7 @@ function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
       sessions,
       ...tokens,
       { head: 'Cache hit', width: '72px', align: 'right', cell: (r) => (cacheHitRate(r.tokens) === null ? '' : `${Math.round(cacheHitRate(r.tokens)! * 100)}%`) },
+      ...cost,
       share,
     ];
   }
@@ -320,10 +345,11 @@ function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
       sessions,
       ...tokens,
       largest,
+      ...cost,
       share,
     ];
   }
-  return [{ head: 'Day', width: 'minmax(160px,2fr)', cell: (r) => <span className="font-medium">{dayLabel(r.label)}</span> }, sessions, ...tokens, largest, share];
+  return [{ head: 'Day', width: 'minmax(160px,2fr)', cell: (r) => <span className="font-medium">{dayLabel(r.label)}</span> }, sessions, ...tokens, largest, ...cost, share];
 }
 
 
@@ -426,7 +452,7 @@ function Breakdown({
       </header>
       {/* Narrow windows scroll the table sideways rather than squeezing its numbers. */}
       <div role="table" aria-label={`Tokens by ${groupBy}`} aria-rowcount={shown.length + 1} className="min-w-0 overflow-x-auto">
-        <div className="min-w-[900px]">
+        <div style={{ minWidth: tableMinWidth(columns) }}>
         <div role="row" style={{ gridTemplateColumns: template }} className="grid items-end gap-x-3 border-b border-border px-4 pb-2 text-meta tracking-wide text-muted uppercase">
           {columns.map((c, i) => (
             <span key={i} role="columnheader" className={c.align === 'right' ? 'text-right' : ''}>
@@ -469,6 +495,7 @@ function Breakdown({
 /** One model: its tokens, sessions, fast mode turns, largest context, and its cache hit rate over the period. */
 function ModelPanel({ profileId, period, model }: { profileId: string; period: UsagePeriod; model: string }) {
   const { data } = useCountedBreakdown(profileId, period, 'session', model);
+  const cost = useCostFormat();
   if (!data) return null;
   const hit = cacheHitRate(data.totals.tokens);
   const input = data.totals.tokens.input + data.totals.tokens.cacheRead + data.totals.tokens.cacheWrite;
@@ -479,6 +506,7 @@ function ModelPanel({ profileId, period, model }: { profileId: string; period: U
         <h3 className="text-title font-semibold">{modelName(model)}</h3>
         <p className="text-meta text-muted">
           {PERIOD_SHORT[period]} · {formatTokens(sumTokens(data.totals.tokens))} tokens · {data.totals.sessions} {data.totals.sessions === 1 ? 'session' : 'sessions'}
+          {cost && data.totals.cost !== undefined && <span data-usage-model-cost> · {cost(data.totals.cost)} at API prices</span>}
         </p>
         <p className="ml-auto text-ui text-muted">
           Cache hit rate <span className="ml-1 text-title font-semibold text-text tabular-nums">{hit === null ? 'None' : `${Math.round(hit * 100)}%`}</span>

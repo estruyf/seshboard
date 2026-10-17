@@ -45,6 +45,7 @@ import { useActionsMenu } from '../actions/useActionsMenu.tsx';
 import { CapabilitiesDialog } from '../capabilities/CapabilitiesDialog.tsx';
 import { ChangesPanel, useChangesLayout } from '../changes/ChangesPanel.tsx';
 import { ContextMeter } from '../session/ContextMeter.tsx';
+import { LargeContextNotice } from '../session/LargeContextNotice.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
 import { useHeight } from '../ui/useHeight.ts';
 import { useWidth } from '../ui/useWidth.ts';
@@ -66,6 +67,7 @@ import { MoreMenu } from '../session/MoreMenu.tsx';
 import { SessionControls } from '../session/StatusBar.tsx';
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
+import { SessionCost } from '../usage/SessionCost.tsx';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
 import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
@@ -1462,6 +1464,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               aria-label="Conversation"
               className={`min-h-0 flex-1 overflow-y-auto ${terminalMaximized ? 'hidden' : ''}`}
               data-transcript
+              // How many items the conversation has: the list is virtualised, so the rows in the DOM are only the ones in view.
+              data-transcript-count={renderItems.length}
             >
               {status === 'loading' ? (
                 <p className="p-8 text-center text-ui text-muted" role="status">
@@ -1684,6 +1688,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 </Notice>
               )}
               <AutoSuggestNote sessionId={sessionId} pick={autoPick} items={items} contextTokens={host?.contextTokens ?? null} />
+              <LargeContextNotice sessionId={sessionId} live={contextLive} host={host} messages={messages} working={running} onCompact={compact} />
               {autoPick && <AutoPickPopover sessionId={sessionId} pick={autoPick} items={items} cwd={cwd} />}
               {actionsMenu.overlays}
               {restored && (
@@ -1791,6 +1796,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   <div className="@container/meters flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
                     <UsageBand profileId={profileId} footer />
                   </div>
+                  <SessionCost sessionId={sessionId} profileId={profileId} />
                   <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
                 </div>
               )}

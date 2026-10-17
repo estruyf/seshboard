@@ -1,7 +1,7 @@
 import type { HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
 
 export interface AttentionEvent {
-  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed';
+  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'cache-expiring';
   sessionId: string;
   title: string;
   body: string;
@@ -35,7 +35,7 @@ export class Attention {
     this.titles.set(sessionId, title);
   }
 
-  private label(sessionId: string, cwd: string | null): string {
+  label(sessionId: string, cwd: string | null): string {
     const title = this.titles.get(sessionId) ?? 'New session';
     return cwd ? `${title} · ${basename(cwd)}` : title;
   }

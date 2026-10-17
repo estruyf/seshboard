@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CanUseTool, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { cacheTtlOf, type CacheTtl } from '@switchboard/protocol';
 import type {
   Effort,
   HostState,
@@ -206,6 +207,8 @@ export class SessionHost {
   terminalOnly: string[] = [];
   models: ModelOption[] = [];
   lastActivity = Date.now();
+  /** The prompt cache of this turn's last response: reported with the turn's end, so the window hears it once a turn. */
+  private cacheSeen: { at: number; ttl: CacheTtl | null } | null = null;
   /** When the process ended (closed or crashed), for telling our own exiting process apart from another window. */
   closedAt: number | undefined;
   info: SessionHostInfo;
@@ -601,6 +604,7 @@ export class SessionHost {
         // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
         if (this.nowPhase === 'sent') this.nowStarted();
         if (message.error) this.assistantError = textOf(message) ?? this.assistantError;
+        this.noteCache(message.message as unknown as { usage?: Record<string, unknown> | null } | undefined);
         this.events.messages(this.sessionId, [toRaw(message)]);
         this.pushStream('clear', '');
         return;
@@ -622,7 +626,7 @@ export class SessionHost {
         if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold) this.holdQueue('error');
         if (stop) this.events.limitHit?.(this.sessionId, stop);
         else if (outcome.ok) this.events.turnOk?.(this.sessionId);
-        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd });
+        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache() });
         void this.refreshContext();
         this.events.usageHint?.();
         this.events.turnEnded?.(this.sessionId, outcome);
@@ -783,6 +787,25 @@ export class SessionHost {
     this.commands = next;
     if (!first) this.events.commandsChanged?.();
     return true;
+  }
+
+  /**
+   * A response that read or wrote the prompt cache started its time again. Which cache it is comes from the responses
+   * that wrote to it; one that only read keeps the last one known.
+   */
+  private noteCache(message: { usage?: Record<string, unknown> | null } | undefined): void {
+    const usage = message?.usage;
+    if (!usage) return;
+    const touched = [usage.cache_read_input_tokens, usage.cache_creation_input_tokens].some((n) => typeof n === 'number' && n > 0);
+    if (!touched) return;
+    this.cacheSeen = { at: Date.now(), ttl: cacheTtlOf(usage) ?? this.cacheSeen?.ttl ?? this.info.cacheTtl ?? null };
+  }
+
+  private takeCache(): Pick<SessionHostInfo, 'cacheAt' | 'cacheTtl'> {
+    const seen = this.cacheSeen;
+    if (!seen) return {};
+    this.cacheSeen = null;
+    return { cacheAt: seen.at, cacheTtl: seen.ttl };
   }
 
   private async refreshContext(): Promise<void> {

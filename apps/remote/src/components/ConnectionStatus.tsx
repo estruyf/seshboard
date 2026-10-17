@@ -1,5 +1,5 @@
-import { ChevronDown, CircleHelp, PlugZap, RotateCw } from 'lucide-react';
-import { stateLine } from '../lib/computer.ts';
+import { ChevronDown, ChevronRight, CircleHelp, PlugZap, RotateCw } from 'lucide-react';
+import { otherLine, stateLine } from '../lib/computer.ts';
 import type { ConnectionState } from '../lib/connection.ts';
 import { offlineHelp, offlineLine, reconnectingLine, type OfflineReason } from '../lib/offline.ts';
 import { AnchoredMenu, type MenuItem } from './Menu.tsx';
@@ -20,23 +20,70 @@ function look(state: ConnectionState, computer: string): Look {
   return { dot: 'bg-caution pulse-dot', text: 'text-caution', label: 'Reconnecting…', word: 'Reconnecting…' };
 }
 
+/** Another paired computer: its name, its connection, and how many of its sessions need you. */
+export interface OtherComputer {
+  id: string;
+  name: string;
+  state: ConnectionState;
+  needsYou: number;
+}
+
 /** What opens the computer's menu: the chip, or the first screen's title. */
 export interface ComputerProps {
   state: ConnectionState;
   computer: string;
+  /** The other computers this phone is paired with, to switch to. */
+  others: readonly OtherComputer[];
   onDisconnect: () => void;
   onConnect: () => void;
+  onSwitch: (id: string) => void;
+  onAdd: () => void;
   onForget: () => void;
 }
 
-/** The computer's menu: its name and state, Disconnect (or Connect), and Forget this computer… under a line. */
-function computerItems({ state, computer, onDisconnect, onConnect, onForget }: ComputerProps, now: number): MenuItem[] {
+/**
+ * The computer's menu: its name and state, Disconnect (or Connect), then the other computers (each with how many
+ * sessions need you there) and Pair another computer…, and Forget this computer… under a line.
+ */
+function computerItems({ state, computer, others, onDisconnect, onConnect, onSwitch, onAdd, onForget }: ComputerProps, now: number): MenuItem[] {
   return [
     { kind: 'header', title: computer || 'Your computer', detail: stateLine(state, now) },
     state.kind === 'disconnected' ? { label: 'Connect', onSelect: onConnect } : { label: 'Disconnect', onSelect: onDisconnect },
     { kind: 'separator' },
+    ...others.map((other): MenuItem => ({ label: other.name || 'Your other computer', hint: otherLine(other.state, other.needsYou) || undefined, onSelect: () => onSwitch(other.id) })),
+    { label: 'Pair another computer…', onSelect: onAdd },
+    { kind: 'separator' },
     { label: 'Forget this computer…', danger: true, onSelect: onForget },
   ];
+}
+
+/**
+ * Over the list, while sessions on another computer need you: a row per computer ("mystic · 2 need you"), which
+ * switches to it. The `warn` dot of Needs you, so it reads as the same thing on another computer.
+ */
+export function ElsewhereStrip({ others, onSwitch }: { others: readonly OtherComputer[]; onSwitch: (id: string) => void }) {
+  const waiting = others.filter((o) => o.state.kind === 'connected' && o.needsYou > 0);
+  if (!waiting.length) return null;
+  return (
+    <div className="mx-3 mt-3 flex flex-col overflow-hidden rounded-xl border border-border bg-card" data-remote-elsewhere>
+      {waiting.map((other, i) => (
+        <button
+          key={other.id}
+          type="button"
+          onClick={() => onSwitch(other.id)}
+          className={`flex min-h-11 items-center gap-2.5 px-3 py-2 text-left hover:bg-border/45 pointer-fine:min-h-9 ${i > 0 ? 'border-t border-border' : ''}`}
+          data-remote-elsewhere-computer={other.id}
+        >
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-warn" />
+          <span className="min-w-0 flex-1 truncate text-ui">
+            <span className="font-semibold">{other.name || 'Your other computer'}</span>
+            <span className="text-muted"> · {otherLine(other.state, other.needsYou)}</span>
+          </span>
+          <ChevronRight aria-hidden className="size-4 shrink-0 text-faint" />
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /**

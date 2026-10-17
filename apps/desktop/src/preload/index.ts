@@ -41,6 +41,7 @@ const bridge: SwitchboardBridge = {
     return () => ipcRenderer.off(IpcChannel.quitRequested, handler);
   },
   answerQuit: (answer) => ipcRenderer.send(IpcChannel.quitAnswer, answer),
+  setQuitContext: (ask) => ipcRenderer.send(IpcChannel.quitContext, ask),
   // Tiny and read once at startup; synchronous so the first paint has the right layout.
   preferences: ipcRenderer.sendSync(IpcChannel.getPreferences) as Preferences,
   setPreferences: (patch) => ipcRenderer.send(IpcChannel.setPreferences, patch),

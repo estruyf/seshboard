@@ -7,7 +7,7 @@ import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { PlanHistoryStore } from './planHistory.ts';
 import { measuredDeltas, SHARE_WEIGHTS, sharesOf, weightOf } from './shares.ts';
 import { hourOf, parseUsageLine } from './transcriptUsage.ts';
-import { breakdown, periodRange, type SessionLookup } from './usageQuery.ts';
+import { breakdown, periodRange, sessionCost, windowCosts, type SessionLookup } from './usageQuery.ts';
 import { scopeOf, UsageScanner } from './usageScanner.ts';
 import { RoutingStore } from '../autoModel/router.ts';
 import { CatchUpUsageStore } from '../catchUp/catchUpStore.ts';
@@ -25,7 +25,8 @@ afterEach(() => {
 });
 
 /** An assistant line as Claude Code writes it: one per content block, each with the message's full usage. */
-function line(o: { id: string; req?: string; session: string; at: string; model?: string; input?: number; output?: number; read?: number; write?: number; speed?: string; cwd?: string }): string {
+function line(o: { id: string; req?: string; session: string; at: string; model?: string; input?: number; output?: number; read?: number; write?: number; write1h?: number; speed?: string; cwd?: string }): string {
+  const write = o.write ?? 200;
   return (
     JSON.stringify({
       type: 'assistant',
@@ -36,7 +37,14 @@ function line(o: { id: string; req?: string; session: string; at: string; model?
       message: {
         id: o.id,
         model: o.model ?? 'claude-sonnet-5-5',
-        usage: { input_tokens: o.input ?? 10, output_tokens: o.output ?? 100, cache_read_input_tokens: o.read ?? 1000, cache_creation_input_tokens: o.write ?? 200, speed: o.speed ?? 'standard' },
+        usage: {
+          input_tokens: o.input ?? 10,
+          output_tokens: o.output ?? 100,
+          cache_read_input_tokens: o.read ?? 1000,
+          cache_creation_input_tokens: write,
+          ...(o.write1h !== undefined ? { cache_creation: { ephemeral_5m_input_tokens: write - o.write1h, ephemeral_1h_input_tokens: o.write1h } } : {}),
+          speed: o.speed ?? 'standard',
+        },
       },
     }) + '\n'
   );
@@ -77,6 +85,30 @@ describe('UsageScanner', () => {
     writeFileSync(join(config, 'projects', '-work-app', 's2.jsonl'), repeated);
     await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
     expect(totals(scope)).toEqual([{ session: 's1', output: 200, turns: 2 }]);
+  });
+
+  it('keeps the part of the cache writes that went to the hour-long cache', async () => {
+    const config = configDir();
+    const scope = scopeOf(config);
+    const repeated = line({ id: 'm1', session: 's1', at: '2026-10-12T10:00:00Z', write: 200, write1h: 150 });
+    writeFileSync(join(config, 'projects', '-work-app', 's1.jsonl'), repeated + repeated + line({ id: 'm2', session: 's1', at: '2026-10-12T10:01:00Z', write: 50 }));
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    expect(cache.db.prepare('SELECT cache_write, cache_write_1h FROM session_usage WHERE scope = ?').get(scope)).toEqual({ cache_write: 250, cache_write_1h: 150 });
+  });
+
+  it('adds the hour-long part to responses counted before it was kept, once, without counting them again', async () => {
+    const config = configDir();
+    const scope = scopeOf(config);
+    const repeated = line({ id: 'm1', session: 's1', at: '2026-10-12T10:00:00Z', write: 200, write1h: 150 });
+    writeFileSync(join(config, 'projects', '-work-app', 's1.jsonl'), repeated + repeated);
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    // As an older build left them: no split, and schema v30 asks for every transcript to be read again.
+    cache.db.exec('UPDATE session_usage SET cache_write_1h = 0; UPDATE usage_messages SET split = 0; UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL;');
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    expect(cache.db.prepare('SELECT cache_write, cache_write_1h, turns FROM session_usage WHERE scope = ?').get(scope)).toEqual({ cache_write: 200, cache_write_1h: 150, turns: 1 });
+    cache.db.exec('UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL;');
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    expect(cache.db.prepare('SELECT cache_write_1h FROM session_usage WHERE scope = ?').get(scope)).toEqual({ cache_write_1h: 150 });
   });
 
   it('counts subagents under the session they ran in', async () => {
@@ -308,5 +340,99 @@ describe('PlanHistoryStore', () => {
     expect(history.since).toBe(Date.UTC(2026, 9, 12, 9));
     expect(history.series).toEqual([{ kind: 'session', scope: null, points: [{ at: Date.UTC(2026, 9, 12, 9), percent: 20 }, { at: Date.UTC(2026, 9, 12, 10), percent: 25 }], resets: [reset] }]);
     expect(store.samples('scope', 'session', 0, Date.UTC(2026, 9, 13)).map((s) => s.sessionId)).toEqual([null, 's1']);
+  });
+});
+
+describe('windowCosts', () => {
+  const now = Date.UTC(2026, 9, 12, 10);
+  const limit = (kind: string, resetsAt: number | null, scope: string | null = null) => ({ kind, group: kind.startsWith('weekly') ? 'weekly' : kind, percent: 10, resetsAt, scope, severity: 'normal', isActive: true });
+
+  it('prices each running window from its start at API list prices, per model and helper call', async () => {
+    const config = configDir();
+    const scope = scopeOf(config);
+    writeFileSync(
+      join(config, 'projects', '-work-app', 'known.jsonl'),
+      line({ id: 'k1', session: 'known', at: '2026-10-12T08:10:00Z', output: 1000 }) + line({ id: 'k2', session: 'known', at: '2026-10-11T08:10:00Z', output: 500, model: 'claude-opus-5-5' }),
+    );
+    writeFileSync(join(config, 'projects', '-work-app', 'other.jsonl'), line({ id: 'o1', session: 'other', at: '2026-10-12T09:10:00Z', output: 10 }));
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    new CatchUpUsageStore(cache.db).record({ id: 'c1', scope, at: Date.UTC(2026, 9, 12, 9), model: 'claude-haiku-5-5', sessionId: 'known', tokens: { input: 900, output: 120, cacheRead: 0, cacheWrite: 0 } });
+
+    const costs = windowCosts(
+      cache.db,
+      scope,
+      [limit('session', Date.UTC(2026, 9, 12, 12, 30)), limit('weekly_all', Date.UTC(2026, 9, 15)), limit('weekly_scoped', Date.UTC(2026, 9, 15), 'Opus'), limit('weekly_old', now - 1), limit('weekly_unknown', null)],
+      now,
+    );
+    // Sonnet 5.5 ($2 in, $10 out, $0.20 cache read, $2.50 cache write) for k1 and o1, Haiku 5.5 for the summary.
+    const sonnet = (20 * 2 + 1010 * 10 + 2000 * 0.2 + 400 * 2.5) / 1e6;
+    const haiku = (900 * 0.1 + 120 * 0.5) / 1e6;
+    const opus = (10 * 4 + 500 * 20 + 1000 * 0.2 + 200 * 5) / 1e6;
+    expect(costs.map((c) => c.kind)).toEqual(['session', 'weekly_all', 'weekly_scoped']);
+    expect(costs[0]).toMatchObject({ from: Date.UTC(2026, 9, 12, 7, 30), partial: false });
+    expect(costs[0]!.usd).toBeCloseTo(sonnet + haiku, 9);
+    expect(costs[1]!.usd).toBeCloseTo(sonnet + haiku + opus, 9);
+    expect(costs[2]).toMatchObject({ scope: 'Opus' });
+    expect(costs[2]!.usd).toBeCloseTo(opus, 9);
+  });
+
+  it('says when tokens of a model without a price were left out', () => {
+    new RoutingStore(cache.db).record({ id: 'r1', scope: 's', at: now - 60_000, model: 'some-other-model', picked: 'sonnet', tokens: { input: 1_000, output: 40, cacheRead: 0, cacheWrite: 0 } });
+    expect(windowCosts(cache.db, 's', [limit('session', now + 3_600_000)], now)).toEqual([{ kind: 'session', scope: null, from: now - 4 * 3_600_000, usd: 0, partial: true }]);
+  });
+});
+
+describe('costs in the breakdown and per session', () => {
+  // At list prices: Sonnet 5.5 $2 in, $10 out, $0.20 cache read, $2.50 cache write; Opus 5.5 $4, $20, $0.20, $5.
+  const sonnet = (output: number) => (10 * 2 + output * 10 + 1000 * 0.2 + 200 * 2.5) / 1e6;
+  const opus = (output: number) => (10 * 4 + output * 20 + 1000 * 0.2 + 200 * 5) / 1e6;
+
+  async function seeded() {
+    const config = configDir();
+    const scope = scopeOf(config);
+    writeFileSync(
+      join(config, 'projects', '-work-app', 'known.jsonl'),
+      line({ id: 'k1', session: 'known', at: '2026-10-12T08:10:00Z', output: 1000 }) + line({ id: 'k2', session: 'known', at: '2026-10-11T08:10:00Z', output: 500, model: 'claude-opus-5-5' }),
+    );
+    writeFileSync(join(config, 'projects', '-work-app', 'other.jsonl'), line({ id: 'o1', session: 'other', at: '2026-10-12T09:10:00Z', output: 10 }));
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    return scope;
+  }
+
+  it('prices every row, bucket and the totals per model', async () => {
+    const scope = await seeded();
+    const now = Date.UTC(2026, 9, 12, 10);
+    const range = periodRange('week', now, 'UTC');
+    const query = { scope, period: 'week' as const, ...range, model: null, timeZone: 'UTC' };
+    const bySession = breakdown(cache.db, { ...query, groupBy: 'session' }, lookup);
+    const cost = (key: string) => bySession.rows.find((r) => r.key === key)!.cost!;
+    // A session that used two models is priced per model, not at its main model's price.
+    expect(cost('known')).toBeCloseTo(sonnet(1000) + opus(500), 9);
+    expect(cost('other')).toBeCloseTo(sonnet(10), 9);
+    expect(bySession.totals.cost).toBeCloseTo(sonnet(1000) + opus(500) + sonnet(10), 9);
+    expect(bySession.buckets.reduce((sum, b) => sum + (b.cost ?? 0), 0)).toBeCloseTo(bySession.totals.cost!, 9);
+    const byModel = breakdown(cache.db, { ...query, groupBy: 'model' }, lookup);
+    expect(byModel.rows.find((r) => r.key === 'claude-opus-5-5')!.cost).toBeCloseTo(opus(500), 9);
+  });
+
+  it('adds up one session since it started, with the helper calls made for it', async () => {
+    const scope = await seeded();
+    new CatchUpUsageStore(cache.db).record({ id: 'c1', scope, at: Date.UTC(2026, 9, 12, 9), model: 'claude-haiku-5-5', sessionId: 'known', tokens: { input: 900, output: 120, cacheRead: 0, cacheWrite: 0 } });
+    expect(sessionCost(cache.db, scope, 'known')!.usd).toBeCloseTo(sonnet(1000) + opus(500) + (900 * 0.1 + 120 * 0.5) / 1e6, 9);
+    expect(sessionCost(cache.db, scope, 'known')!.partial).toBe(false);
+    expect(sessionCost(cache.db, scope, 'nothing-yet')).toBeNull();
+  });
+
+  it('prices writes to the hour-long cache at twice the input price', async () => {
+    const config = configDir();
+    const scope = scopeOf(config);
+    writeFileSync(join(config, 'projects', '-work-app', 'known.jsonl'), line({ id: 'h1', session: 'known', at: '2026-10-12T08:10:00Z', output: 1000, write: 200, write1h: 200 }));
+    await new UsageScanner(cache.db).scan([{ scope, configDir: config }]);
+    // Sonnet 5.5's hour-long cache write is $4 per million, against $2.50 for the 5-minute one.
+    const hourLong = sonnet(1000) + (200 * 4 - 200 * 2.5) / 1e6;
+    expect(sessionCost(cache.db, scope, 'known')!.usd).toBeCloseTo(hourLong, 9);
+    const now = Date.UTC(2026, 9, 12, 10);
+    const range = periodRange('week', now, 'UTC');
+    expect(breakdown(cache.db, { scope, period: 'week', ...range, model: null, timeZone: 'UTC', groupBy: 'session' }, lookup).totals.cost).toBeCloseTo(hourLong, 9);
   });
 });
