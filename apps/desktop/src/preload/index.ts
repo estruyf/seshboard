@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type DeepLinkMessage, type NotificationPermission, type PickedPath, type Preferences, type RendererReadyReport, type SaveImageRequest, type SoundList, type SwitchboardBridge, type ThemeCommand, type UpdateState } from '@switchboard/protocol/bridge';
+import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type PickedPath, type Preferences, type RendererReadyReport, type SaveImageRequest, type SoundList, type SwitchboardBridge, type ThemeCommand, type UpdateState } from '@switchboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@switchboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -111,6 +111,12 @@ const bridge: SwitchboardBridge = {
     const handler = (_event: unknown, keys: ForwardedKeys) => listener(keys);
     ipcRenderer.on(IpcChannel.keysForwarded, handler);
     return () => ipcRenderer.off(IpcChannel.keysForwarded, handler);
+  },
+  showInMain: (request) => ipcRenderer.send(IpcChannel.showInMain, request),
+  onMainRequest(listener) {
+    const handler = (_event: unknown, request: MainWindowRequest) => listener(request);
+    ipcRenderer.on(IpcChannel.mainRequested, handler);
+    return () => ipcRenderer.off(IpcChannel.mainRequested, handler);
   },
   relayDrafts: (change) => ipcRenderer.send(IpcChannel.relayDrafts, change),
   onDraftsRelayed(listener) {

@@ -18,8 +18,12 @@ import { usePopoutsSync } from '../../state/usePopoutsSync.ts';
 import { useRemoteSync } from '../../state/useRemoteSync.ts';
 import { useSessionsSync } from '../../state/useSessionsSync.ts';
 import { AddContextDialogHost } from '../composer/AddContextDialog.tsx';
+import { ArchiveDraftDialog } from '../drafts/ArchiveDraftDialog.tsx';
 import { EngineStalledNotice } from '../EngineStalledNotice.tsx';
+import { FocusGateDialog } from '../focus/FocusGateDialog.tsx';
 import { PaletteDialogs } from '../palette/PaletteDialogs.tsx';
+import { useSavedPromptsSync } from '../savedPrompts/savedPromptsStore.ts';
+import { useSessionShortcuts } from '../session/useSessionShortcuts.ts';
 import { TranscriptView } from '../transcript/TranscriptView.tsx';
 import { ToastLayer } from '../ui/Toast.tsx';
 import { TooltipLayer } from '../ui/Tooltip.tsx';
@@ -44,9 +48,12 @@ const MAIN_WINDOW_KEYS: readonly ShortcutId[] = [
 ];
 
 /**
- * A pop-out: one session in a window of its own, next to the main window. It shows the session as a lone pane
- * does, without the sidebar, and saves nothing of the main window's (its selection, the sidebar's filter, the
- * terminal panel's sizes, unsent messages: those reach the main window through main).
+ * A pop-out: one session in a window of its own, next to the main window. It is the whole session, as a lone pane
+ * is, with all its panels (Changes, Ask, Agents, Commands, the terminal) and its own shortcuts; only the sidebar
+ * stays in the main window. It saves nothing of the main window's (its selection, the sidebar's filter, the
+ * terminal panel's sizes, unsent messages: those reach the main window through main), and does none of the app-wide
+ * work the main window does (the first session shown at launch, links, the editor companion, queue toasts, updates).
+ * Settings, Usage, project pages and New session open in the main window (`showInMain`).
  */
 export function PopoutApp({ sessionId }: { sessionId: string }) {
   useSessionsSync();
@@ -65,8 +72,12 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   useModsSync();
   useLimitsSync();
   useAskSync();
+  // Saved prompts reach the slash menu and the message box here too; a change made in any window shows in all.
+  useSavedPromptsSync();
   useReadyReport();
   usePopoutWindow(sessionId);
+  // The terminal, Open in editor: as in the main window, for this window's session.
+  useSessionShortcuts(() => ({ terminalOwner: sessionId, sessionId }));
   const shown = useSessions((s) => s.layout !== null);
 
   return (
@@ -74,6 +85,9 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">{shown && <TranscriptView sessionId={sessionId} leading={false} />}</main>
       <PaletteDialogs />
       <AddContextDialogHost />
+      {/* Starting, resuming or forking from here can hit the focus limit; archiving can hold an unsent message. */}
+      <FocusGateDialog />
+      <ArchiveDraftDialog />
       <EngineStalledNotice />
       <ToastLayer />
       <TooltipLayer />

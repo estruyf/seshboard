@@ -1,3 +1,4 @@
+import type { MainWindowRequest } from '@switchboard/protocol/bridge';
 import { create } from 'zustand';
 
 /** The session this window shows on its own when it is a pop-out; null in the main window. */
@@ -21,6 +22,16 @@ export const usePopouts = create<PopoutsState>()((set) => ({
 export function shownElsewhere(id: string): boolean {
   if (popoutSession) return id !== popoutSession;
   return usePopouts.getState().ids.has(id);
+}
+
+/**
+ * In a pop-out, asks the main window to show a view this window doesn't have (Settings, Usage, a project, New
+ * session) and returns true, so the caller stops. In the main window it does nothing and returns false.
+ */
+export function showInMain(request: MainWindowRequest): boolean {
+  if (!popoutSession) return false;
+  window.switchboard?.showInMain(request);
+  return true;
 }
 
 /**

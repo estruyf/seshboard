@@ -70,6 +70,8 @@ export const IpcChannel = {
   showSession: "switchboard:show-session",
   forwardKeys: "switchboard:forward-keys",
   keysForwarded: "switchboard:keys-forwarded",
+  showInMain: "switchboard:show-in-main",
+  mainRequested: "switchboard:main-requested",
   popoutsChanged: "switchboard:popouts-changed",
   relayDrafts: "switchboard:relay-drafts",
   draftsRelayed: "switchboard:drafts-relayed",
@@ -95,6 +97,17 @@ export interface ForwardedKeys {
   altKey: boolean;
   shiftKey: boolean;
 }
+
+/**
+ * Something a pop-out asks the main window to show, because it has no such view itself: a page of Settings, the Usage
+ * view, a project's page, or New session (on a folder, in a new worktree). `section` and `tab` are the names the
+ * main window's views use; it ignores one it doesn't know.
+ */
+export type MainWindowRequest =
+  | { kind: "settings"; section: string | null }
+  | { kind: "usage"; profileId: string | null }
+  | { kind: "project"; root: string; tab: string | null }
+  | { kind: "new-session"; cwd: string | null; worktree: boolean };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -783,6 +796,10 @@ export interface SwitchboardBridge {
   forwardKeys(keys: ForwardedKeys): void;
   /** In the main window: keys a pop-out handed over. */
   onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
+  /** From a pop-out: brings the main window to the front and shows this view there (Settings, Usage, a project, New session). */
+  showInMain(request: MainWindowRequest): void;
+  /** In the main window: a view a pop-out asked it to show. */
+  onMainRequest(listener: (request: MainWindowRequest) => void): () => void;
   /** Sends unsent messages that changed here to the other windows. */
   relayDrafts(change: DraftsChange): void;
   /** Unsent messages that changed in another window. */

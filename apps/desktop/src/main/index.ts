@@ -27,7 +27,7 @@ import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { updatesDisabledReason } from './updateState.ts';
-import { placePopout, placeWindow, WindowStateStore } from './windowState.ts';
+import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
 const here = import.meta.dirname;
@@ -676,10 +676,6 @@ function loadRenderer(win: BrowserWindow, popout?: string): void {
   }
 }
 
-/** A pop-out's size when there is room for it; it is never smaller than the minimum. */
-const POPOUT_SIZE = { width: 760, height: 820 };
-const POPOUT_MIN = { width: 480, height: 400 };
-
 /** Tells every window which sessions have a window of their own. */
 function broadcastPopouts(): void {
   const ids = [...popouts.keys()];
@@ -742,6 +738,12 @@ ipcMain.on(IpcChannel.showSession, (_event, sessionId: unknown) => {
 ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
   if (!keys || typeof keys !== 'object' || typeof (keys as { key?: unknown }).key !== 'string') return;
   sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
+});
+// A view a pop-out doesn't have (Settings, Usage, a project, New session) opens in the main window, which comes to the front.
+const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session']);
+ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
+  if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
+  sendToWindow(showWindow(), IpcChannel.mainRequested, request);
 });
 // Unsent messages typed in one window show in the others (only the main window saves them).
 ipcMain.on(IpcChannel.relayDrafts, (event, change: unknown) => {
@@ -1749,6 +1751,79 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-terminal-panel]') && document.querySelector('[data-toggle-terminal]')?.click()");
   }
 }
+/**
+ * A session in its own window is the whole session: the header has the panel buttons (and Move back to main
+ * window and Close window in place of Open in new window and Close session), Ask opens as a panel next to the
+ * conversation, the terminal's key shows and hides the terminal panel there, and at the smallest size a panel
+ * doesn't push anything out of the window. Move back to main window then shows the session in the main window again.
+ */
+async function runPopoutStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const id = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
+  if (!id) return 'failed: no session is open to pop out';
+  popOut(id);
+  let pop: BrowserWindow | undefined;
+  try {
+    if (!(await until(() => popouts.has(id), 5_000))) return 'failed: the pop-out did not open';
+    pop = popouts.get(id)!;
+    const popJs = (code: string) => pop!.webContents.executeJavaScript(code);
+    const inPop = (expression: string, timeoutMs = 5_000) => waitInPage(pop!, expression, timeoutMs);
+    pop.webContents.debugger.attach('1.3');
+    await pop.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true });
+    const view = `document.querySelector('[data-current-session="${id}"]')`;
+    if (!(await inPop(`${view} && ${view}.querySelector('[data-panel-toggles]')`, 20_000))) return 'failed: the pop-out shows no panel buttons';
+    // Its pane in the main window closes: the session is open in one window.
+    if (!(await waitInPage(win, `!document.querySelector('[data-current-session="${id}"]')`, 5_000))) return 'failed: the main window still shows the session';
+    const header = (await popJs(
+      `({ moveBack: !!document.querySelector('[data-move-to-main-window]'), closeWindow: !!document.querySelector('[data-close-window]'), newWindow: !!document.querySelector('[data-open-in-new-window]'), closeSession: !!document.querySelector('[data-close-session]'), sidebarToggle: !!document.querySelector('[data-sidebar-toggle]'), ask: !!document.querySelector('[data-toggle-ask]'), terminal: !!document.querySelector('[data-toggle-terminal]'), width: window.innerWidth })`,
+    )) as Record<string, boolean | number>;
+    if (!header.moveBack || !header.closeWindow) return `failed: no Move back to main window or Close window (${JSON.stringify(header)})`;
+    if (header.newWindow || header.closeSession || header.sidebarToggle) return `failed: the pop-out's header has a main window button (${JSON.stringify(header)})`;
+    if (!header.ask || !header.terminal) return `failed: the panel buttons are missing (${JSON.stringify(header)})`;
+    const wide = header.width as number;
+    // Ask opens next to the conversation, and closes again.
+    await popJs("document.querySelector('[data-toggle-ask]').click()");
+    if (!(await inPop("document.querySelector('[data-ask-panel]')"))) return 'failed: Ask did not open in the pop-out';
+    const askBeside = (await popJs("(() => { const a = document.querySelector('[data-ask-panel]').getBoundingClientRect(); return a.left >= 300 && a.right <= window.innerWidth + 1; })()")) as boolean;
+    if (!askBeside) return 'failed: the Ask panel does not sit beside the conversation';
+    await popJs("document.querySelector('[data-toggle-ask]').click()");
+    if (!(await inPop("!document.querySelector('[data-ask-panel]')"))) return 'failed: Ask did not close in the pop-out';
+    // The terminal's key, which is the window's own shortcut, shows and hides the terminal panel in the pop-out.
+    pressKey(pop, 'J', ['meta']);
+    if (!(await inPop("document.querySelector('[data-terminal-panel]')", 8_000))) return "failed: the terminal's key did not open the terminal in the pop-out";
+    await shot(pop, 'popout.png');
+    pressKey(pop, 'J', ['meta']);
+    if (!(await inPop("!document.querySelector('[data-terminal-panel]')", 5_000))) return "failed: the terminal's key did not close the terminal in the pop-out";
+    // The smallest window with a panel open: the panel takes the whole view and nothing sticks out.
+    pop.setSize(POPOUT_MIN.width, 700);
+    if (!(await inPop(`window.innerWidth <= ${POPOUT_MIN.width + 20}`, 3_000))) return 'failed: the pop-out did not shrink';
+    await popJs("document.querySelector('[data-toggle-ask]').click()");
+    if (!(await inPop("document.querySelector('[data-ask-panel]')"))) return 'failed: Ask did not open in the narrow pop-out';
+    await shot(pop, 'popout-narrow.png');
+    const fits = (await popJs(
+      `(() => { const w = window.innerWidth; const edge = (sel) => { const r = document.querySelector(sel)?.getBoundingClientRect(); return !r || (r.left >= 0 && r.right <= w + 1); }; return { page: document.documentElement.scrollWidth <= w, ask: edge('[data-ask-panel]') && document.querySelector('[data-ask-panel]').getBoundingClientRect().width >= w - 2, back: edge('[data-move-to-main-window]'), close: edge('[data-close-window]'), toggles: edge('[data-panel-toggles]'), w }; })()`,
+    )) as { page: boolean; ask: boolean; back: boolean; close: boolean; toggles: boolean; w: number };
+    if (!Object.values(fits).every(Boolean)) return `failed: something sticks out of a ${fits.w}px pop-out (${JSON.stringify(fits)})`;
+    await popJs("document.querySelector('[data-toggle-ask]').click()");
+    // The conversation comes back when the panel goes.
+    if (!(await inPop("!document.querySelector('[data-ask-panel]') && document.querySelector('[data-current-session] textarea')?.getBoundingClientRect().width > 100"))) return 'failed: the conversation did not come back when the panel closed in the narrow pop-out';
+    // Back to the main window.
+    await popJs("document.querySelector('[data-move-to-main-window]').click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-current-session="${id}"]')`, 8_000))) return 'failed: Move back to main window did not show the session in the main window';
+    if (!(await until(() => !popouts.has(id), 3_000))) return 'failed: the pop-out is still registered after moving back';
+    return `ok: panel buttons, Ask beside the conversation and the terminal key work in a ${wide}px pop-out; a panel fills a ${fits.w}px pop-out and nothing sticks out; moved back`;
+  } finally {
+    // A failed step must not leave the session in a window of its own for the steps after it.
+    if (popouts.has(id)) {
+      const open = popouts.get(id)!;
+      popouts.delete(id);
+      broadcastPopouts();
+      if (!open.isDestroyed()) open.close();
+      openSession(id);
+    }
+  }
+}
+
 /**
  * The window's own terminal, from the Usage view: ⌘J opens a shell in the home folder, Esc in it stays with the
  * shell, Esc outside it leaves Usage for the session (where the panel steps aside), and back in Usage the same
@@ -7584,6 +7659,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('⌘K in the terminal', () => runTerminalClearStep(win));
   await step('terminal layout', () => runTerminalLayoutStep(win));
   await step("the window's own terminal, outside a session", () => runAppTerminalStep(win));
+  await step('a session in its own window: panel buttons, Ask, the terminal key, a narrow window, Move back', () => runPopoutStep(win), { timeoutMs: 60_000 });
   await step('project action added through the editor and run in a terminal tab', () => runActionStep(win));
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));
