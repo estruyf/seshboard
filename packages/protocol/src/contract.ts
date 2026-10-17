@@ -528,12 +528,16 @@ export const contract = {
       params: z.object({ projectRoot: AbsolutePath }),
       result: z.object({ actions: z.array(ListedAction), sharedFile: z.string().nullable(), errors: z.array(z.string()) }),
     },
-    /** Saves one of your actions; `projectRoot: null` makes it global. `previousId` renames. */
+    /**
+     * Saves one of your actions; `projectRoot: null` makes it global. `shared` saves it in the project's
+     * .switchboard.json instead, for everyone on the project (and approves its command for you). `previousId` renames.
+     */
     'actions.save': {
-      params: z.object({ projectRoot: AbsolutePath.nullable(), action: ProjectAction, previousId: z.string().optional() }),
+      params: z.object({ projectRoot: AbsolutePath.nullable(), action: ProjectAction, previousId: z.string().optional(), shared: z.boolean().optional() }),
       result: z.object({}),
     },
-    'actions.delete': { params: z.object({ projectRoot: AbsolutePath.nullable(), id: z.string() }), result: z.object({}) },
+    /** Deletes one of your actions, or with `shared` takes it out of the project's .switchboard.json. */
+    'actions.delete': { params: z.object({ projectRoot: AbsolutePath.nullable(), id: z.string(), shared: z.boolean().optional() }), result: z.object({}) },
     /** Approves a shared action's exact command (an edited command needs approval again), or an imported action of yours. */
     'actions.trust': { params: z.object({ projectRoot: AbsolutePath, id: z.string() }), result: z.object({}) },
     /** Starter actions for a project (package.json scripts, git, gh). */
@@ -1197,6 +1201,8 @@ export const contract = {
     'limits.resumed': z.object({ sessionId: z.string() }),
     /** Skills were reloaded: ask for slash command lists again. */
     'commands.changed': z.object({}),
+    /** Actions changed (saved, deleted, or the shared file changed, as after a pull): `root` null for global ones. */
+    'actions.changed': z.object({ root: z.string().nullable() }),
     /** Saved prompts changed (saved, moved, deleted, or the shared file changed, as after a pull): `root` null for global ones. */
     'savedPrompts.changed': z.object({ root: z.string().nullable() }),
     /** Settings were imported: reload projects and actions. */

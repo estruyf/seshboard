@@ -806,8 +806,11 @@ export function createEngine(options: EngineOptions): Engine {
 
   const actions = new ActionStore(cache.db);
   const savedPrompts = new SavedPromptStore(cache.db);
-  /** A pull (or anyone) changing a project's .switchboard.json updates its shared prompts in every window. */
-  const sharedFileWatcher = new SharedFileWatcher((root) => broadcast('savedPrompts.changed', { root }));
+  /** A pull (or anyone) changing a project's .switchboard.json updates its shared actions and prompts in every window. */
+  const sharedFileWatcher = new SharedFileWatcher((root) => {
+    broadcast('actions.changed', { root });
+    broadcast('savedPrompts.changed', { root });
+  });
   const promptsChanged = (...scopes: PromptScope[]) => {
     for (const root of new Set(scopes.map((scope) => (scope.kind === 'global' ? null : scope.root)))) broadcast('savedPrompts.changed', { root });
   };
@@ -1787,13 +1790,24 @@ export function createEngine(options: EngineOptions): Engine {
     'github.pullRequests': ({ root }) => githubLookup(`prs\u0000${root}`, (env) => openPullRequests(root, env, defaultGh())),
     'github.issue': ({ root, ref }) => githubLookup(`issue\u0000${root}\u0000${ref.trim().toLowerCase()}`, (env) => findIssue(root, ref, env, defaultGh())),
 
-    'actions.list': ({ projectRoot }) => actions.list(projectRoot),
-    'actions.save': ({ projectRoot, action, previousId }) => {
-      actions.save(projectRoot, action, previousId);
+    'actions.list': ({ projectRoot }) => {
+      sharedFileWatcher.watch(projectRoot);
+      return actions.list(projectRoot);
+    },
+    'actions.save': ({ projectRoot, action, previousId, shared }) => {
+      if (shared) {
+        if (!projectRoot) throw new RpcError('INVALID_PARAMS', 'A shared action needs its project');
+        actions.saveShared(projectRoot, action, previousId);
+      } else actions.save(projectRoot, action, previousId);
+      broadcast('actions.changed', { root: projectRoot });
       return {};
     },
-    'actions.delete': ({ projectRoot, id }) => {
-      actions.remove(projectRoot, id);
+    'actions.delete': ({ projectRoot, id, shared }) => {
+      if (shared) {
+        if (!projectRoot) throw new RpcError('INVALID_PARAMS', 'A shared action needs its project');
+        actions.removeShared(projectRoot, id);
+      } else actions.remove(projectRoot, id);
+      broadcast('actions.changed', { root: projectRoot });
       return {};
     },
     'actions.trust': ({ projectRoot, id }) => {

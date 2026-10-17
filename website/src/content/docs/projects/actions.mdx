@@ -44,7 +44,7 @@ The editor, **Project actions**, lists your actions on the left under **Yours**,
 | **Name** and **icon** | How it looks on its pill and in the menu. Up to 40 characters. |
 | **Run a command** / **Ask Claude** | A command opens in a terminal tab of the session. It runs in <Os mac="your login shell, so your PATH, nvm and aliases work as in your own terminal" windows="PowerShell (PowerShell 7 when it is installed, else Windows PowerShell)" />. A prompt is sent to Claude in the session, and can be a `/` command. |
 | **Command** / **Prompt** | What it runs or sends. Insert a [variable](#variables) with the buttons under the field. |
-| **Saved for** | *This project*, or *All projects* for actions you want everywhere. |
+| **Saved for** | *This project* or *All projects* keep the action just for you. *Shared with the project* saves it in the project's `.switchboard.json`, for everyone on the project. See [Share actions with your team](#share-actions-with-your-team). |
 | **Runs in** | For a command: *Session folder* (its worktree, when it has one) or *Project root*. |
 | **Shortcut** | Optional. Click **Set**, then press the keys. See [Shortcuts](#shortcuts). |
 | **Ask before running** | Shows a confirmation with the command first. Useful for publish or deploy. |
@@ -124,7 +124,20 @@ A shared action that you haven't approved yet is skipped. Run it once from the a
 
 ## Share actions with your team
 
-Put a `.switchboard.json` file in the root of the repository and commit it. Everyone who uses Switchboard on that repository gets its actions.
+Shared actions are kept in a `.switchboard.json` file in the root of the repository. Commit it, and everyone who uses Switchboard on that repository gets its actions.
+
+<Steps>
+
+1. Open an action in the editor, or start a new one.
+2. Set **Saved for** to **Shared with the project**.
+3. Click **Save**. Switchboard writes the action to `.switchboard.json`, and creates the file when the project doesn't have one yet.
+4. Commit `.switchboard.json`. The toast after the save has **Show the change**, which opens the file in Changes.
+
+</Steps>
+
+To stop sharing an action, set **Saved for** back to *This project* or *All projects*: it moves out of the file and becomes yours again. **Delete** on a shared action takes it out of the file. Either way, commit the file so your team gets the change.
+
+You can also write the file by hand:
 
 ```json
 {
@@ -152,13 +165,15 @@ Put a `.switchboard.json` file in the root of the repository and commit it. Ever
 
 Actions with the same `id` (by default, the same name) replace each other: your actions for this project win over shared ones, and shared ones win over your *All projects* actions.
 
-Shared actions can't be edited or deleted in the app. The editor shows them read-only, with **Edit file** to open `.switchboard.json`. Mistakes in the file are shown at the top of the editor and the Actions tab.
+When Switchboard writes the file, it keeps keys it doesn't know and their order, and the file's indent, so the commit shows only the action that changed. Settings left at their default are left out of the entry. **Edit file** in the editor opens `.switchboard.json`. Mistakes in the file are shown at the top of the editor and the Actions tab, and Switchboard won't write a file it can't read.
+
+The file is watched: a pull that changes it updates the actions in the app.
 
 The same file holds the project's shared [saved prompts](/sessions/saved-prompts/#shared-prompts), under `prompts`. Switchboard writes those for you when you share a prompt, and keeps the rest of the file as it is.
 
 ### Approving shared actions
 
-A command from a repository could do anything. The first time you run a shared action, Switchboard shows the exact command and asks you to approve it with **Approve and run**. If someone changes the command later, you are asked again.
+A command from a repository could do anything. The first time you run a shared action, Switchboard shows the exact command and asks you to approve it with **Approve and run**. If someone changes the command later, you are asked again. An action you share yourself is approved for you when you save it.
 
 Actions that came in with [Import settings…](/settings/backup/) are approved the same way, once.
 
