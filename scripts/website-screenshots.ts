@@ -1525,7 +1525,7 @@ const screens: Screen[] = [
       await t.page.keyboard.press('Escape');
     },
   },
-  ...(['general', 'theme', 'sidebar', 'projects', 'conversation', 'mods', 'focus', 'profiles', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
+  ...(['general', 'theme', 'sidebar', 'projects', 'conversation', 'mods', 'focus', 'profiles', 'usage', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
     (section): Screen => ({
       name: `settings-${section}`,
       async take(t) {

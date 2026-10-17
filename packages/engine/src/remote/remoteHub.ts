@@ -36,6 +36,7 @@ import {
   type ModelOption,
   type PermissionMode,
   type UsageBreakdown,
+  type WindowCost,
   type UsageGroup,
   type UsagePeriod,
   type UsageSnapshot,
@@ -168,6 +169,10 @@ export interface RemoteHubOptions {
    * no profile here signs in to it.
    */
   tokens(account: string, params: { period: UsagePeriod; groupBy: UsageGroup; model: string | null; timeZone: string }): UsageBreakdown | null;
+  /** A session's estimated API cost since it started, as `usage.sessionCost` on the computer. */
+  sessionCost(sessionId: string): { usd: number; partial: boolean } | null;
+  /** The cost of the given plan windows for the profile signed in to an account; null when no profile here signs in to it. */
+  windowCosts(account: string, windows: ReadonlyArray<{ kind: string; scope: string | null; from: number }>): WindowCost[] | null;
   catchUp(sessionId: string): CatchUp | null;
   /** Ask about this session, as on the computer: the answer comes through `askEvent`. */
   ask(sessionId: string, question: string, threadId: string | undefined, replaces: string | undefined): { threadId: string; id: string; at: number };
@@ -795,6 +800,11 @@ export class RemoteHub {
         const breakdown = this.options.tokens(account, params);
         return { breakdown: breakdown && remoteUsage(breakdown, new Map(this.options.projects().map((p) => [p.root, p.name]))) };
       },
+      'usage.sessionCost': ({ sessionId }) => {
+        this.checkSession(sessionId);
+        return { cost: this.options.sessionCost(sessionId) };
+      },
+      'usage.windowCosts': ({ account, windows }) => ({ windows: this.options.windowCosts(account, windows) }),
       'session.ask': ({ sessionId, question, threadId, replaces }, phone) => {
         this.checkSession(sessionId);
         const asked = this.options.ask(sessionId, question, threadId, replaces);

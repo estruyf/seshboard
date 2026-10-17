@@ -1,5 +1,5 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
@@ -22,6 +22,7 @@ import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
+import { LargeContextSettings, UsageSettings } from './usage/UsageSettings.tsx';
 import { AboutSettings, SettingsVersion } from './updates/AboutSettings.tsx';
 import { Button } from './ui/Button.tsx';
 import { Choice } from './ui/Choice.tsx';
@@ -181,6 +182,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
+  { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'prompts', label: 'Prompts', icon: Bookmark },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
@@ -382,6 +384,20 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
         <Section title="Saved prompts" description="Prompts with blanks you fill in when you use them. Type / in any message box." action={<NewPromptButton />}>
           <SavedPromptsSettings />
         </Section>
+      );
+    case 'usage':
+      return (
+        <>
+          <Section title="Usage" description="How much of your plan's 5-hour and weekly limits you have used, shown under the message box, in New session and on Home.">
+            <UsageSettings />
+          </Section>
+          <Section
+            title="Large context"
+            description="Anthropic keeps a conversation's context in its prompt cache for up to an hour after the last message. Once that cache expires, the next message reads the whole context again, which costs far more than reading it from the cache."
+          >
+            <LargeContextSettings />
+          </Section>
+        </>
       );
     case 'memory':
       return (

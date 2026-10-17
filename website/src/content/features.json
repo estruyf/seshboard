@@ -532,6 +532,11 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-usage",
+      "name": "settings-usage",
+      "page": "settings"
+    },
+    {
       "id": "palette:settings-sidebar",
       "name": "settings-sidebar",
       "page": "settings"
@@ -1197,6 +1202,11 @@
       "page": "sessions/saved-prompts"
     },
     {
+      "id": "settings:usage",
+      "name": "Settings › Usage: Open usage, Show estimated cost, Currency and Large context",
+      "page": "settings"
+    },
+    {
       "id": "settings:sidebar",
       "name": "Settings: Sidebar",
       "page": "sessions/sidebar"
@@ -1700,6 +1710,41 @@
       "id": "feature:usage-limit-hold",
       "name": "Up next and the queue wait while a profile is at its usage limit",
       "page": "usage"
+    },
+    {
+      "id": "feature:usage-cost-estimate",
+      "name": "Estimated API cost after the 5-hour and weekly usage bars, in a currency you pick",
+      "page": "usage"
+    },
+    {
+      "id": "feature:large-context-warning",
+      "name": "Large context: the ring turns orange from a percentage you pick, and a note says when the prompt cache expires and what the next message costs after",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:cache-expiry-notification",
+      "name": "A notification before a large session's hour-long prompt cache expires",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:quit-large-context",
+      "name": "Quitting with a large session open warns once, or every time with Warn when quitting",
+      "page": "settings"
+    },
+    {
+      "id": "feature:usage-cost-breakdown",
+      "name": "Usage view: estimated cost per window, session, project, model, day and computer",
+      "page": "usage"
+    },
+    {
+      "id": "feature:session-cost",
+      "name": "A session's estimated cost next to Context under its message box",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:remote-costs",
+      "name": "Other computers: a remote session's cost, and plan window costs added up across paired computers",
+      "page": "remote-access"
     },
     {
       "id": "feature:usage-limit-setting",

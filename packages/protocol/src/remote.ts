@@ -10,7 +10,7 @@ import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { REMOTE_ATTACHMENT_BYTES, REMOTE_DEVICE_NAME_MAX, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
-import { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow, UsageSnapshot } from './usage.ts';
+import { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow, UsageSnapshot, WindowCost } from './usage.ts';
 
 /**
  * Remote's contracts: what a paired phone may ask the engine, and the one request of a phone that is pairing. They
@@ -369,6 +369,26 @@ export const remoteContract = {
         timeZone: z.string().max(100).default('UTC'),
       }),
       result: z.object({ breakdown: RemoteUsageBreakdown.nullable() }),
+    },
+    /**
+     * The estimated API cost of a session there since it started (`usage.sessionCost` on that computer), in US dollars.
+     * With `REMOTE_FEATURE_COSTS`.
+     */
+    'usage.sessionCost': {
+      params: z.object({ sessionId: SessionId }),
+      result: z.object({ cost: z.object({ usd: z.number(), partial: z.boolean() }).nullable() }),
+    },
+    /**
+     * What the tokens there of the profile signed in to an account would cost in the given plan windows, each from
+     * `from` until now: the plan's windows are the account's, so the asking computer says when they began. `account`
+     * as in `usage.tokens`; `windows` is null when no profile there signs in to it. With `REMOTE_FEATURE_COSTS`.
+     */
+    'usage.windowCosts': {
+      params: z.object({
+        account: z.string().regex(/^[a-f0-9]{64}$/),
+        windows: z.array(z.object({ kind: z.string().max(100), scope: z.string().max(200).nullable(), from: z.number() })).max(10),
+      }),
+      result: z.object({ windows: z.array(WindowCost).nullable() }),
     },
     /** The catch-up of a session's last turn, without paths outside its project. */
     'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },

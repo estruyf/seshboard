@@ -156,6 +156,7 @@ function updatePreferences(patch: unknown): void {
   if (item) item.checked = true;
   updateWindowBackgrounds();
   sendEngineSettings(next);
+  notifier?.prefsChanged();
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.preferencesChanged, next);
 }
 
@@ -395,6 +396,17 @@ ipcMain.on(IpcChannel.quitAnswer, (_event, answer: unknown) => {
 });
 
 /**
+ * A session with a large context is open and Settings › Usage warns about it on quitting (or hasn't said yet that it
+ * can): the window reports it, so quitting asks even with Ask before quitting off.
+ */
+let quitContext = false;
+ipcMain.on(IpcChannel.quitContext, (_event, ask: unknown) => {
+  quitContext = ask === true;
+});
+/** Whether ⌘Q (or closing the window on Windows and Linux) asks first. */
+const asksBeforeQuit = () => preferences.get().confirmQuit || quitContext;
+
+/**
  * Messages that arrived before a window could take them: the link that launched the app, a notification
  * clicked after the window was closed (a new one is still loading), Settings… with no window open.
  */
@@ -456,7 +468,7 @@ function checkForUpdates(): void {
  */
 function installMenu(): void {
   const mac = process.platform === 'darwin';
-  const quit: MenuItemConstructorOptions = { id: 'quit', label: mac ? 'Quit Switchboard' : 'Exit', accelerator: 'CmdOrCtrl+Q', click: () => (preferences.get().confirmQuit ? quitGuard.request() : quitApp()) };
+  const quit: MenuItemConstructorOptions = { id: 'quit', label: mac ? 'Quit Switchboard' : 'Exit', accelerator: 'CmdOrCtrl+Q', click: () => (asksBeforeQuit() ? quitGuard.request() : quitApp()) };
   const settings: MenuItemConstructorOptions = { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() };
   const checkUpdates: MenuItemConstructorOptions = { id: 'check-updates', label: 'Check for Updates…', click: () => checkForUpdates() };
   const top: MenuItemConstructorOptions[] = mac
@@ -584,7 +596,7 @@ function createWindow(): BrowserWindow {
     quitting = true;
   });
   win.on('close', (event) => {
-    if (process.platform === 'darwin' || quitting || scripted || !preferences.get().confirmQuit) return;
+    if (process.platform === 'darwin' || quitting || scripted || !asksBeforeQuit()) return;
     event.preventDefault();
     quitGuard.request();
   });
@@ -3047,6 +3059,8 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (chip !== 'on Smoke Mac') return `the header chip says "${chip}", not "on Smoke Mac"`;
   if (!(await js(`[...document.querySelectorAll(${JSON.stringify(row)})].some((r) => r.getAttribute('aria-current') === 'true')`))) return 'the opened remote session is not selected in the sidebar';
   if (!(await waitInPage(win, "document.querySelector('[data-transcript] [data-prompt-bubble], [data-transcript] [data-remote-tools]')", 10_000))) return 'the remote conversation did not load';
+  // Its cost, as that computer counts it, under the message box (while the estimate is on).
+  if (preferences.get().showCost && !(await waitInPage(win, "document.querySelector('[data-remote-session-footer] [data-session-cost]')?.innerText.includes('≈')", 5_000))) return 'the remote session shows no cost under its message box';
 
   // 3. The terminal is on that computer: its button stays, disabled, with the reason.
   if (!(await js("document.querySelector('[data-remote-terminal]')?.disabled === true"))) return 'the terminal button of a remote session is not disabled';
@@ -5438,6 +5452,44 @@ const PALETTE_STEP = "document.querySelector('[data-command-palette]')?.dataset.
  * without a login), the tabs and periods switch, a row of the breakdown opens its session, and Esc goes back. Only
  * reads: the transcripts' tokens go into the throwaway profile's cache.
  */
+/** Settings › Usage: Show estimated cost and Currency are saved, and Open usage opens the Usage view. */
+async function runUsageSettingsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const before = { showCost: preferences.get().showCost, costCurrency: preferences.get().costCurrency };
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await js("document.querySelector('[data-open-settings]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"usage\"]')", 3_000))) return 'Settings has no Usage section';
+  await js("document.querySelector('[data-settings-section=\"usage\"]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-page=\"usage\"] [data-show-cost]')", 2_000))) return 'the Usage page did not open';
+  const missing = (await js("['[data-settings-open-usage]', '[data-show-cost]', '[data-cost-currency]'].filter((s) => !document.querySelector(s))")) as string[];
+  if (missing.length > 0) return `missing: ${missing.join(', ')}`;
+  await js("document.querySelector('[data-show-cost]').click()");
+  if (!(await until(() => preferences.get().showCost === !before.showCost, 2_000))) return 'Show estimated cost was not saved';
+  if (!(await waitInPage(win, `document.querySelector('[data-cost-currency]').disabled === ${before.showCost}`, 2_000))) return 'Currency does not follow Show estimated cost';
+  await js("document.querySelector('[data-show-cost]').click()");
+  updatePreferences({ costCurrency: before.costCurrency === 'EUR' ? 'GBP' : 'EUR' });
+  const picked = preferences.get().costCurrency;
+  if (!(await waitInPage(win, `document.querySelector('[data-cost-currency]').innerText.includes(${JSON.stringify(picked)})`, 2_000))) return `Currency does not show ${picked}`;
+  updatePreferences({ costCurrency: before.costCurrency });
+  // Large context: its four rows, and Warn when quitting saves (and is put back).
+  const large = (await js("['[data-large-context-enabled]', '[data-large-context-percent]', '[data-large-context-notify]', '[data-large-context-quit]'].filter((s) => !document.querySelector(s))")) as string[];
+  if (large.length > 0) return `Large context is missing: ${large.join(', ')}`;
+  const warning = preferences.get().contextWarning;
+  if (!(await waitInPage(win, `document.querySelector('[data-large-context-percent]').innerText.includes('${warning.percent}%')`, 2_000))) return `Large from does not show ${warning.percent}%`;
+  await js("document.querySelector('[data-large-context-quit]').click()");
+  if (!(await until(() => preferences.get().contextWarning.onQuit === !warning.onQuit, 2_000))) return 'Warn when quitting was not saved';
+  await js("document.querySelector('[data-large-context-quit]').click()");
+  if (!(await until(() => preferences.get().contextWarning.onQuit === warning.onQuit, 2_000))) return 'Warn when quitting did not go back';
+  await shot(win, 'settings-usage.png');
+  await js("document.querySelector('[data-settings-open-usage]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-usage-view]') && !document.querySelector('[data-settings]')", 3_000))) return 'Open usage did not open the Usage view';
+  // The Tokens tab shows the period's cost while the estimate is on (the transcripts are real, so the amount isn't checked).
+  await js("document.querySelector('[data-usage-tab=\"tokens\"]')?.click()");
+  if (preferences.get().showCost && !(await waitInPage(win, "document.querySelector('[data-usage-tile=\"cost\"]')?.innerText.includes('≈')", 10_000))) return 'the Tokens tab shows no Cost (est.) tile';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000))) return 'Esc did not leave the Usage view';
+  return `ok: cost estimate ${preferences.get().showCost ? 'on' : 'off'}, ${preferences.get().costCurrency}`;
+}
+
 async function runUsageViewStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const opened = [];
@@ -7380,6 +7432,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     return `ok: ${await js("document.querySelector('[data-usage-band]').innerText.replace(/\\s+/g, ' ')")}`;
   });
   await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
+  await step('settings › usage: Show estimated cost and Currency are saved, Open usage opens the view with its cost', () => runUsageSettingsStep(win));
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
   await step('settings: theme, sidebar style, session scope, tool activity, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('settings search: ⌘F, results per page, Enter and Escape, and every setting opens at its row', () => runSettingsSearchStep(win), { timeoutMs: 90_000 });
@@ -7456,6 +7509,7 @@ app.whenReady().then(() => {
     openSession,
     showAllSessions: () => preferences.get().sessionScope === 'all',
     alerts: () => preferences.get(),
+    cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),
     sounds,
     ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event) } : {}),
   });

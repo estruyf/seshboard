@@ -40,3 +40,9 @@ export const REMOTE_FEATURE_CLONE = 'projects.clone';
  * computer's notifications.
  */
 export const REMOTE_FEATURE_PUSH_KEY = 'push.vapid';
+
+/**
+ * In `hello`'s `features`: `usage.sessionCost` and `usage.windowCosts` answer, and `usage.tokens` rows carry their
+ * `cost`, so a session there and the plan windows show their estimated API cost here.
+ */
+export const REMOTE_FEATURE_COSTS = 'costs';

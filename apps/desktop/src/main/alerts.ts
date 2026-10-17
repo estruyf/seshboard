@@ -10,8 +10,16 @@ export interface Alert {
   sound: SoundEvent | null;
 }
 
-// A session resuming after a usage limit is news like a finished turn: it shares that moment's sound.
-const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = { 'needs-you': 'needsYou', finished: 'finished', failed: 'error', 'action-done': 'actionEnded', resumed: 'finished' };
+// A session resuming after a usage limit is news like a finished turn: it shares that moment's sound. So does a large
+// session's cache about to lapse (Settings › Usage).
+const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = {
+  'needs-you': 'needsYou',
+  finished: 'finished',
+  failed: 'error',
+  'action-done': 'actionEnded',
+  resumed: 'finished',
+  'cache-expiring': 'finished',
+};
 
 /** Each kind of event has its own moment, and so its own sound. */
 export const soundEventOf = (kind: AttentionEvent['kind']): SoundEvent => EVENT_SOUND[kind];

@@ -246,6 +246,64 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'add-profile', page: 'profiles', label: 'Add profile', detail: 'A Claude Code config folder with its own login.', keywords: 'account new', target: '[data-add-profile]', fallback: '[data-profiles]' },
     { id: 'profile-guide', page: 'profiles', label: 'How to set up another profile', detail: 'Create a config folder and sign in, add it here, and link your projects.', keywords: 'account help', target: '[data-profile-guide-toggle]' },
 
+    // Usage
+    {
+      id: 'usage-view',
+      page: 'usage',
+      label: 'Usage view',
+      detail: 'Which sessions, projects and models used your plan, and how your limits filled up over time.',
+      keywords: 'open usage plan limits tokens insights 5-hour weekly',
+      target: '[data-usage-view-setting]',
+    },
+    {
+      id: 'show-cost',
+      page: 'usage',
+      label: 'Show estimated cost',
+      detail: "What your tokens would cost at Anthropic's API prices: after the usage bars, for each session, and in the Usage view.",
+      keywords: 'cost price money dollars euro spend api estimate usage bar footer session project model tokens',
+      target: '[data-show-cost]',
+    },
+    {
+      id: 'cost-currency',
+      page: 'usage',
+      label: 'Currency',
+      detail: 'The currency of the estimated cost.',
+      keywords: 'money dollars euro pounds yen exchange rate cost price',
+      target: '[data-cost-currency]',
+    },
+    {
+      id: 'large-context',
+      page: 'usage',
+      label: 'Warn about a large context',
+      detail: 'Says above the message box how large it is and when its cache expires.',
+      keywords: 'context window full percent prompt cache expire expiry compact tokens warning alert ring',
+      target: '[data-large-context-enabled]',
+    },
+    {
+      id: 'large-context-percent',
+      page: 'usage',
+      label: 'Large from',
+      detail: 'How full the context window is before it counts as large. The context ring turns orange here too.',
+      keywords: 'context window percent threshold full warning ring orange',
+      target: '[data-large-context-percent]',
+    },
+    {
+      id: 'large-context-notify',
+      page: 'usage',
+      label: 'Notify before the cache expires',
+      detail: "5 minutes before a large session's hour-long cache expires.",
+      keywords: 'prompt cache expire expiry notification reminder context hour',
+      target: '[data-large-context-notify]',
+    },
+    {
+      id: 'large-context-quit',
+      page: 'usage',
+      label: 'Warn when quitting',
+      detail: 'Quitting with a large session open asks first.',
+      keywords: 'quit exit close context cache prompt warning end of day',
+      target: '[data-large-context-quit]',
+    },
+
     // Memory
     {
       id: 'memory-personal',

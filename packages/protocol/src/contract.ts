@@ -38,7 +38,7 @@ import {
 } from './sessions.ts';
 import { TerminalInfo, TerminalKind } from './terminal.ts';
 import { LimitsState } from './usageLimit.ts';
-import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot } from './usage.ts';
+import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
 import { ChangesBase, GithubStarStatus, GitChanges, GitSyncAction, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
@@ -488,6 +488,22 @@ export const contract = {
         timeZone: z.string().max(100).default('UTC'),
       }),
       result: UsageBreakdown,
+    },
+    /**
+     * The estimated API cost of each running plan window (the 5-hour one and the weekly ones), from the profile's
+     * transcripts on this computer. A window without a reset time ahead has none.
+     */
+    'usage.cost': {
+      params: z.object({ profileId: ProfileId.optional() }),
+      result: z.object({ windows: z.array(WindowCost) }),
+    },
+    /**
+     * The estimated API cost of one session since it started, in US dollars: its transcript and the helper calls made
+     * for it. `cost` is null before any of its tokens were read; `partial` when a model without a known price was left out.
+     */
+    'usage.sessionCost': {
+      params: z.object({ sessionId: SessionId, profileId: ProfileId.optional() }),
+      result: z.object({ cost: z.object({ usd: z.number(), partial: z.boolean() }).nullable() }),
     },
     /** A profile's plan % over the period, per window, as recorded from /usage results and rate-limit updates. */
     'usage.history': {

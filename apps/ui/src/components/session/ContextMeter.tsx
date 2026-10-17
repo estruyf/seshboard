@@ -3,11 +3,12 @@ import type { ContextUsage, TranscriptMessage } from '@switchboard/protocol/clie
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { Meter } from '../ui/Meter.tsx';
-import { formatPercent, valueTone } from '../ui/meter.ts';
+import { formatPercent } from '../ui/meter.ts';
+import { LEVEL_TEXT } from '../../lib/levels.ts';
+import { usePreferences } from '../../state/preferencesStore.ts';
+import { compactTokens, contextLevel } from './largeContext.ts';
 import { foldedMeter, type UsageLine } from './foldedMeter.ts';
 
-/** 46k, 1.2M. */
-export const compactTokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : String(n));
 
 /** Context at the end of the last turn, from the transcript (for sessions not running here). */
 export function lastTurnTokens(messages: readonly TranscriptMessage[]): number | null {
@@ -55,6 +56,8 @@ export function ContextMeter({
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const popupId = useId();
+  // Orange from Settings › Usage › Large context's percentage, so the ring and the notice above the box agree.
+  const warning = usePreferences((s) => s.prefs.contextWarning);
 
   // Running here (it can be compacted) but no usage report yet, e.g. resumed and not sent to: ask
   // Claude Code once, so the ring shows right away instead of only an estimate.
@@ -130,8 +133,8 @@ export function ContextMeter({
       {known ? (
         <>
           {/* Decoration: the button's label says how full it is. */}
-          <Meter kind="ring" percent={known.percent} />
-          Context <span className={valueTone(known.percent)}>{formatPercent(known.percent)}</span>
+          <Meter kind="ring" percent={known.percent} level={contextLevel(known.percent, warning)} />
+          Context <span className={LEVEL_TEXT[contextLevel(known.percent, warning)]}>{formatPercent(known.percent)}</span>
           <span className="text-faint @max-[860px]:hidden">
             {compactTokens(known.tokens)} / {compactTokens(known.max)}
           </span>

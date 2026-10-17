@@ -38,6 +38,8 @@ export const COMPUTER_METHODS = [
   'options.get',
   'usage.get',
   'usage.tokens',
+  'usage.sessionCost',
+  'usage.windowCosts',
   'catchup.get',
   'changes.get',
   'changes.diff',
