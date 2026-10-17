@@ -12,6 +12,7 @@ import {
   REMOTE_MAX_FILES,
   REMOTE_MAX_IMAGES,
   type CatchUp,
+  type LiveSession,
   type PermissionRequest,
   type RemoteContract,
   type RemoteImage,
@@ -791,6 +792,14 @@ describe('what a phone sees', () => {
     const card = { signals: { outOfScope: ['src/a.ts', '/etc/x', 'C:\\Users\\x', '..\\up', '../up', '\\\\server\\share'], scope: '/abs' } } as unknown as CatchUp;
     expect(remoteCatchUp(card)?.signals).toMatchObject({ outOfScope: ['src/a.ts'], scope: null });
     expect(remoteCatchUp(null)).toBeNull();
+  });
+
+  it('says when a session\'s turn began, from Claude Code\'s registry', () => {
+    const base = { archiveAfterDays: 7, scope: 'switchboard' as const, projectNames: new Map<string, string>() };
+    const live = { sessionId: SESSION, pid: 1, cwd: ROOT, projectRoot: ROOT, status: 'busy', rawStatus: 'busy', name: null, origin: 'app', startedAt: 100, updatedAt: 200, profileId: 'work' } as unknown as LiveSession;
+    expect(remoteSessions({ summaries: [summary(SESSION, true)], live: [live], hosts: [] }, base).sessions[0]!.workingSince).toBe(200);
+    expect(remoteSessions({ summaries: [summary(SESSION, true)], live: [{ ...live, updatedAt: null }], hosts: [] }, base).sessions[0]!.workingSince).toBe(100);
+    expect(remoteSessions({ summaries: [summary(SESSION, true)], live: [], hosts: [] }, base).sessions[0]!.workingSince).toBeNull();
   });
 
   it('names a session\'s profile only with more than one', () => {

@@ -39,6 +39,11 @@ export const RemoteSession = z.object({
   branch: z.string().nullable(),
   status: CompanionStatus,
   updatedAt: z.number(),
+  /**
+   * When its turn began (Claude Code's registry: when it went busy), which the Working section orders by: the last
+   * write moves all the time. Null when not known; left out by a Switchboard from before phones ordered by it.
+   */
+  workingSince: z.number().nullable().optional(),
   /** Finished since you last looked, on any device: the title shows in bold. */
   unread: z.boolean(),
   pinned: z.boolean(),
