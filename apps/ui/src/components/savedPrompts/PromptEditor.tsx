@@ -3,14 +3,23 @@ import { Globe, User, Users } from 'lucide-react';
 import { blankProblems, escapeText, PROMPT_NAME_MAX, type PromptScope, type SavedPrompt } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
+import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Radio, RadioGroup } from '../ui/Radio.tsx';
+import { Select } from '../ui/Select.tsx';
 import { editorPreview, fromSegments, sameScope, toSegments, type Segments } from './fillModel.ts';
 import { announceMove, announceShared } from './promptActions.ts';
+import { ProjectMultiSelect } from './ProjectPicker.tsx';
 import { PromptTextEditor } from './PromptTextEditor.tsx';
+
+const USE_IN = [
+  { kind: 'global', heading: 'Every project', line: 'Only you. Shows in every project.', Icon: Globe },
+  { kind: 'personal', heading: 'Just for you, in projects', line: 'Only you. Pick the projects it shows in.', Icon: User },
+  { kind: 'shared', heading: 'Shared with a project', line: "Saved with the project's actions, so everyone on the project gets it once it's committed.", Icon: Users },
+] as const;
 
 export interface PromptEditorProps {
   /** The prompt to edit; null for a new one. */
@@ -25,9 +34,6 @@ export interface PromptEditorProps {
   scope?: PromptScope;
   onClose(): void;
 }
-
-/** The three places, for a project. */
-const placesFor = (root: string | null): PromptScope[] => (root ? [{ kind: 'global' }, { kind: 'personal', root }, { kind: 'shared', root }] : [{ kind: 'global' }]);
 
 /** What is wrong with a prompt before it can be saved; empty when it's fine. */
 export function editorProblems(name: string, segments: Segments): string[] {
@@ -51,15 +57,26 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
   const root = editing && editing.scope.kind !== 'global' ? editing.scope.root : openedIn;
   const projects = useProjects((s) => s.projects);
   const nameOf = (r: string) => projects.get(r)?.name ?? basename(r);
-  const projectName = root ? nameOf(root) : '';
   const [name, setName] = useState(editing?.name ?? '');
   // A sent message is plain text: braces in it stay braces.
   const [segments, setSegments] = useState<Segments>(() => toSegments(editing?.text ?? (text !== undefined ? escapeText(text) : '')));
-  const [scope, setScope] = useState<PromptScope>(editing?.scope ?? initialScope ?? (root ? { kind: 'personal', root } : { kind: 'global' }));
+  const first: PromptScope = editing?.scope ?? initialScope ?? (root ? { kind: 'personal', root } : { kind: 'global' });
+  const [kind, setKind] = useState<PromptScope['kind']>(first.kind);
+  // Just for you: the projects it goes into (one when editing, since a prompt is moved, not copied). Shared: the one project.
+  const [personalRoots, setPersonalRoots] = useState<string[]>(first.kind === 'personal' ? [first.root] : root ? [root] : []);
+  const [sharedRoot, setSharedRoot] = useState<string | null>(first.kind === 'shared' ? first.root : root);
   const [tried, setTried] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
+
+  // Every project that exists, plus the ones this prompt is already in.
+  const choices = useMemo(() => {
+    const roots = new Set(addedProjects(projects).map((p) => p.root));
+    for (const r of [root, sharedRoot, ...personalRoots]) if (r) roots.add(r);
+    return [...roots].map((r) => ({ root: r, name: projects.get(r)?.name ?? basename(r) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
 
   useEffect(() => {
     if (!fromMessage || !client || !root) return;
@@ -67,7 +84,10 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
   }, [fromMessage, client, root]);
 
   const promptText = fromSegments(segments);
-  const problems = useMemo(() => editorProblems(name, segments), [name, segments]);
+  const where = kind === 'personal' ? personalRoots.length === 0 : kind === 'shared' ? !sharedRoot : false;
+  const problems = useMemo(() => [...editorProblems(name, segments), ...(where ? [kind === 'personal' ? 'Choose at least one project.' : 'Choose a project.'] : [])], [name, segments, where, kind]);
+  /** Where it is saved: one scope, or one per project ticked for "just for you". */
+  const scopes = (): PromptScope[] => (kind === 'global' ? [{ kind }] : kind === 'shared' ? [{ kind, root: sharedRoot! }] : personalRoots.map((r) => ({ kind, root: r })));
 
   const save = async () => {
     setTried(true);
@@ -75,6 +95,7 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
     setBusy(true);
     setError(null);
     try {
+      const [scope, ...more] = scopes() as [PromptScope, ...PromptScope[]];
       let id = editing?.id;
       let moved: SavedPrompt | null = null;
       // Another place: moved there first (written there, then taken out of where it was), then saved there.
@@ -83,10 +104,12 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
         id = moved.id;
       }
       const { prompt } = await client.call('savedPrompts.save', { prompt: { id, name: name.trim(), text: promptText, scope } });
+      // A new prompt just for you in several projects: one each.
+      for (const extra of more) await client.call('savedPrompts.save', { prompt: { name: name.trim(), text: promptText, scope: extra } });
       onClose();
       if (editing && moved) announceMove(editing, moved, nameOf);
       else if (!editing && scope.kind === 'shared') announceShared(prompt.name, scope.root, true, nameOf, () => void client.call('savedPrompts.delete', { id: prompt.id, scope: prompt.scope }).catch(() => {}));
-      else if (!editing) toast(`Saved “${prompt.name}”`, { body: 'Type / in any message box to use it.', data: { 'data-prompt-saved-toast': true } });
+      else if (!editing) toast(`Saved “${prompt.name}”${more.length ? ` in ${more.length + 1} projects` : ''}`, { body: 'Type / in any message box to use it.', data: { 'data-prompt-saved-toast': true } });
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
@@ -137,25 +160,21 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
             Use in
           </span>
           <RadioGroup label="Use in" className="grid gap-1.5">
-            {placesFor(root).map((place) => {
-              const checked = sameScope(place, scope);
-              const [heading, line, Icon] =
-                place.kind === 'global'
-                  ? ['Every project', 'Only you. Shows in every project.', Globe]
-                  : place.kind === 'personal'
-                    ? [`${projectName}, just for you`, 'Only you, only in this project.', User]
-                    : [`${projectName}, shared with the project`, "Saved with the project's actions, so everyone on the project gets it once it's committed.", Users];
+            {USE_IN.map(({ kind: place, heading, line, Icon }) => {
+              const checked = kind === place;
+              const needsProject = place !== 'global';
               return (
                 <Radio
-                  key={place.kind}
+                  key={place}
                   checked={checked}
-                  onSelect={() => setScope(place)}
+                  disabled={needsProject && choices.length === 0}
+                  onSelect={() => setKind(place)}
                   className={`w-full rounded-lg border px-3 py-2 ${checked ? 'border-accent-ink bg-accent/8' : 'border-edge hover:bg-border/45'}`}
-                  dataAttrs={{ 'data-prompt-use-in': place.kind }}
+                  dataAttrs={{ 'data-prompt-use-in': place }}
                 >
                   <span className="flex items-start gap-2">
                     <Icon size={14} aria-hidden className="mt-px shrink-0 text-muted" />
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1">
                       <span className="block text-ui font-semibold text-text">{heading}</span>
                       <span className="block text-meta text-muted">{line}</span>
                     </span>
@@ -164,6 +183,31 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
               );
             })}
           </RadioGroup>
+          {kind === 'personal' &&
+            (editing ? (
+              <Select
+                value={personalRoots[0] ?? ''}
+                options={choices.map((c) => ({ value: c.root, label: c.name }))}
+                onChange={(r) => setPersonalRoots([r])}
+                label="Project"
+                placeholder="Choose a project"
+                className="w-full rounded-md border border-edge bg-bg px-2.5 py-1.5 text-ui text-text"
+                dataAttrs={{ 'data-prompt-project-select': true }}
+              />
+            ) : (
+              <ProjectMultiSelect projects={choices} picked={personalRoots} onChange={setPersonalRoots} label="Projects" />
+            ))}
+          {kind === 'shared' && (
+            <Select
+              value={sharedRoot ?? ''}
+              options={choices.map((c) => ({ value: c.root, label: c.name }))}
+              onChange={setSharedRoot}
+              label="Project"
+              placeholder="Choose a project"
+              className="w-full rounded-md border border-edge bg-bg px-2.5 py-1.5 text-ui text-text"
+              dataAttrs={{ 'data-prompt-project-select': true }}
+            />
+          )}
         </div>
         <PromptTextEditor
           segments={segments}
@@ -174,7 +218,7 @@ export function PromptEditor({ editing, text, fromMessage, root: openedIn, scope
           status={status}
           actions={
             <>
-              <Button variant="quiet" kbd="Esc" onClick={onClose}>
+              <Button kbd="Esc" onClick={onClose}>
                 Cancel
               </Button>
               <Button variant="primary" kbd="⌘↵" disabled={busy} onClick={() => void save()} data-prompt-editor-save>
