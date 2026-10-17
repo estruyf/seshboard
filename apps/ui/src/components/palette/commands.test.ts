@@ -64,7 +64,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
 }
 
 /** A clean checkout with a GitHub remote. */
-const GIT: PaletteGit = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false };
+const GIT: PaletteGit = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false, failingChecks: 0 };
 const inSession = (session: Partial<PaletteSession> = {}, over: Partial<PaletteContext> = {}) =>
   context({ view: 'session', session: { ...SESSION, ...session }, terminal: { ...context().terminal, owner: 's1', cwd: '/work/app' }, ...over });
 const ids = (ctx: PaletteContext) => visibleCommands(ctx).map((c) => c.id);
@@ -220,7 +220,7 @@ describe('when(): a session is open', () => {
 });
 
 describe('when(): git, actions, terminal, panes', () => {
-  const git = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false };
+  const git = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false, failingChecks: 0 };
 
   it('offers git commands in a repository, the ones for changes only with changes', () => {
     expect(groupIds(inSession(), 'git')).toEqual([]);
@@ -316,7 +316,7 @@ describe('when(): New session and Settings', () => {
 
 describe('arrangeCommands', () => {
   it('puts where you are first, then recently used, then the rest', () => {
-    const ctx = inSession({}, { git: { changed: 1, unstaged: 1, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false } });
+    const ctx = inSession({}, { git: { changed: 1, unstaged: 1, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false, failingChecks: 0 } });
     const sections = arrangeCommands(visibleCommands(ctx), ctx, ['theme-dark', 'rename-session', 'unknown'], '');
     expect(sections.map((s) => s.label)).toEqual(['This session', 'Git', 'Recently used', 'Commands']);
     // A recent command already shown for where you are isn't listed twice.

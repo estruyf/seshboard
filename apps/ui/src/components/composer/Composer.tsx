@@ -12,7 +12,7 @@ import { hasContent } from '../../state/drafts.ts';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
-import { appendQuote, applyEdit, deadKeyWrap, editKey } from './editing.ts';
+import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
@@ -298,13 +298,13 @@ export function Composer(props: ComposerProps) {
     caretToEnd(true);
   }, [focusRequest, props.disabledReason]);
 
-  // Quote in reply: the quote goes at the end, as if typed (so ⌘Z takes it out), and the caret under it.
+  // Quote in reply (or a prompt put here for you, `plain`): it goes at the end, as if typed (so ⌘Z takes it out), and the caret under it.
   const quoteRequest = useDrafts((s) => (draftKey !== undefined && s.quote?.key === draftKey ? s.quote : null));
   useEffect(() => {
     if (!quoteRequest) return;
     useDrafts.getState().clearQuote();
     const el = ref.current;
-    const edit = appendQuote(el?.value ?? text, quoteRequest.text);
+    const edit = (quoteRequest.plain ? appendText : appendQuote)(el?.value ?? text, quoteRequest.text);
     if (!edit) return;
     if (!el || el.disabled) return setText((current) => current + edit.insert);
     history.current!.reset();

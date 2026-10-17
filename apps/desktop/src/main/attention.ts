@@ -1,7 +1,7 @@
-import type { HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
+import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
 
 export interface AttentionEvent {
-  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed';
+  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed';
   sessionId: string;
   title: string;
   body: string;
@@ -20,6 +20,7 @@ const basename = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).po
  * - Terminal (CLI) sessions waiting for you, when the sidebar lists sessions from
  *   other apps. Claude desktop and IDE sessions are skipped: they notify on their own.
  * - Project actions that finish.
+ * - The checks of a session's pull request that finish.
  */
 export class Attention {
   private readonly hostStates = new Map<string, HostState>();
@@ -66,6 +67,20 @@ export class Attention {
   /** A session armed with Resume when it resets was sent its message after the reset. */
   onResumed(sessionId: string): AttentionEvent[] {
     return [{ kind: 'resumed', sessionId, title: 'Resumed after the usage limit reset', body: this.titles.get(sessionId) ?? 'New session' }];
+  }
+
+  /** The checks of a session's pull request all finished, after some were running. */
+  onChecksFinished(event: ChecksFinished): AttentionEvent[] {
+    const failed = event.outcome === 'fail';
+    const counts = failed ? `${event.failed} of ${event.total} ${event.total === 1 ? 'check' : 'checks'} failed` : `${event.total === 1 ? 'The check' : `All ${event.total} checks`} passed`;
+    return [
+      {
+        kind: failed ? 'checks-failed' : 'checks-passed',
+        sessionId: event.sessionId,
+        title: `Checks ${failed ? 'failed' : 'passed'} on PR #${event.pr.number}`,
+        body: `${counts} · ${this.titles.get(event.sessionId) ?? event.branch}`,
+      },
+    ];
   }
 
   onPermissionResolved(requestId: string): void {

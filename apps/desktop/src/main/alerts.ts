@@ -10,8 +10,17 @@ export interface Alert {
   sound: SoundEvent | null;
 }
 
-// A session resuming after a usage limit is news like a finished turn: it shares that moment's sound.
-const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = { 'needs-you': 'needsYou', finished: 'finished', failed: 'error', 'action-done': 'actionEnded', resumed: 'finished' };
+// A session resuming after a usage limit is news like a finished turn: it shares that moment's sound. Checks that
+// finish are like an action that ends, and failed ones like an error.
+const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = {
+  'needs-you': 'needsYou',
+  finished: 'finished',
+  failed: 'error',
+  'action-done': 'actionEnded',
+  resumed: 'finished',
+  'checks-failed': 'error',
+  'checks-passed': 'actionEnded',
+};
 
 /** Each kind of event has its own moment, and so its own sound. */
 export const soundEventOf = (kind: AttentionEvent['kind']): SoundEvent => EVENT_SOUND[kind];

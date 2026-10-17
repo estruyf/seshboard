@@ -21,8 +21,8 @@ interface DraftsState {
   loaded: boolean;
   /** A message box should take focus with the caret at the end of its text (opened from the Unsent list or ⌘P). */
   focus: { key: string; nonce: number } | null;
-  /** Text to quote at the end of a message box, which then takes focus (Quote in reply from the conversation). */
-  quote: { key: string; text: string; nonce: number } | null;
+  /** Text to quote at the end of a message box, which then takes focus (Quote in reply from the conversation); `plain` adds it as it is. */
+  quote: { key: string; text: string; nonce: number; plain?: boolean } | null;
   /** The Unsent messages popover: where it opens (its bottom-left corner when `above`). */
   list: { x: number; y: number; above: boolean } | null;
   archivePrompt: ArchivePrompt | null;
@@ -50,7 +50,7 @@ interface DraftsState {
   load(drafts: Record<string, ComposerDraft>, firstPrompts?: Record<string, FirstPrompt<ImageAttachment>>): void;
   requestFocus(key: string): void;
   clearFocus(): void;
-  requestQuote(key: string, text: string): void;
+  requestQuote(key: string, text: string, options?: { plain?: boolean }): void;
   clearQuote(): void;
   openList(at: { x: number; y: number; above: boolean }): void;
   closeList(): void;
@@ -188,7 +188,7 @@ export const useDrafts = create<DraftsState>()((set, get) => {
     load: (drafts, firstPrompts = {}) => set((s) => ({ drafts: { ...drafts, ...s.drafts }, firstPrompts: { ...firstPrompts, ...s.firstPrompts }, loaded: true })),
     requestFocus: (key) => set({ focus: { key, nonce: ++focusRequests } }),
     clearFocus: () => set({ focus: null }),
-    requestQuote: (key, text) => set({ quote: { key, text, nonce: ++focusRequests } }),
+    requestQuote: (key, text, options) => set({ quote: { key, text, nonce: ++focusRequests, ...(options?.plain ? { plain: true } : {}) } }),
     clearQuote: () => set({ quote: null }),
     openList: (list) => set({ list }),
     closeList: () => set({ list: null }),

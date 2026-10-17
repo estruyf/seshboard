@@ -64,6 +64,7 @@ export class Notifier {
     client.on('sessions.live', ({ live }) => this.handle(this.attention.onLive(live)));
     client.on('terminals.changed', ({ terminals }) => this.handle(this.attention.onTerminals(terminals)));
     client.on('limits.resumed', ({ sessionId }) => this.handle(this.attention.onResumed(sessionId)));
+    client.on('git.checksFinished', (event) => this.handle(this.attention.onChecksFinished(event)));
     client.on('later.changed', (queue) => void (this.queue = queue));
     void client.call('later.list', {}).then((queue) => void (this.queue = queue), () => {});
 

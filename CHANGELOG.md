@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### New
+
+- **See a pull request's checks on the git button, and let Claude fix the ones that fail.** Once the branch has an open pull request, **View PR #123** shows how its checks stand: a green check when they all passed, a red cross when one failed, a spinning circle while they run. Hover it for how many, such as *1 of 5 checks failed*. The git menu lists the checks, failed ones first, with their workflow and how long they ran; click one to open it on GitHub. While checks run, Switchboard follows them, and a notification says **Checks failed on PR #123** or **Checks passed on PR #123** when they finish while you are elsewhere. **Fix failing checks with Claude** in the menu (or **Fix with Claude** on one check's row, or the command palette) puts a prompt in the message box with the end of each failed job's log as a chip, so you no longer copy logs from the browser. Nothing is sent until you send it. Needs the GitHub CLI, signed in.
+
 ### Fixed
 
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.

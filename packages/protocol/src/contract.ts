@@ -40,7 +40,7 @@ import { TerminalInfo, TerminalKind } from './terminal.ts';
 import { LimitsState } from './usageLimit.ts';
 import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
-import { ChangesBase, GithubStarStatus, GitChanges, GitSyncAction, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
+import { ChangesBase, CheckLog, ChecksFinished, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
@@ -652,6 +652,25 @@ export const contract = {
     'git.prFor': { params: z.object({ cwd: AbsolutePath, fresh: z.boolean().default(false) }), result: z.object({ pr: WorktreePullRequest.nullable() }) },
     /** Marks a draft pull request ready for review (`gh pr ready`). GH_FAILED with gh's message. */
     'git.prReady': { params: z.object({ cwd: AbsolutePath, number: z.number().int().positive() }), result: z.object({}) },
+    /**
+     * The checks of the open pull request of the branch checked out at `cwd` (`gh pr checks`), null without one. A read
+     * from the last 20 seconds is reused unless `fresh`; `afterPush` keeps asking for a while when there are none yet
+     * (GitHub takes a moment to start them). While some run, the engine reads them again by itself (every 30 seconds,
+     * every 5 minutes while no window has focus) and sends each read through `git.checks`; `sessionId` is the session
+     * told through `git.checksFinished` when they finish.
+     */
+    'git.prChecks': {
+      params: z.object({ cwd: AbsolutePath, sessionId: SessionId.optional(), fresh: z.boolean().default(false), afterPush: z.boolean().default(false) }),
+      result: z.object({ checks: PrChecks.nullable() }),
+    },
+    /**
+     * The end of each failed check's log (`gh run view <run> --job <job> --log-failed`): its last 150 lines, without
+     * colours and timestamps, all of them together within what a message can hold.
+     */
+    'git.prCheckLogs': {
+      params: z.object({ cwd: AbsolutePath, checks: z.array(z.object({ name: z.string().max(500), workflow: z.string().max(500), link: z.string().max(2_000) })).min(1).max(50) }),
+      result: z.object({ logs: z.array(CheckLog) }),
+    },
 
     /** Whether the account gh is signed in with has starred Switchboard (the sidebar's Star on GitHub button). */
     'github.starStatus': { params: z.object({}), result: z.object({ status: GithubStarStatus }) },
@@ -1156,6 +1175,10 @@ export const contract = {
     'worktrees.sizes': z.object({ sizes: z.array(WorktreeSize) }),
     /** A `git.prCreate` moved on: pushing, creating, done or failed. */
     'git.pr': PrProgress,
+    /** A pull request's checks were read (`git.prChecks`, or the engine reading running ones again). */
+    'git.checks': PrChecks,
+    /** A session's pull request's checks all finished after some were running: main's notifier says so. */
+    'git.checksFinished': ChecksFinished,
     /** The whole queue, in order, whenever an item is added, moved, changed, started or removed. */
     'later.changed': z.object({ items: z.array(LaterItem), started: z.array(QueueStarted) }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */

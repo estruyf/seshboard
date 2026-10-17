@@ -1,4 +1,4 @@
-import { ClipboardPaste, FileText, Folder, Pencil, ScrollText, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
+import { CircleX, ClipboardPaste, FileText, Folder, Pencil, ScrollText, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { ContextItem } from '@switchboard/protocol/client';
 import { chipLabel, pastePreview, type ContextChip } from './contextItems.ts';
@@ -10,6 +10,7 @@ const TEXT_ICON: Record<Extract<ContextItem, { kind: 'text' }>['source'], Lucide
   terminal: SquareTerminal,
   output: ScrollText,
   paste: ClipboardPaste,
+  checks: CircleX,
 };
 
 const iconFor = (item: ContextItem): LucideIcon => (item.kind === 'text' ? TEXT_ICON[item.source] : item.directory ? Folder : item.range ? TextSelect : FileText);

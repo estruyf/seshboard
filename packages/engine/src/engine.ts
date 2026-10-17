@@ -52,6 +52,7 @@ import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
 import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts';
 import { findCheckout, githubPage } from './git/remotes.ts';
+import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
 import { checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
@@ -224,6 +225,8 @@ export interface Engine {
   setResumeAtLimit(mode: ResumeAtLimit): void;
   /** Settings › Mods › Show mods, from main: sessions attach or detach their mods at once. */
   setShowMods(enabled: boolean): void;
+  /** Whether a window has focus, from main: running pull request checks are read every 30 seconds then, else every 5 minutes. */
+  setForeground(foreground: boolean): void;
   /**
    * The smoke run's mods step (`SWITCHBOARD_SMOKE_MODS`): adds a throwaway profile whose sessions load the test mod,
    * starts a session there with the mod's own `/smoke-ping` (answered without the model), and writes its id and
@@ -931,6 +934,21 @@ export function createEngine(options: EngineOptions): Engine {
     pullRequestCache.set(root, { at: Date.now(), prs });
     return prs;
   };
+  /** The checks of each checkout's open pull request, read again by themselves while some run. Keyed by the checkout's folder. */
+  const checksWatcher = new ChecksWatcher({
+    read: async (path) => {
+      const status = await worktreeStatus(path).catch(() => null);
+      if (!status?.branch) return null;
+      const pr = prOf(await pullRequestsFor(status.root, false), status.branch);
+      if (pr?.state !== 'open') return null;
+      return readChecks(defaultGh(), { path: status.path, branch: status.branch, pr: { number: pr.number, url: pr.url } }, (await shell.ready).env);
+    },
+    emit: (checks) => broadcast('git.checks', checks),
+    finished: (event) => {
+      log('info', `git: checks ${event.outcome === 'pass' ? 'passed' : 'failed'} on pull request #${event.pr.number} (${event.branch})`);
+      broadcast('git.checksFinished', event);
+    },
+  });
   /** Worktree sizes measured so far; `du` runs in the background, two at a time, and results go out with `worktrees.sizes`. */
   const worktreeSizes = new Map<string, WorktreeSize>();
   const sizeQueue: string[] = [];
@@ -1963,6 +1981,16 @@ export function createEngine(options: EngineOptions): Engine {
       if (!status?.branch) return { pr: null };
       return { pr: prOf(await pullRequestsFor(status.root, fresh), status.branch) };
     },
+    'git.prChecks': async ({ cwd, sessionId, fresh, afterPush }) => {
+      if (!resolver.resolve(cwd).gitDir) return { checks: null };
+      const status = await worktreeStatus(cwd).catch(() => null);
+      if (!status?.branch) return { checks: null };
+      return { checks: await checksWatcher.get(status.path, { sessionId, fresh, afterPush }) };
+    },
+    'git.prCheckLogs': async ({ cwd, checks }) => {
+      if (!resolver.resolve(cwd).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');
+      return { logs: await readCheckLogs(defaultGh(), cwd, (await shell.ready).env, checks) };
+    },
     'git.prReady': async ({ cwd, number }) => {
       const result = await runGh(defaultGh(), ['pr', 'ready', String(number)], { cwd, env: (await shell.ready).env, timeout: 60_000 });
       if (result.missing) throw new RpcError('GH_MISSING', "GitHub CLI isn't installed.");
@@ -2447,6 +2475,7 @@ export function createEngine(options: EngineOptions): Engine {
       resumeAtLimit = mode;
     },
     setShowMods: (enabled) => hosts.setShowMods(enabled),
+    setForeground: (foreground) => checksWatcher.setForeground(foreground),
     startModsSmoke: async () => {
       const spec = JSON.parse(process.env.SWITCHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;
       if (!spec) return;
@@ -2488,6 +2517,7 @@ export function createEngine(options: EngineOptions): Engine {
       hosts.closeAll();
       for (const monitor of usageMonitors.values()) monitor.stop();
       insights.close();
+      checksWatcher.close();
       claudeUpdater.close();
       terminals.closeAll();
       clearTimeout(searchTimer);

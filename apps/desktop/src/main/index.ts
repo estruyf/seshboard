@@ -7106,6 +7106,11 @@ app.whenReady().then(() => {
     ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event) } : {}),
   });
   notifier.connect();
+  // Running pull request checks are read every 30 seconds while a window has focus, else every 5 minutes. A blur
+  // comes before the next window's focus, so it looks once that has settled.
+  const sendForeground = () => engine.sendStanding({ type: 'foreground', foreground: BrowserWindow.getFocusedWindow() !== null });
+  app.on('browser-window-focus', sendForeground);
+  app.on('browser-window-blur', () => setTimeout(sendForeground, 100));
   createWindow();
   updater.start();
   // The packaged app declares the scheme in Info.plist; this also takes it back if another app claimed it.
