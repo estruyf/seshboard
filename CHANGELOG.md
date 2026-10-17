@@ -6,7 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
-- **A session in its own window now has all its panels.** The window used to show only the conversation and the message box, so Changes, Ask, Agents, Commands and the terminal were out of reach once the session left the main window. Now the header has the same panel buttons, the panels open next to the conversation, and the session's shortcuts work there, such as the terminal's and Open in editor. The window opens wider (1000 pixels, or as much as fits beside the main window), so a panel has room. Settings, Usage and a project's page open in the main window, which comes to the front.
+- **A session in its own window now has all its panels.** The window used to show only the conversation and the message box, so Changes, Ask, Agents, Commands and the terminal were out of reach once the session left the main window. Now the header has the same panel buttons, the panels open next to the conversation, and the session's shortcuts work there, such as the terminal's and Open in editor. The window opens wider (1000 pixels, or as much as fits beside the main window), so a panel has room. The panels that are open go with the session: a session opens in its window with the panels it had open in the main window (Agents on the same agent, Ask on the same thread, the terminal), and when it comes back, by Move back to main window or by closing its window, the main window shows the panels as you left them. The size of a panel stays with its window. Settings, Usage and a project's page open in the main window, which comes to the front.
 
 ## [0.0.23] - 2026-10-17
 

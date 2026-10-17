@@ -31,7 +31,7 @@ A session is open in one place at a time. When it moves to its own window, its p
 
 The message box, permission prompts and questions work as they do in the main window. A message you started typing goes with the session, so it is there in either window.
 
-The header's panel buttons open the panels in the window. Each window keeps its own panels: opening [Changes](/terminal-changes-git/changes/) or the terminal here doesn't open it anywhere else. In a narrow window (under about 640 pixels), a panel takes the whole window. Close the panel, or make the window wider, to see the conversation again.
+The header's panel buttons open the panels in the window. The panels that are open go with the session: a session that pops out opens with the panels it had open in the main window, on the same agent, command or Ask thread, and when it comes back, the main window shows the panels as you left them in its window. After that, each window keeps its own: opening [Changes](/terminal-changes-git/changes/) or the terminal here doesn't open it in the main window. Each window also keeps the size of its own panels. In a narrow window (under about 640 pixels), a panel takes the whole window. Close the panel, or make the window wider, to see the conversation again.
 
 Shortcuts for the session work in its window, such as <Kbd shortcut="find" />, <Kbd shortcut="changes.toggle" />, <Kbd shortcut="terminal.toggle" /> for the terminal and <Kbd shortcut="editor.open" /> to open the folder in your editor. Shortcuts for the whole app, such as <Kbd shortcut="palette.commands" />, <Kbd shortcut="palette.goto" />, <Kbd shortcut="search" /> and <Kbd shortcut="session.new" />, bring the main window to the front and work there.
 
@@ -41,8 +41,8 @@ While the session's window is in front, Switchboard sends no notification about 
 
 ## Move it back or close the window
 
-- **Move back to main window** in the window's header shows the session in a pane of the main window again, and closes its window.
-- The **×** in the header, or the window's own close button, closes the window. The session stays in the sidebar, and a session that is working keeps running.
+- **Move back to main window** in the window's header shows the session in a pane of the main window again, with its panels as they were in its window, and closes its window.
+- The **×** in the header, or the window's own close button, closes the window. The session stays in the sidebar, and a session that is working keeps running. Its panels are as you left them when you open it again.
 
 Closing the main window closes these windows too. They don't come back after Switchboard restarts.
 
