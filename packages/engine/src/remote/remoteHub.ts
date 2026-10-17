@@ -15,6 +15,8 @@ import {
   type ProfileDefaults,
   type ProjectDefaults,
   type RemoteBranches,
+  type ClonePlan,
+  type CloneProgress,
   type RemoteSessionOptions,
   type RemoteSession,
   type RemoteSessions,
@@ -175,6 +177,11 @@ export interface RemoteHubOptions {
   diff(sessionId: string, path: string): Promise<{ diff: string; truncated: boolean }>;
   /** Commits every change in the session's checkout, without a terminal. */
   commit(sessionId: string, message: string): Promise<{ ok: true; sha: string } | { ok: false; output: string }>;
+  /** Clone from GitHub, as `projects.clonePlan` on the computer (`off` while its setting is off). */
+  clonePlan(url: string, name: string | undefined): Promise<ClonePlan>;
+  /** Starts a clone, as `projects.clone` on the computer; its progress goes to `onProgress` too. */
+  clone(jobId: string, url: string, name: string, onProgress: (progress: CloneProgress) => void): Promise<void>;
+  cancelClone(jobId: string): void;
   /** Tells the app's windows. */
   onStatus(status: RemoteStatus): void;
   /** A prompt or an answer came from a phone, for the label in the conversation and the sidebar's last action. */
@@ -700,6 +707,18 @@ export class RemoteHub {
         // Its first prompt: the sidebar's last action for the device.
         this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return created;
+      },
+      'projects.clonePlan': ({ url, name }) => this.options.clonePlan(url, name),
+      'projects.clone': async ({ jobId, url, name }, phone) => {
+        // Job ids are the device's own: another device can't cancel or hear this one.
+        await this.options.clone(`remote:${device.id}:${jobId}`, url, name, ({ root, ...progress }) => {
+          phone.emit('projects.cloneProgress', { ...progress, jobId, projectId: root ? projectIdOf(root) : null });
+        });
+        return {};
+      },
+      'projects.cancelClone': ({ jobId }) => {
+        this.options.cancelClone(`remote:${device.id}:${jobId}`);
+        return {};
       },
       'later.add': async ({ projectId, prompt, ...options }) => {
         const project = this.project(projectId);

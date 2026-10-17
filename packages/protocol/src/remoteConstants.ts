@@ -28,6 +28,9 @@ export const REMOTE_FEATURE_BRANCHES = 'branches';
 /** In `hello`'s `features`: `session.markUnread` answers, so Mark as read can be undone. */
 export const REMOTE_FEATURE_MARK_UNREAD = 'session.markUnread';
 
+/** In `hello`'s `features`: `projects.clonePlan`, `projects.clone` and `projects.cancelClone` answer (Clone from GitHub). */
+export const REMOTE_FEATURE_CLONE = 'projects.clone';
+
 /**
  * In `hello`'s `features`: `push.subscribe` takes the device's own VAPID key (and a label), and pushes carry the
  * device's id. A phone paired with more than one computer gives them all the same key, so one subscription gets every

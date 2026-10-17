@@ -117,6 +117,8 @@ export interface PaletteContext {
   composer: { key: string; cwd: string } | null;
   /** VS Code is installed, so a session can continue in its Claude Code extension. */
   canContinueInVSCode: boolean;
+  /** Clone from GitHub is on (Settings › Projects): "New session from a GitHub repository…". */
+  cloneEnabled: boolean;
   /** Paired computers that are connected: "New session on <name>…" and "Show only <name>". */
   computers: Array<{ id: string; name: string }>;
 }

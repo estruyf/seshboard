@@ -3,6 +3,7 @@ import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
+import { ClonePlan, CloneProgress } from './clone.ts';
 import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
@@ -235,6 +236,10 @@ export type RemoteUsageRow = z.infer<typeof RemoteUsageRow>;
 export const RemoteUsageBreakdown = UsageBreakdown.omit({ rows: true }).extend({ rows: z.array(RemoteUsageRow) });
 export type RemoteUsageBreakdown = z.infer<typeof RemoteUsageBreakdown>;
 
+/** A clone's progress on the computer, with the project's id instead of its folder. */
+export const RemoteCloneProgress = CloneProgress.omit({ root: true }).extend({ projectId: ProjectId.nullable() });
+export type RemoteCloneProgress = z.infer<typeof RemoteCloneProgress>;
+
 /** The most lines `changes.diff` returns. */
 export const REMOTE_DIFF_LINES = 2_000;
 
@@ -377,6 +382,14 @@ export const remoteContract = {
       params: z.object({ sessionId: SessionId, message: z.string().trim().min(1).max(20_000) }),
       result: z.discriminatedUnion('ok', [z.object({ ok: z.literal(true), sha: z.string() }), z.object({ ok: z.literal(false), output: z.string() })]),
     },
+    /**
+     * Clone from GitHub on the computer, in its own Clone into folder (`REMOTE_FEATURE_CLONE`): where it would go, and
+     * whether its setting is on (`off` otherwise).
+     */
+    'projects.clonePlan': { params: z.object({ url: z.string().max(2_000), name: z.string().max(255).optional() }), result: ClonePlan },
+    /** Clones and adds the project there; `projects.cloneProgress` reports to this connection, as on the computer. */
+    'projects.clone': { params: z.object({ jobId: z.string().min(1).max(100), url: z.string().max(2_000), name: z.string().min(1).max(255) }), result: z.object({}) },
+    'projects.cancelClone': { params: z.object({ jobId: z.string().min(1).max(100) }), result: z.object({}) },
     /** The engine's VAPID public key, for `pushManager.subscribe` (made the first time a phone asks). */
     'push.key': { params: z.object({}), result: z.object({ publicKey: z.string() }) },
     /**
@@ -403,6 +416,8 @@ export const remoteContract = {
     'usage.changed': z.object({ profileId: z.string(), usage: UsageSnapshot.nullable() }),
     /** The catch-up of the session the phone watches changed. */
     'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
+    /** A clone this connection started moved on (`projects.clone`). */
+    'projects.cloneProgress': RemoteCloneProgress,
   },
 } as const satisfies ContractShape;
 export type RemoteContract = typeof remoteContract;

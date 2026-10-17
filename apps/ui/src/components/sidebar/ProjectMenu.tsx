@@ -1,12 +1,13 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
-import { Check, ChevronDown, Ellipsis, FolderCog, FolderGit2, FolderOpen, FolderPlus, GitBranch, Image, Layers, Monitor, Pencil, RotateCcw, SlidersHorizontal, Smile, Type, X } from 'lucide-react';
+import { Check, ChevronDown, Ellipsis, FolderCog, FolderDown, FolderGit2, FolderOpen, FolderPlus, GitBranch, Image, Layers, Monitor, Pencil, RotateCcw, SlidersHorizontal, Smile, Type, X } from 'lucide-react';
 import { isAbsolutePath, type ProjectIconChoice } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
+import { useClone, useCloneEnabled } from '../../state/cloneStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -249,6 +250,7 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
   const menuId = useId();
 
   const showAdd = useProjects((s) => s.showAdd);
+  const cloneEnabled = useCloneEnabled();
   const sorted = addedProjects(projects);
   const current = filter ? projects.get(filter) : undefined;
   const remoteCurrent = filter ? remoteProjects.find((p) => p.key === filter) : undefined;
@@ -375,6 +377,7 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
           )}
           <div role="separator" className="my-1 border-t border-border" />
           <FilterRow onSelect={() => choose(() => showAdd(true))} icon={<FolderPlus size={14} aria-hidden />} label="Add project…" />
+          {cloneEnabled && <FilterRow onSelect={() => choose(() => useClone.getState().showDialog(true))} icon={<FolderDown size={14} aria-hidden />} label="Clone from GitHub…" />}
           <FilterRow onSelect={() => choose(() => manage())} icon={<FolderCog size={14} aria-hidden />} label="Manage projects…" />
         </FilterPopover>
       )}

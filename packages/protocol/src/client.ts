@@ -41,6 +41,8 @@ export type * from './catchUp.ts';
 export * from './catchUpRules.ts';
 export type * from './remote.ts';
 export type * from './computers.ts';
+export type * from './clone.ts';
+export * from './githubRepo.ts';
 export * from './computerConstants.ts';
 export * from './remoteConstants.ts';
 export type * from './mods.ts';

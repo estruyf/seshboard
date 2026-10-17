@@ -1,5 +1,5 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
@@ -18,6 +18,7 @@ import { ModsSettings } from './mods/ModsSettings.tsx';
 import { EngineDiagnostics } from './EngineDiagnostics.tsx';
 import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
+import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
@@ -174,6 +175,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
   { id: 'sessions', label: 'Sessions', icon: Archive },
+  { id: 'projects', label: 'Projects', icon: FolderGit2 },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
   { id: 'mods', label: 'Mods', icon: Puzzle },
   { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -420,7 +422,21 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               />
             </div>
           </Section>
-          <Section title="Projects">
+          <Section title="Quitting">
+            <Toggle
+              label="Ask before quitting"
+              detail={`${formatKeys(keysFor('quit'))} shows a prompt first; pressing ${formatKeys(keysFor('quit'))} again quits.`}
+              checked={prefs.confirmQuit}
+              attr="data-confirm-quit"
+              onChange={(confirmQuit) => update({ confirmQuit })}
+            />
+          </Section>
+        </>
+      );
+    case 'projects':
+      return (
+        <>
+          <Section title="Order">
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
                 <span className="block text-ui">Project order</span>
@@ -439,14 +455,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               />
             </div>
           </Section>
-          <Section title="Quitting">
-            <Toggle
-              label="Ask before quitting"
-              detail={`${formatKeys(keysFor('quit'))} shows a prompt first; pressing ${formatKeys(keysFor('quit'))} again quits.`}
-              checked={prefs.confirmQuit}
-              attr="data-confirm-quit"
-              onChange={(confirmQuit) => update({ confirmQuit })}
-            />
+          <Section title="Clone from GitHub" description="Paste a GitHub URL in New session, and Switchboard clones it, adds it as a project and starts the session there. Each computer has its own setting and folder.">
+            <CloneSettings />
           </Section>
         </>
       );

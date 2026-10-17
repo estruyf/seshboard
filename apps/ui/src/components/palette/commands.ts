@@ -32,6 +32,7 @@ import {
   FileDiff,
   Folder,
   FolderCog,
+  FolderDown,
   FolderGit2,
   FolderPlus,
   Gauge,
@@ -300,6 +301,7 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: Lucid
   { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
   { id: 'sessions', label: 'Sessions', icon: Archive },
+  { id: 'projects', label: 'Projects', icon: FolderGit2 },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
@@ -336,6 +338,15 @@ export const COMMANDS: PaletteCommand[] = [
     // The prompt step, in the scratch folder the engine keeps: no project to pick.
     when: (ctx) => ctx.connected && ctx.questionsDir !== null,
     next: (ctx) => ({ kind: 'prompt', root: ctx.questionsDir!, worktree: false, chip: 'Quick question' }),
+  },
+  {
+    id: 'new-session-clone',
+    title: 'New session from a GitHub repository…',
+    group: 'general',
+    icon: FolderDown,
+    keywords: 'clone git github url repository repo download start',
+    when: (ctx) => ctx.cloneEnabled,
+    next: () => ({ kind: 'clone', chip: 'Clone from GitHub' }),
   },
   {
     id: 'new-session-worktree',

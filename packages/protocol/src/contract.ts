@@ -58,6 +58,7 @@ import { GithubIssue, GithubPullRequest, PromptScope, SavedPrompt, SavedPromptId
 import { CompanionTarget } from './companion.ts';
 import { DeviceName, RemoteSettings, RemoteStatus } from './remote.ts';
 import { ComputerEvent, ComputerMethodSchema, ComputersStatus } from './computers.ts';
+import { ClonePlan, CloneProgress, CloneSettings } from './clone.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
 import { KEEP_REASONS } from './retention.ts';
 import {
@@ -254,6 +255,23 @@ export const contract = {
      * sessions (most recently active first), with a git remote on that repository. Null when none has one.
      */
     'projects.findByRepo': { params: z.object({ repo: z.string().max(200).regex(/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/) }), result: z.object({ root: AbsolutePath.nullable() }) },
+    // --- Clone from GitHub (Settings › Projects) ------------------------------------------------------------
+    'projects.cloneSettings': { params: z.object({}), result: CloneSettings },
+    /** Changes Settings › Projects › Clone from GitHub; turning it on needs a folder (INVALID). `projects.cloneSettings` follows. */
+    'projects.setCloneSettings': { params: CloneSettings.partial(), result: CloneSettings },
+    /**
+     * Where a clone of the repository a URL names would go (`name`: the folder's name, the repository's when left out),
+     * and whether something is there already. INVALID for a URL that isn't a GitHub repository, with why.
+     */
+    'projects.clonePlan': { params: z.object({ url: z.string().max(2_000), name: z.string().max(255).optional() }), result: ClonePlan },
+    /**
+     * Clones the repository into the Clone into folder as `name`, then adds it to your projects. Returns at once; the
+     * clone reports through `projects.cloneProgress` with `jobId`. A checkout of the same repository already there is
+     * used as it is. CLONE_OFF while the setting is off, CLONE_TAKEN when something else has the name.
+     */
+    'projects.clone': { params: z.object({ jobId: z.string().min(1).max(100), url: z.string().max(2_000), name: z.string().min(1).max(255) }), result: z.object({}) },
+    /** Stops a clone; the folder it made goes (never one that was there before). `cancelled` follows. */
+    'projects.cancelClone': { params: z.object({ jobId: z.string().min(1).max(100) }), result: z.object({}) },
     // --- Claude profiles (one login per config folder) --------------------------------------
     'profiles.list': { params: z.object({}), result: ProfilesSnapshot },
     /** Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`. */
@@ -1207,6 +1225,10 @@ export const contract = {
     'savedPrompts.changed': z.object({ root: z.string().nullable() }),
     /** Settings were imported: reload projects and actions. */
     'settings.imported': z.object({}),
+    /** A clone (`projects.clone`) moved on: its progress, then done, failed or cancelled. */
+    'projects.cloneProgress': CloneProgress,
+    /** Settings › Projects › Clone from GitHub changed (in any window). */
+    'projects.cloneSettings': CloneSettings,
     /**
      * Context from the VS Code companion, for this window to add as chips (to a session's message box, or New session
      * on a folder) and confirm with `companion.received`. Sent to the window that reported focus last.
