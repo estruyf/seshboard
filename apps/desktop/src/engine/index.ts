@@ -70,6 +70,8 @@ const engine = createEngine({
   stubRouter: process.env.SWITCHBOARD_STUB_ROUTER === '1',
   stubSideQuestions: process.env.SWITCHBOARD_STUB_BTW === '1',
   stubCatchUp: process.env.SWITCHBOARD_STUB_CATCHUP === '1',
+  // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
+  ...(process.env.SWITCHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SWITCHBOARD_CLONE_SOURCE } : {}),
 });
 
 // One misbehaving session must never take the whole engine (and every other session) down.
@@ -93,6 +95,11 @@ process.parentPort.on('message', (event) => {
   // The smoke run's mods step.
   if (data?.type === 'smokeMods') {
     void engine.startModsSmoke();
+    return;
+  }
+  // Whether a window has focus: running pull request checks are read less often without one.
+  if (data?.type === 'foreground') {
+    engine.setForeground((data as { foreground?: unknown }).foreground !== false);
     return;
   }
   // Settings › Mods › Show mods.

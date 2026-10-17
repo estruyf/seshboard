@@ -1,4 +1,4 @@
-import { Brain, Check, Copy, Link, TextQuote } from 'lucide-react';
+import { BookmarkPlus, Brain, Check, Copy, Link, TextQuote } from 'lucide-react';
 import { createContext, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import { contextMenuPoint, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -58,7 +58,7 @@ export const MessageMenuContext = createContext<OpenMessageMenu | null>(null);
  * for a selection, then Quote and Remember this…, for the selection or the whole message), or select text in `container` and use
  * the toolbar that shows above it (Quote, Copy, Remember this…).
  */
-export function useRememberLayer({ container, textOf, onRemember, onQuote }: { container: RefObject<HTMLElement | null>; textOf(key: string): string | null; onRemember(text: string, from: 'user' | 'claude'): void; onQuote(text: string): void }) {
+export function useRememberLayer({ container, textOf, onRemember, onQuote, onSavePrompt }: { container: RefObject<HTMLElement | null>; textOf(key: string): string | null; onRemember(text: string, from: 'user' | 'claude'): void; onQuote(text: string): void; onSavePrompt?(text: string): void }) {
   const [menu, setMenu] = useState<{ at: ContextMenuPoint; text: string; selection: boolean; from: 'user' | 'claude'; link: string | null; entries: MenuEntry[] } | null>(null);
   const [chip, setChip] = useState<Anchor | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -151,6 +151,8 @@ export function useRememberLayer({ container, textOf, onRemember, onQuote }: { c
             ...(menu.entries.length > 0 ? [...menu.entries, 'separator' as const] : []),
             ...(menu.selection ? [{ label: 'Copy', icon: <Copy size={13} aria-hidden />, onSelect: () => void navigator.clipboard.writeText(menu.text) }] : []),
             { label: menu.selection ? 'Quote' : 'Quote message', icon: <TextQuote size={13} aria-hidden />, onSelect: () => onQuote(menu.text), data: { 'data-quote-menu': true } },
+            // A message you sent can become a saved prompt.
+            ...(onSavePrompt && menu.from === 'user' ? [{ label: 'Save as prompt…', icon: <BookmarkPlus size={13} aria-hidden />, onSelect: () => onSavePrompt(menu.text), data: { 'data-save-as-prompt-menu': true } }] : []),
             { label: menu.selection ? 'Remember this…' : 'Remember this message…', icon: <Brain size={13} aria-hidden />, onSelect: () => onRemember(menu.text, menu.from), data: { 'data-remember-menu': true } },
           ]}
         />

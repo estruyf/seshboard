@@ -70,6 +70,18 @@ describe('Attention', () => {
     expect(a.onResumed('s1')).toEqual([{ kind: 'resumed', sessionId: 's1', title: 'Resumed after the usage limit reset', body: 'Fix login' }]);
   });
 
+  it("says how a session's pull request checks ended", () => {
+    const a = new Attention();
+    a.setTitle('s1', 'Fix login');
+    const pr = { number: 123, url: 'https://github.com/o/r/pull/123' };
+    expect(a.onChecksFinished({ sessionId: 's1', path: '/app', branch: 'feat/login', pr, outcome: 'fail', failed: 1, total: 5 })).toEqual([
+      { kind: 'checks-failed', sessionId: 's1', title: 'Checks failed on PR #123', body: '1 of 5 checks failed · Fix login' },
+    ]);
+    expect(a.onChecksFinished({ sessionId: 's2', path: '/app', branch: 'feat/x', pr, outcome: 'pass', failed: 0, total: 3 })).toEqual([
+      { kind: 'checks-passed', sessionId: 's2', title: 'Checks passed on PR #123', body: 'All 3 checks passed · feat/x' },
+    ]);
+  });
+
   it('names a Windows folder by its last part, not its whole path', () => {
     const a = new Attention();
     a.setTitle('s1', 'Fix login');

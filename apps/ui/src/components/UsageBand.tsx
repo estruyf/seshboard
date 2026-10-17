@@ -7,8 +7,11 @@ import { useProfile, useProfiles } from '../state/profilesStore.ts';
 import { ProfileBadge, ProfileDot } from './profiles/ProfileBadge.tsx';
 import { Meter } from './ui/Meter.tsx';
 import type { UsageLine } from './session/foldedMeter.ts';
-import { countdown, limitLabel, nextUsageEntry, resetLabel, spokenLimit, usageMessage, usageSummary, visibleLimits, type UsageEntry } from './usageFormat.ts';
+import { costComputersNotes, countdown, limitCosts, limitLabel, nextUsageEntry, resetLabel, spokenLimit, usageMessage, usageSummary, visibleLimits, type UsageEntry } from './usageFormat.ts';
+import { usePreferences } from '../state/preferencesStore.ts';
+import { useWindowCosts } from './usage/useWindowCosts.ts';
 import { openUsage } from '../state/usageViewStore.ts';
+import { thisComputerName } from '../lib/platform.ts';
 
 interface UsageState {
   /** Plan usage per Claude profile (each login has its own limits). No entry: not loaded yet. */
@@ -113,6 +116,12 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
   }, []);
   const limits = usage ? visibleLimits(usage.limits) : [];
   const extra = usage?.extraUsage;
+  // The estimated API cost of each window, after its bar (Settings › Usage), in the footer and New session's tray.
+  const showCost = usePreferences((s) => s.prefs.showCost) && (footer || tray);
+  const currency = usePreferences((s) => s.prefs.costCurrency);
+  const priced = useWindowCosts(id, showCost && limits.length > 0);
+  const costs = limitCosts(limits, priced.windows, showCost ? currency : null);
+  const costNotes = costComputersNotes(thisComputerName(), priced.counted, priced.uncounted.map((u) => u.reason));
   if (tray) {
     // The profile shows at once, also while its usage loads: it is the answer to "which account?".
     return (
@@ -120,7 +129,7 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
         type="button"
         onClick={() => openUsage(id)}
         aria-label={`Plan usage${profile ? ` of ${profile.name}` : ''}. Open usage`}
-        data-tooltip={usageSummary(limits, now)}
+        data-tooltip={usageSummary(limits, now, costs, costNotes)}
         className={`flex min-w-0 items-center gap-3 rounded-md px-1.5 py-0.5 -mx-1.5 text-meta text-muted ${BAND_HOVER}`}
         data-usage-band
         data-usage-profile={id}
@@ -131,11 +140,17 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
             <span className="truncate text-text">{profile.name}</span>
           </span>
         )}
-        {limits.map((limit) => (
+        {limits.map((limit, i) => (
           <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap">
-            <Meter percent={limit.percent} label={spokenLimit(limit, now)} showValue hideTrackNarrow="tight">
+            <Meter percent={limit.percent} label={spokenLimit(limit, now, costs[i])} showValue hideTrackNarrow="tight">
               <span>{footerLabel(limit)}</span>
             </Meter>
+            {/* The meter's label already says the cost. */}
+            {costs[i] && (
+              <span aria-hidden className="tabular-nums text-faint @max-[560px]:hidden" data-usage-cost={limit.kind}>
+                {costs[i]}
+              </span>
+            )}
             {/* The meter's label already says when it resets. */}
             {limit.resetsAt && (
               <span aria-hidden className="text-faint @max-[640px]:hidden" data-usage-reset>
@@ -167,19 +182,26 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
       <button
         type="button"
         onClick={() => openUsage(id)}
-        aria-label={`Plan usage: ${limits.map((l) => spokenLimit(l, now)).join('. ')}. Open usage`}
-        data-tooltip={usageSummary(limits, now)}
+        aria-label={`Plan usage: ${limits.map((l, i) => spokenLimit(l, now, costs[i])).join('. ')}. Open usage`}
+        data-tooltip={usageSummary(limits, now, costs, costNotes)}
         className={`flex min-w-0 items-center gap-4 rounded-md px-1 py-0.5 text-meta text-muted ${BAND_HOVER}`}
         data-usage-band
         data-usage-profile={id}
       >
-        {limits.map((limit) => (
-          <Meter key={`${limit.kind}:${limit.scope ?? ''}`} percent={limit.percent} showValue hideTrackNarrow>
-            <span>{footerLabel(limit)}</span>
-          </Meter>
+        {limits.map((limit, i) => (
+          <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap">
+            <Meter percent={limit.percent} showValue hideTrackNarrow>
+              <span>{footerLabel(limit)}</span>
+            </Meter>
+            {costs[i] && (
+              <span className="tabular-nums text-faint @max-[400px]/meters:hidden" data-usage-cost={limit.kind}>
+                {costs[i]}
+              </span>
+            )}
+          </span>
         ))}
         {extra?.enabled && extra.usedCredits !== null && extra.usedCredits > 0 && (
-          <span className="whitespace-nowrap @max-[860px]:hidden">
+          <span className="whitespace-nowrap @max-[400px]/meters:hidden">
             <span className="text-ok">{money(extra.usedCredits, extra.currency)}</span> extra
           </span>
         )}

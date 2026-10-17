@@ -19,6 +19,10 @@ export interface PushPayload {
   /** A tool prompt: the notification offers Deny and Allow where the browser has buttons, and answers this request. */
   requestId?: string;
   answers?: boolean;
+  /** The device it goes to, as this computer knows it: a phone paired with more than one computer finds which one sent it. */
+  deviceId?: string;
+  /** The label the device asked for (this computer's name), only from a device paired with more than one computer. */
+  computer?: string;
 }
 
 /**

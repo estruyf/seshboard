@@ -15,6 +15,8 @@ import {
   BellRing,
   Blocks,
   Bot,
+  Bookmark,
+  BookmarkPlus,
   Brain,
   CircleHelp,
   CloudDownload,
@@ -30,6 +32,7 @@ import {
   FileDiff,
   Folder,
   FolderCog,
+  FolderDown,
   FolderGit2,
   FolderPlus,
   Gauge,
@@ -95,10 +98,12 @@ import {
   Users,
   Volume2,
   VolumeX,
+  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/protocol/bridge';
+import type { PromptScope } from '@switchboard/protocol/client';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
@@ -111,7 +116,7 @@ import type { PaletteContext } from './paletteContext.ts';
 import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteState.ts';
 
 /** Requests the session view answers, because the dialog or menu they open lives there. */
-export type SessionRequest = 'commit' | 'create-pr' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next';
+export type SessionRequest = 'commit' | 'create-pr' | 'fix-checks' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next';
 /** Requests the New session view answers: they change its own choices. */
 export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up' | 'add-project';
 
@@ -191,6 +196,10 @@ export interface PaletteApi {
   stageAll(): void;
   revertAll(): void;
   runAction(id: string): void;
+  /** Puts a saved prompt in the message box on screen, to fill in. */
+  usePrompt(scope: PromptScope, id: string): void;
+  /** The saved prompt editor, for a new one. */
+  newPrompt(): void;
   hideTerminal(): void;
   toggleMaximizeTerminal(): void;
   dockTerminal(dock: TerminalDock): void;
@@ -293,11 +302,14 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: Lucid
   { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
   { id: 'sessions', label: 'Sessions', icon: Archive },
+  { id: 'projects', label: 'Projects', icon: FolderGit2 },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
+  { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'prompts', label: 'Prompts', icon: Bookmark },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
@@ -328,6 +340,15 @@ export const COMMANDS: PaletteCommand[] = [
     // The prompt step, in the scratch folder the engine keeps: no project to pick.
     when: (ctx) => ctx.connected && ctx.questionsDir !== null,
     next: (ctx) => ({ kind: 'prompt', root: ctx.questionsDir!, worktree: false, chip: 'Quick question' }),
+  },
+  {
+    id: 'new-session-clone',
+    title: 'New session from a GitHub repository…',
+    group: 'general',
+    icon: FolderDown,
+    keywords: 'clone git github url repository repo download start',
+    when: (ctx) => ctx.cloneEnabled,
+    next: () => ({ kind: 'clone', chip: 'Clone from GitHub' }),
   },
   {
     id: 'new-session-worktree',
@@ -611,6 +632,8 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'prompt-previous', title: 'Previous prompt', group: 'session', shortcut: keysFor('transcript.prompt-previous'), icon: ArrowUp, keywords: 'outline rail jump back earlier message scroll', when: hasSession, run: (api) => api.sessionRequest('prompt-previous') },
   { id: 'prompt-next', title: 'Next prompt', group: 'session', shortcut: keysFor('transcript.prompt-next'), icon: ArrowDown, keywords: 'outline rail jump forward later message scroll', when: hasSession, run: (api) => api.sessionRequest('prompt-next') },
   { id: 'remember-this', title: 'Remember this…', group: 'session', icon: Brain, keywords: 'memory save note selection reply', when: (ctx) => !!session(ctx)?.hasReply && ctx.connected, run: (api) => api.rememberThis() },
+  { id: 'use-saved-prompt', title: 'Use saved prompt…', group: 'general', icon: Bookmark, keywords: 'template snippet blanks fill prompts', when: (ctx) => ctx.composer !== null && ctx.prompts.length > 0, next: () => ({ kind: 'pick', list: 'prompt', chip: 'Saved prompt' }) },
+  { id: 'new-saved-prompt', title: 'New saved prompt…', group: 'general', icon: BookmarkPlus, keywords: 'template snippet blanks create prompts', when: (ctx) => ctx.connected, run: (api) => api.newPrompt() },
   { id: 'quote-in-reply', title: 'Quote in reply', group: 'session', icon: TextQuote, keywords: 'quote answer question selection reply message box', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.quoteInReply() },
   { id: 'copy-last-reply', title: 'Copy last reply', group: 'session', icon: Copy, keywords: 'clipboard markdown answer', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.copyLastReply() },
   { id: 'copy-session-id', title: 'Copy session id', group: 'session', icon: Hash, keywords: 'clipboard uuid resume', when: (ctx) => session(ctx) !== null, run: (api) => api.copySessionId() },
@@ -666,6 +689,15 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'git github pr gh open view',
     when: (ctx) => inGit(ctx) && ctx.git!.github && (ctx.git!.pr !== null || ctx.git!.prBlocked === null),
     run: (api, ctx) => (ctx.git?.pr ? api.openUrl(ctx.git.pr.url) : api.sessionRequest('create-pr')),
+  },
+  {
+    id: 'fix-checks',
+    title: 'Fix failing checks with Claude',
+    group: 'git',
+    icon: Wrench,
+    keywords: 'git github pr ci checks actions failed red build tests logs',
+    when: (ctx) => inGit(ctx) && ctx.git!.failingChecks > 0 && ctx.composer !== null,
+    run: (api) => api.sessionRequest('fix-checks'),
   },
   { id: 'sync', title: 'Sync with remote', group: 'git', icon: RefreshCw, keywords: 'git pull push fetch', when: (ctx) => inGit(ctx) && ctx.git!.hasRemote, run: (api) => api.syncWithRemote() },
   { id: 'switch-branch', title: 'Switch branch…', group: 'git', icon: GitBranch, keywords: 'git checkout', when: (ctx) => inGit(ctx) && !session(ctx)!.isWorktree && !session(ctx)!.running, run: (api) => api.sessionRequest('branch-menu') },
@@ -740,6 +772,19 @@ export function actionCommands(ctx: PaletteContext): PaletteCommand[] {
   }));
 }
 
+/** "Prompt: <name>" for each saved prompt the message box on screen can use. */
+export function promptCommands(ctx: PaletteContext): PaletteCommand[] {
+  return ctx.prompts.map((prompt) => ({
+    id: `prompt:${prompt.scope.kind}:${prompt.id}`,
+    title: `Prompt: ${prompt.name}`,
+    group: 'general',
+    icon: Bookmark,
+    keywords: 'saved prompt template snippet',
+    when: (c) => c.composer !== null,
+    run: (api) => api.usePrompt(prompt.scope, prompt.id),
+  }));
+}
+
 /** "Theme: <name>" for each theme but the one in use. */
 export function themeCommands(ctx: PaletteContext): PaletteCommand[] {
   return ctx.themes.map((theme) => ({
@@ -792,7 +837,7 @@ export function computerCommands(ctx: PaletteContext): PaletteCommand[] {
 
 /** Every command that can show here, before matching what is typed. */
 export function visibleCommands(ctx: PaletteContext, commands: readonly PaletteCommand[] = COMMANDS): PaletteCommand[] {
-  return [...commands, ...actionCommands(ctx), ...themeCommands(ctx), ...projectCommands(ctx), ...computerCommands(ctx)].filter((command) => command.when(ctx));
+  return [...commands, ...actionCommands(ctx), ...promptCommands(ctx), ...themeCommands(ctx), ...projectCommands(ctx), ...computerCommands(ctx)].filter((command) => command.when(ctx));
 }
 
 /** A command as a row: its title for this context, and which letters matched what was typed. */

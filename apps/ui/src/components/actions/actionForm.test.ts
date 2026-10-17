@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ActionSuggestion, ListedAction } from '@switchboard/protocol/client';
-import { applySavedAction, EMPTY_DRAFT, friendlySaveError, groupActions, insertVariable, projectName, slug, validateDraft, visibleSuggestions, withoutAction } from './actionForm.ts';
+import { applySavedAction, EMPTY_DRAFT, friendlySaveError, groupActions, insertVariable, projectName, scopeParams, slug, validateDraft, visibleSuggestions, withoutAction } from './actionForm.ts';
 
 const action = (over: Partial<ListedAction>): ListedAction => ({
   ...EMPTY_DRAFT,
@@ -33,6 +33,14 @@ describe('groupActions', () => {
     const { yours, shared } = groupActions(list);
     expect(yours.map((a) => a.id)).toEqual(['a', 'b']);
     expect(shared.map((a) => a.id)).toEqual(['c']);
+  });
+});
+
+describe('scopeParams', () => {
+  it('sends global actions without a project and shared ones to the project file', () => {
+    expect(scopeParams('project', '/p')).toEqual({ projectRoot: '/p' });
+    expect(scopeParams('global', '/p')).toEqual({ projectRoot: null });
+    expect(scopeParams('shared', '/p')).toEqual({ projectRoot: '/p', shared: true });
   });
 });
 
@@ -74,6 +82,11 @@ describe('validateDraft', () => {
   it('allows the same name in another scope, or for the action being edited', () => {
     expect(validateDraft({ ...EMPTY_DRAFT, name: 'Test', command: 'ls', scope: 'global' }, [action({})], null)).toEqual({});
     expect(validateDraft({ ...EMPTY_DRAFT, name: 'Test', command: 'ls' }, [action({})], { scope: 'project', id: 'test' })).toEqual({});
+  });
+  it('flags a new shared action your own action for this project would hide, but not the one moving', () => {
+    const draft = { ...EMPTY_DRAFT, name: 'Test', command: 'ls', scope: 'shared' as const };
+    expect(validateDraft(draft, [action({})], null).name).toBe('Your action “Test” for this project already uses this name.');
+    expect(validateDraft(draft, [action({})], { scope: 'project', id: 'test' })).toEqual({});
   });
   it('refuses a shortcut Switchboard uses', () => {
     expect(validateDraft({ ...EMPTY_DRAFT, name: 'X', command: 'ls', shortcut: 'cmd+k' }, [], null).shortcut).toBe('⌘K is used by Switchboard.');

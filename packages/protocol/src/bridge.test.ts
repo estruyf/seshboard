@@ -1,6 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, mergePreferences, resolveSound, sanitizePreferences, type SoundList, type SoundPrefs } from './bridge.ts';
 
+describe('contextWarning preference', () => {
+  it('warns about a large context from 60%, and asks on quitting only once until turned on', () => {
+    expect(DEFAULT_PREFERENCES.contextWarning).toEqual({ enabled: true, percent: 60, notifyExpiry: true, onQuit: false, quitTipShown: false });
+  });
+
+  it('keeps the percentage to 40–95 in steps of 5, and fills in what is missing', () => {
+    expect(sanitizePreferences({ contextWarning: { percent: 72 } })).toEqual({ contextWarning: { ...DEFAULT_PREFERENCES.contextWarning, percent: 70 } });
+    expect(sanitizePreferences({ contextWarning: { percent: 5, onQuit: true } }).contextWarning).toMatchObject({ percent: 40, onQuit: true });
+    expect(sanitizePreferences({ contextWarning: { percent: 120 } }).contextWarning?.percent).toBe(95);
+    expect(sanitizePreferences({ contextWarning: 'on' })).toEqual({});
+  });
+
+  it('merges a change field by field', () => {
+    const merged = sanitizePreferences(mergePreferences({ ...DEFAULT_PREFERENCES, contextWarning: { ...DEFAULT_PREFERENCES.contextWarning, percent: 80 } }, { contextWarning: { quitTipShown: true } }));
+    expect(merged.contextWarning).toMatchObject({ percent: 80, quitTipShown: true, enabled: true });
+  });
+});
+
 describe('sidebarCollapsed preference', () => {
   it('collapses to the minimal rail by default', () => {
     expect(DEFAULT_PREFERENCES.sidebarCollapsed).toBe('minimal');

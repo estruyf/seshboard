@@ -21,7 +21,7 @@ export interface Toast {
   /** The line, or the card's title. */
   message: string;
   /** A small icon before the message: added to the queue, a pull request created, a device connected (by its kind). */
-  icon?: 'queue' | 'pull-request' | 'phone' | 'browser' | 'computer';
+  icon?: 'queue' | 'pull-request' | 'phone' | 'browser' | 'computer' | 'shared';
   /** A coloured dot before the message instead (a theme's accent); a validated colour value. */
   dot?: string;
   /** A status dot in a theme colour: `ok` for something that became free. */

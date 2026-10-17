@@ -56,15 +56,31 @@ function commitFile(cwd: string, path: string, content: string, message: string,
 
 /**
  * The tour's gh (SWITCHBOARD_GH): signed in, unless the file `.fake-gh-signed-out` is in the demo home, and nothing
- * else works, so pull request lists stay empty and nothing ever reaches GitHub.
+ * else works, so pull request lists stay empty and nothing ever reaches GitHub. While `.fake-gh-checks` is there (the
+ * checks it holds), feat/dark-mode has pull request #42 with those checks.
  */
 function fakeGh(home: string): string {
   const path = join(home, '.local', 'bin', 'fake-gh');
   mkdirSync(join(path, '..'), { recursive: true });
   const signedOut = join(home, '.fake-gh-signed-out');
+  const checks = join(home, '.fake-gh-checks');
+  const pr = JSON.stringify([{ number: 42, state: 'OPEN', headRefName: 'feat/dark-mode', url: 'https://github.com/acme/acme-store/pull/42', isDraft: false }]);
   writeFileSync(
     path,
-    `#!/bin/sh\nif [ "$1 $2" = "auth status" ]; then\n  if [ -f '${signedOut}' ]; then echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1; fi\n  exit 0\nfi\necho "the screenshot tour's gh never reaches GitHub" >&2\nexit 1\n`,
+    [
+      '#!/bin/sh',
+      'if [ "$1 $2" = "auth status" ]; then',
+      `  if [ -f '${signedOut}' ]; then echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1; fi`,
+      '  exit 0',
+      'fi',
+      `if [ -f '${checks}' ]; then`,
+      `  if [ "$1 $2" = "pr list" ]; then echo '${pr}'; exit 0; fi`,
+      `  if [ "$1 $2" = "pr checks" ]; then cat '${checks}'; exit 1; fi`,
+      'fi',
+      `echo "the screenshot tour's gh never reaches GitHub" >&2`,
+      'exit 1',
+      '',
+    ].join('\n'),
   );
   chmodSync(path, 0o755);
   return path;
@@ -166,6 +182,11 @@ function extendWorld(world: DemoWorld): void {
           { name: 'Dev server', icon: 'play', command: 'npm run dev' },
           { name: 'Install', icon: 'package', command: 'npm install', runOnWorktreeCreate: true },
           { name: 'Review', icon: 'sparkles', type: 'prompt', command: 'Review the changes on ${branch} and list anything risky.' },
+        ],
+        // Saved prompts the team shares.
+        prompts: [
+          { id: 'fix-failing-test', name: 'Fix failing test', text: 'Fix {{test:file}}. It fails on {{branch:branch}} since the last merge.' },
+          { id: 'review-pull-request', name: 'Review pull request', text: 'Review {{pr:pr}}. Focus on {{focus:choice=security|performance|tests}}.' },
         ],
       },
       null,
@@ -855,6 +876,43 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'git-checks',
+    async take(t) {
+      // The checks of a pull request for feat/dark-mode, with times around now. The Branches tab's refresh reads the
+      // pull requests again (they are kept for a few minutes); it runs again at the end, so later pictures have none.
+      const minutes = (n: number) => new Date(Date.now() - n * 60_000).toISOString();
+      const run = (job: number) => `https://github.com/acme/acme-store/actions/runs/1001/job/${job}`;
+      const checks = [
+        { name: 'test (ubuntu-latest)', state: 'FAILURE', bucket: 'fail', link: run(2001), workflow: 'CI', description: '', startedAt: minutes(9), completedAt: minutes(5.3) },
+        { name: 'lint', state: 'SUCCESS', bucket: 'pass', link: run(2002), workflow: 'CI', description: '', startedAt: minutes(9), completedAt: minutes(8.2) },
+        { name: 'build', state: 'SUCCESS', bucket: 'pass', link: run(2003), workflow: 'CI', description: '', startedAt: minutes(9), completedAt: minutes(7.75) },
+        { name: 'deploy-preview', state: 'IN_PROGRESS', bucket: 'pending', link: run(2004), workflow: 'Preview', description: '', startedAt: minutes(1.2), completedAt: '0001-01-01T00:00:00Z' },
+      ];
+      const marker = join(t.world.home, '.fake-gh-checks');
+      const readPullRequests = async () => {
+        await openProjectPage(t, 'acme-store');
+        await t.click('[data-project-tab="branches"]');
+        await t.need('[data-branches-table] [data-branch-row]', 'the branches tab showed nothing', 30_000);
+        await t.click('[data-branch-refresh]');
+        await t.gone('[data-branches-loading]', 'the branches kept loading');
+        await t.until('!document.querySelector("[data-branch-refresh]:disabled")', 'the branches did not refresh', 30_000);
+      };
+      writeFileSync(marker, JSON.stringify(checks));
+      try {
+        await readPullRequests();
+        await t.openSession(HERO);
+        await t.click('[data-git-button] [data-git-menu]');
+        await t.need('[role="menu"] [data-check="fail"]', 'the git menu listed no failed check', 15_000);
+        await t.shot('git-checks', { keepFocus: true });
+        await t.escape();
+      } finally {
+        rmSync(marker, { force: true });
+        await readPullRequests();
+        await t.home();
+      }
+    },
+  },
+  {
     name: 'shortcuts',
     async take(t) {
       await t.openSession(HERO);
@@ -984,12 +1042,132 @@ const screens: Screen[] = [
     },
   },
   {
+    // Clone from GitHub, from a bare repository in the clone source a driven run clones from (never the network):
+    // turned on with ~/Developer as its folder, the form filled in and the clone done, with a prompt. Turned off after.
+    name: 'clone-from-github',
+    async take(t) {
+      const userData = await t.app.evaluate(({ app }) => app.getPath('userData'));
+      const work = join(t.world.home, '.tmp-clone', 'design-tokens');
+      const bare = join(userData, 'clone-source', 'acme', 'design-tokens.git');
+      // Taken once per scheme: start from nothing each time.
+      rmSync(work, { recursive: true, force: true });
+      rmSync(bare, { recursive: true, force: true });
+      mkdirSync(work, { recursive: true });
+      git(work, ['init', '-q', '-b', 'main']);
+      commitFile(work, 'README.md', '# Design tokens\n\nColours, type and spacing for the Acme apps.\n', 'Add the README');
+      mkdirSync(join(userData, 'clone-source', 'acme'), { recursive: true });
+      git(work, ['clone', '-q', '--bare', work, bare]);
+      const folder = join(t.world.home, 'Developer');
+      await t.app.evaluate((_electron, dir) => {
+        process.env.SWITCHBOARD_PICK_FOLDER = dir;
+      }, folder);
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="projects"]');
+      await t.click('[data-clone-enabled]');
+      await t.until(`document.querySelector('[data-clone-enabled]')?.getAttribute('aria-checked') === 'true'`, 'Clone from GitHub did not turn on');
+      await t.click('[data-close-settings]');
+
+      await openNewSession(t, 'acme-store');
+      await t.click('[data-new-session-view] [data-clone-from-github]');
+      await t.page.locator('[data-clone-url]').fill('https://github.com/acme/design-tokens');
+      await t.until(`document.querySelector('[data-clone-repo]')?.dataset.clonePlan === 'free'`, 'the clone form did not say where it goes');
+      await t.press('Enter');
+      await t.until(`document.querySelector('[data-clone-repo]')?.dataset.cloneState === 'done'`, 'the clone did not finish');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('Read the tokens and list the colours that fail contrast in dark mode.');
+      await t.settle();
+      await t.shot('clone-from-github');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+
+      // Back as it was: the form closed, the project removed, the setting off, the clone gone.
+      await t.click('[data-clone-close]');
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="projects"]');
+      await t.click('[data-clone-enabled]');
+      await t.until(`document.querySelector('[data-clone-enabled]')?.getAttribute('aria-checked') === 'false'`, 'Clone from GitHub did not turn off');
+      await t.click('[data-close-settings]');
+      const clone = JSON.stringify(join(folder, 'design-tokens'));
+      await t.click('[data-open-projects]');
+      await t.click(`[data-project-row=${clone}] [data-project-more-button]`);
+      await t.click('[role=menu] [data-remove-project]');
+      await t.click('[data-confirm]');
+      await t.gone(`[data-project-row=${clone}]`, 'the clone was not removed from the projects');
+      rmSync(join(folder, 'design-tokens'), { recursive: true, force: true });
+      rmSync(join(t.world.home, '.tmp-clone'), { recursive: true, force: true });
+    },
+  },
+  {
     name: 'queue',
     async take(t) {
       await t.home();
       await t.need('[data-home-queue] [data-queue-item]', 'Home shows no queue');
       await hideUsageStatus(t);
       await t.shot('queue');
+    },
+  },
+  {
+    name: 'saved-prompts-slash',
+    async take(t) {
+      await openNewSession(t, 'acme-store');
+      await t.click('[data-new-session-view] [data-composer]');
+      await t.page.keyboard.insertText('/');
+      await t.need('[data-palette] [data-saved-prompt-option]', 'the / menu listed no saved prompts');
+      await t.shot('saved-prompts-slash', { keepFocus: true });
+      await t.escape();
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+    },
+  },
+  {
+    name: 'saved-prompt-fill',
+    async take(t) {
+      await openNewSession(t, 'acme-store');
+      await t.click('[data-new-session-view] [data-saved-prompt-chip="implement-issue"]', 'New session has no chip for Implement issue');
+      await t.need('[data-saved-prompt-header]', 'the chip did not put the prompt in the message box');
+      await t.until(`document.activeElement?.matches('[data-blank="issue"]')`, 'the first blank did not take the focus');
+      // Without GitHub here, the issue's number is taken as typed.
+      await t.press('1');
+      await t.need('[data-blank-popover] [data-blank-field]', 'typing on the issue did not open its field');
+      await t.page.keyboard.type('32');
+      await t.click('[data-blank-popover] [data-blank-option="#132"]', 'the typed issue was not offered');
+      await t.until(`document.activeElement?.matches('[data-blank="branch"]')`, 'the branch blank did not take the focus');
+      await t.press('Enter');
+      await t.click('[data-blank-popover] [data-blank-option="feat/wishlist"]', 'the branch list has no feat/wishlist');
+      await t.click('[data-new-session-view] [data-composer]');
+      await t.page.keyboard.insertText('Keep the wishlist button working while you are there.');
+      await t.need('[data-blanks-left="1"]', 'the box did not say 1 blank left');
+      await t.shot('saved-prompt-fill', { clip: '[data-new-session-view]', pad: 8 });
+      // Back to an empty box, so no unsent prompt is left for the other pictures.
+      await t.click('[data-saved-prompt-clear]');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+    },
+  },
+  {
+    name: 'saved-prompt-editor',
+    async take(t) {
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="prompts"]');
+      await t.click('[data-saved-prompts-new]', 'Settings › Prompts has no New prompt');
+      await (await t.need('[data-prompt-editor-name]', 'New prompt did not open')).fill('Ship a fix');
+      await t.click('[data-prompt-editor]');
+      await t.page.keyboard.insertText('Fix {{issue:issue}} and add a test for it. Deploy to {{env:choice=staging|production}} when it passes.');
+      await t.need('[data-prompt-editor-preview]', 'the editor has no preview line');
+      await t.shot('saved-prompt-editor', { keepFocus: true });
+      // Never saved: the picture is all it is for.
+      await t.click('[data-prompt-editor-dialog] button:has-text("Cancel")');
+      await t.gone('[data-prompt-editor-dialog]', 'the prompt editor did not close');
+      await t.click('[data-close-settings]');
+    },
+  },
+  {
+    name: 'settings-prompts',
+    async take(t) {
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="prompts"]');
+      await t.need('[data-saved-prompt-row="fix-failing-test"]', 'Settings › Prompts did not list the shared prompts');
+      await t.click('[data-saved-prompt-row="fix-failing-test"] [data-saved-prompt-menu]');
+      await t.need('[role="menu"] [data-prompt-move]', 'the prompt menu has no Use in');
+      await t.shot('settings-prompts', { keepFocus: true });
+      await t.escape();
+      await t.click('[data-close-settings]');
     },
   },
   {
@@ -1400,7 +1578,7 @@ const screens: Screen[] = [
       await t.page.keyboard.press('Escape');
     },
   },
-  ...(['general', 'theme', 'sidebar', 'conversation', 'mods', 'focus', 'profiles', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
+  ...(['general', 'theme', 'sidebar', 'projects', 'conversation', 'mods', 'focus', 'profiles', 'usage', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
     (section): Screen => ({
       name: `settings-${section}`,
       async take(t) {
@@ -1444,6 +1622,23 @@ async function openNewSession(t: Tour, project: string): Promise<void> {
   }
   void index;
   throw new Error(`New session could not pick ${project}`);
+}
+
+/** Makes a saved prompt in Settings › Prompts, the text pasted in (its blanks become chips). */
+async function makePrompt(t: Tour, name: string, text: string, useIn: 'global' | 'personal'): Promise<void> {
+  await t.click('[data-open-settings]');
+  await t.click('[data-settings-section="prompts"]');
+  await t.click('[data-saved-prompts-new]', 'Settings › Prompts has no New prompt');
+  await (await t.need('[data-prompt-editor-name]', 'New prompt did not open')).fill(name);
+  await t.click(`[data-prompt-use-in="${useIn}"]`);
+  await t.click('[data-prompt-editor]');
+  await t.page.keyboard.insertText(text);
+  await t.need('[data-prompt-editor] [data-editor-blank]', 'the pasted prompt has no blanks');
+  await t.click('[data-prompt-editor-save]');
+  await t.gone('[data-prompt-editor-dialog]', `“${name}” was not saved`);
+  // The toast that says it was saved would be in the pictures.
+  await t.page.locator('[data-toast] button[aria-label="Dismiss"]').first().click().catch(() => {});
+  await t.click('[data-close-settings]');
 }
 
 async function openMemoryTab(t: Tour): Promise<void> {
@@ -1645,6 +1840,10 @@ async function setUp(t: Tour): Promise<void> {
   // Pin the session people come back to.
   await t.openSession('Refactor auth middleware');
   await t.command('pin', 'Pin');
+
+  // Saved prompts of your own, for every project and for acme-store (the open session's project) just for you.
+  await makePrompt(t, 'Implement issue', 'Start implementing {{issue:issue}} on {{branch:branch}}. Deploy to {{env:choice=staging|production}} when the tests pass.', 'global');
+  await makePrompt(t, 'Write release notes', 'Write the release notes for {{version}} from the changes since {{base:branch}}.', 'personal');
 
   // An unsent message in a finished session.
   await t.openSession('Investigate flaky checkout');

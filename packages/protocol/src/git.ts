@@ -125,3 +125,63 @@ export const PrProgress = z.object({
   error: PrError.nullable(),
 });
 export type PrProgress = z.infer<typeof PrProgress>;
+
+/** Where a pull request's check stands, as gh puts it (`bucket`): passed, failed, still running, skipped or cancelled. */
+export const CheckBucket = z.enum(['pass', 'fail', 'pending', 'skipping', 'cancel']);
+export type CheckBucket = z.infer<typeof CheckBucket>;
+
+/** One check of a pull request (a GitHub Actions job, or a status from another service), from `gh pr checks`. */
+export const PrCheck = z.object({
+  name: z.string(),
+  bucket: CheckBucket,
+  /** The workflow a GitHub Actions job is in; empty for other checks. */
+  workflow: z.string(),
+  description: z.string(),
+  /** Its page (`…/actions/runs/<run>/job/<job>` for a GitHub Actions job); empty when it has none. */
+  link: z.string(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+});
+export type PrCheck = z.infer<typeof PrCheck>;
+
+/** All checks together: one failed, one still runs, all passed (or skipped), or the pull request has none. */
+export const ChecksSummary = z.enum(['pass', 'fail', 'pending', 'none']);
+export type ChecksSummary = z.infer<typeof ChecksSummary>;
+
+/** The checks of the open pull request of the branch checked out at `path`. */
+export const PrChecks = z.object({
+  /** The checkout's top folder. */
+  path: z.string(),
+  branch: z.string(),
+  pr: z.object({ number: z.number(), url: z.string() }),
+  /** Failed ones first. */
+  checks: z.array(PrCheck),
+  summary: ChecksSummary,
+  /** gh couldn't read them: not installed, not signed in, or something else (its line). `checks` is empty then. */
+  error: z.object({ code: z.enum(['GH_MISSING', 'GH_AUTH', 'UNKNOWN']), message: z.string() }).nullable(),
+  /** When they were read (ms since the epoch). */
+  at: z.number(),
+});
+export type PrChecks = z.infer<typeof PrChecks>;
+
+/** The checks of a pull request finished (none still runs) after some were running, for a session's branch. */
+export const ChecksFinished = z.object({
+  sessionId: z.string(),
+  path: z.string(),
+  branch: z.string(),
+  pr: z.object({ number: z.number(), url: z.string() }),
+  outcome: z.enum(['pass', 'fail']),
+  failed: z.number(),
+  total: z.number(),
+});
+export type ChecksFinished = z.infer<typeof ChecksFinished>;
+
+/** The end of a failed check's log, for Fix failing checks with Claude. `log` is null for checks that aren't GitHub Actions jobs, or when it couldn't be read (`note` says why). */
+export const CheckLog = z.object({
+  name: z.string(),
+  workflow: z.string(),
+  link: z.string(),
+  log: z.string().nullable(),
+  note: z.string().nullable(),
+});
+export type CheckLog = z.infer<typeof CheckLog>;
