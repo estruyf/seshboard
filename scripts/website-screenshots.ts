@@ -1568,7 +1568,8 @@ const screens: Screen[] = [
       const started = JSON.parse(readFileSync(modsStarted, 'utf8')) as { sessionId?: string; supported?: boolean };
       if (!started.sessionId || !started.supported) throw new Error("the mods session didn't start, or this Claude Code doesn't draw mods");
       await t.click(`[data-session-id="${started.sessionId}"]`);
-      await t.need('[data-current-session] [data-mod-band="agent-watch"]', 'the agent-watch band did not show');
+      // Claude Code doesn't say which mod drew a band, so with two mods in the profile its frame says "mod".
+      await t.need('[data-current-session] [data-mod-bands] [data-mod-band]', 'the agent-watch band did not show');
       await t.need('[data-current-session] [data-mod-pane="agents"]', 'the Agents pane did not open');
       await t.settle();
       await t.shot('mods');

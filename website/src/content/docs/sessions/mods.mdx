@@ -11,7 +11,7 @@ Mods are Claude Code plugins that draw UI: a band above the message box, a pane 
 
 <Screenshot name="mods" alt="A session with two mods. Above the message box, a band from agent-watch says 3 of 3 agents running, with Show agents and Raise limit. On the right, the Agents pane from agent-watch lists three running agents, each with Stop. The header shows 2 mods" eager />
 
-Everything a mod draws sits in a frame with a puzzle icon and the mod's name, so you always know where it comes from. A mod can't draw its own header, and it can't look like Switchboard's own cards, such as a permission prompt.
+Everything a mod draws sits in a frame with a puzzle icon and the mod's name, so you always know where it comes from. The one exception is a band when you have more than one mod: Claude Code doesn't say which mod drew it, so its frame says *mod* (see [Settings › Mods](#settings--mods)). A mod can't draw its own header, and it can't look like Switchboard's own cards, such as a permission prompt.
 
 Mods need a Claude Code version with mod support. A session on an older version works as before, without them.
 
