@@ -110,6 +110,18 @@ describe('stepLabel', () => {
     expect(stepLabel(tool('1', 'Bash', { description: 'Read the file' }), null).present).toBe('Reading the file');
   });
 
+  it('names a command without a description by what it runs, not its script', () => {
+    const run = (command: string) => stepLabel(tool('1', 'Bash', { command }), null);
+    expect(run('npm test')).toEqual({ past: 'Run npm test', present: 'Running npm test' });
+    expect(run('cd "/repo/my app" && npm test').present).toBe('Running npm test');
+    expect(run("python3 -I - <<'E'\nimport re\nR=re.compile(r'<<<<<<< HEAD')\nE").present).toBe('Running a Python script');
+    expect(run('/usr/bin/python3.12 -c "import sys; print(sys.version); print(sys.path); print(sys.executable)"').present).toBe('Running a Python script');
+    expect(run("cat > /tmp/a.txt <<'EOF'\nhello\nEOF").present).toBe('Running cat');
+    expect(run('FORCE_COLOR=0 git log --oneline --decorate --graph --all --since="2 weeks ago" -- apps/ui').present).toBe('Running git');
+    expect(run("node -e 'console.log(1)'\necho done").present).toBe('Running a Node script');
+    expect(run('$(which x) --a-very-long-flag-to-push-this-over-the-limit --and-another-one').present).toBe('Running a command');
+  });
+
   it('turns verbs into -ing forms', () => {
     expect(['Read', 'Run', 'Use', 'Write', 'Fix', 'Stop', 'Open', 'Tie', 'Check', 'commit', 'Let', 'Add', 'Show', 'Plan', 'Edit', 'Visit', 'Quit', 'Rerun'].map(gerund)).toEqual([
       'Reading', 'Running', 'Using', 'Writing', 'Fixing', 'Stopping', 'Opening', 'Tying', 'Checking', 'committing', 'Letting', 'Adding', 'Showing', 'Planning', 'Editing', 'Visiting', 'Quitting', 'Rerunning',
