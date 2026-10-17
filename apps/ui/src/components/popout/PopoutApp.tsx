@@ -12,6 +12,7 @@ import { useThemesSync } from '../../state/themeStore.ts';
 import { useUpNextSync } from '../../state/upNextStore.ts';
 import { useCatchUpSync } from '../../state/useCatchUpSync.ts';
 import { useDraftsSync } from '../../state/useDraftsSync.ts';
+import { usePopoutViewReport } from '../../state/useSessionViewSync.ts';
 import { useHostsSync } from '../../state/useHostsSync.ts';
 import { useModsSync } from '../../state/useModsSync.ts';
 import { usePopoutsSync } from '../../state/usePopoutsSync.ts';
@@ -76,6 +77,8 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   useSavedPromptsSync();
   useReadyReport();
   usePopoutWindow(sessionId);
+  // Main keeps the session's panels, to give them back to the main window when this one goes.
+  usePopoutViewReport(sessionId);
   // The terminal, Open in editor: as in the main window, for this window's session.
   useSessionShortcuts(() => ({ terminalOwner: sessionId, sessionId }));
   const shown = useSessions((s) => s.layout !== null);

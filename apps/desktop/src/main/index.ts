@@ -5,7 +5,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
@@ -269,6 +269,12 @@ let notifier: Notifier;
 let mainWindow: BrowserWindow | null = null;
 /** Pop-out windows by the session each one shows. */
 const popouts = new Map<string, BrowserWindow>();
+/**
+ * How each pop-out's session has its panels laid out, by session (a `SessionView`, which main never looks inside): what
+ * the main window had when the session popped out, then what the pop-out last reported. It goes back to the main window
+ * when the pop-out goes. In memory only.
+ */
+const popoutViews = new Map<string, SessionView>();
 /** The session on screen in each window (by webContents id), as its renderer reports it. */
 const focusedSessions = new Map<number, string | null>();
 
@@ -687,9 +693,11 @@ function broadcastPopouts(): void {
  * the session and nothing else; closing it only closes the window (the session keeps running) and never asks
  * to quit. Pop-outs aren't saved: they close with the main window and don't come back after a restart.
  */
-function popOut(sessionId: string): void {
+function popOut(sessionId: string, view: unknown = null): void {
   const open = popouts.get(sessionId);
   if (open && !open.isDestroyed()) return bringToFront(open);
+  if (isSessionView(view)) popoutViews.set(sessionId, view);
+  else popoutViews.delete(sessionId);
   const from = mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized() ? mainWindow.getBounds() : null;
   const placed = from ? placePopout(from, screen.getDisplayMatching(from).workArea, POPOUT_SIZE, POPOUT_MIN, popouts.size) : undefined;
   const win = new BrowserWindow({
@@ -710,16 +718,48 @@ function popOut(sessionId: string): void {
     if (popouts.get(sessionId) !== win) return;
     popouts.delete(sessionId);
     broadcastPopouts();
+    // Closed with the window's button, the header's ×, or by archiving: the main window gets the panels as they were left
+    // (it has none to get when it is closing, which is why the pop-outs close: `mainWindow` is null by then).
+    if (!quitting) returnView(sessionId, false);
   });
   loadRenderer(win, sessionId);
   broadcastPopouts();
 }
 
+/** A panel view is a plain object; main passes it on without reading it. */
+function isSessionView(view: unknown): view is SessionView {
+  return !!view && typeof view === 'object' && !Array.isArray(view);
+}
+
+/**
+ * Hands a session's panels, as its pop-out left them, to the main window and forgets them here. `create`: the window is made
+ * when there is none (Move back to main window shows the session there); otherwise a closed main window gets nothing.
+ */
+function returnView(sessionId: string, create: boolean): void {
+  const view = popoutViews.get(sessionId);
+  popoutViews.delete(sessionId);
+  if (!view) return;
+  const win = create ? showWindow() : mainWindow;
+  if (!win || win.isDestroyed()) return;
+  sendToWindow(win, IpcChannel.viewReturned, { sessionId, view });
+}
+
 ipcMain.on(IpcChannel.getPopouts, (event) => {
   event.returnValue = [...popouts.keys()];
 });
-ipcMain.on(IpcChannel.popOut, (_event, sessionId: unknown) => {
-  if (typeof sessionId === 'string' && sessionId) popOut(sessionId);
+ipcMain.on(IpcChannel.getPopoutView, (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...popouts].find(([, popout]) => popout === win);
+  event.returnValue = entry ? (popoutViews.get(entry[0]) ?? null) : null;
+});
+ipcMain.on(IpcChannel.popOut, (_event, sessionId: unknown, view: unknown) => {
+  if (typeof sessionId === 'string' && sessionId) popOut(sessionId, view);
+});
+// A pop-out keeps main up to date with its session's panels, for when it goes.
+ipcMain.on(IpcChannel.reportView, (event, view: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const entry = [...popouts].find(([, popout]) => popout === win);
+  if (entry && isSessionView(view)) popoutViews.set(entry[0], view);
 });
 // Move back to main window: the session leaves its pop-out first, so the main window shows it in a pane.
 ipcMain.on(IpcChannel.popIn, (event) => {
@@ -729,6 +769,8 @@ ipcMain.on(IpcChannel.popIn, (event) => {
   popouts.delete(entry[0]);
   broadcastPopouts();
   win.close();
+  // The panels first, so the pane shows them from its first paint.
+  returnView(entry[0], true);
   openSession(entry[0]);
 });
 ipcMain.on(IpcChannel.showSession, (_event, sessionId: unknown) => {
@@ -1756,12 +1798,23 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
  * window and Close window in place of Open in new window and Close session), Ask opens as a panel next to the
  * conversation, the terminal's key shows and hides the terminal panel there, and at the smallest size a panel
  * doesn't push anything out of the window. Move back to main window then shows the session in the main window again.
+ * The panels go with the session: Ask open in the main window is open in the pop-out, and what the pop-out leaves open
+ * (the terminal, with Ask closed) is what the main window shows after Move back; closing the pop-out with its
+ * button hands the panels back the same way.
  */
 async function runPopoutStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const id = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
   if (!id) return 'failed: no session is open to pop out';
-  popOut(id);
+  const mainView = `document.querySelector('[data-current-session="${id}"]')`;
+  const mainHas = (selector: string) => `${mainView} && ${mainView}.querySelector('${selector}')`;
+  // Ask open here, so the pop-out has to open with it (the main window's own button, which hands the panels over).
+  if (await js(`!!${mainHas('[data-ask-panel]')}`)) await js(`${mainView}.querySelector('[data-toggle-ask]').click()`);
+  if (!(await waitInPage(win, `!(${mainHas('[data-ask-panel]')})`, 3_000))) return 'failed: Ask did not close in the main window';
+  await js(`${mainView}.querySelector('[data-toggle-ask]').click()`);
+  if (!(await waitInPage(win, mainHas('[data-ask-panel]'), 5_000))) return 'failed: Ask did not open in the main window';
+  if (!(await js(`!!${mainView}.querySelector('[data-open-in-new-window]')`))) return 'failed: the main window has no Open in new window button';
+  await js(`${mainView}.querySelector('[data-open-in-new-window]').click()`);
   let pop: BrowserWindow | undefined;
   try {
     if (!(await until(() => popouts.has(id), 5_000))) return 'failed: the pop-out did not open';
@@ -1781,9 +1834,8 @@ async function runPopoutStep(win: BrowserWindow): Promise<string> {
     if (header.newWindow || header.closeSession || header.sidebarToggle) return `failed: the pop-out's header has a main window button (${JSON.stringify(header)})`;
     if (!header.ask || !header.terminal) return `failed: the panel buttons are missing (${JSON.stringify(header)})`;
     const wide = header.width as number;
-    // Ask opens next to the conversation, and closes again.
-    await popJs("document.querySelector('[data-toggle-ask]').click()");
-    if (!(await inPop("document.querySelector('[data-ask-panel]')"))) return 'failed: Ask did not open in the pop-out';
+    // Ask was open in the main window: it is open here, beside the conversation, and closes again.
+    if (!(await inPop("document.querySelector('[data-ask-panel]')"))) return 'failed: Ask, open in the main window, is not open in the pop-out';
     const askBeside = (await popJs("(() => { const a = document.querySelector('[data-ask-panel]').getBoundingClientRect(); return a.left >= 300 && a.right <= window.innerWidth + 1; })()")) as boolean;
     if (!askBeside) return 'failed: the Ask panel does not sit beside the conversation';
     await popJs("document.querySelector('[data-toggle-ask]').click()");
@@ -1807,16 +1859,35 @@ async function runPopoutStep(win: BrowserWindow): Promise<string> {
     await popJs("document.querySelector('[data-toggle-ask]').click()");
     // The conversation comes back when the panel goes.
     if (!(await inPop("!document.querySelector('[data-ask-panel]') && document.querySelector('[data-current-session] textarea')?.getBoundingClientRect().width > 100"))) return 'failed: the conversation did not come back when the panel closed in the narrow pop-out';
-    // Back to the main window.
+    // The terminal, with Ask closed: Move back brings the session to the main window with exactly that.
+    await popJs("document.querySelector('[data-toggle-terminal]').click()");
+    if (!(await inPop("document.querySelector('[data-terminal-panel]')", 8_000))) return 'failed: the terminal button did not open the terminal in the pop-out';
     await popJs("document.querySelector('[data-move-to-main-window]').click()");
-    if (!(await waitInPage(win, `document.querySelector('[data-current-session="${id}"]')`, 8_000))) return 'failed: Move back to main window did not show the session in the main window';
+    if (!(await waitInPage(win, mainHas('[data-terminal-panel]'), 8_000))) return 'failed: Move back to main window did not show the session, with the terminal the pop-out left open, in the main window';
+    if (await js(`!!${mainHas('[data-ask-panel]')}`)) return 'failed: Ask is open in the main window after it was closed in the pop-out (the panels from before it popped out came back)';
     if (!(await until(() => !popouts.has(id), 3_000))) return 'failed: the pop-out is still registered after moving back';
-    return `ok: panel buttons, Ask beside the conversation and the terminal key work in a ${wide}px pop-out; a panel fills a ${fits.w}px pop-out and nothing sticks out; moved back`;
+    // And the other way, with the window's button: it opens with the terminal, Ask opens there, and closing it leaves both open in the main window.
+    await js(`${mainView}.querySelector('[data-open-in-new-window]').click()`);
+    if (!(await until(() => popouts.has(id), 5_000))) return 'failed: the pop-out did not open the second time';
+    pop = popouts.get(id)!;
+    if (!(await inPop("document.querySelector('[data-terminal-panel]')", 20_000))) return 'failed: the terminal, open in the main window, is not open in the second pop-out';
+    await popJs("document.querySelector('[data-toggle-ask]').click()");
+    if (!(await inPop("document.querySelector('[data-ask-panel]')"))) return 'failed: Ask did not open in the second pop-out';
+    await popJs("document.querySelector('[data-close-window]').click()");
+    if (!(await until(() => !popouts.has(id), 5_000))) return 'failed: the pop-out did not close with its button';
+    openSession(id);
+    if (!(await waitInPage(win, `${mainHas('[data-terminal-panel]')} && ${mainHas('[data-ask-panel]')}`, 8_000))) return 'failed: the main window did not show the panels the closed pop-out left open (terminal and Ask)';
+    // Put the main window's panels back as they were.
+    await js(`${mainView}.querySelector('[data-toggle-ask]').click()`);
+    pressKey(win, 'J', ['meta']);
+    if (!(await waitInPage(win, `!(${mainHas('[data-ask-panel]')}) && !(${mainHas('[data-terminal-panel]')})`, 5_000))) return 'failed: the panels did not close again in the main window';
+    return `ok: panel buttons, Ask beside the conversation and the terminal key work in a ${wide}px pop-out; a panel fills a ${fits.w}px pop-out and nothing sticks out; Ask open in the main window opens in the pop-out, and the panels the pop-out leaves open come back with the session (Move back, and the window's button)`;
   } finally {
     // A failed step must not leave the session in a window of its own for the steps after it.
     if (popouts.has(id)) {
       const open = popouts.get(id)!;
       popouts.delete(id);
+      popoutViews.delete(id);
       broadcastPopouts();
       if (!open.isDestroyed()) open.close();
       openSession(id);
@@ -7659,7 +7730,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('⌘K in the terminal', () => runTerminalClearStep(win));
   await step('terminal layout', () => runTerminalLayoutStep(win));
   await step("the window's own terminal, outside a session", () => runAppTerminalStep(win));
-  await step('a session in its own window: panel buttons, Ask, the terminal key, a narrow window, Move back', () => runPopoutStep(win), { timeoutMs: 60_000 });
+  await step('a session in its own window: panel buttons, Ask, the terminal key, a narrow window, Move back, panels going with the session', () => runPopoutStep(win), { timeoutMs: 90_000 });
   await step('project action added through the editor and run in a terminal tab', () => runActionStep(win));
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));

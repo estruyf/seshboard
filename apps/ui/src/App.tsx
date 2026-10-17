@@ -65,6 +65,7 @@ import { localSessionId } from './state/remoteSelection.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { runMainRequest } from './state/mainRequests.ts';
 import { usePopoutsSync } from './state/usePopoutsSync.ts';
+import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 
@@ -220,6 +221,7 @@ export function App() {
   useSidebarSync();
   useDraftsSync();
   usePopoutsSync();
+  useSessionViewHandoff();
   useUsageSync();
   usePreferencesSync();
   useThemesSync();

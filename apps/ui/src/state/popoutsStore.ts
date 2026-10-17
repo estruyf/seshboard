@@ -1,4 +1,4 @@
-import type { MainWindowRequest } from '@switchboard/protocol/bridge';
+import type { MainWindowRequest, SessionView } from '@switchboard/protocol/bridge';
 import { create } from 'zustand';
 
 /** The session this window shows on its own when it is a pop-out; null in the main window. */
@@ -34,10 +34,18 @@ export function showInMain(request: MainWindowRequest): boolean {
   return true;
 }
 
+/** How this window has a session's panels, set by `useSessionViewHandoff` (the panel stores import this file, so it can't import them). */
+let readView: ((sessionId: string) => SessionView) | null = null;
+
+export function provideSessionView(read: ((sessionId: string) => SessionView) | null): void {
+  readView = read;
+}
+
 /**
  * Shows a session in a window of its own (or brings its pop-out to the front). Unsent text is relayed to the
- * pop-out by main; the panes here close it when main says it is out (`usePopoutsSync`).
+ * pop-out by main, and the session's open panels go with it (a pop-out that exists keeps its own); the panes here
+ * close it when main says it is out (`usePopoutsSync`).
  */
 export function popOut(id: string): void {
-  window.switchboard?.popOut(id);
+  window.switchboard?.popOut(id, readView?.(id));
 }

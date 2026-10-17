@@ -77,6 +77,9 @@ export const IpcChannel = {
   draftsRelayed: "switchboard:drafts-relayed",
   requestDrafts: "switchboard:request-drafts",
   draftsRequested: "switchboard:drafts-requested",
+  getPopoutView: "switchboard:get-popout-view",
+  reportView: "switchboard:report-view",
+  viewReturned: "switchboard:view-returned",
 } as const;
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
@@ -87,6 +90,13 @@ export const POPOUT_QUERY = "popout";
  * the other windows, so a session's draft is the same wherever it is shown. Only the main window saves drafts.
  */
 export type DraftsChange = Record<string, unknown>;
+
+/**
+ * Which panels a session has open and how (the tab in front, the agent picked, the Ask thread, the terminal), as the
+ * renderer collects it (`state/sessionViewState.ts`, which also checks one it receives). Main only carries it between
+ * the windows a session moves between, in memory, and never looks inside.
+ */
+export type SessionView = Record<string, unknown>;
 
 /** A key press a pop-out hands to the main window (an app-wide shortcut: the palette, search, New session…). */
 export interface ForwardedKeys {
@@ -786,8 +796,17 @@ export interface SwitchboardBridge {
   readonly popouts: readonly string[];
   /** Fires in every window when a pop-out opens or closes. */
   onPopoutsChanged(listener: (sessionIds: string[]) => void): () => void;
-  /** Shows a session in a window of its own, or brings its pop-out to the front when it has one. */
-  popOut(sessionId: string): void;
+  /**
+   * Shows a session in a window of its own, or brings its pop-out to the front when it has one. `view` is how the session's
+   * panels stand here: a new pop-out starts with them (one that exists keeps its own).
+   */
+  popOut(sessionId: string, view?: SessionView): void;
+  /** In a pop-out: the panels the session had open in the main window when it popped out, or null. Read once when the page loads. */
+  readonly popoutView: SessionView | null;
+  /** From a pop-out: tells main how its session's panels stand, so they go back to the main window with the session. */
+  reportView(view: SessionView): void;
+  /** In the main window: a session came back from its pop-out (moved back or closed) with its panels as they were left there. */
+  onViewReturned(listener: (sessionId: string, view: SessionView) => void): () => void;
   /** From a pop-out: shows its session in the main window again and closes the pop-out. */
   popIn(): void;
   /** Shows a session where it is: its pop-out when it has one, otherwise the main window (both brought to the front). */
