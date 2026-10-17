@@ -65,6 +65,9 @@ export const IpcChannel = {
   getPopouts: "switchboard:get-popouts",
   popOut: "switchboard:pop-out",
   popIn: "switchboard:pop-in",
+  showSession: "switchboard:show-session",
+  forwardKeys: "switchboard:forward-keys",
+  keysForwarded: "switchboard:keys-forwarded",
   popoutsChanged: "switchboard:popouts-changed",
   relayDrafts: "switchboard:relay-drafts",
   draftsRelayed: "switchboard:drafts-relayed",
@@ -80,6 +83,16 @@ export const POPOUT_QUERY = "popout";
  * the other windows, so a session's draft is the same wherever it is shown. Only the main window saves drafts.
  */
 export type DraftsChange = Record<string, unknown>;
+
+/** A key press a pop-out hands to the main window (an app-wide shortcut: the palette, search, New session…). */
+export interface ForwardedKeys {
+  key: string;
+  code: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -701,6 +714,12 @@ export interface SwitchboardBridge {
   popOut(sessionId: string): void;
   /** From a pop-out: shows its session in the main window again and closes the pop-out. */
   popIn(): void;
+  /** Shows a session where it is: its pop-out when it has one, otherwise the main window (both brought to the front). */
+  showSession(sessionId: string): void;
+  /** From a pop-out: brings the main window to the front and presses these keys there. */
+  forwardKeys(keys: ForwardedKeys): void;
+  /** In the main window: keys a pop-out handed over. */
+  onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
   /** Sends unsent messages that changed here to the other windows. */
   relayDrafts(change: DraftsChange): void;
   /** Unsent messages that changed in another window. */

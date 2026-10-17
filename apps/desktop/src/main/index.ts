@@ -721,6 +721,14 @@ ipcMain.on(IpcChannel.popIn, (event) => {
   win.close();
   openSession(entry[0]);
 });
+ipcMain.on(IpcChannel.showSession, (_event, sessionId: unknown) => {
+  if (typeof sessionId === 'string' && sessionId) openSession(sessionId);
+});
+// An app-wide shortcut pressed in a pop-out runs in the main window, which comes to the front for it.
+ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
+  if (!keys || typeof keys !== 'object' || typeof (keys as { key?: unknown }).key !== 'string') return;
+  sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
+});
 // Unsent messages typed in one window show in the others (only the main window saves them).
 ipcMain.on(IpcChannel.relayDrafts, (event, change: unknown) => {
   if (!change || typeof change !== 'object') return;
