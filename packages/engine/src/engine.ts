@@ -7,6 +7,7 @@ import {
   BUILTIN_PROFILE_ID,
   COMPANION_DIR,
   contract,
+  isSameOrInside,
   RpcError,
   serveRpc,
   type Contract,
@@ -25,6 +26,7 @@ import {
   type SystemInfo,
   type PrError,
   type PrProgress,
+  type CloneProgress,
   type WorktreePullRequest,
   type WorktreeSize,
   type Transport,
@@ -46,6 +48,7 @@ import {
   type QueuedMessage,
   type StreamDelta,
   type PermissionRequest,
+  type PromptScope,
   accountKey,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
@@ -61,6 +64,9 @@ import { SearchIndex } from './sessions/searchIndex.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
+import { SharedFileWatcher } from './actions/sharedFileWatcher.ts';
+import { SavedPromptStore } from './prompts/savedPromptStore.ts';
+import { findIssue, openPullRequests } from './git/githubLookups.ts';
 import { LaterStore } from './later/laterStore.ts';
 import { summarise, UpNextStore } from './host/upNextStore.ts';
 import { Asker, AskStore } from './host/sideQuestions.ts';
@@ -104,6 +110,7 @@ import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
 import { RemoteHub } from './remote/remoteHub.ts';
+import { CloneService } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { listFolders } from './system/folders.ts';
@@ -179,6 +186,11 @@ export interface EngineOptions {
    * must never call a model. Never set in normal use.
    */
   stubCatchUp?: boolean;
+  /**
+   * Clone from GitHub clones from this folder (`<folder>/<owner>/<name>.git`) instead of GitHub, never with gh: the
+   * smoke test and the screenshots, which must never clone from the network. Never set in normal use.
+   */
+  cloneSource?: string;
 }
 
 /** See `EngineOptions.demoUsage`. */
@@ -343,6 +355,25 @@ export function createEngine(options: EngineOptions): Engine {
   /** Where quick questions run: never one of the projects, so it is left out of every project list. */
   const questions = new QuestionsFolder(join(options.dataDir, 'questions'));
   const listProjects = () => projects.list(folderActivity()).filter((p) => !questions.contains(p.root));
+  // --- Clone from GitHub: Settings › Projects ----------------------------------------------------------------------
+  /** Clones started from a phone or another computer, by job id: their progress goes back to that connection too. */
+  const cloneListeners = new Map<string, (progress: CloneProgress) => void>();
+  const clones = new CloneService({
+    appState,
+    home: homedir(),
+    env: async () => (await shell.ready).env,
+    gh: defaultGh(),
+    ...(options.cloneSource ? { source: options.cloneSource } : {}),
+    addProject: (root) => projects.add(root),
+    isProject: (root) => listProjects().some((p) => p.added && isSameOrInside(p.root, root) && isSameOrInside(root, p.root)),
+    progress: (progress) => {
+      broadcast('projects.cloneProgress', progress);
+      cloneListeners.get(progress.jobId)?.(progress);
+      if (progress.state !== 'running') cloneListeners.delete(progress.jobId);
+    },
+    settingsChanged: (settings) => broadcast('projects.cloneSettings', settings),
+    log,
+  });
   const sessions = new SessionIndex({
     baseline,
     isOwned: (id) => owned.has(id),
@@ -801,6 +832,26 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   const actions = new ActionStore(cache.db);
+  const savedPrompts = new SavedPromptStore(cache.db);
+  /** A pull (or anyone) changing a project's .switchboard.json updates its shared actions and prompts in every window. */
+  const sharedFileWatcher = new SharedFileWatcher((root) => {
+    broadcast('actions.changed', { root });
+    broadcast('savedPrompts.changed', { root });
+  });
+  const promptsChanged = (...scopes: PromptScope[]) => {
+    for (const root of new Set(scopes.map((scope) => (scope.kind === 'global' ? null : scope.root)))) broadcast('savedPrompts.changed', { root });
+  };
+  /** What `gh` said about a project's pull requests and issues, for a minute (a network call, and blanks ask often). */
+  const githubLookups = new Map<string, { at: number; value: Promise<unknown> }>();
+  const githubLookup = <T>(key: string, load: (env: Record<string, string>) => Promise<T>): Promise<T> => {
+    const cached = githubLookups.get(key);
+    if (cached && Date.now() - cached.at < 60_000) return cached.value as Promise<T>;
+    const value = shell.ready.then(({ env }) => load(env));
+    githubLookups.set(key, { at: Date.now(), value });
+    // A failure isn't kept: the next blank asks again.
+    value.catch(() => githubLookups.delete(key));
+    return value;
+  };
   /** The queue (first called the Later list). */
   const later = new LaterStore(cache.db);
   /** Every window keeps the whole queue: tell them all after a change. */
@@ -1197,6 +1248,17 @@ export function createEngine(options: EngineOptions): Engine {
           throw new RpcError('GIT_FAILED', (error as Error).message);
         }
       },
+      clonePlan: (url, name) => clones.plan(url, name),
+      clone: async (jobId, url, name, onProgress) => {
+        cloneListeners.set(jobId, onProgress);
+        try {
+          await clones.start(jobId, url, name);
+        } catch (error) {
+          cloneListeners.delete(jobId);
+          throw error;
+        }
+      },
+      cancelClone: (jobId) => clones.cancel(jobId),
       onStatus: (status) => broadcast('remote.changed', status),
       onFromDevice: (event) => broadcast('remote.fromDevice', event),
       log,
@@ -1456,6 +1518,17 @@ export function createEngine(options: EngineOptions): Engine {
     'projects.findByRepo': async ({ repo }) => {
       const folders = listProjects().filter((p) => p.exists).map((p) => p.root);
       return { root: await findCheckout(folders, repo) };
+    },
+    'projects.cloneSettings': () => clones.settings(),
+    'projects.setCloneSettings': (change) => clones.setSettings(change),
+    'projects.clonePlan': ({ url, name }) => clones.plan(url, name),
+    'projects.clone': async ({ jobId, url, name }) => {
+      await clones.start(jobId, url, name);
+      return {};
+    },
+    'projects.cancelClone': ({ jobId }) => {
+      clones.cancel(jobId);
+      return {};
     },
     'projects.add': ({ path }) => {
       questions.assertNotProject(path);
@@ -1751,13 +1824,51 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
 
-    'actions.list': ({ projectRoot }) => actions.list(projectRoot),
-    'actions.save': ({ projectRoot, action, previousId }) => {
-      actions.save(projectRoot, action, previousId);
+    'savedPrompts.list': ({ root }) => {
+      if (root) sharedFileWatcher.watch(root);
+      return savedPrompts.list(root);
+    },
+    'savedPrompts.save': ({ prompt }) => {
+      const saved = savedPrompts.save(prompt);
+      promptsChanged(prompt.scope);
+      return { prompt: saved };
+    },
+    'savedPrompts.delete': ({ id, scope }) => {
+      savedPrompts.remove(id, scope);
+      promptsChanged(scope);
       return {};
     },
-    'actions.delete': ({ projectRoot, id }) => {
-      actions.remove(projectRoot, id);
+    'savedPrompts.move': ({ id, from, to }) => {
+      const prompt = savedPrompts.move(id, from, to);
+      promptsChanged(from, to);
+      return { prompt };
+    },
+    'savedPrompts.used': ({ id, scope }) => {
+      savedPrompts.used(id, scope);
+      promptsChanged(scope);
+      return {};
+    },
+    'github.pullRequests': ({ root }) => githubLookup(`prs\u0000${root}`, (env) => openPullRequests(root, env, defaultGh())),
+    'github.issue': ({ root, ref }) => githubLookup(`issue\u0000${root}\u0000${ref.trim().toLowerCase()}`, (env) => findIssue(root, ref, env, defaultGh())),
+
+    'actions.list': ({ projectRoot }) => {
+      sharedFileWatcher.watch(projectRoot);
+      return actions.list(projectRoot);
+    },
+    'actions.save': ({ projectRoot, action, previousId, shared }) => {
+      if (shared) {
+        if (!projectRoot) throw new RpcError('INVALID_PARAMS', 'A shared action needs its project');
+        actions.saveShared(projectRoot, action, previousId);
+      } else actions.save(projectRoot, action, previousId);
+      broadcast('actions.changed', { root: projectRoot });
+      return {};
+    },
+    'actions.delete': ({ projectRoot, id, shared }) => {
+      if (shared) {
+        if (!projectRoot) throw new RpcError('INVALID_PARAMS', 'A shared action needs its project');
+        actions.removeShared(projectRoot, id);
+      } else actions.remove(projectRoot, id);
+      broadcast('actions.changed', { root: projectRoot });
       return {};
     },
     'actions.trust': ({ projectRoot, id }) => {
@@ -2486,11 +2597,13 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      clones.close();
       clearTimeout(settingTimer);
       companion?.stop();
       remote?.stop();
       computers?.stop();
       memoryWatcher.close();
+      sharedFileWatcher.close();
       clearTimeout(memorySyncTimer);
       clearTimeout(startupMemorySync);
       for (const server of servers) server.dispose();

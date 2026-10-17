@@ -774,7 +774,7 @@ export function Sidebar() {
   const rowClick = (event: MouseEvent, data: SessionRowData) => {
     if (data.remote) {
       setPicks(NO_PICKS);
-      return openRow(data.id);
+      return openRow(data.id, { beside: event.altKey });
     }
     if (modKey(event)) togglePicked(data.id);
     else if (event.shiftKey) setPicks((p) => rangePick(p, data.id, selectedId, order));

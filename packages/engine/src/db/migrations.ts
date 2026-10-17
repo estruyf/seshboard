@@ -508,7 +508,31 @@ export const migrations: readonly string[] = [
   ALTER TABLE project_actions ADD COLUMN send_output INTEGER NOT NULL DEFAULT 0;
   `,
 
-  // v30: Writes to the hour-long prompt cache cost more than to the 5-minute one, so the cost estimate keeps them apart:
+  // v30: Saved prompts with blanks. Yours for every project (no project root) or for one project, just for you. The
+  // shared ones live in the project's .switchboard.json, but how often you use them is yours, so it is kept here by
+  // project and id, never in that file. All of it is your own: keep it when rebuilding.
+  `
+  CREATE TABLE saved_prompts (
+    id           TEXT NOT NULL,
+    project_root TEXT,
+    name         TEXT NOT NULL,
+    text         TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    uses         INTEGER NOT NULL DEFAULT 0,
+    last_used_at INTEGER
+  );
+  CREATE UNIQUE INDEX saved_prompts_key ON saved_prompts (COALESCE(project_root, ''), id);
+  CREATE TABLE shared_prompt_uses (
+    project_root TEXT NOT NULL,
+    id           TEXT NOT NULL,
+    uses         INTEGER NOT NULL DEFAULT 0,
+    last_used_at INTEGER,
+    PRIMARY KEY (project_root, id)
+  );
+  `,
+
+  // v31: Writes to the hour-long prompt cache cost more than to the 5-minute one, so the cost estimate keeps them apart:
   // `cache_write_1h` is the part of `cache_write` that went to it. Responses counted before have no split yet
   // (`split` 0): every transcript is read once more to add it, without counting anything twice. The usage of
   // transcripts that are gone stays as it was, priced as 5-minute writes.

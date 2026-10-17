@@ -31,14 +31,23 @@ export function sessionGroup(session: RemoteSession, now: number): SessionGroup 
   return 'earlier';
 }
 
-/** The non-empty sections in order, each newest first. */
+/** When a working session's turn began, as the computer's Working section orders by it; the last write moves all the time. */
+const workingSince = (session: RemoteSession): number => session.workingSince ?? session.updatedAt;
+
+/**
+ * The non-empty sections in order, each newest first. Working is the exception, as on the computer: the one you set
+ * going last first, so sessions don't swap places each time one of them writes.
+ */
 export function groupSessions(sessions: readonly RemoteSession[], now: number): Array<{ group: SessionGroup; sessions: RemoteSession[] }> {
   const byGroup = new Map<SessionGroup, RemoteSession[]>();
   for (const session of sessions) {
     const group = sessionGroup(session, now);
     byGroup.set(group, [...(byGroup.get(group) ?? []), session]);
   }
-  return ORDER.filter((group) => byGroup.has(group)).map((group) => ({ group, sessions: byGroup.get(group)!.sort((a, b) => b.updatedAt - a.updatedAt) }));
+  return ORDER.filter((group) => byGroup.has(group)).map((group) => ({
+    group,
+    sessions: byGroup.get(group)!.sort(group === 'working' ? (a, b) => workingSince(b) - workingSince(a) : (a, b) => b.updatedAt - a.updatedAt),
+  }));
 }
 
 export type TileTone = 'needs-you' | 'working' | 'idle';

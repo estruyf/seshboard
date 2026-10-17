@@ -16,6 +16,8 @@ import { CommandPalette } from './components/palette/CommandPalette.tsx';
 import { PaletteDialogs } from './components/palette/PaletteDialogs.tsx';
 import { ClaudeInstallDialog } from './components/updates/ClaudeInstallDialog.tsx';
 import { SearchDialog } from './components/search/SearchDialog.tsx';
+import { CloneProjectDialog } from './components/clone/CloneProjectDialog.tsx';
+import { useClone, useCloneSync } from './state/cloneStore.ts';
 import { AddProjectDialog } from './components/projects/AddProjectDialog.tsx';
 import { BackupDialogs } from './components/backup/BackupDialogs.tsx';
 import { ProjectManagerView } from './components/projects/ProjectManagerView.tsx';
@@ -35,6 +37,7 @@ import { useLaterSync } from './state/laterStore.ts';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
+import { useSavedPromptsSync } from './components/savedPrompts/savedPromptsStore.ts';
 import { useLimitsSync } from './state/limitsStore.ts';
 import { useAskSync } from './state/askStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
@@ -60,6 +63,7 @@ import { useHostsSync } from './state/useHostsSync.ts';
 import { useComputersSync } from './state/useComputersSync.ts';
 import { useRemoteSync } from './state/useRemoteSync.ts';
 import { RemoteView } from './components/computers/RemoteView.tsx';
+import { localSessionId } from './state/remoteSelection.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
@@ -69,10 +73,13 @@ function terminalView(view: MainView, sessionId: string | null): TerminalView {
   return view === 'new' ? 'new-session' : view === 'session' ? (sessionId ? 'session' : 'home') : view;
 }
 
-/** The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere (Settings too). */
+/**
+ * The panel ⌘J and ⌘⇧J work on: the session's in the active pane, the window's own elsewhere (Settings too). None
+ * for a session on another computer: its terminal is there.
+ */
 function currentTerminalOwner(): string | null {
   const { view, selectedId } = useSessions.getState();
-  return terminalOwner(terminalView(view, selectedId), selectedId);
+  return terminalOwner(terminalView(view, selectedId), localSessionId(selectedId));
 }
 
 /** A dialog, menu or popover is open: it keeps Tab for itself, so ⌃⇥ doesn't switch sessions behind it. */
@@ -202,7 +209,7 @@ function useWindowFocus() {
   const view = useSessions((s) => s.view);
   const selectedId = useSessions((s) => s.selectedId);
   useEffect(() => {
-    window.switchboard?.reportFocus(view === 'session' ? selectedId : null);
+    window.switchboard?.reportFocus(view === 'session' ? localSessionId(selectedId) : null);
   }, [view, selectedId]);
   useEffect(() => window.switchboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
   // Switchboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.
@@ -217,6 +224,7 @@ export function App() {
   useComputersSync();
   useRemoteSync();
   useProjectsSync();
+  useCloneSync();
   useProfilesSync();
   useTerminalsSync();
   useUpdatesSync();
@@ -231,6 +239,7 @@ export function App() {
   useUpNextSync();
   useModsSync();
   useLimitsSync();
+  useSavedPromptsSync();
   useAskSync();
   useQueueToasts();
   useSidebarSectionsSync();
@@ -251,6 +260,7 @@ export function App() {
   const shownView = view === 'settings' ? 'settings' : terminalView(behind, selectedId);
   const overlay = useOverlay((s) => s.open);
   const adding = useProjects((s) => s.adding);
+  const cloning = useClone((s) => s.dialog);
 
   return (
     <div className="flex h-full">
@@ -289,6 +299,7 @@ export function App() {
       <UnsentList />
       <ArchiveDraftDialog />
       {adding && <AddProjectDialog onClose={() => useProjects.getState().showAdd(false)} />}
+      {cloning && <CloneProjectDialog />}
       <BackupDialogs />
       <ThemeImportDialogs />
       <FocusGateDialog />

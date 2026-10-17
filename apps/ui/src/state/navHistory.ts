@@ -10,8 +10,8 @@ export type NavPlace =
   | { view: 'projects' }
   | { view: 'project'; root: string; tab: ProjectTab }
   | { view: 'usage'; profileId: string | null }
-  /** A session on another computer, or (without one) that computer's page. */
-  | { view: 'remote'; computerId: string; sessionId: string | null };
+  /** A paired computer's page (its sessions are panes, in a session place). */
+  | { view: 'remote'; computerId: string };
 
 export interface NavHistory {
   entries: readonly NavPlace[];
@@ -34,7 +34,7 @@ function sameStop(a: NavPlace, b: NavPlace): boolean {
   if (a.view === 'session' && b.view === 'session') return JSON.stringify(leafIds(a.layout).sort()) === JSON.stringify(leafIds(b.layout).sort());
   if (a.view === 'project' && b.view === 'project') return a.root === b.root;
   // Another remote session is another stop, as another local one is.
-  if (a.view === 'remote' && b.view === 'remote') return a.computerId === b.computerId && a.sessionId === b.sessionId;
+  if (a.view === 'remote' && b.view === 'remote') return a.computerId === b.computerId;
   return a.view === b.view;
 }
 

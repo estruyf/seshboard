@@ -205,7 +205,7 @@ describe('the gate', () => {
 
 describe('sessions on other computers', () => {
   const row = (id: string, status: 'running' | 'needs-you' | 'unread' | 'idle', offline = false) =>
-    ({ id: `remote:c1:${id}`, title: id, updatedAt: NOW, remote: { computerId: 'c1', computerName: 'studio', sessionId: id, projectId: 'p', projectName: 'site', status, waitingTool: null, offline, lastSeen: null } });
+    ({ id: `remote:c1:${id}`, title: id, updatedAt: NOW, remote: { computerId: 'c1', computerName: 'studio', sessionId: id, projectId: 'p', projectName: 'site', status, waitingTool: null, workingSince: null, offline, lastSeen: null } });
   const rows = [row('a', 'running'), row('b', 'needs-you'), row('c', 'unread'), row('d', 'idle'), row('e', 'running', true)];
 
   it('counts what is going on a paired computer, unless turned off', () => {
