@@ -10,6 +10,7 @@ import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
 import { CopySectionDialog } from '../memory/CopySectionDialog.tsx';
 import { ImportDialog } from '../memory/ImportDialog.tsx';
 import { RememberDialog } from '../memory/RememberDialog.tsx';
+import { PromptEditor } from '../savedPrompts/PromptEditor.tsx';
 import { ShareDialog } from '../memory/ShareDialog.tsx';
 import { RenameProjectDialog } from '../projects/RenameProjectDialog.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
@@ -36,6 +37,8 @@ export function PaletteDialogs() {
       return <RenameSessionDialog sessionId={dialog.sessionId} title={dialog.title} onClose={close} />;
     case 'rename-project':
       return <RenameProjectDialog root={dialog.root} onClose={close} />;
+    case 'prompt-editor':
+      return <PromptEditor editing={dialog.editing} text={dialog.text} fromMessage={dialog.fromMessage} root={dialog.root} scope={dialog.scope} onClose={close} />;
     case 'delete-session': {
       const runningHere = isActiveHost(host);
       return (

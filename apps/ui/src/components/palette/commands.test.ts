@@ -44,6 +44,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     ],
     currentProject: null,
     actions: [],
+    prompts: [],
     canEditActions: false,
     colorScheme: 'system',
     themes: [

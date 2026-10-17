@@ -23,12 +23,15 @@ import { neighbour, type Way } from '../../state/tilingGeometry.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { activeComposer, useComposerTargets } from '../../state/composerTargets.ts';
+import { draftRoot } from '../../state/drafts.ts';
+import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { APP_TERMINAL, appTerminalFolder, ownerSession, terminalOwner } from '../terminal/appTerminal.ts';
 import { planGit } from '../git/gitPlan.ts';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './paletteContext.ts';
 import { useComputers } from '../../state/computersStore.ts';
+import { localSessionId } from '../../state/remoteSelection.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
 function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
@@ -106,7 +109,8 @@ export function usePaletteContext(): PaletteContext {
 
   const pageRoot = useProjectPage((s) => s.root);
   const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
-  const id = view === 'session' ? selectedId : null;
+  // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
+  const id = view === 'session' ? localSessionId(selectedId) : null;
 
   const catchUps = useCatchUp((s) => s.cards);
   const collapsedCatchUps = useCatchUp((s) => s.collapsed);
@@ -146,6 +150,10 @@ export function usePaletteContext(): PaletteContext {
   const { actions } = useProjectActionList(projectRoot);
 
   const added = useMemo(() => addedProjects(projects), [projects]);
+  // The saved prompts of the message box on screen: its project's, else only the ones for every project.
+  const composer = activeComposer(boxes, view === 'session' ? 'session' : view === 'new-session' ? 'new' : 'other', selectedId);
+  const promptRoot = composer ? (view === 'new-session' ? draftRoot(composer.key) : projectRoot) : null;
+  const { prompts: savedPrompts } = useSavedPrompts(promptRoot && !isQuestionsFolder(promptRoot, questionsDir) ? promptRoot : null);
   const currentRoot = view === 'project' && pageRoot ? pageRoot : projectRoot && isAbsolutePath(projectRoot) ? projectRoot : projectFilter;
   // ⌘J's panel: the session's, or outside a session the window's own, which starts in the project on screen.
   const owner = terminalOwner(view, id);
@@ -186,7 +194,8 @@ export function usePaletteContext(): PaletteContext {
     settingsSection,
     newSession: view === 'new-session' ? newSessionInfo : null,
     questionsDir,
-    composer: activeComposer(boxes, view === 'session' ? 'session' : view === 'new-session' ? 'new' : 'other', selectedId),
+    composer,
+    prompts: composer ? savedPrompts.map((p) => ({ id: p.id, name: p.name, scope: p.scope })) : [],
     canContinueInVSCode: editors.some((e) => e.id === 'vscode'),
     computers: (computers ?? []).filter((c) => c.state === 'connected').map((c) => ({ id: c.id, name: c.name })),
   };

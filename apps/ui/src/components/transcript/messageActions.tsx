@@ -1,4 +1,4 @@
-import { Brain, Check, ClipboardType, Copy, GitFork, Pencil, Undo2 } from 'lucide-react';
+import { BookmarkPlus, Brain, Check, ClipboardType, Copy, GitFork, Pencil, Undo2 } from 'lucide-react';
 import { createContext, useContext, type ReactNode } from 'react';
 import { Button } from '../ui/Button.tsx';
 import { useFlash } from '../ui/useFlash.ts';
@@ -19,6 +19,8 @@ export interface MessageActions {
   runAndSend: ((command: string) => void) | null;
   /** Remember this…: the text as a memory (yours, or Claude's), in a dialog first. */
   remember(text: string, from: 'user' | 'claude'): void;
+  /** Save as prompt…: a message you sent, in the saved prompt editor, its links, branches and paths offered as blanks. */
+  savePrompt?(text: string): void;
 }
 
 export const MessageActionsContext = createContext<MessageActions | null>(null);
@@ -101,6 +103,9 @@ export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { item
       )}
       {context && kind !== 'command' && text && (
         <Button variant="quiet" size="sm" iconOnly icon={<Brain size={13} />} aria-label="Remember this…" onClick={() => context.remember(text, kind === 'user' ? 'user' : 'claude')} data-remember-message />
+      )}
+      {context?.savePrompt && kind === 'user' && text && (
+        <Button variant="quiet" size="sm" iconOnly icon={<BookmarkPlus size={13} />} aria-label="Save as prompt…" onClick={() => context.savePrompt!(text)} data-save-as-prompt />
       )}
       {text && <CopyAction text={text} label={kind === 'text' ? 'Copy as Markdown' : 'Copy message'} />}
       {text && kind === 'text' && <RichCopyAction text={text} />}

@@ -507,4 +507,28 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE project_actions ADD COLUMN send_output INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // v30: Saved prompts with blanks. Yours for every project (no project root) or for one project, just for you. The
+  // shared ones live in the project's .switchboard.json, but how often you use them is yours, so it is kept here by
+  // project and id, never in that file. All of it is your own: keep it when rebuilding.
+  `
+  CREATE TABLE saved_prompts (
+    id           TEXT NOT NULL,
+    project_root TEXT,
+    name         TEXT NOT NULL,
+    text         TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    uses         INTEGER NOT NULL DEFAULT 0,
+    last_used_at INTEGER
+  );
+  CREATE UNIQUE INDEX saved_prompts_key ON saved_prompts (COALESCE(project_root, ''), id);
+  CREATE TABLE shared_prompt_uses (
+    project_root TEXT NOT NULL,
+    id           TEXT NOT NULL,
+    uses         INTEGER NOT NULL DEFAULT 0,
+    last_used_at INTEGER,
+    PRIMARY KEY (project_root, id)
+  );
+  `,
 ];
