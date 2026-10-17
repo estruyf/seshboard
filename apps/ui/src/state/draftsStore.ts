@@ -48,6 +48,8 @@ interface DraftsState {
   settleFirstPrompts(seen: SessionsSeen): void;
   /** Drafts read back after a restart; anything typed meanwhile wins. */
   load(drafts: Record<string, ComposerDraft>, firstPrompts?: Record<string, FirstPrompt<ImageAttachment>>): void;
+  /** Drafts that changed in another window, by key (`null`: gone). That window settles them; this one takes them as they are. */
+  applyRelayed(change: Record<string, ComposerDraft | null>): void;
   requestFocus(key: string): void;
   clearFocus(): void;
   requestQuote(key: string, text: string): void;
@@ -186,6 +188,18 @@ export const useDrafts = create<DraftsState>()((set, get) => {
       if (next) set(next);
     },
     load: (drafts, firstPrompts = {}) => set((s) => ({ drafts: { ...drafts, ...s.drafts }, firstPrompts: { ...firstPrompts, ...s.firstPrompts }, loaded: true })),
+    applyRelayed: (change) => {
+      const keys = Object.keys(change);
+      if (keys.length === 0) return;
+      set((s) => {
+        const drafts = without(s.drafts, keys);
+        for (const key of keys) {
+          const draft = change[key];
+          if (draft) drafts[key] = draft;
+        }
+        return { drafts };
+      });
+    },
     requestFocus: (key) => set({ focus: { key, nonce: ++focusRequests } }),
     clearFocus: () => set({ focus: null }),
     requestQuote: (key, text) => set({ quote: { key, text, nonce: ++focusRequests } }),

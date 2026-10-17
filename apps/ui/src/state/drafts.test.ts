@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  changedDrafts,
   DRAFT_SETTLE_MS,
   draftList,
   draftPreview,
@@ -211,5 +212,20 @@ describe('first prompts', () => {
     // No first prompts saved: nothing to read; one without its choices can't go back to New session.
     expect(serializeDrafts({})).toEqual({ version: 1, drafts: {} });
     expect(parseFirstPrompts({ version: 1, drafts: {}, firstPrompts: { 's-1': { text: 'x', updatedAt: 1, images: 0, startIn: '/work/app' } } })).toEqual({});
+  });
+});
+
+describe('changedDrafts', () => {
+  it('lists the drafts that changed, came or went', () => {
+    const kept = draft('same');
+    const before = { a: kept, b: draft('old'), c: draft('gone') };
+    const edited = draft('new');
+    const added = draft('added');
+    expect(changedDrafts(before, { a: kept, b: edited, d: added })).toEqual({ b: edited, c: null, d: added });
+  });
+
+  it('is empty when nothing changed', () => {
+    const kept = draft('same');
+    expect(changedDrafts({ a: kept }, { a: kept })).toEqual({});
   });
 });

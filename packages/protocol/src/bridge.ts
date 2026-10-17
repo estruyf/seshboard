@@ -62,7 +62,24 @@ export const IpcChannel = {
   notificationPermission: "switchboard:notification-permission",
   openNotificationSettings: "switchboard:open-notification-settings",
   testNotification: "switchboard:test-notification",
+  getPopouts: "switchboard:get-popouts",
+  popOut: "switchboard:pop-out",
+  popIn: "switchboard:pop-in",
+  popoutsChanged: "switchboard:popouts-changed",
+  relayDrafts: "switchboard:relay-drafts",
+  draftsRelayed: "switchboard:drafts-relayed",
+  requestDrafts: "switchboard:request-drafts",
+  draftsRequested: "switchboard:drafts-requested",
 } as const;
+
+/** The query parameter that makes a window a pop-out: the id of the one session it shows. */
+export const POPOUT_QUERY = "popout";
+
+/**
+ * Unsent messages that changed in one window, by draft key (`null`: the draft is gone). Main passes them on to
+ * the other windows, so a session's draft is the same wherever it is shown. Only the main window saves drafts.
+ */
+export type DraftsChange = Record<string, unknown>;
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -674,6 +691,24 @@ export interface SwitchboardBridge {
   openNotificationSettings(): void;
   /** Shows one notification like a Needs you one, with its sound when sounds are on. */
   testNotification(): void;
+  /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
+  readonly popout: string | null;
+  /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
+  readonly popouts: readonly string[];
+  /** Fires in every window when a pop-out opens or closes. */
+  onPopoutsChanged(listener: (sessionIds: string[]) => void): () => void;
+  /** Shows a session in a window of its own, or brings its pop-out to the front when it has one. */
+  popOut(sessionId: string): void;
+  /** From a pop-out: shows its session in the main window again and closes the pop-out. */
+  popIn(): void;
+  /** Sends unsent messages that changed here to the other windows. */
+  relayDrafts(change: DraftsChange): void;
+  /** Unsent messages that changed in another window. */
+  onDraftsRelayed(listener: (change: DraftsChange) => void): () => void;
+  /** From a pop-out: asks the main window to relay all its unsent messages, images included (those are never saved). */
+  requestDrafts(): void;
+  /** In the main window: a pop-out asked for every unsent message. */
+  onDraftsRequested(listener: () => void): () => void;
 }
 
 /** `blocked`: notifications are turned off for Switchboard (or for every app) in the system's settings. `unknown` when it can't be told. */
