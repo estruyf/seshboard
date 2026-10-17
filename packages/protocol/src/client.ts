@@ -47,3 +47,5 @@ export * from './computerConstants.ts';
 export * from './remoteConstants.ts';
 export type * from './mods.ts';
 export * from './modsConstants.ts';
+export * from './savedPrompts.ts';
+export type * from './savedPromptSchema.ts';

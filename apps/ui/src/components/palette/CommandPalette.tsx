@@ -94,6 +94,7 @@ const PICK_PLACEHOLDER: Record<PickList, string> = {
   'focus-limit': 'How many sessions at once',
   queue: 'Pick a queued prompt to start',
   memory: 'Pick a memory to share',
+  prompt: 'Pick a saved prompt',
 };
 /** What a command that asks for more shows next, on its row while it's highlighted. */
 const NEXT_HINT: Record<PaletteStep['kind'], string> = { projects: 'picks a project next', prompt: 'write the prompt next', pick: 'pick one next', clone: 'paste the URL next' };
@@ -307,6 +308,8 @@ export function CommandPalette() {
         }));
       case 'memory':
         return (memoryList?.memories ?? []).map((m) => ({ value: m.path, title: m.name, detail: [m.type, m.description].filter(Boolean).join(' · ') || undefined }));
+      case 'prompt':
+        return ctx.prompts.map((p, i) => ({ value: String(i), title: p.name, detail: p.scope.kind === 'global' ? 'Every project' : p.scope.kind === 'personal' ? 'This project, just for you' : 'Shared with the project' }));
     }
   }
 
@@ -355,6 +358,11 @@ export function CommandPalette() {
         if (entry) void startQueued(entry.item);
         return;
       }
+      case 'prompt': {
+        const prompt = ctx.prompts[Number(value)];
+        if (prompt) api.usePrompt(prompt.scope, prompt.id);
+        return;
+      }
       case 'memory': {
         const memory = memoryList?.memories.find((m) => m.path === value);
         if (memory && ctx.currentProject) usePaletteBus.getState().showDialog({ kind: 'share-memory', root: ctx.currentProject.root, memoryPath: memory.path, name: memory.name });
@@ -380,8 +388,7 @@ export function CommandPalette() {
       }
       case 'session':
         close();
-        if (alt && !row.data.remote) useSessions.getState().openBeside(row.data.id);
-        else openRow(row.data.id);
+        openRow(row.data.id, { beside: alt });
         return;
       case 'draft':
         close();

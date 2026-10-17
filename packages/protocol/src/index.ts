@@ -42,3 +42,5 @@ export * from './usageLimit.ts';
 export * from './mods.ts';
 export * from './usageWeights.ts';
 export * from './accountKey.ts';
+export * from './savedPrompts.ts';
+export * from './savedPromptSchema.ts';

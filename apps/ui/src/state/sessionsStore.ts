@@ -16,7 +16,7 @@ import { toast } from './toastStore.ts';
  */
 export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote';
 /** The pages of Settings, listed in its own sidebar. */
-export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'projects' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'memory' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
+export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'projects' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'memory' | 'prompts' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
 
 /** Shown when there is no room for another pane (a session opened beside, or a pane dropped where it doesn't fit). */
 const NO_ROOM = 'There is no room for that. Make the window larger or close a pane first.';

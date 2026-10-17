@@ -77,6 +77,21 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "palette:new-saved-prompt",
+      "name": "New saved prompt…",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "palette:prompt:*",
+      "name": "Prompt: <name>",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "palette:settings-prompts",
+      "name": "Settings: Prompts",
+      "page": "settings"
+    },
+    {
       "id": "palette:swap-panes",
       "name": "Swap panes",
       "page": "sessions/split-view"
@@ -687,6 +702,11 @@
       "page": "remote-access"
     },
     {
+      "id": "palette:use-saved-prompt",
+      "name": "Use saved prompt…",
+      "page": "sessions/saved-prompts"
+    },
+    {
       "id": "palette:vscode-extension",
       "name": "VS Code extension",
       "page": "vscode-companion"
@@ -700,6 +720,26 @@
       "id": "palette:worktrees-here",
       "name": "worktrees-here",
       "page": "projects/worktrees"
+    },
+    {
+      "id": "saved-prompts:new-session-chips",
+      "name": "Saved prompts above New session's message box",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "saved-prompts:save-as-prompt",
+      "name": "Save as prompt… on a message you sent",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "saved-prompts:shared",
+      "name": "Shared prompts in .switchboard.json",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "saved-prompts:slash",
+      "name": "Saved prompts in the / menu",
+      "page": "sessions/saved-prompts"
     },
     {
       "id": "shortcut:changes.toggle",
@@ -750,6 +790,16 @@
       "id": "shortcut:composer.newline",
       "name": "composer.newline",
       "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.next-blank",
+      "name": "Next blank",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "shortcut:composer.previous-blank",
+      "name": "Previous blank",
+      "page": "sessions/saved-prompts"
     },
     {
       "id": "shortcut:composer.send",
@@ -1142,6 +1192,11 @@
       "page": "projects/settings"
     },
     {
+      "id": "settings:prompts",
+      "name": "Settings: Prompts",
+      "page": "sessions/saved-prompts"
+    },
+    {
       "id": "settings:sidebar",
       "name": "Settings: Sidebar",
       "page": "sessions/sidebar"
@@ -1409,6 +1464,11 @@
     {
       "id": "feature:remote-streaming-markdown",
       "name": "Remote: answers formatted while Claude writes them",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-multiple-computers",
+      "name": "Remote: pair with more than one computer, switch between them, and get notifications from all of them",
       "page": "remote-access"
     },
     {

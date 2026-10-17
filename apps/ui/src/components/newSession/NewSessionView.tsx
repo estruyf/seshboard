@@ -22,6 +22,8 @@ import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { inScope, rowStatus } from '../../state/sidebarRows.ts';
+import { PromptChips } from '../savedPrompts/PromptChips.tsx';
+import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
 import { Composer, type SentParts } from '../composer/Composer.tsx';
 import { promptWithContext } from '../composer/contextItems.ts';
 import { StartButton } from './StartButton.tsx';
@@ -38,7 +40,7 @@ import { useRunOn } from '../../state/runOnStore.ts';
 import { AutoWand } from '../composer/ComposerChips.tsx';
 import { AUTO_OFF_NOTE, effectiveModel, modelChoices, modelLabel } from '../../lib/autoModel.ts';
 import { focusStartBlock, startButtonState } from './startMenu.ts';
-import { newDraftKey, newSessionDraftBanner } from '../../state/drafts.ts';
+import { newDraftKey, newSessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 import { FocusNote } from '../focus/FocusNote.tsx';
@@ -462,7 +464,7 @@ function LocalNewSession() {
   };
   const onPromptChange = useCallback((text: string) => {
     setDraftPrompt(text);
-    setRestored((current) => (current && current.text !== text ? null : current));
+    setRestored((current) => (current && draftMessage(current) !== text ? null : current));
   }, []);
   useEffect(() => {
     if (hasDraft && draftKey !== undefined) useDrafts.getState().setForm(draftKey, { choices: d, profileId: profileOverride });
@@ -819,6 +821,7 @@ function LocalNewSession() {
         : null;
 
   const projectName = cwd ? (project?.name ?? basename(cwd)) : null;
+  const savedPromptCount = useSavedPrompts(cwd && !question ? cwd : null).prompts.length;
   const clearButton = (attr: 'data-clear-link-prompt' | 'data-clear-draft') => (
     <Button variant="quiet" size="sm" onClick={clearPrompt} className="-my-1 shrink-0" {...{ [attr]: true }}>
       Clear
@@ -993,6 +996,8 @@ function LocalNewSession() {
               }}
             />
           )}
+
+          {!fromLater && <PromptChips root={cwd && !question ? cwd : null} draftKey={draftKey} />}
 
           {/* The message box with its route strip on top: the strip's bottom edge is the card's top border.
               With a folder picked, the whole card takes its project's colour, with a faint ring around it. */}
@@ -1170,6 +1175,7 @@ function LocalNewSession() {
               key={fromLater ? `queued:${fromLater.id}` : 'new'}
               draftKey={draftKey}
               carryOver
+              savedPrompts={{ root: cwd && !question ? cwd : null, projectName: projectName ?? 'This project' }}
               onDraftLoaded={onDraftLoaded}
               restored={restored !== null}
               history={promptHistory}
@@ -1177,7 +1183,7 @@ function LocalNewSession() {
               onAttachmentsChange={setDraftAttachments}
               cwd={cwd}
               commands={commands}
-              placeholder={question ? 'Ask Claude anything' : 'What should Claude work on?'}
+              placeholder={question ? 'Ask Claude anything' : savedPromptCount > 0 ? 'What should Claude work on? Type / for saved prompts.' : 'What should Claude work on?'}
               large
               frameColor={projectColor}
               autoFocus

@@ -1,11 +1,12 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Brain, FolderGit2, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
+import { NewPromptButton, SavedPromptsSettings } from './savedPrompts/SavedPromptsSettings.tsx';
 import { NotificationsSettings } from './notifications/NotificationsSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
@@ -98,16 +99,19 @@ function ActivityPreview({ mode }: { mode: ToolActivity }) {
   );
 }
 
-function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+function Section({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children: ReactNode }) {
   const id = useId();
   // minmax(0, 1fr): a long path or command inside wraps or truncates instead of widening the page.
   return (
     <section className="grid grid-cols-[minmax(0,1fr)] gap-3 py-6" aria-labelledby={id}>
-      <div>
-        <h2 id={id} className="text-body font-semibold">
-          {title}
-        </h2>
-        {description && <p className="mt-0.5 text-ui text-muted">{description}</p>}
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 id={id} className="text-body font-semibold">
+            {title}
+          </h2>
+          {description && <p className="mt-0.5 text-ui text-muted">{description}</p>}
+        </div>
+        {action}
       </div>
       {children}
     </section>
@@ -178,6 +182,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
   { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'prompts', label: 'Prompts', icon: Bookmark },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'remote', label: 'Remote', icon: Smartphone },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
@@ -370,6 +375,12 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           description="Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login. Link a project to a profile from its menu or the Projects view; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
         >
           <ProfilesSettings />
+        </Section>
+      );
+    case 'prompts':
+      return (
+        <Section title="Saved prompts" description="Prompts with blanks you fill in when you use them. Type / in any message box." action={<NewPromptButton />}>
+          <SavedPromptsSettings />
         </Section>
       );
     case 'memory':

@@ -26,6 +26,7 @@ export const sidebar = [
       'sessions/pinned',
       'sessions/archived',
       'sessions/unsent-drafts',
+      'sessions/saved-prompts',
     ],
   },
   {

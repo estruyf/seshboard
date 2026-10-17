@@ -4892,6 +4892,150 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Saved prompts, in a sandbox (a throwaway git repository, opened in New session with a link): a prompt for
+ * every project with a pull request and a text blank, made in Settings › Prompts; picked with / in New session, both
+ * blanks filled (the pull request typed, as without gh), more context under it, and sent to the queue (never to
+ * Claude), where it is the filled text without braces; then moved to just for you, shared (in the sandbox's
+ * .switchboard.json) and back to every project (out of that file), and deleted.
+ */
+async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const click = (selector: string) => js(`${one(selector)}?.click()`);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-prompts-')));
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  git('-c', 'user.email=smoke@example.com', '-c', 'user.name=Smoke', 'commit', '-q', '--allow-empty', '-m', 'initial');
+  git('branch', 'feat/smoke-prompts');
+  const sharedFile = join(dir, '.switchboard.json');
+  const readShared = () => (existsSync(sharedFile) ? (JSON.parse(readFileSync(sharedFile, 'utf8')) as { prompts?: Array<{ id: string; text: string }> }) : null);
+  const id = 'smoke-fix-a-pull-request';
+  const row = `[data-saved-prompt-row="${id}"]`;
+  const box = '[data-new-session-view] [data-composer]';
+
+  /** Closes what a failure left open, and removes the sandbox. */
+  const cleanUp = async () => {
+    if (await js("!!document.querySelector('[role=dialog], [role=menu]')")) pressKey(win, 'Escape');
+    await click('[data-close-settings]');
+    await click('[data-go-home]');
+    rmSync(dir, { recursive: true, force: true });
+  };
+  try {
+    // New session on the sandbox, through a link (so it isn't remembered as New session's folder).
+    openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(dir)}`);
+    if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(dir)} && ${one(box)}`, 5_000))) return 'New session did not open on the sandbox';
+    // Typed in once, so Settings knows the project "just for you" and "Share" mean.
+    await js(`${one(box)}.focus()`);
+
+    // 1. A prompt for every project, with a pull request and a text blank, from Settings › Prompts.
+    await click('[data-open-settings]');
+    if (!(await waitInPage(win, one('[data-settings-section="prompts"]'), 3_000))) return 'Settings has no Prompts page';
+    await click('[data-settings-section="prompts"]');
+    if (!(await waitInPage(win, one('[data-saved-prompts-new]'), 3_000))) return 'Settings › Prompts has no New prompt';
+    await click('[data-saved-prompts-new]');
+    if (!(await waitInPage(win, `${one('[data-prompt-editor-dialog]')} && ${one('[data-prompt-use-in="personal"]')}?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'New prompt did not open with "just for you" picked';
+    await setFieldValue(win, '[data-prompt-editor-name]', 'Smoke: fix a pull request');
+    await click('[data-prompt-use-in="global"]');
+    await js(`${one('[data-prompt-editor] [data-prompt-run]')}.focus()`);
+    await win.webContents.insertText('Fix ');
+    await click('[data-add-blank]');
+    if (!(await waitInPage(win, one('[role=menu] [data-add-blank-type="pr"]'), 2_000))) return 'Add blank did not list Pull request';
+    await click('[role=menu] [data-add-blank-type="pr"]');
+    if (!(await waitInPage(win, `${one('[data-editor-blank="pr"]')} && document.activeElement === document.querySelectorAll('[data-prompt-editor] [data-prompt-run]')[1]`, 2_000))) return 'Add blank did not put a pull request blank in the text, with the caret after it';
+    // Typing {{ opens the same list.
+    await win.webContents.insertText(' because {{');
+    if (!(await waitInPage(win, one('[role=menu] [data-add-blank-type="text"]'), 2_000))) return 'typing {{ did not open the Add blank list';
+    await click('[role=menu] [data-add-blank-type="text"]');
+    if (!(await waitInPage(win, one('[data-blank-form] [data-blank-form-name]'), 2_000))) return 'a text blank did not open its form';
+    await setFieldValue(win, '[data-blank-form-name]', 'reason');
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `!${one('[data-blank-form]')} && ${one('[data-prompt-editor-preview]')}?.innerText === '2 blanks · pull request, text'`, 2_000))) return `the preview did not say 2 blanks (${String(await js(`${one('[data-prompt-editor-preview]')}?.innerText`))})`;
+    await shot(win, 'saved-prompt-editor.png');
+    await click('[data-prompt-editor-save]');
+    if (!(await waitInPage(win, `!${one('[data-prompt-editor-dialog]')} && ${one(row)}?.dataset.savedPromptScope === 'global'`, 3_000))) return `the prompt was not listed under Every project (${String(await js(`${one('[data-prompt-editor-problem]')}?.innerText`))})`;
+    await click('[data-close-settings]');
+
+    // 2. Picked with / in New session's message box.
+    if (!(await waitInPage(win, one(box), 3_000))) return 'New session did not come back after Settings';
+    await setFieldValue(win, box, '');
+    await js(`${one(box)}.focus()`);
+    await win.webContents.insertText('/smoke');
+    if (!(await waitInPage(win, `${one('[data-palette] [data-palette-heading]')}?.innerText.toLowerCase() === 'saved prompts' && ${one(`[data-palette] [data-saved-prompt-option="${id}"]`)}?.getAttribute('aria-selected') === 'true'`, 3_000))) return 'the / menu did not list the prompt first under Saved prompts';
+    await shot(win, 'saved-prompt-slash.png');
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `${one('[data-saved-prompt-header]')} && document.querySelectorAll('[data-blank][data-blank-empty]').length === 2 && document.activeElement?.matches('[data-blank="pr"]')`, 3_000))) return 'picking it did not show its two empty blanks, with the focus on the first';
+    if (!(await waitInPage(win, `${one('[data-blanks-left]')}?.innerText === '2 blanks left' && ${one(box)}.value === ''`, 2_000))) return 'the box did not say 2 blanks left';
+
+    // 3. Both filled: the pull request typed (gh lists none here), the reason typed in its chip, then more context.
+    pressKey(win, '1');
+    if (!(await waitInPage(win, `document.activeElement?.matches('[data-blank-popover] [data-blank-field]')`, 2_000))) return 'typing on the pull request blank did not open its field';
+    await win.webContents.insertText('42');
+    if (!(await waitInPage(win, one('[data-blank-popover] [data-blank-option="#142"]'), 3_000))) return 'a typed number was not offered';
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `${one('[data-blank="pr"]')}?.getAttribute('aria-label') === 'Pull request: #142' && document.activeElement?.matches('[data-blank="reason"] input')`, 2_000))) return 'picking #142 did not fill the blank and move on to the next';
+    await win.webContents.insertText('the tests fail on main');
+    if (!(await waitInPage(win, `!${one('[data-blanks-left]')} && !document.querySelector('[data-blank-empty]')`, 2_000))) return 'the blanks still counted as empty';
+    pressKey(win, 'Tab');
+    if (!(await waitInPage(win, `document.activeElement === ${one(box)}`, 2_000))) return 'Tab after the last blank did not go to the text under the prompt';
+    await win.webContents.insertText('Smoke context after the prompt.');
+    await shot(win, 'saved-prompt-filled.png');
+
+    // 4. Sent to the queue (Claude is never asked): the filled text, no braces, the context after a blank line.
+    const expected = 'Fix #142 because the tests fail on main\n\nSmoke context after the prompt.';
+    await click('[data-new-session-view] [data-start-menu]');
+    if (!(await waitInPage(win, `${one('[role=menu] [data-queue-add]')} && !${one('[role=menu] [data-queue-add]')}.disabled`, 2_000))) return 'Add to queue was not offered';
+    await click('[role=menu] [data-queue-add]');
+    if (!(await waitInPage(win, `!${one('[data-saved-prompt-header]')} && [...document.querySelectorAll('[data-toast]')].some((t) => t.innerText.includes('Added to the queue'))`, 3_000))) return 'Add to queue did not take the filled prompt';
+    const items = "[...document.querySelectorAll('[data-session-list] [data-queue-item]')].map((el) => el.dataset.queueItem)";
+    const [item] = (await js(items)) as string[];
+    if (!item) return 'the queue has no item';
+    await click(`[data-session-list] [data-queue-item="${item}"]`);
+    await waitInPage(win, `${one(box)}?.value.includes('#142')`, 3_000);
+    const sent = (await js(`${one(box)}?.value ?? ''`)) as string;
+    await click('[data-close-queued]');
+    await js(`${one(`[data-session-list] [data-queue-item="${item}"]`)}?.focus()`);
+    pressKey(win, 'Backspace');
+    if (sent !== expected) return `the queued prompt was not the filled text: ${JSON.stringify(sent)}`;
+    if (!(await waitInPage(win, `!${one(`[data-session-list] [data-queue-item="${item}"]`)}`, 3_000))) return 'the queued item was not removed';
+
+    // 5. Moved: just for you, shared (in the sandbox's file), every project again (out of it). Then deleted.
+    await click('[data-open-settings]');
+    await click('[data-settings-section="prompts"]');
+    if (!(await waitInPage(win, `${one(row)}?.innerText.includes('used 1×')`, 3_000))) return `sending did not count a use (${String(await js(`${one(row)}?.innerText`))})`;
+    const moveTo = async (kind: 'personal' | 'shared' | 'global') => {
+      await click(`${row} [data-saved-prompt-menu]`);
+      if (!(await waitInPage(win, one(`[role=menu] [data-prompt-move="${kind}"]`), 2_000))) return false;
+      await click(`[role=menu] [data-prompt-move="${kind}"]`);
+      return waitInPage(win, `${one(row)}?.dataset.savedPromptScope === '${kind}'`, 3_000);
+    };
+    if (!(await moveTo('personal'))) return 'Use in › just for you did not move it to the sandbox';
+    if (readShared()?.prompts?.length) return 'just for you wrote the shared file';
+    if (!(await moveTo('shared'))) return 'Share with the project did not move it';
+    if (!(await waitInPage(win, "!!document.querySelector('[data-prompt-share-toast=\"shared\"] [data-prompt-show-change]')", 2_000))) return 'sharing did not say to commit the file, with Show the change';
+    await shot(win, 'saved-prompt-shared.png');
+    const shared = readShared()?.prompts?.find((p) => p.id === id);
+    if (shared?.text !== 'Fix {{pr:pr}} because {{reason}}') return `the sandbox's .switchboard.json did not have the prompt (${JSON.stringify(readShared())})`;
+    if (!(await moveTo('global'))) return 'Use in › Every project did not move it back';
+    if (readShared()?.prompts) return `making it global again left it in .switchboard.json (${JSON.stringify(readShared())})`;
+    await click(`${row} [data-saved-prompt-menu]`);
+    await click('[role=menu] [data-prompt-delete]');
+    if (!(await waitInPage(win, `!${one(row)} && !!document.querySelector('[data-prompt-deleted-toast]')`, 3_000))) return 'Delete did not take it out, with Undo';
+    await click('[data-close-settings]');
+    // Its toasts (saved, queued, moved, shared, deleted) would cover what later steps click.
+    // Not the update toasts, which stay until they're dealt with.
+    const ours = '[data-toasts] [data-toast]:not([data-update-toast]):not([data-claude-update-toast])';
+    const closeToasts = `document.querySelectorAll('${ours} [data-toast-close], ${ours} button[aria-label="Dismiss"]').forEach((b) => b.click())`;
+    for (let i = 0; i < 5 && (await js(`!!document.querySelector('${ours}')`)); i++) {
+      await js(closeToasts);
+      await settle(win);
+    }
+    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .switchboard.json, with Show the change) and back (out of it), deleted';
+  } finally {
+    await cleanUp();
+  }
+}
+
+/**
  * The queue, in the throwaway profile and against a temp folder: two prompts go in from New session (Add to queue,
  * filled in by a link), show in the sidebar's Queue (ready: nothing works there) and on Home, ⌥↓ moves the first
  * one down, ⌫ removes it and Undo puts it back, and both are removed at the end. Nothing is ever started.
@@ -7128,6 +7272,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
+  await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('star on GitHub', () => runStarStep(win));

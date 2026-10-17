@@ -30,3 +30,10 @@ export const REMOTE_FEATURE_MARK_UNREAD = 'session.markUnread';
 
 /** In `hello`'s `features`: `projects.clonePlan`, `projects.clone` and `projects.cancelClone` answer (Clone from GitHub). */
 export const REMOTE_FEATURE_CLONE = 'projects.clone';
+
+/**
+ * In `hello`'s `features`: `push.subscribe` takes the device's own VAPID key (and a label), and pushes carry the
+ * device's id. A phone paired with more than one computer gives them all the same key, so one subscription gets every
+ * computer's notifications.
+ */
+export const REMOTE_FEATURE_PUSH_KEY = 'push.vapid';

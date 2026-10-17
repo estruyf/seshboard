@@ -196,6 +196,10 @@ export const RemotePushSubscription = z.object({
 });
 export type RemotePushSubscription = z.infer<typeof RemotePushSubscription>;
 
+/** A device's own VAPID key pair, both base64url: the uncompressed P-256 point (65 bytes) and the private scalar (32). */
+export const RemoteVapidKeys = z.object({ publicKey: z.string().regex(/^[A-Za-z0-9_-]{87}$/), privateKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/) });
+export type RemoteVapidKeys = z.infer<typeof RemoteVapidKeys>;
+
 /** An image a phone sends with a message: the app's attachment, smaller. */
 export const RemoteImage = ImageAttachment.extend({ data: z.string().min(1).max(REMOTE_IMAGE_BYTES) });
 export type RemoteImage = z.infer<typeof RemoteImage>;
@@ -388,9 +392,13 @@ export const remoteContract = {
     'projects.cancelClone': { params: z.object({ jobId: z.string().min(1).max(100) }), result: z.object({}) },
     /** The engine's VAPID public key, for `pushManager.subscribe` (made the first time a phone asks). */
     'push.key': { params: z.object({}), result: z.object({ publicKey: z.string() }) },
-    /** Push to this device when a session needs you, finishes, or both; replaces what it had. */
+    /**
+     * Push to this device when a session needs you, finishes, or both; replaces what it had. With
+     * `REMOTE_FEATURE_PUSH_KEY`: `vapid`, the key the subscription was made with (the device's own, shared by every
+     * computer it is paired with), and `label`, what each push starts with (this computer's name, with more than one).
+     */
     'push.subscribe': {
-      params: z.object({ subscription: RemotePushSubscription, needsYou: z.boolean(), finished: z.boolean() }),
+      params: z.object({ subscription: RemotePushSubscription, needsYou: z.boolean(), finished: z.boolean(), vapid: RemoteVapidKeys.optional(), label: z.string().trim().min(1).max(60).optional() }),
       result: z.object({}),
     },
     'push.unsubscribe': { params: z.object({}), result: z.object({}) },

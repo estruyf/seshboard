@@ -70,6 +70,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - A notification and Dock badge when a session needs you or finishes, so you can leave it running in the background.
 - A **queue** of prompts to start next, each one saying when it's ready (when its project is free). See [Queue](#queue).
 - **Unsent messages** are kept, also after you quit. See [Unsent messages](#unsent-messages).
+- **Saved prompts** with blanks: type / in any message box, pick one, fill in an issue, a pull request, a branch or your own options, and send. Keep them for every project, for one project just for you, or share them with the project in its `.switchboard.json`. See [Saved prompts](https://switchboard.struyfconsulting.com/sessions/saved-prompts/).
 - An optional **focus limit**: how many sessions you want going at the same time, so starting another doesn't come at the cost of the ones already running. See [Focus limit](#focus-limit).
 - **Remote:** follow your sessions from your phone's browser. See what needs you, allow or deny, answer questions, send prompts, review changes and commit, end-to-end encrypted. Turn it on in Settings › Remote and pair a phone with a QR code. While it is on, **Connected to this Mac** at the bottom of the sidebar shows which devices are connected, what they did last, and Revoke.
 - Your plan usage under the message box: how much of your 5-hour and weekly limits you've used (hover for when they reset).
@@ -276,6 +277,8 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | / | Commands and skills (at the start of the message) |
 | @ | Mention a file |
 | ⌘⇧A | Add files as context (Several at once; they show as chips) |
+| ⇥ | Next blank (in a saved prompt; After the last blank, on to the text under the prompt) |
+| ⇧⇥ | Previous blank (in a saved prompt; Backspace in an empty blank goes back too) |
 | ↑ or ↓ | Bring back an earlier message (at the start of your text; Esc goes back to what you were typing) |
 
 **Permissions and questions**

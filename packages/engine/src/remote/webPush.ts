@@ -1,4 +1,4 @@
-import { createECDH, createPrivateKey, createPublicKey, generateKeyPairSync, hkdfSync, randomBytes, sign, createCipheriv, type KeyObject } from 'node:crypto';
+import { createECDH, createPrivateKey, createPublicKey, generateKeyPairSync, hkdfSync, randomBytes, sign, verify, createCipheriv, type KeyObject } from 'node:crypto';
 
 /**
  * Web Push from the engine itself, without a push library: the payload encrypted for the browser (RFC 8291,
@@ -39,6 +39,19 @@ function vapidPrivateKey(keys: VapidKeys): KeyObject {
 export function vapidPublicKey(keys: VapidKeys): KeyObject {
   const point = fromB64url(keys.publicKey);
   return createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: b64url(point.slice(1, 33)), y: b64url(point.slice(33, 65)) }, format: 'jwk' });
+}
+
+/**
+ * Whether a device's own VAPID key pair (`push.subscribe`'s `vapid`) is one: a point on P-256 and the private key that
+ * goes with it, so the pushes signed with it are accepted for the subscription made with its public half.
+ */
+export function validVapidKeys(keys: VapidKeys): boolean {
+  try {
+    const data = Buffer.from('switchboard-vapid-check');
+    return verify('sha256', data, vapidPublicKey(keys), sign('sha256', data, vapidPrivateKey(keys)));
+  } catch {
+    return false;
+  }
 }
 
 /**
