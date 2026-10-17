@@ -2,16 +2,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { z } from 'zod';
 import { ProjectAction, RpcError, type ActionSuggestion, type ListedAction } from '@switchboard/protocol';
 import type { UserShell } from '../system/shell.ts';
+import { entriesOf, readSharedFile, removeEntry, SHARED_FILE, upsertEntry, writeSharedFile } from './sharedFile.ts';
 
-export const SHARED_FILE = '.switchboard.json';
-
-/** The shared file is hand-written, so ids are optional (derived from the name). */
-const SharedFile = z.object({
-  actions: z.array(z.record(z.string(), z.unknown())).default([]),
-});
+export { SHARED_FILE } from './sharedFile.ts';
 
 export const slugify = (name: string) =>
   name
@@ -21,6 +16,23 @@ export const slugify = (name: string) =>
     .slice(0, 40) || 'action';
 
 const hash = (command: string) => createHash('sha256').update(command).digest('hex');
+
+/** Where an action's keys go in the shared file: these first, then anything else it had. */
+const ENTRY_ORDER = ['id', 'name', 'icon', 'type', 'command', 'cwd', 'confirm', 'shortcut', 'runOnWorktreeCreate', 'sendOutput'] as const;
+
+/** The id of a shared entry: its own, else made from its name. */
+const sharedId = (raw: Record<string, unknown>, index: number) => (typeof raw.id === 'string' ? raw.id : slugify(String(raw.name ?? `action-${index + 1}`)));
+
+/**
+ * An action as the shared file holds it: values left at their default are left out (undefined, so an entry that had
+ * them loses them), the way people write the file by hand.
+ */
+function sharedEntry(action: ProjectAction): Record<string, unknown> & { id: string } {
+  const defaults = ProjectAction.parse({ id: action.id, name: action.name, command: action.command });
+  const entry: Record<string, unknown> = {};
+  for (const key of ENTRY_ORDER) entry[key] = key === 'id' || key === 'name' || key === 'command' || action[key] !== defaults[key] ? action[key] : undefined;
+  return { ...entry, id: action.id };
+}
 
 export interface ActionVariables {
   cwd: string;
@@ -124,27 +136,22 @@ export class ActionStore {
   /** Imported shell actions run only once you've seen and approved their command. */
   private static trustedOwn = (entry: { action: ProjectAction; imported: boolean }) => !entry.imported || entry.action.type !== 'shell';
 
-  /** Reads the repo's shared actions. Invalid entries are reported, not fatal. */
+  /** Reads the repo's shared actions. Invalid entries are reported, not fatal. The file is hand-written, so ids are optional (derived from the name). */
   shared(projectRoot: string): { actions: ProjectAction[]; file: string | null; errors: string[] } {
-    const file = join(projectRoot, SHARED_FILE);
-    if (!existsSync(file)) return { actions: [], file: null, errors: [] };
+    const read = readSharedFile(projectRoot);
+    if (!read.data && !read.error) return { actions: [], file: null, errors: [] };
+    if (read.error) return { actions: [], file: read.file, errors: [read.error] };
+    const entries = entriesOf(read.data, 'actions');
+    if (!entries) return { actions: [], file: read.file, errors: [`${SHARED_FILE}: expected { "actions": [...] }`] };
     const errors: string[] = [];
-    let raw: unknown;
-    try {
-      raw = JSON.parse(readFileSync(file, 'utf8'));
-    } catch (error) {
-      return { actions: [], file, errors: [`${SHARED_FILE}: ${(error as Error).message}`] };
-    }
-    const parsed = SharedFile.safeParse(raw);
-    if (!parsed.success) return { actions: [], file, errors: [`${SHARED_FILE}: expected { "actions": [...] }`] };
     const actions: ProjectAction[] = [];
-    for (const [i, entry] of parsed.data.actions.entries()) {
-      const candidate = { ...entry, id: typeof entry.id === 'string' ? entry.id : slugify(String(entry.name ?? `action-${i + 1}`)) };
+    for (const [i, entry] of entries.entries()) {
+      const candidate = { ...entry, id: sharedId(entry, i) };
       const action = ProjectAction.safeParse(candidate);
       if (action.success) actions.push(action.data);
       else errors.push(`${SHARED_FILE} action ${i + 1}: ${action.error.issues[0]?.message ?? 'invalid'}`);
     }
-    return { actions, file, errors };
+    return { actions, file: read.file, errors };
   }
 
   isTrusted(projectRoot: string, command: string): boolean {
@@ -187,6 +194,25 @@ export class ActionStore {
     );
   }
 
+  /**
+   * Saves an action in the project's .switchboard.json (in place, or at the end), for everyone on the project once it
+   * is committed. `previousId` renames the entry where it is. Keys and entries Switchboard doesn't know stay as they
+   * were. You saved the command, so it is approved for you; others approve it once.
+   */
+  saveShared(projectRoot: string, action: ProjectAction, previousId?: string): void {
+    writeSharedFile(projectRoot, (data) => {
+      const renamed = previousId && previousId !== action.id ? renameEntry(data, previousId, action.id) : data;
+      return upsertEntry(renamed, 'actions', sharedEntry(action), ENTRY_ORDER, sharedId);
+    });
+    this.trust(projectRoot, action.command);
+  }
+
+  /** Takes an action out of the project's .switchboard.json. */
+  removeShared(projectRoot: string, id: string): void {
+    if (!this.shared(projectRoot).actions.some((a) => a.id === id)) return;
+    writeSharedFile(projectRoot, (data) => removeEntry(data, 'actions', id, sharedId));
+  }
+
   /** Approves an imported action of yours (null: global). */
   approve(projectRoot: string | null, id: string): void {
     this.statements.approve.run(projectRoot ?? '', id);
@@ -227,4 +253,10 @@ export function suggestActions(projectRoot: string): ActionSuggestion[] {
     { name: 'Create PR', command: 'gh pr create --web', type: 'shell', icon: 'git-pull-request' },
   );
   return suggestions;
+}
+
+/** The shared file with the action `from` given the id `to`, where it is. */
+function renameEntry(data: Record<string, unknown>, from: string, to: string): Record<string, unknown> {
+  if (!Array.isArray(data.actions)) return data;
+  return { ...data, actions: data.actions.map((raw: unknown, i) => (typeof raw === 'object' && raw !== null && !Array.isArray(raw) && sharedId(raw as Record<string, unknown>, i) === from ? { ...(raw as Record<string, unknown>), id: to } : raw)) };
 }

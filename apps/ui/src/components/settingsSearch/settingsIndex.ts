@@ -250,6 +250,9 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'memory-import', page: 'memory', label: 'Import from Claude export…', detail: 'Bring in what the Claude app remembers about you.', keywords: 'claude.ai', target: '[data-memory-import-export]', fallback: '[data-settings-page="memory"] section' },
     { id: 'memory-paste', page: 'memory', label: 'Paste from Claude app…', keywords: 'claude.ai import', target: '[data-memory-paste-app]', fallback: '[data-settings-page="memory"] section' },
     { id: 'memory-copy', page: 'memory', label: 'Copy for Claude app…', keywords: 'claude.ai export', target: '[data-memory-copy-for-app]', fallback: '[data-settings-page="memory"] section' },
+    // Prompts
+    { id: 'prompts-new', page: 'prompts', label: 'New prompt', detail: 'Prompts with blanks you fill in when you use them. Type / in any message box.', keywords: 'prompts templates snippets saved blanks create add', target: '[data-saved-prompts-new]' },
+    { id: 'prompts-list', page: 'prompts', label: 'Saved prompts', detail: 'Every project, just for you, or shared with the project.', keywords: 'prompts templates snippets saved blanks share move delete edit', target: '[data-saved-prompts-settings]', fallback: '[data-settings-page="prompts"] section' },
 
     // VS Code
     {

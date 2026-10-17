@@ -35,6 +35,7 @@ import { useLaterSync } from './state/laterStore.ts';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
+import { useSavedPromptsSync } from './components/savedPrompts/savedPromptsStore.ts';
 import { useLimitsSync } from './state/limitsStore.ts';
 import { useAskSync } from './state/askStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
@@ -235,6 +236,7 @@ export function App() {
   useUpNextSync();
   useModsSync();
   useLimitsSync();
+  useSavedPromptsSync();
   useAskSync();
   useQueueToasts();
   useSidebarSectionsSync();

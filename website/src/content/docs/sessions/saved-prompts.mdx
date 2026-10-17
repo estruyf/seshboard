@@ -1,0 +1,154 @@
+---
+title: Saved prompts
+description: Save a prompt with blanks, pick it with / or in New session, fill in the blanks and send.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Many prompts start the same way: "Start implementing issue 132", "Fix pull request 142". A saved prompt is that text with blanks in it. You pick it, fill in the blanks, add more context if you like, and send.
+
+<Screenshot name="saved-prompt-fill" alt="New session with the saved prompt Implement issue in the message box: a header with its name, Global, next blank and Clear, the text with the issue #132 and the branch feat/wishlist filled in and Env still empty, more context under a dashed line, and 1 blank left next to Start. Above the box, chips for four saved prompts and All prompts…" width={760} eager />
+
+## Use a saved prompt
+
+<Steps>
+
+1. Type <Kbd shortcut="composer.commands" /> in any message box: in a session or in New session. **Saved prompts** come first in the list, then the Claude Code commands under **Commands**. Typing filters both.
+
+2. Pick a prompt with <Kbd keys="arrowup|arrowdown" /> and <Kbd keys="enter" />, or click it. <Kbd keys="escape" /> closes the list and keeps what you typed.
+
+3. The prompt goes in the message box, with each blank as a chip. The cursor is in the first empty one. Fill it in, then press <Kbd shortcut="composer.next-blank" /> for the next blank (<Kbd shortcut="composer.previous-blank" /> goes back).
+
+4. Write more under the dashed line if you like: **Add more context… (optional, sent after the prompt)**. It takes images and `@` files, like the message box always does. It is sent after the prompt, with a blank line in between.
+
+5. Send. While a blank you have to fill in is still empty, Send is off and says how many are left ("1 blank left"). Pressing <Kbd shortcut="composer.send" /> then takes you to that blank instead.
+
+</Steps>
+
+<Screenshot name="saved-prompts-slash" alt="The / list in New session: Saved prompts first, each with its name, the start of its text with blanks as boxes, and where it is kept, then Commands" width={760} />
+
+Each row in the list shows the start of the prompt, with blanks as ▢, and where the prompt is kept:
+
+- **Global**, with a globe: every project.
+- The project's name, with a person: this project, just for you.
+- **&lt;project&gt; · shared**, with two people: shared with the project.
+
+The conversation shows the prompt as it was sent, with the blanks filled in.
+
+### In New session
+
+Above the message box, New session shows up to four of the prompts you use most for the picked project, as chips. Click one to use it. **All prompts…** opens the <Kbd shortcut="composer.commands" /> list. The chips change with the project, and don't show when you have no saved prompts.
+
+### From the command palette
+
+Run *Use saved prompt…* to pick one, or *Prompt: Implement issue* to put that prompt in the message box on screen straight away.
+
+## Fill in the blanks
+
+The text around the blanks can be edited like any text. A blank holds what you fill in; the same blank used twice in a prompt is filled once.
+
+| Blank | How you fill it in |
+|---|---|
+| **Text** | Type in the chip. |
+| **Choice** | Pick one of its options with <Kbd keys="arrowup" /> <Kbd keys="arrowdown" /> and <Kbd keys="enter" />. |
+| **Pull request** | Type a number, a link or part of a title. The list shows the project's open pull requests (*#142 Claude Code mods · 2 reviews*). A number or link that isn't in the list works too. |
+| **GitHub issue** | Paste a link, or type `#` and a number. A known issue shows as *#132 Support Claude Code Mods*. The full link is what is sent, so Claude can open it. |
+| **Branch** | Pick one of the local branches. The one checked out is first. |
+| **File** | Search the project's files, as with `@`. |
+
+Typing on a blank opens its list with what you typed. <Kbd keys="backspace" /> in an empty blank goes back to the one before. <Kbd keys="escape" /> closes a list and leaves the cursor on its blank.
+
+Pull requests and issues come from the GitHub CLI (`gh`). Without it, or without a remote on GitHub, the list says why, and you can still type a number or paste a link.
+
+**Clear** in the prompt's header turns it back into plain text: what you filled in stays, and an empty blank becomes its name in brackets, such as `[Branch]`.
+
+A prompt you are filling in is kept like any [unsent message](/sessions/unsent-drafts/): switch to another session and back, or quit, and it is still there with what you filled in.
+
+## Make a saved prompt
+
+<Steps>
+
+1. Open **Settings**, then **Prompts**, and click **New prompt**. Or run *New saved prompt…* in the command palette.
+
+2. Give it a name.
+
+3. Under **Use in**, choose where it shows:
+   - **Every project**: only you, in every project.
+   - **&lt;project&gt;, just for you**: only you, only in this project. This is picked when a project is open.
+   - **&lt;project&gt;, shared with the project**: saved with the project's actions, so everyone on the project gets it once it's committed.
+
+4. Write the prompt. Click **Add blank** for a GitHub issue, pull request, branch, choice, text or file blank where the cursor is, or type `{{` for the same list. Click a blank to change its name and type, to give a choice its options, or to make it optional.
+
+5. Click **Save** (<Kbd keys="mod+enter" />).
+
+</Steps>
+
+<Screenshot name="saved-prompt-editor" alt="The New saved prompt dialog: the name, Use in with three cards (Every project, acme-store just for you, acme-store shared with the project), and the text with blank chips, Add blank under it and 2 blanks · issue, choice in the footer" width={640} />
+
+The footer says what the prompt asks for, such as "2 blanks · issue, choice". A prompt needs a name, a choice needs options, and a name can be used for one kind of blank only.
+
+### From a message you sent
+
+Right-click a message you sent, or use the bookmark in its row of actions, and choose **Save as prompt…**. The editor opens with the message. Links to GitHub issues and pull requests, branch names and file paths in it are highlighted: click one to turn it into a blank of the right type.
+
+## Write blanks by hand
+
+A saved prompt is text. A blank is written as `{{name}}` or `{{name:type}}`:
+
+| Written | Blank |
+|---|---|
+| `{{reason}}` | Text, the default |
+| `{{env:choice=staging\|production}}` | A choice of those options |
+| `{{issue:issue}}` | A GitHub issue |
+| `{{pr:pr}}` | A pull request |
+| `{{base:branch}}` | A local branch |
+| `{{test:file}}` | A file in the project |
+| `{{context?}}` | A `?` after the name makes it optional |
+
+The same name used twice is one blank, filled once. A type Switchboard doesn't know is a text blank. `\{{` writes the braces themselves. Paste a prompt with blanks written out into the editor and they become chips.
+
+```text
+Start implementing {{issue:issue}} on {{branch:branch}}. Deploy to {{env:choice=staging|production}} when the tests pass.
+{{notes?}}
+```
+
+## Manage your prompts
+
+**Settings › Prompts** lists every saved prompt: those for **Every project** first, then per project those **just for you** and those **shared with the project**. Each row shows the name, its blanks and how often you used it ("2 blanks · pull request, branch · used 11×").
+
+<Screenshot name="settings-prompts" alt="Settings, Prompts: New prompt, the prompts grouped under Every project, acme-store just for you and acme-store shared with the project, each row with its blanks, and the ⋯ menu of a shared prompt open with Edit…, Duplicate, Use in with a check on Share with the project, Another project… and Delete" width={720} />
+
+The **⋯** menu of a prompt has:
+
+- **Edit…** and **Duplicate**.
+- **Use in**: **Every project**, **&lt;project&gt;, just for you**, **Share with the project** and **Another project…**. The check is on where it is now. Choose another to move it there.
+- **Delete**, with **Undo** in the message that follows.
+
+Sharing a prompt, or taking it out of the shared ones, changes a file in the repository. The message says so ("Fix failing test is shared with acme-store"), with **Show the change**, which opens the file in [Changes](/terminal-changes-git/changes/), and **Undo**.
+
+## Shared prompts
+
+Shared prompts are kept in the project's `.switchboard.json`, next to its [shared actions](/projects/actions/#share-actions-with-your-team), under `prompts`. Commit the file and everyone on the project gets them. When the file changes, for example after a pull, the lists update.
+
+```json
+{
+  "actions": [],
+  "prompts": [
+    { "id": "fix-failing-test", "name": "Fix failing test", "text": "Fix {{test:file}}. It fails on {{branch:branch}}." }
+  ]
+}
+```
+
+| Key | Values |
+|---|---|
+| `name` | Up to 60 characters (required) |
+| `text` | The prompt, with its blanks (required) |
+| `id` | Lowercase letters, digits and dashes. From the name when it's left out |
+
+Switchboard keeps the other keys in the file as they are and writes the keys in the same order, so a change is a small diff. How often you use a shared prompt stays on your computer, never in the file.
+
+<Aside type="note">
+Saved prompts are on your computer. The [remote app](/remote-access/) doesn't show them yet.
+</Aside>
