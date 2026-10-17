@@ -279,7 +279,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | @ | Mention a file |
 | ⌘⇧A | Add files as context (Several at once; they show as chips) |
 | ⇥ | Next blank (in a saved prompt; After the last blank, on to the text under the prompt) |
-| ⇧⇥ | Previous blank (in a saved prompt; Backspace in an empty blank goes back too) |
+| ⇧⇥ | Previous blank (in a saved prompt; Backspace in an empty blank takes it out of the prompt) |
 | ↑ or ↓ | Bring back an earlier message (at the start of your text; Esc goes back to what you were typing) |
 
 **Permissions and questions**

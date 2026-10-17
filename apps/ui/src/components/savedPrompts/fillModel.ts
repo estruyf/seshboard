@@ -82,6 +82,17 @@ export const startFill = (prompt: Pick<SavedPrompt, 'id' | 'name' | 'scope' | 't
   displays: {},
 });
 
+/** A prompt being filled with the blank at `index` taken out; what it held goes too, unless the same blank is used again. */
+export function withoutBlank(state: FillState, index: number): FillState {
+  const before = toSegments(state.text);
+  const name = before.blanks[index]?.name;
+  const segments = removeBlank(before, index);
+  if (name === undefined || segments.blanks.some((blank) => blank.name === name)) return { ...state, text: fromSegments(segments) };
+  const { [name]: _value, ...values } = state.values;
+  const { [name]: _display, ...displays } = state.displays;
+  return { ...state, text: fromSegments(segments), values, displays };
+}
+
 /** The message a filled prompt sends: the prompt, then what was added after it with a blank line between. */
 export function fillMessage(state: Pick<FillState, 'text' | 'values'>, extra: string): string {
   const prompt = fill(state.text, state.values);

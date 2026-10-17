@@ -891,7 +891,7 @@ export const SHORTCUTS = [
     action: "Previous blank",
     section: "composer",
     context: "In a saved prompt",
-    note: "Backspace in an empty blank goes back too",
+    note: "Backspace in an empty blank takes it out of the prompt",
     when: inMessageBox,
     where: "composer",
   },
