@@ -10,7 +10,8 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { isAskOpen } from '../../state/askStore.ts';
 import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
 import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
-import { toggleChangesPanel, toggleTerminalPanel } from '../../state/rightPanelStore.ts';
+import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
+import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { cleanUpWorktrees, openProject } from '../../state/projectPageStore.ts';
@@ -154,15 +155,15 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     newTerminalTab: () => owner && call('open a terminal', (c) => openTerminal(c, owner, ctx.terminal.cwd, 'shell')),
     toggleChanges: () => {
       const id = useSessions.getState().selectedId;
-      toggleChangesPanel(isAskOpen(id) || isAgentsOpen(id) || isCommandsOpen(id));
+      if (id) toggleChangesPanel(id, isAskOpen(id) || isAgentsOpen(id) || isCommandsOpen(id));
     },
     toggleAgents: () => {
       const id = useSessions.getState().selectedId;
-      if (id) toggleAgentsPanel(id, useOverlay.getState().changesOpen || isAskOpen(id) || isCommandsOpen(id));
+      if (id) toggleAgentsPanel(id, isChangesOpen(id) || isAskOpen(id) || isCommandsOpen(id));
     },
     toggleCommands: () => {
       const id = useSessions.getState().selectedId;
-      if (id) toggleCommandsPanel(id, useOverlay.getState().changesOpen || isAskOpen(id) || isAgentsOpen(id));
+      if (id) toggleCommandsPanel(id, isChangesOpen(id) || isAskOpen(id) || isAgentsOpen(id));
     },
     // After the palette's own close, so the Tools dialog isn't closed along with it.
     showTools: () => setTimeout(() => useOverlay.getState().show('tools')),

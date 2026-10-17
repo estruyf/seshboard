@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type { CatchUp as CatchUpCardData, GitChanges } from '@switchboard/protocol/client';
 import { turnKey, useCatchUp } from '../../state/catchUpStore.ts';
-import { useOverlay } from '../../state/overlayStore.ts';
+import { closeChanges } from '../../state/changesPanelStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { OVERLAY_SELECTOR } from '../session/permissionKeys.ts';
 import { Button } from '../ui/Button.tsx';
@@ -187,7 +187,7 @@ export interface CatchUpSlotProps {
   changes: GitChanges | null;
   /** This session's pane is the active one: only it takes keys. */
   active: boolean;
-  /** The Changes panel is on screen beside this session (the toggle is shared; a session outside git shows none). */
+  /** The Changes panel is on screen beside this session (a session outside git shows none). */
   changesOpen: boolean;
 }
 
@@ -224,7 +224,7 @@ export function CatchUpSlot({ card, show, cwd, changes, active, changesOpen }: C
         if (!step) return;
         event.preventDefault();
         if (step === 'leave-reply') useCatchUp.getState().setReplying(null);
-        else if (step === 'close-changes') useOverlay.getState().toggleChanges(false);
+        else if (step === 'close-changes') closeChanges(sessionId);
         else if (step === 'close-details') useCatchUp.getState().setDetails(card, false);
         else s.actions.fold(true);
         return;

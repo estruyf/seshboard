@@ -4,7 +4,7 @@ import type { AskEvent } from '@switchboard/protocol/client';
 import type { EngineClient as Client } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { agentsToggleStep } from './agentsPanel.ts';
-import { useRightPanel } from './rightPanelStore.ts';
+import { frontTab, useRightPanel } from './rightPanelStore.ts';
 import { closed, currentThread, EMPTY_ASK, newThread, opened, pickedThread, withAsked, withEvent, withoutItem, withThreads, type SessionAsk } from './ask.ts';
 
 /**
@@ -71,7 +71,7 @@ export async function askAbout(client: Client, sessionId: string, question: stri
   const asked = await client.call('session.ask', { sessionId, question, ...(threadId ? { threadId } : {}), ...(options.replaces ? { replaces: options.replaces } : {}) });
   const early = useAsk.getState().early.get(asked.id) ?? [];
   update(sessionId, (s) => early.reduce(withEvent, opened(withAsked(s, { ...asked, question }))));
-  useRightPanel.getState().setTab('ask');
+  useRightPanel.getState().setTab(sessionId, 'ask');
   if (early.length) {
     useAsk.setState((s) => {
       const left = new Map(s.early);
@@ -91,7 +91,7 @@ export function retryAsk(client: Client, sessionId: string, threadId: string, id
 export async function openAsk(client: Client | null, sessionId: string, focus = true): Promise<void> {
   update(sessionId, opened);
   // With Changes open too, Ask comes to the front.
-  useRightPanel.getState().setTab('ask');
+  useRightPanel.getState().setTab(sessionId, 'ask');
   if (focus) focusAsk(sessionId);
   const state = useAsk.getState().sessions.get(sessionId);
   if (client && !state?.loaded) await loadAskThreads(client, sessionId).catch(() => {});
@@ -99,7 +99,7 @@ export async function openAsk(client: Client | null, sessionId: string, focus = 
 
 /** The header's Ask button: open, bring to the front, or close, as Agents does. `othersOpen`: Changes or Agents is open too. */
 export function toggleAskPanel(client: Client | null, sessionId: string, othersOpen: boolean): void {
-  const step = agentsToggleStep(isAskOpen(sessionId), useRightPanel.getState().tab === 'ask', othersOpen);
+  const step = agentsToggleStep(isAskOpen(sessionId), frontTab(sessionId) === 'ask', othersOpen);
   if (step === 'close') closeAsk(sessionId);
   else void openAsk(client, sessionId);
 }

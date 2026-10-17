@@ -10,6 +10,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Side panels stay with their session in split view.** With two sessions side by side, a session's Changes, Agents, Commands or mod panel used to disappear when you clicked the other session, and come back when you clicked back. Each session now keeps its own panels, and which one is in front, wherever you focus. Changes is now open per session too, and no longer stays open when you switch to another session or restart Switchboard.
 - **The keyboard no longer covers Start session in the remote app.** On a phone, while you type in New session, the screen now shows only the project's name, the prompt and the buttons, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see the project tiles and the chips again.
 
 ## [0.0.22] - 2026-10-16
