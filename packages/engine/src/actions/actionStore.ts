@@ -2,16 +2,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { z } from 'zod';
 import { ProjectAction, RpcError, type ActionSuggestion, type ListedAction } from '@switchboard/protocol';
 import type { UserShell } from '../system/shell.ts';
+import { entriesOf, readSharedFile, SHARED_FILE } from './sharedFile.ts';
 
-export const SHARED_FILE = '.switchboard.json';
-
-/** The shared file is hand-written, so ids are optional (derived from the name). */
-const SharedFile = z.object({
-  actions: z.array(z.record(z.string(), z.unknown())).default([]),
-});
+export { SHARED_FILE } from './sharedFile.ts';
 
 export const slugify = (name: string) =>
   name
@@ -124,27 +119,22 @@ export class ActionStore {
   /** Imported shell actions run only once you've seen and approved their command. */
   private static trustedOwn = (entry: { action: ProjectAction; imported: boolean }) => !entry.imported || entry.action.type !== 'shell';
 
-  /** Reads the repo's shared actions. Invalid entries are reported, not fatal. */
+  /** Reads the repo's shared actions. Invalid entries are reported, not fatal. The file is hand-written, so ids are optional (derived from the name). */
   shared(projectRoot: string): { actions: ProjectAction[]; file: string | null; errors: string[] } {
-    const file = join(projectRoot, SHARED_FILE);
-    if (!existsSync(file)) return { actions: [], file: null, errors: [] };
+    const read = readSharedFile(projectRoot);
+    if (!read.data && !read.error) return { actions: [], file: null, errors: [] };
+    if (read.error) return { actions: [], file: read.file, errors: [read.error] };
+    const entries = entriesOf(read.data, 'actions');
+    if (!entries) return { actions: [], file: read.file, errors: [`${SHARED_FILE}: expected { "actions": [...] }`] };
     const errors: string[] = [];
-    let raw: unknown;
-    try {
-      raw = JSON.parse(readFileSync(file, 'utf8'));
-    } catch (error) {
-      return { actions: [], file, errors: [`${SHARED_FILE}: ${(error as Error).message}`] };
-    }
-    const parsed = SharedFile.safeParse(raw);
-    if (!parsed.success) return { actions: [], file, errors: [`${SHARED_FILE}: expected { "actions": [...] }`] };
     const actions: ProjectAction[] = [];
-    for (const [i, entry] of parsed.data.actions.entries()) {
+    for (const [i, entry] of entries.entries()) {
       const candidate = { ...entry, id: typeof entry.id === 'string' ? entry.id : slugify(String(entry.name ?? `action-${i + 1}`)) };
       const action = ProjectAction.safeParse(candidate);
       if (action.success) actions.push(action.data);
       else errors.push(`${SHARED_FILE} action ${i + 1}: ${action.error.issues[0]?.message ?? 'invalid'}`);
     }
-    return { actions, file, errors };
+    return { actions, file: read.file, errors };
   }
 
   isTrusted(projectRoot: string, command: string): boolean {
