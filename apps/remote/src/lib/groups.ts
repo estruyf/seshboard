@@ -38,8 +38,8 @@ const workingSince = (session: RemoteSession): number => session.workingSince ??
  * The non-empty sections in order, each newest first. Working is the exception, as on the computer: the one you set
  * going last first, so sessions don't swap places each time one of them writes.
  */
-export function groupSessions(sessions: readonly RemoteSession[], now: number): Array<{ group: SessionGroup; sessions: RemoteSession[] }> {
-  const byGroup = new Map<SessionGroup, RemoteSession[]>();
+export function groupSessions<S extends RemoteSession>(sessions: readonly S[], now: number): Array<{ group: SessionGroup; sessions: S[] }> {
+  const byGroup = new Map<SessionGroup, S[]>();
   for (const session of sessions) {
     const group = sessionGroup(session, now);
     byGroup.set(group, [...(byGroup.get(group) ?? []), session]);
@@ -123,7 +123,7 @@ export function shortHeadline(sessions: readonly RemoteSession[], now: number): 
 }
 
 /** Finished sessions you haven't read, newest first: Finished, ready to review. Not while a task still runs in the background. */
-export function toReview(sessions: readonly RemoteSession[], max = 6): RemoteSession[] {
+export function toReview<S extends RemoteSession>(sessions: readonly S[], max = 6): S[] {
   return sessions
     .filter((s) => s.status === 'unread' && !inBackground(s))
     .sort((a, b) => b.updatedAt - a.updatedAt)

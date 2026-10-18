@@ -4,7 +4,7 @@ import { Connected, type OpenRequest } from './components/Connected.tsx';
 import { LinkEntry } from './components/LinkEntry.tsx';
 import { Button, Message } from './components/ui.tsx';
 import { PairScreen } from './components/PairScreen.tsx';
-import { Computers, keepDisconnected, pushComputers, pushTarget, type Computer } from './lib/computers.ts';
+import { Computers, keepDisconnected, pushComputers, pushTarget } from './lib/computers.ts';
 import { computerId, currentComputer, startFrom, type Paired } from './lib/link.ts';
 import { STANDALONE } from './lib/platform.ts';
 import { forgetPush, resync } from './lib/push.ts';
@@ -31,9 +31,9 @@ const same = (a: Paired, b: Paired) => computerId(a) === computerId(b);
 
 /**
  * The remote app: reads the link it was opened with (then takes it out of the address bar, so a pairing secret
- * doesn't linger in the history), pairs or connects, and shows the sessions of one computer at a time once connected.
- * Every paired computer stays connected (`Computers`), so the computer's menu says which needs you and switches at
- * once, and a notification from any of them opens it there.
+ * doesn't linger in the history), pairs or connects, and once connected shows the sessions of every paired computer
+ * in one list. Every paired computer stays connected (`Computers`), and a notification from any of them opens its
+ * session there. The computer looked at last (`currentId`) is where the app opens again.
  */
 export function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
@@ -128,8 +128,10 @@ export function App() {
     setScreen({ kind: 'connected' });
   };
 
-  /** Forgets a computer: its pairing, and its part in the notifications. The phone shows another, or the welcome. */
-  const forget = async (computer: Computer) => {
+  /** Forgets a computer: its pairing, and its part in the notifications. The phone shows the others, or the welcome. */
+  const forget = async (id: string) => {
+    const computer = list.find((c) => c.id === id);
+    if (!computer) return;
     const rest = list.filter((c) => c.id !== computer.id);
     await forgetPush(pushTarget(computer), pushComputers(rest)).catch(() => {});
     keepDisconnected(computer.id, false);
@@ -209,15 +211,13 @@ export function App() {
       if (!computer) return null;
       return (
         <Connected
-          // Another computer is another view: its own route, drawer and sheets.
-          key={computer.id}
-          computer={computer}
           computers={list}
-          onSessions={(sessions) => computers.setSessions(computer.id, sessions)}
+          focus={computer.id}
+          onFocus={(id) => list.some((c) => c.id === id) && choose(id)}
+          onSessions={(id, sessions) => computers.setSessions(id, sessions)}
           request={request}
-          onSwitch={(id) => list.some((c) => c.id === id) && choose(id)}
           onAdd={() => setScreen({ kind: 'add' })}
-          onForget={() => void forget(computer)}
+          onForget={(id) => void forget(id)}
         />
       );
     }

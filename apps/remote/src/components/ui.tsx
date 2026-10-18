@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react';
+import { Monitor } from 'lucide-react';
 import type { CompanionStatus, RemoteSessionProfile } from '@switchboard/protocol/remote-client';
 import { keys } from '../lib/platform.ts';
 
@@ -117,4 +118,23 @@ export const STATUS_LABEL: Record<CompanionStatus, string> = {
 export function StatusDot({ status }: { status: CompanionStatus }) {
   // Working pulses, so a session that is busy reads as alive at a glance.
   return <span role="img" aria-label={STATUS_LABEL[status]} className={`inline-block size-2 shrink-0 rounded-full ${STATUS_DOT[status]} ${status === 'working' ? 'pulse-dot' : ''}`} />;
+}
+
+/**
+ * The computer a session runs on, with more than one paired: a monitor and its name, as Switchboard marks a session on
+ * another computer. Neutral rather than the computer's violet: here every session is on another computer.
+ */
+export function ComputerTag({ name, size = 'row', className = '' }: { name: string; size?: 'row' | 'header'; className?: string }) {
+  return (
+    <span
+      className={`inline-flex max-w-36 min-w-0 shrink-0 items-center gap-1 rounded-md bg-border/70 font-semibold whitespace-nowrap text-muted ${size === 'header' ? 'h-5 px-1.5 text-meta' : 'h-[18px] px-1.5 text-[11px]'} ${className}`}
+      data-remote-computer-tag={name}
+    >
+      <Monitor className={`shrink-0 ${size === 'header' ? 'size-3' : 'size-2.5'}`} strokeWidth={2.25} aria-hidden />
+      <span className="min-w-0 truncate">
+        <span className="sr-only">On </span>
+        {name}
+      </span>
+    </span>
+  );
 }

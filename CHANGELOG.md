@@ -6,6 +6,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **The remote app shows the sessions of all your computers in one list.** With your phone paired to more than one computer, you no longer switch between them: every computer's sessions are in the same list and groups, and each says which computer it runs on, such as **mystic**, as Switchboard shows another computer's sessions in its sidebar. So do the cards of what Claude asks, a session's header, Home in a wide window and the search. A chip for each computer at the top shows its status and how many sessions need you there, and opens its menu with **Disconnect** and **Forget this computer…**. A computer that is offline keeps its sessions in the list, greyed out. In **New session**, **Run on** picks the computer the session starts on, and keeps what you typed when you switch. The usage card has a row for each computer.
+
 - **Commands without a description show what they run, not their script.** While Claude runs a long command or an inline script, the step reads **Running a Python script** or **Running git** instead of a line of code. Short commands still show as they are, such as **Running npm test**. Open the step to see the whole command.
 
 ### Fixed

@@ -1493,7 +1493,7 @@
     },
     {
       "id": "feature:remote-multiple-computers",
-      "name": "Remote: pair with more than one computer, switch between them, and get notifications from all of them",
+      "name": "Remote: pair with more than one computer, see the sessions of all of them in one list, pick where a new session runs (Run on), and get notifications from all of them",
       "page": "remote-access"
     },
     {

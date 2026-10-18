@@ -6,13 +6,27 @@ import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.t
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer, useWide } from '../lib/media.ts';
 import { autoOn, changedFrom, defaultChoice, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
-import { lastProject, rememberProject } from '../lib/storage.ts';
+import { lastProject, rememberProject, rememberRunOn } from '../lib/storage.ts';
+import type { ConnectionState } from '../lib/connection.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
 import type { Client } from './Connected.tsx';
 import { BranchChip, EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip } from './OptionChips.tsx';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button, Kbd } from './ui.tsx';
+
+/** A computer New session can start on: its name, its connection, what it takes and its sessions. */
+export interface RunOnComputer {
+  id: string;
+  name: string;
+  state: ConnectionState;
+  client: Client;
+  features: readonly string[];
+  sessions: readonly RemoteSession[];
+}
+
+const RUN_ON_DOT: Record<ConnectionState['kind'], string> = { connected: 'bg-ok', connecting: 'bg-caution', offline: 'bg-error', disconnected: 'bg-faint', unpaired: 'bg-error' };
+const RUN_ON_AWAY: Record<ConnectionState['kind'], string> = { connected: '', connecting: 'Connecting…', offline: 'Offline', disconnected: 'Disconnected', unpaired: 'Pair again' };
 import { useVisualViewport } from './useVisualViewport.ts';
 
 const TONE_DOT: Record<TileTone, string> = { 'needs-you': 'bg-warn', working: 'bg-accent-ink', idle: 'bg-faint' };
@@ -34,8 +48,14 @@ const DRAFT: DraftKey = { kind: 'new' };
  * while the project has a session working. While the keyboard is up on a phone, only the prompt and the buttons stay: the
  * view takes what the keyboard leaves (as the session's message box does, `lib/viewport.ts`), so Start session sits
  * right above it, and Hide keyboard brings the tiles and the chips back.
+ *
+ * With more than one computer, Run on picks the one it starts on, as on the computer: its projects become the tiles,
+ * and what you typed stays. A computer that isn't connected stays in the switch, disabled, saying why.
  */
-export function NewSession({ client, computer, features, sessions, banner, onBack, lead = null, onStarted, initialProject = null }: { client: Client; /** The computer's id on this phone: New session remembers its last project per computer. */ computer: string; /** What the computer takes beyond what every version does (its hello). */ features: readonly string[]; sessions: readonly RemoteSession[]; banner: ReactNode; onBack: (() => void) | null; /** In Back's place on a wide screen whose sidebar folded away: the drawer button. */ lead?: ReactNode; onStarted: (sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
+export function NewSession({ computers, computer, onComputer, banner, onBack, lead = null, onStarted, initialProject = null }: { /** Every paired computer. */ computers: readonly RunOnComputer[]; /** The id of the one it starts on: New session remembers its last project per computer. */ computer: string; /** Run on picked another computer. */ onComputer: (id: string) => void; banner: ReactNode; onBack: (() => void) | null; /** In Back's place on a wide screen whose sidebar folded away: the drawer button. */ lead?: ReactNode; onStarted: (computer: string, sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
+  const target = computers.find((c) => c.id === computer) ?? computers[0]!;
+  const { client, features, sessions } = target;
+  const runOn = computers.length > 1;
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
   const [projectId, setProjectId] = useState<string | null>(initialProject);
   const [filter, setFilter] = useState('');
@@ -64,17 +84,35 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
   const latest = useRef(sessions);
   latest.current = sessions;
 
+  // Another computer has its own projects, defaults and branches: what you picked was for the one before.
+  const shownFor = useRef(computer);
+  useEffect(() => {
+    if (shownFor.current === computer) return;
+    shownFor.current = computer;
+    setProjects(null);
+    setProjectId(null);
+    setOptions(null);
+    setChanges({});
+    setError(null);
+    setListOpen(false);
+  }, [computer]);
+
   useEffect(() => {
     if (!client) return;
+    let live = true;
     void client.call('projects.list', {}).then(
       ({ projects }) => {
+        if (!live) return;
         setProjects(projects);
-        setProjectId((current) => current ?? suggestedProject(projects, latest.current, lastProject(computer)));
+        setProjectId((current) => (current && projects.some((p) => p.id === current) ? current : suggestedProject(projects, latest.current, lastProject(computer))));
       },
-      (e: Error) => setError(e.message),
+      (e: Error) => live && setError(e.message),
     );
-    void client.call('options.get', {}).then(setOptions, () => {});
-  }, [client]);
+    void client.call('options.get', {}).then((next) => live && setOptions(next), () => {});
+    return () => {
+      live = false;
+    };
+  }, [client, computer]);
 
   // Another project has its own branches.
   const takesBranch = features.includes(REMOTE_FEATURE_BRANCHES);
@@ -127,8 +165,9 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
     try {
       const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
       rememberProject(computer, projectId!);
+      if (runOn) rememberRunOn(computer);
       clearDraft(DRAFT);
-      onStarted(sessionId);
+      onStarted(computer, sessionId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "The session didn't start.");
       setBusy(false);
@@ -140,7 +179,7 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
     setError(null);
     try {
       await client!.call('later.add', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
-      toast('Queued for later', { detail: `In ${picked?.name ?? 'the project'}. Start it from the queue in Switchboard.` });
+      toast('Queued for later', { detail: `In ${picked?.name ?? 'the project'}${runOn ? ` on ${computerName}` : ''}. Start it from the queue in Switchboard.` });
       clearDraft(DRAFT);
       setPrompt('');
     } catch (e) {
@@ -155,6 +194,7 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
   const needle = wide ? filter.trim().toLowerCase() : '';
   const shown = recentProjects(projects ?? [], sessions).filter((p) => !needle || p.name.toLowerCase().includes(needle) || p.id === projectId);
   const picked = projects?.find((p) => p.id === projectId) ?? null;
+  const computerName = target.name || 'your computer';
 
   // Queue for later only while the project is busy: otherwise starting now is what you want.
   const projectBusy = Boolean(projectId && sessions.some((s) => s.projectId === projectId && s.status === 'working'));
@@ -173,6 +213,37 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
       {banner}
       <main className="min-h-0 flex-1 overflow-y-auto py-4 sm:py-8">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+          {runOn && (
+            <section aria-labelledby="run-on" className={`flex flex-col gap-2 ${typing ? 'hidden' : ''}`} data-remote-run-on={computer}>
+              <h2 id="run-on" className="px-4 text-meta font-semibold tracking-wide text-faint uppercase sm:px-6">
+                Run on
+              </h2>
+              <div role="radiogroup" aria-labelledby="run-on" className="scroll-row flex gap-1.5 px-4 sm:px-6">
+                {computers.map((option) => {
+                  const isPicked = option.id === computer;
+                  const away = RUN_ON_AWAY[option.state.kind];
+                  const name = option.name || 'Your computer';
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isPicked}
+                      disabled={Boolean(away) && !isPicked}
+                      onClick={() => !isPicked && onComputer(option.id)}
+                      title={away ? `${name}: ${away}` : `Claude runs on ${name}`}
+                      data-remote-run-on-option={option.id}
+                      className={`flex min-h-11 max-w-56 shrink-0 items-center gap-2 rounded-full border px-3.5 text-ui transition-[background-color,border-color,box-shadow] disabled:opacity-50 pointer-fine:min-h-8 ${isPicked ? 'border-accent-ink bg-card font-semibold text-text ring-4 ring-accent/20' : 'border-edge text-muted enabled:hover:border-faint enabled:hover:bg-border/45 enabled:active:bg-selected'}`}
+                    >
+                      <span aria-hidden className={`size-2 shrink-0 rounded-full ${RUN_ON_DOT[option.state.kind]}`} />
+                      <span className="truncate">{name}</span>
+                      {away && <span className="shrink-0 font-normal text-faint">· {away}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
           {/* Hidden, not unmounted, while you type: the row keeps its scroll for when the keyboard goes. */}
           <section aria-labelledby="pick-project" className={`flex flex-col gap-2 ${typing ? 'hidden' : ''}`}>
             <div className="flex items-center gap-3 px-4 sm:px-6">
@@ -240,6 +311,12 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
           {typing && picked && (
             <p className="-mb-1 truncate px-4 text-meta text-faint" data-remote-new-in>
               In <span className="font-medium text-muted">{picked.name}</span>
+              {runOn && (
+                <>
+                  {' '}
+                  on <span className="font-medium text-muted">{computerName}</span>
+                </>
+              )}
             </p>
           )}
           <form
@@ -310,6 +387,12 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
             {picked ? (
               <>
                 Starts in <span className="font-medium text-muted">{picked.name}</span>
+                {runOn && (
+                  <>
+                    {' '}
+                    on <span className="font-medium text-muted">{computerName}</span>
+                  </>
+                )}
               </>
             ) : projects && projects.length > 0 ? (
               'Pick a project first.'

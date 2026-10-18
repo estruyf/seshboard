@@ -28,7 +28,7 @@ import { AskPanel, AskSheet } from './AskPanel.tsx';
 import { BackgroundTasks } from './BackgroundTasks.tsx';
 import { closeAsk, openAsk, useSessionAsk } from './askStore.ts';
 import { withQuote } from '../lib/ask.ts';
-import { Button, STATUS_LABEL, StatusDot } from './ui.tsx';
+import { Button, ComputerTag, STATUS_LABEL, StatusDot } from './ui.tsx';
 
 const PAGE = 50;
 
@@ -54,6 +54,7 @@ export function SessionView({
   onRefresh,
   wide = false,
   initialChanges = false,
+  computerName,
 }: {
   client: Client;
   /** What the computer takes beyond what every version does (its hello). */
@@ -70,6 +71,8 @@ export function SessionView({
   wide?: boolean;
   /** Opened from a card's Changes: Changes open from the start. */
   initialChanges?: boolean;
+  /** The computer it runs on, with more than one paired: the header says it. */
+  computerName?: string | undefined;
 }) {
   const session = sessions.sessions.find((s) => s.id === sessionId) ?? null;
   const prompts = sessions.prompts.filter((p) => p.sessionId === sessionId);
@@ -255,6 +258,7 @@ export function SessionView({
             <h1 className="truncate text-title font-semibold">{session?.title ?? 'Session'}</h1>
             {session && (
               <p className="flex items-center gap-1.5 truncate text-meta text-muted">
+                {computerName && <ComputerTag name={computerName} />}
                 <StatusDot status={session.status} />
                 {STATUS_LABEL[session.status]} · {session.projectName}
                 {session.branch ? ` · ${session.branch}` : ''}

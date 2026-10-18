@@ -1,18 +1,20 @@
 import { useState, type MouseEvent } from 'react';
 import { ChevronRight } from 'lucide-react';
-import type { PermissionDecision, RemotePrompt, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { PermissionDecision, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { ListedPrompt } from '../lib/everywhere.ts';
 import { age } from '../lib/groups.ts';
 import { DECLINED, promptKind, promptLine, promptSubject, promptTag } from '../lib/prompts.ts';
 import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
-import { Button } from './ui.tsx';
+import { Button, ComputerTag } from './ui.tsx';
 
 /**
  * A prompt at the top of the list, so it can be answered without opening the session: a tool gets Deny and Allow
  * (Always allow stays in the session, where there is room to read what it does); a question or a plan is a compact
- * row that opens the session. A tap anywhere outside the buttons opens it too.
+ * row that opens the session. A tap anywhere outside the buttons opens it too. With more than one computer, it says
+ * which one asks.
  */
-export function NeedsYouCard({ prompt, session, client, now, onOpen, onAnswered }: { prompt: RemotePrompt; session: RemoteSession | undefined; client: Client; now: number; onOpen: () => void; onAnswered: (result: 'done' | 'gone') => void }) {
+export function NeedsYouCard({ prompt, session, client, computer, now, onOpen, onAnswered }: { prompt: ListedPrompt; session: RemoteSession | undefined; client: Client; /** The computer's name, with more than one. */ computer?: string | undefined; now: number; onOpen: () => void; onAnswered: (result: 'done' | 'gone') => void }) {
   const [busy, setBusy] = useState(false);
   const kind = promptKind(prompt);
   const title = session?.title ?? 'Session';
@@ -22,7 +24,7 @@ export function NeedsYouCard({ prompt, session, client, now, onOpen, onAnswered 
   const respond = async (decision: PermissionDecision) => {
     if (!client || busy) return;
     setBusy(true);
-    const result = await answer(client, prompt, decision, title);
+    const result = await answer(client, prompt.original, decision, title);
     if (result === 'failed') setBusy(false);
     else onAnswered(result);
   };
@@ -33,6 +35,7 @@ export function NeedsYouCard({ prompt, session, client, now, onOpen, onAnswered 
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2 text-meta">
             <span className="font-semibold tracking-wide text-warn uppercase">{promptTag(prompt)}</span>
+            {computer && <ComputerTag name={computer} />}
             <span className="truncate text-faint">
               {session?.projectName} · {age(prompt.createdAt, now)}
             </span>
@@ -50,6 +53,7 @@ export function NeedsYouCard({ prompt, session, client, now, onOpen, onAnswered 
     <article onClick={open} aria-label={`${promptTag(prompt)}: ${title}`} className="flex cursor-pointer flex-col gap-2 rounded-xl border-2 border-warn bg-card p-3" data-remote-prompt-card={prompt.requestId}>
       <div className="flex items-center gap-2 text-meta">
         <span className="font-semibold tracking-wide text-warn uppercase">{promptTag(prompt)}</span>
+        {computer && <ComputerTag name={computer} />}
         <span className="ml-auto truncate text-faint">
           {session?.projectName} · {age(prompt.createdAt, now)}
         </span>

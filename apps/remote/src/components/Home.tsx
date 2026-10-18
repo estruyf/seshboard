@@ -1,39 +1,47 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
-import type { CatchUp, PermissionDecision, RemoteProfileUsage, RemotePrompt, RemoteSession, RemoteSessions } from '@switchboard/protocol/remote-client';
+import type { CatchUp, PermissionDecision, RemoteProfileUsage, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { ListedPrompt, ListedSession, ListedSessions } from '../lib/everywhere.ts';
 import { catchUpChips, reviewLabel } from '../lib/catchUp.ts';
 import { age, homeHeadline, toReview } from '../lib/groups.ts';
 import { promptTag } from '../lib/prompts.ts';
 import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
+import type { ListComputer } from './SessionList.tsx';
 import { PromptBody } from './PermissionCard.tsx';
 import { useNow } from './SessionList.tsx';
 import { UsageSection } from './Usage.tsx';
+import { connectionOf } from './connectionOf.ts';
 import { useLeaving } from './useLeaving.ts';
-import { Button, SectionHeader } from './ui.tsx';
+import { Button, ComputerTag, SectionHeader } from './ui.tsx';
 
-/** How a card opens its session: on its own, or with Changes open. */
+/** How a card opens its session (by its key in the list): on its own, or with Changes open. */
 export type OpenSession = (sessionId: string, options?: { changes?: boolean }) => void;
 
 /**
  * The right side of a wide screen while no session is open: what needs you. Every open prompt as a card, oldest
  * first, answered right here (A, D and ↩ too); then the finished sessions you haven't read, each with its catch-up;
- * then each profile's plan usage. J and K move through the cards (`Connected.tsx` has the keys).
+ * then each profile's plan usage. Every paired computer's, each card saying which with more than one. J and K move
+ * through the cards (`Connected.tsx` has the keys).
  */
 export function Home({
   sessions,
   usage,
   offline,
-  client,
+  computerOf,
+  labels = false,
   onOpen,
   onNew,
   onRefresh,
   lead,
 }: {
-  sessions: RemoteSessions;
+  sessions: ListedSessions;
   usage: RemoteProfileUsage[] | null;
+  /** No computer is connected. */
   offline: boolean;
-  client: Client;
+  computerOf: (computer: string) => ListComputer;
+  /** More than one computer is paired: each card says which it is on. */
+  labels?: boolean;
   onOpen: OpenSession;
   onNew: () => void;
   onRefresh: () => void;
@@ -41,12 +49,14 @@ export function Home({
   lead?: ReactNode;
 }) {
   const now = useNow();
-  const headline = homeHeadline(sessions.sessions, now);
+  // Not what a computer that is away said last.
+  const headline = homeHeadline(labels ? sessions.sessions.filter((s) => computerOf(s.computer).online) : sessions.sessions, now);
   const leaving = useLeaving(sessions.prompts);
   const cards = leaving.merge([...sessions.prompts].sort((a, b) => a.createdAt - b.createdAt));
   const byId = useMemo(() => new Map(sessions.sessions.map((s) => [s.id, s])), [sessions.sessions]);
   const review = toReview(sessions.sessions);
-  const catchUps = useCatchUps(client, review);
+  const catchUps = useCatchUps(computerOf, review);
+  const tagOf = (computer: string) => (labels ? computerOf(computer).name || 'Your computer' : undefined);
 
   return (
     <main className="h-full overflow-y-auto overscroll-contain" data-remote-scroll data-remote-home>
@@ -58,7 +68,7 @@ export function Home({
           </h1>
           {headline.counts && <p className="text-ui text-muted">{headline.counts}</p>}
           {cards.length === 0 && (
-            <Button variant="primary" size="md" onClick={onNew} disabled={!client} className="ml-auto self-center">
+            <Button variant="primary" size="md" onClick={onNew} disabled={offline} className="ml-auto self-center">
               <Plus className="size-4" aria-hidden />
               New session
             </Button>
@@ -68,12 +78,13 @@ export function Home({
         {cards.length > 0 && (
           <section aria-label="Needs you" className="flex flex-col">
             {cards.map((prompt) => (
-              <div key={prompt.requestId} className="collapse-out mb-3" data-leaving={leaving.isLeaving(prompt.requestId) || undefined} onTransitionEnd={(event) => event.propertyName === 'grid-template-rows' && leaving.gone(prompt.requestId)}>
+              <div key={prompt.requestId} className={`collapse-out mb-3 ${!offline && !computerOf(prompt.computer).online ? 'opacity-60' : ''}`} data-leaving={leaving.isLeaving(prompt.requestId) || undefined} onTransitionEnd={(event) => event.propertyName === 'grid-template-rows' && leaving.gone(prompt.requestId)}>
                 <div>
                   <PromptCard
                     prompt={prompt}
                     session={byId.get(prompt.sessionId)}
-                    client={client}
+                    client={computerOf(prompt.computer).client}
+                    computer={tagOf(prompt.computer)}
                     now={now}
                     onOpen={() => onOpen(prompt.sessionId)}
                     onAnswered={(result) => {
@@ -92,7 +103,7 @@ export function Home({
             <SectionHeader id="home-review" label="Finished, ready to review" count={review.length} tone="text-unread" className="px-0" />
             <div className="grid grid-cols-1 gap-3 pt-1 lg:grid-cols-2">
               {review.map((session) => (
-                <ReviewCard key={session.id} session={session} card={catchUps.get(session.id) ?? null} now={now} onOpen={onOpen} />
+                <ReviewCard key={session.id} session={session} computer={tagOf(session.computer)} card={catchUps.get(session.id) ?? null} now={now} onOpen={onOpen} />
               ))}
             </div>
           </section>
@@ -115,13 +126,13 @@ const enterOpens = (onOpen: () => void) => (event: KeyboardEvent) => {
  * A prompt on the home view: the phone's card with room to spare, so Always allow is on it too, Open on the right of
  * its header, and the keys on its buttons. A question's options are chips, a plan has Keep planning and Start.
  */
-function PromptCard({ prompt, session, client, now, onOpen, onAnswered }: { prompt: RemotePrompt; session: RemoteSession | undefined; client: Client; now: number; onOpen: () => void; onAnswered: (result: 'done' | 'gone') => void }) {
+function PromptCard({ prompt, session, client, computer, now, onOpen, onAnswered }: { prompt: ListedPrompt; session: RemoteSession | undefined; client: Client; computer: string | undefined; now: number; onOpen: () => void; onAnswered: (result: 'done' | 'gone') => void }) {
   const [busy, setBusy] = useState(false);
   const title = session?.title ?? 'Session';
   const respond = async (decision: PermissionDecision) => {
     if (!client || busy) return;
     setBusy(true);
-    const result = await answer(client, prompt, decision, title);
+    const result = await answer(client, prompt.original, decision, title);
     if (result === 'failed') setBusy(false);
     else onAnswered(result);
   };
@@ -136,6 +147,7 @@ function PromptCard({ prompt, session, client, now, onOpen, onAnswered }: { prom
     >
       <div className="flex items-center gap-2 text-meta">
         <span className="font-semibold tracking-wide text-warn uppercase">{promptTag(prompt)}</span>
+        {computer && <ComputerTag name={computer} />}
         <span className="truncate text-faint">
           {session?.projectName} · {age(prompt.createdAt, now)}
         </span>
@@ -150,7 +162,7 @@ function PromptCard({ prompt, session, client, now, onOpen, onAnswered }: { prom
 }
 
 /** A finished session you haven't read: its review time, what it did, the tests, and Changes and Open. */
-function ReviewCard({ session, card, now, onOpen }: { session: RemoteSession; card: CatchUp | null; now: number; onOpen: OpenSession }) {
+function ReviewCard({ session, computer, card, now, onOpen }: { session: ListedSession; computer: string | undefined; card: CatchUp | null; now: number; onOpen: OpenSession }) {
   const tests = card ? catchUpChips(card).find((chip) => chip.id === 'tests') : undefined;
   const summary = card?.did[0] ?? card?.ask ?? '';
   const hasDiff = (card?.signals.diff?.files ?? 0) > 0;
@@ -162,8 +174,11 @@ function ReviewCard({ session, card, now, onOpen }: { session: RemoteSession; ca
         <h3 className="min-w-0 flex-1 truncate text-body font-semibold">{session.title}</h3>
         {card && <span className="shrink-0 text-meta font-semibold">{reviewLabel(card)}</span>}
       </div>
-      <p className="truncate text-meta text-muted">
-        {session.projectName} · {age(session.updatedAt, now)}
+      <p className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
+        {computer && <ComputerTag name={computer} />}
+        <span className="truncate">
+          {session.projectName} · {age(session.updatedAt, now)}
+        </span>
       </p>
       {summary && <p className="line-clamp-2 text-ui text-muted">{summary}</p>}
       <div className="mt-auto flex items-center gap-1.5 pt-1">
@@ -187,18 +202,21 @@ function ReviewCard({ session, card, now, onOpen }: { session: RemoteSession; ca
   );
 }
 
-/** The catch-ups of the sessions to review, asked again when one of them changes. */
-function useCatchUps(client: Client, sessions: readonly RemoteSession[]): Map<string, CatchUp | null> {
+/** The catch-ups of the sessions to review, each from its computer, asked again when one of them changes. */
+function useCatchUps(computerOf: (computer: string) => ListComputer, sessions: readonly ListedSession[]): Map<string, CatchUp | null> {
   const [cards, setCards] = useState<Map<string, CatchUp | null>>(new Map());
-  const key = sessions.map((s) => `${s.id}@${s.updatedAt}`).join(' ');
+  const clients = sessions.map((s) => computerOf(s.computer).client);
+  const key = sessions.map((s, i) => `${s.id}@${s.updatedAt}#${connectionOf(clients[i] ?? null)}`).join(' ');
+  const latest = useMemo(() => ({ sessions, clients }), [key]);
   useEffect(() => {
-    if (!client || !sessions.length) return;
+    if (!latest.sessions.length) return;
     let live = true;
-    void Promise.all(sessions.map((s) => client.call('catchup.get', { sessionId: s.id }).then((r) => [s.id, r.catchUp] as const, () => [s.id, null] as const))).then((entries) => live && setCards(new Map(entries)));
+    const ask = (s: ListedSession, client: Client) => (client ? client.call('catchup.get', { sessionId: s.sessionId }).then((r) => [s.id, r.catchUp] as const, () => [s.id, null] as const) : Promise.resolve([s.id, null] as const));
+    void Promise.all(latest.sessions.map((s, i) => ask(s, latest.clients[i] ?? null))).then((entries) => live && setCards(new Map(entries)));
     return () => {
       live = false;
     };
-    // `key` says when the list or one of its sessions changed.
-  }, [client, key]);
+    // `key` says when the list, one of its sessions or a computer's connection changed.
+  }, [latest]);
   return cards;
 }
