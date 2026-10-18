@@ -1,0 +1,66 @@
+---
+title: Things to try next
+description: A dozen features that are easy to miss after your first session, each with the page that covers it.
+sidebar:
+  label: Things to try next
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import Related from '../../../components/Related.astro';
+
+Your first session runs. Switchboard can do a lot more than start and follow sessions, and some of the most useful parts are easy to miss. Here are a dozen to try, each with the page that tells you more.
+
+## Jump to the session that needs you
+
+Press <Kbd shortcut="session.next-needs-you" /> from anywhere in the app. It goes to the sessions that wait for you first, then to finished ones you haven't read, the quickest to review first. See [Work with sessions](/sessions/sidebar/#work-with-sessions).
+
+## Do anything from the keyboard
+
+<Kbd shortcut="palette.commands" /> opens the command palette, with every command that fits where you are. <Kbd shortcut="palette.goto" /> jumps to any session or project, and <Kbd shortcut="search" /> searches every conversation. See [Command palette](/command-palette/) and [Search](/sessions/search/).
+
+<Screenshot name="palette-goto" alt="The palette in Go to mode: sessions grouped as in the sidebar, with Needs you and Working on top" width={720} />
+
+## Ask something without picking a project
+
+Press <Kbd shortcut="session.question" /> for a quick question: how a command works, a text to draft, an idea to think through. Claude works in a scratch folder of Switchboard's own, so nothing is added to your projects. See [Quick questions](/new-session/quick-questions/).
+
+## Ask about a session without interrupting it
+
+Click **Ask**, next to **Send** (or **Stop** while Claude works), and ask "What changed so far?" in a panel next to the conversation. Claude isn't stopped or steered, and nothing is added to the conversation. See [Ask about this session](/sessions/ask/).
+
+## Know what a finished session did, in seconds
+
+When a session finishes, its catch-up says what Claude did, whether the tests passed, how much changed and the one thing it needs from you, such as **Commit** or **Reply**. Choose **Quickest to unblock** at the top of the sidebar to see first what takes least time to review. See [Catch-up](/sessions/catch-up/).
+
+## Keep an idea for later
+
+When a project is busy, write the prompt in New session and press <Kbd shortcut="new-session.queue" /> to add it to the queue. The queue never starts anything by itself: it tells you when an item is ready, and you start it. See [Queue](/new-session/queue/).
+
+## Run two sessions on one project
+
+Choose **Start in a new worktree** in Start's ▾ menu. Claude works in its own copy of the repository, on a branch of its own, and your checkout stays untouched. See [Worktrees](/new-session/worktrees/).
+
+## Follow one session while you work in another
+
+<Kbd shortcut="sidebar.open-beside" /> a session in the sidebar to open it beside the one you have open. To keep it on another screen, press <Kbd shortcut="session.new-window" /> to give it a window of its own. See [Split view](/sessions/split-view/) and [Sessions in their own window](/sessions/own-window/).
+
+## Stop typing the same prompt
+
+Save a prompt with blanks, such as "Start implementing issue 132". Type <Kbd shortcut="composer.commands" /> in any message box to pick it, then fill in the blanks with <Kbd shortcut="composer.next-blank" /> between them. See [Saved prompts](/sessions/saved-prompts/).
+
+## Review and ship from the session
+
+Press <Kbd shortcut="changes.toggle" /> to open **Changes**: Claude's diff, with stage, unstage and revert for each file. The git button in the session header offers the next step for the branch: pull, commit, push or create a pull request. See [Changes](/terminal-changes-git/changes/) and [Git](/terminal-changes-git/git/).
+
+## Answer Claude from your phone
+
+In Settings → Remote (<Kbd shortcut="settings" />), choose a tunnel, click **Turn on Remote** and **Pair a device**. Your phone then shows your sessions, and you allow, deny or answer what Claude asks from there. See [Remote on your phone](/remote-access/).
+
+## Use a work and a personal account side by side
+
+Add a profile for each Claude account in Settings → **Claude profiles**. Switchboard lists the sessions of all profiles together, shows which account each one runs on, and keeps their usage apart. See [Claude profiles](/settings/claude-profiles/).
+
+## Related
+
+<Related pages={['guides/parallel-sessions', 'guides/review-fast', 'features']} />

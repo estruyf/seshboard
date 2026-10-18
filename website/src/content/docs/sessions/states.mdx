@@ -9,6 +9,7 @@ import OnlyOn from '../../../components/OnlyOn.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 Every session is in one state, and each state has its own colour everywhere: in the sidebar, the minimal rail, the session's header, Home and notifications. A glance at the sidebar tells you which sessions need you, which are working, and which have something new to read.
 
@@ -77,3 +78,7 @@ The states can't be changed. Two settings change what you see:
 
 - **Show sessions from other apps** in [Settings, Sidebar](/settings/#sidebar) adds sessions from the terminal, Claude desktop and your editor, with their states.
 - [Claude profiles](/settings/#claude-profiles): with more than one, rows show the profile's colour.
+
+## Related
+
+<Related pages={['settings/notifications', 'sessions/catch-up', 'permissions', 'settings/claude-profiles']} />

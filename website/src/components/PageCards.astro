@@ -1,0 +1,100 @@
+---
+/**
+ * A grid of docs pages as cards: the title, its description and a New badge for recent features. Used by
+ * Related, All features, What's new and the homepage, so every list of pages looks the same.
+ */
+import type { PageCard } from '../lib/docsPages.ts';
+
+interface Props {
+  pages: PageCard[];
+  /** Narrow cards for a long list (All features); wide ones for a few related pages. */
+  size?: 'compact' | 'wide';
+}
+const { pages, size = 'wide' } = Astro.props;
+---
+
+<ul class:list={['sb-cards', 'not-content', size]} role="list">
+  {
+    pages.map((page) => (
+      <li>
+        <a href={page.href} class="sb-card">
+          <span class="sb-card-title">
+            {page.title}
+            {page.isNew && <span class="sb-new">New</span>}
+          </span>
+          {page.description && <span class="sb-card-text">{page.description}</span>}
+        </a>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .sb-cards {
+    display: grid;
+    gap: 0.75rem;
+    margin: 1rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sb-cards.wide {
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  }
+  .sb-cards.compact {
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  }
+  .sb-cards li {
+    margin: 0;
+  }
+  .sb-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    height: 100%;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--sb-border);
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-card);
+    text-decoration: none;
+    transition:
+      border-color 0.15s,
+      transform 0.15s;
+  }
+  .sb-card:hover {
+    border-color: var(--sb-overlay-border);
+    transform: translateY(-1px);
+  }
+  .sb-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--sb-text-ui);
+    font-weight: 600;
+    color: var(--sb-text);
+  }
+  .sb-card-text {
+    font-size: var(--sb-text-meta);
+    line-height: 1.5;
+    color: var(--sb-muted);
+  }
+  .compact .sb-card {
+    padding: 0.7rem 0.85rem;
+  }
+  /* A phone: a long list stays scannable, each description cut to two lines. */
+  @media (max-width: 30rem) {
+    .compact .sb-card-text {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sb-card {
+      transition: none;
+    }
+    .sb-card:hover {
+      transform: none;
+    }
+  }
+</style>

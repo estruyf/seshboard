@@ -7,6 +7,7 @@ import Kbd from '../../../components/Kbd.astro';
 import OnlyOn from '../../../components/OnlyOn.astro';
 import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -114,3 +115,7 @@ The settings [backup](/settings/backup/) holds the folder's path, never the memo
 ## Settings
 
 Everything on this page is in [Settings › Memory](/settings/#memory).
+
+## Related
+
+<Related pages={['memory/import', 'settings/claude-profiles', 'settings/backup', 'memory/what-loads']} />

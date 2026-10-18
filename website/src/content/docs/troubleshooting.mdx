@@ -10,6 +10,7 @@ import OnlyOn from '../../components/OnlyOn.astro';
 import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../components/Related.astro';
 
 When something doesn't work, Switchboard can tell you a lot about what it sees: the engine behind it, the Claude Code it found, and its recent log. This page covers the usual problems, where your data lives, and common questions.
 
@@ -184,3 +185,7 @@ Uninstalling never touches Claude Code's folder (`~/.claude`). Your sessions bel
 ## Settings
 
 [Settings → Diagnostics](/settings/#diagnostics) and [Settings → About](/settings/#about) are the places to look first. For a bug report, include the version from About and what *Check transcript…* or the Engine log says.
+
+## Related
+
+<Related pages={['getting-started/windows', 'settings/updates', 'settings/backup', 'settings/claude-profiles']} />

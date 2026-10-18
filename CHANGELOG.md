@@ -4,8 +4,14 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### Changed
+
+- **Commands without a description show what they run, not their script.** While Claude runs a long command or an inline script, the step reads **Running a Python script** or **Running git** instead of a line of code. Short commands still show as they are, such as **Running npm test**. Open the step to see the whole command.
+
 ### Fixed
 
+- **Up next in the remote app stays right after the phone was away.** A message you added to Up next from your phone stayed there after Claude had sent it, and tapping its × did nothing, when the phone was locked or offline at the time. Opening a session now shows its Up next as it is on the computer, and removing a message that was already sent clears it. Opening a session also shows what you queued for it on the computer.
+- **The remote app keeps what you typed and didn't send.** A message you started in a session's message box was gone when you opened another session and came back. Each session now keeps its own draft, as New session does, also after a reload, until you send it.
 - **The Agents panel shows an agent that runs again, and one that failed.** A background agent that stopped, such as at the 5-hour usage limit, and was then sent on again, stayed under **Finished**. It now moves back to **Active** until it reports back, also for a finished agent you give more work. An agent that ended on an error, hit the usage limit or was stopped now says **Failed** with a red mark, where it said **Finished** with a green one.
 
 ## [0.0.23] - 2026-10-17
