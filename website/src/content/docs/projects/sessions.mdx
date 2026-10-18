@@ -7,10 +7,11 @@ sidebar:
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-The **Sessions** tab of a project's page lists every session in that project, grouped the same way as the [sidebar](/sessions/sidebar/). Prompts queued for the project are at the top, and archived sessions are at the end.
+Use the **Sessions** tab when you want one project's work on its own, without the sessions of your other projects around it. It lists every session in that project, grouped the same way as the [sidebar](/sessions/sidebar/). Prompts queued for the project are at the top, and archived sessions are at the end.
 
 <Screenshot name="project-sessions" alt="The Sessions tab of acme-store: queued prompts at the top, then sessions under Needs you, Working and Today, with Archived closed at the bottom" eager />
 
@@ -49,3 +50,7 @@ A project without sessions says so, with a **New session** button. You can also 
 ## Settings
 
 The groups follow the sidebar. **Settings → Sidebar** changes how rows look. See [Settings](/settings/#sidebar).
+
+## Related
+
+<Related pages={['sessions/sidebar', 'new-session/queue', 'sessions/archived', 'sessions/split-view']} />

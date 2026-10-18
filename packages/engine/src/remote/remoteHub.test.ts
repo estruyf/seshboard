@@ -159,7 +159,8 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     readTranscript: async () => ['a', 'b', 'c'].map(message),
     watchTranscript: () => () => {},
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
-    dequeue: () => {},
+    dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
+    upNext: (sessionId) => (sessionId === SESSION ? [{ id: 'q1', text: 'Then the tests', attachments: [], createdAt: 1 }] : []),
     interrupt: async () => {},
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
     respond: (requestId) => void answered.push(requestId),
@@ -572,6 +573,22 @@ describe('Remote hub', () => {
     expect((await git(repo, ['log', '-1', '--format=%s'])).trim()).toBe('From the phone');
     expect((await remote.call('changes.get', { sessionId: SESSION })).files).toEqual([]);
     expect(await remote.call('changes.commit', { sessionId: SESSION, message: 'Again' })).toEqual({ ok: false, output: 'There is nothing to commit.' });
+  });
+
+  it('sends a phone the Up next of the session it starts watching, and again after it removes one', async () => {
+    const { hub, port, on, calls } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const heard: string[] = [];
+    remote.on('upNext.changed', (event) => heard.push(`${event.sessionId}:${event.queue.map((m) => m.text).join()}`));
+    // What changed while the phone was away is in the list it gets when it watches again.
+    await remote.call('transcript.watch', { sessionId: SESSION });
+    await until(() => heard.length >= 1);
+    // A message sent meanwhile changes nothing when removed, and the phone still gets the list as it is.
+    await remote.call('session.queue.remove', { sessionId: SESSION, id: 'gone' });
+    await until(() => heard.length >= 2);
+    expect(heard).toEqual([`${SESSION}:Then the tests`, `${SESSION}:Then the tests`]);
+    expect(calls).toContain(`dequeue ${SESSION} gone`);
   });
 
   it('tells a phone watching a session that its catch-up changed', async () => {

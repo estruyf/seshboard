@@ -6,6 +6,7 @@ description: Start a session in an isolated copy of the repository on a branch o
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 A worktree is a separate checkout of your repository on a branch of its own. Starting a session in a new worktree works like `claude --worktree`: Claude works in the copy, and your own checkout stays untouched, so you can run several sessions on one project without them editing the same files.
 
@@ -65,3 +66,7 @@ Switchboard only removes a worktree with git's own commands, never by deleting t
 ## Settings
 
 To start every new session of a project in a worktree, choose **New worktree** and press **Save as project default** in the **Where** menu, or set it on the project's [Settings tab](/projects/settings/). Setup actions live on the project's [Actions tab](/projects/actions/).
+
+## Related
+
+<Related pages={['projects/worktrees', 'projects/actions', 'terminal-changes-git/git', 'guides/parallel-sessions']} />

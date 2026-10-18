@@ -6,6 +6,7 @@ description: Tile sessions next to each other and above each other, drag them in
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 Split view tiles your sessions like a tiling window manager. Open as many as fit, side by side, one above the other, or mixed, so you can follow one while you work in another, or compare what several sessions did. Each pane is a full session view, with its own message box, Changes and terminal.
 
@@ -20,7 +21,7 @@ With a session open, open another one next to it:
 - In <Kbd shortcut="palette.goto" />, pick a session with <Kbd keys="alt+enter" />.
 - Drag a session from the sidebar onto a pane (see below).
 
-This works the same for sessions on [another computer](/remote-access/#other-computers): they open in panes next to yours.
+This works the same for sessions on [another computer](/other-computers/): they open in panes next to yours.
 
 The new session splits the active pane. A pane that is at least as wide as it is tall gets the new session on its right; a taller pane gets it below. If that doesn't fit, the other way is tried.
 
@@ -84,3 +85,7 @@ Closing a pane only closes the view: a session that is working keeps running. Ar
 In [Settings › Conversation](/settings/#conversation), under **Split view**, turn off **Fade inactive panes** to show the other panes as clearly as the active one. The active pane keeps its line along the top.
 
 The panes are not saved: after a restart Switchboard opens the session you had open last.
+
+## Related
+
+<Related pages={['sessions/own-window', 'settings/claude-profiles', 'terminal-changes-git/changes', 'guides/parallel-sessions']} />

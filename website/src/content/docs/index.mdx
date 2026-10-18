@@ -5,18 +5,115 @@ template: splash
 tableOfContents: false
 editUrl: false
 hero:
-  tagline: A fast app for macOS and Windows that runs and keeps track of your Claude Code sessions.
+  title: All your Claude Code sessions, in one window.
+  tagline: Run several sessions at once and always know which one needs you, which one is working and what each one did. With the Claude Code you already have, on Mac and Windows.
 ---
 
+import CopyCommand from '../../components/CopyCommand.astro';
 import Feature from '../../components/Feature.astro';
 import Kbd from '../../components/Kbd.astro';
 import Pill from '../../components/Pill.astro';
 import PromoVideo from '../../components/PromoVideo.astro';
+import Related from '../../components/Related.astro';
 
-<div class="sb-intro not-content">
-  <p>
-    Switchboard puts all your Claude Code sessions in one window: the ones you start in the app, and the ones running in your terminal. It uses the Claude Code you already have, with your login, settings, commands and skills. Nothing extra to sign in to.
-  </p>
+<section class="sb-proof not-content" aria-label="Why it fits in">
+  <div>
+    <h2>Your own Claude Code</h2>
+    <p>It runs the <code>claude</code> you already use, with your login, settings, commands and skills. Nothing new to sign in to.</p>
+  </div>
+  <div>
+    <h2>Stays on your computer</h2>
+    <p>Your prompts and sessions only go where Claude Code sends them. Remote runs only when you turn it on, encrypted from your phone to your computer.</p>
+  </div>
+  <div>
+    <h2>Free and open source</h2>
+    <p>MIT licensed and built in the open on GitHub. Signed builds for Mac and Windows that update themselves.</p>
+  </div>
+</section>
+
+<Feature eyebrow="Stay on top" title="See which session needs you" shot="home" focus="62% 45%" alt="Home: a session that needs you, one that is working, the queue, project tiles to start in, and the usage of two Claude profiles" href="/sessions/sidebar/" linkText="How the sidebar works">
+  <p>Every session sits in one list, across every project and every Claude account: the ones you start here and the ones in your terminal. Sessions that <Pill tone="needs-you">Needs you</Pill> go to the top, then the ones that are <Pill tone="working">Working</Pill>, then the rest by day.</p>
+  <p>A notification tells you when Claude asks or finishes, so you can look away. <Kbd shortcut="session.next-needs-you" /> jumps to the next session that needs you, from anywhere.</p>
+
+  - [Session states](/sessions/states/)
+  - [Home](/sessions/home/)
+  - [Notifications and sounds](/settings/notifications/)
+  - [Focus limit](/focus-limit/)
+</Feature>
+
+<Feature eyebrow="Review" title="Catch up in seconds" shot="catch-up-banner" focus="78% 0%" alt="A finished session with its catch-up over the conversation: what Claude did, Commit the changes, 14 tests passed and Followed the plan" href="/sessions/catch-up/" linkText="How catch-up works" flip>
+  <p>When a session finishes, a short briefing says what Claude did, what it skipped, and the one thing it needs from you. It shows whether the tests passed, how much changed, and whether Claude stayed inside what you asked for.</p>
+  <p>Want to know more? **Ask about this session** in a panel next to it, while it keeps working. Nothing is added to the conversation.</p>
+
+  - [Ask about this session](/sessions/ask/)
+  - [Quickest to unblock](/sessions/catch-up/#quickest-to-unblock)
+  - [Agents panel](/sessions/agents/)
+  - [Why is Claude asking?](/permissions/#why-is-claude-asking)
+</Feature>
+
+<Feature eyebrow="In parallel" title="Many tasks at once, without the mess" shot="split" focus="20% 30%" alt="Two sessions side by side in split view, each with its own conversation" href="/guides/parallel-sessions/" linkText="Run sessions in parallel">
+  <p>Start each task in its own worktree, on its own branch, so sessions never step on each other. Queue the prompts that have to wait, and start them with one click when their project is free.</p>
+  <p>Watch two sessions side by side, or give one its own window on another screen. Set a focus limit, and Switchboard asks before you start one more.</p>
+
+  - [Worktrees](/new-session/worktrees/)
+  - [Queue](/new-session/queue/)
+  - [Split view](/sessions/split-view/)
+  - [Sessions in their own window](/sessions/own-window/)
+</Feature>
+
+<Feature eyebrow="Ship" title="From changed files to a pull request" shot="git-checks" focus="100% 0%" alt="A session with the git button showing the pull request's checks, one failing, and Fix failing checks with Claude" href="/terminal-changes-git/git/" linkText="Git in Switchboard" flip>
+  <p>See what Claude changed in the **Changes** panel (<Kbd shortcut="changes.toggle" />): stage, unstage or revert files, and open any diff inline. The git button offers the next step: commit, push or create a pull request.</p>
+  <p>Once the pull request is open, its checks show on the same button. When one fails, let Claude fix it. A terminal per session is one key away (<Kbd shortcut="terminal.toggle" first />).</p>
+
+  - [Changes](/terminal-changes-git/changes/)
+  - [Terminal](/terminal-changes-git/terminal/)
+  - [Worktrees tab](/projects/worktrees/)
+  - [Project actions](/projects/actions/)
+</Feature>
+
+<Feature eyebrow="Anywhere" title="Answer Claude from your phone" shots={[{ name: 'remote-phone-first-screen', alt: 'The remote app on a phone: what needs you, what is working, and the usage of every profile' }, { name: 'remote-phone-drawer', alt: 'The remote app on a phone with the sessions drawer open' }]} shotWidth={300} href="/remote-access/" linkText="Set up Remote">
+  <p>Turn on **Remote** and pair your phone. Follow your sessions, allow what Claude asks, send the next prompt or start a new session, wherever you are. Your phone gets a notification when a session needs you.</p>
+  <p>Have a laptop and a desktop? Their sessions show in the same sidebar, and New session can start one on the other computer.</p>
+
+  - [Other computers](/other-computers/)
+  - [Answer from your phone](/guides/from-your-phone/)
+  - [VS Code companion](/vscode-companion/)
+</Feature>
+
+<Feature eyebrow="Accounts" title="Every Claude account, and what it used" shot="usage-limits" focus="45% 25%" alt="The Usage view: the 5-hour and weekly limits with what is left, when they reset, and how they went over time" href="/usage/" linkText="See the Usage view" flip>
+  <p>Add a profile for each Claude account, such as a personal plan and a work one. Each session's rail shows which account it uses, and a project can always start on its own.</p>
+  <p>See what is left of your 5-hour and weekly limits, when they come back, and which sessions, projects and models used them, with what that would cost at API prices.</p>
+
+  - [Claude profiles](/settings/claude-profiles/)
+  - [Work and personal accounts](/guides/two-accounts/)
+  - [Auto model](/new-session/auto-model/)
+</Feature>
+
+<Feature eyebrow="Memory" title="What Claude remembers, in plain Markdown" shot="project-memory" focus="45% 25%" alt="A project's Memory tab: what loads in a session at the top, the project's memories with their type, the instructions the team shares, and personal memory" href="/memory/overview/" linkText="About memory">
+  <p>See and edit what Claude Code remembers about each project, and what loads at the start of every session. Share a memory with the team in <code>CLAUDE.md</code>, or bring your memory over from the Claude app.</p>
+  <p>Everything stays plain Markdown where Claude Code already looks, so it works the same in the terminal.</p>
+
+  - [What loads in a session](/memory/what-loads/)
+  - [Personal memory](/memory/personal-memory/)
+  - [Memory health](/memory/health/)
+</Feature>
+
+<section class="sb-keys not-content">
+  <h2>Made for the keyboard</h2>
+  <p>Every main action has a shortcut, and the command palette has the rest.</p>
+  <ul role="list">
+    <li><Kbd shortcut="palette.commands" first /><span>Run any command</span></li>
+    <li><Kbd shortcut="palette.goto" /><span>Go to a session or project</span></li>
+    <li><Kbd shortcut="session.new" /><span>Start a new session</span></li>
+    <li><Kbd shortcut="session.next-needs-you" /><span>Next session that needs you</span></li>
+    <li><Kbd shortcut="search" /><span>Search every conversation</span></li>
+    <li><Kbd shortcut="session.question" /><span>Ask a quick question</span></li>
+  </ul>
+</section>
+
+<div class="sb-more-links not-content">
+  <a class="sb-button secondary" href="/command-palette/">Command palette</a>
+  <a class="sb-button secondary" href="/keyboard-shortcuts/">All shortcuts</a>
 </div>
 
 <section class="sb-tour not-content">
@@ -24,47 +121,14 @@ import PromoVideo from '../../components/PromoVideo.astro';
   <PromoVideo />
 </section>
 
-<Feature title="Every session, at a glance" shot="sidebar" alt="The sidebar: one session that needs you, one that is working, the queue, a pinned session and today's sessions" href="/sessions/sidebar/" shotWidth={340} flip>
-  <p>One list of all your sessions, across every project and every Claude account. Sessions that <Pill tone="needs-you">Needs you</Pill> sit at the top, then the ones that are <Pill tone="working">Working</Pill>, then the rest by day.</p>
-  <p>You get a notification when a session needs you or finishes, so you can leave it running in the background.</p>
-</Feature>
-
-<Feature title="The command palette" shot="palette-new-session" alt="The command palette on New session: recent projects with their branch and status, and a shortcut for each" href="/command-palette/">
-  <p>Press <Kbd shortcut="palette.commands" first /> for the commands that fit where you are, or <Kbd shortcut="palette.goto" /> to jump to any session or project by typing a few letters.</p>
-  <p>Start a session without leaving the keyboard: pick a project, write the prompt, press <Kbd keys="mod+enter" />.</p>
-</Feature>
-
-<Feature title="A queue, and nothing you typed gets lost" shot="queue" alt="Home with the queue: one prompt ready to start, one waiting for its project to be free, and an unsent message" href="/new-session/queue/" flip>
-  <p>Write the next prompt now and <strong>Add to queue</strong>. Each item says when it is ready, and you start it with one click. Nothing starts by itself.</p>
-  <p>Messages you don't send are kept, also after you quit. A pen in the sidebar shows where they are.</p>
-</Feature>
-
-<Feature title="A focus limit" shot="focus" alt="The focus counter in the sidebar footer showing 2 of 3, with a list of the sessions that count" href="/focus-limit/">
-  <p>Choose how many sessions you want going at the same time. Switchboard shows how many are on your mind, and asks before you start one more.</p>
-</Feature>
-
-<Feature title="Projects, worktrees and branches" shot="project-worktrees" alt="A project's Worktrees tab: worktrees grouped into safe to remove and keep, with their branch, changes, commits and size on disk" href="/projects/projects-view/" flip>
-  <p>Each project has its own page with its sessions, worktrees, branches and actions. Start a session in a new worktree, then clean up the ones that are done after one confirmation.</p>
-  <p>Switchboard never removes a worktree with uncommitted changes or a session working in it.</p>
-</Feature>
-
-<Feature title="What Claude remembers, in plain Markdown" shot="project-memory" alt="A project's Memory tab: what loads in a session at the top, the project's memories with their type, the instructions the team shares, and personal memory" href="/memory/overview/">
-  <p>See and edit what Claude Code remembers about each project, and what loads at the start of every session. Share a memory with the team in <code>CLAUDE.md</code>, or bring your memory over from the Claude app.</p>
-  <p>Everything stays plain Markdown where Claude Code already looks, so it works the same in the terminal.</p>
-</Feature>
-
-<Feature title="Terminal and changes, next to the conversation" shot="main-window" alt="A finished session with the Changes panel open on the right, showing a diff" href="/terminal-changes-git/changes/" flip>
-  <p>See what Claude changed in the <strong>Changes</strong> panel (<Kbd shortcut="changes.toggle" />): stage, unstage or revert files, and open any diff inline. A terminal per session is one key away (<Kbd shortcut="terminal.toggle" first />).</p>
-  <p>The git button offers the next step: pull, commit, push or create a pull request.</p>
-</Feature>
-
-<Feature title="Permissions in the conversation" shot="permissions" alt="A session that is waiting for permission to install a package" href="/permissions/">
-  <p>Allow or deny what Claude asks, answer its questions and review its plans, right where the work happens. Switch the permission mode with <Kbd shortcut="mode.cycle" />.</p>
-</Feature>
-
-<Feature title="Themes" shot="theme-catppuccin" alt="Switchboard in the Catppuccin theme" href="/themes/built-in/" flip>
-  <p>Demo Time, Catppuccin, Claude, Nord, Solarized and The unnamed are built in, in light and dark. Import your own theme as a small JSON file.</p>
-</Feature>
+<section class="sb-more not-content">
+  <h2>And a lot more</h2>
+  <p>Small things that save you time every day. Each card opens its page.</p>
+  <Related pages={['sessions/saved-prompts', 'new-session/quick-questions', 'sessions/unsent-drafts', 'links', 'projects/clone-from-github', 'sessions/commands', 'sessions/mods', 'sessions/search', 'themes/built-in', 'settings/backup', 'permissions', 'new-session/auto-model']} />
+  <div class="sb-more-links">
+    <a class="sb-button secondary" href="/features/">See all features</a>
+  </div>
+</section>
 
 <section class="sb-companion not-content">
   <h2>The VS Code companion</h2>
@@ -78,14 +142,47 @@ import PromoVideo from '../../components/PromoVideo.astro';
   <p class="sb-companion-id"><code>eliostruyf.switchboard-companion</code></p>
 </section>
 
+<section class="sb-cta not-content">
+  <h2>Try it on the sessions you already have</h2>
+  <p>Switchboard picks up your existing Claude Code sessions the moment it opens. Nothing to set up first.</p>
+  <div class="sb-cta-actions">
+    <a class="sb-button primary large sb-os-mac" href="https://github.com/estruyf/switchboard/releases/latest">Download for Mac</a>
+    <a class="sb-button primary large sb-os-windows" href="https://github.com/estruyf/switchboard/releases/latest">Download for Windows</a>
+    <a class="sb-button secondary large" href="/getting-started/install/">Install guide</a>
+  </div>
+  <div class="sb-os-mac sb-cta-brew"><CopyCommand command="brew install --cask estruyf/tap/switchboard" /></div>
+</section>
+
 <style>{`
-  .sb-tour { padding: 1rem 0 3rem; }
-  .sb-tour h2 { margin: 0 0 1.25rem; text-align: center; font-size: var(--sb-text-hero); font-weight: 600; color: var(--sb-text); }
-  .sb-intro { max-width: 46rem; margin: 1rem auto 2rem; text-align: center; font-size: var(--sb-text-body); color: var(--sb-muted); }
-  .sb-companion { padding: 3rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
-  .sb-companion h2 { margin: 0; font-size: var(--sb-text-hero); font-weight: 600; color: var(--sb-text); }
-  .sb-companion p { max-width: 42rem; margin: 0.75rem auto 0; color: var(--sb-muted); }
+  .sb-proof { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); margin: 4rem 0 1rem; }
+  .sb-proof > div { padding: 1.1rem 1.25rem; border: 1px solid var(--sb-border); border-radius: var(--sb-radius-card); background: color-mix(in srgb, var(--sb-card) 60%, transparent); }
+  .sb-proof h2 { margin: 0; font-size: var(--sb-text-title); font-weight: 600; color: var(--sb-text); }
+  .sb-proof p { margin: 0.4rem 0 0; font-size: var(--sb-text-ui); line-height: 1.55; color: var(--sb-muted); }
+  .sb-proof code { font-size: 0.9em; }
+  .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-cta { padding: 3.5rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
+  .sb-keys h2, .sb-more h2, .sb-tour h2, .sb-companion h2, .sb-cta h2 { margin: 0; font-size: calc(var(--sb-text-hero) * 1.2); font-weight: 600; color: var(--sb-text); }
+  .sb-keys > p, .sb-more > p, .sb-companion p, .sb-cta p { max-width: 42rem; margin: 0.75rem auto 0; color: var(--sb-muted); }
+  .sb-keys ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.75rem; max-width: 52rem; margin: 2rem auto 0; padding: 0; list-style: none; }
+  .sb-keys li { display: flex; align-items: center; gap: 0.75rem; margin: 0; padding: 0.8rem 1rem; border: 1px solid var(--sb-border); border-radius: var(--sb-radius-card); background: var(--sb-card); font-size: var(--sb-text-ui); color: var(--sb-text); text-align: start; }
+  .sb-more-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin: -1.5rem 0 1rem; }
+  .sb-more .sb-more-links { margin: 2rem 0 0; }
+  .sb-more .sb-cards { margin-top: 2rem; text-align: start; }
+  .sb-tour h2 { margin-bottom: 1.5rem; }
   .sb-companion strong { color: var(--sb-text); }
-  .sb-companion-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 1.5rem; }
+  .sb-companion-actions, .sb-cta-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 1.5rem; }
   .sb-companion-id { font-size: var(--sb-text-meta); }
+  .sb-cta { padding-bottom: 2rem; background: radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--sb-accent) 10%, transparent), transparent 60%); }
+  .sb-cta-brew { margin-top: 1rem; max-width: 100%; }
+  @media (max-width: 40rem) {
+    .sb-proof { margin-top: 2.5rem; gap: 0.75rem; }
+    .sb-proof > div { padding: 0.9rem 1rem; }
+    .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-cta { padding: 2.5rem 0; }
+    .sb-keys ul { grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 1.5rem; }
+    .sb-keys li { flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0.75rem; }
+    .sb-more-links { margin-top: -0.5rem; }
+    .sb-cta-brew { display: none; }
+    /* The cards swipe sideways on a phone, the next one peeking in, instead of a dozen screens of scrolling. */
+    .sb-more .sb-cards { display: flex; gap: 0.75rem; margin: 1.5rem -1rem 0; padding: 0 1rem 0.5rem; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 1rem; scrollbar-width: none; }
+    .sb-more .sb-cards li { flex: 0 0 78%; scroll-snap-align: start; }
+  }
 `}</style>

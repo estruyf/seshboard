@@ -8,6 +8,7 @@ import OnlyOn from '../../components/OnlyOn.astro';
 import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../components/Related.astro';
 
 A `switchboard://` link opens Switchboard on New session with the project and prompt filled in, or jumps to a session. Put links in runbooks, alerts, READMEs, issue templates, or Raycast and Alfred scripts, or open them from a shell.
 
@@ -167,3 +168,7 @@ Parameters Switchboard doesn't know are ignored, so a link made for a newer vers
 ## Settings
 
 Links have no settings. What a started session uses comes from the [project's settings](/projects/settings/).
+
+## Related
+
+<Related pages={['new-session/form', 'projects/clone-from-github', 'sessions/saved-prompts', 'projects/settings']} />

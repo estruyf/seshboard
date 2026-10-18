@@ -8,6 +8,7 @@ import OnlyOn from '../../../components/OnlyOn.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 Switchboard checks for new versions of itself and of the Claude Code it runs. It tells you when one is out, and nothing downloads or installs until you click.
 
@@ -109,3 +110,7 @@ If you turned off Claude Code's own updater (`DISABLE_AUTOUPDATER` in your envir
 ## Settings
 
 Both updaters are in [Settings → About](/settings/#about): the automatic checks, the channel and the Claude Code details.
+
+## Related
+
+<Related pages={['changelog', 'troubleshooting', 'getting-started/install', 'settings']} />

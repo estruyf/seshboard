@@ -1,0 +1,13 @@
+---
+/**
+ * The features that came out in the last few releases: every page with `sidebar: { badge: New }` in its
+ * frontmatter, as cards. Take the badge off a page when its feature is no longer news, and it leaves this list,
+ * the sidebar's badge and the homepage at once.
+ */
+import { newPages } from '../lib/docsPages.ts';
+import PageCards from './PageCards.astro';
+
+const pages = await newPages();
+---
+
+{pages.length > 0 && <PageCards pages={pages} />}

@@ -7,6 +7,7 @@ import Kbd from '../../components/Kbd.astro';
 import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../components/Related.astro';
 
 The command palette puts everything Switchboard can do one search away. It lists the commands that fit where you are, jumps to any session or project, and starts a new session without leaving the keyboard.
 
@@ -247,3 +248,7 @@ Every key is also on the shortcuts sheet (<Kbd shortcut="shortcuts" />) and in [
 ## Settings
 
 *Project order* in [Settings → Projects](/settings/#projects) sets how the palette lists your projects: most recent first, or in your order.
+
+## Related
+
+<Related pages={['keyboard-shortcuts', 'sessions/search', 'links', 'new-session/form']} />

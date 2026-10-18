@@ -8,6 +8,7 @@ import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 The sidebar lists your sessions across every project, grouped by what needs attention first and then by time. It is where you see at a glance which sessions are working, which wait for you, and which finished.
 
@@ -125,3 +126,7 @@ In [Settings, Sidebar](/settings/#sidebar):
 - **Show sessions from other apps:** also list sessions from your terminal, Claude desktop and your editor. Off (the default) shows only sessions you started or continued in Switchboard.
 
 <Screenshot name="settings-sidebar" alt="Settings open on Sidebar: the three sidebar styles, the When collapsed choice, and the Show sessions from other apps switch" />
+
+## Related
+
+<Related pages={['sessions/states', 'sessions/pinned', 'sessions/split-view', 'command-palette']} />
