@@ -10,6 +10,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **The terminal uses every font from your terminal settings.** When VS Code's terminal font setting lists more than one font, such as `'Cascadia Code', monospace`, the terminal treated the whole list as one font name and fell back to the default font. It now uses each font in order. The same goes for a list of fonts in Windows Terminal, and for several font lines in Ghostty.
 - **Up next in the remote app stays right after the phone was away.** A message you added to Up next from your phone stayed there after Claude had sent it, and tapping its × did nothing, when the phone was locked or offline at the time. Opening a session now shows its Up next as it is on the computer, and removing a message that was already sent clears it. Opening a session also shows what you queued for it on the computer.
 - **The remote app keeps what you typed and didn't send.** A message you started in a session's message box was gone when you opened another session and came back. Each session now keeps its own draft, as New session does, also after a reload, until you send it.
 

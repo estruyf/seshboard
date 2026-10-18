@@ -9,11 +9,12 @@ import { useThemes } from '../../state/themeStore.ts';
 import { appKeyInTerminal, matches } from '../../lib/shortcuts.ts';
 import { currentPlatform } from '../../lib/platform.ts';
 import { releaseWebglContexts } from './releaseWebgl.ts';
+import { terminalFontFamily, type DetectedFont } from './terminalFont.ts';
 
 /** Fallbacks after the user's own terminal font: system monospace, then common Nerd Fonts for prompt glyphs. */
 const FALLBACK_FONTS = '"SF Mono", ui-monospace, Menlo, "Symbols Nerd Font Mono", "MesloLGS NF", "Hack Nerd Font Mono", "JetBrainsMono Nerd Font Mono", monospace';
 
-let userFont: Promise<string | null> | undefined;
+let userFont: Promise<DetectedFont> | undefined;
 
 const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
@@ -81,10 +82,10 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
     fitRef.current = fit;
 
     // Use the font from the user's own terminal when we can find it (asked once per window).
-    userFont ??= client.call('terminal.font', {}).then((r) => r.fontFamily, () => null);
+    userFont ??= client.call('terminal.font', {}).then((r): DetectedFont => r, () => ({ fontFamily: null }));
     void userFont.then((font) => {
-      if (!font || termRef.current !== term) return;
-      term.options.fontFamily = `"${font.replace(/"/g, '')}", ${FALLBACK_FONTS}`;
+      if (termRef.current !== term || (!font.fontFamily && !font.fontFamilies?.length)) return;
+      term.options.fontFamily = terminalFontFamily(font, FALLBACK_FONTS);
       fit.fit();
     });
 
