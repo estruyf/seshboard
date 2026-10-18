@@ -49,6 +49,8 @@ What Switchboard shows when it opens:
 
 A project's own default mode comes first (its [Settings tab](/projects/settings/)), then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions). A session started by a link never starts in Auto mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
 
+**Use Claude in Chrome** (off by default) gives sessions the browser tools of the Claude in Chrome extension, so Claude can open pages, click and read them in your own Chrome. It needs the extension installed in Chrome. Claude Code's own **Enabled by default** for Claude in Chrome only works in a terminal, so turn it on here for Switchboard's sessions. It applies to sessions you start or resume after you change it: a session that is running keeps what it started with until you stop and resume it.
+
 ### Quitting
 
 **Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press. On Windows, closing the window quits Switchboard, so it asks then too (but not while Windows shuts down or signs you out). With **Warn when quitting** on under [Large context](#large-context), quitting with a large session open asks even with Ask before quitting off.

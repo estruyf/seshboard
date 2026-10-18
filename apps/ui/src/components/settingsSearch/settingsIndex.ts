@@ -22,6 +22,14 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'new session default ask first accept edits plan auto mode permissions',
       target: '[data-new-session-mode]',
     },
+    {
+      id: 'chrome',
+      page: 'general',
+      label: 'Use Claude in Chrome',
+      detail: 'Sessions get the browser tools of the Claude in Chrome extension, which needs to be installed in Chrome. Applies to sessions you start or resume after you change it.',
+      keywords: 'browser chrome extension mcp tools claude-in-chrome --chrome web',
+      target: '[data-chrome-setting]',
+    },
     { id: 'confirm-quit', page: 'general', label: 'Ask before quitting', detail: `${quit} shows a prompt first; pressing ${quit} again quits.`, keywords: 'quit exit close confirm', target: '[data-confirm-quit]' },
 
     // Theme

@@ -64,6 +64,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   startupView: 'On startup',
   projectOrder: 'Project order',
   newSessionMode: 'Permission mode for new sessions',
+  chrome: 'Use Claude in Chrome',
   autoUpdate: 'Automatic updates',
   updateChannel: 'Update channel',
   focusLimit: 'Focus limit',

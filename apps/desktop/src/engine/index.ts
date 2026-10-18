@@ -107,6 +107,11 @@ process.parentPort.on('message', (event) => {
     engine.setShowMods((data as { show?: unknown }).show !== false);
     return;
   }
+  // Settings › General › Use Claude in Chrome.
+  if (data?.type === 'chrome') {
+    engine.setChrome((data as { enabled?: unknown }).enabled === true);
+    return;
+  }
   // Settings › Conversation › Resume after a usage limit resets.
   if (data?.type === 'limits') {
     engine.setResumeAtLimit((data as { resume?: unknown }).resume === 'always' ? 'always' : 'ask');

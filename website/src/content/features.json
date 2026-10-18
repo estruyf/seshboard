@@ -1877,6 +1877,11 @@
       "page": "settings/updates"
     },
     {
+      "id": "feature:claude-in-chrome",
+      "name": "Use Claude in Chrome",
+      "page": "settings"
+    },
+    {
       "id": "feature:claude-profiles",
       "name": "Claude profiles",
       "page": "settings/claude-profiles"

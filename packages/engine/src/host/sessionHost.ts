@@ -89,6 +89,8 @@ export interface HostConfig {
   limitPrefixes?: readonly string[];
   /** Show mods (Settings › Mods): attach when Claude Code can draw mods. On unless said otherwise. */
   showMods?: boolean;
+  /** Use Claude in Chrome (Settings › General): start Claude Code with `--chrome`. Off unless said otherwise. */
+  chrome?: boolean;
 }
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
@@ -153,11 +155,16 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
     options.forkSession = true;
     options.sessionId = config.sessionId;
   }
+  const extraArgs: Record<string, string | null> = {};
   if (config.worktree) {
     // Claude Code creates the worktree itself (same place and naming as `claude --worktree`).
-    options.extraArgs = { worktree: config.worktree.name };
+    extraArgs.worktree = config.worktree.name;
     if (config.worktree.baseRef === 'head') options.settings = { worktree: { baseRef: 'head' } };
   }
+  // Claude Code's "Enabled by default" for Claude in Chrome only applies in a terminal; an SDK host turns it on itself.
+  // The SDK passes a null value as a bare flag: `--chrome`.
+  if (config.chrome) extraArgs.chrome = null;
+  if (Object.keys(extraArgs).length > 0) options.extraArgs = extraArgs;
   return options;
 }
 

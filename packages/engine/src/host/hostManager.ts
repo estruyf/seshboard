@@ -204,6 +204,8 @@ export class HostManager {
 
   /** Show mods (Settings › Mods); every session follows it, without a restart. */
   private showMods = true;
+  /** Use Claude in Chrome (Settings › General): sessions, and the pre-warmed process, start with `--chrome`. */
+  private chrome = false;
   private readonly modAsks = new Map<string, (answer: ModPromptAnswer | null) => void>();
 
   constructor(private readonly deps: HostManagerDeps) {
@@ -756,6 +758,17 @@ export class HostManager {
     for (const host of this.hosts.values()) if (host.active) host.mods.setEnabled(enabled);
   }
 
+  /**
+   * Use Claude in Chrome on or off. Claude Code reads `--chrome` only at startup, so running sessions keep what they
+   * started with; the warm process is dropped, or the next new session would take one started with the old value.
+   */
+  setChrome(enabled: boolean): void {
+    // Main sends every engine setting after any preference change: only a real change costs the warm process.
+    if (enabled === this.chrome) return;
+    this.chrome = enabled;
+    this.discardWarm();
+  }
+
   /** The mods surface of a running session (NOT_RUNNING otherwise). */
   mods(sessionId: string): ModsSurface {
     return this.require(sessionId).mods;
@@ -837,6 +850,7 @@ export class HostManager {
         permissionMode: 'default',
         effort: null,
         worktree: null,
+        chrome: this.chrome,
         env,
         claudePath,
         canUseTool: (...args) => (route.canUseTool ? route.canUseTool(...args) : Promise.resolve({ behavior: 'deny', message: 'Not ready' })),
@@ -924,7 +938,7 @@ export class HostManager {
         }
       : (args) => sdk.query(args);
     const host = new SessionHost(
-      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods },
+      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods, chrome: this.chrome },
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),

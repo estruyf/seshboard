@@ -920,6 +920,49 @@ describe('HostManager', () => {
     expect(t.ephemeral.has(t.warmups[1]!.options.sessionId!)).toBe(true);
   });
 
+  it('starts sessions and the pre-warmed process with --chrome while Use Claude in Chrome is on', async () => {
+    const t = setup();
+    t.manager.setChrome(true);
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups[0]!.options.extraArgs).toEqual({ chrome: null });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.extraArgs).toEqual({ chrome: null });
+    t.manager.setChrome(false);
+    const other = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, other) === 'idle');
+    expect(t.queries[1]!.options.extraArgs).toBeUndefined();
+    t.manager.closeAll();
+  });
+
+  it('drops the pre-warmed process when Use Claude in Chrome changes, and keeps it when it does not', async () => {
+    const t = setup();
+    await t.manager.prewarm('/work/app', 'default');
+    // Main sends every setting again after any preference change: the same value keeps the process.
+    t.manager.setChrome(false);
+    expect(t.warmups[0]!.closed).toBe(false);
+    t.manager.setChrome(true);
+    await until(() => t.warmups[0]!.closed);
+    // The next new session starts its own process, with the new value, instead of taking the old one.
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    expect(id).not.toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.extraArgs).toEqual({ chrome: null });
+    // A pre-warm after the change starts with it.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups[1]!.options.extraArgs).toEqual({ chrome: null });
+    t.manager.closeAll();
+  });
+
+  it('drops a pre-warm still starting when Use Claude in Chrome changes', async () => {
+    const t = setup();
+    const starting = t.manager.prewarm('/work/app', 'default');
+    t.manager.setChrome(true);
+    await starting;
+    expect(t.warmups).toHaveLength(0);
+    t.manager.closeAll();
+  });
+
   it('keeps one pre-warmed process when pre-warms overlap, and none after a shutdown', async () => {
     const t = setup();
     await Promise.all([t.manager.prewarm('/a', 'default'), t.manager.prewarm('/b', 'default'), t.manager.prewarm('/b', 'default')]);
@@ -1246,6 +1289,20 @@ describe('buildOptions', () => {
     expect(fork).toMatchObject({ resume: 's1', forkSession: true, sessionId: 'f1' });
     expect(fork.model).toBeUndefined();
     expect(() => buildOptions({ ...config, mode: 'fork', worktree: null }, () => {})).toThrow(/forks from/);
+  });
+  it('passes --chrome only when Use Claude in Chrome is on', () => {
+    // Off (or not said): no flag, and no extraArgs at all without a worktree.
+    expect(buildOptions({ ...config, worktree: null }, () => {}).extraArgs).toBeUndefined();
+    expect(buildOptions({ ...config, worktree: null, chrome: false }, () => {}).extraArgs).toBeUndefined();
+    expect(buildOptions(config, () => {}).extraArgs).toEqual({ worktree: 'fix-login' });
+    // On: a null value, which the SDK passes as a bare `--chrome`.
+    expect(buildOptions({ ...config, worktree: null, chrome: true }, () => {}).extraArgs).toEqual({ chrome: null });
+    expect(buildOptions({ ...config, mode: 'resume', worktree: null, chrome: true }, () => {}).extraArgs).toEqual({ chrome: null });
+  });
+  it('keeps the worktree when Claude in Chrome is on too', () => {
+    const options = buildOptions({ ...config, chrome: true }, () => {});
+    expect(options.extraArgs).toEqual({ worktree: 'fix-login', chrome: null });
+    expect(options.settings).toEqual({ worktree: { baseRef: 'head' } });
   });
 });
 

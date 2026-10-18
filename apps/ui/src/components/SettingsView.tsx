@@ -446,6 +446,13 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 dataAttrs={{ 'data-new-session-mode': true }}
               />
             </div>
+            <Toggle
+              label="Use Claude in Chrome"
+              detail="Sessions get the browser tools of the Claude in Chrome extension, which needs to be installed in Chrome. Applies to sessions you start or resume after you change it."
+              checked={prefs.chrome}
+              attr="data-chrome-setting"
+              onChange={(chrome) => update({ chrome })}
+            />
           </Section>
           <Section title="Quitting">
             <Toggle

@@ -271,6 +271,12 @@ export interface Preferences {
   projectOrder: ProjectOrder;
   /** What New session and the palette's prompt start in, unless the project has its own default. */
   newSessionMode: NewSessionMode;
+  /**
+   * Settings › General: "Use Claude in Chrome". On, sessions start with `--chrome`, so they get the Claude in Chrome
+   * extension's browser tools. Claude Code's own "Enabled by default" only applies in a terminal, so an SDK host has to
+   * ask for it. Off by default: not everyone has the extension.
+   */
+  chrome: boolean;
   /** Check GitHub for a newer release shortly after launch and every few hours. */
   autoUpdate: boolean;
   updateChannel: UpdateChannel;
@@ -351,6 +357,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   startupView: "home",
   projectOrder: "recent",
   newSessionMode: "last",
+  chrome: false,
   autoUpdate: true,
   updateChannel: "stable",
   focusLimit: null,
@@ -502,6 +509,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.projectOrder = raw.projectOrder;
   if (oneOf(NEW_SESSION_MODES, raw.newSessionMode))
     out.newSessionMode = raw.newSessionMode;
+  if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "nightly"] as const, raw.updateChannel))
     out.updateChannel = raw.updateChannel;

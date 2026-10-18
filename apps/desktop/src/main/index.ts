@@ -160,7 +160,7 @@ function updatePreferences(patch: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.preferencesChanged, next);
 }
 
-/** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting), Auto model and catch-up summaries. */
+/** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting), Auto model, catch-up summaries, mods and Claude in Chrome. */
 function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived });
   // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
@@ -171,6 +171,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'limits', resume: prefs.resumeAtLimit });
   // Settings › Mods › Show mods: sessions attach or detach their mods without a restart.
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
+  // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
+  engine?.sendStanding({ type: 'chrome', enabled: prefs.chrome });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {

@@ -240,6 +240,8 @@ export interface Engine {
   setResumeAtLimit(mode: ResumeAtLimit): void;
   /** Settings › Mods › Show mods, from main: sessions attach or detach their mods at once. */
   setShowMods(enabled: boolean): void;
+  /** Settings › General › Use Claude in Chrome, from main: sessions started or resumed after it changes get `--chrome`. */
+  setChrome(enabled: boolean): void;
   /** Whether a window has focus, from main: running pull request checks are read every 30 seconds then, else every 5 minutes. */
   setForeground(foreground: boolean): void;
   /**
@@ -2628,6 +2630,7 @@ export function createEngine(options: EngineOptions): Engine {
       resumeAtLimit = mode;
     },
     setShowMods: (enabled) => hosts.setShowMods(enabled),
+    setChrome: (enabled) => hosts.setChrome(enabled),
     setForeground: (foreground) => checksWatcher.setForeground(foreground),
     startModsSmoke: async () => {
       const spec = JSON.parse(process.env.SWITCHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;
