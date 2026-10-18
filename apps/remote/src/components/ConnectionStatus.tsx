@@ -66,7 +66,7 @@ export function ComputerChip(props: ComputerProps) {
   const text = strip && state.kind !== 'offline' && state.kind !== 'unpaired' ? 'text-muted' : tone;
   const waiting = strip && state.kind === 'connected' && needsYou > 0;
   return (
-    <AnchoredMenu label={computer || 'Your computer'} items={computerItems(props, now)} className="min-w-0">
+    <AnchoredMenu label={computer || 'Your computer'} items={computerItems(props, now)} align={strip ? 'left' : 'right'} className="min-w-0">
       {(trigger) => (
         <button
           type="button"

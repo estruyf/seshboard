@@ -35,11 +35,42 @@ export function MenuButton({ label = 'More', items, align = 'right', side = 'bel
   );
 }
 
-/** A menu under (or over) a trigger of your own: the computer chip. The trigger gets the props that open it. */
+/**
+ * A menu under (or over) a trigger of your own: the computer chip. The trigger gets the props that open it. The list
+ * is `fixed`, so a scrolling row it sits in (the strip of computers) doesn't clip it, and it stays inside the window.
+ */
 export function AnchoredMenu({ label, items, align = 'right', side = 'below', className = '', children }: { label: string; items: MenuItem[]; align?: 'left' | 'right'; side?: 'above' | 'below'; className?: string; children: (trigger: MenuTriggerProps) => ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState({ left: 0, top: 0 });
   const button = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const id = useId();
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const position = () => {
+      const menu = list.current;
+      const trigger = button.current;
+      if (!menu || !trigger) return;
+      const anchor = trigger.getBoundingClientRect();
+      const { offsetWidth: width, offsetHeight: height } = menu;
+      // `fixed` is relative to a transformed ancestor (the drawer), not the window: where the list is now, less where
+      // it was put, is where that ancestor starts.
+      const now = menu.getBoundingClientRect();
+      const originX = now.left - (parseFloat(menu.style.left) || 0);
+      const originY = now.top - (parseFloat(menu.style.top) || 0);
+      const x = align === 'right' ? anchor.right - width : anchor.left;
+      const y = side === 'above' ? anchor.top - 4 - height : anchor.bottom + 4;
+      setPlace({ left: Math.max(8, Math.min(x, window.innerWidth - width - 8)) - originX, top: y - originY });
+    };
+    position();
+    window.addEventListener('scroll', position, true);
+    window.addEventListener('resize', position);
+    return () => {
+      window.removeEventListener('scroll', position, true);
+      window.removeEventListener('resize', position);
+    };
+  }, [open, align, side]);
 
   const close = (refocus: boolean) => {
     setOpen(false);
@@ -47,9 +78,9 @@ export function AnchoredMenu({ label, items, align = 'right', side = 'below', cl
   };
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={className}>
       {children({ ref: button, onClick: () => setOpen(!open), 'aria-haspopup': 'menu', 'aria-expanded': open, 'aria-controls': open ? id : undefined })}
-      {open && <MenuList id={id} label={label} items={items} owner={button} onClose={close} className={`absolute ${side === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'} ${align === 'right' ? 'right-0' : 'left-0'}`} />}
+      {open && <MenuList ref={list} id={id} label={label} items={items} owner={button} onClose={close} className="fixed" style={place} />}
     </div>
   );
 }
