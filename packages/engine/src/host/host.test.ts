@@ -57,6 +57,8 @@ class FakeQuery {
   inputEnded = false;
   mode: string;
   model = 'fake-model';
+  /** The folder Claude's shell is in, which `cd` moves; each turn's init reports it. */
+  shellCwd: string | undefined;
   constructor(
     readonly prompt: AsyncIterable<SDKUserMessage>,
     readonly options: Options,
@@ -76,7 +78,7 @@ class FakeQuery {
     for await (const message of this.prompt) {
       const text = (message.message.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text')?.text ?? '';
       this.received.push({ text, ...(message.priority ? { priority: message.priority } : {}) });
-      this.out.push({ type: 'system', subtype: 'init', session_id: sessionId, cwd: this.options.cwd, model: this.model, permissionMode: this.mode });
+      this.out.push({ type: 'system', subtype: 'init', session_id: sessionId, cwd: this.shellCwd ?? this.options.cwd, model: this.model, permissionMode: this.mode });
       state('running');
       if (text.startsWith('<side-question>')) {
         await this.answerSideQuestion(sessionId, text);
@@ -307,6 +309,20 @@ describe('HostManager', () => {
     // The Working list orders by when you last sent a message.
     expect(t.infos.at(-1)!.promptedAt).toBeGreaterThanOrEqual(t.infos.at(-1)!.startedAt);
     await expect(t.manager.commands(id, undefined, 'default')).resolves.toEqual([{ name: 'review', description: 'Review the diff', argumentHint: '' }]);
+    t.manager.closeAll();
+  });
+
+  it('keeps the session in its folder when Claude cds into a subfolder, and follows it into a worktree', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    t.queries[0]!.shellCwd = '/work/app/packages/ui';
+    await t.manager.send({ sessionId: id, text: 'again', attachments: [], fork: false });
+    await until(() => t.queries[0]!.received.length === 2 && lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)!.cwd).toBe('/work/app');
+    t.queries[0]!.shellCwd = '/work/app/.claude/worktrees/fix-login';
+    await t.manager.send({ sessionId: id, text: 'and again', attachments: [], fork: false });
+    await until(() => t.infos.at(-1)!.cwd === '/work/app/.claude/worktrees/fix-login');
     t.manager.closeAll();
   });
 

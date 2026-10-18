@@ -112,6 +112,7 @@ import type { Way } from '../../state/tilingGeometry.ts';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import { ACTION_ICON } from '../actions/actionIcon.ts';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
+import { popoutClass } from './popoutCommands.ts';
 import { APP_TERMINAL } from '../terminal/appTerminal.ts';
 import type { PaletteContext } from './paletteContext.ts';
 import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteState.ts';
@@ -839,9 +840,14 @@ export function computerCommands(ctx: PaletteContext): PaletteCommand[] {
   ]);
 }
 
-/** Every command that can show here, before matching what is typed. */
+/**
+ * Every command that can show here, before matching what is typed. In a pop-out the ones that make no sense there
+ * (`popoutCommands.ts`) are left out, whatever their `when()` says.
+ */
 export function visibleCommands(ctx: PaletteContext, commands: readonly PaletteCommand[] = COMMANDS): PaletteCommand[] {
-  return [...commands, ...actionCommands(ctx), ...promptCommands(ctx), ...themeCommands(ctx), ...projectCommands(ctx), ...computerCommands(ctx)].filter((command) => command.when(ctx));
+  return [...commands, ...actionCommands(ctx), ...promptCommands(ctx), ...themeCommands(ctx), ...projectCommands(ctx), ...computerCommands(ctx)].filter(
+    (command) => (!ctx.popout || popoutClass(command.id) !== 'hide') && command.when(ctx),
+  );
 }
 
 /** A command as a row: its title for this context, and which letters matched what was typed. */

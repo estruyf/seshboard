@@ -4,6 +4,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { closeChanges, isChangesOpen, openChanges } from '../../state/changesPanelStore.ts';
+import { popoutSession } from '../../state/popoutsStore.ts';
 import { currentOrder } from '../../state/sessionNav.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
@@ -59,7 +60,8 @@ export function useCatchUpActions({ card, cwd, changes }: { card: CatchUp; cwd: 
         useSessions.getState().patchSummary(sessionId, { archivedAt: Date.now(), unread: false });
         void client?.call('sessions.setFlags', { sessionId, archived: true }).catch(fail('archive it'));
         const next = nextAfterArchive(order, sessionId);
-        if (next) useSessions.getState().select(next);
+        // A pop-out shows this one session: archived, its window closes (the next one would open in the main window).
+        if (next && !popoutSession) useSessions.getState().select(next);
         else useSessions.getState().goHome();
         return;
       }

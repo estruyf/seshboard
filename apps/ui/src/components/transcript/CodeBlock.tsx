@@ -23,7 +23,8 @@ const idle = (fn: () => void) => {
  * A code block: plain text right away, syntax-highlighted once the browser is
  * idle (and once it stops changing, for a block Claude is still writing). Only
  * blocks on screen exist (the transcript is virtualised). Hovering it, or tabbing to
- * it, shows a button that copies the code as it was written. A shell block in a session
+ * it, shows a button that copies the code as it was written; it stays at the top of the
+ * view while a long block scrolls past. A shell block in a session
  * with a folder also gets a Run button, which types it into the session's terminal, and a
  * button (or ⌥-click on Run) that runs it in a tab of its own and sends its output to Claude.
  *
@@ -77,36 +78,40 @@ export const CodeBlock = memo(function CodeBlock({ code, language, preview }: { 
   if (preview) return <PreviewBlock language={language} source={source} preview={preview} copyButton={copyButton} />;
 
   return (
-    <div className="code-block group/code relative my-2 overflow-hidden rounded-md border border-border bg-code" data-code-language={language}>
+    // Clipped, not hidden: `overflow-hidden` would make the block its own scroller and keep the buttons from sticking.
+    <div className="code-block group/code relative my-2 overflow-clip rounded-md border border-border bg-code" data-code-language={language}>
       {language && <span className="absolute top-1 right-2 text-[10px] text-faint uppercase select-none group-focus-within/code:opacity-0 group-hover/code:opacity-0">{language}</span>}
-      {/* Takes the language's place on hover, on the code's own background so the first line doesn't show through. Invisible rather than removed, so Tab still reaches it and it shows while it has focus. */}
-      <div className="pointer-events-none absolute top-1 right-1 z-10 flex rounded-md bg-code opacity-0 group-focus-within/code:pointer-events-auto group-focus-within/code:opacity-100 group-hover/code:pointer-events-auto group-hover/code:opacity-100">
-        {command && runCommand && (
-          <Button
-            variant="quiet"
-            size="sm"
-            iconOnly
-            icon={<Play size={12} aria-hidden />}
-            aria-label="Run in terminal"
-            onClick={(event) => (event.altKey && runAndSend ? runAndSend(command) : runCommand(command))}
-            data-code-run
-          />
-        )}
-        {command && runAndSend && (
-          <Button
-            variant="quiet"
-            size="sm"
-            iconOnly
-            icon={<MessageSquareShare size={12} aria-hidden />}
-            aria-label="Run and send the output to Claude"
-            data-tooltip={`Run and send the output to Claude (${formatKeys(clickKeysFor('transcript.run-send'))} on Run)`}
-            onClick={() => runAndSend(command)}
-            data-code-run-send
-          />
-        )}
-        {copyButton}
+      {/* A row as tall as the buttons that sticks to the top of the transcript while the block is on screen. The code moves up under it (`-mt-8`) rather than the row taking no room, so at the block's end the row stops inside it instead of being cut off. */}
+      <div className="pointer-events-none sticky top-0 z-10 flex h-8 justify-end p-1">
+        {/* Takes the language's place on hover, on the code's own background so the lines under it don't show through. Invisible rather than removed, so Tab still reaches it and it shows while it has focus. */}
+        <div className="pointer-events-none flex rounded-md bg-code opacity-0 group-focus-within/code:pointer-events-auto group-focus-within/code:opacity-100 group-hover/code:pointer-events-auto group-hover/code:opacity-100">
+          {command && runCommand && (
+            <Button
+              variant="quiet"
+              size="sm"
+              iconOnly
+              icon={<Play size={12} aria-hidden />}
+              aria-label="Run in terminal"
+              onClick={(event) => (event.altKey && runAndSend ? runAndSend(command) : runCommand(command))}
+              data-code-run
+            />
+          )}
+          {command && runAndSend && (
+            <Button
+              variant="quiet"
+              size="sm"
+              iconOnly
+              icon={<MessageSquareShare size={12} aria-hidden />}
+              aria-label="Run and send the output to Claude"
+              data-tooltip={`Run and send the output to Claude (${formatKeys(clickKeysFor('transcript.run-send'))} on Run)`}
+              onClick={() => runAndSend(command)}
+              data-code-run-send
+            />
+          )}
+          {copyButton}
+        </div>
       </div>
-      {source}
+      <div className="-mt-8">{source}</div>
     </div>
   );
 });
@@ -120,14 +125,14 @@ const VIEWS = [
 
 /**
  * A block that can be read rendered: a header with its language, the switch and the copy
- * button (always shown, so the switch is found without hovering), then the preview or the
- * highlighted source. The preview sits on the conversation's background, as prose.
+ * button (always shown, so the switch is found without hovering; it sticks to the top while
+ * the block scrolls past), then the preview or the highlighted source. The preview sits on the conversation's background, as prose.
  */
 function PreviewBlock({ language, source, preview, copyButton }: { language: string | undefined; source: ReactNode; preview: ReactNode; copyButton: ReactNode }) {
   const [view, setView] = useState<View>('preview');
   return (
-    <div className="code-block my-2 overflow-hidden rounded-md border border-border" data-code-preview-block>
-      <div className="flex items-center gap-1 border-b border-border bg-code py-1 pr-1 pl-3">
+    <div className="code-block my-2 overflow-clip rounded-md border border-border" data-code-preview-block>
+      <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-border bg-code py-1 pr-1 pl-3">
         {language && <span className="mr-auto text-[10px] text-faint uppercase select-none">{language}</span>}
         <SegmentedControl<View> mode="radio" size="sm" label="Show as" value={view} onChange={setView} segments={VIEWS} className={language ? '' : 'ml-auto'} />
         {copyButton}

@@ -826,7 +826,7 @@ export const contract = {
     },
     'terminal.list': { params: z.object({}), result: z.object({ terminals: z.array(TerminalInfo) }) },
     /** The font the user's own terminal uses (Ghostty, VS Code), so prompts with Nerd Font glyphs render. */
-    'terminal.font': { params: z.object({}), result: z.object({ fontFamily: z.string().nullable(), source: z.string().nullable() }) },
+    'terminal.font': { params: z.object({}), result: z.object({ fontFamily: z.string().nullable(), fontFamilies: z.array(z.string()), source: z.string().nullable() }) },
     /** Streams this terminal's output to the caller; returns recent output to replay first. */
     'terminal.attach': { params: z.object({ id: z.string() }), result: z.object({ info: TerminalInfo, replay: z.string() }) },
     'terminal.detach': { params: z.object({ id: z.string() }), result: z.object({}) },

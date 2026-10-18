@@ -71,6 +71,12 @@ export interface PaletteTerminal {
 
 /** What the palette knows about where you are; every command's `when()` reads it. Built from the stores. */
 export interface PaletteContext {
+  /**
+   * This is a pop-out: the palette of a session in a window of its own. Its context is that session. Commands for what
+   * the main window owns (the sidebar, panes, Home) are left out and the ones that start or find another session run there
+   * (`popoutCommands.ts`).
+   */
+  popout: boolean;
   view: PaletteView;
   /** Connected to the engine. */
   connected: boolean;

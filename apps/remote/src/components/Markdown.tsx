@@ -127,7 +127,10 @@ function InlineView({ node }: { node: Inline }) {
   }
 }
 
-/** A code block: monospace, scrolling sideways inside itself, with Copy. */
+/**
+ * A code block: monospace, scrolling sideways inside itself, with Copy. The bar with Copy sticks to the top of the
+ * transcript while a long block scrolls past, so copying never means scrolling back up.
+ */
 export function CodeBlock({ text, lang }: { text: string; lang: string | null }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -140,8 +143,9 @@ export function CodeBlock({ text, lang }: { text: string; lang: string | null })
     }
   };
   return (
-    <div className="group relative rounded-lg bg-code">
-      <div className="flex items-center justify-between gap-2 px-2.5 pt-1">
+    // Clipped, not hidden: `overflow-hidden` would make the block its own scroller and keep the bar from sticking.
+    <div className="group relative overflow-clip rounded-lg bg-code">
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-code px-2.5 pt-1">
         <span className="font-mono text-meta text-faint">{lang ?? ''}</span>
         <button type="button" onClick={() => void copy()} aria-label={copied ? 'Copied' : 'Copy code'} className="-mr-1 flex min-h-8 items-center gap-1 rounded-md px-1.5 text-meta text-muted hover:bg-border/50 hover:text-text pointer-fine:min-h-6" data-remote-copy>
           {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}

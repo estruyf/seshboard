@@ -320,18 +320,38 @@ describe('TerminalManager', () => {
 });
 
 describe('terminal font detection', async () => {
-  const { ghosttyFont, vscodeTerminalFont, windowsTerminalFont } = await import('../system/terminalFont.ts');
-  it('reads Ghostty and VS Code settings', () => {
-    expect(ghosttyFont('theme = dark\nfont-family = "SauceCodePro Nerd Font Mono"\nfont-size = 13\n')).toBe('SauceCodePro Nerd Font Mono');
-    expect(ghosttyFont('font-family = JetBrains Mono\n')).toBe('JetBrains Mono');
-    expect(ghosttyFont('font-size = 13\n')).toBeNull();
-    expect(vscodeTerminalFont('{\n  // comment\n  "terminal.integrated.fontFamily": "MesloLGS NF",\n}')).toBe('MesloLGS NF');
-    expect(vscodeTerminalFont('{ "editor.fontFamily": "X" }')).toBeNull();
+  const { ghosttyFonts, vscodeTerminalFonts, windowsTerminalFonts, parseFontFamilies } = await import('../system/terminalFont.ts');
+
+  it('splits a CSS font list into names without quotes, generics or repeats', () => {
+    expect(parseFontFamilies("'Cascadia Cove', monospace")).toEqual(['Cascadia Cove']);
+    expect(parseFontFamilies('"Fira Code", \'JetBrains Mono\' ,  Menlo, "fira code", sans-serif')).toEqual(['Fira Code', 'JetBrains Mono', 'Menlo']);
+    expect(parseFontFamilies('"Name, with comma", Hack')).toEqual(['Name, with comma', 'Hack']);
+    expect(parseFontFamilies("Foo's Mono, Bar")).toEqual(["Foo's Mono", 'Bar']);
+    expect(parseFontFamilies('monospace')).toEqual([]);
+    expect(parseFontFamilies(' , UI-Monospace, ,')).toEqual([]);
+  });
+
+  it('reads Ghostty settings: every font-family line, in order, and an empty one starts over', () => {
+    expect(ghosttyFonts('theme = dark\nfont-family = "SauceCodePro Nerd Font Mono"\nfont-size = 13\n')).toEqual(['SauceCodePro Nerd Font Mono']);
+    expect(ghosttyFonts('font-family = JetBrains Mono\n')).toEqual(['JetBrains Mono']);
+    expect(ghosttyFonts('font-family = JetBrains Mono\r\nfont-family-bold = Other\r\nfont-family = "Symbols Nerd Font"\r\nfont-family = jetbrains mono\r\n')).toEqual(['JetBrains Mono', 'Symbols Nerd Font']);
+    expect(ghosttyFonts('font-family = Old\nfont-family = ""\nfont-family = New\nfont-family = Newer\n')).toEqual(['New', 'Newer']);
+    expect(ghosttyFonts('font-family = Old\nfont-family =\n')).toEqual([]);
+    expect(ghosttyFonts('font-size = 13\n')).toEqual([]);
+  });
+
+  it('reads the terminal font list from VS Code settings', () => {
+    expect(vscodeTerminalFonts('{\n  // comment\n  "terminal.integrated.fontFamily": "MesloLGS NF",\n}')).toEqual(['MesloLGS NF']);
+    expect(vscodeTerminalFonts(String.raw`{ "terminal.integrated.fontFamily": "'Cascadia Cove', monospace" }`)).toEqual(['Cascadia Cove']);
+    expect(vscodeTerminalFonts(String.raw`{ "terminal.integrated.fontFamily": "\"Fira Code\", \"Hack Nerd Font\", monospace" }`)).toEqual(['Fira Code', 'Hack Nerd Font']);
+    expect(vscodeTerminalFonts('{ "terminal.integrated.fontFamily": "monospace" }')).toEqual([]);
+    expect(vscodeTerminalFonts('{ "editor.fontFamily": "X" }')).toEqual([]);
   });
 
   it('reads Windows Terminal settings, the defaults first and the older key too', () => {
-    expect(windowsTerminalFont('{ "profiles": { "defaults": { "font": { "size": 11, "face": "CaskaydiaCove NF" } }, "list": [{ "font": { "face": "Other" } }] } }')).toBe('CaskaydiaCove NF');
-    expect(windowsTerminalFont('{ "profiles": { "defaults": { "fontFace": "Cascadia Mono" } } }')).toBe('Cascadia Mono');
-    expect(windowsTerminalFont('{ "profiles": { "defaults": {} } }')).toBeNull();
+    expect(windowsTerminalFonts('{ "profiles": { "defaults": { "font": { "size": 11, "face": "CaskaydiaCove NF" } }, "list": [{ "font": { "face": "Other" } }] } }')).toEqual(['CaskaydiaCove NF']);
+    expect(windowsTerminalFonts('{ "profiles": { "defaults": { "font": { "face": "Cascadia Code, Segoe UI Emoji" } } } }')).toEqual(['Cascadia Code', 'Segoe UI Emoji']);
+    expect(windowsTerminalFonts('{ "profiles": { "defaults": { "fontFace": "Cascadia Mono" } } }')).toEqual(['Cascadia Mono']);
+    expect(windowsTerminalFonts('{ "profiles": { "defaults": {} } }')).toEqual([]);
   });
 });
