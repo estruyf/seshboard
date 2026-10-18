@@ -8,8 +8,9 @@ sidebar:
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-Under the message box sits a row of quiet chips: the Claude profile, the model, the effort and the permission mode. They show only the value ("Personal", "Opus 4.5", "Medium", "Auto"); hover one for its full meaning, such as "Effort: Medium". The same row is in New session, in the command palette's New session step and in every session.
+Pick how a session runs: which account it uses, which model, how much Claude thinks, and when it stops to ask you. Under the message box sits a row of quiet chips: the Claude profile, the model, the effort and the permission mode. They show only the value ("Personal", "Opus 4.5", "Medium", "Auto"); hover one for its full meaning, such as "Effort: Medium". The same row is in New session, in the command palette's New session step and in every session.
 
 <Screenshot name="new-session-options" alt="New session with the model chip's menu open above the message box, listing Default model and the models Claude Code offers, each with a short description" eager />
 
@@ -93,3 +94,7 @@ To keep your choices for the project, choose **Save as project default** in the 
 ## Settings
 
 The defaults live on each project's [Settings tab](/projects/settings/). Profiles are in [Settings → Claude profiles](/settings/#claude-profiles).
+
+## Related
+
+<Related pages={['new-session/auto-model', 'permissions', 'settings/claude-profiles', 'usage']} />

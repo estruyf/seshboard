@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronLeft, KeyboardOff, Search } from 'lucide-react';
 import { REMOTE_FEATURE_BRANCHES, type RemoteBranches, type RemoteOptions, type RemoteProject, type RemoteSession } from '@switchboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
+import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer, useWide } from '../lib/media.ts';
 import { autoOn, changedFrom, defaultChoice, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
@@ -21,7 +22,7 @@ const FILTER_FROM = 7;
 /** More than this don't fit across a phone: All projects opens them as a list. */
 const LIST_FROM = 3;
 /** What you typed survives going back to the list and coming back, until the session starts. */
-const DRAFT = 'switchboard-remote:new-draft';
+const DRAFT: DraftKey = { kind: 'new' };
 
 /**
  * New session in one of your projects, the ones you added in Switchboard. The tiles (one row that scrolls sideways)
@@ -38,7 +39,7 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
   const [projectId, setProjectId] = useState<string | null>(initialProject);
   const [filter, setFilter] = useState('');
-  const [prompt, setPrompt] = useState(() => sessionStorage.getItem(DRAFT) ?? '');
+  const [prompt, setPrompt] = useState(() => loadDraft(DRAFT));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState<RemoteOptions | null>(null);
@@ -96,10 +97,7 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
     if (fine) box.current?.focus();
   }, [fine]);
 
-  useEffect(() => {
-    if (prompt) sessionStorage.setItem(DRAFT, prompt);
-    else sessionStorage.removeItem(DRAFT);
-  }, [prompt]);
+  useEffect(() => saveDraft(DRAFT, prompt), [prompt]);
 
   const pick = (id: string) => {
     // Another project has its own defaults: what you changed was for the one before.
@@ -129,7 +127,7 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
     try {
       const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
       rememberProject(computer, projectId!);
-      sessionStorage.removeItem(DRAFT);
+      clearDraft(DRAFT);
       onStarted(sessionId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "The session didn't start.");
@@ -143,7 +141,7 @@ export function NewSession({ client, computer, features, sessions, banner, onBac
     try {
       await client!.call('later.add', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
       toast('Queued for later', { detail: `In ${picked?.name ?? 'the project'}. Start it from the queue in Switchboard.` });
-      sessionStorage.removeItem(DRAFT);
+      clearDraft(DRAFT);
       setPrompt('');
     } catch (e) {
       setError(e instanceof Error ? e.message : "It wasn't queued.");

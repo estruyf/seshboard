@@ -1,11 +1,14 @@
 ---
 title: Saved prompts
 description: Save a prompt with blanks, pick it with / or in New session, fill in the blanks and send.
+sidebar:
+  badge: New
 ---
 
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 Many prompts start the same way: "Start implementing issue 132", "Fix pull request 142". A saved prompt is that text with blanks in it. You pick it, fill in the blanks, add more context if you like, and send.
 
@@ -152,3 +155,7 @@ Switchboard keeps the other keys in the file as they are and writes the keys in 
 <Aside type="note">
 Saved prompts are on your computer. The [remote app](/remote-access/) doesn't show them yet.
 </Aside>
+
+## Related
+
+<Related pages={['projects/actions', 'sessions/unsent-drafts', 'links', 'guides/repeat-less']} />

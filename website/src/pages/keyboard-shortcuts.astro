@@ -60,11 +60,11 @@ const when = (texts: Array<string | undefined>) => {
           <tbody>
             {rows.map((def) => (
               <tr>
-                <td>
+                <td data-label="Keys">
                   <Kbd shortcut={def.id as Parameters<typeof Kbd>[0]['shortcut']} />
                 </td>
-                <td>{def.action}</td>
-                <td>
+                <td data-label="What it does">{def.action}</td>
+                <td data-label="When">
                   <Os {...when([def.context, def.note])} />
                 </td>
               </tr>

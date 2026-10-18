@@ -7,6 +7,7 @@ import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, notifications and sounds, your Claude profiles, usage, memory, backups and updates. Changes apply at once; there is nothing to save.
 
@@ -279,3 +280,7 @@ See [Updates](/settings/updates/).
 <Aside>
 Your preferences, theme choice and the other choices here are kept in Switchboard's app data: <Os mac="~/Library/Application Support/Switchboard" windows="%APPDATA%\Switchboard" />. [Settings → Backup](/settings/backup/) saves them to a file.
 </Aside>
+
+## Related
+
+<Related pages={['settings/backup', 'keyboard-shortcuts', 'themes/built-in', 'troubleshooting']} />

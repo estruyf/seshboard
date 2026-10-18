@@ -1195,6 +1195,7 @@ export function createEngine(options: EngineOptions): Engine {
         return { messageUuid: sent.messageUuid, queued: sent.queued };
       },
       dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
+      upNext: (sessionId) => upNext.list(sessionId).map(summarise),
       interrupt: (sessionId) => hosts.interrupt(sessionId),
       stopTask: (sessionId, taskId) => hosts.stopTask(sessionId, taskId),
       respond: (requestId, decision) => hosts.respond(requestId, decision),

@@ -1,0 +1,1390 @@
+---
+/**
+ * The homepage's moving picture: a small, scripted Switchboard window. Sessions go from Working to Needs you and
+ * back, a permission gets allowed, a queued prompt turns ready and starts, and a finished session gets its
+ * catch-up, in the app's status colours. Behind the window, patch cables carry a pulse in the colour of each
+ * event (the switchboard the app is named after). It is drawn in HTML, not a video, so it follows the site's
+ * theme; it only runs while it is on screen, and with reduced motion it shows one still moment.
+ */
+const projects = {
+  payments: { name: 'payments-api', tone: 'blue', icon: 'card' },
+  store: { name: 'acme-store', tone: 'yellow', icon: 'bag' },
+  docs: { name: 'docs-site', tone: 'purple', icon: 'page' },
+} as const;
+type ProjectKey = keyof typeof projects;
+
+interface Row {
+  id: string;
+  title: string;
+  project: ProjectKey;
+  group: 'needs' | 'working' | 'queue' | 'today';
+  state: 'working' | 'needs' | 'waiting' | 'idle' | 'unread' | 'ready' | 'open';
+  sub: string;
+  age: string;
+}
+
+/** The sessions at the start of the loop; the script moves them around and puts them back. */
+const rows: Row[] = [
+  { id: 'stripe', title: 'Upgrade Stripe SDK to v18', project: 'payments', group: 'working', state: 'working', sub: 'chore/stripe-18 · payments-api', age: 'now' },
+  { id: 'rounding', title: 'Fix rounding in invoice totals', project: 'payments', group: 'working', state: 'working', sub: 'fix/invoice-rounding · payments-api', age: 'now' },
+  { id: 'dark', title: 'Add dark mode toggle to settings', project: 'store', group: 'working', state: 'working', sub: 'feat/dark-mode · acme-store', age: '4m' },
+  { id: 'search', title: 'Add product search with filters', project: 'store', group: 'queue', state: 'waiting', sub: 'Waits for acme-store to be free', age: '' },
+  { id: 'auth', title: 'Refactor auth middleware', project: 'store', group: 'today', state: 'idle', sub: 'main · acme-store', age: '1h' },
+  { id: 'guide', title: 'Write a getting started guide', project: 'docs', group: 'today', state: 'idle', sub: 'main · docs-site', age: '4h' },
+];
+const groups = [
+  { id: 'needs', label: 'Needs you', tone: 'needs' },
+  { id: 'working', label: 'Working', tone: 'working' },
+  { id: 'queue', label: 'Queue', tone: 'plain' },
+  { id: 'today', label: 'Today', tone: 'plain' },
+] as const;
+/** The patch cords, from beyond the page's edge into a jack on the window's side (window x 448 to 1568, y in px). */
+const jacks = [
+  { id: 'l1', side: 'left', y: 150 },
+  { id: 'l2', side: 'left', y: 300 },
+  { id: 'l3', side: 'left', y: 440 },
+  { id: 'r1', side: 'right', y: 190 },
+  { id: 'r2', side: 'right', y: 340 },
+  { id: 'r3', side: 'right', y: 470 },
+] as const;
+const cords = [
+  { jack: 'l1', d: 'M0 40 C 220 40, 280 150, 442 150' },
+  { jack: 'l2', d: 'M0 330 C 200 330, 270 300, 442 300' },
+  { jack: 'l3', d: 'M60 564 C 160 470, 300 440, 442 440' },
+  { jack: 'r1', d: 'M2016 70 C 1796 70, 1736 190, 1574 190' },
+  { jack: 'r2', d: 'M2016 380 C 1816 380, 1746 340, 1574 340' },
+  { jack: 'r3', d: 'M1956 564 C 1856 490, 1716 470, 1574 470' },
+];
+const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ id, group, state, sub, age })));
+---
+
+<div
+  class="lb not-content"
+  data-live-board
+  data-initial={initial}
+  role="img"
+  aria-label="A Switchboard window in motion: a session asks for permission and is allowed, another finishes, a queued prompt starts, and a finished session shows its catch-up with Commit."
+>
+  <svg class="lb-cables" viewBox="0 0 2016 564" preserveAspectRatio="none" aria-hidden="true">
+    <defs>
+      <filter id="lb-glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur" />
+        <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+      </filter>
+    </defs>
+    {/* The window spans 448 to 1568 here; each cord ends at a jack on its edge. */}
+    <g class="lb-cords">
+      {cords.map((cord) => <path d={cord.d} data-jack={cord.jack} vector-effect="non-scaling-stroke" />)}
+    </g>
+    <g class="lb-pulses" filter="url(#lb-glow)"></g>
+  </svg>
+  {jacks.map((jack) => <span class="lb-jack" data-jack={jack.id} style={`top: ${jack.y}px; ${jack.side}: -6px`} />)}
+
+  <div class="lb-window" aria-hidden="true">
+    <aside class="lb-side">
+      <div class="lb-titlebar">
+        <span class="lb-lights"><i></i><i></i><i></i></span>
+        <span class="lb-appname">Switchboard</span>
+      </div>
+      <div class="lb-tools">
+        <span class="lb-search">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+          Search sessions
+        </span>
+        <span class="lb-iconbtn"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1Z" /></svg></span>
+        <span class="lb-iconbtn lb-plus"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span>
+      </div>
+      <div class="lb-list">
+        {
+          groups.map((group) => (
+            <section class="lb-group" data-group={group.id}>
+              <div class:list={['lb-head', `tone-${group.tone}`]}>
+                <span>{group.label}</span>
+                <span class="lb-count" data-count>
+                  0
+                </span>
+                {group.id === 'queue' && <span class="lb-head-note" data-queue-note />}
+              </div>
+              <div class="lb-rows">
+                {rows
+                  .filter((row) => row.group === group.id)
+                  .map((row) => (
+                    <div class="lb-row" data-row={row.id} data-state={row.state} data-selected={row.id === 'stripe' ? '' : undefined}>
+                      <span class="lb-rail" />
+                      <span class:list={['lb-picon', `tone-${projects[row.project].tone}`]}>
+                        {projects[row.project].icon === 'card' && (
+                          <svg viewBox="0 0 24 24">
+                            <rect width="18" height="13" x="3" y="5.5" rx="2" />
+                            <path d="M3 10h18" />
+                          </svg>
+                        )}
+                        {projects[row.project].icon === 'bag' && (
+                          <svg viewBox="0 0 24 24">
+                            <path d="M6 3 4 6.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6.5L18 3Z" />
+                            <path d="M4 6.5h16M15.5 10a3.5 3.5 0 0 1-7 0" />
+                          </svg>
+                        )}
+                        {projects[row.project].icon === 'page' && (
+                          <svg viewBox="0 0 24 24">
+                            <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8Z" />
+                            <path d="M14 3v5h5M9 13h6M9 17h6" />
+                          </svg>
+                        )}
+                      </span>
+                      <span class="lb-text">
+                        <span class="lb-title">{row.title}</span>
+                        <span class="lb-sub" data-sub>
+                          {row.sub}
+                        </span>
+                      </span>
+                      <span class="lb-meta">
+                        <span class="lb-age" data-age>
+                          {row.age}
+                        </span>
+                        <span class="lb-status" />
+                      </span>
+                      <span class="lb-start" data-start>
+                        <svg viewBox="0 0 24 24">
+                          <path d="M7 4.5v15l12-7.5Z" />
+                        </svg>
+                        Start
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </section>
+          ))
+        }
+      </div>
+      <div class="lb-foot">
+        <span class="lb-focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></svg><span data-focus>3 / 3</span></span>
+        <span>6 sessions</span>
+      </div>
+    </aside>
+
+    <main class="lb-main" data-main-state="working">
+      <header class="lb-header">
+        <span class="lb-picon tone-blue">
+          <svg viewBox="0 0 24 24"><rect width="18" height="13" x="3" y="5.5" rx="2" /><path d="M3 10h18" /></svg>
+        </span>
+        <span class="lb-header-text">
+          <span class="lb-header-title">Upgrade Stripe SDK to v18</span>
+          <span class="lb-header-status"><span class="lb-dot"></span><span data-status>Claude is working</span> · payments-api · chore/stripe-18</span>
+        </span>
+        <span class="lb-header-actions">
+          <span class="lb-seg"><span>Changes</span><span>Terminal</span></span>
+        </span>
+      </header>
+
+      <div class="lb-convo">
+        <div class="lb-prompt">Upgrade the Stripe SDK to v18 and fix whatever breaks. Run the tests when you're done.</div>
+        <div class="lb-step" data-step="1"><span class="lb-step-dot"></span>Read 6 files and searched the code <em>8s</em></div>
+        <p class="lb-reply" data-step="2">The breaking changes are in how charges are created and in the webhook types. I'll update both, then install v18 and run the tests.</p>
+        <div class="lb-step" data-step="2"><span class="lb-step-dot"></span>Edited <code>src/billing/charge.ts</code> and 2 more files <em>21s</em></div>
+        <div class="lb-perm" data-perm>
+          <div class="lb-perm-title"><span class="lb-dot pulse"></span>Claude wants to run a command</div>
+          <code class="lb-perm-cmd">npm install stripe@18 &amp;&amp; npm test</code>
+          <div class="lb-perm-actions">
+            <span class="lb-btn">Deny</span>
+            <span class="lb-btn">Always allow</span>
+            <span class="lb-btn primary" data-allow>Allow</span>
+          </div>
+        </div>
+        <div class="lb-step lb-allowed" data-allowed><span class="lb-step-dot ok"></span>Allowed <code>npm install stripe@18</code></div>
+        <div class="lb-step" data-step="3"><span class="lb-step-dot"></span>Ran the tests: 14 passed <em>34s</em></div>
+        <div class="lb-thinking" data-thinking><i></i><i></i><i></i></div>
+      </div>
+
+      <div class="lb-catchup" data-catchup>
+        <div class="lb-catchup-top">
+          <span class="lb-dot unread"></span>
+          <span class="lb-catchup-state">Finished</span>
+          <span class="lb-catchup-title">Upgrade Stripe SDK to v18</span>
+          <span class="lb-catchup-time">~2 min to review</span>
+        </div>
+        <div class="lb-catchup-need">Commit the changes</div>
+        <div class="lb-catchup-text">Moved 3 calls to the v18 API and updated the webhook types. Every change stays in src/billing.</div>
+        <div class="lb-catchup-row">
+          <span class="lb-chip ok">14 tests passed</span>
+          <span class="lb-chip">+57 −12 · 4 files</span>
+          <span class="lb-chip ok">Followed the plan</span>
+          <span class="lb-catchup-actions">
+            <span class="lb-btn">Details</span>
+            <span class="lb-btn primary" data-commit>Commit</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="lb-composer">
+        <span>Message Claude</span>
+        <span class="lb-composer-chips"><span>Opus</span><span>High</span><span>Accept edits</span></span>
+      </div>
+    </main>
+
+    <div class="lb-toast" data-toast>
+      <img src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/favicon.svg`} alt="" width="28" height="28" />
+      <span>
+        <span class="lb-toast-app">Switchboard</span>
+        <span class="lb-toast-title">Claude wants to use Bash</span>
+        <span class="lb-toast-text">Upgrade Stripe SDK to v18</span>
+      </span>
+    </div>
+
+    <span class="lb-cursor" data-cursor><svg viewBox="0 0 24 24"><path d="M5 3v16.5l4.6-4.4 3 6.4 2.8-1.3-3-6.3H19Z" /></svg></span>
+  </div>
+</div>
+
+<script>
+  type State = 'working' | 'needs' | 'waiting' | 'idle' | 'unread' | 'ready' | 'open';
+  type Group = 'needs' | 'working' | 'queue' | 'today';
+  interface RowStart {
+    id: string;
+    group: Group;
+    state: State;
+    sub: string;
+    age: string;
+  }
+
+  /** The cable colour for each kind of event, the app's status colours. */
+  const PULSE: Record<string, string> = { working: 'var(--sb-accent-ink)', needs: 'var(--sb-warn)', unread: 'var(--sb-unread)', ok: 'var(--sb-ok)' };
+
+  function board(root: HTMLElement) {
+    const win = root.querySelector<HTMLElement>('.lb-window')!;
+    const list = root.querySelector<HTMLElement>('.lb-list')!;
+    const main = root.querySelector<HTMLElement>('.lb-main')!;
+    const cursor = root.querySelector<HTMLElement>('[data-cursor]')!;
+    const toast = root.querySelector<HTMLElement>('[data-toast]')!;
+    const pulses = root.querySelector<SVGGElement>('.lb-pulses')!;
+    const cords = [...root.querySelectorAll<SVGPathElement>('.lb-cords path')];
+    const start: RowStart[] = JSON.parse(root.dataset.initial!);
+    const row = (id: string) => root.querySelector<HTMLElement>(`[data-row="${id}"]`)!;
+    const group = (id: Group) => root.querySelector<HTMLElement>(`[data-group="${id}"] .lb-rows`)!;
+
+    let visible = false;
+    let running = false;
+
+    /** Waits `ms` of time on screen: the loop holds while the board is scrolled away or the tab is hidden. */
+    async function wait(ms: number) {
+      let left = ms;
+      while (left > 0) {
+        const step = Math.min(left, 100);
+        await new Promise((resolve) => setTimeout(resolve, step));
+        if (visible && !document.hidden) left -= step;
+      }
+    }
+
+    /** Group counts and empty groups, as the app's sidebar shows them. */
+    function tally() {
+      root.querySelectorAll<HTMLElement>('.lb-group').forEach((section) => {
+        const count = section.querySelectorAll('.lb-row').length;
+        section.querySelector('[data-count]')!.textContent = String(count);
+        section.hidden = count === 0;
+      });
+      const ready = root.querySelectorAll('[data-group="queue"] .lb-row[data-state="ready"]').length;
+      const note = root.querySelector('[data-queue-note]');
+      if (note) note.textContent = ready ? `${ready} ready` : '';
+      const focus = root.querySelectorAll('.lb-row:is([data-state="working"], [data-state="needs"], [data-state="unread"])').length;
+      root.querySelector('[data-focus]')!.textContent = `${Math.min(focus, 3)} / 3`;
+    }
+
+    /** Moves rows to where `change` puts them, sliding each from its old place (FLIP). */
+    function move(change: () => void) {
+      const items = [...list.querySelectorAll<HTMLElement>('.lb-row, .lb-head')];
+      const before = new Map(items.map((el) => [el, el.getBoundingClientRect()]));
+      change();
+      tally();
+      for (const el of items) {
+        const was = before.get(el)!;
+        const now = el.getBoundingClientRect();
+        if (!now.height) continue;
+        if (!was.height) {
+          el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+          continue;
+        }
+        const dx = was.left - now.left;
+        const dy = was.top - now.top;
+        if (dx || dy) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 520, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      }
+    }
+
+    function set(id: string, state: State, where?: Group, sub?: string, age?: string, first = false) {
+      const el = row(id);
+      move(() => {
+        el.dataset.state = state;
+        if (sub !== undefined) el.querySelector('[data-sub]')!.textContent = sub;
+        if (age !== undefined) el.querySelector('[data-age]')!.textContent = age;
+        if (where) {
+          const target = group(where);
+          if (first) target.prepend(el);
+          else target.append(el);
+        }
+      });
+      el.animate([{ backgroundColor: 'color-mix(in srgb, var(--sb-text) 9%, transparent)' }, { backgroundColor: 'transparent' }], { duration: 900 });
+    }
+
+    /** A pulse of light along a random cable, in the colour of what just happened; its jack lights up when it lands. */
+    function pulse(kind: keyof typeof PULSE) {
+      if (!cords.length || !cords[0]!.getBoundingClientRect().width) return;
+      const cord = cords[Math.floor(Math.random() * cords.length)]!;
+      const length = cord.getTotalLength();
+      const dash = 140;
+      const glow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      glow.setAttribute('d', cord.getAttribute('d')!);
+      glow.setAttribute('vector-effect', 'non-scaling-stroke');
+      glow.style.stroke = PULSE[kind]!;
+      glow.style.strokeDasharray = `${dash} ${length + dash}`;
+      glow.style.strokeDashoffset = String(dash);
+      pulses.append(glow);
+      const jack = root.querySelector<HTMLElement>(`.lb-jack[data-jack="${cord.dataset.jack}"]`);
+      glow
+        .animate([{ strokeDashoffset: dash }, { strokeDashoffset: -length }], { duration: 1400 + Math.random() * 600, easing: 'cubic-bezier(.5,0,.3,1)' })
+        .finished.then(
+          () => {
+            glow.remove();
+            jack?.animate(
+              [
+                { borderColor: PULSE[kind], boxShadow: `0 0 0 4px color-mix(in srgb, ${PULSE[kind]} 30%, transparent), 0 0 14px ${PULSE[kind]}` },
+                { borderColor: 'var(--sb-overlay-border)', boxShadow: 'none' },
+              ],
+              { duration: 900, easing: 'ease-out' },
+            );
+          },
+          () => glow.remove(),
+        );
+    }
+
+    /** Glides the pointer onto `target` and clicks it. */
+    async function click(target: HTMLElement) {
+      if (!target.offsetParent) return;
+      const box = win.getBoundingClientRect();
+      const at = target.getBoundingClientRect();
+      cursor.style.opacity = '1';
+      cursor.style.transform = `translate(${at.left - box.left + at.width * 0.5}px, ${at.top - box.top + at.height * 0.45}px)`;
+      await wait(950);
+      // The press shrinks the arrow inside, around its tip. Scaling the outer element would scale its translate too
+      // and throw the pointer towards the window's corner for a moment.
+      cursor.firstElementChild!.animate([{ transform: 'scale(1)' }, { transform: 'scale(0.82)' }, { transform: 'scale(1)' }], { duration: 220, easing: 'ease-out' });
+      target.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(0.82)' }, { filter: 'brightness(1)' }], { duration: 240 });
+      await wait(260);
+    }
+
+    function hideCursor() {
+      cursor.style.opacity = '0';
+    }
+
+    function mainState(state: string, status: string) {
+      main.dataset.mainState = state;
+      main.querySelector('[data-status]')!.textContent = status;
+    }
+
+    /** Back to the first frame: every row in its first place, the conversation at its second step. */
+    function reset() {
+      for (const item of start) {
+        const el = row(item.id);
+        el.dataset.state = item.state;
+        el.querySelector('[data-sub]')!.textContent = item.sub;
+        el.querySelector('[data-age]')!.textContent = item.age;
+        group(item.group).append(el);
+      }
+      main.querySelectorAll('[data-step], [data-perm], [data-allowed], [data-catchup]').forEach((el) => el.classList.remove('on'));
+      main.querySelector('[data-step="1"]')!.classList.add('on');
+      main.querySelector('[data-thinking]')!.classList.add('on');
+      root.querySelector('[data-commit]')!.textContent = 'Commit';
+      toast.classList.remove('on');
+      mainState('working', 'Claude is working');
+      cursor.style.transition = 'none';
+      cursor.style.opacity = '0';
+      cursor.style.transform = `translate(${win.clientWidth * 0.62}px, ${win.clientHeight + 30}px)`;
+      cursor.getBoundingClientRect();
+      cursor.style.transition = '';
+      tally();
+    }
+
+    const show = (selector: string, on = true) => main.querySelector(selector)!.classList.toggle('on', on);
+
+    /** The story, once round. */
+    async function loop() {
+      await wait(1300);
+      main.querySelectorAll('[data-step="2"]').forEach((el) => el.classList.add('on'));
+      pulse('working');
+      await wait(1500);
+
+      // Claude asks: the session jumps to Needs you, the permission card and a notification show.
+      show('[data-thinking]', false);
+      show('[data-perm]');
+      mainState('needs', 'Waiting for you');
+      set('stripe', 'needs', 'needs', 'Permission: Bash');
+      toast.classList.add('on');
+      pulse('needs');
+      pulse('needs');
+      await wait(1700);
+
+      await click(root.querySelector<HTMLElement>('[data-allow]')!);
+      toast.classList.remove('on');
+      show('[data-perm]', false);
+      show('[data-allowed]');
+      show('[data-thinking]');
+      mainState('working', 'Claude is working');
+      set('stripe', 'working', 'working', 'chore/stripe-18 · payments-api', 'now', true);
+      pulse('working');
+      hideCursor();
+      await wait(1300);
+
+      // Another session finishes while you look elsewhere: blue, unread, with how long it takes to review.
+      set('dark', 'unread', 'today', 'acme-store · ~2 min to review', 'now', true);
+      pulse('unread');
+      await wait(1000);
+
+      // Its project is free now, so the queued prompt is ready. Start it.
+      set('search', 'ready', undefined, 'Ready · acme-store is free');
+      pulse('ok');
+      await wait(1200);
+      await click(row('search').querySelector<HTMLElement>('[data-start]')!);
+      set('search', 'working', 'working', 'feat/product-search · acme-store', 'now');
+      pulse('working');
+      hideCursor();
+      await wait(1300);
+
+      show('[data-step="3"]');
+      await wait(1300);
+
+      // The open session finishes: its catch-up says what happened and what it needs.
+      show('[data-thinking]', false);
+      mainState('finished', 'Finished');
+      set('stripe', 'open', 'today', 'payments-api · ~2 min to review', 'now', true);
+      show('[data-catchup]');
+      pulse('unread');
+      await wait(2000);
+      await click(root.querySelector<HTMLElement>('[data-commit]')!);
+      root.querySelector('[data-commit]')!.textContent = 'Committed';
+      pulse('ok');
+      hideCursor();
+      await wait(2600);
+
+      await win.animate([{ opacity: 1 }, { opacity: 0.0 }], { duration: 450, fill: 'forwards' }).finished;
+      reset();
+      await win.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 450, fill: 'forwards' }).finished;
+    }
+
+    /** Reduced motion: one still frame, the moment Claude asks. */
+    function still() {
+      reset();
+      main.querySelectorAll('[data-step="2"]').forEach((el) => el.classList.add('on'));
+      show('[data-thinking]', false);
+      show('[data-perm]');
+      mainState('needs', 'Waiting for you');
+      const el = row('stripe');
+      el.dataset.state = 'needs';
+      el.querySelector('[data-sub]')!.textContent = 'Permission: Bash';
+      group('needs').append(el);
+      row('dark').dataset.state = 'unread';
+      row('dark').querySelector('[data-sub]')!.textContent = 'acme-store · ~2 min to review';
+      group('today').prepend(row('dark'));
+      row('search').dataset.state = 'ready';
+      row('search').querySelector('[data-sub]')!.textContent = 'Ready · acme-store is free';
+      toast.classList.add('on');
+      tally();
+    }
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (reduced.matches) {
+      still();
+      return;
+    }
+    reset();
+    root.classList.add('is-live');
+    new IntersectionObserver(([entry]) => {
+      visible = !!entry?.isIntersecting;
+      if (visible && !running) {
+        running = true;
+        (async () => {
+          for (;;) await loop();
+        })();
+      }
+    }, { threshold: 0.2 }).observe(root);
+    // A slow, steady trickle of yellow: sessions working somewhere.
+    setInterval(() => visible && !document.hidden && pulse('working'), 2600);
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-live-board]').forEach(board);
+</script>
+
+<style>
+  .lb {
+    position: relative;
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 1.5rem 0 0;
+    text-align: start;
+    font-family: var(--sb-font-sans);
+    --needs: var(--sb-warn);
+    --working: var(--sb-accent-ink);
+    --unread: var(--sb-unread);
+    --ok: var(--sb-ok);
+  }
+
+  /* The cables: faint cords from beyond the page's edge into jacks on the window, and pulses of light (added by the
+     script) that run along them. */
+  .lb-cables {
+    position: absolute;
+    top: 0;
+    left: -40%;
+    width: 180%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .lb-cords path,
+  .lb-pulses :global(path) {
+    fill: none;
+    stroke-linecap: round;
+  }
+  .lb-cords path {
+    stroke: var(--sb-overlay-border);
+    stroke-width: 2.5;
+  }
+  .lb-pulses :global(path) {
+    stroke-width: 3;
+  }
+  .lb-jack {
+    position: absolute;
+    z-index: 1;
+    width: 12px;
+    height: 12px;
+    margin-top: -6px;
+    border: 2px solid var(--sb-overlay-border);
+    border-radius: 50%;
+    background: var(--sb-bg);
+  }
+
+  .lb-window {
+    position: relative;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: 540px;
+    overflow: hidden;
+    border: 1px solid var(--sb-overlay-border);
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-bg);
+    box-shadow: var(--sb-overlay-shadow);
+    font-size: 12px;
+    color: var(--sb-text);
+    user-select: none;
+  }
+
+  /* Sidebar */
+  .lb-side {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--sb-sidebar);
+    border-inline-end: 1px solid var(--sb-border);
+  }
+  .lb-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    height: 40px;
+    padding: 0 14px;
+  }
+  .lb-lights {
+    display: flex;
+    gap: 7px;
+  }
+  .lb-lights i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #ff5f57;
+  }
+  .lb-lights i:nth-child(2) {
+    background: #febc2e;
+  }
+  .lb-lights i:nth-child(3) {
+    background: #28c840;
+  }
+  .lb-appname {
+    font-weight: 600;
+    color: var(--sb-muted);
+  }
+  .lb-tools {
+    display: flex;
+    gap: 6px;
+    padding: 0 10px 10px;
+  }
+  .lb-search {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: var(--sb-bg);
+    color: var(--sb-faint);
+  }
+  .lb svg {
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .lb-search svg {
+    width: 13px;
+    height: 13px;
+  }
+  .lb-iconbtn {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--sb-text) 8%, transparent);
+    color: var(--sb-muted);
+  }
+  .lb-iconbtn svg {
+    width: 14px;
+    height: 14px;
+  }
+  .lb-plus {
+    background: var(--sb-accent);
+    color: var(--sb-on-accent);
+  }
+  .lb-plus svg {
+    stroke-width: 2.6;
+  }
+  .lb-list {
+    flex: 1;
+    overflow: hidden;
+    padding: 0 6px;
+  }
+  .lb-group[hidden] {
+    display: none;
+  }
+  .lb-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    margin-top: 4px;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sb-faint);
+  }
+  .lb-head.tone-needs {
+    color: var(--needs);
+  }
+  .lb-head.tone-working {
+    color: var(--working);
+  }
+  .lb-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 17px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 18%, transparent);
+    font-size: 10px;
+    letter-spacing: 0;
+  }
+  .lb-head-note {
+    margin-inline-start: auto;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ok);
+  }
+
+  .lb-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 46px;
+    padding: 0 8px 0 12px;
+    border-radius: 8px;
+    transition:
+      background-color 0.4s,
+      box-shadow 0.4s;
+  }
+  .lb-row[data-selected] {
+    background: var(--sb-selected);
+  }
+  .lb-rail {
+    position: absolute;
+    inset-block: 9px;
+    inset-inline-start: 2px;
+    width: 3px;
+    border-radius: 3px;
+    background: transparent;
+    transition: background-color 0.4s;
+  }
+  .lb-picon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    color: #15181f;
+  }
+  .lb-picon svg {
+    width: 13px;
+    height: 13px;
+    stroke-width: 2.3;
+  }
+  .lb-picon.tone-blue {
+    background: #4dabf7;
+  }
+  .lb-picon.tone-yellow {
+    background: #ffd43b;
+  }
+  .lb-picon.tone-purple {
+    background: #b197fc;
+  }
+  .lb-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .lb-title,
+  .lb-sub {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .lb-title {
+    font-size: 13px;
+    color: var(--sb-text);
+  }
+  .lb-sub {
+    font-size: 11px;
+    color: var(--sb-faint);
+    transition: color 0.4s;
+  }
+  .lb-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    align-self: stretch;
+    justify-content: center;
+  }
+  .lb-age {
+    font-size: 11px;
+    color: var(--sb-faint);
+  }
+  .lb-status {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+  }
+  .lb-start {
+    display: none;
+    align-items: center;
+    gap: 3px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: var(--sb-accent);
+    color: var(--sb-on-accent);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .lb-start svg {
+    width: 10px;
+    height: 10px;
+    fill: currentColor;
+  }
+
+  /* The states, in the app's colours. */
+  .lb-row[data-state='needs'] .lb-rail {
+    background: var(--needs);
+  }
+  .lb-row[data-state='needs'] :is(.lb-sub, .lb-age) {
+    color: var(--needs);
+  }
+  .lb-row[data-state='needs'] .lb-status {
+    background: var(--needs);
+    animation: lb-pulse 1.3s ease-in-out infinite;
+  }
+  .lb-row[data-state='working'] .lb-rail {
+    background: var(--working);
+  }
+  .lb-row[data-state='working'] .lb-age {
+    color: var(--working);
+  }
+  .lb-row[data-state='working'] .lb-status {
+    border: 2px solid color-mix(in srgb, var(--working) 30%, transparent);
+    border-top-color: var(--working);
+    animation: lb-spin 0.9s linear infinite;
+  }
+  .lb-row[data-state='unread'] .lb-rail {
+    background: var(--unread);
+  }
+  .lb-row[data-state='unread'] .lb-title {
+    font-weight: 600;
+  }
+  .lb-row[data-state='unread'] .lb-age {
+    color: var(--unread);
+  }
+  .lb-row[data-state='unread'] .lb-status {
+    background: var(--unread);
+  }
+  .lb-row[data-state='open'] .lb-status {
+    border: 2px solid var(--ok);
+    width: 8px;
+    height: 8px;
+  }
+  .lb-row[data-state='ready'] {
+    background: color-mix(in srgb, var(--ok) 9%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 45%, transparent);
+  }
+  .lb-row[data-state='ready'] .lb-sub {
+    color: var(--ok);
+  }
+  .lb-row:is([data-state='ready'], [data-state='waiting']) .lb-meta {
+    display: none;
+  }
+  .lb-row[data-state='ready'] .lb-start {
+    display: inline-flex;
+  }
+
+  .lb-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 38px;
+    padding: 0 14px;
+    border-top: 1px solid var(--sb-border);
+    font-size: 11px;
+    color: var(--sb-faint);
+  }
+  .lb-focus {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 7px;
+    border: 1px solid var(--sb-border);
+    border-radius: 999px;
+  }
+  .lb-focus svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* The open session */
+  .lb-main {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .lb-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 52px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--sb-border);
+  }
+  .lb-header-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .lb-header-title {
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .lb-header-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--sb-faint);
+  }
+  .lb-dot {
+    display: inline-block;
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--working);
+    transition: background-color 0.4s;
+  }
+  .lb-dot.pulse {
+    background: var(--needs);
+    animation: lb-pulse 1.3s ease-in-out infinite;
+  }
+  .lb-dot.unread {
+    background: var(--unread);
+  }
+  .lb-main[data-main-state='needs'] .lb-header-status .lb-dot {
+    background: var(--needs);
+  }
+  .lb-main[data-main-state='needs'] [data-status] {
+    color: var(--needs);
+  }
+  .lb-main[data-main-state='working'] [data-status] {
+    color: var(--working);
+  }
+  .lb-main[data-main-state='finished'] .lb-header-status .lb-dot {
+    background: var(--ok);
+  }
+  .lb-seg {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid var(--sb-border);
+    border-radius: 7px;
+    font-size: 11px;
+    color: var(--sb-muted);
+  }
+  .lb-seg span {
+    padding: 3px 9px;
+    border-radius: 5px;
+  }
+
+  .lb-convo {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 640px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 22px 24px 0;
+    overflow: hidden;
+  }
+  .lb-prompt {
+    align-self: flex-end;
+    max-width: 82%;
+    padding: 10px 13px;
+    border: 1px solid var(--sb-border);
+    border-radius: 12px;
+    background: var(--sb-card);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .lb-step,
+  .lb-reply,
+  .lb-perm,
+  .lb-thinking {
+    display: none;
+  }
+  .lb-reply.on {
+    display: block;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--sb-text);
+    animation: lb-in 0.45s ease-out;
+  }
+  .lb-step.on,
+  .lb-thinking.on {
+    display: flex;
+    animation: lb-in 0.45s ease-out;
+  }
+  .lb-step {
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--sb-muted);
+  }
+  .lb-step em {
+    font-style: normal;
+    color: var(--sb-faint);
+  }
+  .lb-step code,
+  .lb-perm code {
+    font-family: var(--sb-font-mono);
+    font-size: 11px;
+  }
+  .lb-step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--sb-faint);
+  }
+  .lb-step-dot.ok {
+    background: var(--ok);
+  }
+  .lb-perm.on {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 13px 14px;
+    border: 1px solid var(--needs);
+    border-radius: 12px;
+    background: var(--sb-card);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--needs) 12%, transparent);
+    animation: lb-in 0.45s ease-out;
+  }
+  .lb-perm-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .lb-perm-cmd {
+    display: block;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--sb-code-bg);
+    color: var(--sb-text);
+  }
+  .lb-perm-actions,
+  .lb-catchup-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .lb-btn {
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 11px;
+    border: 1px solid var(--sb-overlay-border);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--sb-text);
+  }
+  .lb-btn.primary {
+    border-color: var(--sb-accent);
+    background: var(--sb-accent);
+    color: var(--sb-on-accent);
+    font-weight: 600;
+  }
+  .lb-thinking {
+    gap: 4px;
+    padding: 4px 0;
+  }
+  .lb-thinking i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--working);
+    animation: lb-bounce 1.2s ease-in-out infinite;
+  }
+  .lb-thinking i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .lb-thinking i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  .lb-catchup {
+    position: absolute;
+    inset-inline: 0;
+    top: 64px;
+    width: min(600px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 13px 15px;
+    border: 1px solid var(--sb-overlay-border);
+    border-radius: 14px;
+    background: var(--sb-popover);
+    box-shadow: var(--sb-overlay-shadow);
+    opacity: 0;
+    transform: translateY(-12px);
+    transition:
+      opacity 0.45s,
+      transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+    pointer-events: none;
+  }
+  .lb-catchup.on {
+    opacity: 1;
+    transform: none;
+  }
+  .lb-catchup-top {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+  }
+  .lb-catchup-state {
+    color: var(--unread);
+    font-weight: 600;
+  }
+  .lb-catchup-title {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-weight: 600;
+  }
+  .lb-catchup-time {
+    font-size: 11px;
+    color: var(--sb-faint);
+  }
+  .lb-catchup-need {
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--working);
+  }
+  .lb-catchup-text {
+    margin-top: 3px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--sb-muted);
+  }
+  .lb-catchup-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .lb-catchup-actions {
+    margin-inline-start: auto;
+  }
+  .lb-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--sb-border);
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--sb-muted);
+  }
+  .lb-chip.ok {
+    border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+    background: color-mix(in srgb, var(--ok) 10%, transparent);
+    color: var(--ok);
+  }
+
+  .lb-composer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: min(640px, calc(100% - 32px));
+    height: 64px;
+    margin: 12px auto 16px;
+    padding: 0 14px;
+    border: 1px solid var(--sb-border);
+    border-radius: 12px;
+    background: var(--sb-card);
+    color: var(--sb-faint);
+    font-size: 13px;
+  }
+  .lb-composer-chips {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+  }
+
+  /* The system notification, sliding in at the top right. */
+  .lb-toast {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 270px;
+    padding: 10px 12px;
+    border: 1px solid var(--sb-overlay-border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--sb-popover) 92%, transparent);
+    backdrop-filter: blur(12px);
+    box-shadow: var(--sb-overlay-shadow);
+    opacity: 0;
+    transform: translateX(30px);
+    transition:
+      opacity 0.4s,
+      transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .lb-toast.on {
+    opacity: 1;
+    transform: none;
+  }
+  .lb-toast img {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+  }
+  .lb-toast > span {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .lb-toast-app {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--sb-faint);
+  }
+  .lb-toast-title {
+    font-weight: 600;
+  }
+  .lb-toast-text {
+    font-size: 11px;
+    color: var(--sb-muted);
+  }
+
+  /* The pointer: the outer element moves (its transform glides), the arrow inside is what a click presses. */
+  .lb-cursor {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 22px;
+    height: 22px;
+    opacity: 0;
+    transition:
+      transform 0.9s cubic-bezier(0.45, 0, 0.2, 1),
+      opacity 0.3s;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .lb-cursor svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: #fff !important;
+    stroke: #15181f !important;
+    stroke-width: 1.4 !important;
+    filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.4));
+    /* The arrow's tip (5, 3 in its 24 by 24 box). */
+    transform-origin: 21% 13%;
+  }
+
+  @keyframes lb-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes lb-pulse {
+    50% {
+      box-shadow: 0 0 0 5px color-mix(in srgb, var(--needs) 22%, transparent);
+    }
+  }
+  @keyframes lb-bounce {
+    0%,
+    80%,
+    100% {
+      opacity: 0.35;
+      transform: none;
+    }
+    40% {
+      opacity: 1;
+      transform: translateY(-3px);
+    }
+  }
+  @keyframes lb-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+
+  /* A tablet: both panes fit with a narrower list; there is no room beside the window for the cables. */
+  @media (max-width: 64rem) {
+    .lb-window {
+      grid-template-columns: 250px 1fr;
+    }
+    .lb-cables,
+    .lb-jack {
+      display: none;
+    }
+  }
+
+  /*
+   * A phone: the session list fills the window, the way the remote app looks on a phone. The permission
+   * card and the catch-up slide up over it as sheets, and the notification drops in from the top.
+   */
+  @media (max-width: 46rem) {
+    .lb-window {
+      grid-template-columns: 1fr;
+      height: 540px;
+    }
+    .lb-main {
+      position: absolute;
+      inset: 0;
+      background: none;
+      pointer-events: none;
+    }
+    .lb-main :is(.lb-header, .lb-composer, .lb-prompt, .lb-step, .lb-reply, .lb-thinking) {
+      display: none !important;
+    }
+    .lb-convo {
+      position: absolute;
+      inset: auto 10px 48px;
+      width: auto;
+      max-width: none;
+      margin: 0;
+      padding: 0;
+      overflow: visible;
+    }
+    .lb-perm.on {
+      background: var(--sb-popover);
+      box-shadow:
+        var(--sb-overlay-shadow),
+        0 0 0 4px color-mix(in srgb, var(--needs) 12%, transparent);
+      animation: lb-sheet 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .lb-catchup {
+      top: auto;
+      bottom: 48px;
+      inset-inline: 10px;
+      width: auto;
+      transform: translateY(24px);
+    }
+    .lb-catchup-row {
+      gap: 5px;
+    }
+    .lb-catchup-actions {
+      width: 100%;
+      margin-top: 4px;
+    }
+    .lb-catchup-actions .lb-btn {
+      flex: 1;
+      justify-content: center;
+    }
+    .lb-perm-actions .lb-btn {
+      flex: 1;
+      justify-content: center;
+    }
+    .lb-toast {
+      top: 10px;
+      right: 50%;
+      width: calc(100% - 20px);
+      max-width: 340px;
+      transform: translate(50%, -24px);
+    }
+    .lb-toast.on {
+      transform: translate(50%, 0);
+    }
+    .lb-cables,
+    .lb-jack {
+      display: none;
+    }
+  }
+  @keyframes lb-sheet {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lb *,
+    .lb *::before {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+</style>

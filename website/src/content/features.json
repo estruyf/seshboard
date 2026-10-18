@@ -704,17 +704,17 @@
     {
       "id": "palette:connect-computer",
       "name": "Connect to another computer",
-      "page": "remote-access"
+      "page": "other-computers"
     },
     {
       "id": "palette:new-session-on:*",
       "name": "New session on <computer>…",
-      "page": "remote-access"
+      "page": "other-computers"
     },
     {
       "id": "palette:show-only:*",
       "name": "Show only <computer>",
-      "page": "remote-access"
+      "page": "other-computers"
     },
     {
       "id": "palette:use-saved-prompt",
@@ -1254,12 +1254,12 @@
     {
       "id": "feature:other-computers",
       "name": "Other computers: their sessions in the same sidebar and view, marked with the computer's name",
-      "page": "remote-access"
+      "page": "other-computers"
     },
     {
       "id": "feature:computers-filter",
       "name": "Computers strip and Show sessions from: filter the sidebar by computer",
-      "page": "remote-access"
+      "page": "other-computers"
     },
     {
       "id": "feature:run-on",
@@ -1274,7 +1274,7 @@
     {
       "id": "feature:computers-attachments",
       "name": "Other computers: send images and files with a message or a new session",
-      "page": "remote-access"
+      "page": "other-computers"
     },
     {
       "id": "feature:remote-status-card",
@@ -1759,7 +1759,7 @@
     {
       "id": "feature:remote-costs",
       "name": "Other computers: a remote session's cost, and plan window costs added up across paired computers",
-      "page": "remote-access"
+      "page": "other-computers"
     },
     {
       "id": "feature:usage-limit-setting",
@@ -3664,7 +3664,7 @@
     {
       "id": "feature:clone-other-computer",
       "name": "Clone from GitHub on another computer (Run on)",
-      "page": "remote-access"
+      "page": "other-computers"
     }
   ]
 }

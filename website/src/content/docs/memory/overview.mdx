@@ -8,10 +8,11 @@ sidebar:
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Claude Code keeps what it learns about a project as *memory*: small Markdown files in a folder of its own, private to you and to this computer. A <Pill tone="memory">MEMORY.md</Pill> index lists them and loads at the start of every session. Switchboard is an editor for those files.
+Claude Code keeps what it learns about a project as *memory*: small Markdown files in a folder of its own, private to you and to this computer. A <Pill tone="memory">MEMORY.md</Pill> index lists them and loads at the start of every session. Switchboard is an editor for those files, so you can see what Claude remembers about a project and correct it when it is wrong or out of date.
 
 <Screenshot name="project-memory" alt="The Memory tab of acme-store: What loads in a session here at the top, the Project memory list with its MEMORY.md meter, Instructions and Personal" eager />
 
@@ -79,3 +80,7 @@ Deleting a memory moves it to the <Os mac="Trash" windows="Recycle Bin" />, with
 ## Settings
 
 Your personal memory folder and the line that loads it are in [Settings › Memory](/settings/#memory).
+
+## Related
+
+<Related pages={['memory/what-loads', 'memory/adding-memory', 'projects/memory', 'settings/claude-profiles']} />

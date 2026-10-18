@@ -6,6 +6,7 @@ description: Ask Claude about the session in a panel next to the conversation, w
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 **Ask** opens a panel next to the conversation where you can ask Claude about the session you are in. Use it for "what changed so far?" or "which file did you change for this?", also while Claude is busy with something else. Your questions and Claude's answers never enter the conversation: they don't wait in [Up next](/sessions/conversation/#up-next), and Claude isn't stopped or steered.
 
@@ -70,3 +71,7 @@ You can ask from your phone too, with [Remote access](/remote-access/#ask-about-
 <Aside type="tip">
 A session doesn't have to be running to answer. For a past session, or one that is open in another Claude Code window, Switchboard asks a short-lived copy of it, which writes nothing.
 </Aside>
+
+## Related
+
+<Related pages={['sessions/catch-up', 'sessions/agents', 'sessions/search', 'focus-limit']} />

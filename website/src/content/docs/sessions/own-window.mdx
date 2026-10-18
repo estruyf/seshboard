@@ -1,10 +1,13 @@
 ---
 title: Sessions in their own window
 description: Open a session in a window of its own, next to the main window or on another screen.
+sidebar:
+  badge: New
 ---
 
 import Kbd from '../../../components/Kbd.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 Open a session in a window of its own to keep an eye on it next to the main window, or on another screen. The window is the whole session: the conversation, the message box, the permission prompts and questions Claude asks, and all the panels (Changes, Ask, Agents, Commands and the terminal), as in a pane of the main window. Only the sidebar stays in the main window.
 
@@ -58,3 +61,7 @@ Closing the main window closes these windows too. They don't come back after Swi
 <Aside type="tip">
 To see two sessions at once in the main window, use [split view](/sessions/split-view/).
 </Aside>
+
+## Related
+
+<Related pages={['sessions/split-view', 'permissions', 'settings/notifications', 'sessions/sidebar']} />
