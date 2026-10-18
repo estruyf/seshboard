@@ -10,6 +10,7 @@ import Os from '../../components/Os.astro';
 import Pill from '../../components/Pill.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../components/Related.astro';
 
 When Claude wants to run a command or edit a file, has a question for you, or has a plan ready, it waits for you. Switchboard shows a card above the message box with everything you need to decide, and marks the session <Pill tone="needs-you">Needs you</Pill> everywhere until you answer.
 
@@ -120,3 +121,7 @@ The VS Code setting `switchboard.prompts` turns these notifications off.
 - [Settings → Sidebar](/settings/#sidebar): *Show sessions from other apps* lists terminal sessions and notifies you when one waits.
 - [Settings → VS Code](/settings/#vs-code): the companion that lets you answer from VS Code.
 - A project's [Settings tab](/projects/settings/): the permission mode new sessions start in.
+
+## Related
+
+<Related pages={['new-session/models-and-options', 'settings/notifications', 'remote-access', 'vscode-companion']} />

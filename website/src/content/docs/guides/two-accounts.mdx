@@ -1,0 +1,72 @@
+---
+title: Use a work and a personal account
+description: Keep a work and a personal Claude account apart in one app, with each project on the right account and both plans in view.
+sidebar:
+  label: Work and personal accounts
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
+import Related from '../../../components/Related.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+You have a Claude plan of your own and one from work. In a terminal you would switch `CLAUDE_CONFIG_DIR` by hand. In Switchboard each account is a Claude profile: link each project to its account once, and its sessions use the right one, with their usage kept apart.
+
+## Add the second profile
+
+Your first profile is Claude Code's own folder, usually <Os mac="~/.claude" windows="%USERPROFILE%\.claude" />. Add one for the other account:
+
+<Steps>
+
+1. Open Settings (<Kbd shortcut="settings" />) and choose **Claude profiles**.
+2. Click **Add profile**, give it a name such as "Work" and pick a colour.
+3. Check the **Config folder**. For "Work", Switchboard suggests `.claude-work` in your home folder. Click **Add profile**.
+4. The profile says **Not signed in yet** and shows a command. Run it in <Os mac="Terminal" windows="PowerShell" />, type `/login` and sign in with the other account.
+
+</Steps>
+
+<OnlyOn os="windows">
+
+The command Settings shows is in the form a Mac terminal understands. In PowerShell, set `$env:CLAUDE_CONFIG_DIR` first, then run `claude`. See [Sign in on Windows](/settings/claude-profiles/#sign-in-on-windows).
+
+</OnlyOn>
+
+The profile then says **Signed in as** with the account's email. Switchboard never handles your login: Claude Code does. Choose **Default** on the profile most of your projects should use. See [Claude profiles](/settings/claude-profiles/).
+
+<Screenshot name="settings-profiles" alt="Settings on Claude profiles: a Personal profile in yellow and a Work profile in blue, each with its config folder, the account it is signed in with and the Default choice" />
+
+## Link each project to its account
+
+On a project's page, open the **Settings** tab and pick a **Claude profile**. Or open the project's menu in the sidebar's project list and choose one under **Claude profile**. New sessions in that project use it; projects without a link use the default. See [Project settings](/projects/settings/).
+
+## Pick another account for one session
+
+In New session, the first chip under the message box is the profile, with its colour dot and name. Click it to pick another account for this one session. The menu marks the project's own profile "(project)" and the default "(default)". A running session keeps its profile: to use another account, start a new session. See [Model, effort and mode](/new-session/models-and-options/#profile).
+
+## See which account a session uses
+
+With more than one profile, the rail on every row in the sidebar has the profile's colour. Hover a row to see the profile's name. The state then shows through the colour of the age, the bold title, the status icon and the section the session sits in. See [Several Claude profiles](/sessions/states/#several-claude-profiles).
+
+## Keep an eye on both plans
+
+[Home](/sessions/home/) has a **Profiles** section with a card per profile: the account's email, what its sessions are doing ("1 needs you · 2 working · 5 today") and its plan usage, with when each limit resets. Click the usage to open the [Usage view](/usage/) for that profile. Its profile menu switches between accounts, and **Limits** and **Tokens** show what is left and what used it.
+
+The limits stay apart too. When one profile hits its usage limit, the queue holds new sessions for it until the reset, and sessions of the other profile go on as usual.
+
+### What it would cost
+
+The usage bars also show what your tokens would cost at API prices, such as *5h 38% ≈$4.10 · Week 52% ≈$61*, and a session shows its own cost next to Context. Your plan isn't billed per token, so this is only an estimate. Turn it off or pick the currency in [Settings › Usage](/settings/#usage). See [Estimated cost](/usage/#estimated-cost).
+
+## Give each account its own defaults
+
+Open **New session defaults** on a profile to set its **Model**, **Permissions** and **Workspace**, such as Opus and *Plan mode* for the work account. A new session takes each field from the project's own defaults first, then from its profile, then from the choices you made last. See [Defaults for new sessions](/settings/claude-profiles/#defaults-for-new-sessions).
+
+<Aside type="tip">
+**How to set up another profile**, under the list of profiles, also shows how to add a terminal shortcut such as `claude-work`, so Claude Code in your terminal uses the same folder and account.
+</Aside>
+
+## Related
+
+<Related pages={['usage', 'new-session/queue', 'guides/repeat-less']} />

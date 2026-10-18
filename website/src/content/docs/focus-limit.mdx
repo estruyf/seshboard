@@ -7,6 +7,7 @@ import Kbd from '../../components/Kbd.astro';
 import Pill from '../../components/Pill.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../components/Related.astro';
 
 AI makes starting work easy, and every session you start is one more thing to keep up with. The focus limit helps you not start more than you can follow: you choose how many sessions you want going at once, and Switchboard asks before you go over. Why it helps: [The AI chaos beast in your head](https://www.eliostruyf.com/ai-chaos-beast-head/).
 
@@ -79,3 +80,7 @@ In [Settings → Focus](/settings/#focus):
 - **When you reach it**: **Nudge** asks first. **Strict** waits until you finish, settle or stop one.
 - **Count terminal and IDE sessions**: also count live Claude Code sessions started outside Switchboard.
 - **Count sessions on other computers** (on by default): also count sessions that are working, need you or are unread on computers you paired.
+
+## Related
+
+<Related pages={['new-session/queue', 'sessions/catch-up', 'sessions/home', 'guides/parallel-sessions']} />

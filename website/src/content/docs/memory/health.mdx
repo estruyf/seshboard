@@ -6,6 +6,7 @@ description: Find memories that point at things that are gone, say the same thin
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
@@ -52,3 +53,7 @@ Results are kept until a file in the memory folders, or the repository's checked
 ## Settings
 
 Health has no settings. See [What loads in a session](/memory/what-loads/#the-200-line-limit) for the <Pill tone="memory">MEMORY.md</Pill> limit.
+
+## Related
+
+<Related pages={['memory/what-loads', 'memory/links-and-search', 'memory/adding-memory', 'projects/memory']} />

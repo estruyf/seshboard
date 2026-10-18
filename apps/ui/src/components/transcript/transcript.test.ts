@@ -110,6 +110,18 @@ describe('stepLabel', () => {
     expect(stepLabel(tool('1', 'Bash', { description: 'Read the file' }), null).present).toBe('Reading the file');
   });
 
+  it('names a command without a description by what it runs, not its script', () => {
+    const run = (command: string) => stepLabel(tool('1', 'Bash', { command }), null);
+    expect(run('npm test')).toEqual({ past: 'Run npm test', present: 'Running npm test' });
+    expect(run('cd "/repo/my app" && npm test').present).toBe('Running npm test');
+    expect(run("python3 -I - <<'E'\nimport re\nR=re.compile(r'<<<<<<< HEAD')\nE").present).toBe('Running a Python script');
+    expect(run('/usr/bin/python3.12 -c "import sys; print(sys.version); print(sys.path); print(sys.executable)"').present).toBe('Running a Python script');
+    expect(run("cat > /tmp/a.txt <<'EOF'\nhello\nEOF").present).toBe('Running cat');
+    expect(run('FORCE_COLOR=0 git log --oneline --decorate --graph --all --since="2 weeks ago" -- apps/ui').present).toBe('Running git');
+    expect(run("node -e 'console.log(1)'\necho done").present).toBe('Running a Node script');
+    expect(run('$(which x) --a-very-long-flag-to-push-this-over-the-limit --and-another-one').present).toBe('Running a command');
+  });
+
   it('turns verbs into -ing forms', () => {
     expect(['Read', 'Run', 'Use', 'Write', 'Fix', 'Stop', 'Open', 'Tie', 'Check', 'commit', 'Let', 'Add', 'Show', 'Plan', 'Edit', 'Visit', 'Quit', 'Rerun'].map(gerund)).toEqual([
       'Reading', 'Running', 'Using', 'Writing', 'Fixing', 'Stopping', 'Opening', 'Tying', 'Checking', 'committing', 'Letting', 'Adding', 'Showing', 'Planning', 'Editing', 'Visiting', 'Quitting', 'Rerunning',
@@ -163,6 +175,36 @@ describe('agentRuns', () => {
     ]);
     // Nothing runs in a session that isn't open.
     expect(agentRuns(items, false).some((r) => r.running)).toBe(false);
+  });
+
+  it('runs a background agent again when a message to it follows its last report (resumed after the usage limit)', () => {
+    const report = (key: string, status: string, text: string) => ({ kind: 'agent-report', key, at: null, agentId: 'abc123', toolUseId: null, status, title: text, text }) as DisplayItem;
+    const send = (key: string, to: string, isError = false) =>
+      ({ ...tool(key, 'SendMessage', { to, message: 'Carry on' }), result: { text: '{"success":true}', isError, truncated: false, images: [], at: null } }) as DisplayItem;
+    const bg = agent('bg', launched('abc123'));
+    const stopped = report('r1', 'failed', 'Agent terminated early: You\'ve hit your session limit');
+    const state = (items: DisplayItem[]) => agentRuns(items, true)[0]!;
+
+    expect(state([bg, stopped])).toMatchObject({ running: false, failed: true });
+    expect(state([bg, report('r0', 'killed', 'Stopped')]).failed).toBe(true);
+    expect(state([bg, report('r0', 'completed', 'Done')]).failed).toBe(false);
+    expect(state([bg]).failed).toBe(false);
+    // The user (or Claude) sends it on again: it runs until its next report.
+    expect(state([bg, stopped, send('s1', 'abc123')])).toMatchObject({ running: true, failed: false });
+    const second = report('r2', 'completed', 'Done after the resume');
+    expect(state([bg, stopped, send('s1', 'abc123'), second])).toMatchObject({ running: false, failed: false, report: 'Done after the resume' });
+    expect(state([bg, stopped, send('s1', 'abc123'), second, send('s2', 'abc123')]).running).toBe(true);
+    // A message before the report, to another agent, or one that failed, changes nothing.
+    expect(state([bg, send('s0', 'abc123'), stopped]).running).toBe(false);
+    expect(state([bg, stopped, send('s1', 'other')]).running).toBe(false);
+    expect(state([bg, stopped, send('s1', 'abc123', true)]).running).toBe(false);
+    expect(agentRuns([bg, stopped, send('s1', 'abc123')], false)[0]!.running).toBe(false);
+  });
+
+  it('marks a foreground agent whose call returned an error as failed', () => {
+    const errored = { ...agent('fg', 'API Error'), result: { text: 'API Error', isError: true, truncated: false, images: [], at: null } } as DisplayItem;
+    expect(agentRuns([errored], true)[0]).toMatchObject({ running: false, failed: true });
+    expect(agentRuns([agent('ok', 'Found 3 files')], true)[0]!.failed).toBe(false);
   });
 
   it('keeps what each agent was asked, its type and what it reported', () => {

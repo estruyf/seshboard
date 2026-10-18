@@ -1,13 +1,16 @@
 ---
 title: Claude Code mods
 description: Plugins that add UI to your sessions. Switchboard draws their bands, panes, statuses and toasts, each with the mod's name.
+sidebar:
+  badge: New
 ---
 
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-Mods are Claude Code plugins that draw UI: a band above the message box, a pane next to the conversation, a status in the message box, a toast, or their own view of part of the session, such as a tool call. Claude Code loads and runs them from your enabled plugins. Switchboard only draws what they return.
+When a Claude Code plugin you use adds UI to a session, you see it in Switchboard too, right where you work. Mods are Claude Code plugins that draw UI: a band above the message box, a pane next to the conversation, a status in the message box, a toast, or their own view of part of the session, such as a tool call. Claude Code loads and runs them from your enabled plugins. Switchboard only draws what they return.
 
 <Screenshot name="mods" alt="A session with two mods. Above the message box, a band from agent-watch says 3 of 3 agents running, with Show agents and Raise limit. On the right, the Agents pane from agent-watch lists three running agents, each with Stop. The header shows 2 mods" eager />
 
@@ -57,3 +60,7 @@ When the session in front runs a Claude Code without mod support, the page says 
 ## Other devices
 
 Your phone and other computers don't show bands, panes or replaced views from mods.
+
+## Related
+
+<Related pages={['sessions/agents', 'settings', 'settings/claude-profiles', 'themes/built-in']} />

@@ -39,7 +39,9 @@ import { createPaletteApi } from './paletteApi.ts';
 import type { PaletteContext } from './paletteContext.ts';
 import { PaletteFooter, type FooterKey } from './PaletteFooter.tsx';
 import { CommandRow, DraftRow, FolderRow, HelpRow, OptionRow, ProjectRow, SessionRow } from './PaletteRows.tsx';
-import { back, changeProject, currentStep, initialState, PREFIXES, pushStep, switchMode, typeQuery, type PaletteMode, type PaletteState, type PaletteStep, type PickList } from './paletteState.ts';
+import { back, changeProject, currentStep, initialState, modeAllowed, PREFIXES, pushStep, switchMode, typeQuery, type PaletteMode, type PaletteState, type PaletteStep, type PickList } from './paletteState.ts';
+import { mainRequestFor } from './popoutCommands.ts';
+import { showInMain } from '../../state/popoutsStore.ts';
 import { PromptStep } from './PromptStep.tsx';
 import { usePaletteContext } from './usePaletteContext.ts';
 
@@ -126,16 +128,19 @@ export function CommandPalette() {
   const client = connection.status === 'connected' ? connection.client : null;
   const close = useOverlay((s) => s.close);
   const request = useOverlay((s) => s.palette);
-  const [state, setState] = useState<PaletteState>(() => initialState(request.mode));
+  const ctx = usePaletteContext();
+  // A pop-out has the commands of its session only: Go to and New session are the main window's.
+  const popout = ctx.popout;
+  const startMode = (mode: PaletteMode): PaletteMode => (modeAllowed(mode, popout) ? mode : 'commands');
+  const [state, setState] = useState<PaletteState>(() => initialState(startMode(request.mode)));
   const opened = useRef(request.nonce);
   // ⌘P while the commands are open (or the other way round) switches mode in place.
   useEffect(() => {
     if (opened.current === request.nonce) return;
     opened.current = request.nonce;
-    setState(initialState(request.mode));
+    setState(initialState(startMode(request.mode)));
   }, [request]);
 
-  const ctx = usePaletteContext();
   const openIn = useOpenIn();
   const api = useMemo(() => createPaletteApi(ctx, client, openIn), [ctx, client, openIn]);
   const step = currentStep(state);
@@ -193,7 +198,7 @@ export function CommandPalette() {
         return gotoSections(query);
       case 'help':
         return [
-          { id: 'help', label: 'Prefixes', rows: HELP.map((h) => ({ kind: 'help', key: `help:${h.mode}`, ...h })) },
+          { id: 'help', label: 'Prefixes', rows: HELP.filter((h) => modeAllowed(h.mode, popout)).map((h) => ({ kind: 'help', key: `help:${h.mode}`, ...h })) },
           // Every shortcut is on the sheet (⌘/), not here.
           { id: 'help-keys', label: 'Keys', rows: [{ kind: 'help', key: 'help:shortcuts', mode: 'help', prefix: '', title: 'Keyboard shortcuts', detail: formatKeys(keysFor('shortcuts')), sheet: true }] },
         ];
@@ -377,6 +382,13 @@ export function CommandPalette() {
       case 'command': {
         const { command } = row;
         rememberCommand(command.id);
+        // In a pop-out, what the main window owns (New session, Go to, Search, the next session) runs there.
+        const inMain = popout ? mainRequestFor(command.id, ctx) : null;
+        if (inMain) {
+          close();
+          showInMain(inMain);
+          return;
+        }
         if (command.mode) return setState(switchMode(command.mode));
         if (command.next) {
           const next = command.next(ctx);
@@ -432,7 +444,7 @@ export function CommandPalette() {
     else if (event.key === 'ArrowUp') (take(), setActive((i) => (rows.length ? (i - 1 + rows.length) % rows.length : 0)));
     else if (event.key === 'Enter') (take(), choose(rows[active], event.altKey));
     else if (event.key === 'Backspace' && state.query === '' && !modKey(event)) {
-      const previous = back(state);
+      const previous = back(state, popout);
       if (previous) (take(), setState(previous));
     } else if (modKey(event) && /^[1-9]$/.test(event.key) && (step?.kind === 'projects' || step?.kind === 'pick')) {
       const row = rows.find((r) => (r.kind === 'project' || r.kind === 'option') && r.number === Number(event.key));
@@ -460,7 +472,7 @@ export function CommandPalette() {
           from={step.from}
           worktree={step.worktree}
           chip={step.chip}
-          onBack={() => setState((s) => back(s) ?? s)}
+          onBack={() => setState((s) => back(s, popout) ?? s)}
           onChangeProject={() => setState(changeProject)}
           onDone={close}
         />
@@ -479,7 +491,7 @@ export function CommandPalette() {
               aria-activedescendant={rows[active] ? optionId(active) : undefined}
               aria-label={step ? `${step.chip}: ${stepPlaceholder(step)}` : PLACEHOLDER[state.mode]}
               value={state.query}
-              onChange={(e) => setState((s) => typeQuery(s, e.target.value))}
+              onChange={(e) => setState((s) => typeQuery(s, e.target.value, popout))}
               onKeyDown={onKeyDown}
               placeholder={step ? stepPlaceholder(step) : PLACEHOLDER[state.mode]}
               spellCheck={false}
@@ -563,7 +575,7 @@ function Empty({ state, ctx }: { state: PaletteState; ctx: PaletteContext }) {
           ? [ctx.session ? 'This session’s project has no actions.' : 'Open a session to run its project actions.', '"!" lists them; ⌫ goes back.']
           : state.mode === 'goto'
             ? [`No sessions or projects match “${typed}”.`, `Type ">" for commands, or search inside conversations with ${formatKeys(keysFor('search'))}.`]
-            : [`No commands match “${typed}”.`, 'Try fewer letters, or ⌫ to go to sessions.'];
+            : [`No commands match “${typed}”.`, ctx.popout ? 'Try fewer letters.' : 'Try fewer letters, or ⌫ to go to sessions.'];
   return (
     <div className="grid gap-1 px-4 py-6 text-center text-ui" data-palette-empty>
       <p className="text-text">{line}</p>
