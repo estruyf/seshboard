@@ -8,6 +8,8 @@ const isAgent = (item: DisplayItem): item is ToolItem => item.kind === 'tool' &&
 export interface AgentRun {
   item: ToolItem;
   running: boolean;
+  /** It ended without finishing: its call returned an error, or its last report says it failed or was stopped (the usage limit, Stop). Never while it runs. */
+  failed: boolean;
   /** Launched in the background (the call returns at once; the agent reports back later). */
   background: boolean;
   /** Claude Code's id for a background agent, from the launch's result: the id its background task has too. */
@@ -41,21 +43,33 @@ export function agentModel(run: AgentRun, usage: AgentTokens | undefined): strin
   return usage?.model ?? run.asked;
 }
 
+/** A message to the agent with this id (`SendMessage`), which wakes it up again when it had stopped. Failed sends don't. */
+const isMessageTo = (item: DisplayItem, agentId: string) => {
+  if (item.kind !== 'tool' || item.name !== 'SendMessage' || item.result?.isError) return false;
+  const input = (item.input ?? {}) as { to?: unknown; recipient?: unknown };
+  return input.to === agentId || input.recipient === agentId;
+};
+
 /**
  * Every agent in a session and whether it's still working. A foreground agent runs until its
- * call returns; a background one until its report comes back. Nothing runs in a closed session.
+ * call returns; a background one until its report comes back, and again from a message sent to
+ * it after that (a resume after the usage limit stopped it, or more work for one that finished).
+ * Nothing runs in a closed session.
  */
 export function agentRuns(items: readonly DisplayItem[], sessionOpen: boolean): AgentRun[] {
-  // Finished: reported back by agent id (hand-backs) or by the call's id (task notifications).
-  const reports = items.filter((i): i is Extract<DisplayItem, { kind: 'agent-report' }> => i.kind === 'agent-report');
-  const reported = new Set(reports.flatMap((r) => [r.agentId, ...(r.toolUseId ? [r.toolUseId] : [])]));
   return items.filter(isAgent).map((item) => {
     const launched = !!item.result && /Async agent launched/.test(item.result.text);
     const agentId = launched ? (/agentId: (\w+)/.exec(item.result!.text)?.[1] ?? null) : null;
-    const working = item.result === null || (launched && !reported.has(item.id) && !(agentId && reported.has(agentId)));
-    const handBack = launched ? reports.find((r) => r.toolUseId === item.id || (agentId !== null && r.agentId === agentId)) : undefined;
-    const report = launched ? (handBack?.text ?? null) : (item.result?.text ?? null);
-    return { item, background: launched, running: sessionOpen && working, agentId, ...describeAgent(item), report };
+    // Reported back by agent id (hand-backs) or by the call's id (task notifications).
+    const from = items.indexOf(item);
+    const reports = launched ? items.filter((i, at): i is Extract<DisplayItem, { kind: 'agent-report' }> => at > from && i.kind === 'agent-report' && (i.toolUseId === item.id || (agentId !== null && i.agentId === agentId))) : [];
+    const lastReport = reports.length > 0 ? items.lastIndexOf(reports[reports.length - 1]!) : -1;
+    const resumed = agentId !== null && items.some((i, at) => at > lastReport && at > from && isMessageTo(i, agentId));
+    const working = item.result === null || (launched && (lastReport === -1 || resumed));
+    const report = launched ? (reports[reports.length - 1]?.text ?? null) : (item.result?.text ?? null);
+    const running = sessionOpen && working;
+    const failed = !working && (launched ? reports.length > 0 && reports[reports.length - 1]!.status !== 'completed' : (item.result?.isError ?? false));
+    return { item, background: launched, running, failed, agentId, ...describeAgent(item), report };
   });
 }
 
