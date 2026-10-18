@@ -3,7 +3,7 @@ import type { LiveSession, SessionHostInfo, SessionsChanged, SessionsSnapshot, S
 import { hostAsLive, isActiveHost } from './hostsStore.ts';
 import { mergeSessionChanges, patchedSessions } from './sessionChanges.ts';
 import * as panes from './paneState.ts';
-import { shownElsewhere } from './popoutsStore.ts';
+import { shownElsewhere, showInMain } from './popoutsStore.ts';
 import { leafIds, type Tile } from './tiling.ts';
 import { useTilingArea } from './tilingArea.ts';
 import type { DropTarget, Way } from './tilingGeometry.ts';
@@ -180,8 +180,11 @@ export const useSessions = create<SessionsState>()((set) => ({
   },
   resizePanes: (layout) => set((s) => apply(s, panes.commitLayout(now(s), layout))),
   setView: (view) => set({ view }),
-  openSettings: (section) =>
-    set((s) => ({ view: 'settings', settingsSection: section ?? s.settingsSection, settingsFrom: s.view === 'settings' ? s.settingsFrom : s.view })),
+  openSettings: (section) => {
+    // A pop-out has no Settings: the main window shows it.
+    if (showInMain({ kind: 'settings', section: section ?? null })) return;
+    set((s) => ({ view: 'settings', settingsSection: section ?? s.settingsSection, settingsFrom: s.view === 'settings' ? s.settingsFrom : s.view }));
+  },
   closeSettings: () => set((s) => (s.view === 'settings' ? { view: s.settingsFrom } : {})),
   openNewSession: (options) => {
     useRunOn.getState().openOn(options?.runOn ?? 'here');

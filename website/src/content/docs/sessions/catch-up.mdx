@@ -6,8 +6,9 @@ description: A short briefing over a session when it finishes, so you can decide
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-When a session finishes a turn, Switchboard puts a short briefing over the conversation: what you asked, what Claude did, what it skipped, and the one thing it needs from you next. It comes with the signals you would otherwise look up yourself: did the tests pass, how much changed, and did Claude stay inside what you asked for.
+When a session finishes a turn, Switchboard puts a short briefing over the conversation: what you asked, what Claude did, what it skipped, and the one thing it needs from you next. It comes with the signals you would otherwise look up yourself: did the tests pass, how much changed, and did Claude stay inside what you asked for. You decide what to do next in a few seconds, without reading the whole conversation.
 
 <Screenshot name="catch-up-banner" alt="The catch-up banner above the conversation: Finished, the ask, about 3 minutes to review, Commit and Details; under it Commit the changes in green, why, and the chips 14 tests passed, +120 −40 · 6 files and Followed the plan" eager />
 
@@ -99,3 +100,7 @@ Each summary uses a few thousand Haiku tokens on the session's Claude profile, s
 <Aside>
 Sessions that run in a terminal or another app get no catch-up by themselves. For one of those, run **Catch up on this session** from the [command palette](/command-palette/) once it has finished.
 </Aside>
+
+## Related
+
+<Related pages={['sessions/ask', 'focus-limit', 'terminal-changes-git/changes', 'guides/review-fast']} />

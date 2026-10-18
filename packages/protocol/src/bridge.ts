@@ -70,11 +70,16 @@ export const IpcChannel = {
   showSession: "switchboard:show-session",
   forwardKeys: "switchboard:forward-keys",
   keysForwarded: "switchboard:keys-forwarded",
+  showInMain: "switchboard:show-in-main",
+  mainRequested: "switchboard:main-requested",
   popoutsChanged: "switchboard:popouts-changed",
   relayDrafts: "switchboard:relay-drafts",
   draftsRelayed: "switchboard:drafts-relayed",
   requestDrafts: "switchboard:request-drafts",
   draftsRequested: "switchboard:drafts-requested",
+  getPopoutView: "switchboard:get-popout-view",
+  reportView: "switchboard:report-view",
+  viewReturned: "switchboard:view-returned",
 } as const;
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
@@ -86,6 +91,13 @@ export const POPOUT_QUERY = "popout";
  */
 export type DraftsChange = Record<string, unknown>;
 
+/**
+ * Which panels a session has open and how (the tab in front, the agent picked, the Ask thread, the terminal), as the
+ * renderer collects it (`state/sessionViewState.ts`, which also checks one it receives). Main only carries it between
+ * the windows a session moves between, in memory, and never looks inside.
+ */
+export type SessionView = Record<string, unknown>;
+
 /** A key press a pop-out hands to the main window (an app-wide shortcut: the palette, search, New session…). */
 export interface ForwardedKeys {
   key: string;
@@ -95,6 +107,21 @@ export interface ForwardedKeys {
   altKey: boolean;
   shiftKey: boolean;
 }
+
+/**
+ * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the
+ * Usage view, a project's page, New session (on a folder, in a new worktree), Go to, Search, or a step to another
+ * session in the sidebar's order. `section` and `tab` are the names the main window's views use; it ignores one it
+ * doesn't know.
+ */
+export type MainWindowRequest =
+  | { kind: "settings"; section: string | null }
+  | { kind: "usage"; profileId: string | null }
+  | { kind: "project"; root: string; tab: string | null }
+  | { kind: "new-session"; cwd: string | null; worktree: boolean }
+  | { kind: "go-to" }
+  | { kind: "search"; memory: boolean }
+  | { kind: "navigate"; to: "next" | "previous" | "needs-you" };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -773,8 +800,17 @@ export interface SwitchboardBridge {
   readonly popouts: readonly string[];
   /** Fires in every window when a pop-out opens or closes. */
   onPopoutsChanged(listener: (sessionIds: string[]) => void): () => void;
-  /** Shows a session in a window of its own, or brings its pop-out to the front when it has one. */
-  popOut(sessionId: string): void;
+  /**
+   * Shows a session in a window of its own, or brings its pop-out to the front when it has one. `view` is how the session's
+   * panels stand here: a new pop-out starts with them (one that exists keeps its own).
+   */
+  popOut(sessionId: string, view?: SessionView): void;
+  /** In a pop-out: the panels the session had open in the main window when it popped out, or null. Read once when the page loads. */
+  readonly popoutView: SessionView | null;
+  /** From a pop-out: tells main how its session's panels stand, so they go back to the main window with the session. */
+  reportView(view: SessionView): void;
+  /** In the main window: a session came back from its pop-out (moved back or closed) with its panels as they were left there. */
+  onViewReturned(listener: (sessionId: string, view: SessionView) => void): () => void;
   /** From a pop-out: shows its session in the main window again and closes the pop-out. */
   popIn(): void;
   /** Shows a session where it is: its pop-out when it has one, otherwise the main window (both brought to the front). */
@@ -783,6 +819,10 @@ export interface SwitchboardBridge {
   forwardKeys(keys: ForwardedKeys): void;
   /** In the main window: keys a pop-out handed over. */
   onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
+  /** From a pop-out: brings the main window to the front and shows this view there (Settings, Usage, a project, New session). */
+  showInMain(request: MainWindowRequest): void;
+  /** In the main window: a view a pop-out asked it to show. */
+  onMainRequest(listener: (request: MainWindowRequest) => void): () => void;
   /** Sends unsent messages that changed here to the other windows. */
   relayDrafts(change: DraftsChange): void;
   /** Unsent messages that changed in another window. */

@@ -6,6 +6,7 @@ description: When finished sessions are archived, moving old archived sessions t
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 **Settings › Sessions** keeps the sidebar short. Choose when finished sessions move to [Archived](/sessions/archived/), turn on moving old archived sessions to the <Os mac="Trash" windows="Recycle Bin" />, and see every session you have in one table.
 
@@ -76,3 +77,7 @@ The bar at the bottom says how many sessions you selected, their size, and how m
 - **Clear** (<Kbd keys="escape" />): selects nothing.
 
 Each row's **⋯** menu (or a right-click) has **Open session**, **Unarchive** or **Archive**, **Pin** or **Unpin**, **Reveal transcript in <Os mac="Finder" windows="File Explorer" />**, **Copy session ID** and **Move to <Os mac="Trash" windows="Recycle Bin" />…**.
+
+## Related
+
+<Related pages={['sessions/archived', 'sessions/pinned', 'sessions/sidebar', 'settings/backup']} />

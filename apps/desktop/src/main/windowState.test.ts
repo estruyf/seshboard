@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { placePopout, placeWindow, sanitizeWindowState, WindowStateStore } from './windowState.ts';
+import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, sanitizeWindowState, WindowStateStore } from './windowState.ts';
 
 const MIN = { width: 900, height: 560 };
 const LAPTOP = { x: 0, y: 25, width: 1512, height: 920 };
@@ -10,14 +10,13 @@ const LAPTOP = { x: 0, y: 25, width: 1512, height: 920 };
 const EXTERNAL = { x: 1512, y: -400, width: 2560, height: 1415 };
 
 describe('placePopout', () => {
-  const SIZE = { width: 720, height: 820 };
-  const POPOUT_MIN = { width: 480, height: 400 };
+  const SIZE = POPOUT_SIZE;
 
   it('opens beside the window, on the side with room', () => {
     const leftHalf = { x: 1600, y: -300, width: 1280, height: 820 };
-    expect(placePopout(leftHalf, EXTERNAL, SIZE, POPOUT_MIN)).toEqual({ x: 2888, y: -300, width: 720, height: 820 });
+    expect(placePopout(leftHalf, EXTERNAL, SIZE, POPOUT_MIN)).toEqual({ x: 2888, y: -300, width: 1000, height: 820 });
     const rightHalf = { x: 2700, y: -300, width: 1280, height: 820 };
-    expect(placePopout(rightHalf, EXTERNAL, SIZE, POPOUT_MIN)).toEqual({ x: 1972, y: -300, width: 720, height: 820 });
+    expect(placePopout(rightHalf, EXTERNAL, SIZE, POPOUT_MIN)).toEqual({ x: 1692, y: -300, width: 1000, height: 820 });
   });
 
   it('narrows to the room beside the window', () => {
@@ -25,8 +24,8 @@ describe('placePopout', () => {
   });
 
   it('overlaps a window that fills its display, a little further for each pop-out open', () => {
-    expect(placePopout(LAPTOP, LAPTOP, SIZE, POPOUT_MIN)).toEqual({ x: 792, y: 57, width: 720, height: 820 });
-    expect(placePopout(LAPTOP, LAPTOP, SIZE, POPOUT_MIN, 1)).toEqual({ x: 792, y: 89, width: 720, height: 820 });
+    expect(placePopout(LAPTOP, LAPTOP, SIZE, POPOUT_MIN)).toEqual({ x: 512, y: 57, width: 1000, height: 820 });
+    expect(placePopout(LAPTOP, LAPTOP, SIZE, POPOUT_MIN, 1)).toEqual({ x: 512, y: 89, width: 1000, height: 820 });
   });
 
   it('stays on the display, no taller than it', () => {

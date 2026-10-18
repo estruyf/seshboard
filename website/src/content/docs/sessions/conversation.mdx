@@ -11,6 +11,7 @@ import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 A session shows its conversation with Claude, with the message box at the bottom. You chat as you would in the terminal, with streaming replies, `/` commands, `@` mentions and images, and you can follow every step Claude takes without the noise.
 
@@ -237,3 +238,7 @@ Click the **×** in the header (or *Close session* in the command palette) to go
 - **Show prompt outline** (on by default) shows the rail of your prompts beside the conversation.
 - **Under each reply** sets the line under each turn: **Nothing**, **Time**, **Time and duration** (the default) or **Time, duration and tokens**.
 - Each project's defaults for model, effort and mode are on its [Settings tab](/projects/settings/).
+
+## Related
+
+<Related pages={['permissions', 'sessions/ask', 'sessions/saved-prompts', 'sessions/split-view']} />

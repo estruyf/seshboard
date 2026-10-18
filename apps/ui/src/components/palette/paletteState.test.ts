@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { back, changeProject, currentStep, initialState, modeForPrefix, NEW_SESSION_STEP, pushStep, switchMode, typeQuery, type PaletteStep } from './paletteState.ts';
+import { back, changeProject, currentStep, initialState, modeAllowed, modeForPrefix, NEW_SESSION_STEP, pushStep, switchMode, typeQuery, type PaletteStep } from './paletteState.ts';
 
 const PROMPT: PaletteStep = { kind: 'prompt', root: '/work/app', worktree: false, chip: 'New session' };
 
@@ -84,5 +84,31 @@ describe('steps', () => {
     expect(state.steps).toEqual([{ kind: 'projects', purpose: 'new-session', worktree: true, chip: 'New session', from: '/work/app' }]);
     expect(back(state)).toMatchObject({ mode: 'commands', steps: [] });
     expect(changeProject(initialState('goto'))).toEqual(initialState('goto'));
+  });
+});
+
+describe('in a pop-out', () => {
+  it('has the commands, the project actions and the help, never Go to or New session', () => {
+    expect(modeAllowed('commands', true)).toBe(true);
+    expect(modeAllowed('actions', true)).toBe(true);
+    expect(modeAllowed('help', true)).toBe(true);
+    expect(modeAllowed('goto', true)).toBe(false);
+    expect(modeAllowed('new', true)).toBe(false);
+    expect(modeAllowed('goto', false) && modeAllowed('new', false)).toBe(true);
+  });
+
+  it('takes "+" as text, but still switches to the other prefixes', () => {
+    const commands = initialState('commands');
+    expect(typeQuery(commands, '+app', true)).toMatchObject({ mode: 'commands', query: '+app', steps: [] });
+    expect(typeQuery(commands, '!', true)).toMatchObject({ mode: 'actions' });
+    expect(typeQuery(commands, '?', true)).toMatchObject({ mode: 'help' });
+  });
+
+  it('goes back to the commands, which have nothing before them', () => {
+    expect(back(initialState('commands'), true)).toBeNull();
+    expect(back(initialState('actions'), true)).toEqual(initialState('commands'));
+    expect(back(initialState('help'), true)).toEqual(initialState('commands'));
+    // In the main window the commands go back to Go to.
+    expect(back(initialState('commands'))).toEqual(initialState('goto'));
   });
 });

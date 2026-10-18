@@ -1,11 +1,14 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CloneProgress } from '@switchboard/protocol';
 import type { AppStateStore, JsonValue } from '../db/appState.ts';
 import { git } from '../git/gitChanges.ts';
 import { CloneService } from './cloneService.ts';
+
+/** A path in the home folder as the service says it, with this platform's separator (`~\Developer\x` on Windows). */
+const inHome = (...parts: string[]) => ['~', ...parts].join(sep);
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -108,9 +111,9 @@ describe('Clone from GitHub', () => {
       state: 'free',
       repo: { owner: 'acme', name: 'payments', branch: 'release' },
       name: 'payments',
-      where: '~/Developer/payments',
+      where: inHome('Developer', 'payments'),
     });
-    expect(await service.plan('acme/payments', 'pay')).toMatchObject({ name: 'pay', where: '~/Developer/pay' });
+    expect(await service.plan('acme/payments', 'pay')).toMatchObject({ name: 'pay', where: inHome('Developer', 'pay') });
     await expect(service.plan('https://gitlab.com/acme/payments')).rejects.toMatchObject({ code: 'INVALID', message: 'Only GitHub repositories can be cloned here.' });
     await expect(service.plan('acme/payments', '../escape')).rejects.toMatchObject({ code: 'INVALID' });
   });
@@ -123,13 +126,14 @@ describe('Clone from GitHub', () => {
     const target = join(folder, 'payments');
     expect(events[0]).toMatchObject({ jobId: 'j1', state: 'running', phase: 'starting', percent: 0 });
     expect(done).toMatchObject({ state: 'done', root: target, reused: false, percent: 100, brings: { hooks: [{ event: 'SessionStart', command: './setup.sh' }] } });
-    expect(readFileSync(join(target, 'README.md'), 'utf8')).toBe('# Payments\n');
+    // A Windows runner's git checks files out with CRLF (core.autocrlf), which this test is not about.
+    expect(readFileSync(join(target, 'README.md'), 'utf8').replace(/\r\n/g, '\n')).toBe('# Payments\n');
     expect((await git(target, ['branch', '--show-current'])).trim()).toBe('release');
     expect((await git(target, ['remote', 'get-url', 'origin'])).trim()).toBe('https://github.com/acme/payments.git');
     expect(added).toEqual([target]);
 
     // Cloned already: used as it is, and as one of your projects now, nothing to ask about.
-    expect(await service.plan('git@github.com:acme/payments.git')).toMatchObject({ state: 'cloned', where: '~/Developer/payments' });
+    expect(await service.plan('git@github.com:acme/payments.git')).toMatchObject({ state: 'cloned', where: inHome('Developer', 'payments') });
     await service.start('j2', 'acme/payments', 'payments');
     expect(await ended('j2')).toMatchObject({ state: 'done', root: target, reused: true, brings: null });
     expect(added).toEqual([target]);
@@ -141,7 +145,7 @@ describe('Clone from GitHub', () => {
     mkdirSync(join(folder, 'payments'), { recursive: true });
     writeFileSync(join(folder, 'payments', 'notes.txt'), 'mine');
     expect(await service.plan('acme/payments')).toMatchObject({ state: 'taken' });
-    await expect(service.start('j1', 'acme/payments', 'payments')).rejects.toMatchObject({ code: 'CLONE_TAKEN', message: '~/Developer/payments already exists. Choose another name.' });
+    await expect(service.start('j1', 'acme/payments', 'payments')).rejects.toMatchObject({ code: 'CLONE_TAKEN', message: `${inHome('Developer', 'payments')} already exists. Choose another name.` });
     expect(readFileSync(join(folder, 'payments', 'notes.txt'), 'utf8')).toBe('mine');
   });
 

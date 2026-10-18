@@ -7,10 +7,11 @@ sidebar:
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-The **Memory** tab of a project's page shows what Claude Code remembers about the project, the instructions the team shares, and your personal memory. Everything on it is a plain Markdown file in the folders Claude Code already reads. See [Claude Code memory](/memory/overview/) for how memory works.
+Open the **Memory** tab to check what Claude knows about a project, and to fix it when it is wrong or out of date. It shows what Claude Code remembers about the project, the instructions the team shares, and your personal memory. Everything on it is a plain Markdown file in the folders Claude Code already reads. See [Claude Code memory](/memory/overview/) for how memory works.
 
 <Screenshot name="project-memory" alt="The Memory tab of acme-store: the What loads in a session here card at the top, then the Project memory list with its MEMORY.md meter, the Instructions list and the Personal list, with a memory open in the editor on the right" eager />
 
@@ -25,7 +26,7 @@ The **Memory** tab of a project's page shows what Claude Code remembers about th
 
 At the top is **What loads in a session here**: every file Claude Code reads when a session starts in this project, in order and by size. See [What loads in a session](/memory/what-loads/). Its header also says how many [health](/memory/health/) findings there are, with **Show** to list them.
 
-Below it, the left column has a **Filter memory** field and three lists. Click a row to open it on the right. **Import** next to the field brings memories in from the Claude app, or copies them there: see [Memory from the Claude app](/memory/import/).
+Below it, the left column has a **Filter memory** field and three lists. Click a row to open it on the right. **Import** next to the field brings memories in from the Claude app, or copies them there: see [Import from the Claude app](/memory/import/).
 
 | List | What it holds |
 |---|---|
@@ -58,3 +59,7 @@ Claude Code writes memory on its own while you work. The tab reads the folder ag
 ## Settings
 
 Your personal memory folder, and the line that makes Claude Code load it, are in [Settings › Memory](/settings/#memory). The tab has no settings of its own.
+
+## Related
+
+<Related pages={['memory/overview', 'memory/what-loads', 'memory/health', 'memory/share-with-the-team']} />

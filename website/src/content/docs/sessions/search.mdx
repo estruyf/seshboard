@@ -6,8 +6,9 @@ description: Search every conversation, or find words in the one you are reading
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-Switchboard has two searches: **Search conversations** looks through your prompts and Claude's replies in every session, and **Find in conversation** highlights words in the session you are reading.
+Switchboard has two searches: **Search conversations** looks through your prompts and Claude's replies in every session, and **Find in conversation** highlights words in the session you are reading. Use them to get back to something Claude said or you asked, without remembering which session it was in.
 
 <Screenshot name="search" alt="Search conversations: results grouped by session, each line marked You or Claude, with the matching words highlighted" eager />
 
@@ -47,3 +48,7 @@ Press <Kbd shortcut="find" /> in a session and type. Every match in the conversa
 ## Settings
 
 **Show sessions from other apps** in [Settings, Sidebar](/settings/#sidebar) decides which sessions Search covers. Find has no settings.
+
+## Related
+
+<Related pages={['memory/links-and-search', 'sessions/sidebar', 'command-palette', 'sessions/ask']} />

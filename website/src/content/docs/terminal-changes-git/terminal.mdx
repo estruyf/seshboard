@@ -9,6 +9,7 @@ import OnlyOn from '../../../components/OnlyOn.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 Every session has its own terminal panel. It opens a shell in the session's folder (its worktree, when it has one), so you can run a command without leaving Switchboard. [Project actions](/projects/actions/), git steps and code blocks from the conversation run there too.
 
@@ -142,3 +143,7 @@ A session that is running in Switchboard can't be open in two places. Switchboar
 ## Settings
 
 The terminal has no settings of its own. Its colours follow the theme: see [Built-in themes](/themes/built-in/) and [Settings](/settings/#theme).
+
+## Related
+
+<Related pages={['projects/actions', 'terminal-changes-git/git', 'themes/syntax-colours', 'sessions/split-view']} />

@@ -3,6 +3,7 @@ import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, 
 import type { CatchUp, QueuedMessage, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions } from '@switchboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
+import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { transcriptItems } from '../lib/steps.ts';
 import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessages, resultsByCall, type Streaming } from '../lib/transcript.ts';
 import type { Client } from './Connected.tsx';
@@ -331,6 +332,7 @@ export function SessionView({
         {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
         <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} />
         <Composer
+          sessionId={sessionId}
           fill={fill}
           features={features}
           chips={
@@ -615,6 +617,7 @@ function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: st
  * (`Attachments.tsx`), and show above the box with a remove button.
  */
 function Composer({
+  sessionId,
   fill,
   features,
   chips,
@@ -625,6 +628,8 @@ function Composer({
   onError,
   onFocusChange,
 }: {
+  /** Whose draft the box keeps when you go to another view and come back. */
+  sessionId: string;
   /** Text to put in the box and focus it (Ask Claude to fix…), or to quote at its end; a new `id` each time. */
   fill: Fill | null;
   features: readonly string[];
@@ -638,16 +643,22 @@ function Composer({
   /** The box got or lost focus: on a touch screen, the keyboard came up or went. */
   onFocusChange: (focused: boolean) => void;
 }) {
-  const [text, setText] = useState('');
+  const draft: DraftKey = { kind: 'session', sessionId };
+  const [text, setText] = useState(() => loadDraft(draft));
   const [busy, setBusy] = useState(false);
   const attachments = useAttachments({ features, blocked: answering ? "Attachments can't go with an answer. Answer the prompt first." : null, onError });
   const { reading, dragging } = attachments;
   const fine = useFinePointer();
   const box = useRef<HTMLTextAreaElement>(null);
-  // With a keyboard, the box is ready to type in when the session opens; on a phone the keyboard waits for a tap.
+  // With a keyboard, the box is ready to type in when the session opens (after a draft you left there); on a phone
+  // the keyboard waits for a tap.
   useEffect(() => {
-    if (fine) box.current?.focus({ preventScroll: true });
+    const el = box.current;
+    if (!fine || !el) return;
+    el.focus({ preventScroll: true });
+    el.setSelectionRange(el.value.length, el.value.length);
   }, [fine]);
+  useEffect(() => saveDraft(draft, text), [sessionId, text]);
   useEffect(() => {
     if (!fill) return;
     const next = fill.quote ? withQuote(box.current?.value ?? '', fill.text) : fill.text;
@@ -666,6 +677,8 @@ function Composer({
     setBusy(true);
     try {
       await onSend(message, attachments.images, attachments.files);
+      // Also when you went to another view while it was sending.
+      clearDraft(draft);
       setText('');
       attachments.clear();
     } catch (error) {

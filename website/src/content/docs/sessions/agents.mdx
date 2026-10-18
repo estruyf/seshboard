@@ -4,8 +4,9 @@ description: See the agents Claude started in a session in a panel next to the c
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Related from '../../../components/Related.astro';
 
-When Claude starts agents, the **Agents** panel shows them next to the conversation. Leave it open while you keep talking to Claude in the main chat.
+When Claude starts agents, the **Agents** panel shows them next to the conversation, so you can see what each one is doing, what Claude asked it and what it reported. Leave it open while you keep talking to Claude in the main chat.
 
 ## Open the panel
 
@@ -32,3 +33,7 @@ Under the list you see:
 - **Stop**, for a background agent that is still running. It stops that agent and leaves Claude and the other agents alone. An agent that Claude waits for can't be stopped on its own: stop Claude's turn instead.
 
 <Kbd keys="escape" /> closes the panel when it has the focus.
+
+## Related
+
+<Related pages={['sessions/commands', 'sessions/ask', 'sessions/mods', 'usage']} />
