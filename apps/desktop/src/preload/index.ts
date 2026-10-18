@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type DeepLinkMessage, type NotificationPermission, type PickedPath, type Preferences, type RendererReadyReport, type SaveImageRequest, type SoundList, type SwitchboardBridge, type ThemeCommand, type UpdateState } from '@switchboard/protocol/bridge';
+import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type SoundList, type SwitchboardBridge, type ThemeCommand, type UpdateState } from '@switchboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@switchboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -103,7 +103,14 @@ const bridge: SwitchboardBridge = {
     ipcRenderer.on(IpcChannel.popoutsChanged, handler);
     return () => ipcRenderer.off(IpcChannel.popoutsChanged, handler);
   },
-  popOut: (sessionId) => ipcRenderer.send(IpcChannel.popOut, sessionId),
+  popOut: (sessionId, view) => ipcRenderer.send(IpcChannel.popOut, sessionId, view ?? null),
+  popoutView: new URLSearchParams(window.location.search).get(POPOUT_QUERY) === null ? null : (ipcRenderer.sendSync(IpcChannel.getPopoutView) as SessionView | null),
+  reportView: (view) => ipcRenderer.send(IpcChannel.reportView, view),
+  onViewReturned(listener) {
+    const handler = (_event: unknown, message: { sessionId: string; view: SessionView }) => listener(message.sessionId, message.view);
+    ipcRenderer.on(IpcChannel.viewReturned, handler);
+    return () => ipcRenderer.off(IpcChannel.viewReturned, handler);
+  },
   popIn: () => ipcRenderer.send(IpcChannel.popIn),
   showSession: (sessionId) => ipcRenderer.send(IpcChannel.showSession, sessionId),
   forwardKeys: (keys) => ipcRenderer.send(IpcChannel.forwardKeys, keys),
@@ -111,6 +118,12 @@ const bridge: SwitchboardBridge = {
     const handler = (_event: unknown, keys: ForwardedKeys) => listener(keys);
     ipcRenderer.on(IpcChannel.keysForwarded, handler);
     return () => ipcRenderer.off(IpcChannel.keysForwarded, handler);
+  },
+  showInMain: (request) => ipcRenderer.send(IpcChannel.showInMain, request),
+  onMainRequest(listener) {
+    const handler = (_event: unknown, request: MainWindowRequest) => listener(request);
+    ipcRenderer.on(IpcChannel.mainRequested, handler);
+    return () => ipcRenderer.off(IpcChannel.mainRequested, handler);
   },
   relayDrafts: (change) => ipcRenderer.send(IpcChannel.relayDrafts, change),
   onDraftsRelayed(listener) {

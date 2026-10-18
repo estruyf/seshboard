@@ -4,7 +4,9 @@ import { HomeView } from './components/home/HomeView.tsx';
 import { TooltipLayer } from './components/ui/Tooltip.tsx';
 import { ToastLayer } from './components/ui/Toast.tsx';
 import { FocusGateDialog } from './components/focus/FocusGateDialog.tsx';
-import { useOpenIn } from './components/OpenInButton.tsx';
+import { useSessionShortcuts } from './components/session/useSessionShortcuts.ts';
+import { useOverlayShortcuts } from './components/palette/useOverlayShortcuts.ts';
+import { otherModalOpen, overlayOpen } from './lib/modalGuards.ts';
 import { LinkError } from './components/LinkError.tsx';
 import { QuitPrompt } from './components/QuitPrompt.tsx';
 import { ArchiveDraftDialog } from './components/drafts/ArchiveDraftDialog.tsx';
@@ -32,7 +34,6 @@ import { EngineStalledNotice } from './components/EngineStalledNotice.tsx';
 import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
-import { isActiveHost, useHosts } from './state/hostsStore.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
@@ -53,8 +54,7 @@ import { useProfilesSync } from './state/profilesStore.ts';
 import { useProjects, useProjectsSync } from './state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from './state/sessionNav.ts';
 import { useSidebar, useSidebarSync } from './state/sidebarStore.ts';
-import { useTerminals, useTerminalsSync } from './state/terminalsStore.ts';
-import { toggleTerminalPanel } from './state/rightPanelStore.ts';
+import { useTerminalsSync } from './state/terminalsStore.ts';
 import { AppTerminalFrame } from './components/terminal/AppTerminalFrame.tsx';
 import { terminalOwner, type TerminalView } from './components/terminal/appTerminal.ts';
 import { useUpdatesSync } from './state/updatesStore.ts';
@@ -65,8 +65,9 @@ import { useRemoteSync } from './state/useRemoteSync.ts';
 import { RemoteView } from './components/computers/RemoteView.tsx';
 import { localSessionId } from './state/remoteSelection.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
-import { popOut } from './state/popoutsStore.ts';
+import { runMainRequest } from './state/mainRequests.ts';
 import { usePopoutsSync } from './state/usePopoutsSync.ts';
+import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 
@@ -84,18 +85,6 @@ function currentTerminalOwner(): string | null {
   return terminalOwner(terminalView(view, selectedId), localSessionId(selectedId));
 }
 
-/** A dialog, menu or popover is open: it keeps Tab for itself, so ⌃⇥ doesn't switch sessions behind it. */
-const overlayOpen = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [data-popover]') !== null;
-
-/** The palette, Search and the shortcuts sheet: their shortcuts close them or switch between them. */
-const OWN_OVERLAYS = '[data-command-palette], [data-search], [data-shortcuts-sheet]';
-
-/**
- * Another modal is open (Add context, Rename session…). The palette, Search and the shortcuts sheet would
- * open under it, half hidden, and take the keys, so their shortcuts do nothing until it closes.
- */
-const otherModalOpen = () => Array.from(document.querySelectorAll('[aria-modal="true"]')).some((el) => !el.matches(OWN_OVERLAYS));
-
 /** What each key of the panes does (keys in `lib/shortcuts.ts`). */
 const PANE_KEYS: ReadonlyArray<readonly [ShortcutId, (sessions: ReturnType<typeof useSessions.getState>) => void]> = [
   ['pane.close', (s) => s.closePane()],
@@ -109,26 +98,19 @@ const PANE_KEYS: ReadonlyArray<readonly [ShortcutId, (sessions: ReturnType<typeo
 ];
 
 /**
- * The window's own shortcuts (keys in `lib/shortcuts.ts`): new session, open in editor, the terminal, the
- * command palette and go-to, search, Home, the sidebar, moving between sessions, the panes (close, focus,
- * swap, turn) and the shortcuts sheet. The terminal passes ⌘ keys and ⌃⇥ on to the window (XTerm.tsx), so these work
- * there too.
+ * The window's own shortcuts (keys in `lib/shortcuts.ts`): new session, go-to, search, Home, the sidebar, moving
+ * between sessions and the panes (close, focus, swap, turn), plus the command palette and the shortcuts sheet and
+ * the session's own (the terminal, open in editor, open in new window), which a pop-out has too. The terminal
+ * passes ⌘ keys and ⌃⇥ on to the window (XTerm.tsx), so these work there too.
  */
 function useShortcuts() {
-  const openIn = useOpenIn();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       // ⌘B, ⌃⇥ and ⌘⇧U became Switchboard's after project actions could take them: an action saved on
       // one of them keeps it. These run once the key has been through every listener, and only if none
       // took it (the actions' listener may come before or after this one). They have no default to stop.
       const later = (run: () => void) => setTimeout(() => !event.defaultPrevented && run(), 0);
-      if (matches(event, 'shortcuts')) {
-        // From anywhere, the terminal and the message box included; a shortcut recorder that took the key
-        // keeps it, and another dialog keeps the window until it closes.
-        if (event.defaultPrevented || otherModalOpen()) return;
-        event.preventDefault();
-        useOverlay.getState().toggleShortcuts();
-      } else if (matches(event, 'session.next') || matches(event, 'session.previous')) {
+      if (matches(event, 'session.next') || matches(event, 'session.previous')) {
         if (!event.defaultPrevented && !overlayOpen()) later(() => goToAdjacentSession(matches(event, 'session.previous') ? -1 : 1));
       } else if (matches(event, 'session.next-needs-you')) {
         later(goToNextNeedsYou);
@@ -143,33 +125,10 @@ function useShortcuts() {
         const overlay = useOverlay.getState();
         if (overlay.open === 'search') overlay.close();
         else overlay.show('search');
-      } else if (matches(event, 'palette.commands')) {
-        // In the terminal, ⌘K clears the screen as usual; ⌘⇧P (as in VS Code) is the way to the palette there.
-        if (matches(event, 'terminal.clear') && (event.target as HTMLElement | null)?.closest?.('.xterm')) return;
-        if (otherModalOpen()) return;
-        event.preventDefault();
-        useOverlay.getState().togglePalette('commands');
       } else if (matches(event, 'palette.goto')) {
         if (otherModalOpen()) return;
         event.preventDefault();
         useOverlay.getState().togglePalette('goto');
-      } else if (matches(event, 'terminal.maximize')) {
-        // The terminal takes the whole view, or gives it back. Closed, it opens maximized.
-        const owner = currentTerminalOwner();
-        if (!owner) return;
-        event.preventDefault();
-        const { openFor, togglePanel, setMaximized } = useTerminals.getState();
-        if (openFor.has(owner)) setMaximized(owner);
-        else {
-          togglePanel(owner);
-          setMaximized(owner, true);
-        }
-      } else if (matches(event, 'terminal.toggle')) {
-        // The panel of the session in the active pane; outside a session, the window's own.
-        const owner = currentTerminalOwner();
-        if (!owner) return;
-        event.preventDefault();
-        toggleTerminalPanel(owner);
       } else if (PANE_KEYS.some(([id]) => matches(event, id))) {
         // The panes' keys work with more than one pane open, and in the session view (Settings sits over it, inert).
         const sessions = useSessions.getState();
@@ -190,25 +149,18 @@ function useShortcuts() {
         event.preventDefault();
         startIn(questionsDir);
         useSessions.getState().openNewSession();
-      } else if (matches(event, 'session.new-window')) {
-        const { view, selectedId } = useSessions.getState();
-        if (view !== 'session' || !selectedId) return;
-        event.preventDefault();
-        popOut(selectedId);
-      } else if (matches(event, 'editor.open')) {
-        const { view, selectedId, sessions, live } = useSessions.getState();
-        if (view !== 'session' || !selectedId) return;
-        const host = useHosts.getState().hosts.get(selectedId);
-        const cwd = (isActiveHost(host) ? host.cwd : null) ?? sessions.get(selectedId)?.cwd ?? live.get(selectedId)?.cwd;
-        if (cwd) {
-          event.preventDefault();
-          void openIn(cwd).catch(() => {});
-        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [openIn]);
+  }, []);
+  // The palette and the shortcuts sheet open in whichever window the key is pressed in (`useOverlayShortcuts`).
+  useOverlayShortcuts();
+  // The terminal, Open in editor and Open in new window: shared with the pop-out (`useSessionShortcuts`).
+  useSessionShortcuts(() => {
+    const { view, selectedId } = useSessions.getState();
+    return { terminalOwner: currentTerminalOwner(), sessionId: view === 'session' ? localSessionId(selectedId) : null };
+  });
 }
 
 /** Keeps main informed about what's on screen, and opens sessions main asks for (notification clicks). */
@@ -219,6 +171,8 @@ function useWindowFocus() {
     window.switchboard?.reportFocus(view === 'session' ? localSessionId(selectedId) : null);
   }, [view, selectedId]);
   useEffect(() => window.switchboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
+  // A pop-out has no Settings, Usage, project pages or New session: they open here, with the window in front.
+  useEffect(() => window.switchboard?.onMainRequest(runMainRequest), []);
   // Switchboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.
   useEffect(() => window.switchboard?.onOpenSettings((section) => useSessions.getState().openSettings(section ?? undefined)), []);
   // An app-wide shortcut pressed in a pop-out: main brought this window to the front, and the keys run here.
@@ -229,8 +183,6 @@ function useWindowFocus() {
       }),
     [],
   );
-  // Help › Keyboard Shortcuts (⌘/) in the menu bar.
-  useEffect(() => window.switchboard?.onToggleShortcuts(() => !otherModalOpen() && useOverlay.getState().toggleShortcuts()), []);
 }
 
 export function App() {
@@ -247,6 +199,7 @@ export function App() {
   useSidebarSync();
   useDraftsSync();
   usePopoutsSync();
+  useSessionViewHandoff();
   useUsageSync();
   usePreferencesSync();
   useThemesSync();

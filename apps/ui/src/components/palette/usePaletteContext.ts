@@ -33,6 +33,7 @@ import { inWorktree } from '../worktree/branchMenu.ts';
 import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './paletteContext.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { localSessionId } from '../../state/remoteSelection.ts';
+import { popoutSession } from '../../state/popoutsStore.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
 function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
@@ -166,6 +167,7 @@ export function usePaletteContext(): PaletteContext {
   const activeTerminal = owner ? (terminals.get(activeTerminals.get(owner) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === ownerSession(owner)).at(-1)) : undefined;
 
   return {
+    popout: popoutSession !== null,
     view,
     connected,
     session,

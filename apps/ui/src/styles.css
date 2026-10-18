@@ -554,3 +554,9 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
   background-color: var(--sb-accent);
   color: var(--sb-on-accent);
 }
+
+/* A narrow pop-out: a panel on the right fills the session view (its own width is a wider window's). */
+[data-narrow-panel] > aside {
+  width: 100% !important;
+  max-width: 100%;
+}
