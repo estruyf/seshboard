@@ -3,6 +3,7 @@ import { arrangeCommands, COMMANDS, hintOf, rememberIn, titleOf, visibleCommands
 import type { PaletteContext, PaletteGit, PaletteSession } from './paletteContext.ts';
 import { shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { APP_TERMINAL } from '../terminal/appTerminal.ts';
+import { isClassified, mainRequestFor, popoutClass } from './popoutCommands.ts';
 
 const SESSION: PaletteSession = {
   id: 's1',
@@ -24,6 +25,7 @@ const SESSION: PaletteSession = {
 /** Home, connected, nothing open: the context every test changes a little. */
 function context(over: Partial<PaletteContext> = {}): PaletteContext {
   return {
+    popout: false,
     view: 'home',
     connected: true,
     session: null,
@@ -449,5 +451,77 @@ describe('project pages and worktrees', () => {
     byId(ctx, 'branches-here')!.run!(api, ctx);
     expect(api.openProject).toHaveBeenCalledWith('/work/app', 'branches');
     expect(ids(context({ projects: [] }))).not.toContain('branches');
+  });
+});
+
+describe('in a pop-out', () => {
+  /** A pop-out: its session in the view, in a git checkout, with split view's state as the main window left it. */
+  const popout = (session: Partial<PaletteSession> = {}, over: Partial<PaletteContext> = {}) => inSession({ prompts: 2, hasReply: true, ...session }, { popout: true, git: { ...GIT, changed: 2, unstaged: 1 }, ...over });
+  const dynamic = { actions: [{ id: 'a1', name: 'Test', shortcut: null, icon: 'play' as const }], canEditActions: true, computers: [{ id: 'c1', name: 'mystic' }] };
+
+  it('has a classification for every command, and leaves out one nobody decided on', () => {
+    const unclassified = COMMANDS.map((c) => c.id).filter((id) => !isClassified(id));
+    expect(unclassified).toEqual([]);
+    // A command nobody decided on is left out rather than run on the wrong window.
+    expect(popoutClass('some-future-command')).toBe('hide');
+  });
+
+  it('keeps the commands of the session, its git checkout, terminal and actions', () => {
+    const ctx = popout({ host: { state: 'idle', contextTokens: 100, supportsEffort: true } }, { ...dynamic, terminal: { ...context().terminal, owner: 's1', cwd: '/work/app', open: true } });
+    const shown = ids(ctx);
+    expect(shown).toEqual(
+      expect.arrayContaining(['toggle-agents', 'toggle-commands', 'toggle-changes', 'toggle-terminal', 'rename-session', 'fork', 'rewind', 'compact', 'change-model', 'change-mode', 'ask-session', 'commit', 'create-pr', 'sync', 'stage-all', 'hide-terminal', 'maximize-terminal', 'action:a1', 'edit-actions', 'open-in-editor', 'close-session', 'delete-session', 'shortcuts']),
+    );
+    // Preferences apply to every window.
+    expect(shown).toEqual(expect.arrayContaining(['theme-dark', 'theme:solarized', 'notifications-off', 'focus-on']));
+  });
+
+  it("leaves out the main window's: the panes, the sidebar, Home, the window's own terminal and what New session answers", () => {
+    const ctx = popout({}, { ...dynamic, split: true, splitDirection: 'row', paneWays: ['left', 'right'], sidebar: 'closed', newSession: { canWorktree: true, canSaveDefaults: true, canQueue: true, canCatchUp: true }, unsent: 2, queue: { count: 1, readyCount: 1, firstReady: { id: 'q', prompt: 'x' } }, cloneEnabled: true });
+    const shown = ids(ctx);
+    for (const id of ['focus-other-pane', 'focus-pane-left', 'swap-panes', 'stack-panes', 'close-pane', 'close-other-panes']) expect(shown, id).not.toContain(id);
+    for (const id of ['toggle-sidebar', 'sidebar-open', 'sidebar-minimize', 'sidebar-close', 'sidebar-compact', 'home', 'open-in-new-window', 'unsent', 'queue-start-next', 'queue-pick', 'manage-projects', 'add-project', 'new-session-clone', 'new-session-worktree', 'toggle-worktree', 'save-defaults', 'catch-up', 'show-only:c1', 'new-session-on:c1', 'import-theme', 'export-settings']) {
+      expect(shown, id).not.toContain(id);
+    }
+    expect(groupIds(ctx, 'panes')).toEqual([]);
+    expect(groupIds(ctx, 'new-session')).toEqual([]);
+    // The main window's palette is not changed by any of it.
+    const main = ids({ ...ctx, popout: false });
+    for (const id of ['focus-other-pane', 'toggle-sidebar', 'unsent', 'toggle-worktree', 'new-session-clone', 'open-in-new-window']) expect(main, id).toContain(id);
+  });
+
+  it('runs what starts or finds another session in the main window', () => {
+    const ctx = popout({}, { currentProject: { root: '/work/app', name: 'app' } });
+    const shown = ids(ctx);
+    for (const id of ['new-session', 'new-session-here', 'quick-question', 'go-to-session', 'next-session', 'previous-session', 'next-needs-you', 'search', 'search-memory', 'queue-add']) {
+      expect(shown, id).toContain(id);
+      expect(popoutClass(id), id).toBe('main');
+    }
+    expect(mainRequestFor('new-session', ctx)).toEqual({ kind: 'new-session', cwd: null, worktree: false });
+    expect(mainRequestFor('new-session-here', ctx)).toEqual({ kind: 'new-session', cwd: '/work/app', worktree: false });
+    expect(mainRequestFor('quick-question', ctx)).toEqual({ kind: 'new-session', cwd: '/data/questions', worktree: false });
+    expect(mainRequestFor('go-to-session', ctx)).toEqual({ kind: 'go-to' });
+    expect(mainRequestFor('search', ctx)).toEqual({ kind: 'search', memory: false });
+    expect(mainRequestFor('search-memory', ctx)).toEqual({ kind: 'search', memory: true });
+    expect(mainRequestFor('next-session', ctx)).toEqual({ kind: 'navigate', to: 'next' });
+    expect(mainRequestFor('previous-session', ctx)).toEqual({ kind: 'navigate', to: 'previous' });
+    expect(mainRequestFor('next-needs-you', ctx)).toEqual({ kind: 'navigate', to: 'needs-you' });
+  });
+
+  it('leaves Settings, Usage and project pages to the stores, which send them to the main window', () => {
+    const ctx = popout({}, { currentProject: { root: '/work/app', name: 'app' } });
+    for (const id of ['settings', 'open-usage', 'worktrees', 'branches', 'memory', 'diagnostics', 'project:/work/app']) {
+      expect(ids(ctx), id).toContain(id);
+      expect(popoutClass(id), id).toBe('main');
+      expect(mainRequestFor(id, ctx), id).toBeNull();
+    }
+    expect(ids(ctx)).not.toContain('settings-memory');
+  });
+
+  it('classifies every command as here, main or hidden', () => {
+    const count = (kind: string) => COMMANDS.filter((c) => popoutClass(c.id) === kind).length;
+    expect(count('here') + count('main') + count('hide')).toBe(COMMANDS.length);
+    expect(count('here')).toBeGreaterThan(60);
+    expect(count('main')).toBeGreaterThan(15);
   });
 });

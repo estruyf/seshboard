@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { showInMain } from './popoutsStore.ts';
 import { useSessions } from './sessionsStore.ts';
 
 /** The tabs of a project's page, in order. */
@@ -37,6 +38,8 @@ export const useProjectPage = create<ProjectPageState>()((set) => ({
 
 /** Opens a project's page, on `tab` or the one it was last left on (Overview the first time). */
 export function openProject(root: string, tab?: ProjectTab): void {
+  // A pop-out has no project pages: the main window shows it.
+  if (showInMain({ kind: 'project', root, tab: tab ?? null })) return;
   useProjectPage.setState((s) => {
     const next = tab ?? s.lastTab.get(root) ?? 'overview';
     const lastTab = new Map(s.lastTab);
