@@ -6047,6 +6047,51 @@ async function runTerminalClearStep(win: BrowserWindow): Promise<string> {
   return 'ok: ⌘K cleared the terminal without opening the palette; ⌘⇧P opened it from there';
 }
 
+/**
+ * More terminal tabs than Chromium keeps WebGL contexts for (16), then each tab in turn: only the one on screen draws with
+ * WebGL (`data-renderer`), the hidden ones gave their context back, so the one you switch to still gets a fast renderer.
+ * Skipped where this window has no WebGL2 at all. Opens plain shells in the session's folder and closes them again.
+ */
+async function runTerminalRendererStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!(await js("!!document.createElement('canvas').getContext('webgl2')"))) return 'ok: skipped, this window has no WebGL2';
+  const tabs = "document.querySelectorAll('[data-terminal-panel] [role=tab]')";
+  const visible = "document.querySelector('[data-terminal-panel] [role=tabpanel]:not(.hidden) [data-terminal]')";
+  const webglCount = "document.querySelectorAll('[data-terminal-panel] [data-terminal][data-renderer=webgl]').length";
+  const wanted = 18;
+  let baseline = -1;
+  try {
+    if (!(await js("!!document.querySelector('[data-terminal-panel]')"))) await js("document.querySelector('[data-toggle-terminal]')?.click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-terminal-panel] [data-terminal] textarea')`, 5_000))) return 'failed: the panel did not open with a terminal';
+    baseline = (await js(`${tabs}.length`)) as number;
+    for (let count = baseline; count < wanted; count++) {
+      await js("document.querySelector('[data-terminal-panel] [data-new-terminal]').click()");
+      if (!(await waitInPage(win, `${tabs}.length === ${count + 1}`, 5_000))) return `failed: tab ${count + 1} did not open`;
+    }
+    // The newest tab is selected; each tab in turn must be drawn by WebGL while it shows, and be the only one that is.
+    const check = async (index: number) => {
+      await js(`${tabs}[${index}].click()`);
+      if (!(await waitInPage(win, `${visible}?.dataset.renderer === 'webgl' && ${webglCount} === 1`, 5_000))) {
+        return `failed: tab ${index + 1} of ${wanted} shows with the "${String(await js(`${visible}?.dataset.renderer`))}" renderer, and ${String(await js(webglCount))} terminals use WebGL`;
+      }
+      return null;
+    };
+    for (const index of [wanted - 1, 0, 8, wanted - 1, 0]) {
+      const problem = await check(index);
+      if (problem) return problem;
+    }
+    return `ok: ${wanted} tabs, and each one on screen drew with WebGL while the others held no context`;
+  } finally {
+    // Close the tabs this step opened, back to what was there (closing the last one hides the panel).
+    for (let count = (await js(`${tabs}.length`)) as number; baseline >= 0 && count > baseline; count--) {
+      await js("document.querySelector('[data-terminal-panel] [role=tab][aria-selected=true] + [data-terminal-tab-close]')?.click()");
+      await waitInPage(win, `${tabs}.length < ${count}`, 3_000);
+    }
+    // Leave the next steps a closed panel.
+    await js("document.querySelector('[data-terminal-panel]') && document.querySelector('[data-toggle-terminal]')?.click()");
+  }
+}
+
 /** The Tools window: MCP servers, skills, agents and plugins for the session's folder (a prompt-less helper answers). */
 async function runToolsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -7583,6 +7628,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('terminal panel opened a shell', () => runTerminalStep(win));
   await step('⌘K in the terminal', () => runTerminalClearStep(win));
   await step('terminal layout', () => runTerminalLayoutStep(win));
+  await step('terminal renderer: WebGL only for the tab on screen, with more tabs than contexts', () => runTerminalRendererStep(win), { timeoutMs: 60_000 });
   await step("the window's own terminal, outside a session", () => runAppTerminalStep(win));
   await step('project action added through the editor and run in a terminal tab', () => runActionStep(win));
   await step('action terminal', () => runActionTerminalStep(win));
