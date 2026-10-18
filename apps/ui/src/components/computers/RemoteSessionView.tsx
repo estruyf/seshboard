@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareCode, SquareTerminal } from 'lucide-react';
-import type { Computer, Contract, PermissionDecision, RemoteMessage, RemotePrompt, RemoteSession, RpcClient } from '@switchboard/protocol/client';
+import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { remoteRowId } from '../../state/remoteSelection.ts';
@@ -19,6 +19,11 @@ import { WorkingDots } from '../transcript/ActivityGroup.tsx';
 import { BackgroundTaskList } from '../transcript/BackgroundTaskList.tsx';
 import { backgroundSummary } from '../transcript/backgroundTasks.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
+import { tokenAtCaret } from '../composer/tokens.ts';
+import { blanksLeft, fillMessage, scopeKey, slashScore, startFill, type FillState } from '../savedPrompts/fillModel.ts';
+import { PromptFiller, type PromptFillerHandle } from '../savedPrompts/PromptFiller.tsx';
+import { engineClient, useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
+import { PromptIcon, ScopeTag } from '../savedPrompts/ScopeTag.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
@@ -438,6 +443,12 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+  const fillerRef = useRef<PromptFillerHandle>(null);
+  // Saved prompts live on this computer; the / menu lists the ones for every project (a project's belong to a folder here).
+  const { prompts: savedPrompts } = useSavedPrompts(undefined);
+  const [fillState, setFill] = useState<FillState | null>(null);
+  const [menu, setMenu] = useState<{ start: number; items: SavedPrompt[]; active: number } | null>(null);
   const connected = computer.state === 'connected';
   const name = computer.name;
   const attachments = useRemoteAttachments({ computer, rootRef: root, disabledReason: connected ? null : `${name} is not connected` });
@@ -446,10 +457,37 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   const running = session.permissionMode != null;
   const fail = (e: Error) => toast(e.message, { body: `It didn’t change on ${name}.` });
   // A prompt is always needed, as on the phone: images and files go with it.
-  const hasMessage = !!draft.trim();
+  const hasMessage = !!draft.trim() || !!fillState;
+  const left = fillState ? blanksLeft(fillState) : [];
+  const updateMenu = (value: string, caret: number) => {
+    const token = tokenAtCaret(value, caret);
+    if (!token || token.kind !== 'slash') return setMenu(null);
+    const items = savedPrompts
+      .map((prompt, order) => ({ prompt, score: slashScore(token.query.toLowerCase(), prompt.name, prompt.text), order }))
+      .filter((entry) => entry.score !== null)
+      .sort((a, b) => (token.query ? b.score! - a.score! : 0) || a.order - b.order)
+      .slice(0, 20)
+      .map(({ prompt }) => prompt);
+    setMenu(items.length ? { start: token.start, items, active: 0 } : null);
+  };
+  /** The / and what was typed after it go; the prompt goes over the box, to be filled in. */
+  const choose = (prompt: SavedPrompt) => {
+    const el = areaRef.current;
+    if (!el || !menu) return;
+    setDraft(`${draft.slice(0, menu.start)}${draft.slice(el.selectionStart).replace(/^ /, '')}`.trim());
+    setMenu(null);
+    setFill(startFill(prompt));
+    requestAnimationFrame(() => (blanksOf(prompt.text).length ? fillerRef.current?.focusBlank() : areaRef.current?.focus()));
+  };
+  const clearFill = () => {
+    setFill(null);
+    requestAnimationFrame(() => areaRef.current?.focus());
+  };
   const send = () => {
-    const text = draft.trim();
-    if (!hasMessage || sending || attachments.reading || !connected) return;
+    if (fillState && left.length) return fillerRef.current?.focusBlank(left[0]);
+    const sentFill = fillState;
+    const text = (sentFill ? fillMessage(sentFill, draft) : draft).trim();
+    if (!text || sending || attachments.reading || !connected) return;
     setSending(true);
     onSent();
     const { images, files } = attachments;
@@ -457,6 +495,8 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
       .then(
         ({ queued }) => {
           setDraft('');
+          setFill((current) => (current === sentFill ? null : current));
+          if (sentFill) void engineClient()?.call('savedPrompts.used', { id: sentFill.prompt.id, scope: sentFill.prompt.scope }).catch(() => {});
           attachments.clear();
           if (queued) toast('Added to Up next', { icon: 'queue', body: `Claude is working on ${name}. It goes next.` });
         },
@@ -465,6 +505,21 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
       .finally(() => setSending(false));
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (menu) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        return setMenu({ ...menu, active: (menu.active + step + menu.items.length) % menu.items.length });
+      }
+      if ((event.key === 'Enter' || event.key === 'Tab') && !event.nativeEvent.isComposing) {
+        event.preventDefault();
+        return choose(menu.items[menu.active]!);
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        return setMenu(null);
+      }
+    }
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       send();
@@ -477,15 +532,51 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   return (
     <div ref={root} className={`relative rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${connected ? 'border-remote/45' : 'border-border'}`} data-remote-composer>
       <DropOverlay drop={attachments.drop} />
+      {menu && (
+        <ul className="absolute right-0 bottom-full left-0 z-10 mb-2 max-h-72 overflow-y-auto rounded-lg border overlay" role="listbox" aria-label="Saved prompts" data-palette>
+          <li role="presentation" className="px-3 pt-2 pb-1 text-meta font-semibold tracking-wide text-faint uppercase" data-palette-heading>
+            Saved prompts
+          </li>
+          {menu.items.map((prompt, i) => (
+            <li
+              key={`${scopeKey(prompt.scope)}:${prompt.id}`}
+              role="option"
+              aria-selected={i === menu.active}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                choose(prompt);
+              }}
+              className={`flex w-full cursor-default items-baseline gap-3 px-3 py-1.5 text-left hover:bg-accent/10 ${i === menu.active ? 'bg-accent/15' : ''}`}
+              data-saved-prompt-option={prompt.id}
+            >
+              <PromptIcon size={12} aria-hidden className="shrink-0 self-center text-muted" />
+              <span className="shrink-0 text-ui font-semibold text-text">{prompt.name}</span>
+              <span className="min-w-0 flex-1 truncate text-meta text-muted">{promptPreview(prompt.text)}</span>
+              <ScopeTag scope={prompt.scope} projectName={name} className="self-center" />
+            </li>
+          ))}
+        </ul>
+      )}
+      {fillState && (
+        <>
+          <PromptFiller ref={fillerRef} state={fillState} onChange={setFill} projectName={name} root={null} cwd={null} disabled={!connected} onClear={clearFill} onSend={send} onLeave={() => areaRef.current?.focus()} />
+          <div aria-hidden className="my-2 border-t border-dashed border-edge" />
+        </>
+      )}
       <RemoteAttachmentList state={attachments} className="mb-2" />
       <textarea
+        ref={areaRef}
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          updateMenu(event.target.value, event.target.selectionStart);
+        }}
+        onBlur={() => setTimeout(() => setMenu(null), 100)}
         onKeyDown={onKeyDown}
         onPaste={attachments.onPaste}
         rows={1}
         disabled={!connected}
-        placeholder={placeholder}
+        placeholder={fillState ? 'Add more context… (optional, sent after the prompt)' : placeholder}
         aria-label={`Message Claude on ${name}`}
         aria-keyshortcuts={working ? formatKeys(keysFor('claude.stop')) : undefined}
         className="block field-sizing-content max-h-80 w-full min-w-0 resize-none bg-transparent text-body leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60"
