@@ -8,6 +8,7 @@ import { claim, release } from '../../lib/inFlight.ts';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff.ts';
 import { useMemoryView } from '../../state/memoryStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
+import { popoutSession } from '../../state/popoutsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -41,10 +42,13 @@ export const useChangesLayout = create<ChangesLayout>()((set) => ({
   expanded: false,
   setWidth: (width) => {
     const next = clampChangesWidth(width, window.innerWidth);
-    try {
-      localStorage.setItem(WIDTH_KEY, String(next));
-    } catch {
-      // Remembering the width is a convenience.
+    // Remembered by the main window only: a pop-out is narrower, and its clamped width would shrink the next launch's.
+    if (!popoutSession) {
+      try {
+        localStorage.setItem(WIDTH_KEY, String(next));
+      } catch {
+        // Remembering the width is a convenience.
+      }
     }
     set({ width: next });
   },

@@ -21,6 +21,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
 import { InputQueue } from './inputQueue.ts';
+import { sessionFolder } from './sessionFolder.ts';
 import { modsBridge } from './modsBridge.ts';
 import { ModsSurface, type ModsEvents } from './modsSurface.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
@@ -656,7 +657,7 @@ export class SessionHost {
       const first = this.info.state === 'starting';
       this.update({
         sessionId: init.session_id,
-        cwd: typeof init.cwd === 'string' && init.cwd ? init.cwd : this.info.cwd,
+        cwd: typeof init.cwd === 'string' && init.cwd ? sessionFolder(this.info.cwd, init.cwd) : this.info.cwd,
         model: typeof init.model === 'string' ? init.model : this.info.model,
         permissionMode: typeof init.permissionMode === 'string' ? (init.permissionMode as PermissionMode) : this.info.permissionMode,
         state: first ? 'idle' : this.info.state,
