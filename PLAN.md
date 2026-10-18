@@ -269,6 +269,15 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - **Never a project:** `projects.list` leaves the folder out, and `projects.add`, `rename`, `setIcon`, `setProfile` and `setDefaults` refuse it (INVALID). `session.create` refuses a worktree or branch there.
 - **UI:** the projects store adds an entry for the folder named *Questions* (never `added`, no session count), so every place that names a session's folder says Questions and no project list shows it. Pure helpers in `apps/ui/src/lib/questions.ts` (is this the folder, which options apply, the choices remembered for questions in `newSession.questionDefaults`, never a mode that skips prompts). New session (*Quick question* under the tiles, ⌘⇧N), the palette's *Quick question…* prompt step and `question=1` links all start through `startNewSession`. No git, project actions or Changes in the session view; the terminal works in the folder.
 
+### 5.11 Session linking
+
+Mention another session with `@` in the message box, and Claude gets a brief about it: folder, branch, pull request, what it did and its last reply. The case that drives it: "stack the PR on top of the one you opened in @Usage cost toggle". Design in [docs/session-linking.md](docs/session-linking.md).
+
+- **Phase 1:** a Sessions group in the `@` list, the label kept in the text and a `session` chip; the engine expands the chip's stub into the brief right before Claude reads it; links and the PRs a session opened are stored (`session_links`, `session_prs`); the transcript shows a **Linked:** row.
+- **Phase 2:** New worktree from a linked session's branch, **Builds on …** in the session header, the stacked base in Create pull request.
+- **Phase 3:** `ask_session`, an in-process tool that asks a linked session through a read-only fork.
+- **Phase 4:** a stack view.
+
 ### v0.2: power features
 - ✅ **Embedded terminal** per session (xterm.js on node-pty), plus a raw `claude` TUI tab for anything the GUI doesn't cover (including mods). Built ahead of schedule; project actions will reuse it.
 - **Diff panel:** the session's git diff against its starting point, with stage, revert and **rewind to message** (`rewindFiles`).
