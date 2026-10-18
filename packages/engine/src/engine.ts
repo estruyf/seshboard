@@ -2294,7 +2294,9 @@ export function createEngine(options: EngineOptions): Engine {
     'terminal.list': () => ({ terminals: terminals.list() }),
     'terminal.font': () => {
       const font = detectTerminalFont();
-      return { fontFamily: font?.fontFamily ?? null, source: font?.source ?? null };
+      const fontFamilies = font?.fontFamilies ?? [];
+      // `fontFamily` (the first name) is for an older window that talks to this engine from another computer.
+      return { fontFamily: fontFamilies[0] ?? null, fontFamilies, source: font?.source ?? null };
     },
     'terminal.attach': ({ id }, context) => {
       const result = terminals.replay(id);
