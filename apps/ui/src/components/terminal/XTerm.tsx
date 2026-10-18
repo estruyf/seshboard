@@ -9,6 +9,7 @@ import { useThemes } from '../../state/themeStore.ts';
 import { appKeyInTerminal, matches } from '../../lib/shortcuts.ts';
 import { currentPlatform } from '../../lib/platform.ts';
 import { releaseWebglContexts } from './releaseWebgl.ts';
+import { mayUseWebgl, NO_LOSSES, recordLoss } from './webglPolicy.ts';
 
 /** Fallbacks after the user's own terminal font: system monospace, then common Nerd Fonts for prompt glyphs. */
 const FALLBACK_FONTS = '"SF Mono", ui-monospace, Menlo, "Symbols Nerd Font Mono", "MesloLGS NF", "Hack Nerd Font Mono", "JetBrainsMono Nerd Font Mono", monospace';
@@ -70,13 +71,48 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon((_event, uri) => window.open(uri, '_blank')));
     term.open(host);
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      term.loadAddon(webgl);
-    } catch {
-      // The DOM renderer is fine; WebGL is just faster.
-    }
+    host.dataset.renderer = 'dom';
+
+    // WebGL only while the terminal is on screen. Every tab stays mounted, and each WebGL context counts against
+    // Chromium's limit of 16 live ones: past it the oldest is dropped and that terminal would stay on the slower DOM
+    // renderer for good. A hidden terminal draws nothing, so it gives its context back and asks for a new one when it shows.
+    let webgl: WebglAddon | null = null;
+    let webglHistory = NO_LOSSES;
+    const unloadWebgl = () => {
+      if (!webgl) return;
+      const addon = webgl;
+      webgl = null;
+      // Disposing takes the canvases out of the host but leaves their contexts alive until garbage collection; free
+      // them right after (the canvases are collected first, they are gone from the host afterwards).
+      const canvases = [...host.querySelectorAll('canvas')];
+      addon.dispose();
+      releaseWebglContexts(canvases);
+      host.dataset.renderer = 'dom';
+    };
+    const loadWebgl = () => {
+      if (webgl || !mayUseWebgl(webglHistory)) return;
+      let addon: WebglAddon | undefined;
+      try {
+        addon = new WebglAddon();
+        const loaded = addon;
+        // After a loss the terminal draws with the DOM renderer until it shows again, then tries once more (a few times at most).
+        loaded.onContextLoss(() => {
+          if (webgl !== loaded) return;
+          webglHistory = recordLoss(webglHistory, Date.now());
+          unloadWebgl();
+        });
+        term.loadAddon(loaded);
+        webgl = loaded;
+        host.dataset.renderer = 'webgl';
+      } catch {
+        // The DOM renderer is fine; WebGL is just faster. Counted like a loss, so a failing driver isn't tried on every show.
+        webglHistory = recordLoss(webglHistory, Date.now());
+        addon?.dispose();
+      }
+    };
+    // A terminal that is on screen now loads WebGL right away; one that mounts hidden waits for the size observer below.
+    let hidden = !host.offsetParent;
+    if (!hidden) loadWebgl();
     termRef.current = term;
     fitRef.current = fit;
 
@@ -147,8 +183,20 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
     // Follow the panel's size; tell the process its new dimensions (debounced while dragging).
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     const observer = new ResizeObserver(() => {
-      if (!host.offsetParent) return;
+      if (!host.offsetParent) {
+        hidden = true;
+        unloadWebgl();
+        return;
+      }
       fit.fit();
+      // Without WebGL (it was given up, or its context was lost), xterm draws rows as text, spaced to fit each letter's
+      // measured width. Rows drawn while the terminal was hidden (another tab, the panel closed) measured 0px letters
+      // and came out spread wide; draw them all again now that letters measure. WebGL comes back first, after the fit.
+      if (hidden) {
+        hidden = false;
+        loadWebgl();
+        term.refresh(0, term.rows - 1);
+      }
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => void client.call('terminal.resize', { id, cols: term.cols, rows: term.rows }).catch(() => {}), 80);
     });
@@ -170,6 +218,7 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
       // Disposing takes the WebGL canvas out of the host but leaves its context alive until garbage collection;
       // free it right after, or toggling the terminal fast runs into Chromium's limit on live contexts.
       const canvases = [...host.querySelectorAll('canvas')];
+      webgl = null;
       term.dispose();
       releaseWebglContexts(canvases);
       termRef.current = null;
