@@ -146,9 +146,20 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
 
     // Follow the panel's size; tell the process its new dimensions (debounced while dragging).
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    let hidden = !host.offsetParent;
     const observer = new ResizeObserver(() => {
-      if (!host.offsetParent) return;
+      if (!host.offsetParent) {
+        hidden = true;
+        return;
+      }
       fit.fit();
+      // Without WebGL (it failed, or its context was lost), xterm draws rows as text, spaced to fit each letter's
+      // measured width. Rows drawn while the terminal was hidden (another tab, the panel closed) measured 0px letters
+      // and came out spread wide; draw them all again now that letters measure.
+      if (hidden) {
+        hidden = false;
+        term.refresh(0, term.rows - 1);
+      }
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => void client.call('terminal.resize', { id, cols: term.cols, rows: term.rows }).catch(() => {}), 80);
     });

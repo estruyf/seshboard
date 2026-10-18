@@ -12,6 +12,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Up next in the remote app stays right after the phone was away.** A message you added to Up next from your phone stayed there after Claude had sent it, and tapping its × did nothing, when the phone was locked or offline at the time. Opening a session now shows its Up next as it is on the computer, and removing a message that was already sent clears it. Opening a session also shows what you queued for it on the computer.
 - **The remote app keeps what you typed and didn't send.** A message you started in a session's message box was gone when you opened another session and came back. Each session now keeps its own draft, as New session does, also after a reload, until you send it.
+- **Text in the terminal no longer spreads out with wide gaps between letters.** Output that arrived while a terminal tab was in the background, or while the terminal was closed, could show with every letter far apart once you came back to it. The terminal now draws it again when it shows.
 
 ## [0.0.23] - 2026-10-17
 
