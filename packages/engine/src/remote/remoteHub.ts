@@ -141,6 +141,8 @@ export interface RemoteHubOptions {
   watchTranscript(sessionId: string, listener: (update: TranscriptUpdate) => void): () => void;
   send(sessionId: string, text: string, mode: SendMode, images: RemoteImage[]): Promise<{ messageUuid: string; queued: boolean }>;
   dequeue(sessionId: string, id: string): void;
+  /** A session's Up next as it is now, for a phone that starts watching it (it may have missed changes while away). */
+  upNext(sessionId: string): QueuedMessage[];
   interrupt(sessionId: string): Promise<void>;
   /** Stops one of a running session's background tasks. */
   stopTask(sessionId: string, taskId: string): Promise<void>;
@@ -667,6 +669,7 @@ export class RemoteHub {
           phone.emit('transcript.updated', { sessionId, mode: update.mode, messages: toRemote(sessionId, update.messages) });
         });
         this.watches.set(phone, { sessionId, stop });
+        phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });
         return {};
       },
       'transcript.unwatch': ({ sessionId }, phone) => {
@@ -681,9 +684,11 @@ export class RemoteHub {
         this.options.onFromDevice?.({ sessionId, messageUuid: sent.queued ? null : sent.messageUuid, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return { queued: sent.queued };
       },
-      'session.queue.remove': ({ sessionId, id }) => {
+      'session.queue.remove': ({ sessionId, id }, phone) => {
         this.checkSession(sessionId);
         this.options.dequeue(sessionId, id);
+        // Already sent while this phone was away: nothing changed, so no update comes; this one sets its list right.
+        phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });
         return {};
       },
       'session.interrupt': async ({ sessionId }) => {

@@ -5,10 +5,11 @@ description: See every file Claude Code reads at the start of a session in a pro
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-**What loads in a session here** shows every file Claude Code reads when a session starts in a project, in the order it reads them and how big each one is. It also shows the part of <Pill tone="memory">MEMORY.md</Pill> that doesn't load.
+When Claude seems to miss something you wrote down for it, check here whether it loads at all. **What loads in a session here** shows every file Claude Code reads when a session starts in a project, in the order it reads them and how big each one is. It also shows the part of <Pill tone="memory">MEMORY.md</Pill> that doesn't load.
 
 <Screenshot name="memory-load-order" alt="The What loads in a session here card: a bar split by file, and a legend with the profile's CLAUDE.md, the project's CLAUDE.md, rules, MEMORY.md with its loaded lines, and the lines not loaded in red stripes" eager />
 
@@ -64,3 +65,7 @@ Your [personal memory](/memory/personal-memory/) loads through an import line in
 ## Settings
 
 The card has no settings. To load your personal memory in every project, use **Add to Claude Code…** in [Settings › Memory](/settings/#memory).
+
+## Related
+
+<Related pages={['memory/health', 'memory/personal-memory', 'projects/memory', 'settings/claude-profiles']} />

@@ -1,26 +1,81 @@
 ---
 /**
  * The one-minute promo video, straight from docs/videos (rendered by promo/, `npm run web`), so a new cut
- * shows up here without copying it. Nothing loads until someone presses play, apart from the poster.
+ * shows up here without copying it. Nothing loads until someone presses play, apart from the poster. The poster
+ * is a frame from the Home scene (at 0:07), not the title card, so it doesn't repeat the hero above it; take a
+ * new frame when the cut changes.
  */
 import { getImage } from 'astro:assets';
-import poster from '../../../docs/videos/promo-poster.png';
+import poster from '../assets/promo-poster-home.png';
 import video from '../../../docs/videos/promo-720p.mp4?url';
 
 const posterImage = await getImage({ src: poster, width: 1280, format: 'webp' });
 ---
 
 <figure class="sb-promo not-content">
-  <video controls preload="none" playsinline width="1280" height="720" poster={posterImage.src} aria-label="A one-minute tour of Switchboard">
-    <source src={video} type="video/mp4" />
-    <a href={video}>Watch the one-minute tour</a>
-  </video>
+  <div class="sb-promo-frame">
+    <video controls preload="none" playsinline width="1280" height="720" poster={posterImage.src} aria-label="A one-minute tour of Switchboard">
+      <source src={video} type="video/mp4" />
+      <a href={video}>Watch the one-minute tour</a>
+    </video>
+    <button type="button" class="sb-promo-play" aria-label="Play the one-minute tour">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7Z" /></svg>
+      <span>Play the tour</span>
+    </button>
+  </div>
   <figcaption>
     A one-minute tour: Home, Claude profiles, a project's page and worktrees, the VS Code companion, split view, Changes, the command palette and search.
   </figcaption>
 </figure>
 
+<script>
+  // A big Play over the poster; the video's own controls take over once it plays.
+  document.querySelectorAll<HTMLElement>('.sb-promo-frame').forEach((frame) => {
+    const video = frame.querySelector('video')!;
+    const play = frame.querySelector<HTMLButtonElement>('.sb-promo-play')!;
+    play.addEventListener('click', () => {
+      void video.play();
+    });
+    video.addEventListener('play', () => frame.classList.add('playing'));
+  });
+</script>
+
 <style>
+  .sb-promo-frame {
+    position: relative;
+  }
+  .sb-promo-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    height: 3.25rem;
+    padding: 0 1.4rem 0 1.1rem;
+    transform: translate(-50%, -50%);
+    border: 0;
+    border-radius: 999px;
+    background: var(--sb-accent);
+    color: var(--sb-on-accent);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+    font: inherit;
+    font-size: var(--sb-text-body);
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .sb-promo-play:hover {
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+  .sb-promo-play svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+  .playing .sb-promo-play {
+    display: none;
+  }
   .sb-promo {
     max-width: 960px;
     margin: 0 auto;

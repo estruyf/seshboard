@@ -6,6 +6,7 @@ description: Edit a memory, write a new one, or save part of a conversation as m
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -95,3 +96,7 @@ Files that only load, such as your profile's `CLAUDE.md` or an imported file, op
 ## Settings
 
 Where new personal memories go is set in [Settings › Memory](/settings/#memory). Nothing else changes the editor.
+
+## Related
+
+<Related pages={['memory/links-and-search', 'memory/share-with-the-team', 'sessions/conversation', 'memory/health']} />

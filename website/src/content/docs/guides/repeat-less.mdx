@@ -1,0 +1,80 @@
+---
+title: Type the same thing less
+description: Turn the prompts, commands and choices you repeat into saved prompts, buttons, links and defaults, so a new session takes a click or a key.
+sidebar:
+  label: Type less
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
+import Related from '../../../components/Related.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Many sessions start the same way: "Fix pull request 142", run the tests, pick a model, choose a worktree. Each of those can be one click or one key. At the end of this guide your common prompts have blanks to fill in, your commands are buttons, and new sessions start with the right choices by themselves.
+
+## Save the prompts you keep writing
+
+<Steps>
+
+1. Open **Settings**, then **Prompts**, and click **New prompt**. Or run *New saved prompt…* in the command palette.
+2. Give it a name, and choose where it shows under **Use in**.
+3. Write the prompt. Click **Add blank**, or type `{{`, for a GitHub issue, pull request, branch, choice, text or file blank.
+4. Click **Save**.
+
+</Steps>
+
+To use it, type <Kbd shortcut="composer.commands" /> in any message box and pick it. Each blank is a chip: fill it in, and press <Kbd shortcut="composer.next-blank" /> for the next one. A pull request blank lists the project's open pull requests. New session also shows the prompts you use most as chips above the message box. See [Saved prompts](/sessions/saved-prompts/).
+
+<Screenshot name="saved-prompt-fill" width={760} alt="New session with a saved prompt in the message box: the issue and branch blanks filled in, one blank still empty, and 1 blank left next to Start" />
+
+A message you already sent can become one too: right-click it and choose **Save as prompt…**. Click an issue link, a branch name or a file path in it to turn it into a blank.
+
+## Turn commands into buttons
+
+A project action either runs a command in a terminal tab or asks Claude something. Click the dashed **Add action** pill above the message box, or run *New action…*. Pick a suggestion, such as a script from your `package.json`, or fill in your own, then click **Save**. The first three actions show as pills above the message box.
+
+Click **Set** next to **Shortcut** to give an action its own keys. For *Test* or *Lint*, turn on **Send the output to Claude when it finishes**, and Claude gets the result without you pasting it. See [Project actions](/projects/actions/).
+
+### Set up each worktree, and share with the team
+
+Turn on **Run when a new worktree is created** for setup such as `npm install`. It runs before Claude starts in each new worktree. See [Run in every new worktree](/projects/actions/#run-in-every-new-worktree).
+
+Set **Saved for** to **Shared with the project**, and the action goes in the project's `.switchboard.json`. Commit the file, and everyone on the project gets it. A saved prompt set to **&lt;project&gt;, shared with the project** goes in the same file. See [Share actions with your team](/projects/actions/#share-actions-with-your-team).
+
+## Start sessions from outside the app
+
+A `switchboard://` link opens New session with the project and prompt filled in:
+
+```text
+switchboard://new-session?repo=acme/payments&prompt=Review%20the%20open%20pull%20requests
+```
+
+`repo` finds the checkout wherever each person cloned it, so one link works for a whole team. Put it in a README or a runbook, open it from a shell with <Os mac="open" windows="Start-Process" />, or from a launcher.
+
+<OnlyOn os="mac">
+[Raycast (Mac)](/links/#raycast-mac) has a script that asks for a project and a prompt.
+</OnlyOn>
+
+A link only fills in New session: you read the prompt and press Start, unless the link says `autostart=1`. See [Links](/links/).
+
+## Do it from the keyboard
+
+<Kbd shortcut="palette.commands" /> opens the command palette. Type `+` to start a new session in a project, or `!` to run one of the session's project actions. *Use saved prompt…* picks a saved prompt. Each row shows its shortcut, so the palette teaches you the keys as you go. See [Command palette](/command-palette/).
+
+## Stop picking a model each time
+
+Choose **Auto** at the top of the model menu. Haiku reads your first prompt and picks Haiku, Sonnet or Opus for the session, once, when it starts. The chip then says what it picked, such as **Auto · Sonnet**. See [Auto model](/new-session/auto-model/).
+
+## Save your choices as project defaults
+
+Set the model, effort, mode and worktree in New session, then press **Save as project default** in the **Where** menu. Or set them on the project's **Settings** tab, where **Model** can be **Auto** too. Every new session in the project starts from them. See [Project settings](/projects/settings/).
+
+<Aside type="tip">
+A link can't set the model, effort, mode or worktree. It uses the project's defaults, so set those once and every link to the project follows them.
+</Aside>
+
+## Related
+
+<Related pages={['keyboard-shortcuts', 'new-session/queue', 'guides/parallel-sessions']} />

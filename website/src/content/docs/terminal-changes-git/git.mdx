@@ -7,8 +7,9 @@ import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-A session in a git repository shows its branch in the header, and a **git button** that offers the next step for the branch: pull, commit, push, create a pull request, or fetch. Its menu has every step, plus switching branch and starting a worktree. Fetch, pull and push run in a [terminal](/terminal-changes-git/terminal/) tab, so you see their output. A pull request is created in a dialog, without a browser.
+Take a session's work from changed files to a pull request without leaving the session. A session in a git repository shows its branch in the header, and a **git button** that offers the next step for the branch: pull, commit, push, create a pull request, or fetch. Its menu has every step, plus switching branch and starting a worktree. Fetch, pull and push run in a [terminal](/terminal-changes-git/terminal/) tab, so you see their output. A pull request is created in a dialog, without a browser.
 
 <Screenshot name="git-menu" alt="A session header with the git button's menu open: the branch with how far it is behind and ahead and how many files changed, then Pull, Fetch, Commit, Ask Claude to commit, Push, Create PR, Switch branch and New worktree" eager />
 
@@ -180,3 +181,7 @@ To see and clean up all of a project's worktrees at once, use the [Worktrees tab
 Git has no settings in Switchboard. It uses your own git configuration, credentials and environment (your login shell's on a Mac, the one Windows gives apps on a PC), so ssh keys and credential helpers work as in your terminal.
 
 On Windows, Switchboard needs [Git for Windows](https://gitforwindows.org). It runs git with `core.longpaths` on, so files whose full path is longer than 260 characters, common in deep worktree folders, still show in [Changes](/terminal-changes-git/changes/). **Create PR** runs git and `gh` directly, without a shell, so it works the same with Windows PowerShell 5.1 and PowerShell 7. A project's default branch for new sessions is on its [Settings tab](/projects/settings/).
+
+## Related
+
+<Related pages={['terminal-changes-git/changes', 'new-session/worktrees', 'projects/branches', 'projects/worktrees']} />

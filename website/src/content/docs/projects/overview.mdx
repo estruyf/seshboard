@@ -7,10 +7,11 @@ sidebar:
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-The **Overview** tab is the first tab of a project's page. It sums up the project in a few cards: its sessions, worktrees, branches, memory, queue and git. Click a card to open the tab with the details.
+Open the **Overview** tab to see how a project is doing at a glance: what needs you, what can be cleaned up, and how full its memory is. It is the first tab of a project's page, and it sums up the project in a few cards: its sessions, worktrees, branches, memory, queue and git. Click a card to open the tab with the details.
 
 <Screenshot name="project-overview" alt="The Overview tab of acme-store: cards for Sessions, Worktrees, Branches, Memory and Git, each with a one-line summary" eager />
 
@@ -40,3 +41,7 @@ Sizes on disk are measured in the background. The Worktrees card shows the total
 ## Settings
 
 Nothing changes the Overview itself. A project's defaults for new sessions are on its [Settings tab](/projects/settings/).
+
+## Related
+
+<Related pages={['projects/worktrees', 'projects/branches', 'memory/what-loads', 'new-session/queue']} />

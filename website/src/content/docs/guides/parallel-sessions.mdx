@@ -1,0 +1,71 @@
+---
+title: Run several sessions at once
+description: Start a few tasks side by side without them editing the same files, and always know which one needs you next.
+sidebar:
+  label: Run sessions in parallel
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import Related from '../../../components/Related.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+You have three things to do in one project: a bug, a small feature and a test cleanup. Claude can work on all three at once, as long as each one has its own checkout and you know which one to look at. At the end of this guide, each task runs in its own worktree, the ones that have to wait sit in the queue, and one key takes you to whatever needs you.
+
+## Give each task its own worktree
+
+<Steps>
+
+1. Open New session (<Kbd shortcut="session.new" />) and pick the project.
+2. Flip the **Worktree** switch at the right of the route strip, or pick **New worktree** in the **Where** menu.
+3. Write the prompt and press **Start** (<Kbd shortcut="new-session.start" />).
+4. Do the same for the next task. Each new worktree gets a made-up name and a branch of its own.
+
+</Steps>
+
+Claude works in a copy under `.claude/worktrees/`, and your own checkout stays untouched. To start every session of a project this way, choose **New worktree** and press **Save as project default** in the **Where** menu. See [Worktrees](/new-session/worktrees/).
+
+<Screenshot name="new-session-worktree" alt="New session with New worktree chosen as the route: the strip shows the project, New worktree and the branch it starts from" />
+
+<Aside type="tip">
+A fresh worktree has no installed dependencies. Turn on **Run when a new worktree is created** on a project action such as `npm install`, and it runs before Claude starts. See [Run in every new worktree](/projects/actions/#run-in-every-new-worktree).
+</Aside>
+
+## Queue what has to wait
+
+Some tasks have to wait for another one to finish. In New session, choose **Add to queue** in Start's ▾ menu, or press <Kbd shortcut="new-session.queue" />. The prompt is kept with its project and choices.
+
+**Wait for…** sets when an item is ready: **Any session in this project** (the default), one session, **The item above it**, or **Nothing (start it myself)**. The queue never starts anything by itself. A ready item gets a light green tint and a **Start** button, and a message such as "acme-store is free" offers **Start it** or **Review first**. See [Queue](/new-session/queue/).
+
+## Let the sidebar tell you
+
+The sidebar puts **Needs you** at the top, then **Working**, then the **Queue**. A pink rail means Claude waits for a permission, a question or a plan; yellow means it is working; blue means it finished and you haven't read it. See [The sidebar](/sessions/sidebar/) and [Session states](/sessions/states/).
+
+You don't have to watch it. A notification tells you when a session needs you, finishes or fails, and <Os mac="the Dock badge counts the sessions that wait for you" windows="a pink dot on the taskbar button says sessions wait for you" />. See [Notifications and the badge](/sessions/states/#notifications-and-the-badge).
+
+## Jump to the next one that needs you
+
+Press <Kbd shortcut="session.next-needs-you" /> from anywhere. It goes to the sessions that wait for you first, then to finished ones you haven't read, the quickest to review first, and wraps around. Answer, then press it again. **Quickest to unblock** at the top of the sidebar sorts the whole list the same way. See [Quickest to unblock](/sessions/catch-up/#quickest-to-unblock).
+
+## Keep two in view
+
+To follow one session while you work in another, press <Kbd shortcut="sidebar.open-beside" /> on a session in the sidebar, or right-click it and choose **Open beside**. Keyboard shortcuts work on the active pane, the one with a yellow line along the top. See [Split view](/sessions/split-view/).
+
+For a second screen, press <Kbd shortcut="session.new-window" /> or click **Open in new window** in the session's header. That window shows the conversation, the message box and Claude's questions. See [Sessions in their own window](/sessions/own-window/).
+
+## Set a limit
+
+Turn on the **Focus limit** switch in [Settings › Focus](/settings/#focus) and pick **Sessions at the same time** (3 to start with). A session counts while it is working, needs you or is unread, and a counter at the bottom of the sidebar shows `2 / 3`.
+
+At the limit, Start asks first ("Start a 4th session?") with **Add to queue**, **Start anyway** and **Cancel**. The new idea waits in the queue instead of in your head. See [Focus limit](/focus-limit/).
+
+## Clean up when you're done
+
+In a session that runs in a worktree, click `worktree · <branch>` in its header, or run *Finish worktree…*, then choose **Merge into &lt;base&gt;…** or **Remove worktree…**.
+
+For whatever is left, open the project's **Worktrees** tab. It lists every worktree with its size on disk, suggests which ones can go, and removes several at once. *Clean up worktrees in &lt;project&gt;…* in the command palette goes straight to the confirmation. See [Worktrees tab](/projects/worktrees/).
+
+## Related
+
+<Related pages={['guides/review-fast', 'sessions/home', 'guides/from-your-phone']} />

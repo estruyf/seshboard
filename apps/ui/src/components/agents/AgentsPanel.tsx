@@ -33,13 +33,12 @@ interface AgentsPanelProps {
 }
 
 function StateIcon({ run }: { run: AgentRun }) {
-  const failed = run.item.result?.isError ?? false;
   if (run.running) return <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-accent-ink/25 border-t-accent-ink" aria-hidden />;
-  if (failed) return <CircleAlert size={13} className="shrink-0 text-error" aria-hidden />;
+  if (run.failed) return <CircleAlert size={13} className="shrink-0 text-error" aria-hidden />;
   return <span className="size-2 shrink-0 rounded-full bg-ok" aria-hidden />;
 }
 
-const stateWord = (run: AgentRun) => (run.running ? 'Running' : run.item.result?.isError ? 'Failed' : 'Finished');
+const stateWord = (run: AgentRun) => (run.running ? 'Running' : run.failed ? 'Failed' : 'Finished');
 
 /** A background agent's call returns at once and its own run ends with its report, which we don't time. */
 const endOf = (run: AgentRun, now: number) => (run.running ? now : run.background ? null : (run.item.result?.at ?? null));

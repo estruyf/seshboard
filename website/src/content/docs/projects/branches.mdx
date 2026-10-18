@@ -7,10 +7,11 @@ sidebar:
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-The **Branches** tab of a project's page has one row per branch, here and on the remote. It says which ones are merged or deleted on the remote, switches the project to another branch, and deletes the ones you pick: the local copy, the one on the remote, or both.
+After a few merged pull requests, old branches pile up, here and on the remote. The **Branches** tab of a project's page has one row per branch, here and on the remote. It says which ones are merged or deleted on the remote, switches the project to another branch, and deletes the ones you pick: the local copy, the one on the remote, or both.
 
 <Screenshot name="project-branches" alt="The Branches tab of acme-store: a summary strip with local branches, branches on origin, safe to delete and deleted on the remote, then a filter field and a table grouped into In use, Safe to delete, Deleted on the remote and Active" eager />
 
@@ -115,3 +116,7 @@ Switchboard never deletes:
 ## Settings
 
 There are no settings for this tab. To switch the branch from a session, see [Git](/terminal-changes-git/git/#switch-branch).
+
+## Related
+
+<Related pages={['projects/worktrees', 'terminal-changes-git/git', 'terminal-changes-git/changes', 'projects/overview']} />

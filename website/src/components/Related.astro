@@ -1,0 +1,17 @@
+---
+/**
+ * The pages to read next, at the end of a docs page, under a `## Related` heading written in the page (so it is in
+ * the table of contents): `<Related pages={['sessions/ask', 'focus-limit']} />`. Titles and descriptions come from
+ * each page's frontmatter, so they never go stale, and the build fails on a slug that has no page.
+ */
+import { pageCard } from '../lib/docsPages.ts';
+import PageCards from './PageCards.astro';
+
+interface Props {
+  /** Page slugs as the sidebar writes them: `sessions/ask`, `settings`, `keyboard-shortcuts`. */
+  pages: string[];
+}
+const cards = await Promise.all(Astro.props.pages.map(pageCard));
+---
+
+<PageCards pages={cards} />

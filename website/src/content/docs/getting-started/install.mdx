@@ -9,9 +9,10 @@ import Kbd from '../../../components/Kbd.astro';
 import OnlyOn from '../../../components/OnlyOn.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
+import Related from '../../../components/Related.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Switchboard is a desktop app for macOS and Windows for running and keeping track of your Claude Code sessions. It uses the Claude Code you already have, with your own login, settings, commands and skills, so there is nothing extra to sign in to.
+Switchboard is a desktop app for macOS and Windows for running and keeping track of your Claude Code sessions: you see which one works, which one waits for you and what each one changed. It uses the Claude Code you already have, with your own login, settings, commands and skills, so there is nothing extra to sign in to.
 
 <Screenshot name="main-window" alt="Switchboard on a Mac with a finished session open: the sidebar with Needs you and Working groups on the left, the conversation in the middle and the Changes panel with a diff on the right" eager />
 
@@ -149,3 +150,8 @@ The update checks and the update channel are in [Settings, About](/settings/#abo
 - [First launch](/getting-started/first-launch/): what you see when Switchboard opens.
 - [Your first session](/getting-started/first-session/): start Claude on a project.
 - [Switchboard on Windows](/getting-started/windows/): what is different on a Windows PC.
+- [Things to try next](/getting-started/next-steps/): features that are easy to miss, once your first session runs.
+
+## Related
+
+<Related pages={['settings/updates', 'settings/backup', 'troubleshooting', 'features']} />
