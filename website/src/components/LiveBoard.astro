@@ -230,7 +230,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
       </span>
     </div>
 
-    <svg class="lb-cursor" data-cursor viewBox="0 0 24 24"><path d="M5 3v16.5l4.6-4.4 3 6.4 2.8-1.3-3-6.3H19Z" /></svg>
+    <span class="lb-cursor" data-cursor><svg viewBox="0 0 24 24"><path d="M5 3v16.5l4.6-4.4 3 6.4 2.8-1.3-3-6.3H19Z" /></svg></span>
   </div>
 </div>
 
@@ -252,7 +252,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     const win = root.querySelector<HTMLElement>('.lb-window')!;
     const list = root.querySelector<HTMLElement>('.lb-list')!;
     const main = root.querySelector<HTMLElement>('.lb-main')!;
-    const cursor = root.querySelector<SVGElement>('[data-cursor]')!;
+    const cursor = root.querySelector<HTMLElement>('[data-cursor]')!;
     const toast = root.querySelector<HTMLElement>('[data-toast]')!;
     const pulses = root.querySelector<SVGGElement>('.lb-pulses')!;
     const cords = [...root.querySelectorAll<SVGPathElement>('.lb-cords path')];
@@ -361,7 +361,9 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
       cursor.style.opacity = '1';
       cursor.style.transform = `translate(${at.left - box.left + at.width * 0.5}px, ${at.top - box.top + at.height * 0.45}px)`;
       await wait(950);
-      cursor.animate([{ scale: 1 }, { scale: 0.82 }, { scale: 1 }], { duration: 220, transformOrigin: 'top left' } as KeyframeAnimationOptions);
+      // The press shrinks the arrow inside, around its tip. Scaling the outer element would scale its translate too
+      // and throw the pointer towards the window's corner for a moment.
+      cursor.firstElementChild!.animate([{ transform: 'scale(1)' }, { transform: 'scale(0.82)' }, { transform: 'scale(1)' }], { duration: 220, easing: 'ease-out' });
       target.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(0.82)' }, { filter: 'brightness(1)' }], { duration: 240 });
       await wait(260);
     }
@@ -1234,6 +1236,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     color: var(--sb-muted);
   }
 
+  /* The pointer: the outer element moves (its transform glides), the arrow inside is what a click presses. */
   .lb-cursor {
     position: absolute;
     top: 0;
@@ -1241,15 +1244,22 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     width: 22px;
     height: 22px;
     opacity: 0;
-    fill: #fff !important;
-    stroke: #15181f !important;
-    stroke-width: 1.4 !important;
-    filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.4));
     transition:
       transform 0.9s cubic-bezier(0.45, 0, 0.2, 1),
       opacity 0.3s;
     pointer-events: none;
     z-index: 5;
+  }
+  .lb-cursor svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: #fff !important;
+    stroke: #15181f !important;
+    stroke-width: 1.4 !important;
+    filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.4));
+    /* The arrow's tip (5, 3 in its 24 by 24 box). */
+    transform-origin: 21% 13%;
   }
 
   @keyframes lb-spin {
