@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { House, MoreHorizontal, Plus, Search, X } from 'lucide-react';
-import { REMOTE_FEATURE_MARK_UNREAD, type RemotePrompt, type RemoteSession, type RemoteSessions } from '@switchboard/protocol/remote-client';
+import { REMOTE_FEATURE_MARK_UNREAD } from '@switchboard/protocol/remote-client';
 import type { ConnectionState } from '../lib/connection.ts';
+import type { ListedPrompt, ListedSession, ListedSessions } from '../lib/everywhere.ts';
 import { filterCounts, filterList, matchesSearch, visibleFilter, type ListFilter } from '../lib/filter.ts';
 import { SLOP } from '../lib/gesture.ts';
 import { age, GROUP_LABEL, groupSessions, shortHeadline, type SessionGroup } from '../lib/groups.ts';
@@ -17,7 +18,7 @@ import { PullToRefresh } from './PullToRefresh.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
 import { toast } from './Toasts.tsx';
 import { useLeaving } from './useLeaving.ts';
-import { Button, Kbd, Logo, PROFILE_RAIL, SectionHeader, STATUS_RAIL, StatusDot } from './ui.tsx';
+import { Button, ComputerTag, Kbd, Logo, PROFILE_RAIL, SectionHeader, STATUS_RAIL, StatusDot } from './ui.tsx';
 
 const GROUP_TONE: Record<SessionGroup, string> = {
   'needs-you': 'text-warn',
@@ -62,9 +63,20 @@ export function useNow(): number {
  */
 export type ListMode = 'phone' | 'sidebar' | 'drawer';
 
+/** What the list needs of a session's computer: its connection, what it takes beyond every version, and its name. */
+export interface ListComputer {
+  client: Client;
+  features: readonly string[];
+  name: string;
+  /** Connected: a computer that isn't keeps its last rows, dimmed. */
+  online: boolean;
+}
+
 /**
- * The sessions: a header with the computer chip (on a phone, the large title), then the list. New session is a bar at the bottom. Offline (or
- * disconnected), the last list stays, greyed out, and what needs the connection is off.
+ * The sessions of every paired computer, in one list: a header with the computer chip (on a phone, the large title),
+ * then the list. With more than one computer, a strip of their chips takes the chip's place, and each row says which
+ * computer it runs on. New session is a bar at the bottom. Offline (or disconnected), the last list stays, greyed out,
+ * and what needs the connection is off; with more than one computer, only the rows of the one that is away.
  *
  * A row's menu (a long press, a right-click, Shift+F10, or the row's own menu button for screen readers) has Mark as
  * read and Archive, as the session's own `⋯` menu does.
@@ -74,9 +86,10 @@ export function SessionList({
   sessions,
   state,
   banner,
-  client,
-  features,
+  computerOf,
+  labels = false,
   chip,
+  strip,
   title,
   menu,
   selectedId,
@@ -95,14 +108,18 @@ export function SessionList({
   onPalette,
 }: {
   mode: ListMode;
-  sessions: RemoteSessions;
+  sessions: ListedSessions;
+  /** The list's connection: the computer's, or with more than one, a connected one's while there is one. */
   state: ConnectionState;
   banner: ReactNode;
-  client: Client;
-  /** What the computer takes beyond what every version does (its hello): Undo after Mark as read needs one. */
-  features: readonly string[];
+  /** A session's computer, by its id. Undo after Mark as read needs a computer that can mark it unread again. */
+  computerOf: (computer: string) => ListComputer;
+  /** More than one computer is paired: each row and card says which it runs on. */
+  labels?: boolean;
   /** The computer chip, which opens the computer's menu. */
   chip: ReactNode;
+  /** With more than one computer, a chip for each, in the chip's place (on a phone, under the title). */
+  strip?: ReactNode;
   /** The first screen's title on a phone: the computer's name, large or in the bar once the list scrolled. */
   title?: (size: 'large' | 'compact') => ReactNode;
   menu: MenuItem[];
@@ -150,37 +167,49 @@ export function SessionList({
   const leaving = useLeaving(sessions.prompts);
   const cards = leaving.merge(shown.prompts);
   const promptOf = useMemo(() => {
-    const first = new Map<string, RemotePrompt>();
+    const first = new Map<string, ListedPrompt>();
     for (const p of [...sessions.prompts].sort((a, b) => a.createdAt - b.createdAt)) if (!first.has(p.sessionId)) first.set(p.sessionId, p);
     return first;
   }, [sessions.prompts]);
   const byId = useMemo(() => new Map(sessions.sessions.map((s) => [s.id, s])), [sessions.sessions]);
   const offline = state.kind !== 'connected';
-  const [rowMenu, setRowMenu] = useState<{ session: RemoteSession; point: MenuPoint; row: HTMLElement } | null>(null);
+  const [rowMenu, setRowMenu] = useState<{ session: ListedSession; point: MenuPoint; row: HTMLElement } | null>(null);
   const closeRowMenu = useCallback(() => setRowMenu(null), []);
   const failed = () => toast("That didn't reach your computer.", { tone: 'error' });
-  const canUnread = features.includes(REMOTE_FEATURE_MARK_UNREAD);
+  const clientOf = (session: ListedSession) => computerOf(session.computer).client;
 
   /** Mark as read, with Undo where the computer can mark it unread again. */
-  const markRead = (session: RemoteSession) =>
+  const markRead = (session: ListedSession) => {
+    const { client, features } = computerOf(session.computer);
+    const sessionId = session.sessionId;
     void client
-      ?.call('session.markRead', { sessionId: session.id })
-      .then(() => toast('Marked as read', { detail: session.title, ...(canUnread ? { action: { label: 'Undo', run: () => void client.call('session.markUnread', { sessionId: session.id }).catch(failed) } } : {}) }))
+      ?.call('session.markRead', { sessionId })
+      .then(() => toast('Marked as read', { detail: session.title, ...(features.includes(REMOTE_FEATURE_MARK_UNREAD) ? { action: { label: 'Undo', run: () => void client.call('session.markUnread', { sessionId }).catch(failed) } } : {}) }))
       .catch(failed);
+  };
   /** Archive, with Undo. */
-  const archive = (session: RemoteSession) =>
+  const archive = (session: ListedSession) => {
+    const client = clientOf(session);
+    const sessionId = session.sessionId;
     void client
-      ?.call('session.setFlags', { sessionId: session.id, archived: true })
+      ?.call('session.setFlags', { sessionId, archived: true })
       .then(() => {
-        toast(`Archived ${session.title}`, { action: { label: 'Undo', run: () => void client.call('session.setFlags', { sessionId: session.id, archived: false }).catch(failed) } });
+        toast(`Archived ${session.title}`, { action: { label: 'Undo', run: () => void client.call('session.setFlags', { sessionId, archived: false }).catch(failed) } });
         onArchived(session.id);
       })
       .catch(failed);
-  const rowItems = (session: RemoteSession): MenuItem[] => [
-    { label: 'Mark as read', disabled: !client || !session.unread, onSelect: () => markRead(session) },
-    { label: 'Archive', disabled: !client, onSelect: () => archive(session) },
+  };
+  const rowItems = (session: ListedSession): MenuItem[] => [
+    { label: 'Mark as read', disabled: !clientOf(session) || !session.unread, onSelect: () => markRead(session) },
+    { label: 'Archive', disabled: !clientOf(session), onSelect: () => archive(session) },
   ];
-  const onSwipe = (session: RemoteSession) => (action: SwipeAction) => (action === 'read' ? markRead(session) : archive(session));
+  const onSwipe = (session: ListedSession) => (action: SwipeAction) => (action === 'read' ? markRead(session) : archive(session));
+  /** What the line under the title counts: not what a computer that is away said last. */
+  const live = labels ? sessions.sessions.filter((s) => computerOf(s.computer).online) : sessions.sessions;
+  /** A row or card of a computer that is away, while another is connected: dimmed. */
+  const isAway = (computer: string) => !offline && !computerOf(computer).online;
+  /** The name on a row or a card, with more than one computer. */
+  const tagOf = (computer: string) => (labels ? computerOf(computer).name || 'Your computer' : undefined);
 
   const choose = (next: ListFilter) => {
     setChosen(next);
@@ -261,7 +290,16 @@ export function SessionList({
   ) : (
     <LargeTitle
       title={(size) => title?.(size)}
-      line={<ConnectionLine state={state} detail={shortHeadline(sessions.sessions, now)} />}
+      line={
+        strip ? (
+          <div className="scroll-row -mx-4 flex min-w-0 items-center gap-1.5 px-4 pt-0.5" data-remote-computers>
+            {strip}
+            <span className="shrink-0 text-meta text-muted">{shortHeadline(live, now)}</span>
+          </div>
+        ) : (
+          <ConnectionLine state={state} detail={shortHeadline(live, now)} />
+        )
+      }
       actions={
         <>
           <Button variant="quiet" size="md" aria-label="Search sessions" onClick={() => setSearching(true)} className="min-w-11 px-0! pointer-fine:min-w-8" data-remote-search-open>
@@ -288,12 +326,13 @@ export function SessionList({
         <section aria-labelledby="group-prompts" className="flex flex-col px-3 pb-1">
           <SectionHeader id="group-prompts" label={GROUP_LABEL['needs-you']} count={cards.length} tone="text-warn" className="px-1" />
           {cards.map((prompt) => (
-            <div key={prompt.requestId} className="collapse-out mb-2" data-leaving={leaving.isLeaving(prompt.requestId) || undefined} onTransitionEnd={(event) => event.propertyName === 'grid-template-rows' && leaving.gone(prompt.requestId)}>
+            <div key={prompt.requestId} className={`collapse-out mb-2 ${isAway(prompt.computer) ? 'opacity-60' : ''}`} data-remote-away={isAway(prompt.computer) || undefined} data-leaving={leaving.isLeaving(prompt.requestId) || undefined} onTransitionEnd={(event) => event.propertyName === 'grid-template-rows' && leaving.gone(prompt.requestId)}>
               <div>
                 <NeedsYouCard
                   prompt={prompt}
                   session={byId.get(prompt.sessionId)}
-                  client={client}
+                  client={computerOf(prompt.computer).client}
+                  computer={tagOf(prompt.computer)}
                   now={now}
                   onOpen={() => onOpen(prompt.sessionId)}
                   onAnswered={(result) => {
@@ -311,9 +350,11 @@ export function SessionList({
           <SectionHeader id={`${mode}-group-${group}`} label={GROUP_LABEL[group]} count={rows.length} tone={GROUP_TONE[group]} />
           <ul>
             {rows.map((session) => {
+              const away = isAway(session.computer);
               const row = (
                 <SessionRow
                   session={session}
+                  computer={tagOf(session.computer)}
                   size={mode === 'phone' ? 'phone' : 'compact'}
                   selected={session.id === selectedId}
                   asks={mode === 'phone' ? undefined : promptOf.get(session.id)}
@@ -323,10 +364,10 @@ export function SessionList({
                 />
               );
               return (
-                <li key={session.id}>
+                <li key={session.id} className={away ? 'opacity-60' : undefined} data-remote-away={away || undefined}>
                   {/* A session that waits on you never swipes away: a prompt can't be dismissed by accident. */}
                   {mode === 'phone' && session.status !== 'needs-you' ? (
-                    <SwipeRow allowed={{ read: Boolean(client) && session.unread, archive: Boolean(client) }} onAction={onSwipe(session)}>
+                    <SwipeRow allowed={{ read: Boolean(clientOf(session)) && session.unread, archive: Boolean(clientOf(session)) }} onAction={onSwipe(session)}>
                       {row}
                     </SwipeRow>
                   ) : (
@@ -355,6 +396,11 @@ export function SessionList({
           {chip}
           {headerEnd}
         </header>
+      )}
+      {mode !== 'phone' && strip && (
+        <div className="scroll-row flex gap-1.5 px-3 pb-2" data-remote-computers>
+          {strip}
+        </div>
       )}
       {sidebar && (
         <>
@@ -424,7 +470,7 @@ const LONG_PRESS_MS = 500;
  * what it asks, and its age. A long press, a right-click or Shift+F10 opens its menu; so does its menu button, which
  * only shows while it has keyboard focus (it is there for screen readers and the keyboard).
  */
-function SessionRow({ session, size, selected, asks, now, onOpen, onMenu }: { session: RemoteSession; size: 'phone' | 'compact'; selected: boolean; asks: RemotePrompt | undefined; now: number; onOpen: () => void; onMenu: (point: MenuPoint, row: HTMLElement) => void }) {
+function SessionRow({ session, computer, size, selected, asks, now, onOpen, onMenu }: { session: ListedSession; /** The computer's name, with more than one. */ computer: string | undefined; size: 'phone' | 'compact'; selected: boolean; asks: ListedPrompt | undefined; now: number; onOpen: () => void; onMenu: (point: MenuPoint, row: HTMLElement) => void }) {
   const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const pressed = useRef(false);
   const cancelPress = () => {
@@ -475,7 +521,8 @@ function SessionRow({ session, size, selected, asks, now, onOpen, onMenu }: { se
           onMenu(menuPoint({ clientX: 0, clientY: 0 }, event.currentTarget), event.currentTarget);
         }}
         aria-current={selected ? 'page' : undefined}
-        data-remote-session={session.id}
+        data-remote-session={session.sessionId}
+        data-remote-session-computer={session.computer}
         data-remote-nav="row"
         data-remote-profile={profile?.id}
         className={`flex w-full items-center gap-2.5 border-l-[3px] text-left transition-colors select-none [-webkit-touch-callout:none] focus-visible:-outline-offset-2 ${size === 'compact' ? 'min-h-11 px-3 py-1' : 'min-h-14 px-4 py-2 pointer-fine:min-h-12'} ${profile ? PROFILE_RAIL[profile.color] : STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
@@ -484,6 +531,7 @@ function SessionRow({ session, size, selected, asks, now, onOpen, onMenu }: { se
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-body ${session.unread || asks ? 'font-semibold' : ''}`}>{session.title}</span>
           <span className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
+            {computer && <ComputerTag name={computer} />}
             {profile && <span aria-label={`Claude profile: ${profile.name}`} role="img" className={`size-1.5 shrink-0 rounded-full ${PROFILE_DOT[profile.color]}`} />}
             <span className="truncate">
               {session.projectName}

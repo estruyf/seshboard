@@ -107,3 +107,22 @@ export function rememberProject(computer: string, projectId: string): void {
     // Private browsing without storage: New session just suggests from the sessions.
   }
 }
+
+/** The computer New session last started on, with more than one paired, so it starts there again. Not secret: localStorage. */
+const RUN_ON = 'switchboard-remote:run-on';
+
+export function lastRunOn(): string | null {
+  try {
+    return localStorage.getItem(RUN_ON);
+  } catch {
+    return null;
+  }
+}
+
+export function rememberRunOn(computer: string): void {
+  try {
+    localStorage.setItem(RUN_ON, computer);
+  } catch {
+    // Private browsing without storage: New session starts on the first connected computer.
+  }
+}

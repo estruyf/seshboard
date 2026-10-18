@@ -34,7 +34,7 @@ export function matchesSearch(session: RemoteSession, query: string): boolean {
  * What the list shows for a chip and a search: the prompts as cards at the top (oldest first), and the sessions for
  * the groups below them. A session whose prompt has a card isn't a row too.
  */
-export function filterList(list: { sessions: readonly RemoteSession[]; prompts: readonly RemotePrompt[] }, filter: ListFilter, query: string) {
+export function filterList<S extends RemoteSession, P extends RemotePrompt>(list: { sessions: readonly S[]; prompts: readonly P[] }, filter: ListFilter, query: string) {
   const sessions = list.sessions.filter((s) => matchesSearch(s, query) && (filter === 'all' || s.status === filter));
   const shown = new Set(sessions.map((s) => s.id));
   const prompts = filter === 'working' ? [] : list.prompts.filter((p) => shown.has(p.sessionId)).sort((a, b) => a.createdAt - b.createdAt);

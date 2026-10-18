@@ -1,55 +1,70 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { RemoteProfileUsage, UsageLimit } from '@switchboard/protocol/remote-client';
 import { PROFILE_DOT } from '../lib/options.ts';
 import { cardRows, compactProfiles, compactText, windowPercent } from '../lib/profiles.ts';
 import { countdown, LEVEL_FILL, LEVEL_TEXT, levelOf, limitName, spokenLimit, usageMessage, visibleLimits, withUsage } from '../lib/usage.ts';
 import type { Client } from './Connected.tsx';
+import { connectionOf } from './connectionOf.ts';
 import { useNow } from './SessionList.tsx';
 import { SectionHeader } from './ui.tsx';
 
-/** The last numbers, for this tab: shown on Home while offline, also after a reload. */
+/** Each computer's last numbers, for this tab: shown while offline, also after a reload. */
 const CACHE = 'switchboard-remote:usage';
 
-function cachedUsage(): RemoteProfileUsage[] | null {
+function cachedUsage(computer: string): RemoteProfileUsage[] | null {
   try {
-    const value = JSON.parse(sessionStorage.getItem(CACHE) ?? 'null') as RemoteProfileUsage[] | null;
+    const value = JSON.parse(sessionStorage.getItem(`${CACHE}:${computer}`) ?? 'null') as RemoteProfileUsage[] | null;
     return Array.isArray(value) ? value : null;
   } catch {
     return null;
   }
 }
 
+type Usages = ReadonlyMap<string, RemoteProfileUsage[] | null>;
+
 /**
- * Every profile's plan usage: asked for once connected and each time the app comes back on screen (the computer
- * checks again when its numbers are more than a minute old), then kept up to date by `usage.changed`. Null until the
- * first answer.
+ * Every computer's plan usage, by its id: asked for once it is connected and each time the app comes back on screen
+ * (the computer checks again when its numbers are more than a minute old), then kept up to date by `usage.changed`.
+ * Null for a computer until its first answer.
  */
-export function useUsage(client: Client): RemoteProfileUsage[] | null {
-  const [list, setList] = useState<RemoteProfileUsage[] | null>(cachedUsage);
+export function useUsages(computers: ReadonlyArray<{ id: string; client: Client }>): Usages {
+  const [lists, setLists] = useState<Usages>(() => new Map(computers.map((c) => [c.id, cachedUsage(c.id)])));
+  const latest = useRef(computers);
+  latest.current = computers;
+  // Asked again when a computer is paired, forgotten, or connects again.
+  const key = computers.map((c) => `${c.id}#${connectionOf(c.client)}`).join(' ');
   useEffect(() => {
-    if (!client) return;
-    // A Switchboard from before Remote had usage doesn't know the method: an empty list says so.
-    const load = () => void client.call('usage.get', {}).then((result) => setList(result.profiles), () => setList((current) => current ?? []));
-    load();
-    const off = client.on('usage.changed', ({ profileId, usage }) => setList((current) => current && withUsage(current, profileId, usage)));
+    const change = (id: string, next: (current: RemoteProfileUsage[] | null) => RemoteProfileUsage[] | null) =>
+      setLists((current) => {
+        const value = next(current.has(id) ? current.get(id)! : cachedUsage(id));
+        try {
+          if (value) sessionStorage.setItem(`${CACHE}:${id}`, JSON.stringify(value));
+        } catch {
+          // Storage is full or off: the numbers just aren't kept.
+        }
+        return new Map(current).set(id, value);
+      });
+    const loads: Array<() => void> = [];
+    const offs: Array<() => void> = [];
+    for (const { id, client } of latest.current) {
+      if (!client) continue;
+      // A Switchboard from before Remote had usage doesn't know the method: an empty list says so.
+      const load = () => void client.call('usage.get', {}).then(({ profiles }) => change(id, () => profiles), () => change(id, (current) => current ?? []));
+      loads.push(load);
+      offs.push(client.on('usage.changed', ({ profileId, usage }) => change(id, (current) => current && withUsage(current, profileId, usage))));
+    }
+    loads.forEach((load) => load());
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load();
+      if (document.visibilityState === 'visible') loads.forEach((load) => load());
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      off();
+      offs.forEach((off) => off());
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [client]);
-  useEffect(() => {
-    try {
-      if (list) sessionStorage.setItem(CACHE, JSON.stringify(list));
-    } catch {
-      // Storage is full or off: the numbers just aren't kept.
-    }
-  }, [list]);
-  return list;
+  }, [key]);
+  return useMemo(() => new Map(computers.map((c) => [c.id, lists.has(c.id) ? lists.get(c.id)! : cachedUsage(c.id)])), [lists, key]);
 }
 
 /**

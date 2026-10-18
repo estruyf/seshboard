@@ -1,24 +1,39 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CornerDownLeft, Plus, Search, Zap } from 'lucide-react';
-import type { RemoteProject, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { RemoteProject } from '@switchboard/protocol/remote-client';
+import { listKey, type ListedSession } from '../lib/everywhere.ts';
 import { nextIndex } from '../lib/keys.ts';
 import { paletteGroups, type PaletteItem } from '../lib/palette.ts';
 import type { Client } from './Connected.tsx';
-import { Kbd, STATUS_LABEL, StatusDot } from './ui.tsx';
+import { ComputerTag, Kbd, STATUS_LABEL, StatusDot } from './ui.tsx';
 
 export interface PaletteAction {
   id: string;
   title: string;
 }
 
+/** A project of one of the computers: `id` is its key in the palette, `projectId` its own. */
+export type ListedProject = RemoteProject & { computer: string; projectId: string };
+
+/** The palette's items, from every computer. */
+export type PaletteChoice = PaletteItem<ListedSession, ListedProject>;
+
+/** A computer the palette lists projects of: its name for the tag, and its connection. */
+export interface PaletteComputer {
+  id: string;
+  name: string;
+  client: Client;
+}
+
 /**
  * The ⌘K palette of the wide layout: a field and what matches it, in three groups. Sessions (↩ opens one), Start
  * ("New session in <project>") and Actions. ↑ and ↓ move, ↩ runs, Esc closes, and the focus goes back where it was.
- * The field is a combobox over a listbox, so a screen reader says the option you're on.
+ * The field is a combobox over a listbox, so a screen reader says the option you're on. Sessions and projects come
+ * from every connected computer, each saying which with more than one (`labels`).
  */
-export function Palette({ client, sessions, actions, onChoose, onClose }: { client: Client; sessions: readonly RemoteSession[]; actions: readonly PaletteAction[]; onChoose: (item: PaletteItem) => void; onClose: () => void }) {
+export function Palette({ computers, labels = false, sessions, actions, onChoose, onClose }: { computers: readonly PaletteComputer[]; labels?: boolean; sessions: readonly ListedSession[]; actions: readonly PaletteAction[]; onChoose: (item: PaletteChoice) => void; onClose: () => void }) {
   const [query, setQuery] = useState('');
-  const [projects, setProjects] = useState<RemoteProject[]>([]);
+  const [projects, setProjects] = useState<ListedProject[]>([]);
   const [active, setActive] = useState(0);
   const field = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -33,10 +48,24 @@ export function Palette({ client, sessions, actions, onChoose, onClose }: { clie
     };
   }, []);
 
+  // Read once, when the palette opens: each computer's projects, in the computers' order.
   useEffect(() => {
-    if (!client) return;
-    void client.call('projects.list', {}).then(({ projects }) => setProjects(projects), () => {});
-  }, [client]);
+    let live = true;
+    void Promise.all(
+      computers.map(({ id: computer, client }) =>
+        client
+          ? client.call('projects.list', {}).then(
+              ({ projects }) => projects.map((project): ListedProject => ({ ...project, id: listKey(computer, project.id), computer, projectId: project.id })),
+              () => [],
+            )
+          : Promise.resolve([]),
+      ),
+    ).then((lists) => live && setProjects(lists.flat()));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const nameOf = (computer: string) => (labels ? computers.find((c) => c.id === computer)?.name || 'Your computer' : undefined);
 
   const groups = useMemo(() => paletteGroups({ sessions, projects, actions, query }), [sessions, projects, actions, query]);
   const items = groups.flatMap((g) => g.items);
@@ -46,7 +75,7 @@ export function Palette({ client, sessions, actions, onChoose, onClose }: { clie
     if (current) list.current?.querySelector(`[data-palette-item="${CSS.escape(current.id)}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [current]);
 
-  const optionId = (item: PaletteItem) => `${id}-${item.id.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+  const optionId = (item: PaletteChoice) => `${id}-${item.id.replace(/[^A-Za-z0-9_-]/g, '_')}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh]" data-remote-palette>
@@ -105,7 +134,7 @@ export function Palette({ client, sessions, actions, onChoose, onClose }: { clie
                     className={`flex min-h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1 ${isActive ? 'bg-selected' : ''}`}
                     data-palette-item={item.id}
                   >
-                    <Row item={item} />
+                    <Row item={item} computer={item.kind === 'session' ? nameOf(item.session.computer) : item.kind === 'start' ? nameOf(item.project.computer) : undefined} />
                     {isActive && <CornerDownLeft className="size-3.5 shrink-0 text-faint" aria-hidden />}
                   </div>
                 );
@@ -130,7 +159,7 @@ export function Palette({ client, sessions, actions, onChoose, onClose }: { clie
   );
 }
 
-function Row({ item }: { item: PaletteItem }) {
+function Row({ item, computer }: { item: PaletteChoice; computer: string | undefined }) {
   if (item.kind === 'session') {
     const s = item.session;
     return (
@@ -138,9 +167,12 @@ function Row({ item }: { item: PaletteItem }) {
         <StatusDot status={s.status} />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-body ${s.unread || s.status === 'needs-you' ? 'font-semibold' : ''}`}>{s.title}</span>
-          <span className="block truncate text-meta text-muted">
-            {s.projectName}
-            {s.branch ? ` · ${s.branch}` : ''}
+          <span className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
+            {computer && <ComputerTag name={computer} />}
+            <span className="truncate">
+              {s.projectName}
+              {s.branch ? ` · ${s.branch}` : ''}
+            </span>
           </span>
         </span>
         <span className={`shrink-0 text-meta ${s.status === 'needs-you' ? 'text-warn' : s.status === 'working' ? 'text-accent-ink' : 'text-faint'}`}>{STATUS_LABEL[s.status]}</span>
@@ -154,6 +186,7 @@ function Row({ item }: { item: PaletteItem }) {
         <span className="min-w-0 flex-1 truncate text-body">
           New session in <span className="font-semibold">{item.project.name}</span>
         </span>
+        {computer && <ComputerTag name={computer} />}
       </>
     );
   return (

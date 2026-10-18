@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, CircleHelp, PlugZap, RotateCw } from 'lucide-react';
+import { ChevronDown, CircleHelp, PlugZap, RotateCw, Unplug } from 'lucide-react';
 import { otherLine, stateLine } from '../lib/computer.ts';
 import type { ConnectionState } from '../lib/connection.ts';
 import { offlineHelp, offlineLine, reconnectingLine, type OfflineReason } from '../lib/offline.ts';
@@ -15,99 +15,74 @@ type Look = { dot: string; text: string; label: string; word: string };
 function look(state: ConnectionState, computer: string): Look {
   if (state.kind === 'connected') return { dot: 'bg-ok', text: 'text-muted', label: computer || 'Connected', word: 'Connected' };
   if (state.kind === 'disconnected') return { dot: 'bg-faint', text: 'text-muted', label: 'Disconnected', word: 'Disconnected' };
+  if (state.kind === 'unpaired') return { dot: 'bg-error', text: 'text-error', label: 'Pair again', word: 'Pair again' };
   if (state.kind === 'offline' && state.retryAt === null) return { dot: 'bg-error', text: 'text-error', label: 'Offline', word: 'Offline' };
   if (state.kind === 'connecting' && state.attempt === 0) return { dot: 'bg-caution pulse-dot', text: 'text-muted', label: 'Connecting…', word: 'Connecting…' };
   return { dot: 'bg-caution pulse-dot', text: 'text-caution', label: 'Reconnecting…', word: 'Reconnecting…' };
-}
-
-/** Another paired computer: its name, its connection, and how many of its sessions need you. */
-export interface OtherComputer {
-  id: string;
-  name: string;
-  state: ConnectionState;
-  needsYou: number;
 }
 
 /** What opens the computer's menu: the chip, or the first screen's title. */
 export interface ComputerProps {
   state: ConnectionState;
   computer: string;
-  /** The other computers this phone is paired with, to switch to. */
-  others: readonly OtherComputer[];
+  /**
+   * One of the chips of every computer, with more than one paired (each on screen, in the same list): the chip always
+   * says its name and how many of its sessions need you, and its menu only has what is its own.
+   */
+  strip?: boolean;
+  needsYou?: number;
   onDisconnect: () => void;
   onConnect: () => void;
-  onSwitch: (id: string) => void;
   onAdd: () => void;
   onForget: () => void;
 }
 
 /**
- * The computer's menu: its name and state, Disconnect (or Connect), then the other computers (each with how many
- * sessions need you there) and Pair another computer…, and Forget this computer… under a line.
+ * The computer's menu: its name and state, Disconnect (or Connect), Pair another computer…, and Forget this
+ * computer… under a line. A chip in the strip leaves out pairing: the `⋯` menu pairs another.
  */
-function computerItems({ state, computer, others, onDisconnect, onConnect, onSwitch, onAdd, onForget }: ComputerProps, now: number): MenuItem[] {
+function computerItems({ state, computer, strip = false, onDisconnect, onConnect, onAdd, onForget }: ComputerProps, now: number): MenuItem[] {
+  const connection: MenuItem[] = state.kind === 'unpaired' ? [] : [state.kind === 'disconnected' ? { label: 'Connect', onSelect: onConnect } : { label: 'Disconnect', onSelect: onDisconnect }];
   return [
     { kind: 'header', title: computer || 'Your computer', detail: stateLine(state, now) },
-    state.kind === 'disconnected' ? { label: 'Connect', onSelect: onConnect } : { label: 'Disconnect', onSelect: onDisconnect },
-    { kind: 'separator' },
-    ...others.map((other): MenuItem => ({ label: other.name || 'Your other computer', hint: otherLine(other.state, other.needsYou) || undefined, onSelect: () => onSwitch(other.id) })),
-    { label: 'Pair another computer…', onSelect: onAdd },
+    ...connection,
+    ...(strip ? [] : [{ kind: 'separator' } as const, { label: 'Pair another computer…', onSelect: onAdd }]),
     { kind: 'separator' },
     { label: 'Forget this computer…', danger: true, onSelect: onForget },
   ];
 }
 
 /**
- * Over the list, while sessions on another computer need you: a row per computer ("mystic · 2 need you"), which
- * switches to it. The `warn` dot of Needs you, so it reads as the same thing on another computer.
- */
-export function ElsewhereStrip({ others, onSwitch }: { others: readonly OtherComputer[]; onSwitch: (id: string) => void }) {
-  const waiting = others.filter((o) => o.state.kind === 'connected' && o.needsYou > 0);
-  if (!waiting.length) return null;
-  return (
-    <div className="mx-3 mt-3 flex flex-col overflow-hidden rounded-xl border border-border bg-card" data-remote-elsewhere>
-      {waiting.map((other, i) => (
-        <button
-          key={other.id}
-          type="button"
-          onClick={() => onSwitch(other.id)}
-          className={`flex min-h-11 items-center gap-2.5 px-3 py-2 text-left hover:bg-border/45 pointer-fine:min-h-9 ${i > 0 ? 'border-t border-border' : ''}`}
-          data-remote-elsewhere-computer={other.id}
-        >
-          <span aria-hidden className="size-2 shrink-0 rounded-full bg-warn" />
-          <span className="min-w-0 flex-1 truncate text-ui">
-            <span className="font-semibold">{other.name || 'Your other computer'}</span>
-            <span className="text-muted"> · {otherLine(other.state, other.needsYou)}</span>
-          </span>
-          <ChevronRight aria-hidden className="size-4 shrink-0 text-faint" />
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/**
  * The computer chip in the drawer's and the sidebar's header ("● Elio's iMac ▾"): the computer's name with a green
  * dot while connected, amber while it retries, red once it gave up, grey after Disconnect. It opens the computer's
- * menu.
+ * menu. In the strip of every computer, it says the name whatever the state, and in `warn` how many sessions there
+ * need you.
  */
 export function ComputerChip(props: ComputerProps) {
-  const { state, computer } = props;
+  const { state, computer, strip = false, needsYou = 0 } = props;
   const now = useNow();
-  const { dot, text, label } = look(state, computer);
+  const { dot, text: tone, label: stateLabel } = look(state, computer);
+  const label = strip ? computer || 'Your computer' : stateLabel;
+  const text = strip && state.kind !== 'offline' && state.kind !== 'unpaired' ? 'text-muted' : tone;
+  const waiting = strip && state.kind === 'connected' && needsYou > 0;
   return (
     <AnchoredMenu label={computer || 'Your computer'} items={computerItems(props, now)} className="min-w-0">
       {(trigger) => (
         <button
           type="button"
           {...trigger}
-          aria-label={`${computer || 'Your computer'}: ${stateLine(state, now)}`}
+          aria-label={`${computer || 'Your computer'}: ${stateLine(state, now)}${waiting ? `, ${otherLine(state, needsYou)}` : ''}`}
           data-remote-connection={state.kind}
           data-remote-computer-chip
-          className={`flex min-h-9 max-w-44 items-center gap-1.5 rounded-full border border-border pr-1.5 pl-2.5 text-meta hover:bg-border/45 pointer-fine:min-h-6 ${text}`}
+          className={`flex min-h-9 max-w-44 shrink-0 items-center gap-1.5 rounded-full border border-border pr-1.5 pl-2.5 text-meta hover:bg-border/45 pointer-fine:min-h-6 ${text}`}
         >
           <span aria-hidden className={`size-2 shrink-0 rounded-full ${dot}`} />
           <span className="truncate">{label}</span>
+          {waiting && (
+            <span aria-hidden className="shrink-0 font-semibold text-warn tabular-nums">
+              {needsYou}
+            </span>
+          )}
           <ChevronDown aria-hidden className="size-3.5 shrink-0 text-faint" />
         </button>
       )}
@@ -196,6 +171,26 @@ export function ConnectionBanner({ state, computer, onHelp, onRetry, onConnect }
       <Button variant="quiet" size="md" onClick={onHelp} className="text-caution!" data-remote-help>
         <CircleHelp className="size-4" aria-hidden />
         Help
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * With more than one computer, under the header while one of them refused this phone (its pairing was revoked): the
+ * others work as before, so it only says so, with Forget. With one computer, the whole screen says it instead.
+ */
+export function UnpairedBanner({ state, computer, onForget }: { state: ConnectionState; computer: string; onForget: () => void }) {
+  if (state.kind !== 'unpaired') return null;
+  return (
+    <div role="status" className="flex items-center gap-2 border-b border-error/30 bg-error/10 px-4 py-2" data-remote-banner="unpaired">
+      <Unplug className="size-4 shrink-0 text-error" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="text-ui font-semibold text-text">Pair again with {computer || 'your computer'}</p>
+        <p className="text-meta text-muted">{state.message}</p>
+      </div>
+      <Button variant="quiet" size="md" onClick={onForget} className="text-error!">
+        Forget
       </Button>
     </div>
   );

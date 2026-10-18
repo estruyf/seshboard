@@ -55,14 +55,14 @@ export function rankSessions<S extends Pick<RemoteSession, 'title' | 'projectNam
     .map((s) => s.session);
 }
 
-export type PaletteItem =
-  | { kind: 'session'; id: string; session: RemoteSession }
-  | { kind: 'start'; id: string; project: RemoteProject }
+export type PaletteItem<S extends RemoteSession = RemoteSession, P extends RemoteProject = RemoteProject> =
+  | { kind: 'session'; id: string; session: S }
+  | { kind: 'start'; id: string; project: P }
   | { kind: 'action'; id: string; title: string };
 
-export interface PaletteGroup {
+export interface PaletteGroup<S extends RemoteSession = RemoteSession, P extends RemoteProject = RemoteProject> {
   label: 'Sessions' | 'Start' | 'Actions';
-  items: PaletteItem[];
+  items: PaletteItem<S, P>[];
 }
 
 /** The most sessions the palette lists; the rest are a few letters away. */
@@ -73,19 +73,19 @@ const PALETTE_PROJECTS = 5;
  * What the palette shows for a query: Sessions, Start ("New session in <project>" for each project that matches) and
  * Actions, empty groups left out. `actions` are the ones that make sense right now.
  */
-export function paletteGroups(input: { sessions: readonly RemoteSession[]; projects: readonly RemoteProject[]; actions: ReadonlyArray<{ id: string; title: string }>; query: string }): PaletteGroup[] {
+export function paletteGroups<S extends RemoteSession, P extends RemoteProject>(input: { sessions: readonly S[]; projects: readonly P[]; actions: ReadonlyArray<{ id: string; title: string }>; query: string }): PaletteGroup<S, P>[] {
   const query = input.query.trim();
   const sessions = rankSessions(input.sessions, query).slice(0, PALETTE_SESSIONS);
   const projects = input.projects
     .map((project) => ({ project, score: query ? fuzzyScore(query, project.name) : 0 }))
-    .filter((p): p is { project: RemoteProject; score: number } => p.score !== null)
+    .filter((p): p is { project: P; score: number } => p.score !== null)
     .sort((a, b) => b.score - a.score)
     .slice(0, query ? PALETTE_PROJECTS : 3);
   const actions = input.actions
     .map((action) => ({ action, score: query ? fuzzyScore(query, action.title) : 0 }))
     .filter((a): a is { action: { id: string; title: string }; score: number } => a.score !== null)
     .sort((a, b) => (query ? b.score - a.score : 0));
-  const groups: PaletteGroup[] = [
+  const groups: PaletteGroup<S, P>[] = [
     { label: 'Sessions', items: sessions.map((session) => ({ kind: 'session', id: `session:${session.id}`, session })) },
     { label: 'Start', items: projects.map(({ project }) => ({ kind: 'start', id: `start:${project.id}`, project })) },
     { label: 'Actions', items: actions.map(({ action }) => ({ kind: 'action', id: `action:${action.id}`, title: action.title })) },
