@@ -41,6 +41,7 @@ import {
   GitBranchPlus,
   GitCommitHorizontal,
   GitFork,
+  Link2,
   GitMerge,
   GitPullRequest,
   Hash,
@@ -160,6 +161,8 @@ export interface PaletteApi {
   exportTheme(): void;
   setFocusLimit(on: boolean): void;
   renameSession(): void;
+  /** New session on this session's project, linked to it (session linking). */
+  newLinkedSession(): void;
   /** Opens the session's catch-up from its strip (or for a read session). */
   showCatchUp(): void;
   /** Makes the catch-up for the session's last finished turn now, and shows it. */
@@ -584,6 +587,15 @@ export const COMMANDS: PaletteCommand[] = [
     run: (api) => api.showWhy(),
   },
   { id: 'rename-session', title: 'Rename session…', group: 'session', icon: Pencil, keywords: 'title name', when: indexed, run: (api) => api.renameSession() },
+  {
+    id: 'new-session-linked',
+    title: 'New session linked to this one',
+    group: 'session',
+    icon: Link2,
+    keywords: 'link mention stack pull request pr branch context reference @',
+    when: (ctx) => indexed(ctx) && !!session(ctx)!.projectRoot,
+    run: (api) => api.newLinkedSession(),
+  },
   {
     id: 'pin',
     title: (ctx) => (ctx.session?.pinned ? 'Unpin' : 'Pin'),

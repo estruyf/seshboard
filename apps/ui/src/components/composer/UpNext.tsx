@@ -1,6 +1,6 @@
 import { GripVertical, Pencil, Play, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import type { QueuedMessage, SessionHostInfo } from '@switchboard/protocol/client';
+import { withoutBriefs, type QueuedMessage, type SessionHostInfo } from '@switchboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { moveTarget } from '../../state/queue.ts';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
@@ -127,7 +127,9 @@ export function UpNext({ queue, hold, limited = false, actions }: { queue: reado
         data-queue-more={edges.below || undefined}
       >
         {queue.map((message, index) => {
-          const text = firstLine(message.text);
+          // A linked session's stub isn't something you typed: the row shows your words only.
+          const typed = withoutBriefs(message.text);
+          const text = firstLine(typed);
           const attachments = attachmentLabel(message.attachments);
           const mark = drag.markFor(message.id);
           return (
@@ -143,7 +145,7 @@ export function UpNext({ queue, hold, limited = false, actions }: { queue: reado
                 type="button"
                 data-queue-item={message.id}
                 aria-label={`Up next, ${index + 1} of ${queue.length}: ${text || attachments || 'message'}. Enter edits it, Option and arrows move it, Backspace removes it.`}
-                data-tooltip={message.text.length > 400 ? `${message.text.slice(0, 399)}…` : message.text || undefined}
+                data-tooltip={typed.length > 400 ? `${typed.slice(0, 399)}…` : typed || undefined}
                 onClick={() => actions.edit(message)}
                 onKeyDown={(event) => onKeyDown(event, message)}
                 className="flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-1 text-left"

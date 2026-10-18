@@ -1,7 +1,10 @@
-import { CircleX, ClipboardPaste, FileText, Folder, Pencil, ScrollText, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
-import { useState } from 'react';
-import type { ContextItem } from '@switchboard/protocol/client';
-import { chipLabel, pastePreview, type ContextChip } from './contextItems.ts';
+import { CircleX, ClipboardPaste, FileText, Folder, Link2, Pencil, ScrollText, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import type { ContextItem, WorktreePullRequest } from '@switchboard/protocol/client';
+import { useEngineConnection } from '../../engine/useEngine.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
+import { chipLabel, LINKED_SESSION_HINT, pastePreview, type ContextChip } from './contextItems.ts';
+import { linkDetail } from './sessionLinks.ts';
 import { PastedTextDialog } from './PastedTextDialog.tsx';
 
 const TEXT_ICON: Record<Extract<ContextItem, { kind: 'text' }>['source'], LucideIcon> = {
@@ -13,7 +16,7 @@ const TEXT_ICON: Record<Extract<ContextItem, { kind: 'text' }>['source'], Lucide
   checks: CircleX,
 };
 
-const iconFor = (item: ContextItem): LucideIcon => (item.kind === 'text' ? TEXT_ICON[item.source] : item.directory ? Folder : item.range ? TextSelect : FileText);
+const iconFor = (item: Exclude<ContextItem, { kind: 'session' }>): LucideIcon => (item.kind === 'text' ? TEXT_ICON[item.source] : item.directory ? Folder : item.range ? TextSelect : FileText);
 
 
 /**
@@ -42,6 +45,7 @@ export function ContextTray({ chips, cwd, onRemove, onEditText, className = '' }
       {chips.map((chip) => {
         const { label, detail } = chipLabel(chip, cwd);
         if (chip.kind === 'text' && chip.source === 'paste') return <PastedCard key={chip.id} label={label} detail={detail} text={chip.text} onOpen={() => setEditing(chip.id)} onRemove={() => onRemove(chip.id)} />;
+        if (chip.kind === 'session') return <LinkedSessionChip key={chip.id} sessionId={chip.sessionId} label={chip.label} onRemove={() => onRemove(chip.id)} />;
         const Icon = iconFor(chip);
         return (
           <li
@@ -66,6 +70,60 @@ export function ContextTray({ chips, cwd, onRemove, onEditText, className = '' }
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * A linked session (session linking): a link icon, its label, and its branch and pull request after it. A click opens
+ * it beside this one. A session that is gone is dashed: the message then only says so instead of a brief.
+ */
+function LinkedSessionChip({ sessionId, label, onRemove }: { sessionId: string; label: string; onRemove(): void }) {
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const [info, setInfo] = useState<{ gone: boolean; branch: string | null; pr: WorktreePullRequest | null } | null>(null);
+  useEffect(() => {
+    if (!client) return;
+    let current = true;
+    // Also readies the brief: the engine reads gh and git for it now, so sending doesn't wait for them.
+    client.call('sessions.linkInfo', { sessionId }).then(
+      (result) => current && setInfo(result),
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, sessionId]);
+  const detail = linkDetail(info);
+  const gone = info?.gone ?? false;
+  return (
+    <li
+      className={`flex h-6 max-w-96 min-w-0 items-center gap-1 rounded-md border bg-border/30 pl-1.5 text-ui ${gone ? 'border-dashed border-edge text-muted' : 'border-border text-text'}`}
+      data-context-chip="session"
+      data-linked-session={sessionId}
+      data-tooltip={gone ? 'This session is gone. Claude only gets its name.' : LINKED_SESSION_HINT}
+    >
+      <button
+        type="button"
+        onClick={() => !gone && useSessions.getState().openBeside(sessionId)}
+        className="flex min-w-0 items-center gap-1 rounded-sm disabled:cursor-default"
+        disabled={gone}
+        aria-label={`Open ${label} beside this one`}
+      >
+        <Link2 size={12} className={`shrink-0 ${gone ? 'text-faint' : 'text-accent-ink'}`} aria-hidden />
+        <span className="min-w-0 truncate font-semibold">{label}</span>
+        {detail && <span className="min-w-0 shrink truncate font-mono text-meta text-muted">{detail}</span>}
+      </button>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="flex size-5 shrink-0 items-center justify-center rounded text-muted hover:bg-border/50 hover:text-text"
+        aria-label={`Remove ${label}`}
+        data-tooltip="Remove"
+        data-context-chip-remove
+      >
+        <X size={11} aria-hidden />
+      </button>
+    </li>
   );
 }
 

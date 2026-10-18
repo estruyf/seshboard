@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  defuseStubs,
   keyPairFromSecret,
   REMOTE_APP_URL,
   REMOTE_DEFAULT_PORT,
@@ -732,7 +733,7 @@ export class RemoteHub {
       },
       'later.add': async ({ projectId, prompt, ...options }) => {
         const project = this.project(projectId);
-        return this.options.queue(project.root, prompt, await this.choiceFor(project, options));
+        return this.options.queue(project.root, defuseStubs(prompt), await this.choiceFor(project, options));
       },
       'session.markRead': ({ sessionId }) => {
         this.checkSession(sessionId);

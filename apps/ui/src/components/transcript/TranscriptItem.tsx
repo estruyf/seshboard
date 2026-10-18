@@ -3,8 +3,9 @@ import type { HookableComponent } from '@switchboard/protocol/client';
 import { useMods } from '../../state/modsStore.ts';
 import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
 import { replaceableOf } from '../mods/modReplace.ts';
-import { memo, useId, useState, type ReactNode } from 'react';
-import { isAbsolutePath } from '@switchboard/protocol/client';
+import { memo, useId, useMemo, useState, type ReactNode } from 'react';
+import { isAbsolutePath, parseBriefs } from '@switchboard/protocol/client';
+import { LinkedSessions } from './LinkedSessions.tsx';
 import { fileLinkChipLabel } from './fileLinkAction.ts';
 import { useFileLinkActions } from './useFileLinkActions.tsx';
 import { DiffView } from './DiffView.tsx';
@@ -242,6 +243,8 @@ function ToolOrMemory({ item, cwd, sessionId }: { item: ToolItem; cwd: string | 
 function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'user' }>; sessionId: string }) {
   const device = useRemote((s) => s.sentFrom.get(messageUuid(item.key)) ?? null);
   const sent = item.at !== null ? sentLine(item.at, device) : undefined;
+  // Linked sessions' briefs show as rows under what you typed, not as code blocks in it.
+  const { text, briefs } = useMemo(() => (item.subagent ? { text: item.text, briefs: [] } : parseBriefs(item.text)), [item.text, item.subagent]);
   return (
     // Your prompt sits on the right as a card, so the conversation reads like a chat.
     <div className="flex justify-end">
@@ -253,10 +256,10 @@ function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'u
         data-tooltip={item.subagent ? undefined : sent}
       >
         <Speaker name={item.subagent ? 'Prompt to the subagent' : 'You'} />
-        {(item.text || !item.subagent) && <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly={item.subagent} />}
+        {(item.text || !item.subagent) && <MessageToolbar itemKey={item.key} kind="user" text={text} copyOnly={item.subagent} />}
         {/* Images come first, so "Show more" never hides them: one large, a few as thumbnails, many as tiles. */}
         {item.images.length > 0 && (
-          <div className={`flex flex-wrap gap-1.5 ${item.text ? 'mb-2' : ''}`} data-prompt-images={item.images.length}>
+          <div className={`flex flex-wrap gap-1.5 ${text ? 'mb-2' : ''}`} data-prompt-images={item.images.length}>
             {messageImageSlots(item.images.length).map((slot) => {
               const image = item.images[slot.index]!;
               return <TranscriptImage key={image.imageId} sessionId={sessionId} image={image} variant={slot.variant} gallery={item.images} index={slot.index} more={slot.more} />;
@@ -264,11 +267,12 @@ function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'u
           </div>
         )}
         {/* Your prompts render as Markdown too, so code and code blocks are styled. */}
-        {item.text && (
+        {text && (
           <ClampedPrompt itemKey={item.key} className="text-body [overflow-wrap:anywhere] [&_p]:whitespace-pre-wrap [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
-            <Markdown text={item.text} />
+            <Markdown text={text} />
           </ClampedPrompt>
         )}
+        <LinkedSessions briefs={briefs} />
       </div>
     </div>
   );

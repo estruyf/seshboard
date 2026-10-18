@@ -59,6 +59,11 @@ export interface HostEvents {
   limited?(): boolean;
   /** What this session's mods tell the windows; without it, mods never attach. */
   mods?: ModsEvents;
+  /**
+   * A message as Claude reads it: linked sessions' stubs turned into briefs (session linking). Called for every message
+   * right as it goes to Claude Code, so a queued one carries what is true then. Must not wait.
+   */
+  expand?(sessionId: string, text: string): string;
 }
 
 export interface HostConfig {
@@ -323,8 +328,9 @@ export class SessionHost {
     this.drain();
   }
 
-  private push(text: string, attachments: readonly ImageAttachment[], after?: Promise<unknown>): string {
+  private push(typed: string, attachments: readonly ImageAttachment[], after?: Promise<unknown>): string {
     const uuid = randomUUID();
+    const text = this.events.expand ? this.expandSafely(typed) : typed;
     const content = [
       ...attachments.map((a) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: a.mediaType, data: a.data } })),
       ...(text ? [{ type: 'text' as const, text }] : []),
@@ -339,6 +345,16 @@ export class SessionHost {
     this.events.messages(this.sessionId, [{ type: 'user', uuid, message: echo, parent_tool_use_id: null, timestamp: new Date().toISOString() }], after !== undefined);
     this.update({ promptedAt: this.lastActivity });
     return uuid;
+  }
+
+  /** A brief that can't be written is no reason to lose the message: it then goes as it was typed. */
+  private expandSafely(text: string): string {
+    try {
+      return this.events.expand!(this.sessionId, text);
+    } catch (error) {
+      this.events.log('warn', `Could not write a linked session's brief: ${error instanceof Error ? error.message : String(error)}`);
+      return text;
+    }
   }
 
   /** Why the queue isn't sending by itself (see `SessionHostInfo.queueHold`). */

@@ -196,6 +196,15 @@ export const contract = {
       result: z.object({}),
     },
     /**
+     * What a linked session's chip shows (session linking): its branch, its pull request, and whether it is gone. Also
+     * warms what the engine needs to write the brief when the message is sent (the project's pull requests, the
+     * branch's commits), so sending doesn't wait for gh.
+     */
+    'sessions.linkInfo': {
+      params: z.object({ sessionId: SessionId }),
+      result: z.object({ gone: z.boolean(), branch: z.string().nullable(), pr: WorktreePullRequest.nullable() }),
+    },
+    /**
      * Moves a session's transcript (and its subagent transcripts) to the Trash.
      * Stops it first when it runs in this app; refuses (SESSION_BUSY_ELSEWHERE) when another window has it open.
      */

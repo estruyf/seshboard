@@ -2631,6 +2631,7 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   // The command palette's New session needs a project: this is the one moment the throwaway profile has one.
   await smokeRun.step('command palette, new session', () => runPaletteNewSessionStep(win), { cleanup: false });
   await smokeRun.step('unsent New session prompt', () => runUnsentNewSessionStep(win), { cleanup: false });
+  await smokeRun.step('link a session with @', () => runLinkSessionStep(win), { cleanup: false });
   // Here New session has a folder (the project just added), so starting while Auto chooses can be checked too.
   await smokeRun.step('auto model: menu, chip, Stop while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
@@ -4681,6 +4682,39 @@ async function runUnsentNewSessionStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-new-session-view] [data-draft-discard]').click()");
   if (!(await waitInPage(win, `${prompt}?.value === '' && !document.querySelector('[data-new-session-draft]') && !document.querySelector('[data-draft-banner]')`, 3_000))) return 'Discard in New session left the prompt or the pen';
   return 'ok: a prompt left in New session put a pen on the + button, which opened it with "Your unsent prompt for…"; Discard cleared it';
+}
+
+/**
+ * Session linking, read-only: in New session, `@` lists sessions above files; picking one keeps `@<title>` in the text
+ * and adds its chip. Nothing is sent; the chip and the text are taken out again.
+ */
+async function runLinkSessionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const prompt = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const chip = "document.querySelector('[data-new-session-view] [data-context-chip=\"session\"]')";
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+  if (!(await waitInPage(win, `!!document.querySelector('[data-folder-select]')?.dataset.value && ${prompt} && !${prompt}.disabled`, 5_000))) return 'New session has no folder to link from';
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  await js(`${prompt}.focus()`);
+  await win.webContents.insertText('@');
+  // The throwaway profile's project may have no other session: then there is nothing to link.
+  if (!(await waitInPage(win, "document.querySelector('[data-palette] [data-link-option]')", 4_000))) {
+    await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+    return 'ok: no session in this project to link';
+  }
+  const heading = (await js("document.querySelector('[data-palette] [data-palette-heading]')?.innerText ?? ''")) as string;
+  if (!/sessions/i.test(heading)) return `the @ list starts with ${JSON.stringify(heading)}, not Sessions`;
+  const title = (await js("document.querySelector('[data-palette] [data-link-option] .font-semibold')?.innerText ?? ''")) as string;
+  await shot(win, 'link-session-list.png');
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+  if (!(await waitInPage(win, `${chip} && /^@[^@]+$/.test(${prompt}.value.trim())`, 3_000))) return `picking a session did not add its chip and put its name in place of the @ (${JSON.stringify(await js(`${prompt}.value`))})`;
+  await shot(win, 'link-session-chip.png');
+  const text = (await js(`${prompt}.value`)) as string;
+  await js(`${chip}.querySelector('[data-context-chip-remove]').click()`);
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  if (!(await waitInPage(win, `!${chip} && ${prompt}.value === ''`, 3_000))) return 'the linked session chip did not go';
+  return `ok: @ listed Sessions first; picked ${JSON.stringify(title)}, the box read ${JSON.stringify(text.trim())} with its chip; removed again`;
 }
 
 /**

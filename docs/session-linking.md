@@ -6,7 +6,7 @@ Mention another session in the message box, and Claude gets what it needs to kno
 
 Claude starts from that session's branch and opens the new pull request with that branch as its base, without you copying a branch name or a PR link.
 
-This note is the design. Nothing here is built yet; [PLAN.md 5.11](../PLAN.md#511-session-linking) tracks it. Places in the code are named as they are on `main` at 0.0.23. The mockups are Round 36 in the Switchboard UI suggestions canvas: the `@` list, the sent message with **What Claude got**, and the parts (chip states, start from its branch, the stacked base, the session menu, `ask_session`, the phone).
+This note is the design. Phase 1 is built (see [Phase 1 as built](#phase-1-as-built)); [PLAN.md 5.11](../PLAN.md#511-session-linking) tracks the rest. Places in the code are named as they are on `main` at 0.0.23. The mockups are Round 36 in the Switchboard UI suggestions canvas: the `@` list, the sent message with **What Claude got**, and the parts (chip states, start from its branch, the stacked base, the session menu, `ask_session`, the phone).
 
 ## What exists today, and what it means for this design
 
@@ -41,8 +41,8 @@ The **Usage cost toggle** session finished an hour ago. It ran in the worktree `
 One trigger, two groups. A second trigger (`#` or `@@`) would be one more thing to learn, and `#` collides with issue numbers in saved prompts.
 
 - **Empty query** (`@` alone): **Sessions** first, the 4 most recent sessions of this project other than this one, then **Files** as today.
-- **With a query:** both groups are searched. The group whose best match scores higher comes first; on a tie, **Files** first, so the muscle memory of `@src/…` stays. A query with `/` or `.` in it only lists files.
-- **Sessions are matched** on the title, the branch (`worktree.branch`, else `gitBranch`) and the first prompt, with the same scoring as the `/` list (`slashScore`: start of a word first, then letters in order). This project's sessions first, then other projects' (at most 3), most recent first within each.
+- **With a query:** a word puts **Sessions** first, when one matches; a query with `/` or `.` in it is a path and only lists files, so the muscle memory of `@src/…` stays.
+- **Sessions are matched** on the title, the branch (`worktree.branch`, else `gitBranch`) and the first prompt, with the same scoring as the `/` list (`slashScore`: start of a word first, then letters in order). This project's sessions first, then, once you've typed a query, other projects' (at most 3), most recent first within each.
 - **Up to 6 sessions and 8 files.** Each group has a heading in the list's small capitals (`Sessions`, `Files`), like `Saved prompts` and `Commands` in the `/` list.
 - **A session row:** status dot (`STATUS` tones), title, then in `text-meta`: branch in mono, the PR pill (`#148`, `link` tone, `Pill`), and the age. Another project's session shows its project name; another profile's shows the profile dot.
 - **Left out:** this session, sessions of a paired computer (`remoteRowId`), helper and ephemeral sessions, archived sessions unless the query matches their title exactly.
@@ -65,8 +65,8 @@ A `session` chip in the context tray (`ContextTray.tsx`): a link icon, the label
 ### Other ways in
 
 - **Session menu** (`useSessionMenu`): **New session linked to this one** opens New session on that session's project with the chip already in the tray and `@<title> ` in the box.
-- **Palette:** **Link a session…** opens the session picker (the ⌘P list) and adds the chip and the label to the active message box. **New session linked to this one** for the active session.
-- **Dragging from the sidebar** onto the message box comes in phase 2, as a new target in `planDrop` (see [Open questions](#open-questions)).
+- **Palette:** **New session linked to this one** for the active session. **Link a session…** (the session picker, adding the chip and the label to the active message box) comes in phase 2.
+- **Dragging from the sidebar** onto the message box is left out for now (see [Decisions](#decisions)).
 
 ### New session: start from its branch
 
@@ -112,8 +112,11 @@ project: switchboard
 folder: /Users/elio/dev/switchboard/.claude/worktrees/usage-cost
 branch: worktree-usage-cost
 pull request: #148 open, base main, https://github.com/estruyf/switchboard/pull/148
-state: finished 1h ago
+state: finished, last active 2026-10-18 13:02
 asked: Add a setting to hide the estimated cost on the usage bars
+commits:
+- c9f6e15 feat(usage): add a setting to hide the estimated cost on the usage bars
+- 1a2b3c4 test(usage): cover the hidden cost on the Limits cards
 did:
 - Added Show estimated cost to Settings › Usage
 - Hid the cost on the usage bars and the Limits cards when it is off
@@ -129,6 +132,8 @@ shows the cost; that needs the remote contract to carry the preference, so I lef
 
 - **The label line** is `Linked session: <label>`, the same label as the mention in the text.
 - **Keys** are one per line, `key: value`, lowercase, in this order. A missing value says why: `branch: none (not a git repository)`, `pull request: none yet`, `state: working, details may change`.
+- **Times are clock times** (`last active 2026-10-18 13:02`), never "1h ago": the brief stays in the transcript, and a relative time is wrong as soon as you read it later.
+- **`commits`** are the branch's own commits (`git log --oneline <base>..<branch>`, at most 10, newest first), with the PR's base, else origin's default branch, as `<base>`. The catch-up card only covers the last turn; the commits cover the whole branch, which is what stacking builds on.
 - **The fence** is `fenceFor(body)` (longer than any run of backticks in the body), like other text blocks.
 - **The stub** the renderer writes is the same block with only `session:` (and the label line). The engine fills in the rest. A stub that reaches Claude unexpanded (a path that doesn't expand, see below) still names the session.
 
@@ -139,9 +144,10 @@ At most 4,000 characters per brief, 12,000 for all briefs in one message. Over i
 1. the last reply, cut to 1,500 characters, then to 600, then left out;
 2. `skipped`, then `did` past its first 2 lines;
 3. `asked`, cut to 120 characters;
-4. never: `session`, `folder`, `branch`, `pull request`, `state`.
+4. `commits` past the first 5;
+5. never: `session`, `project`, `folder`, `branch`, `pull request`, `state`.
 
-A brief that had to cut says so in its last line: `(shortened: last reply left out)`.
+A brief that had to cut says so in its last line: `shortened: last reply left out`.
 
 ### Where it's built: the engine, right before Claude reads it
 
@@ -151,12 +157,19 @@ The renderer writes the stub. The engine expands it at the moment the message go
 - **The engine has the data:** the session index, the catch-up store, the PR store and the transcript. The renderer would need three more round trips per send.
 - **No contract change for sending.** `session.send`, `session.create`, `later.*` and Up next keep carrying text. The stub is in the text, so every path that carries text carries the link.
 
-Where it expands:
+Where it expands: in one place, `SessionHost.push`, through `expand` in the host's events. Every message goes through it: a send, the first prompt of `session.create` and `later.start`, Up next draining, Send now.
 
-- `SessionHost.push` (the live input queue and Up next draining), through a new `expandLinks(text)` in the host's deps;
-- the first prompt of `session.create` and `later.start`, before the host starts.
+`push` is synchronous, so the brief is built from what the engine already holds: the session index, the catch-up store, `session_prs`, and a cache of pull requests by branch and commits per linked session. That cache is warmed when the chip is added (`sessions.linkInfo`) and again when a message with a stub is sent or queued (`HostManager.send` and `create` wait for it, at most 2 seconds). Sending never waits on `gh` longer than that; a slower answer lands in the cache for the next brief.
 
 The transcript keeps the expanded text, since that's what Claude read. That makes the transcript the record of what each brief said.
+
+### Kept out of titles, search and the catch-up
+
+The expanded brief is part of your message in the transcript, so everything that reads your prompt would read the brief too. Each of these takes it out with `parseBriefs(text).text` first:
+
+- the session's first prompt and the title made from it (`sessionIndex.ts`), so a session that links "Usage cost toggle" doesn't match "usage cost" in the `@` list or the sidebar search;
+- search (`searchableText`), so a search finds the brief's words only in the session they describe;
+- the catch-up card's `ask` (`promptText`), so Haiku summarises what you asked, not the brief.
 
 ### Missing pieces
 
@@ -179,7 +192,7 @@ The transcript keeps the expanded text, since that's what Claude read. That make
 
 1. **Opened in the session:** the indexer sees a Bash call whose command has `gh pr create` and a PR link in its output (`parsePrUrl`). Stored with `source: 'opened'`.
 2. **Opened by Switchboard:** `git.prCreate` stores the PR for the session it was started from (`source: 'opened'`).
-3. **By branch:** the session's branch matched in `fetchPullRequests` (`source: 'branch'`). Read when a brief or the header needs it, not stored as "opened".
+3. **By branch:** the session's branch matched in `fetchPullRequests` (`source: 'branch'`). Any PR whose head is the session's branch counts as the session's own, whoever opened it (from the browser, another tool): for stacking, "the PR of that branch" is what you mean. `source` keeps the two apart for the UI.
 
 A PR link that only shows up in text (Claude mentions someone else's PR) is not stored.
 
@@ -190,13 +203,13 @@ In the incremental transcript pass that already reads every new message for sear
 ### Staleness
 
 - `fetchPullRequests` adds `baseRefName` to its `--json` fields.
-- Stored PRs keep `state`, `base` and `checked_at`. A brief or the header that needs a PR older than 10 minutes asks `gh pr view <n> --json state,baseRefName,headRefName,url` for it (one call, 5 s limit) and updates the row.
+- Stored PRs keep `state`, `base` and `checked_at`. They are refreshed when the chip is added and when a message with the stub is sent, through the project's pull request list (`gh pr list`, cached 5 minutes like the Worktrees tab's), never while the message waits more than 2 seconds.
 - No `gh`, not signed in, or offline: the stored values are used, and the brief says `pull request: #148 open, base main (as of 14:02)`.
 - A live `git.prFor` would fail once the worktree is gone or the branch changed. The stored branch from the session index and the stored PR rows don't depend on the folder, so that case is covered without it.
 
 ## Protocol
 
-Sketches, not final code.
+Sketches, not final code. What phase 1 shipped is under [Phase 1 as built](#phase-1-as-built).
 
 ```ts
 // packages/protocol/src/context.ts
@@ -311,11 +324,11 @@ Claude Code's worktree setting only knows `fresh` and `head`, so for a branch th
 git -C <repo root> worktree add -b worktree-<name> <repo root>/.claude/worktrees/<name> <branch>
 ```
 
-then starts the session with that folder as `cwd` and no `extraArgs.worktree`. Same place and branch name as Claude Code's, so the session index, the Worktrees tab and cleanup treat it like any other. A branch that only exists on the remote is fetched first (`origin/<branch>`). Git refusing (the branch is gone, the name is taken) fails `session.create` with git's first useful line (`firstUsefulLine`), and the form keeps everything.
+then starts the session with that folder as `cwd` and no `extraArgs.worktree`. Same place and branch name as Claude Code's, so the session index, the Worktrees tab and cleanup treat it like any other: Switchboard tells a worktree by its path (`host/sessionFolder.ts`, `git/worktrees.ts`), not by who made it. Claude Code's own worktree setup (a `WorktreeCreate` hook, if a project has one) doesn't run for it; the docs page says so, and Switchboard's own setup actions (`runOnWorktreeCreate`) still do. A branch that only exists on the remote is fetched first (`origin/<branch>`). Git refusing (the branch is gone, the name is taken) fails `session.create` with git's first useful line (`firstUsefulLine`), and the form keeps everything.
 
 ### Recording links
 
-`expand` records a row in `session_links` for each stub it fills, with the message's uuid once Claude Code returns it. The rows can be rebuilt from transcripts, because each expanded brief names its session: the table is a cache like `sessions`, not a user choice, and may be dropped on rebuild.
+`expand` records a row in `session_links` for each stub it fills. The rows can be rebuilt from transcripts, because each expanded brief names its session: the table is a cache like `sessions`, not a user choice, and may be dropped on rebuild.
 
 ## Migration
 
@@ -326,7 +339,6 @@ CREATE TABLE session_links (
   from_session TEXT NOT NULL,
   to_session   TEXT NOT NULL,
   label        TEXT NOT NULL,
-  message_uuid TEXT,
   created_at   INTEGER NOT NULL,
   PRIMARY KEY (from_session, to_session, created_at)
 );
@@ -376,7 +388,7 @@ ask_session({
 - **A linked session that links to others:** its briefs aren't copied into this one (the last reply is Claude's text, never your prompt).
 - **Quick questions:** can be linked (no branch, no PR). Questions never offer Start from its branch.
 - **Remote panes** (another computer's session): no Sessions group in their message box in phase 1, since the brief is built by this computer's engine.
-- **Paths that don't expand:** a message sent from the phone into a session, with a stub typed by hand, goes as the stub. Claude sees the session's id and title. Acceptable.
+- **The phone and the companion can't link.** A message from a paired phone goes through the same `push`, so a stub typed there would expand, and could name a session hidden from that phone: its brief would then show in a transcript the phone can read. So the remote contract's `session.send` defuses every stub before it is sent (`defuseStubs`: the fence's info string becomes `text`, so it reads as a code block and never expands). The companion only adds chips to the tray (a text chip's stub sits inside its own fence, which the parser skips), and `context.add` refuses a `session` item. Linking from the phone waits for phase 4, where it checks the session is visible to that phone first.
 - **Windows:** folders in the brief are written as the platform writes them (`C:\Users\…`); `parseBriefs` takes either separator. The `git worktree add` path goes through `joinPath`.
 
 ## Phases
@@ -384,19 +396,32 @@ ask_session({
 ### Phase 1: tagging, the brief and PR detection
 
 - `session` context item, the `@` list's Sessions group, the label in the text, the chip.
-- `sessionLinks.ts` (format, parser, budget), `links/brief.ts`, `links/expand.ts` in `push` and `session.create` / `later.start`.
-- `session_links`, `session_prs`, PR detection in the incremental pass, `baseRefName`, `gh pr view` refresh.
+- `sessionLinks.ts` (format, parser, budget), the engine's `links/` (brief, expansion in `push`, warming before send).
+- `session_links`, `session_prs`, PR detection in the incremental pass, `baseRefName`.
+- Briefs kept out of the first prompt, search and the catch-up's ask. Stubs from the phone defused.
 - The transcript's mention and **Linked:** row with **What Claude got**; `contextFromPrompt` reads briefs back.
-- Session menu and palette: **New session linked to this one**, **Link a session…**.
+- Session menu and palette: **New session linked to this one**.
 - The remote app shows a brief as one line, "Linked: Usage cost toggle", through the shared parser.
+
+### Phase 1 as built
+
+Where the code differs from the sketches above:
+
+- **The `@` list is built in the renderer** from the session list it already has (`linkableSessions` in `composer/sessionLinks.ts`), so there is no `sessions.linkable`. Its rows show the status, title, branch and age; the PR pill waits for a cheap source of PRs per row (phase 2, with `sessions.pullRequests`).
+- **The contract has one new request,** `sessions.linkInfo` (the chip's branch and PR, and warming the brief). `sessions.links` and `sessions.pullRequests` come with phase 2's header.
+- **The engine side** is `packages/engine/src/links/`: `linkStore.ts` (the two tables), `prDetect.ts` (`gh pr create` in transcripts), `brief.ts` (a brief from what is known, no waiting) and `linkService.ts` (warm, expand, the chip's info). `SessionHost.push` calls `expand` through `HostEvents.expand`; `HostManager.send` and `create` call `warm` first.
+- **The companion** has its own item schema (`CompanionContextItem`: files and text), so `context.add` refuses a `session` item by its schema.
+- **The format** (`packages/protocol/src/sessionLinks.ts`) adds `withoutBriefs`, which also takes off a brief cut short (a first prompt as Claude Code keeps it), and `defuseStubs` for the phone.
+- **The transcript row** shows **What Claude got** as a disclosure under the row rather than a popover.
+- **Up next** rows show what you typed, without the stub.
+- **Smoke:** `link a session with @` (read-only, in New session).
 
 ### Phase 2: start from its branch, and the header
 
 - `WorktreeRequest.baseRef` with a branch, `git/worktreeFrom.ts`, the Where option in New session.
 - **Builds on …** in the session header, `sessions.links`.
 - The Create pull request dialog picks the linked branch as base, "Stacked on #148".
-- Dragging a session from the sidebar onto a message box links it.
-- A `session` blank type in saved prompts (if wanted, see [Open questions](#open-questions)).
+- A `session` blank type in saved prompts ("Stack on {{parent:session}}"), and the palette's **Link a session…**.
 
 ### Phase 3: ask_session
 
@@ -404,7 +429,8 @@ ask_session({
 
 ### Phase 4: stacks
 
-- A stack view on the project page, marks in the sidebar, the remote app's own link chips.
+- A stack view on the project page, marks in the sidebar, the remote app's own link chips (checking the session is visible to that phone).
+- Maybe: dragging a session from the sidebar onto a message box. The session menu and `@` cover linking, and the sidebar drag is the split view's tile drag, so this only comes if people ask for it.
 
 ## Tests
 
@@ -412,7 +438,7 @@ ask_session({
 
 - `sessionLinks.test.ts`: write and parse round trip; a stub; the budget's drop order; a reply with backticks; `parseBriefs` ignoring ordinary code blocks and a fence with another info string; both path separators.
 - `contextItems.test.ts`: `promptWithContext` writes session stubs after text blocks; `contextFromPrompt` brings back files and sessions together; a label with ` (2)`.
-- Composer scoring (a pure `linkScore`): group order for empty, title, branch and path-like queries; the tie goes to Files.
+- Composer scoring (a pure `linkableSessions`): group order for empty, title, branch and path-like queries; other projects only with a query.
 - Engine (`links/*.test.ts`, real SQLite, real git): a brief for finished, working, waiting, no branch, no PR, worktree gone, gone session; expansion in `push` and in Up next draining; links recorded; PR detection from a recorded transcript with `gh pr create` output, and none from a link in plain text; `gh` missing.
 - Smoke: open New session, type `@` with a session in the throwaway profile, pick it, check the chip (`data-context-chip="session"`) and the label; send in the sandbox (live smoke only) and check the **Linked:** row (`data-linked-session`).
 
@@ -438,19 +464,25 @@ Per the [release checklist in CLAUDE.md](../CLAUDE.md#release-checklist), in the
 - **`CHANGELOG.md`:** "Mention another session with @ in the message box: Claude gets its branch, pull request, what it did and its last reply."
 - Shortcuts: none new, so `npm run docs:shortcuts` has nothing to change. macOS and Windows read the same; keys in the pages go through `<Kbd>`.
 
-## Open questions
+## Decisions
 
-These are for you. Where the design goes against the starting direction, it says so.
+The design's open questions, as decided on 2026-10-18.
 
-1. **The brief is built in the engine, at the moment Claude reads it, not in the renderer at send.** Against the starting direction (which said on send, which in this codebase means the renderer, as for other chips). Reason: Up next and the queue send later, and the engine has the data. The cost: the stub is a small hidden protocol inside the text. OK?
-2. **No new `context`/`links` field on `session.send` and `session.create`.** The stub in the text carries the link through every path that carries text (Up next, queue, remote). The starting direction asked how these calls would carry context items; this answers "they don't need to". Is a text marker acceptable, or do you want a typed field even though it touches `later.*`, `up_next` and the remote contract?
-3. **`session_links` and `session_prs` are a cache that can be rebuilt from transcripts,** not user data kept on rebuild. The starting direction didn't say; this follows from the briefs naming their session. Fine to drop them on a rebuild?
-4. **Start from its branch needs the engine to run `git worktree add` itself,** because `WorktreeRequest.baseRef` and Claude Code's `worktree.baseRef` only know `fresh` and `head`. The starting direction assumed `worktree.baseRef` could take it. Copying Claude Code's place and naming should make it look the same, but Claude Code's own worktree setup (hooks such as `WorktreeCreate`, if a project has them) won't run. Accept that, or wait for Claude Code to take a branch?
-5. **PRs are detected in the search indexer's pass, and only from `gh pr create` output and Switchboard's own Create pull request.** A PR you opened in the browser for that branch is still found by branch. Is "opened in this session" the right bar, or should any PR for the session's branch count as its own?
-6. **Dragging a session onto the message box is phase 2, not phase 1.** The sidebar drag is the split-view tile drag, and the message box would become a new drop target in `planDrop`. Worth it, or is the session menu enough?
-7. **A `session` blank type in saved prompts** ("Stack on {{parent:session}}"): phase 2, or not at all?
-8. **Sessions of other projects in the `@` list** (up to 3, after this project's). Useful for linking work across repositories, or noise?
-9. **The brief's size:** 4,000 characters per brief, 12,000 per message, and the last reply cut first. Too much, too little?
-10. **The catch-up card describes the last turn only.** For a long session, "did" can miss earlier work. Should the brief also list the session's commits on its branch (`git log <base>..<branch> --oneline`, at most 10)?
-11. **`ask_session` usage is billed to the asking session** in Usage, but runs under the linked session's profile. Is that the right place to show it?
-12. **The remote app** gets the one-line rendering in phase 1 and nothing else. Linking from the phone waits for phase 4. OK?
+1. **The brief is built in the engine, when Claude reads it,** not in the renderer at send: Up next and the queue send later, and the engine has the data. The stub in the text is the cost, and it is accepted.
+2. **No new field on `session.send` and `session.create`.** The stub in the text carries the link through every path that carries text.
+3. **`session_links` and `session_prs` are a cache** that a rebuild may drop: both can be read back from transcripts.
+4. **Start from its branch runs `git worktree add` in the engine.** Switchboard tells worktrees by their path, so one made at `.claude/worktrees/<name>` looks the same everywhere. A project's `WorktreeCreate` hook doesn't run for it; the docs page says so.
+5. **Any PR whose head is the session's branch counts,** not only one opened in the session. `source` keeps them apart.
+6. **No dragging a session onto the message box** for now (phase 4 at the earliest). The session menu and `@` cover it.
+7. **A `session` blank in saved prompts:** phase 2.
+8. **Other projects' sessions in the `@` list** only once you've typed a query, never for a bare `@`.
+9. **4,000 characters per brief, 12,000 per message.**
+10. **The brief lists the branch's commits** (`git log --oneline <base>..<branch>`, at most 10). They are cut after the last reply and never before 5.
+11. **`ask_session` is billed to the asking session** in Usage.
+12. **The remote app** shows a brief as one line in phase 1; linking from the phone waits for phase 4.
+
+Found in review, and part of phase 1:
+
+- **Stubs from the phone are defused** before they reach `push`, so a phone can't read a session hidden from it through a brief (see [Edge cases](#edge-cases)).
+- **Briefs are kept out of the first prompt, search and the catch-up's ask** (see [Kept out of titles, search and the catch-up](#kept-out-of-titles-search-and-the-catch-up)).
+- **Sending never waits on `gh` for more than 2 seconds;** the PR list is refreshed when the chip is added.

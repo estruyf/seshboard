@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REMOTE_ATTACHMENT_BYTES, RpcError, type RemoteFile, type RemoteImage } from '@switchboard/protocol';
+import { defuseStubs, REMOTE_ATTACHMENT_BYTES, RpcError, type RemoteFile, type RemoteImage } from '@switchboard/protocol';
 
 /**
  * Files sent with a message from another device (docs/remote-access.md): kept in a folder of their own under `dir`,
@@ -41,7 +41,9 @@ export function saveRemoteFiles(dir: string, files: readonly RemoteFile[]): stri
 }
 
 /** The prompt with the files as `@` mentions on a line of their own, as the message box writes dropped files. */
-export function promptWithFiles(text: string, paths: readonly string[]): string {
+export function promptWithFiles(typed: string, paths: readonly string[]): string {
+  // A phone never links a session: a stub typed there could name one hidden from it (docs/session-linking.md).
+  const text = defuseStubs(typed);
   if (!paths.length) return text;
   const mentions = paths.map((path) => (/\s/.test(path) ? `@"${path}"` : `@${path}`)).join(' ');
   return text.trim() ? `${text.trim()}\n\n${mentions}` : mentions;

@@ -452,6 +452,11 @@
       "page": "projects/projects-view"
     },
     {
+      "id": "palette:new-session-linked",
+      "name": "New session linked to this one",
+      "page": "sessions/linking"
+    },
+    {
       "id": "palette:rename-session",
       "name": "Rename session…",
       "page": "sessions/sidebar"
@@ -2830,6 +2835,16 @@
       "id": "feature:rename-project",
       "name": "Rename a project (Switchboard name only)",
       "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:link-sessions",
+      "name": "Link another session with @ in the message box",
+      "page": "sessions/linking"
+    },
+    {
+      "id": "feature:new-linked-session",
+      "name": "New session linked to this one (session menu)",
+      "page": "sessions/linking"
     },
     {
       "id": "feature:rename-session",

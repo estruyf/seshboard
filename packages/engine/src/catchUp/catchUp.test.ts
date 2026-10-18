@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { writeStub } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { asksBack, fallbackSummary, needKind, replyLines, testsText, waitingNeed } from './fallback.ts';
 import { inScope, namedPaths, scopeCheck, signalsOf, testsSignal, type Signals } from './signals.ts';
@@ -146,6 +147,7 @@ describe('scope', () => {
 describe('the turn', () => {
   it('tells your prompts from what Claude Code writes into user turns', () => {
     expect(promptText(user('1', 'Fix it'))).toBe('Fix it');
+    expect(promptText(user('1b', `Stack it on @Old\n\n${writeStub('Old', 'id-1')}`))).toBe('Stack it on @Old');
     expect(promptText(user('2', [{ type: 'text', text: '<command-message>review</command-message><command-name>/review</command-name><command-args>all</command-args>' }]))).toBe('/review all');
     expect(promptText(toolResult('x', 'ok'))).toBeNull();
     expect(promptText(user('3', '[Request interrupted by user]'))).toBeNull();

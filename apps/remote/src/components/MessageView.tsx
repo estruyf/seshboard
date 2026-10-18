@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ChevronRight } from 'lucide-react';
-import type { RemoteMessage } from '@switchboard/protocol/remote-client';
+import { ChevronRight, Link2 } from 'lucide-react';
+import { parseBriefs, withoutBriefs, type RemoteMessage } from '@switchboard/protocol/remote-client';
 import { runSummary, type TranscriptItem } from '../lib/steps.ts';
 import { editLines, toolSummary, type resultsByCall } from '../lib/transcript.ts';
 import { Markdown } from './Markdown.tsx';
@@ -32,10 +32,19 @@ export function ItemView({ item, results, live }: { item: TranscriptItem; result
 }
 
 function UserMessage({ message }: { message: RemoteMessage }) {
-  const text = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
+  const sent = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
+  // A linked session's brief is one line here (session linking); what you typed shows as it is.
+  const text = withoutBriefs(sent);
+  const linked = parseBriefs(sent).briefs;
   return (
     <div className="ml-8 rounded-xl border border-border bg-card px-3 py-2 sm:ml-16">
       {text && <p className="text-body break-words whitespace-pre-wrap">{text}</p>}
+      {linked.map((brief) => (
+        <p key={brief.sessionId} className="mt-1 flex items-center gap-1.5 border-t border-border pt-1 text-meta text-muted" data-linked-session={brief.sessionId}>
+          <Link2 aria-hidden className="size-3 shrink-0 text-accent-ink" />
+          <span className="min-w-0 truncate">Linked: {brief.label}</span>
+        </p>
+      ))}
       {message.blocks.some((b) => b.type === 'image') && <p className="text-meta text-faint">Image (on your computer)</p>}
       {message.device && <p className="pt-1 text-meta text-faint">From {message.device}</p>}
     </div>

@@ -92,6 +92,8 @@ const PLANS: Record<string, Plan> = {
   'build-catch-up': 'here',
   'why-request': 'here',
   'rename-session': 'here',
+  // New session lives in the main window, and its box is the one the link goes in.
+  'new-session-linked': 'hide',
   pin: 'here',
   archive: 'here',
   fork: 'here',

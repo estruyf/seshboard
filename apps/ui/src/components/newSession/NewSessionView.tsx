@@ -1176,6 +1176,7 @@ function LocalNewSession() {
               draftKey={draftKey}
               carryOver
               savedPrompts={{ root: cwd && !question ? cwd : null, projectName: projectName ?? 'This project' }}
+              links={{ sessionId: null, root: cwd }}
               onDraftLoaded={onDraftLoaded}
               restored={restored !== null}
               history={promptHistory}

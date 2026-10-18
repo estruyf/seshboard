@@ -1,0 +1,70 @@
+---
+title: Link sessions
+description: Mention another session with @ in the message box, and Claude gets its folder, branch, pull request, what it did and its last reply. Stack a pull request on another one without copying anything over.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+Mention another session in the message box, and Claude gets what it needs to know about it: its folder, its branch, its pull request, what it did and its last reply. You don't copy a branch name or a link from one session to the other.
+
+The case it was made for is stacking work:
+
+> create me this feature, and stack the PR on top of the one you opened in @Usage cost toggle
+
+Claude sees that **Usage cost toggle** worked on the branch `worktree-usage-cost` and opened pull request #148 against `main`. It starts from that branch and opens the new pull request with `worktree-usage-cost` as its base.
+
+## Link a session
+
+Type <Kbd shortcut="composer.mention" /> in the message box. The list has two groups:
+
+- **Sessions:** the sessions you can link, with their status, branch and how long ago they were active. With only `@`, it shows the four most recent sessions of this project. Type a word to look for a title, a branch or a first prompt. This project's sessions come first; once you type, up to three of other projects follow.
+- **Files:** as before. A search with a `/` or `.` in it is a path, so it only lists files.
+
+Pick a session with <Kbd keys="arrowdown" /> and <Kbd keys="enter" />, or click it. Its name stays in your text, such as `@Usage cost toggle`, so the sentence still reads. The session also shows as a chip above the message, with its branch and pull request after the name.
+
+- Click the chip to open the session beside this one.
+- Click × on the chip to remove the link. Removing the name from your text keeps the link; the chip is what counts.
+- You can link up to five sessions in one message. Two sessions with the same title get `(2)` after the second one's name.
+- The session you are in isn't listed. Archived sessions only show when you type their full title.
+
+### Start a new session linked to another
+
+Right-click a session in the sidebar and choose **New session linked to this one**, or run *New session linked to this one* from the command palette for the session you are in. New session opens on that session's project with the chip in place and its name in the box, ready for the rest of your prompt.
+
+## What Claude gets
+
+When the message goes to Claude, Switchboard adds a short brief about each linked session after your text:
+
+- the project and the folder it works in (and whether that folder was removed);
+- its branch, and the commits on that branch;
+- its pull request: the number, whether it is open, merged or closed, the branch it merges into and its link;
+- whether it is finished, still working or waiting for you, and when it was last active;
+- what you asked it, and from its [catch-up](/sessions/catch-up/): what it did, what it skipped and what is next;
+- its last reply.
+
+The brief is written at the moment Claude reads your message, not when you typed it. A message that waits in [Up next](/sessions/conversation/#up-next), or a queued session that starts tomorrow, carries the pull request as it is then.
+
+Nothing is read by a model to write the brief, and it doesn't cost tokens beyond its own length. A brief is at most 4,000 characters, and all briefs in one message together at most 12,000. When it is longer, the last reply is shortened first.
+
+<Aside>
+The pull request comes from the GitHub CLI (`gh`). Without it, or when you aren't signed in, the brief has the pull requests Claude opened in that session with `gh pr create`, as they were then.
+</Aside>
+
+## In the conversation
+
+Your message shows what you typed. Under it, a **Linked:** row for each session has its name, branch and pull request. Click the name to open the session beside this one. **What Claude got** shows the brief as Claude read it.
+
+When you edit a message and send it again, or take one back from Up next, its links come back as chips. The brief is written again when you send it, with what is true then.
+
+## Good to know
+
+- **Sessions that are gone:** a chip whose session was deleted is dashed and says **This session is gone**. Claude then only gets its name.
+- **Other repositories:** you can link a session of another project. Claude Code asks before it reads files outside the session's folder, as it always does.
+- **Search and titles:** search finds the words of a brief only in the session it is about, and a new session's title comes from what you typed, not from a brief.
+- **Your phone:** the remote app shows the links of a message, but you can't link sessions from it yet.
+
+## Related
+
+<Related pages={['sessions/conversation', 'sessions/catch-up', 'sessions/ask', 'terminal-changes-git/git']} />

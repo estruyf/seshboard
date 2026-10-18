@@ -1,3 +1,4 @@
+import { startLinkedSession } from '../newSession/linkedSession.ts';
 import { restoreFrom, trashName } from '../../lib/platform.ts';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { useState, type ReactNode } from 'react';
@@ -96,6 +97,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           : { label: 'Archive', hint: 'until new activity', onSelect: () => flag(ARCHIVE), disabled: !data.summary },
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
+        { label: 'New session linked to this one', onSelect: () => data.summary && startLinkedSession({ id: data.id, title: data.title, projectRoot: data.summary.projectRoot }), disabled: !data.summary, data: { 'data-new-linked-session': true } },
         { label: 'Open folder in editor', onSelect: () => cwd && void openIn(cwd).catch(() => {}), disabled: !cwd },
         { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(data.id) },
         'separator',

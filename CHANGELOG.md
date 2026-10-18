@@ -4,6 +4,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ## [Unreleased]
 
+### Added
+
+- **Link another session with @.** Type `@` in the message box and the list now has your sessions above the files. Pick one, and its name stays in your text, such as "stack the PR on top of the one you opened in @Usage cost toggle", with a chip above the message. When the message goes to Claude, it gets a short brief about that session: its folder, its branch and commits, its pull request and the branch it merges into, what it did and its last reply. So Claude can start from that branch and stack a new pull request on it without you copying anything over. Under your message, **Linked:** shows each session it linked, and **What Claude got** shows the brief. Right-click a session and choose **New session linked to this one** to start from it.
+
 ### Changed
 
 - **Commands without a description show what they run, not their script.** While Claude runs a long command or an inline script, the step reads **Running a Python script** or **Running git** instead of a line of code. Short commands still show as they are, such as **Running npm test**. Open the step to see the whole command.

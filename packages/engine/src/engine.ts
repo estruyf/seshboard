@@ -58,7 +58,7 @@ import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
-import { checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
@@ -81,6 +81,9 @@ import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
 import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessionsWithDrafts, sessionsWithQueuedPrompts, type RetentionPolicy } from './sessions/retention.ts';
 import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profiles/cleanupPeriod.ts';
 import { HostManager, type SdkRuntime } from './host/hostManager.ts';
+import { LinkService } from './links/linkService.ts';
+import { LinkStore } from './links/linkStore.ts';
+import { lastTurn } from './catchUp/turn.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
 import { commandRunMessage, shellName } from './terminals/outputMessage.ts';
@@ -399,7 +402,29 @@ export function createEngine(options: EngineOptions): Engine {
     source,
     () => sessions.snapshot().sessions.map((s) => ({ id: s.id, version: `${s.updatedAt}:${s.fileSize ?? ''}` })),
     log,
+    (id, messages) => links.transcriptRead(id, messages),
   );
+  // --- Session linking (docs/session-linking.md) ---------------------------------------------------------------------
+  const links = new LinkService({
+    store: new LinkStore(cache.db),
+    session: (id) => sessions.get(id),
+    status: (id) => {
+      const state = hosts.list().hosts.find((h) => h.sessionId === id)?.state ?? liveList().find((l) => l.sessionId === id)?.status;
+      return state === 'running' ? 'working' : state === 'needs-you' ? 'waiting' : null;
+    },
+    catchUp: (id) => catchUpStore.get(id),
+    projectName: (root) => listProjects().find((p) => p.root === root)?.name ?? null,
+    inRepo: (folder) => !!resolver.resolve(folder).gitDir,
+    pullRequests: (root) => pullRequestsFor(root, false),
+    commits: async (folder, branch, base) => {
+      const from = base ?? (await baseBranch(folder));
+      const range = from ? [`${from}..${branch}`] : [branch];
+      const out = await git(folder, ['log', '--oneline', '--no-decorate', '--max-count=10', ...range], { timeout: 5_000 });
+      return out.split('\n').map((line) => line.trim()).filter(Boolean);
+    },
+    lastReply: async (id) => lastTurn(await source.messages(id))?.finalText ?? null,
+    log,
+  });
   // A fixed delay, not a debounce: busy sessions change every second and must not keep pushing it back.
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   function scheduleSearchSync(delayMs = 3_000) {
@@ -701,6 +726,7 @@ export function createEngine(options: EngineOptions): Engine {
     sessionSettings: createSessionSettingsStore(cache.db),
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
+    links: { expand: (id, text) => links.expand(id, text), warm: (text) => links.warmText(text) },
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -1455,6 +1481,7 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'sessions.list': () => ({ ...sessions.snapshot(), live: liveList() }),
+    'sessions.linkInfo': ({ sessionId }) => links.info(sessionId),
     'sessions.setFlags': ({ sessionId, pinned, archived }) => {
       sessions.setFlags(sessionId, {
         ...(pinned !== undefined ? { pinned } : {}),

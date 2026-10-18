@@ -92,6 +92,33 @@ describe('pasted text', () => {
   });
 });
 
+describe('linked sessions', () => {
+  const session = (sessionId: string, label: string): ContextItem => ({ kind: 'session', sessionId, label });
+
+  it('writes a stub for each linked session, after the files and text blocks', () => {
+    const text: ContextItem = { kind: 'text', source: 'terminal', label: 'Terminal output', text: 'ok' };
+    const prompt = promptWithContext('stack on @Usage cost toggle', [session('id-1', 'Usage cost toggle'), file('/repo/a.ts'), text], '/repo');
+    expect(prompt).toBe('stack on @Usage cost toggle\n\n@a.ts\n\nTerminal output:\n```\nok\n```\n\nLinked session: Usage cost toggle\n```switchboard-session\nsession: id-1\n```');
+  });
+
+  it('brings files and sessions back together, with the label still in the text', () => {
+    const chips = [file('/repo/a.ts'), session('id-1', 'Usage cost toggle'), session('id-2', 'Usage cost toggle (2)')];
+    const prompt = promptWithContext('stack on @Usage cost toggle and @Usage cost toggle (2)', chips, '/repo');
+    expect(contextFromPrompt(prompt, '/repo')).toEqual({ text: 'stack on @Usage cost toggle and @Usage cost toggle (2)', context: chips });
+  });
+
+  it('reads a brief the engine wrote back as the chip it came from', () => {
+    const sent = 'look at @Old spike\n\nLinked session: Old spike\n```switchboard-session\nsession: id-9\nbranch: spike\nstate: finished, last active 2026-10-18 13:02\n```';
+    expect(contextFromPrompt(sent, '/repo')).toEqual({ text: 'look at @Old spike', context: [session('id-9', 'Old spike')] });
+  });
+
+  it('counts them in a summary, and adds the same one once', () => {
+    expect(chipsSummary([file('/a'), session('id-1', 'One'), session('id-2', 'Two')])).toBe('1 file and 2 linked sessions');
+    expect(addChips([], [session('id-1', 'One'), session('id-1', 'One')])).toHaveLength(1);
+    expect(chipLabel(session('id-1', 'One'), null).label).toBe('One');
+  });
+});
+
 describe('contextFromPrompt', () => {
   it('turns the line of mentions back into chips, the way promptWithContext wrote them', () => {
     const chips: ContextItem[] = [file('/repo/src/auth.ts', { range: { start: 12, end: 40 } }), file('/repo/test', { directory: true }), file('/repo/My Docs/a b.md'), file('/elsewhere/x.ts')];

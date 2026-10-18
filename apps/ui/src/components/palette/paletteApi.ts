@@ -32,6 +32,7 @@ import { useSavedPromptsStore } from '../savedPrompts/savedPromptsStore.ts';
 import { sameScope } from '../savedPrompts/fillModel.ts';
 
 import { useDrafts } from '../../state/draftsStore.ts';
+import { startLinkedSession } from '../newSession/linkedSession.ts';
 import { toast } from '../../state/toastStore.ts';
 import { lastLimit } from '../focus/focusLimit.ts';
 import { syncStep } from '../git/gitPlan.ts';
@@ -115,6 +116,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     setFocusLimit: (on) => usePreferences.getState().update({ focusLimit: on ? lastLimit() : null }),
 
     renameSession: () => session && usePaletteBus.getState().showDialog({ kind: 'rename-session', sessionId, title: session.title }),
+    newLinkedSession: () => session?.projectRoot && startLinkedSession({ id: sessionId, title: session.title, projectRoot: session.projectRoot }),
     showCatchUp: () => {
       const card = useCatchUp.getState().cards.get(sessionId);
       if (card) useCatchUp.getState().setCollapsed(card, false);

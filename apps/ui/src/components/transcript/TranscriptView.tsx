@@ -1759,6 +1759,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 <Composer
                   draftKey={sessionId}
                   savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
+                  links={{ sessionId, root: projectRoot }}
                   status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}

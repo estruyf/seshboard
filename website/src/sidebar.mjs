@@ -45,6 +45,7 @@ export const sidebar = [
       'sessions/conversation',
       'permissions',
       'sessions/ask',
+      'sessions/linking',
       'sessions/agents',
       'sessions/commands',
       'sessions/mods',

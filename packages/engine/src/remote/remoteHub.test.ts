@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   generateKeyPair,
   parseRemoteLink,
+  parseBriefs,
   pskFromSecret,
   REMOTE_IMAGE_BYTES,
   REMOTE_MAX_FILES,
@@ -21,6 +22,7 @@ import {
   type SessionHostInfo,
   type SessionSummary,
   type TranscriptMessage,
+  writeStub,
 } from '@switchboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
@@ -295,6 +297,12 @@ describe('Remote hub', () => {
     await expect(remote.call('session.send', { sessionId: HIDDEN, text: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(await remote.call('session.send', { sessionId: SESSION, text: 'run the tests' })).toEqual({ queued: false });
     expect(sent).toEqual(['run the tests']);
+    // A phone can't link a session: a stub typed there goes as a plain code block, so it never turns into a brief.
+    await remote.call('session.send', { sessionId: SESSION, text: `read @Hidden\n\n${writeStub('Hidden', HIDDEN)}` });
+    expect(parseBriefs(sent.at(-1)!).briefs).toEqual([]);
+    expect(sent.at(-1)).toContain(`\`\`\`text\nsession: ${HIDDEN}`);
+    sent.pop();
+    sentImages.pop();
     // Pasted or photographed images go with the message; too many, or one too big, are refused.
     const image = { type: 'image' as const, mediaType: 'image/jpeg' as const, data: 'aGVsbG8=', name: 'screen.jpg' };
     await remote.call('session.send', { sessionId: SESSION, text: 'look', images: [image] });

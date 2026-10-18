@@ -213,6 +213,7 @@ function setup(
     /** Sees each process as it starts, before it gets a message. */
     onQuery?: (query: FakeQuery) => void;
     limits?: HostManagerDeps['limits'];
+    links?: HostManagerDeps['links'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -271,6 +272,7 @@ function setup(
     onTurnEnd: (sessionId, outcome) => turns.push({ sessionId, ...outcome }),
     sessionSettings: opts.settings,
     limits: opts.limits,
+    links: opts.links,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -404,6 +406,30 @@ describe('HostManager', () => {
     t.manager.limitChanged('default');
     await until(() => t.queries[0]!.received.length === 2);
     expect(t.queries[0]!.received.at(-1)!.text).toBe('Then the docs');
+    t.manager.closeAll();
+  });
+
+  it('writes linked sessions\' briefs as each message goes to Claude Code, a queued one when it goes', async () => {
+    let version = 1;
+    const warmed: string[] = [];
+    const t = setup({
+      links: {
+        expand: (id, text) => text.replace('[stub]', `[brief ${version} for ${id}]`),
+        warm: async (text) => void warmed.push(text),
+      },
+    });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test [stub]' });
+    await until(() => t.permissions.length === 1);
+    expect(t.queries[0]!.received[0]!.text).toBe(`bash:npm test [brief 1 for ${id}]`);
+    // Queued while Claude works: written when it goes, with what is true then.
+    await t.manager.send({ sessionId: id, text: 'Then stack on [stub]', attachments: [], fork: false });
+    version = 2;
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
+    await until(() => t.queries[0]!.received.length === 2);
+    expect(t.queries[0]!.received[1]!.text).toBe(`Then stack on [brief 2 for ${id}]`);
+    // The transcript shows what Claude read.
+    expect(JSON.stringify(t.messages)).toContain(`[brief 2 for ${id}]`);
+    expect(warmed).toEqual(['bash:npm test [stub]', 'Then stack on [stub]']);
     t.manager.closeAll();
   });
 

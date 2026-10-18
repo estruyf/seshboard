@@ -541,4 +541,31 @@ export const migrations: readonly string[] = [
   ALTER TABLE usage_messages ADD COLUMN split INTEGER NOT NULL DEFAULT 0;
   UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL;
   `,
+
+  // v32: Session linking (docs/session-linking.md). Links between sessions (a message in one linked the other), and the
+  // pull requests each session opened or whose branch it worked on. Both are read back from transcripts (a brief names
+  // its session, `gh pr create` prints its link), so a rebuild may drop them.
+  `
+  CREATE TABLE session_links (
+    from_session TEXT NOT NULL,
+    to_session   TEXT NOT NULL,
+    label        TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    PRIMARY KEY (from_session, to_session, created_at)
+  );
+  CREATE INDEX session_links_to ON session_links (to_session);
+  CREATE TABLE session_prs (
+    session_id TEXT NOT NULL,
+    repo       TEXT NOT NULL,
+    number     INTEGER NOT NULL,
+    url        TEXT NOT NULL,
+    state      TEXT NOT NULL,
+    base       TEXT,
+    head       TEXT,
+    source     TEXT NOT NULL,
+    seen_at    INTEGER NOT NULL,
+    checked_at INTEGER NOT NULL,
+    PRIMARY KEY (session_id, repo, number)
+  );
+  `,
 ];

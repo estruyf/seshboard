@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { SearchHit, TranscriptMessage } from '@switchboard/protocol';
+import { withoutBriefs, type SearchHit, type TranscriptMessage } from '@switchboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import { normaliseMessage } from '../claude/transcript.ts';
 
@@ -26,6 +26,9 @@ export function searchableText(message: TranscriptMessage): string | null {
     const command = /<command-name>([\s\S]*?)<\/command-name>/.exec(text);
     if (command) return `${command[1]!.trim()} ${/<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim() ?? ''}`.trim();
     if (/^<local-command|^\[Request interrupted/.test(text)) return null;
+    // A linked session's brief belongs to that session: searching finds its words there, not here.
+    const typed = withoutBriefs(text);
+    return typed ? typed.slice(0, MAX_TEXT) : null;
   }
   return text.slice(0, MAX_TEXT);
 }
@@ -63,6 +66,8 @@ export class SearchIndex {
     private readonly source: SessionSource,
     private readonly sessions: () => IndexedSession[],
     private readonly log: (level: 'debug' | 'warn', message: string) => void,
+    /** Each transcript as it was read for indexing, for what else is read from it (the pull requests a session opened). */
+    private readonly onRead?: (sessionId: string, messages: readonly TranscriptMessage[]) => void,
   ) {
     this.statements = {
       versions: db.prepare('SELECT session_id, version FROM transcript_indexed'),
@@ -150,6 +155,11 @@ export class SearchIndex {
     } catch (error) {
       this.rollback.run();
       throw error;
+    }
+    try {
+      this.onRead?.(session.id, messages);
+    } catch (error) {
+      this.log('debug', `Reading ${session.id} after indexing failed: ${(error as Error).message}`);
     }
   }
 

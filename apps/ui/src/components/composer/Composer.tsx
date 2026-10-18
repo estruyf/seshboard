@@ -1,6 +1,6 @@
 import { ImagePlus, MessageCircleQuestion, Paperclip } from 'lucide-react';
 import { Fragment, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { blanksLeftText, blanksOf, joinPath, MAX_SIDE_QUESTION_LENGTH, promptPreview, type ContextItem, type ImageAttachment, type SavedPrompt, type SlashCommand } from '@switchboard/protocol/client';
+import { blanksLeftText, blanksOf, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { attachmentsAfterSend, textAfterSend } from './afterSend.ts';
@@ -16,6 +16,10 @@ import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './edit
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
 import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
+import { branchOf, linkableSessions } from './sessionLinks.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
+import { useHosts } from '../../state/hostsStore.ts';
+import { shortAge } from '../../lib/format.ts';
 import { useAttachments } from './useAttachments.ts';
 import { ariaKeysFor, formatKeys, keysFor, localizeKeys, matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { submitKey } from '../newSession/startMenu.ts';
@@ -24,8 +28,8 @@ import { PromptFiller, type PromptFillerHandle } from '../savedPrompts/PromptFil
 import { engineClient, useSavedPrompts, useSavedPromptsStore } from '../savedPrompts/savedPromptsStore.ts';
 import { PromptIcon, ScopeTag } from '../savedPrompts/ScopeTag.tsx';
 
-/** A row of the / or @ list; `prompt` makes it a saved prompt rather than a command. */
-type PaletteItem = { value: string; label: string; detail: string; prompt?: SavedPrompt };
+/** A row of the / or @ list; `prompt` makes it a saved prompt rather than a command, `session` a session to link. */
+type PaletteItem = { value: string; label: string; detail: string; prompt?: SavedPrompt; session?: SessionSummary };
 interface Palette {
   kind: 'slash' | 'file';
   /** Where the token being completed starts (the `/` or `@`). */
@@ -119,6 +123,12 @@ export interface ComposerProps {
    * the project in their tags. Without it the box offers none.
    */
   savedPrompts?: { root: string | null; projectName: string | null };
+  /**
+   * Session linking: the `@` list also offers sessions (this project's, `root`, first), never `sessionId` itself. A
+   * picked one keeps `@<its title>` in the text and becomes a chip; the engine adds a brief about it when the message
+   * goes to Claude. Without it, `@` only lists files.
+   */
+  links?: { sessionId: string | null; root: string | null };
 }
 
 /** What the message was made of: the typed text and the context chips that `promptWithContext` put together. */
@@ -387,12 +397,22 @@ export function Composer(props: ComposerProps) {
       const items = [...prompts, ...commands];
       return setPalette(items.length ? { kind: 'slash', start: token.start, items, active: 0 } : null);
     }
-    if (!client || !props.cwd) return setPalette(null);
+    // Sessions to link come first, at once; files follow when the search answers.
+    const linked = new Set(chips.flatMap((c) => (c.kind === 'session' ? [c.sessionId] : [])));
+    const sessionItems: PaletteItem[] =
+      props.links && addContext
+        ? linkableSessions(useSessions.getState().sessions.values(), { selfId: props.links.sessionId, root: props.links.root, query: token.query })
+            .filter((session) => !linked.has(session.id))
+            .map((session) => ({ value: `session:${session.id}`, label: session.title, detail: branchOf(session) ?? '', session }))
+        : [];
+    setPalette(sessionItems.length ? { kind: 'file', start: token.start, items: sessionItems, active: 0 } : null);
+    if (!client || !props.cwd) return;
     client.call('files.search', { cwd: props.cwd, query: token.query, limit: 8 }).then(
       ({ files }) => {
         if (seq !== searchSeq.current) return;
-        const items = files.map((f) => ({ value: `@${f}`, label: f.slice(f.lastIndexOf('/') + 1), detail: f }));
-        setPalette(items.length ? { kind: 'file', start: token.start, items, active: 0 } : null);
+        const items = [...sessionItems, ...files.map((f) => ({ value: `@${f}`, label: f.slice(f.lastIndexOf('/') + 1), detail: f }))];
+        // The highlighted row stays where it was, when it still is one.
+        setPalette((current) => (items.length ? { kind: 'file', start: token.start, items, active: current && current.kind === 'file' && current.active < items.length ? current.active : 0 } : null));
       },
       () => {},
     );
@@ -497,6 +517,25 @@ export function Composer(props: ComposerProps) {
       setText(`${text.slice(0, palette.start)}${text.slice(caret).replace(/^ /, '')}`.trim());
       closePalette();
       startPrompt(item.prompt);
+      return;
+    }
+    // A session from the @ list: its label stays in the text, so the sentence still reads, and it becomes a chip.
+    if (item.session && addContext) {
+      const linkedNow = chips.filter((c) => c.kind === 'session');
+      if (linkedNow.length >= MAX_LINKS_PER_MESSAGE) {
+        closePalette();
+        setNotice(`Link up to ${MAX_LINKS_PER_MESSAGE} sessions in one message.`);
+        return;
+      }
+      const label = uniqueLabel(linkLabel(item.session.title), linkedNow.map((c) => (c as { label: string }).label));
+      const mention = `@${label} `;
+      // The `@` and what was typed after it go, wherever the caret is by now.
+      const end = palette.start + 1 + (/^[^\s@]*/.exec(text.slice(palette.start + 1))?.[0].length ?? 0);
+      setText(`${text.slice(0, palette.start)}${mention}${text.slice(end).replace(/^ /, '')}`);
+      closePalette();
+      addContext([{ kind: 'session', sessionId: item.session.id, label }]);
+      const position = palette.start + mention.length;
+      requestAnimationFrame(() => el.setSelectionRange(position, position));
       return;
     }
     // A file from the @ list becomes a chip; the @ and what was typed after it go.
@@ -785,12 +824,27 @@ export function Composer(props: ComposerProps) {
           id={`${ids}-palette`}
           className="absolute right-0 bottom-full left-0 z-10 mb-2 max-h-72 overflow-y-auto rounded-lg border overlay"
           role="listbox"
-          aria-label={palette.kind === 'slash' ? (palette.items[0]?.prompt ? 'Saved prompts and commands' : 'Commands') : 'Files'}
+          aria-label={palette.kind === 'slash' ? (palette.items[0]?.prompt ? 'Saved prompts and commands' : 'Commands') : palette.items[0]?.session ? 'Sessions and files' : 'Files'}
           data-palette
         >
           {palette.items.map((item, i) => {
             // With saved prompts in the list, each group gets its heading.
-            const heading = palette.kind === 'slash' && palette.items[0]?.prompt ? (i === 0 ? 'Saved prompts' : !item.prompt && palette.items[i - 1]?.prompt ? 'Commands' : null) : null;
+            const heading =
+              palette.kind === 'slash'
+                ? palette.items[0]?.prompt
+                  ? i === 0
+                    ? 'Saved prompts'
+                    : !item.prompt && palette.items[i - 1]?.prompt
+                      ? 'Commands'
+                      : null
+                  : null
+                : palette.items[0]?.session
+                  ? i === 0
+                    ? 'Sessions'
+                    : !item.session && palette.items[i - 1]?.session
+                      ? 'Files'
+                      : null
+                  : null;
             return (
               <Fragment key={item.value}>
                 {heading && (
@@ -808,8 +862,11 @@ export function Composer(props: ComposerProps) {
                   }}
                   className={`flex w-full cursor-default items-baseline gap-3 px-3 py-1.5 text-left hover:bg-accent/10 ${i === palette.active ? 'bg-accent/15' : ''}`}
                   data-saved-prompt-option={item.prompt ? item.prompt.id : undefined}
+                  data-link-option={item.session ? item.session.id : undefined}
                 >
-                  {item.prompt ? (
+                  {item.session ? (
+                    <LinkOption session={item.session} />
+                  ) : item.prompt ? (
                     <>
                       <PromptIcon size={12} aria-hidden className="shrink-0 self-center text-muted" />
                       <span className="shrink-0 text-ui font-semibold text-text">{item.label}</span>
@@ -1038,5 +1095,22 @@ export function Composer(props: ComposerProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** A session in the `@` list: its status dot, title, branch and how long ago it was active. */
+function LinkOption({ session }: { session: SessionSummary }) {
+  const host = useHosts((s) => s.hosts.get(session.id));
+  const live = useSessions((s) => s.live.get(session.id));
+  const state = host && host.state !== 'closed' && host.state !== 'error' ? host.state : live?.status;
+  const dot = state === 'needs-you' ? 'bg-warn' : state === 'running' ? 'bg-accent-ink' : session.unread ? 'bg-unread' : 'bg-faint';
+  const branch = branchOf(session);
+  return (
+    <>
+      <span className={`size-1.5 shrink-0 self-center rounded-full ${dot}`} aria-hidden />
+      <span className="min-w-0 shrink truncate text-ui font-semibold text-text">{session.title}</span>
+      {branch && <span className="min-w-0 truncate font-mono text-meta text-muted">{branch}</span>}
+      <span className="ml-auto shrink-0 text-meta text-faint">{shortAge(session.updatedAt)}</span>
+    </>
   );
 }

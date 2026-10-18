@@ -110,6 +110,11 @@ export interface HostManagerDeps {
    * `answerModPrompt`. Without it, sessions never attach mods.
    */
   mods?: Omit<ModsEvents, 'ask' | 'diagnostics'> & { ask(ask: ModPromptAsk): void };
+  /**
+   * Session linking (`LinkService`): `expand` turns a message's stubs into briefs as it goes to Claude Code, `warm`
+   * reads gh and git for them first (briefly) when a message is sent or queued.
+   */
+  links?: { expand(sessionId: string, text: string): string; warm(text: string): Promise<void> };
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -220,6 +225,7 @@ export class HostManager {
   }
 
   async create(params: CreateParams): Promise<string> {
+    await this.deps.links?.warm(params.prompt);
     const warm = this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
@@ -299,7 +305,7 @@ export class HostManager {
    * A fork, or an idle session, just sends.
    */
   async send(params: { sessionId: string; text: string; attachments: ImageAttachment[]; fork: boolean; mode?: SendMode }): Promise<{ sessionId: string; messageUuid: string; queued: boolean }> {
-    const host = await this.ensureHost(params.sessionId, params.fork, 'This session is open in another Claude Code window. Fork it to continue here.');
+    const [host] = await Promise.all([this.ensureHost(params.sessionId, params.fork, 'This session is open in another Claude Code window. Fork it to continue here.'), this.deps.links?.warm(params.text)]);
     const mode = params.mode ?? 'queue';
     let messageUuid: string;
     let queued = false;
@@ -934,6 +940,7 @@ export class HostManager {
         limitHit: (sessionId, stop) => this.deps.limits?.hit(config.profileId, sessionId, stop),
         turnOk: (sessionId) => this.deps.limits?.ok(config.profileId, sessionId),
         limited: () => !!this.deps.limits?.of(config.profileId),
+        ...(this.deps.links ? { expand: (id: string, text: string) => this.deps.links!.expand(id, text) } : {}),
         mods: this.deps.mods ? { ...this.deps.mods, ask: (ask) => this.askWindow(ask), diagnostics: this.deps.log } : undefined,
       },
       startQuery,

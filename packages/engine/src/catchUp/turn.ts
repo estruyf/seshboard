@@ -1,3 +1,4 @@
+import { withoutBriefs } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 
 /** One tool call of a turn, as much of it as the catch-up needs. */
@@ -72,7 +73,8 @@ export function promptText(message: RawSessionMessage): string | null {
     return `${command.startsWith('/') ? command : `/${command}`}${args ? ` ${args}` : ''}`;
   }
   if (tag(text, 'local-command-stdout') !== null || /^\[Request interrupted by user/.test(trimmed)) return null;
-  const cleaned = text.replace(SYSTEM_REMINDER, '').trim();
+  // A linked session's brief is not what you asked (session linking).
+  const cleaned = withoutBriefs(text.replace(SYSTEM_REMINDER, '')).trim();
   return cleaned || (hasImage ? '(an image)' : null);
 }
 
