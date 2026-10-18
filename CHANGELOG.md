@@ -2,6 +2,12 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### Fixed
+
+- **File links in replies no longer turn back into plain text after Claude moves to a subfolder.** When Claude ran a command in a subfolder of the project, the next message made Switchboard look up every file name from that subfolder, so links such as `parts/clamp/plate.3mf` lost their link while a bare file name kept it. The session now stays in its own folder; only a worktree Claude starts or leaves moves it.
+
 ## [0.0.23] - 2026-10-17
 
 ### New
