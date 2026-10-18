@@ -41,7 +41,7 @@ export function MoreMenu({
   cwd: string | null;
   /** How many agents Claude started in this session, and how many of them still run. */
   agents: { total: number; running: number };
-  /** Shows the Agents panel (or brings it to the front); null leaves the entry out (a pop-out has no side panels). */
+  /** Shows the Agents panel (or brings it to the front); null leaves the entry out. */
   onAgents: (() => void) | null;
   /** How many commands Claude ran in the background in this session, and how many of them still run. */
   commands: { total: number; running: number };

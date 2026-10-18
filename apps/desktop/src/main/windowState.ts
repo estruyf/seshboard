@@ -79,6 +79,15 @@ export class WindowStateStore {
 }
 
 /**
+ * A pop-out's size when there is room for it. It is a whole session, so a side panel fits beside the conversation:
+ * the conversation keeps 440px or more next to the terminal docked on the right (500px, which needs 800px in all),
+ * or next to Changes (440px), Ask (380px) and the others.
+ */
+export const POPOUT_SIZE = { width: 1000, height: 820 };
+/** The smallest a pop-out can be made: the header and the message box still fit; a panel then covers most of the width. */
+export const POPOUT_MIN = { width: 480, height: 400 };
+
+/**
  * Where a pop-out opens: beside the window it came from, on the side of its display with the most room, at
  * `size` or narrower to fit there. When neither side has `min.width` free, it overlaps the window, moved down
  * and right a little. `offset` is how many pop-outs are open already: each one opens a little lower than the last.

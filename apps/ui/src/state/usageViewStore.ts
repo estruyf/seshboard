@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { UsagePeriod } from '@switchboard/protocol/client';
 import type { UsageViewGroup } from '../components/usage/usageMerge.ts';
+import { showInMain } from './popoutsStore.ts';
 import { useProfiles } from './profilesStore.ts';
 import { useSessions, type MainView } from './sessionsStore.ts';
 import { backTarget, readRemembered, type Remembered, type UsageComputers, type UsageTab } from './usageViewPrefs.ts';
@@ -71,6 +72,8 @@ export const useUsageView = create<UsageViewState>()((set, get) => ({
 
 /** Opens the Usage view for a profile (the default one when left out), as a main view like Home. */
 export function openUsage(profileId?: string | null): void {
+  // A pop-out has no Usage view: the main window shows it.
+  if (showInMain({ kind: 'usage', profileId: profileId ?? null })) return;
   const { view } = useSessions.getState();
   const state = useUsageView.getState();
   useUsageView.setState({
