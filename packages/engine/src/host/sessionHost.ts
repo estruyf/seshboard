@@ -231,6 +231,11 @@ export class SessionHost {
   terminalOnly: string[] = [];
   models: ModelOption[] = [];
   lastActivity = Date.now();
+  /**
+   * Tool calls Claude has made that haven't returned yet, subagents' too. Claude Code may have checked their
+   * permission already (Auto mode does as they arrive), so a mode change can come too late for them.
+   */
+  readonly openToolCalls = new Set<string>();
   /** The prompt cache of this turn's last response: reported with the turn's end, so the window hears it once a turn. */
   private cacheSeen: { at: number; ttl: CacheTtl | null } | null = null;
   /** When the process ended (closed or crashed), for telling our own exiting process apart from another window. */
@@ -631,6 +636,7 @@ export class SessionHost {
 
   private handle(message: SDKMessage): void {
     this.lastActivity = Date.now();
+    this.trackToolCalls(message);
     switch (message.type) {
       case 'system':
         return this.handleSystem(message);
@@ -682,6 +688,17 @@ export class SessionHost {
         return;
       default:
         return;
+    }
+  }
+
+  private trackToolCalls(message: SDKMessage): void {
+    if (message.type === 'result') return this.openToolCalls.clear();
+    if (message.type !== 'assistant' && message.type !== 'user') return;
+    const content = (message.message as { content?: unknown }).content;
+    if (!Array.isArray(content)) return;
+    for (const block of content as Array<{ type?: string; id?: unknown; tool_use_id?: unknown }>) {
+      if (block.type === 'tool_use' && typeof block.id === 'string') this.openToolCalls.add(block.id);
+      else if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') this.openToolCalls.delete(block.tool_use_id);
     }
   }
 

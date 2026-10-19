@@ -43,3 +43,22 @@ export function describeSuggestions(suggestions: readonly PermissionUpdate[] | u
   });
   return parts.length ? parts.join('; ') : null;
 }
+
+/** Tools that ask the person something rather than for permission: no mode answers them. */
+const QUESTION_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
+const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
+
+/**
+ * Whether a prompt that is already waiting should go back to Claude Code after the mode changed to `mode`.
+ * Claude Code decides a tool call's permission once, when it asks, so a prompt asked before the change keeps
+ * waiting even when the new mode would have let it run. Sent back, the call is checked again under the new mode.
+ * Only for modes that ask less (Accept edits only for edits); a prompt a user's ask rule forced stays.
+ */
+export function recheckAfterModeChange(prompt: { toolName: string; matchedAskRule: boolean }, mode: string): boolean {
+  if (QUESTION_TOOLS.has(prompt.toolName) || prompt.matchedAskRule) return false;
+  if (mode === 'acceptEdits') return EDIT_TOOLS.has(prompt.toolName);
+  return mode === 'auto' || mode === 'dontAsk' || mode === 'bypassPermissions';
+}
+
+/** What Claude reads for a prompt sent back after a mode change, so it makes the same call again. */
+export const RECHECK_MESSAGE = 'The permission mode changed while this tool call waited for an answer, so it did not run. Make the same tool call again, unchanged.';
