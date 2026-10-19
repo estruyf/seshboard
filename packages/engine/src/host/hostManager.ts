@@ -28,7 +28,7 @@ import {
 } from '@switchboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
-import { describeSuggestions } from './permissions.ts';
+import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import type { ModsEvents, ModsSurface } from './modsSurface.ts';
 import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
@@ -134,6 +134,8 @@ interface Pending {
   request: PermissionRequest;
   input: Record<string, unknown>;
   suggestions: PermissionUpdate[] | undefined;
+  /** A user's ask rule forced this prompt, so no mode answers it. */
+  matchedAskRule: boolean;
   resolve: (result: PermissionResult) => void;
 }
 
@@ -194,6 +196,11 @@ export class HostManager {
    * resume after Stop, the idle reaper, a rewind or an app restart would otherwise drop back to them.
    */
   private readonly settings: SessionSettingsStore;
+  /**
+   * Per session, the tool calls that were under way when the mode last changed, and that mode. A prompt one of
+   * them asks for later was decided under the old mode, so it goes back to Claude Code like a waiting one.
+   */
+  private readonly callsBeforeMode = new Map<string, { mode: PermissionMode; toolUseIds: Set<string> }>();
   /** The mode last saved per session, so info updates don't write to the database every time. */
   private readonly lastMode = new Map<string, PermissionMode>();
   /** What Auto picked per session, read once from the settings (null: it didn't), so info updates don't hit the database. */
@@ -402,6 +409,22 @@ export class HostManager {
     await this.require(sessionId).interrupt();
   }
 
+  /**
+   * Sends back the session's waiting prompts that `mode` would let run. Claude Code checks a tool call once, when
+   * it asks, and answering one prompt lets the next one ask at once: without this, switching to Auto mode right
+   * after answering still left that next prompt waiting. Claude makes the call again and it is checked anew.
+   * Calls under way are remembered too: Auto mode checks a call as it arrives, so some ask only later (`ask`).
+   */
+  private recheckPending(sessionId: string, mode: PermissionMode): void {
+    const host = this.hosts.get(sessionId);
+    if (host?.openToolCalls.size) this.callsBeforeMode.set(sessionId, { mode, toolUseIds: new Set(host.openToolCalls) });
+    else this.callsBeforeMode.delete(sessionId);
+    for (const [requestId, pending] of this.pending) {
+      if (pending.request.sessionId !== sessionId || !recheckAfterModeChange({ toolName: pending.request.toolName, matchedAskRule: pending.matchedAskRule }, mode)) continue;
+      this.settle(requestId, { behavior: 'deny', message: RECHECK_MESSAGE });
+    }
+  }
+
   /** Pending prompts would otherwise keep the turn alive after it is stopped. */
   private denyPending(sessionId: string, message: string): void {
     for (const [requestId, pending] of this.pending) {
@@ -423,7 +446,11 @@ export class HostManager {
   }
 
   async setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
-    if (this.running(sessionId)) return this.require(sessionId).setPermissionMode(mode);
+    if (this.running(sessionId)) {
+      await this.require(sessionId).setPermissionMode(mode);
+      this.recheckPending(sessionId, mode);
+      return;
+    }
     // Bypass needs an extra flag at startup, so a resume never starts in it.
     if (mode === 'bypassPermissions') throw new RpcError('INVALID', 'Bypass permissions can only be turned on while the session runs.');
     this.lastMode.set(sessionId, mode);
@@ -515,6 +542,7 @@ export class HostManager {
     // Stopped while Auto was choosing: the message never goes, and the session no longer says Auto is choosing.
     this.choosing.delete(sessionId);
     host?.close();
+    this.callsBeforeMode.delete(sessionId);
     this.deps.onClosed?.(sessionId);
     for (const [requestId, pending] of this.pending) {
       if (pending.request.sessionId === sessionId) this.settle(requestId, { behavior: 'deny', message: 'Session closed.' });
@@ -538,6 +566,9 @@ export class HostManager {
       };
       if (decision.always && pending.suggestions) result.updatedPermissions = pending.suggestions;
       this.settle(requestId, result);
+      // "Always" can switch the mode too (Accept edits for this session), which the other waiting prompts miss.
+      const mode = result.updatedPermissions?.findLast((u) => u.type === 'setMode');
+      if (mode?.type === 'setMode') this.recheckPending(pending.request.sessionId, mode.mode);
     } else {
       this.settle(requestId, { behavior: 'deny', message: decision.message ?? 'The user declined this action.', interrupt: decision.interrupt ?? false });
     }
@@ -963,7 +994,10 @@ export class HostManager {
         // onInfo stores this session's new list right after.
         commandsChanged: () => this.forgetCommands(config.profileId),
         queue: (sessionId, messages) => this.saveQueue(sessionId, messages),
-        turnEnded: (sessionId, outcome) => this.deps.onTurnEnd?.(sessionId, outcome),
+        turnEnded: (sessionId, outcome) => {
+          this.callsBeforeMode.delete(sessionId);
+          this.deps.onTurnEnd?.(sessionId, outcome);
+        },
         limitHit: (sessionId, stop) => this.deps.limits?.hit(config.profileId, sessionId, stop),
         turnOk: (sessionId) => this.deps.limits?.ok(config.profileId, sessionId),
         limited: () => !!this.deps.limits?.of(config.profileId),
@@ -1004,6 +1038,11 @@ export class HostManager {
   }
 
   private ask(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2]): Promise<PermissionResult> {
+    // Once per call: Claude's new attempt has a new id, so it can't come back here again.
+    const before = this.callsBeforeMode.get(sessionId);
+    if (before?.toolUseIds.delete(options.toolUseID) && recheckAfterModeChange({ toolName, matchedAskRule: Boolean(options.matchedAskRule) }, before.mode)) {
+      return Promise.resolve({ behavior: 'deny', message: RECHECK_MESSAGE });
+    }
     return new Promise((resolve) => {
       const requestId = randomUUID();
       const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
@@ -1021,7 +1060,7 @@ export class HostManager {
         agentId: str(options.agentID),
         createdAt: Date.now(),
       };
-      this.pending.set(requestId, { request, input, suggestions: options.suggestions, resolve });
+      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), resolve });
       options.signal.addEventListener('abort', () => this.settle(requestId, { behavior: 'deny', message: 'Cancelled.' }), { once: true });
       this.deps.onPermission(request);
     });
