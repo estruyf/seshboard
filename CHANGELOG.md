@@ -2,7 +2,7 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
-## [Unreleased]
+## [1.0.0] - 2026-10-19
 
 ### Added
 
