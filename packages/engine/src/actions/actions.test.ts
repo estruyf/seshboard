@@ -160,9 +160,8 @@ describe('suggestActions', () => {
         { name: 'Test', command: 'pnpm test', type: 'shell', icon: 'flask' },
         { name: 'Release', command: 'pnpm release', type: 'shell', icon: 'rocket' },
         { name: 'Install', command: 'pnpm install', type: 'shell', icon: 'package' },
-        expect.objectContaining({ name: 'Commit', type: 'prompt' }),
       ]),
     );
-    expect(suggestActions(tempDir()).map((s) => s.name)).toEqual(['Commit', 'Push', 'Create PR']);
+    expect(suggestActions(tempDir()).map((s) => s.name)).toEqual(['Push', 'Create PR']);
   });
 });

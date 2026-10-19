@@ -15,7 +15,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
-- **Ask Claude to commit is fast and uses far fewer tokens.** It used to send the session a message to commit, so Claude read the whole conversation again: in a long session, that was close to a million tokens for one commit message. Now Haiku writes the message from the changes alone (the files, the diff stat and up to about 10,000 tokens of the diff, lock files left out), in the style of your recent commits, and the commit runs in a terminal tab as with **Commit…**. The conversation is not touched. The tokens count on the session's profile, in Usage.
+- **Ask Claude to commit is fast and uses far fewer tokens.** It used to send the session a message to commit, so Claude read the whole conversation again: in a long session, that was close to a million tokens for one commit message. Now Haiku writes the message from the changes alone (the files, the diff stat and up to about 10,000 tokens of the diff, lock files left out), in the style of your recent commits, and the commit runs in a terminal tab as with **Commit…**. The conversation is not touched. The tokens count on the session's profile, in Usage. New project actions no longer suggest a *Commit* action that asks the session to commit; an action like that you added before stays as it is.
 
 ### Fixed
 
