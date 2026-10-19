@@ -200,7 +200,7 @@ export function CatchUpSlot({ card, show, cwd, changes, active, changesOpen }: C
   const unread = useSessions((s) => s.sessions.get(sessionId)?.unread ?? false);
   const key = turnKey(card);
   const committed = useCatchUp((s) => s.committed.has(key));
-  const details = useCatchUp((s) => s.details.has(key));
+  const details = useCatchUp((s) => !s.detailsClosed.has(key));
   const replying = useCatchUp((s) => s.replying === sessionId);
   const actions = useCatchUpActions({ card, cwd, changes });
   const ref = useRef<HTMLDivElement>(null);

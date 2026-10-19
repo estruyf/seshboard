@@ -254,7 +254,7 @@ export function OpenInButton({ path, shortcut = true }: { path: string | null; /
             );
           })}
           <div role="group" aria-label="Path">
-            <div role="separator" className="my-1 border-t border-border" />
+            <div role="separator" className="mx-2 my-1 border-t border-edge" />
             <button
               type="button"
               role="menuitem"

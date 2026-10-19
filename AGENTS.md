@@ -186,12 +186,26 @@ SWITCHBOARD_SMOKE_LIVE_CWD=/path/to/throwaway-repo npm run smoke
 
 ## Releases
 
-Releases are built by `.github/workflows/release.yml`, which runs when a release is published on GitHub:
+### Branches
+
+- **`dev`**: where work lands, by commit or pull request. Betas are tagged here.
+- **`main`**: what is released, nothing else. It only moves when a release is merged into it (or for a hotfix), and the website deploys from it, so the docs go live with the release that has the feature.
+
+The release workflow fails when a release is tagged off `main` or a beta off `dev` (`.github/scripts/release-branch.sh`).
+
+### Release
+
+Releases are built by `.github/workflows/release.yml`, which runs when a release is published on GitHub. Prepare it on `dev`:
 
 1. Rename the `## [Unreleased]` section of `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD` (or add that section, written for people using the app), and set `version` in `apps/desktop/package.json` to match.
 2. Retake the README screenshots with `npm run screenshots` and look at every image in `docs/screenshots` against the README's alt text and the CHANGELOG section. If the tour fails, a view it drives has changed: fix `apps/desktop/src/main/screenshotTour.ts` (or the demo world in `scripts/screenshot-demo.ts`) rather than skipping it. If a released feature belongs in a picture that doesn't show it yet, update the demo world or add a view. Commit the new images with the release.
 3. Go through the [Release checklist in CLAUDE.md](CLAUDE.md#release-checklist): docs pages, `features.json`, website screenshots and `npm run website:build`. A release is not done until the docs are updated.
-4. Publish a GitHub release with tag `vX.Y.Z` (only when the user asks). The notes may be left empty; the workflow fills them from the CHANGELOG section.
+4. Merge `dev` into `main` (`git checkout main && git merge --ff-only dev`) and push both.
+5. Publish a GitHub release with tag `vX.Y.Z` on `main` (only when the user asks). The notes may be left empty; the workflow fills them from the CHANGELOG section.
+
+**Hotfix.** A fix that can't wait for the next release: commit it on `main`, add its `## [X.Y.Z]` section and version, release it from `main`, then merge `main` back into `dev`.
+
+**Beta.** Lighter, for testing what comes next between releases: publish a GitHub *pre-release* tagged `vX.Y.Z-beta.N` on `dev` (only when the user asks), where `X.Y.Z` is the next release, never one already out (the workflow checks). Leave `## [Unreleased]` and `apps/desktop/package.json` as they are; the version comes from the tag and the notes from Unreleased. Screenshots and the docs checklist wait for the release. Only apps on the Beta channel are offered it (see [docs/building-and-signing.md](docs/building-and-signing.md#channels-and-pre-releases)).
 
 The workflow builds for macOS and Windows side by side, with the version from the tag: the Mac job signs and notarises the app and checks Gatekeeper accepts it; the Windows job builds the installer, signs it (Azure Trusted Signing through a secretless OpenID Connect login in the `windows-signing` environment, or a `.pfx`) and checks the signatures and their publisher. Only when both pass does the publish job attach all the files to the release, the update feeds last, so a release never has one platform without the other. It never attaches an unsigned build. Run by hand, the workflow is a dry run: both builds are signed and kept as workflow artifacts, and nothing is published. For a Stable release it then pushes the stamped cask (`homebrew/switchboard.rb`) to `estruyf/homebrew-tap`; edit the cask here, never in the tap (see `docs/homebrew.md`). `npm run dist:notarized` is for checking a signed build locally.
 

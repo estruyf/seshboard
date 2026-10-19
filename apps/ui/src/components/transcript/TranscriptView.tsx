@@ -1,3 +1,4 @@
+import { isKeptUnread, releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
@@ -401,10 +402,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // Looking at a session marks it read, also while new output keeps arriving.
   const unread = summary?.unread ?? false;
   useEffect(() => {
-    if (!client || !unread || keepUnread) return;
+    if (!client || !unread || keepUnread || isKeptUnread(sessionId)) return;
     const timer = setTimeout(() => void client.call('sessions.markViewed', { sessionId }).catch(() => {}), 600);
     return () => clearTimeout(timer);
   }, [client, sessionId, unread, summary?.updatedAt, keepUnread]);
+  // Marked as unread while open: it stays so until you leave the session.
+  useEffect(() => () => releaseUnread(sessionId), [sessionId]);
   // Reply put you in the message box: another session isn't a reply to this one.
   useEffect(() => () => useCatchUp.setState((s) => (s.replying === sessionId ? { replying: null } : {})), [sessionId]);
 

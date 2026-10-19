@@ -15,8 +15,8 @@ interface CatchUpState {
   cards: Map<string, CatchUp>;
   /** Turns whose card you folded into the strip (true) or opened from it (false), for this run of the app only. */
   collapsed: ReadonlyMap<string, boolean>;
-  /** Turns whose banner shows Details. */
-  details: ReadonlySet<string>;
+  /** Turns whose banner you closed Details on: it shows them unless the turn is here, so Mark as read and the other actions are in sight. */
+  detailsClosed: ReadonlySet<string>;
   /** Turns you committed from the card: it says Committed and offers Archive. */
   committed: ReadonlySet<string>;
   /** The session whose message box Reply put you in, until you send, leave it or press Esc. */
@@ -41,7 +41,7 @@ const withKey = (set: ReadonlySet<string>, key: string, on: boolean) => {
 export const useCatchUp = create<CatchUpState>()((set) => ({
   cards: new Map(),
   collapsed: new Map(),
-  details: new Set(),
+  detailsClosed: new Set(),
   committed: new Set(),
   replying: null,
   reset: (cards) => set({ cards: new Map(cards.map((card) => [card.sessionId, card])) }),
@@ -52,10 +52,10 @@ export const useCatchUp = create<CatchUpState>()((set) => ({
       else cards.delete(sessionId);
       return { cards };
     }),
-  // Folding the banner closes its Details too: it opens again as it first showed.
+  // Folding the banner closes its Details too: it opens again as it first showed, with Details.
   setCollapsed: (card, collapsed) =>
-    set((state) => ({ collapsed: new Map(state.collapsed).set(turnKey(card), collapsed), details: collapsed ? withKey(state.details, turnKey(card), false) : state.details })),
-  setDetails: (card, open) => set((state) => ({ details: withKey(state.details, turnKey(card), open) })),
+    set((state) => ({ collapsed: new Map(state.collapsed).set(turnKey(card), collapsed), detailsClosed: collapsed ? withKey(state.detailsClosed, turnKey(card), false) : state.detailsClosed })),
+  setDetails: (card, open) => set((state) => ({ detailsClosed: withKey(state.detailsClosed, turnKey(card), !open) })),
   markCommitted: (card) => set((state) => ({ committed: withKey(state.committed, turnKey(card), true) })),
   setReplying: (replying) => set({ replying }),
 }));

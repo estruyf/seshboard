@@ -139,8 +139,8 @@ export type FileLinkClick = "file-manager" | "editor";
 export type SessionScope = "switchboard" | "all";
 /** What a new window shows: Home, the session open last time, or New session. */
 export type StartupView = "home" | "last" | "new";
-/** Which releases to update to: published releases, or the nightly pre-releases too. */
-export type UpdateChannel = "stable" | "nightly";
+/** Which releases to update to: published releases, or the beta pre-releases too. */
+export type UpdateChannel = "stable" | "beta";
 /** How New session, Home and the palette list your projects: most recently used first, or in the order you set. */
 export type ProjectOrder = "recent" | "yours";
 /**
@@ -511,8 +511,10 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.newSessionMode = raw.newSessionMode;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
-  if (oneOf(["stable", "nightly"] as const, raw.updateChannel))
+  if (oneOf(["stable", "beta"] as const, raw.updateChannel))
     out.updateChannel = raw.updateChannel;
+  // Nightly was replaced by Beta: whoever chose it keeps getting pre-releases.
+  else if (raw.updateChannel === "nightly") out.updateChannel = "beta";
   if (raw.focusLimit === null) out.focusLimit = null;
   else if (
     typeof raw.focusLimit === "number" &&

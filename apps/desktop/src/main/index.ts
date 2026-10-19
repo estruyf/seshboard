@@ -3121,7 +3121,7 @@ async function runAboutStep(win: BrowserWindow): Promise<string> {
   const navVersion = (await js("document.querySelector('[data-settings-version]')?.innerText ?? ''")) as string;
   if (app.isPackaged ? navVersion !== `v${app.getVersion()}` : !navVersion.startsWith('dev')) return `the Settings sidebar shows "${navVersion}"`;
   const controls = (await js(
-    `['[data-check-updates]', '[data-auto-update]', '[data-update-channel="stable"][aria-checked=true]', '[data-update-channel="nightly"]', '[data-changelog-link]'].filter((s) => !document.querySelector(s))`,
+    `['[data-check-updates]', '[data-auto-update]', '[data-update-channel="stable"][aria-checked=true]', '[data-update-channel="beta"]', '[data-changelog-link]'].filter((s) => !document.querySelector(s))`,
   )) as string[];
   if (controls.length > 0) return `missing: ${controls.join(', ')}`;
   if (off) {

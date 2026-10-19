@@ -2,9 +2,9 @@
 # The version and update feed of a release, for each build job in release.yml: reads TAG and PRERELEASE and
 # appends VERSION and FEED to $GITHUB_ENV.
 #
-# FEED is which update feed the release carries: latest (Stable), nightly, or none. A pre-release tagged
-# vX.Y.Z-nightly.YYYYMMDD.N is the Nightly feed; any other pre-release gets the builds but no feed, so no
-# one is ever updated to it.
+# FEED is which update feed the release carries: latest (Stable), beta, or none. A pre-release tagged
+# vX.Y.Z-beta.N is the Beta feed; any other pre-release gets the builds but no feed, so no one is ever
+# updated to it.
 #
 # A dry run (DRY_RUN=true, the workflow run by hand) has no tag: it builds the app's version with a suffix no
 # release carries, such as 1.2.3-dryrun.42, and no feed.
@@ -24,14 +24,14 @@ if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
   exit 1
 fi
 
-if [[ "$version" == *-nightly.* ]]; then
+if [[ "$version" == *-beta.* ]]; then
   if [ "$PRERELEASE" != "true" ]; then
-    echo "::error::$TAG is a nightly version; publish it as a pre-release."
+    echo "::error::$TAG is a beta version; publish it as a pre-release."
     exit 1
   fi
-  feed=nightly
+  feed=beta
 elif [ "$PRERELEASE" == "true" ]; then
-  echo "::notice::$TAG is a pre-release but not a nightly: it gets no update feed."
+  echo "::notice::$TAG is a pre-release but not a beta (vX.Y.Z-beta.N): it gets no update feed."
   feed=none
 elif [[ "$version" == *-* ]]; then
   echo "::error::$TAG has a pre-release version but is published as a release; Stable users would be offered it."

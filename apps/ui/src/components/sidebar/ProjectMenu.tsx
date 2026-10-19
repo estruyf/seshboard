@@ -137,7 +137,8 @@ export function manage(root: string | null = null): void {
 /**
  * Menu entries to rename a project, change its icon or remove it, and the emoji picker, rename dialog and remove confirmation they open (`overlays`).
  * `remove: false` leaves out "Remove from Switchboard…", for menus about something else (a session); `identity: true`
- * keeps only what the project is (profile, icon, name, folder), for the icon button on a project's row and page.
+ * keeps only what the project is (profile, icon, name, folder), for the icon button on a project's row and page;
+ * `nested: true` puts the profile and icon choices in submenus, for a menu where the project is one of several things.
  */
 export function useProjectIconEntries() {
   const actions = useProjectActions();
@@ -150,30 +151,27 @@ export function useProjectIconEntries() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
 
-  const entries = (root: string, at: { x: number; y: number }, { remove = true, identity = false }: { remove?: boolean; identity?: boolean } = {}): MenuEntry[] => {
+  const entries = (
+    root: string,
+    at: { x: number; y: number },
+    { remove = true, identity = false, nested = false }: { remove?: boolean; identity?: boolean; nested?: boolean } = {},
+  ): MenuEntry[] => {
     // Quick questions are not a project: no icon, name, profile or "Add to projects".
     if (isQuestionsFolder(root, questionsDir)) return [];
     const project = projects.get(root);
     const linked = project?.profileId ?? null;
-    // Which account new sessions here use; only worth asking once there is more than one.
-    const profileEntries: MenuEntry[] =
-      profiles.length > 1 && isAbsolutePath(root)
-        ? [
-            { heading: 'Claude profile' },
-            {
-              label: `Default${defaultProfile ? ` (${defaultProfile.name})` : ''}`,
-              hint: linked === null ? '✓' : undefined,
-              onSelect: () => void actions.setProfile(root, null),
-            },
-            ...profiles.map(
-              (p): MenuEntry => ({ label: p.name, icon: <ProfileDot color={p.color} />, hint: linked === p.id ? '✓' : undefined, onSelect: () => void actions.setProfile(root, p.id) }),
-            ),
-            'separator',
-          ]
-        : [];
-    return [
-      ...profileEntries,
-      { heading: 'Project icon' },
+    // The account new sessions here use.
+    const profileChoices: MenuEntry[] = [
+      {
+        label: `Default${defaultProfile ? ` (${defaultProfile.name})` : ''}`,
+        hint: linked === null ? '✓' : undefined,
+        onSelect: () => void actions.setProfile(root, null),
+      },
+      ...profiles.map(
+        (p): MenuEntry => ({ label: p.name, icon: <ProfileDot color={p.color} />, hint: linked === p.id ? '✓' : undefined, onSelect: () => void actions.setProfile(root, p.id) }),
+      ),
+    ];
+    const iconChoices: MenuEntry[] = [
       { label: 'Choose image…', icon: <Image size={13} />, onSelect: () => void actions.chooseImage(root) },
       { label: 'Use emoji…', icon: <Smile size={13} />, onSelect: () => setEmojiFor({ root, ...at }) },
       { label: 'Use letter', icon: <Type size={13} />, onSelect: () => void actions.setIcon(root, { kind: 'none' }) },
@@ -183,6 +181,28 @@ export function useProjectIconEntries() {
         hint: project?.iconSource === 'detected' ? 'current' : undefined,
         onSelect: () => void actions.setIcon(root, { kind: 'auto' }),
       },
+    ];
+    // Only worth asking once there is more than one profile.
+    const withProfile = profiles.length > 1 && isAbsolutePath(root);
+    const linkedProfile = profiles.find((p) => p.id === linked) ?? defaultProfile;
+    const choices: MenuEntry[] = nested
+      ? [
+          ...(withProfile
+            ? [
+                {
+                  label: 'Claude profile',
+                  icon: linkedProfile && <ProfileDot color={linkedProfile.color} />,
+                  hint: linkedProfile?.name,
+                  submenu: profileChoices,
+                  data: { 'data-project-profile-menu': true },
+                } satisfies MenuEntry,
+              ]
+            : []),
+          { label: 'Project icon', icon: <Image size={13} />, submenu: iconChoices, data: { 'data-project-icon-menu': true } },
+        ]
+      : [...(withProfile ? [{ heading: 'Claude profile' }, ...profileChoices, 'separator' as const] : []), { heading: 'Project icon' }, ...iconChoices];
+    return [
+      ...choices,
       'separator',
       ...(isAbsolutePath(root) ? [{ label: 'Rename project…', icon: <Pencil size={13} />, onSelect: () => setRenaming(root), data: { 'data-rename-project': true } } satisfies MenuEntry] : []),
       { label: 'Open folder in editor', icon: <FolderOpen size={13} />, disabled: !project?.exists, onSelect: () => void openIn(root).catch(() => {}) },
@@ -338,14 +358,14 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
                   onToggle={() => useComputers.getState().setHidden(toggleSource(hidden, source.source))}
                 />
               ))}
-              <div role="separator" className="my-1 border-t border-border" />
+              <div role="separator" className="mx-2 my-1 border-t border-edge" />
               <p role="none" className="px-3 pt-1 pb-1 text-meta font-semibold tracking-wide text-faint uppercase">
                 Projects
               </p>
             </>
           )}
           <FilterRow selected={!filter} onSelect={() => choose(() => setFilter(null))} icon={<Layers size={14} aria-hidden />} label="All projects" />
-          <div role="separator" className="my-1 border-t border-border" />
+          <div role="separator" className="mx-2 my-1 border-t border-edge" />
           {sorted.map((project) => (
             <FilterRow
               key={project.root}
@@ -375,7 +395,7 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
               No projects yet. Add the folders you work in.
             </p>
           )}
-          <div role="separator" className="my-1 border-t border-border" />
+          <div role="separator" className="mx-2 my-1 border-t border-edge" />
           <FilterRow onSelect={() => choose(() => showAdd(true))} icon={<FolderPlus size={14} aria-hidden />} label="Add project…" />
           {cloneEnabled && <FilterRow onSelect={() => choose(() => useClone.getState().showDialog(true))} icon={<FolderDown size={14} aria-hidden />} label="Clone from GitHub…" />}
           <FilterRow onSelect={() => choose(() => manage())} icon={<FolderCog size={14} aria-hidden />} label="Manage projects…" />

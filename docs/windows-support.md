@@ -344,7 +344,7 @@ Goal: a signed installer that updates itself, built by CI with every release.
 
 ### 3.2 Updates
 
-- electron-updater with NSIS reads `latest.yml` (`nightly.yml`). Check the updater's states on Windows:
+- electron-updater with NSIS reads `latest.yml` (`beta.yml`). Check the updater's states on Windows:
   - no "run from the DMG" case;
   - the install restarts the app;
   - `beforeInstall` and `installFailed` still bring the engine down and back.

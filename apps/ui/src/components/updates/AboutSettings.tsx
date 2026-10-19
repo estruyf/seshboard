@@ -13,7 +13,7 @@ import { ClaudeCodeUpdates } from './ClaudeCodeUpdates.tsx';
 
 const CHANNELS: Array<{ value: UpdateChannel; label: string; detail: string }> = [
   { value: 'stable', label: 'Stable', detail: 'Published releases.' },
-  { value: 'nightly', label: 'Nightly', detail: 'Pre-release builds as they are published. Newer, with rougher edges.' },
+  { value: 'beta', label: 'Beta', detail: 'Beta versions to test what comes next, and the published releases. Newer, with rougher edges.' },
 ];
 
 const link = 'inline-flex items-center gap-1 text-ui text-link hover:underline';

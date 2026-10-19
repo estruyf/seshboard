@@ -1562,6 +1562,10 @@ export function createEngine(options: EngineOptions): Engine {
       sessions.markViewed(sessionId);
       return {};
     },
+    'sessions.markUnviewed': ({ sessionId }) => {
+      sessions.markUnviewed(sessionId);
+      return {};
+    },
     'projects.list': () => ({ projects: listProjects() }),
     'projects.findByRepo': async ({ repo }) => {
       const folders = listProjects().filter((p) => p.exists).map((p) => p.root);

@@ -6,9 +6,9 @@ import type { UpdateChannel, UpdateCommand, UpdateState } from '@switchboard/pro
  * is tested without Electron; `updater.ts` only calls these.
  */
 
-/** `1.2.3-nightly.20261006.1` is on the nightly channel; anything else is stable. */
+/** `1.2.3-beta.1` is on the beta channel; anything else is stable. */
 export function channelOf(version: string): UpdateChannel {
-  return /-nightly\./.test(version) ? 'nightly' : 'stable';
+  return /-beta\./.test(version) ? 'beta' : 'stable';
 }
 
 export function initialUpdateState(options: { currentVersion: string; channel: UpdateChannel; disabledReason: string | null; updatedTo?: string | null }): UpdateState {
@@ -45,12 +45,12 @@ export function upToDate(state: UpdateState, at: number): UpdateState {
 }
 
 /**
- * A check found `version`. One offered on the other channel is ignored (treated as up to date), and so is
- * the version already downloaded.
+ * A check found `version`. Beta takes beta versions and releases; a beta version offered on Stable is ignored
+ * (treated as up to date), and so is the version already downloaded.
  */
 export function available(state: UpdateState, update: { version: string; releaseNotes: string | null }, at: number): UpdateState {
   if (state.status === 'disabled') return state;
-  if (channelOf(update.version) !== state.channel) return upToDate(state, at);
+  if (state.channel === 'stable' && channelOf(update.version) === 'beta') return upToDate(state, at);
   if (update.version === state.downloadedVersion) return { ...state, status: 'downloaded', checkedAt: at };
   return { ...state, status: 'available', availableVersion: update.version, downloadedVersion: null, downloadPercent: null, releaseNotes: update.releaseNotes, checkedAt: at };
 }
@@ -79,7 +79,7 @@ export function failed(state: UpdateState, message: string, canRetry: boolean): 
 
 export function changeChannel(state: UpdateState, channel: UpdateChannel): UpdateState {
   if (channel === state.channel) return state;
-  // What was found or downloaded belonged to the other channel.
+  // What was found or downloaded may not be on the new channel: check again.
   return { ...state, channel, status: state.status === 'disabled' ? 'disabled' : 'idle', availableVersion: null, downloadedVersion: null, downloadPercent: null, releaseNotes: null, error: null, canRetry: false };
 }
 

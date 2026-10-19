@@ -417,7 +417,7 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'version', page: 'about', label: 'Switchboard', detail: 'The version you run, its release notes and the changelog.', keywords: 'version release notes changelog', target: '[data-app-version]' },
     { id: 'check-updates', page: 'about', label: 'Check for Updates', detail: 'See if there is a newer Switchboard.', keywords: 'update upgrade new version', target: '[data-check-updates]' },
     { id: 'auto-update', page: 'about', label: 'Check for updates automatically', detail: 'Shortly after Switchboard opens, then every few hours. Nothing downloads until you choose to.', keywords: 'update', target: '[data-auto-update]' },
-    { id: 'update-channel', page: 'about', label: 'Channel', detail: 'Stable: published releases. Nightly: pre-release builds as they are published.', keywords: 'update nightly stable beta pre-release', target: '[data-update-channel]' },
+    { id: 'update-channel', page: 'about', label: 'Channel', detail: 'Stable: published releases. Beta: beta versions to test what comes next, and the published releases.', keywords: 'update beta stable nightly pre-release testing', target: '[data-update-channel]' },
     { id: 'claude-updates', page: 'about', label: 'Claude Code', detail: 'The Claude Code you have, and updating it.', keywords: 'cli version update install', target: '[data-claude-updates]', fallback: '[data-about]' },
     {
       id: 'claude-auto-update',

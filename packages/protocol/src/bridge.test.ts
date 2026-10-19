@@ -19,6 +19,15 @@ describe('contextWarning preference', () => {
   });
 });
 
+describe('updateChannel preference', () => {
+  it('is Stable or Beta, and Nightly (which Beta replaced) becomes Beta', () => {
+    expect(DEFAULT_PREFERENCES.updateChannel).toBe('stable');
+    expect(sanitizePreferences({ updateChannel: 'beta' })).toEqual({ updateChannel: 'beta' });
+    expect(sanitizePreferences({ updateChannel: 'nightly' })).toEqual({ updateChannel: 'beta' });
+    expect(sanitizePreferences({ updateChannel: 'alpha' })).toEqual({});
+  });
+});
+
 describe('sidebarCollapsed preference', () => {
   it('collapses to the minimal rail by default', () => {
     expect(DEFAULT_PREFERENCES.sidebarCollapsed).toBe('minimal');

@@ -12,7 +12,7 @@ import Related from '../../../components/Related.astro';
 
 Switchboard checks for new versions of itself and of the Claude Code it runs. It tells you when one is out, and nothing downloads or installs until you click.
 
-<Screenshot name="settings-about" alt="Settings on About: the Switchboard version, the Updates section with Check for Updates, the automatic checks switch and the Stable and Nightly channels, and the Claude Code section below it" eager />
+<Screenshot name="settings-about" alt="Settings on About: the Switchboard version, the Updates section with Check for Updates, the automatic checks switch and the Stable and Beta channels, and the Claude Code section below it" eager />
 
 ## Open it
 
@@ -46,9 +46,9 @@ After the update, a message says which version you now run, with its release not
 In Settings → About, **Channel** picks which builds you get:
 
 - **Stable** (the default): published releases.
-- **Nightly**: pre-release builds as they are published, when there are any. Newer, with rougher edges.
+- **Beta**: beta versions, to test what comes next before it is released, and the published releases too. Newer, with rougher edges. Found a bug in a beta? [Open an issue](https://github.com/estruyf/switchboard/issues) and say which version you run.
 
-Switching the channel checks the new channel at once.
+Switching the channel checks the new channel at once. Going back to **Stable** from a beta never installs an older version: you stay on the beta until its release is out, and get that release then.
 
 ### Turn automatic checks off
 

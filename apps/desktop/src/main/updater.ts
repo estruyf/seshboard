@@ -1,7 +1,7 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { UpdateChannel, UpdateCommand, UpdateState } from '@switchboard/protocol/bridge';
 import { cleanReleaseNotes } from './releaseNotes.ts';
-import { available, changeChannel, channelOf, checking, dismissUpdated, downloaded, downloading, failed, initialUpdateState, installing, isBusy, nextCommand, upToDate } from './updateState.ts';
+import { available, changeChannel, checking, dismissUpdated, downloaded, downloading, failed, initialUpdateState, installing, isBusy, nextCommand, upToDate } from './updateState.ts';
 
 /** The first automatic check waits this long after launch, so it never slows startup. */
 export const FIRST_CHECK_DELAY_MS = 15_000;
@@ -286,13 +286,17 @@ export class Updater {
     });
   }
 
-  /** Nightly looks at pre-releases (nightly-mac.yml); Stable at the latest release (latest-mac.yml), going back from a nightly if need be. */
+  /**
+   * Beta looks at the newest beta pre-release or release, whichever came last (beta-mac.yml, or latest-mac.yml on
+   * a release); Stable at the latest release (latest-mac.yml). Neither goes back: from a beta, Stable waits for
+   * the release of that version.
+   */
   #applyChannel(updater: AutoUpdater): void {
-    const nightly = this.#state.channel === 'nightly';
+    const beta = this.#state.channel === 'beta';
     // Setting `channel` turns allowDowngrade on, so set it first and the flags after.
-    updater.channel = nightly ? 'nightly' : 'latest';
-    updater.allowPrerelease = nightly;
-    updater.allowDowngrade = !nightly && channelOf(this.options.currentVersion) === 'nightly';
+    updater.channel = beta ? 'beta' : 'latest';
+    updater.allowPrerelease = beta;
+    updater.allowDowngrade = false;
   }
 }
 

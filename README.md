@@ -158,7 +158,7 @@ If macOS blocks the app the first time you open it, see [Building, signing and n
 
 Switchboard checks for a new release shortly after it opens and every few hours. When there is one, a message in the bottom right corner of the window says so: click **Download** (**What's new** shows the release notes), then **Restart to update**. Close it to decide later; it comes back for the next step or the next time you open Switchboard. If sessions are running, Switchboard asks before it restarts. You can also choose **Switchboard → Check for Updates…** at any time.
 
-In **Settings → About** you can turn automatic checks off and pick a channel: *Stable* (published releases, the default) or *Nightly* (pre-release builds, when there are any). Nothing downloads until you click. Builds you make yourself with `npm run dist` update like a release; development builds don't update.
+In **Settings → About** you can turn automatic checks off and pick a channel: *Stable* (published releases, the default) or *Beta* (beta versions to test what comes next, and the published releases). Nothing downloads until you click. Builds you make yourself with `npm run dist` update like a release; development builds don't update.
 
 #### Claude Code
 

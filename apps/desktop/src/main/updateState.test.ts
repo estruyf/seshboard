@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { cleanReleaseNotes } from './releaseNotes.ts';
 import { available, changeChannel, channelOf, checking, dismissUpdated, downloaded, downloading, failed, initialUpdateState, installing, nextCommand, updatesDisabledReason, upToDate } from './updateState.ts';
 
-const start = (channel: 'stable' | 'nightly' = 'stable') => initialUpdateState({ currentVersion: '0.0.3', channel, disabledReason: null });
+const start = (channel: 'stable' | 'beta' = 'stable') => initialUpdateState({ currentVersion: '0.0.3', channel, disabledReason: null });
 
 describe('update state', () => {
   it('reads the channel from the version', () => {
     expect(channelOf('1.2.3')).toBe('stable');
-    expect(channelOf('1.2.3-nightly.20261006.1')).toBe('nightly');
-    expect(channelOf('1.2.3-beta.1')).toBe('stable');
+    expect(channelOf('1.2.3-beta.1')).toBe('beta');
+    expect(channelOf('1.2.3-nightly.20261006.1')).toBe('stable');
   });
 
   it('goes from checking to available, downloading, downloaded and installing', () => {
@@ -39,10 +39,11 @@ describe('update state', () => {
     expect(available(again, { version: '0.0.4', releaseNotes: null }, 9).status).toBe('downloaded');
   });
 
-  it('ignores an update offered on the other channel', () => {
-    expect(available(checking(start('stable')), { version: '0.0.4-nightly.20261006.1', releaseNotes: null }, 2)).toMatchObject({ status: 'up-to-date', availableVersion: null });
-    expect(available(checking(start('nightly')), { version: '0.0.4', releaseNotes: null }, 2).status).toBe('up-to-date');
-    expect(available(checking(start('nightly')), { version: '0.0.4-nightly.20261006.1', releaseNotes: null }, 2).status).toBe('available');
+  it('offers a beta only on Beta, and a release on both channels', () => {
+    expect(available(checking(start('stable')), { version: '0.0.4-beta.1', releaseNotes: null }, 2)).toMatchObject({ status: 'up-to-date', availableVersion: null });
+    expect(available(checking(start('stable')), { version: '0.0.4', releaseNotes: null }, 2).status).toBe('available');
+    expect(available(checking(start('beta')), { version: '0.0.4-beta.1', releaseNotes: null }, 2).status).toBe('available');
+    expect(available(checking(start('beta')), { version: '0.0.4', releaseNotes: null }, 2).status).toBe('available');
   });
 
   it('fails with what it knew, and retries the step that failed', () => {
@@ -68,7 +69,7 @@ describe('update state', () => {
     expect(available(off, { version: '9.9.9', releaseNotes: null }, 1)).toBe(off);
     expect(failed(off, 'x', true)).toBe(off);
     expect(nextCommand(off)).toBeNull();
-    expect(changeChannel(off, 'nightly')).toMatchObject({ status: 'disabled', channel: 'nightly' });
+    expect(changeChannel(off, 'beta')).toMatchObject({ status: 'disabled', channel: 'beta' });
   });
 
   it('says why a build cannot update', () => {
@@ -82,9 +83,9 @@ describe('update state', () => {
     expect(updatesDisabledReason({ ...release, packaged: false, devServer: true, hasFeed: false, mockFeed: true })).toBeNull();
   });
 
-  it('forgets the other channel’s update when the channel changes, and says once that it updated', () => {
+  it('forgets what it found when the channel changes, and says once that it updated', () => {
     const found = available(start(), { version: '0.0.4', releaseNotes: 'x' }, 1);
-    expect(changeChannel(found, 'nightly')).toMatchObject({ status: 'idle', channel: 'nightly', availableVersion: null, releaseNotes: null });
+    expect(changeChannel(found, 'beta')).toMatchObject({ status: 'idle', channel: 'beta', availableVersion: null, releaseNotes: null });
     expect(changeChannel(found, 'stable')).toBe(found);
     const updated = initialUpdateState({ currentVersion: '0.0.4', channel: 'stable', disabledReason: null, updatedTo: '0.0.4' });
     expect(dismissUpdated(updated).updatedTo).toBeNull();

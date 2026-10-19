@@ -242,6 +242,8 @@ export const contract = {
     'session.rename': { params: z.object({ sessionId: SessionId, title: z.string().trim().min(1).max(200) }), result: z.object({}) },
     /** The user is looking at this session now; clears its unread state. */
     'sessions.markViewed': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Mark as unread: the session counts as unread again until it is looked at. */
+    'sessions.markUnviewed': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /**
      * Your projects (`added`) in your order, plus every other folder Claude Code has sessions for
      * (`added: false`), which the Add project picker offers and the sidebar uses for icons.

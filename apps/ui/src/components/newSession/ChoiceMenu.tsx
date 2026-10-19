@@ -222,14 +222,14 @@ export function ChoiceMenu<T extends string>({
                 </span>
                 <Check size={13} aria-hidden className={`mt-[3px] shrink-0 text-accent-ink ${choice.value === value ? '' : 'invisible'}`} />
               </button>
-              {choice.separatorAfter && !needle && <div role="separator" className="my-1 border-t border-border" />}
+              {choice.separatorAfter && !needle && <div role="separator" className="mx-2 my-1 border-t border-edge" />}
             </Fragment>
           ))}
           {search && listed.length === 0 && <p className="px-3 py-1.5 text-ui text-muted">No matches</p>}
           {extra}
           {actions && actions.length > 0 && (
             <>
-              <div role="separator" className="my-1 border-t border-border" />
+              <div role="separator" className="mx-2 my-1 border-t border-edge" />
               {actions.map((action) => (
                 <button
                   key={action.label}

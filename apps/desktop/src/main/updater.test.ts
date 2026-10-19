@@ -109,19 +109,20 @@ describe('Updater', () => {
     expect(second.state.canRetry).toBe(false);
   });
 
-  it('switches to Nightly and checks pre-releases at once; going back to Stable allows a downgrade', async () => {
-    const fake = fakeUpdater({ version: '0.0.4-nightly.20261006.1' });
+  it('switches to Beta and checks pre-releases at once; going back to Stable never downgrades', async () => {
+    const fake = fakeUpdater({ version: '0.0.4-beta.1' });
     const { updater } = setup(fake);
-    updater.setChannel('nightly');
+    updater.setChannel('beta');
     await new Promise((r) => setTimeout(r, 0));
-    expect(fake).toMatchObject({ channel: 'nightly', allowPrerelease: true, allowDowngrade: false });
-    expect(updater.state).toMatchObject({ channel: 'nightly', status: 'available', availableVersion: '0.0.4-nightly.20261006.1' });
+    expect(fake).toMatchObject({ channel: 'beta', allowPrerelease: true, allowDowngrade: false });
+    expect(updater.state).toMatchObject({ channel: 'beta', status: 'available', availableVersion: '0.0.4-beta.1' });
 
-    const onNightly = fakeUpdater({ version: '0.0.4' });
-    const { updater: back } = setup(onNightly, { currentVersion: '0.0.4-nightly.20261006.1', channel: 'nightly' });
+    // From a beta, Stable waits for that version's release.
+    const onBeta = fakeUpdater({ version: '0.0.4' });
+    const { updater: back } = setup(onBeta, { currentVersion: '0.0.4-beta.1', channel: 'beta' });
     back.setChannel('stable');
     await new Promise((r) => setTimeout(r, 0));
-    expect(onNightly).toMatchObject({ channel: 'latest', allowPrerelease: false, allowDowngrade: true });
+    expect(onBeta).toMatchObject({ channel: 'latest', allowPrerelease: false, allowDowngrade: false });
     expect(back.state.status).toBe('available');
   });
 
@@ -161,16 +162,16 @@ describe('Updater', () => {
     await updater.check();
     const download = updater.download();
     await new Promise((r) => setTimeout(r, 0));
-    updater.setChannel('nightly');
+    updater.setChannel('beta');
     expect(updater.state).toMatchObject({ status: 'downloading', channel: 'stable' });
     finish();
     await download;
-    // The stable download is forgotten and Nightly is checked (which offers a stable version, so nothing).
-    expect(updater.state).toMatchObject({ channel: 'nightly', downloadedVersion: null });
+    // The download is forgotten and Beta is checked, which offers the release again.
+    expect(updater.state).toMatchObject({ channel: 'beta', downloadedVersion: null });
     await new Promise((r) => setTimeout(r, 0));
-    expect(fake.channel).toBe('nightly');
+    expect(fake.channel).toBe('beta');
     expect(fake.checks).toBe(2);
-    expect(updater.state).toMatchObject({ channel: 'nightly', status: 'up-to-date', availableVersion: null });
+    expect(updater.state).toMatchObject({ channel: 'beta', status: 'available', availableVersion: '0.0.4', downloadedVersion: null });
   });
 
   it('switching back before a download ends keeps it', async () => {
@@ -181,7 +182,7 @@ describe('Updater', () => {
     await updater.check();
     const download = updater.download();
     await new Promise((r) => setTimeout(r, 0));
-    updater.setChannel('nightly');
+    updater.setChannel('beta');
     updater.setChannel('stable');
     finish();
     await download;

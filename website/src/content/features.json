@@ -3288,7 +3288,7 @@
     },
     {
       "id": "feature:update-channel",
-      "name": "Update channel: Stable or Nightly",
+      "name": "Update channel: Stable or Beta",
       "page": "settings/updates"
     },
     {

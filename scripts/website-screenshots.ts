@@ -631,6 +631,18 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'session-menu',
+    async take(t) {
+      const id = await t.openSession(HERO);
+      await t.q(`[data-sidebar-state] [data-session-id="${id}"]`).click({ button: 'right' });
+      await t.click('[role=menu] [data-session-project-menu]', 'the session menu has no Project');
+      await t.need('[role=menu][aria-label="Project"]', 'the Project submenu did not open');
+      await t.shot('session-menu', { keepFocus: true });
+      await t.escape(2);
+      await t.gone('[role=menu]', 'the session menu did not close');
+    },
+  },
+  {
     name: 'main-window',
     async take(t) {
       await t.openSession(HERO);
@@ -785,6 +797,10 @@ const screens: Screen[] = [
       await t.shot('catch-up-strip', { clip: '[data-current-session] [data-catchup-strip]', pad: 12 });
       await t.click('[data-current-session] [data-catchup-show]');
       await t.need('[data-current-session] [data-catchup-banner]', 'the catch-up banner did not open');
+      // The banner opens with Details; the plain banner is the one with Details closed.
+      await t.need('[data-current-session] [data-catchup-details]', 'Details did not open with the banner');
+      await t.click('[data-current-session] [data-catchup-details-toggle]');
+      await t.gone('[data-current-session] [data-catchup-details]', 'Details did not close');
       await t.shot('catch-up-banner');
       await t.click('[data-current-session] [data-catchup-details-toggle]');
       await t.need('[data-current-session] [data-catchup-details]', 'Details did not open');

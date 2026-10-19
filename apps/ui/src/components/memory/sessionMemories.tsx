@@ -23,6 +23,13 @@ export function sessionMemoryEntries(memories: readonly MemoryHit[]): MenuEntry[
   ];
 }
 
+/** "Memories" for a session's menu in the sidebar: the same list in a submenu. Null when it wrote none. */
+export function sessionMemorySubmenu(memories: readonly MemoryHit[]): MenuEntry | null {
+  const [heading, ...items] = sessionMemoryEntries(memories).slice(0, -1);
+  if (!heading) return null;
+  return { label: 'Memories', hint: String(memories.length), submenu: [heading, ...items], data: { 'data-session-memories-menu': true } };
+}
+
 /** The memories a session wrote, read while `enabled` (its menu is open). */
 export function useSessionMemories(sessionId: string | null, enabled: boolean): MemoryHit[] {
   const connection = useEngineConnection();
