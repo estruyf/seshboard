@@ -1225,6 +1225,24 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'upcoming',
+    async take(t) {
+      // The demo queue (two items) and the four demo schedules, in Upcoming from the sidebar: the queue, the runs of
+      // the next 7 days by day, and the schedules on the right.
+      writeFileSync(demoSchedulesFile(t.world), JSON.stringify(demoSchedules(t.world, Date.now())));
+      await t.home();
+      await t.click('[data-sidebar-open] [data-upcoming-nav]', 'the sidebar has no Upcoming');
+      await t.need('[data-upcoming] [data-upcoming-queue] [data-queue-item]', 'Upcoming shows no queue');
+      await t.until("document.querySelectorAll('[data-upcoming] [data-upcoming-schedule]').length === 4", 'Upcoming shows no schedules');
+      await t.need('[data-upcoming] [data-upcoming-run]', 'Upcoming shows no scheduled runs');
+      await hideUsageStatus(t);
+      await t.shot('upcoming');
+      writeFileSync(demoSchedulesFile(t.world), 'null');
+      await t.until("!document.querySelector('[data-upcoming-schedule]')", 'the demo schedules stayed');
+      await t.home();
+    },
+  },
+  {
     name: 'saved-prompts-slash',
     async take(t) {
       await openNewSession(t, 'acme-store');
@@ -1911,7 +1929,8 @@ function demoSchedules(world: DemoWorld, now: number) {
     profileId: null,
     autoStart: false,
   });
-  const schedule = (id: string, name: string, rest: Record<string, unknown>) => ({ id: `demo-schedule-${id}`, name, missed: 'run', paused: false, pausedReason: null, createdAt: now - 30 * 86_400_000, updatedAt: now - 30 * 86_400_000, ...rest });
+  // The last run is the run history too, so Upcoming shows today's past runs with how they went.
+  const schedule = (id: string, name: string, rest: Record<string, unknown> & { lastRun: unknown }) => ({ id: `demo-schedule-${id}`, name, missed: 'run', paused: false, pausedReason: null, createdAt: now - 30 * 86_400_000, updatedAt: now - 30 * 86_400_000, runs: [rest.lastRun], ...rest });
   return [
     schedule('prs', 'Review open pull requests', {
       draft: draft('acme-store', 'Review open pull requests\nGo through yesterday’s open pull requests and say what each one still needs.', 'acceptEdits'),

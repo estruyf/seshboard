@@ -961,6 +961,12 @@ export const contract = {
      * Runs it now, with the same rules as a run at its time (skipped while the last run is busy, queued at a limit). It
      * doesn't move the next run. The result is the run's.
      */
+    /**
+     * Skip this run: the run at `at` (an ISO time one of its runs falls on) doesn't start. Its time passes as a
+     * skipped run, "Skipped by you". `unskipRun` takes it back.
+     */
+    'schedules.skipRun': { params: z.object({ id: z.string().min(1).max(100), at: z.iso.datetime() }), result: z.object({ schedule: Schedule }) },
+    'schedules.unskipRun': { params: z.object({ id: z.string().min(1).max(100), at: z.iso.datetime() }), result: z.object({ schedule: Schedule }) },
     'schedules.runNow': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ run: ScheduleRunEvent }) },
 
     // --- Settings backup -----------------------------------------------------------------------

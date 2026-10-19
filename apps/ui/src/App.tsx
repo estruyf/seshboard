@@ -71,6 +71,8 @@ import { usePopoutsSync } from './state/usePopoutsSync.ts';
 import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
+import { UpcomingView } from './components/upcoming/UpcomingView.tsx';
+import { openUpcoming } from './state/upcomingStore.ts';
 
 /** What the main area shows, as the terminal sees it: Home is the session view without a session. */
 function terminalView(view: MainView, sessionId: string | null): TerminalView {
@@ -120,6 +122,9 @@ function useShortcuts() {
       } else if (matches(event, 'home')) {
         event.preventDefault();
         useSessions.getState().goHome();
+      } else if (matches(event, 'upcoming')) {
+        event.preventDefault();
+        openUpcoming();
       } else if (matches(event, 'search')) {
         if (otherModalOpen()) return;
         event.preventDefault();
@@ -251,6 +256,8 @@ export function App() {
           <ProjectPage />
         ) : behind === 'new' ? (
           <NewSessionView />
+        ) : behind === 'upcoming' ? (
+          <UpcomingView />
         ) : hasPanes ? (
           <SplitPanes />
         ) : (

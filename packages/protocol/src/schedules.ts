@@ -2,8 +2,11 @@
 // time a schedule runs; everything here works in the computer's local time, so a run follows a time zone or DST change.
 // Shared: the engine decides when a run is due, and the UI shows the rule in words and the next runs.
 
-/** On which days a schedule runs. Days of the week are numbered as `Date.getDay()` does: 0 Sunday to 6 Saturday. */
-export type ScheduleRepeat = { kind: 'daily' } | { kind: 'weekdays' } | { kind: 'weekly'; days: number[] } | { kind: 'monthly'; day: number };
+/**
+ * On which days a schedule runs. Days of the week are numbered as `Date.getDay()` does: 0 Sunday to 6 Saturday. `once`
+ * runs on one local date (`YYYY-MM-DD`) and never again.
+ */
+export type ScheduleRepeat = { kind: 'once'; date: string } | { kind: 'daily' } | { kind: 'weekdays' } | { kind: 'weekly'; days: number[] } | { kind: 'monthly'; day: number };
 
 /** A schedule's rule: the days, and the local time as `HH:MM` (24-hour). */
 export type ScheduleRule = ScheduleRepeat & { time: string };
@@ -17,7 +20,10 @@ export type ScheduleMissed = 'run' | 'skip';
  */
 export type ScheduleRunResult = 'started' | 'queued' | 'skipped' | 'missed' | 'failed';
 
+import type { Schedule, ScheduleLastRun } from './scheduleSchema.ts';
+
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DAY_MS = 86_400_000;
 
 /** Short and full day names, by `getDay()`. */
@@ -36,9 +42,19 @@ export function parseTime(time: string): { hours: number; minutes: number } | nu
   return match ? { hours: Number(match[1]), minutes: Number(match[2]) } : null;
 }
 
+/** `2026-10-19` as a local year, month (0-11) and day; null when it isn't a real date. */
+export function parseDate(date: string): { year: number; month: number; date: number } | null {
+  const match = DATE.exec(date);
+  if (!match) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]) - 1, Number(match[3])];
+  const check = new Date(year, month, day);
+  return check.getFullYear() === year && check.getMonth() === month && check.getDate() === day ? { year, month, date: day } : null;
+}
+
 /** Why a rule can't be saved, in words for the dialog; null when it is fine. */
 export function ruleProblem(rule: ScheduleRule): string | null {
   if (!parseTime(rule.time)) return 'Pick a time.';
+  if (rule.kind === 'once' && !parseDate(rule.date)) return 'Pick a date.';
   if (rule.kind === 'weekly') {
     if (rule.days.length === 0) return 'Pick at least one day.';
     if (rule.days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) return 'Pick days of the week.';
@@ -53,6 +69,8 @@ const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0
 function runsOn(rule: ScheduleRule, year: number, month: number, date: number): boolean {
   const weekday = new Date(year, month, date).getDay();
   switch (rule.kind) {
+    case 'once':
+      return rule.date === `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
     case 'daily':
       return true;
     case 'weekdays':
@@ -94,6 +112,12 @@ export function nextRuns(rule: ScheduleRule, from: number | Date, count: number)
   if (!time || ruleProblem(rule) || count <= 0) return [];
   const start = new Date(typeof from === 'number' ? from : from.getTime());
   const after = start.getTime();
+  if (rule.kind === 'once') {
+    // One date, however far away: no walk through the days.
+    const day = parseDate(rule.date)!;
+    const at = localMoment(day.year, day.month, day.date, time.hours, time.minutes);
+    return at > after ? [new Date(at)] : [];
+  }
   const out: Date[] = [];
   // Days are walked by the calendar (not by adding 24 hours), so a 23- or 25-hour day doesn't skip or repeat one.
   // Two years is enough to find a run of any rule that can be saved.
@@ -137,6 +161,10 @@ function dayList(days: readonly number[]): string {
 export function describe(rule: ScheduleRule): string {
   const at = `at ${rule.time}`;
   switch (rule.kind) {
+    case 'once': {
+      const day = parseDate(rule.date);
+      return day ? `Once on ${formatDay(new Date(day.year, day.month, day.date))} ${at}` : `Once ${at}`;
+    }
     case 'daily':
       return `Every day ${at}`;
     case 'weekdays':
@@ -219,4 +247,66 @@ export function nameFromPrompt(prompt: string, max = 80): string {
   const cut = line.slice(0, max);
   const space = cut.lastIndexOf(' ');
   return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/** The reason a run you skipped (Skip this run) is recorded with. */
+export const SKIPPED_BY_YOU = 'Skipped by you';
+
+/** A one-time schedule (Once) whose run has passed: it won't run again. */
+export function oneTimeDone(rule: ScheduleRule, now: number): boolean {
+  return rule.kind === 'once' && nextRuns(rule, now, 1).length === 0;
+}
+
+/** A run still to come in Upcoming's timeline. `skipped`: you skipped it (Skip this run). */
+export interface UpcomingRun {
+  scheduleId: string;
+  /** When it runs. */
+  at: number;
+  /** The schedule's folder, the project it runs in. */
+  cwd: string;
+  skipped: boolean;
+}
+
+/** A run that happened, in Upcoming's History: when, where, and how it went. */
+export interface PastRun {
+  scheduleId: string;
+  at: number;
+  cwd: string;
+  run: ScheduleLastRun;
+}
+
+type Listed = Pick<Schedule, 'id' | 'rule' | 'paused' | 'draft' | 'runs' | 'skippedRuns' | 'lastRun'>;
+
+/**
+ * The runs still to come from `from` to the end of the `days`th day after it, in time order: Upcoming's timeline.
+ * Paused schedules are left out. They come from `nextRuns`, so DST and short months are the timer's.
+ */
+export function upcomingRuns(schedules: readonly Listed[], from: number, days: number): UpcomingRun[] {
+  const now = new Date(from);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days + 1).getTime();
+  const out: UpcomingRun[] = [];
+  for (const schedule of schedules) {
+    if (schedule.paused) continue;
+    const skipped = new Set(schedule.skippedRuns);
+    for (const at of runsBetween(schedule.rule, from, end - 1, (days + 1) * 4 + 64)) {
+      out.push({ scheduleId: schedule.id, at: at.getTime(), cwd: schedule.draft.cwd, skipped: skipped.has(at.toISOString()) });
+    }
+  }
+  return out.sort((a, b) => a.at - b.at || a.scheduleId.localeCompare(b.scheduleId));
+}
+
+/**
+ * The runs that happened from the start of the day `days` days before `from` until `from`, newest first: Upcoming's
+ * History. Every schedule counts, paused and one-time ones that are done too. A schedule's runs come from its run
+ * history, or its last run when that is empty (recorded before schedules kept their runs).
+ */
+export function pastRuns(schedules: readonly Listed[], from: number, days: number): PastRun[] {
+  const now = new Date(from);
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days).getTime();
+  const out: PastRun[] = [];
+  for (const schedule of schedules) {
+    const runs = schedule.runs.length > 0 ? schedule.runs : schedule.lastRun ? [schedule.lastRun] : [];
+    for (const run of runs) if (run.at >= start && run.at <= from) out.push({ scheduleId: schedule.id, at: run.at, cwd: schedule.draft.cwd, run });
+  }
+  return out.sort((a, b) => b.at - a.at || a.scheduleId.localeCompare(b.scheduleId));
 }

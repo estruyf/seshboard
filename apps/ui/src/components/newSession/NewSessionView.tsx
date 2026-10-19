@@ -178,6 +178,9 @@ function LocalNewSession() {
   /** The schedule dialog is open, with the draft it will run. */
   const [scheduling, setScheduling] = useState<LaterDraft | null>(null);
   const scheduleRequest = useSchedules((s) => s.request);
+  /** Opened with Schedule a session (Upcoming): Start ▾ is on Schedule…, and Enter opens the schedule dialog. */
+  const [scheduleFirst, setScheduleFirst] = useState(false);
+  const scheduleFirstRequest = useSchedules((s) => s.scheduleFirst);
   /** Edits to the open queued item not saved yet: they go to the item a moment after you stop, or when you leave it. */
   const unsavedQueued = useRef<{ id: string; draft: LaterDraft; timer: ReturnType<typeof setTimeout> } | null>(null);
   /** What the prompt would wait for once queued, when changed with "Wait for…"; null: the item's own, else its project. */
@@ -303,8 +306,16 @@ function LocalNewSession() {
   useEffect(() => {
     if (focusRequest === seenFocusRequest.current) return;
     seenFocusRequest.current = focusRequest;
+    // New session asked for plainly (not through Schedule a session, taken below): Start is Start again.
+    if (!useSchedules.getState().scheduleFirst) setScheduleFirst(false);
     if ((fromLater && !useLater.getState().request) || (fromSchedule && !useSchedules.getState().request)) leaveQueued();
   }, [focusRequest]);
+  // Schedule a session: taken once, after the request above, which comes with it.
+  useEffect(() => {
+    if (!scheduleFirstRequest) return;
+    useSchedules.setState({ scheduleFirst: false });
+    setScheduleFirst(true);
+  }, [scheduleFirstRequest]);
 
   // The palette or Projects view asked for a folder (a session's git menu: in a new worktree).
   /** The folder that should start on "New worktree", until its defaults are in or the user changes something. */
@@ -868,6 +879,7 @@ function LocalNewSession() {
   /** Saved: the box is emptied (or, for a schedule that was open, back to New session's own prompt). */
   const onScheduled = () => {
     setScheduling(null);
+    setScheduleFirst(false);
     if (fromSchedule) leaveQueued();
     else {
       useDrafts.getState().removeDraft(newDraftKey(cwd));
@@ -1459,7 +1471,14 @@ function LocalNewSession() {
               controls={controls}
               onCycleMode={() => update({ permissionMode: nextMode(d.permissionMode) })}
               disabledReason={!client ? 'Connecting to the engine…' : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
-              onSubmit={(text, attachments, requested, parts) => create(text, attachments, parts, { skipGate: requested === true })}
+              onSubmit={(text, attachments, requested, parts) => {
+                // Scheduling, Enter opens the dialog rather than starting a session; the text stays in the box.
+                if (scheduleFirst && !question && !fromLater) {
+                  openSchedule();
+                  return false;
+                }
+                return create(text, attachments, parts, { skipGate: requested === true });
+              }}
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <StartButton
@@ -1473,6 +1492,7 @@ function LocalNewSession() {
                     // Opened with Start after this one…: queueing is what it is for.
                     queueFirst: startAfterId !== null && wait.kind === 'session' && wait.sessionId === startAfterId,
                     canSchedule: true,
+                    scheduleFirst: scheduleFirst && !fromLater,
                     editingSchedule: fromSchedule !== null,
                   })}
                   onAction={(action) =>

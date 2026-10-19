@@ -79,20 +79,17 @@ export function useQueueMenu(rows: readonly SessionRowData[]): QueueMenus {
     const ids = useLater.getState().items.map((i) => i.id);
     const index = ids.indexOf(item.id);
     const above = index > 0 ? useLater.getState().items[index - 1]! : null;
-    const waitFor = () =>
-      setMenu({
-        ...at,
-        label: 'Wait for',
-        entries: waitForEntries({ current: item.waitFor, busy: busyInProject(rows, item.cwd), above, onPick: (next) => void setWaitFor(item, next).catch(() => {}) }),
-      });
     setMenu({
       ...at,
       label: `Queued: ${promptLabel(item.prompt, 60)}`,
       entries: [
         { label: 'Start now', hint: formatKeys(keysFor('queue.start')), data: { 'data-queue-menu-start': true }, onSelect: () => void startQueued(item) },
         { label: 'Edit in New session…', hint: formatKeys(keysFor('queue.edit')), data: { 'data-queue-menu-edit': true }, onSelect: () => useLater.getState().use(item) },
-        // Opens its own list where this menu was, as a submenu would.
-        { label: 'Wait for…', hint: '›', data: { 'data-queue-menu-wait': true }, onSelect: () => requestAnimationFrame(waitFor) },
+        {
+          label: 'Wait for…',
+          data: { 'data-queue-menu-wait': true },
+          submenu: waitForEntries({ current: item.waitFor, busy: busyInProject(rows, item.cwd), above, onPick: (next) => void setWaitFor(item, next).catch(() => {}) }),
+        },
         startByItself(item, rows),
         { label: 'Move to top', hint: formatKeys(keysFor('queue.move-top')), disabled: moveTarget(ids, item.id, 'top') === null, onSelect: () => move(item, 'top') },
         { label: 'Move up', hint: '⌥↑', disabled: moveTarget(ids, item.id, -1) === null, data: { 'data-queue-menu-up': true }, onSelect: () => move(item, -1) },

@@ -1,12 +1,15 @@
 import { Info, Plus, Repeat } from 'lucide-react';
 import { currentPlatform } from '../../lib/platform.ts';
-import { useProjects } from '../../state/projectsStore.ts';
-import { useSchedules } from '../../state/schedulesStore.ts';
-import { useSessions } from '../../state/sessionsStore.ts';
+import { openToSchedule, useSchedules } from '../../state/schedulesStore.ts';
+import { listedSchedules } from '../../state/upcoming.ts';
 import { Button } from '../ui/Button.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { useScheduleMenu } from './scheduleMenu.tsx';
 import { ScheduleRow } from './ScheduleRow.tsx';
+import { SeeAllInUpcoming } from '../upcoming/SeeAllInUpcoming.tsx';
+
+/** How many schedules Home shows; See all in Upcoming has the rest. */
+const HOME_ROWS = 3;
 
 /**
  * When schedules run, for the platform: the Mac app keeps running with its windows closed; on Windows the app quits
@@ -15,18 +18,14 @@ import { ScheduleRow } from './ScheduleRow.tsx';
 export const schedulesRunLine = (platform = currentPlatform()) =>
   platform === 'darwin' ? 'Schedules run while Switchboard is running, also with its windows closed.' : 'Schedules run while a Switchboard window is open.';
 
-/** New session, preset to a project when there is one, to write the prompt a schedule runs. */
-const scheduleIn = (root: string | null) => {
-  if (root) useProjects.getState().startIn(root);
-  useSessions.getState().openNewSession();
-};
 
 /**
- * Home's Schedules card, under the queue: every schedule with its rule, last and next run, Run now and ⋯, and a line on
- * when schedules run on this platform. Nothing shows without schedules.
+ * Home's Schedules card, under the queue: the first schedules (Upcoming has all of them) with their rule, last and next
+ * run, Run now and ⋯, and a line on when schedules run on this platform. One-time schedules that have run are left out
+ * (Upcoming's History has their run). Nothing shows without schedules.
  */
 export function SchedulesCard({ now }: { now: number }) {
-  const schedules = useSchedules((s) => s.schedules);
+  const schedules = listedSchedules(useSchedules((s) => s.schedules), now);
   const menus = useScheduleMenu();
   if (schedules.length === 0) return null;
   return (
@@ -37,12 +36,13 @@ export function SchedulesCard({ now }: { now: number }) {
             <Repeat size={13} className="shrink-0" aria-hidden />
             Schedules
           </SectionHeader>
-          <Button icon={<Plus size={13} aria-hidden />} onClick={() => scheduleIn(null)} className="shrink-0" data-schedules-add>
+          <SeeAllInUpcoming kind="schedules" />
+          <Button icon={<Plus size={13} aria-hidden />} onClick={() => openToSchedule()} className="shrink-0" data-schedules-add>
             Schedule a session
           </Button>
         </div>
         <ul className="grid gap-0.5">
-          {schedules.map((schedule) => (
+          {schedules.slice(0, HOME_ROWS).map((schedule) => (
             <ScheduleRow key={schedule.id} schedule={schedule} now={now} menus={menus} />
           ))}
         </ul>
@@ -58,14 +58,17 @@ export function SchedulesCard({ now }: { now: number }) {
 
 /** A project's Sessions tab: its schedules, with the same rows as Home's. */
 export function ProjectSchedules({ root, now }: { root: string; now: number }) {
-  const schedules = useSchedules((s) => s.schedules).filter((schedule) => schedule.draft.cwd === root);
+  const schedules = listedSchedules(useSchedules((s) => s.schedules), now).filter((schedule) => schedule.draft.cwd === root);
   const menus = useScheduleMenu();
   if (schedules.length === 0) return null;
   return (
     <section aria-labelledby="project-schedules" className="grid gap-1" data-project-schedules>
-      <SectionHeader as="h2" headingId="project-schedules" count={schedules.length} className="px-3">
-        Schedules
-      </SectionHeader>
+      <div className="flex items-center gap-3 px-3">
+        <SectionHeader as="h2" headingId="project-schedules" count={schedules.length} className="min-w-0 flex-1">
+          Schedules
+        </SectionHeader>
+        <SeeAllInUpcoming kind="schedules" label="All projects in Upcoming" />
+      </div>
       <ul className="grid gap-0.5">
         {schedules.map((schedule) => (
           <ScheduleRow key={schedule.id} schedule={schedule} now={now} menus={menus} project={false} />

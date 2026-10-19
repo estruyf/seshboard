@@ -105,6 +105,7 @@ import {
   Wrench,
   X,
   type LucideIcon,
+  CalendarClock,
 } from 'lucide-react';
 import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { PromptScope } from '@switchboard/protocol/client';
@@ -128,6 +129,8 @@ export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-qu
 /** What commands do, implemented against the stores in `paletteApi.ts` (and faked in tests). */
 export interface PaletteApi {
   goHome(): void;
+  /** Upcoming, on a filter (Queue…, Schedules…). */
+  openUpcoming(kind?: 'all' | 'queue' | 'schedules'): void;
   /** The Usage view, for the default profile. */
   openUsage(): void;
   showSearch(): void;
@@ -229,6 +232,8 @@ export interface PaletteApi {
   newSessionRequest(kind: NewSessionRequest): void;
   /** Opens the New session view (Add to queue… outside it). */
   openNewSession(): void;
+  /** New session with Start ▾ on Schedule…, to write the prompt a schedule runs. */
+  openToSchedule(): void;
   /** Opens New session with another computer picked in Run on. */
   newSessionOn(computerId: string): void;
   /** The sidebar shows only that computer's sessions (the Computers filter). */
@@ -405,6 +410,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'sidebar-minimize', title: 'Minimize sidebar', group: 'general', icon: PanelLeftDashed, keywords: 'rail icons collapse narrow', when: (ctx) => ctx.sidebar !== 'minimal', run: (api) => api.setSidebar('minimal') },
   { id: 'sidebar-close', title: 'Close sidebar', group: 'general', icon: PanelLeftClose, keywords: 'hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
   { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: House, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
+  { id: 'upcoming', title: 'Go to Upcoming', group: 'general', shortcut: keysFor('upcoming'), icon: CalendarClock, keywords: 'queue queued schedules scheduled runs planned later timeline week', when: (ctx) => ctx.view !== 'upcoming', run: (api) => api.openUpcoming('all') },
   { id: 'open-usage', title: 'Open usage', group: 'general', icon: Gauge, keywords: 'plan limits tokens usage insights session weekly cache', when: (ctx) => ctx.view !== 'usage', run: (api) => api.openUsage() },
   { id: 'search-memory', title: 'Search memory…', group: 'general', icon: Brain, keywords: 'find memories knowledge notes', when: (ctx) => ctx.connected, run: (api) => api.showMemorySearch() },
   { id: 'search', title: 'Search conversations', group: 'general', shortcut: keysFor('search'), icon: TextSearch, keywords: 'find text', when: always, run: (api) => api.showSearch() },
@@ -571,6 +577,16 @@ export const COMMANDS: PaletteCommand[] = [
     run: (api, ctx) => api.startQueued(ctx.queue.firstReady!.id),
   },
   {
+    id: 'queue-view',
+    title: 'Queue…',
+    group: 'general',
+    icon: ListEnd,
+    keywords: 'queued later saved prompts waiting upcoming order reorder',
+    hint: (ctx) => (ctx.queue.count > 0 ? `${ctx.queue.count} queued` : ''),
+    when: always,
+    run: (api) => api.openUpcoming('queue'),
+  },
+  {
     id: 'queue-pick',
     title: 'Queue: pick one to start…',
     group: 'general',
@@ -600,12 +616,22 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'schedule repeat recurring every day weekday week month cron timer daily',
     hint: (ctx) => (ctx.newSession?.canQueue ? '' : 'opens New session'),
     when: (ctx) => ctx.connected,
-    // In New session with a prompt: the schedule dialog. Anywhere else: New session, to write the prompt.
-    run: (api, ctx) => (ctx.newSession?.canQueue ? api.newSessionRequest('schedule') : api.openNewSession()),
+    // In New session with a prompt: the schedule dialog. Anywhere else: New session, to write the prompt, with Start on Schedule….
+    run: (api, ctx) => (ctx.newSession?.canQueue ? api.newSessionRequest('schedule') : api.openToSchedule()),
+  },
+  {
+    id: 'schedules-view',
+    title: 'Schedules…',
+    group: 'general',
+    icon: Repeat,
+    keywords: 'schedule repeat recurring runs upcoming week skip pause',
+    hint: (ctx) => (ctx.schedules > 0 ? String(ctx.schedules) : ''),
+    when: always,
+    run: (api) => api.openUpcoming('schedules'),
   },
   {
     id: 'schedules',
-    title: 'Schedules…',
+    title: 'Schedules: pick one…',
     group: 'general',
     icon: Repeat,
     keywords: 'schedule repeat recurring run now pause resume delete edit',

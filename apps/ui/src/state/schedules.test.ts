@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Schedule, ScheduleLastRun } from '@switchboard/protocol/client';
-import { formOf, formProblem, lastRunLine, newForm, nextRunLine, ruleOf, scheduleLabel, toggleDay } from './schedules.ts';
+import { nextRuns, type Schedule, type ScheduleLastRun } from '@switchboard/protocol/client';
+import { formOf, formProblem, inOneHour, lastRunLine, newForm, nextRunLine, ruleOf, scheduleLabel, toggleDay } from './schedules.ts';
 
 const savedTz = process.env.TZ;
 beforeAll(() => {
@@ -23,6 +23,8 @@ const schedule = (over: Partial<Schedule> = {}): Schedule => ({
   paused: false,
   pausedReason: null,
   lastRun: null,
+  runs: [],
+  skippedRuns: [],
   createdAt: 0,
   updatedAt: 0,
   ...over,
@@ -61,7 +63,7 @@ describe('schedule rows', () => {
 
 describe('the schedule dialog', () => {
   it('starts on Monday to Friday at 08:00 with today as the week day and month day', () => {
-    expect(newForm('Standup', NOW)).toEqual({ name: 'Standup', repeat: 'weekdays', days: [1], monthDay: '19', time: '08:00', missed: 'run' });
+    expect(newForm('Standup', NOW)).toEqual({ name: 'Standup', repeat: 'weekdays', days: [1], monthDay: '19', date: '2026-10-19', time: '08:00', missed: 'run' });
   });
 
   it('makes the rule from its fields, and keeps them for another repeat', () => {
@@ -72,14 +74,29 @@ describe('the schedule dialog', () => {
     expect(formOf(schedule({ rule: { kind: 'monthly', day: 1, time: '10:00' }, missed: 'skip' }), NOW)).toMatchObject({ repeat: 'monthly', monthDay: '1', time: '10:00', missed: 'skip', days: [1] });
   });
 
+  it('makes a one-time rule an hour from now', () => {
+    const form = { ...newForm('Standup', NOW), repeat: 'once' as const, ...inOneHour(NOW) };
+    const rule = ruleOf(form);
+    expect(rule).toMatchObject({ kind: 'once', date: form.date, time: form.time });
+    expect(nextRuns(rule, NOW, 3)).toHaveLength(1);
+    expect(nextRunLine(schedule({ rule }), NOW)?.text).toMatch(/^Next: /);
+    expect(nextRunLine(schedule({ rule }), nextRuns(rule, NOW, 1)[0]!.getTime() + 1)).toEqual({ text: 'Done', tone: 'muted' });
+    expect(formOf(schedule({ rule }), NOW)).toMatchObject({ repeat: 'once', date: form.date, time: form.time });
+  });
+
   it('says what is missing before it saves', () => {
     const form = newForm('Standup', NOW);
-    expect(formProblem(form)).toBeNull();
-    expect(formProblem({ ...form, name: '  ' })).toBe('Give it a name.');
-    expect(formProblem({ ...form, repeat: 'weekly', days: [] })).toBe('Pick at least one day.');
-    expect(formProblem({ ...form, repeat: 'monthly', monthDay: '32' })).toBe('Pick a day from 1 to 31.');
-    expect(formProblem({ ...form, repeat: 'monthly', monthDay: 'x' })).toBe('Pick a day from 1 to 31.');
-    expect(formProblem({ ...form, time: '' })).toBe('Pick a time.');
+    expect(formProblem(form, NOW)).toBeNull();
+    expect(formProblem({ ...form, name: '  ' }, NOW)).toBe('Give it a name.');
+    expect(formProblem({ ...form, repeat: 'weekly', days: [] }, NOW)).toBe('Pick at least one day.');
+    expect(formProblem({ ...form, repeat: 'monthly', monthDay: '32' }, NOW)).toBe('Pick a day from 1 to 31.');
+    expect(formProblem({ ...form, repeat: 'monthly', monthDay: 'x' }, NOW)).toBe('Pick a day from 1 to 31.');
+    expect(formProblem({ ...form, time: '' }, NOW)).toBe('Pick a time.');
+    // Once: a date and time still to come.
+    const once = { ...form, repeat: 'once' as const, ...inOneHour(NOW) };
+    expect(formProblem(once, NOW)).toBeNull();
+    expect(formProblem({ ...once, date: '2020-01-01' }, NOW)).toBe('Pick a time that is still to come.');
+    expect(formProblem({ ...once, date: '' }, NOW)).toBe('Pick a date.');
     expect(toggleDay([1, 4], 4)).toEqual([1]);
     expect(toggleDay([1], 3)).toEqual([1, 3]);
   });

@@ -35,6 +35,7 @@ export function lastRunLine(schedule: Schedule, now: number): ScheduleLine | nul
 export function nextRunLine(schedule: Schedule, now: number): ScheduleLine | null {
   if (schedule.paused) return { text: schedule.pausedReason && schedule.pausedReason !== 'Folder not found' ? `Paused · ${schedule.pausedReason}` : 'Paused', tone: 'caution' };
   const [next] = nextRuns(schedule.rule, now, 1);
+  if (!next && schedule.rule.kind === 'once') return { text: 'Done', tone: 'muted' };
   return next ? { text: `Next: ${formatNext(next, now)}`, tone: 'muted' } : null;
 }
 
@@ -73,7 +74,7 @@ export function scheduleLabel(schedule: Schedule, now: number, lastState: LastRu
 
 /** The dialog's Repeat choices, in the order the control shows them. */
 export type RepeatKind = ScheduleRepeat['kind'];
-export const REPEAT_LABELS: Record<RepeatKind, string> = { daily: 'Every day', weekdays: 'Monday to Friday', weekly: 'Every week', monthly: 'Every month' };
+export const REPEAT_LABELS: Record<RepeatKind, string> = { once: 'Once', daily: 'Every day', weekdays: 'Monday to Friday', weekly: 'Every week', monthly: 'Every month' };
 
 /** The dialog's fields, kept apart so switching Repeat back and forth keeps the days and the day of the month. */
 export interface ScheduleForm {
@@ -83,14 +84,26 @@ export interface ScheduleForm {
   days: number[];
   /** Every month's day, as typed. */
   monthDay: string;
+  /** Once's date, as `YYYY-MM-DD`. */
+  date: string;
   time: string;
   missed: 'run' | 'skip';
 }
 
-/** A new schedule's fields: today's day of the week and of the month, at 08:00. */
+const pad = (n: number) => String(n).padStart(2, '0');
+const dateOf = (at: Date) => `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+const clockOf = (at: Date) => `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+
+/** Once's date and time, an hour from `now` (rounded up to the minute). */
+export function inOneHour(now: number): Pick<ScheduleForm, 'date' | 'time'> {
+  const at = new Date(Math.ceil((now + 3_600_000) / 60_000) * 60_000);
+  return { date: dateOf(at), time: clockOf(at) };
+}
+
+/** A new schedule's fields: today's day of the week and of the month, at 08:00; Once is an hour from now. */
 export function newForm(name: string, now: number): ScheduleForm {
   const today = new Date(now);
-  return { name, repeat: 'weekdays', days: [today.getDay()], monthDay: String(today.getDate()), time: '08:00', missed: 'run' };
+  return { name, repeat: 'weekdays', days: [today.getDay()], monthDay: String(today.getDate()), date: inOneHour(now).date, time: '08:00', missed: 'run' };
 }
 
 /** A schedule's fields, to change it. */
@@ -102,6 +115,7 @@ export function formOf(schedule: Schedule, now: number): ScheduleForm {
     repeat: rule.kind,
     days: rule.kind === 'weekly' ? [...rule.days] : base.days,
     monthDay: rule.kind === 'monthly' ? String(rule.day) : base.monthDay,
+    date: rule.kind === 'once' ? rule.date : base.date,
     time: rule.time,
     missed: schedule.missed,
   };
@@ -110,6 +124,8 @@ export function formOf(schedule: Schedule, now: number): ScheduleForm {
 /** The rule the fields make. */
 export function ruleOf(form: ScheduleForm): ScheduleRule {
   switch (form.repeat) {
+    case 'once':
+      return { kind: 'once', date: form.date, time: form.time };
     case 'daily':
       return { kind: 'daily', time: form.time };
     case 'weekdays':
@@ -122,10 +138,15 @@ export function ruleOf(form: ScheduleForm): ScheduleRule {
 }
 
 /** Why the dialog can't save yet, in words; null when it can. */
-export function formProblem(form: ScheduleForm): string | null {
+export function formProblem(form: ScheduleForm, now: number): string | null {
   if (!form.name.trim()) return 'Give it a name.';
   if (form.name.trim().length > 200) return 'Use a shorter name.';
-  return ruleProblem(ruleOf(form));
+  const rule = ruleOf(form);
+  const problem = ruleProblem(rule);
+  if (problem) return problem;
+  // A run in the past would never happen.
+  if (rule.kind === 'once' && nextRuns(rule, now, 1).length === 0) return 'Pick a time that is still to come.';
+  return null;
 }
 
 /** Turns a day of the week on or off. */

@@ -60,6 +60,7 @@ import {
   clockTime,
   limitAhead,
   Schedule,
+  runsBetween,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -1026,21 +1027,22 @@ export function createEngine(options: EngineOptions): Engine {
     return sessionId;
   };
   /** Queued items that start by themselves (#172): the engine decides, so they start once, with or without a window. */
+  /** The smoke test must never send a prompt to Claude: there an item leaves the queue as if it had started. */
+  const startQueuedOrStub = options.stubQueueStarts
+    ? async (item: LaterItem) => {
+        const sessionId = `smoke-started-${randomUUID()}`;
+        later.started(item.id, sessionId);
+        laterChanged();
+        return sessionId;
+      }
+    : startQueued;
   autoStarter = new QueueAutoStarter({
     store: later,
     sessions: queueSessions,
     projectName: (root) => listProjects().find((p) => p.root === root)?.name ?? basename(root),
     limitOf: queueLimit,
     focus: () => ({ limit: queueFocus.limit, count: queueFocus.limit === null ? 0 : focusCount() }),
-    // The smoke test must never send a prompt to Claude: the item leaves the queue as if it had started.
-    start: options.stubQueueStarts
-      ? async (item) => {
-          const sessionId = `smoke-started-${randomUUID()}`;
-          later.started(item.id, sessionId);
-          laterChanged();
-          return sessionId;
-        }
-      : startQueued,
+    start: startQueuedOrStub,
     changed: laterBroadcast,
     started: (event) => broadcast('later.autoStarted', event),
     skipped: (event) => broadcast('later.autoSkipped', event),
@@ -1191,6 +1193,17 @@ export function createEngine(options: EngineOptions): Engine {
       if (process.env.TZ === undefined) delete process.env.TZ;
     },
   });
+  /** Skip this run, or take it back. Only a run still to come that the schedule's rule has can be skipped. */
+  const skipRun = (id: string, iso: string, skip: boolean) => {
+    const stored = schedules.getStored(id);
+    if (!stored) throw new RpcError('NOT_FOUND', 'That schedule was deleted');
+    const at = Date.parse(iso);
+    if (skip && (at <= stored.checkedAt || runsBetween(stored.schedule.rule, at - 1, at, 1).length === 0)) throw new RpcError('INVALID', 'That run is not still to come');
+    const schedule = schedules.setSkipped(id, at, skip)!;
+    schedulesBroadcast();
+    scheduler.rearm();
+    return { schedule };
+  };
   /** Pauses the schedules of a folder (a project removed from Switchboard), with the reason the row shows. */
   const pauseSchedulesIn = (root: string, reason: string) => {
     let changed = false;
@@ -2352,7 +2365,7 @@ export function createEngine(options: EngineOptions): Engine {
     'later.start': async ({ id }) => {
       const item = later.get(id);
       if (!item) throw new RpcError('NOT_FOUND', 'That item is no longer in the queue');
-      return { sessionId: await startQueued(item) };
+      return { sessionId: await startQueuedOrStub(item) };
     },
     'schedules.list': () => ({ schedules: schedules.list(), sessions: schedules.sessions() }),
     'schedules.save': ({ schedule: input }) => {
@@ -2381,6 +2394,8 @@ export function createEngine(options: EngineOptions): Engine {
       scheduler.rearm();
       return { schedule };
     },
+    'schedules.skipRun': ({ id, at }) => skipRun(id, at, true),
+    'schedules.unskipRun': ({ id, at }) => skipRun(id, at, false),
     'schedules.runNow': async ({ id }) => {
       const run = await scheduler.runNow(id);
       if (!run) throw new RpcError('NOT_FOUND', 'That schedule was deleted');

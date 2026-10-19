@@ -64,9 +64,12 @@ const PLANS: Record<string, Plan> = {
   schedules: 'hide',
   'open-in-new-window': 'hide',
 
-  // Settings, Usage and project pages: their stores send them to the main window.
+  // Settings, Usage, Upcoming and project pages: their stores send them to the main window.
   settings: 'main',
   'open-usage': 'main',
+  upcoming: 'main',
+  'queue-view': 'main',
+  'schedules-view': 'main',
   'worktrees-here': 'main',
   worktrees: 'main',
   'branches-here': 'main',

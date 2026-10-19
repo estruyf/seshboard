@@ -6,7 +6,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
 import type { ScheduleRunEvent } from '@switchboard/protocol/client';
@@ -803,7 +803,7 @@ ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
   sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
 });
 // A view a pop-out doesn't have (Settings, Usage, a project, New session, Go to, Search) opens in the main window, which comes to the front.
-const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate']);
+const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming']);
 ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
   if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
   sendToWindow(showWindow(), IpcChannel.mainRequested, request);
@@ -6008,6 +6008,106 @@ async function runSchedulesStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Upcoming, in the throwaway profile against a temp folder: a queued prompt and a daily schedule made in New session,
+ * then Upcoming from the sidebar with its three cards. The project filter keeps them; Skip this run dims the run and
+ * says so, and Undo brings it back; Start now on the Queue card takes the item off the queue (the stub never sends
+ * the prompt to Claude). The schedule is deleted again.
+ */
+async function runUpcomingStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-upcoming-')));
+  const name = 'Smoke upcoming: standup summary';
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const view = '[data-upcoming]';
+  const queued = `[...document.querySelectorAll('${view} [data-upcoming-queue] [data-queue-item]')]`;
+  const scheduleRow = `[...document.querySelectorAll('${view} [data-upcoming-schedule]')].find((el) => el.innerText.includes(${JSON.stringify(name)}))`;
+  /**
+   * The last run on screen of the smoke schedule that is still to come. Not the first: the schedules step moved the
+   * engine's clock a day on, so to the engine today's run has already passed.
+   */
+  const laterRun = `[...document.querySelectorAll('${view} [data-upcoming-run]')].filter((el) => el.innerText.includes(${JSON.stringify(name)}) && el.dataset.upcomingRunState === 'next').pop()`;
+  const fill = async (text: string) => {
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(text)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`, 5_000))) return false;
+    await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
+    return waitInPage(win, "!!document.querySelector('[role=menu] [data-queue-add]')", 2_000);
+  };
+  try {
+    // A queued prompt and a schedule, in New session.
+    if (!(await fill('Smoke upcoming: queued prompt'))) return 'New session did not open on the temp folder';
+    await js("document.querySelector('[role=menu] [data-queue-add]').click()");
+    if (!(await waitInPage(win, `${composer}?.value === ''`, 3_000))) return 'Add to queue did not take the prompt';
+    if (!(await fill(`${name}\nWrite the standup summary.`))) return 'New session did not open again';
+    await js("document.querySelector('[role=menu] [data-schedule-add]').click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-schedule-dialog] [data-schedule-name]')?.value === ${JSON.stringify(name)}`, 3_000))) return 'Schedule… did not open the dialog';
+    await js(`document.querySelector('[data-schedule-dialog] [data-schedule-repeat="daily"]').click()`);
+    // An hour ahead (or the next morning), so a run is still to come today or tomorrow.
+    const at = new Date(Date.now() + 60 * 60_000);
+    await setFieldValue(win, '[data-schedule-dialog] [data-schedule-time]', `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`);
+    await js("document.querySelector('[data-schedule-dialog] [data-schedule-save]').click()");
+    if (!(await waitInPage(win, "!document.querySelector('[data-schedule-dialog]')", 3_000))) return 'saving the schedule did not close the dialog';
+
+    // Upcoming from the sidebar (or the rail): its three cards.
+    if (!(await js("!!document.querySelector('[data-upcoming-nav]')"))) return 'the sidebar has no Upcoming';
+    await js("document.querySelector('[data-upcoming-nav]').click()");
+    if (!(await waitInPage(win, `!!document.querySelector('${view}')`, 3_000))) return 'Upcoming did not open';
+    if (!(await js("document.querySelector('[data-upcoming-nav]')?.getAttribute('aria-current') === 'page'"))) return 'the Upcoming row was not selected';
+    if (!(await js(`document.querySelector('[data-upcoming-kind="all"]')?.getAttribute('aria-checked') === 'true'`))) await js(`document.querySelector('[data-upcoming-kind="all"]')?.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${view} [data-upcoming-queue]') && !!document.querySelector('${view} [data-upcoming-runs]') && !!document.querySelector('${view} [data-upcoming-schedules]')`, 3_000))) return 'Upcoming did not show the Queue, Scheduled runs and Schedules cards';
+    if (!(await waitInPage(win, `${queued}.length === 1 && !!${scheduleRow} && !!${laterRun}`, 5_000))) return 'Upcoming did not list the queued prompt, the schedule and its next run';
+    await shot(win, 'upcoming.png');
+
+    // The project filter: the temp folder's project keeps both.
+    // The attribute's value in double quotes, inside the single-quoted selector.
+    const pick = `document.querySelector('[role=menu] [data-upcoming-project=${JSON.stringify(folder)}]')`;
+    await js("document.querySelector('[data-upcoming-project-chip]').click()");
+    if (!(await waitInPage(win, `!!${pick}`, 2_000))) return 'the project filter did not offer the temp folder';
+    await js(`${pick}.click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-upcoming-project-chip]')?.innerText.includes(${JSON.stringify(basename(folder))}) && ${queued}.length === 1 && !!${scheduleRow}`, 3_000))) return 'filtering by the project lost its items';
+
+    // Skip this run, then Undo: the run comes back.
+    const runId = (await js(`${laterRun}.dataset.upcomingRun`)) as string;
+    const run = `document.querySelector('[data-upcoming-run=${JSON.stringify(runId)}]')`;
+    await js(`${run}.querySelector('[data-upcoming-skip]').click()`);
+    if (!(await waitInPage(win, `${run}?.dataset.upcomingRunState === 'skipped-by-you' && ${run}.innerText.includes('Skipped by you') && !!document.querySelector('[data-run-skipped-toast] [data-toast-undo]')`, 3_000))) return 'Skip this run did not mark the run Skipped by you with an Undo';
+    await js("document.querySelector('[data-run-skipped-toast] [data-toast-undo]').click()");
+    if (!(await waitInPage(win, `${run}?.dataset.upcomingRunState === 'next'`, 3_000))) return 'Undo did not bring the run back';
+
+    // Start now on the Queue card: the item leaves the queue.
+    const itemId = (await js(`${queued}[0].dataset.queueItem`)) as string;
+    await js(`document.querySelector('${view} [data-queue-start="${itemId}"]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('[data-queue-item="${itemId}"]')`, 5_000))) return 'Start now did not take the item off the queue';
+    return 'ok: Upcoming from the sidebar showed the queue, the scheduled runs and the schedules; the project filter kept them; Skip this run and Undo; Start now took the item off the queue';
+  } finally {
+    // Back to all projects, the schedule and any queued item gone, New session empty, the session later steps use.
+    if (!(await js("!!document.querySelector('[data-upcoming]')"))) await js("document.querySelector('[data-upcoming-nav]')?.click()");
+    await waitInPage(win, "!!document.querySelector('[data-upcoming]')", 2_000);
+    if (await js("!!document.querySelector('[data-upcoming-project-chip]')")) {
+      await js("document.querySelector('[data-upcoming-project-chip]').click()");
+      if (await waitInPage(win, `!!document.querySelector('[role=menu] [data-upcoming-project="all"]')`, 2_000)) await js(`document.querySelector('[role=menu] [data-upcoming-project="all"]').click()`);
+    }
+    for (let i = 0; i < 2 && (await js(`!!${scheduleRow}`)); i++) {
+      await js(`${scheduleRow}.querySelector('[data-schedule-more]').click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-schedule-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-schedule-menu-delete]').click()");
+      await waitInPage(win, `!${scheduleRow}`, 2_000);
+    }
+    for (let i = 0; i < 3 && (await js(`${queued}.filter((el) => el.innerText.includes('Smoke upcoming')).length`)) > 0; i++) {
+      await js(`${queued}.find((el) => el.innerText.includes('Smoke upcoming')).focus()`);
+      pressKey(win, 'Backspace');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    if (await js(`!!${composer}?.value`)) await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * Collapsible sections: a click on Today's header (or the first section that can close) hides its rows and keeps
  * the header with its count; ← and → on the focused header close and open it. Earlier starts closed. Back as it was.
  */
@@ -8244,6 +8344,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('queue', () => runQueueStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
+  await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
@@ -8339,6 +8440,7 @@ app.whenReady().then(() => {
     },
     focusedSession: sessionOnScreen,
     openSession,
+    openUpcoming: (scheduleId) => sendToWindow(showWindow(), IpcChannel.mainRequested, { kind: 'upcoming', filter: null, scheduleId } satisfies MainWindowRequest),
     showAllSessions: () => preferences.get().sessionScope === 'all',
     alerts: () => preferences.get(),
     cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),

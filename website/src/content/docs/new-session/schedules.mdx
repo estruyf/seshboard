@@ -1,6 +1,6 @@
 ---
 title: Schedules
-description: Start a session from a prompt at set times, every day, on weekdays, on the days you pick or once a month.
+description: Start a session from a prompt once, or at set times every day, on weekdays, on the days you pick or once a month.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -33,8 +33,8 @@ In the command palette, *Schedule a session…* does the same with the prompt yo
 | Field | What it does |
 |---|---|
 | **Name** | Filled in from the prompt's first line. Each run's session is titled with it and the day, such as "Review open pull requests · Mon 19 Oct". |
-| **Repeat** | **Every day**, **Monday to Friday**, **Every week** or **Every month**. **Every week** shows a toggle for each day (M T W T F S S), with today on. **Every month** shows a **Day** field, from 1 to 31. |
-| **At** | The time, shown the way your computer shows times. Next to it, the rule in words: "Weekdays at 08:00", "Mondays and Thursdays at 09:30", "On the 1st at 10:00". |
+| **Repeat** | **Once**, **Every day**, **Monday to Friday**, **Every week** or **Every month**. **Once** shows a **Date** field, and a new schedule starts an hour from now, so "run this in an hour" is two clicks. **Every week** shows a toggle for each day (M T W T F S S), with today on. **Every month** shows a **Day** field, from 1 to 31. |
+| **At** | The time, shown the way your computer shows times. Next to it, the rule in words: "Once on Tue 20 Oct at 09:00", "Weekdays at 08:00", "Mondays and Thursdays at 09:30", "On the 1st at 10:00". |
 | **If missed** | **Run when Switchboard starts** (the default) or **Skip it**. See [Missed runs](#missed-runs). |
 | **Next runs** | The next three runs, such as "Tue 20 Oct 08:00". They change as you edit the rule, so you can check it. |
 | **Runs with** | The project, the worktree or branch, the model, effort, mode and profile, from New session. To change them, use **Edit…** (see [Change a schedule](#change-pause-or-delete)). |
@@ -47,9 +47,10 @@ With the mode on **Ask before edits** (Claude Code's default), the dialog says: 
 
 ## Where schedules show
 
-- The **Schedules** card on [Home](/sessions/home/), under the queue, with **Schedule a session**, which opens New session.
+- [Upcoming](/sessions/upcoming/), with every schedule and the runs of the next 7 days, where you can skip a single run. *Schedules…* in the command palette opens it on the schedules.
+- The **Schedules** card on [Home](/sessions/home/), under the queue, with the first three and **Schedule a session**, which opens New session.
 - The **Schedules** section in a project's [Sessions tab](/projects/sessions/), for that project.
-- In the command palette, *Schedules…* lists them. Pick one to **Run now**, **Edit…**, **Pause** or **Resume**, or **Delete** it.
+- In the command palette, *Schedules: pick one…* lists them. Pick one to **Run now**, **Edit…**, **Pause** or **Resume**, or **Delete** it.
 
 <Screenshot name="schedules" alt="The Schedules card on Home: four schedules with their rule, last run and next run, one skipped, one missed and one paused" />
 
@@ -60,6 +61,8 @@ Each row shows:
 - the last run: "Last: Mon 19 Oct" with a check, which opens that run's session. When a run didn't start, it says why instead: "Skipped Tue 08:00: the last run was still working", "Missed Mon 08:45" or "Folder not found";
 - on the right, the next run, such as "Next: Tomorrow 08:00", or **Paused**;
 - **Run now** and a **⋯** menu.
+
+A schedule set to **Once** leaves the lists after its run. [Upcoming](/sessions/upcoming/#history) shows its run under **History** for 7 days, then Switchboard removes it. The session it started keeps the repeat icon.
 
 A paused schedule keeps its place, dimmed.
 
@@ -101,6 +104,7 @@ The row's **⋯** menu (or a right-click on the row) has:
 | Item | What it does |
 |---|---|
 | **Run now** | Starts a run now. The next run stays as it is. |
+| **Skip next run** | Skips the next run only. The schedule stays active. [Upcoming](/sessions/upcoming/#skip-a-run) shows it as **Skipped by you**, with **Undo**. |
 | **Edit…** | Opens New session filled in with the schedule's prompt and choices. Change them, then choose **Save schedule** in Start's ▾ menu, which opens the dialog with the schedule's values. |
 | **Pause** | Stops it until you choose **Resume**. Runs that were due while it was paused don't run. |
 | **Delete** | Deletes it without asking. The message in the corner has **Undo**, which puts it back. |
@@ -123,4 +127,4 @@ Schedules travel in the **Schedules** section of a [settings file](/settings/bac
 
 ## Related
 
-<Related pages={['new-session/queue', 'sessions/home', 'projects/sessions', 'focus-limit', 'settings/notifications']} />
+<Related pages={['sessions/upcoming', 'new-session/queue', 'sessions/home', 'projects/sessions', 'focus-limit', 'settings/notifications']} />

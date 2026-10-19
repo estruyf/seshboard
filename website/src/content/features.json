@@ -473,7 +473,7 @@
     },
     {
       "id": "palette:schedules",
-      "name": "Schedules… (Run now, Edit…, Pause or Resume, Delete)",
+      "name": "Schedules: pick one… (Run now, Edit…, Pause or Resume, Delete)",
       "page": "new-session/schedules"
     },
     {
@@ -3825,6 +3825,76 @@
       "id": "feature:clone-other-computer",
       "name": "Clone from GitHub on another computer (Run on)",
       "page": "other-computers"
+    },
+    {
+      "id": "palette:upcoming",
+      "name": "Go to Upcoming",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "palette:queue-view",
+      "name": "Queue…: Upcoming on the queue",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "palette:schedules-view",
+      "name": "Schedules…: Upcoming on the schedules",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "shortcut:upcoming",
+      "name": "Upcoming: queued and scheduled",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming",
+      "name": "Upcoming: the queue, the scheduled runs of the next 7 days and every schedule, across projects",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-filters",
+      "name": "Upcoming: All, Queue and Schedules, and the project filter, kept per window",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-sidebar",
+      "name": "Sidebar: Home and Upcoming rows, with the count and what comes next",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-rail",
+      "name": "Minimal sidebar: the Upcoming button with its count, green when an item is ready",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-history",
+      "name": "Upcoming: History, the runs of the last 7 days and how they went (Finished, Skipped, Missed, In the queue)",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-fold",
+      "name": "Upcoming: days in a row with the same runs fold into one line",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:skip-run",
+      "name": "Skip this run: skip one scheduled run, with Undo",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:skip-next-run",
+      "name": "Skip next run in a schedule's menu",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:see-all-upcoming",
+      "name": "See all in Upcoming on Home's Queue and Schedules cards (three rows each)",
+      "page": "sessions/home"
+    },
+    {
+      "id": "feature:schedule-once",
+      "name": "Schedules: Once, a single run at a date and time",
+      "page": "new-session/schedules"
     }
   ]
 }

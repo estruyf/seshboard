@@ -1,4 +1,4 @@
-import { nextRuns, runsBetween, runTitle, type LaterDraft, type Schedule, type ScheduleRunEvent } from '@switchboard/protocol';
+import { nextRuns, oneTimeDone, runsBetween, runTitle, SKIPPED_BY_YOU, type LaterDraft, type Schedule, type ScheduleRunEvent } from '@switchboard/protocol';
 import type { ScheduleStore } from './scheduleStore.ts';
 
 /** Why a run goes to the queue instead of starting: a short reason for the row, and a line for the notification. */
@@ -35,6 +35,12 @@ export interface SchedulerDeps {
   /** A run this late still counts as on time (a timer that fired late, a short sleep). Two minutes by default. */
   graceMs?: number;
 }
+
+/**
+ * How long a one-time schedule stays after its run: Upcoming's History shows the last 7 days, then it goes. The
+ * sessions it started keep the repeat icon (`schedule_runs`).
+ */
+export const ONE_TIME_KEEP_MS = 8 * 86_400_000;
 
 /** A timer that fires this far from when it should have means the clock changed, or the computer slept. */
 const JUMP_MS = 10_000;
@@ -133,7 +139,18 @@ export class Scheduler {
     const now = this.now();
     const grace = this.deps.graceMs ?? 120_000;
     const runs: ScheduleRunEvent[] = [];
+    /** A run you skipped changed a schedule without a run to tell about. */
+    let quiet = false;
     for (const { schedule, checkedAt } of this.deps.store.stored()) {
+      // A one-time schedule whose run is past History's days: nothing shows it any more.
+      // Only once its run was dealt with (a run due while Switchboard was closed still runs or is recorded first).
+      const oneTimeAt = schedule.rule.kind === 'once' ? (nextRuns(schedule.rule, 0, 1)[0]?.getTime() ?? null) : null;
+      if (oneTimeAt !== null && oneTimeDone(schedule.rule, now) && checkedAt >= oneTimeAt && oneTimeAt < now - ONE_TIME_KEEP_MS) {
+        this.deps.store.remove(schedule.id);
+        this.deps.log('info', `Schedules: removed “${schedule.name}”, a one-time schedule that ran over a week ago`);
+        quiet = true;
+        continue;
+      }
       if (schedule.paused) continue;
       // The clock went far back: count from the new time, rather than wait for the old one to come around again.
       if (checkedAt > now + BACK_MS) {
@@ -146,6 +163,14 @@ export class Scheduler {
       // Dealt with before anything starts, so a second pass never runs it again.
       this.deps.store.setChecked(schedule.id, now);
       const at = latest.getTime();
+      // Skip this run: its time passes as skipped, without a notification (you chose it).
+      if (schedule.skippedRuns.includes(latest.toISOString())) {
+        this.deps.store.setLastRun(schedule.id, { at, result: 'skipped', sessionId: null, itemId: null, reason: SKIPPED_BY_YOU });
+        this.deps.store.setSkipped(schedule.id, at, false);
+        this.deps.log('info', `Schedules: “${schedule.name}” skipped its run at ${new Date(at).toISOString()} (Skip this run)`);
+        quiet = true;
+        continue;
+      }
       if (now - at <= grace) runs.push(await this.run(schedule, at, false));
       else if (schedule.missed === 'run') runs.push(await this.run(schedule, at, true));
       else {
@@ -154,9 +179,9 @@ export class Scheduler {
         runs.push(this.event(schedule, 'missed', { missed: true }));
       }
     }
-    if (runs.length === 0) return;
+    if (runs.length === 0 && !quiet) return;
     this.deps.changed();
-    this.deps.ran(runs);
+    if (runs.length > 0) this.deps.ran(runs);
   }
 
   /** One run: skipped, queued, failed or started, recorded as the schedule's last run. */

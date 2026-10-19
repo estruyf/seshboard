@@ -15,6 +15,7 @@ import { useQueue } from '../../state/useQueue.ts';
 import { describe as describeRule } from '@switchboard/protocol/client';
 import { nextRunLine } from '../../state/schedules.ts';
 import { deleteSchedule, runScheduleNow, setSchedulePaused, useSchedules } from '../../state/schedulesStore.ts';
+import { listedSchedules } from '../../state/upcoming.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { formatKeys, keysFor, localizeKeys, modKey, shortcutById } from '../../lib/shortcuts.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
@@ -165,7 +166,9 @@ export function CommandPalette() {
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
   const focusLimit = usePreferences((s) => s.prefs.focusLimit);
   const queue = useQueue();
-  const schedules = useSchedules((s) => s.schedules);
+  const allSchedules = useSchedules((s) => s.schedules);
+  // One-time schedules that have run aren't offered: only Upcoming's History shows them.
+  const schedules = useMemo(() => listedSchedules(allSchedules, Date.now()), [allSchedules]);
   // The current project's memories, read when the Share memory step shows.
   const memoryRoot = step?.kind === 'pick' && step.list === 'memory' ? (ctx.currentProject?.root ?? null) : null;
   const { list: memoryList } = useMemoryList(memoryRoot);

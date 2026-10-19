@@ -346,3 +346,92 @@ describe('scheduler', () => {
     w.scheduler.close();
   });
 });
+
+describe('run history and Skip this run', () => {
+  it('keeps the last 20 runs, newest first, and keeps them on an edit', () => {
+    const store = new ScheduleStore(openCacheDatabase(cachePath()).db);
+    const saved = store.save(schedule());
+    for (let i = 1; i <= 22; i++) store.setLastRun(saved.id, { at: i, result: i % 2 ? 'started' : 'missed', sessionId: i % 2 ? `s${i}` : null, itemId: null, reason: null });
+    const runs = store.get(saved.id)!.runs;
+    expect(runs).toHaveLength(20);
+    expect(runs[0]).toMatchObject({ at: 22, result: 'missed' });
+    expect(runs[19]).toMatchObject({ at: 3, result: 'started', sessionId: 's3' });
+    expect(store.save({ ...schedule({ name: 'Renamed' }), id: saved.id }).runs).toEqual(runs);
+  });
+
+  it('skips and unskips a run, and cleans up runs already dealt with', () => {
+    vi.useFakeTimers({ now: local(10, 19, 7) });
+    const store = new ScheduleStore(openCacheDatabase(cachePath()).db);
+    const saved = store.save(schedule());
+    const tomorrow = local(10, 20, 8);
+    expect(store.setSkipped(saved.id, tomorrow, true)!.skippedRuns).toEqual([new Date(tomorrow).toISOString()]);
+    expect(store.setSkipped(saved.id, local(10, 21, 8), true)!.skippedRuns).toHaveLength(2);
+    expect(store.setSkipped(saved.id, tomorrow, false)!.skippedRuns).toEqual([new Date(local(10, 21, 8)).toISOString()]);
+    // A skipped time the timer has passed goes on the next change.
+    store.setSkipped(saved.id, local(10, 19, 6), true);
+    store.setChecked(saved.id, local(10, 19, 7));
+    expect(store.setSkipped(saved.id, tomorrow, true)!.skippedRuns).toEqual([new Date(tomorrow).toISOString(), new Date(local(10, 21, 8)).toISOString()]);
+    expect(store.setSkipped('gone', tomorrow, true)).toBeNull();
+  });
+
+  it("doesn't start a skipped run, records it as Skipped by you, and runs the next one", async () => {
+    const w = world({ at: local(10, 19, 7) });
+    const saved = w.store.save(schedule());
+    w.store.setSkipped(saved.id, local(10, 19, 8), true);
+    w.scheduler.start();
+    await w.advanceTo(local(10, 19, 9));
+    expect(w.started).toEqual([]);
+    expect(w.batches).toEqual([]);
+    const after = w.store.get(saved.id)!;
+    expect(after.lastRun).toMatchObject({ at: local(10, 19, 8), result: 'skipped', reason: 'Skipped by you' });
+    expect(after.runs).toHaveLength(1);
+    expect(after.skippedRuns).toEqual([]);
+    await w.advanceTo(local(10, 20, 9));
+    expect(w.started.map((s) => s.title)).toEqual(['Review open pull requests · Tue 20 Oct']);
+    expect(w.store.get(saved.id)!.runs.map((r) => r.result)).toEqual(['started', 'skipped']);
+    w.scheduler.close();
+  });
+
+  it('runs a run again once its skip is taken back', async () => {
+    const w = world({ at: local(10, 19, 7) });
+    const saved = w.store.save(schedule());
+    w.store.setSkipped(saved.id, local(10, 19, 8), true);
+    w.scheduler.start();
+    w.store.setSkipped(saved.id, local(10, 19, 8), false);
+    w.scheduler.rearm();
+    await w.advanceTo(local(10, 19, 9));
+    expect(w.started).toHaveLength(1);
+    w.scheduler.close();
+  });
+});
+
+describe('one-time schedules', () => {
+  it('runs once, and is removed a week after its run, keeping the repeat icon of its session', async () => {
+    // November, so no clock change falls in the eight days.
+    const w = world({ at: local(11, 2, 7) });
+    const saved = w.store.save(schedule({ rule: { kind: 'once', date: '2026-11-02', time: '08:00' } }));
+    w.scheduler.start();
+    await w.advanceTo(local(11, 3, 9));
+    expect(w.started.map((s) => s.title)).toEqual(['Review open pull requests · Mon 2 Nov']);
+    // Eight days after its run (08:00): still there just before, gone just after.
+    await w.advanceTo(local(11, 10, 7, 55));
+    expect(w.store.get(saved.id)).not.toBeNull();
+    await w.advanceTo(local(11, 10, 8, 5));
+    expect(w.store.get(saved.id)).toBeNull();
+    expect(w.store.sessions()).toEqual([{ sessionId: 'run-1', scheduleId: saved.id }]);
+    expect(w.started).toHaveLength(1);
+    w.scheduler.close();
+  });
+
+  it('keeps one whose run was due while Switchboard was closed until that run is dealt with', async () => {
+    const w = world({ at: local(10, 19, 7) });
+    const saved = w.store.save(schedule({ rule: { kind: 'once', date: '2026-10-19', time: '08:00' } }));
+    // Closed for ten days: the run is caught up at the start, not removed unseen.
+    w.sleepUntil(local(10, 29, 9));
+    w.scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.started).toHaveLength(1);
+    expect(w.store.get(saved.id)).not.toBeNull();
+    w.scheduler.close();
+  });
+});

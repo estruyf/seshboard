@@ -15,9 +15,13 @@ import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { modelLabel } from '../../lib/autoModel.ts';
+import { SeeAllInUpcoming } from '../upcoming/SeeAllInUpcoming.tsx';
+
+/** How many queued items Home shows; See all in Upcoming has the rest. */
+const HOME_ROWS = 3;
 
 /**
- * Home's Queue: every queued prompt in order, the full width under Needs you and Working. Each row says why it is
+ * Home's Queue: the first queued prompts in order (Upcoming has all of them), the full width under Needs you and Working. Each row says why it is
  * ready or what it waits for, and its choices; Start (yellow) when ready, Start now otherwise. Drag by the grip or
  * ⌥↑ ⌥↓ to reorder; a click on the prompt opens it in New session to check first.
  */
@@ -54,12 +58,13 @@ export function QueueCard({ now }: { now: number }) {
         <span className="flex shrink-0 items-center gap-1 text-meta text-faint @max-[640px]:hidden">
           Drag to reorder · <Kbd keys="⌥" /> <Kbd keys="↑" /> <Kbd keys="↓" />
         </span>
+        <SeeAllInUpcoming kind="queue" />
         <Button icon={<Plus size={13} aria-hidden />} onClick={() => useSessions.getState().openNewSession()} className="shrink-0" data-home-queue-add>
           Add to queue
         </Button>
       </div>
       <ul className="grid gap-0.5">
-        {queue.entries.map((entry) => {
+        {queue.entries.slice(0, HOME_ROWS).map((entry) => {
           const { item, state } = entry;
           const ready = state === 'ready';
           const { lead, rest } = meta(entry);

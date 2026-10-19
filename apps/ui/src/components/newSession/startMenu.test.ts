@@ -114,3 +114,14 @@ describe('submitKey', () => {
     expect(submitKey(press('Enter', { meta: true, shift: true }))).toBeNull();
   });
 });
+
+describe('Schedule a session', () => {
+  it('puts Schedule… on the main part, without a key, and starting in the menu', () => {
+    const state = startButtonState({ blocked: null, sending: false, hasMessage: true, hasText: true, startBlocked: null, canWorktree: false, worktree: false, question: false, canSchedule: true, scheduleFirst: true });
+    expect(state).toMatchObject({ main: 'schedule', label: 'Schedule…', shortcut: null, disabled: false });
+    expect(state.items.map((i) => i.action)).toEqual(['schedule', 'start', 'queue']);
+    expect(startButtonState({ blocked: null, sending: false, hasMessage: false, hasText: false, startBlocked: null, canWorktree: false, worktree: false, question: false, canSchedule: true, scheduleFirst: true })).toMatchObject({ main: 'schedule', disabled: true, reason: 'Type a message first' });
+    // A quick question can't be scheduled: Ask stays.
+    expect(startButtonState({ blocked: null, sending: false, hasMessage: true, hasText: true, startBlocked: null, canWorktree: false, worktree: false, question: true, canSchedule: true, scheduleFirst: true }).main).toBe('start');
+  });
+});

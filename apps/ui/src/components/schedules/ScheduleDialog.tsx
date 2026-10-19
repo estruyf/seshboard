@@ -7,7 +7,7 @@ import { MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { formOf, formProblem, newForm, REPEAT_LABELS, ruleOf, toggleDay, type RepeatKind, type ScheduleForm } from '../../state/schedules.ts';
+import { formOf, formProblem, inOneHour, newForm, REPEAT_LABELS, ruleOf, toggleDay, type RepeatKind, type ScheduleForm } from '../../state/schedules.ts';
 import { saveSchedule } from '../../state/schedulesStore.ts';
 import { EFFORT_LABEL } from '../newSession/route.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -17,7 +17,7 @@ import { Notice } from '../ui/Notice.tsx';
 import { Radio, RadioGroup } from '../ui/Radio.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 
-const REPEATS: RepeatKind[] = ['daily', 'weekdays', 'weekly', 'monthly'];
+const REPEATS: RepeatKind[] = ['once', 'daily', 'weekdays', 'weekly', 'monthly'];
 /** The day toggles' letters, Monday first. */
 const DAY_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
 const FIELD = 'h-7 rounded-md border bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
@@ -57,7 +57,7 @@ export function ScheduleDialog({ draft, schedule, onClose, onSaved }: { draft: L
   const update = (patch: Partial<ScheduleForm>) => setForm((current) => ({ ...current, ...patch }));
 
   const rule = ruleOf(form);
-  const problem = formProblem(form);
+  const problem = formProblem(form, Date.now());
   const runs = useMemo(() => (ruleProblem(rule) ? [] : nextRuns(rule, now, 3)), [JSON.stringify(rule), now]);
 
   const models = useHosts((s) => s.models);
@@ -126,10 +126,27 @@ export function ScheduleDialog({ draft, schedule, onClose, onSaved }: { draft: L
               mode="radio"
               label="Repeat"
               value={form.repeat}
-              onChange={(repeat) => update({ repeat })}
+              // A new schedule that becomes Once starts an hour from now, the common case.
+              onChange={(repeat) => update({ repeat, ...(repeat === 'once' && form.repeat !== 'once' && schedule?.rule.kind !== 'once' ? inOneHour(Date.now()) : {}) })}
               segments={REPEATS.map((value) => ({ value, label: REPEAT_LABELS[value], data: { 'data-schedule-repeat': value } }))}
               className="w-fit"
             />
+            {form.repeat === 'once' && (
+              <div className="flex items-center gap-2">
+                <label htmlFor={`${id}-date`} className="text-ui text-muted">
+                  Date
+                </label>
+                <input
+                  id={`${id}-date`}
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => update({ date: e.target.value })}
+                  required
+                  className={`w-40 ${FIELD} ${tried && problem?.startsWith('Pick a') ? 'border-error' : 'border-edge'}`}
+                  data-schedule-date
+                />
+              </div>
+            )}
             {form.repeat === 'weekly' && (
               <div role="group" aria-label="Days" className="flex gap-1.5" data-schedule-days>
                 {WEEK_ORDER.map((day) => {

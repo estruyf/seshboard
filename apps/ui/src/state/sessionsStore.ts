@@ -13,9 +13,10 @@ import { toast } from './toastStore.ts';
 
 /**
  * `project` is one project's page (`useProjectPage` says which); `projects` is the list of them; `remote` is a session
- * on another computer, or that computer's page (`useComputers` says which).
+ * on another computer, or that computer's page (`useComputers` says which). `upcoming` is everything queued and
+ * scheduled (`useUpcoming` has its filters).
  */
-export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote';
+export type MainView = 'session' | 'new' | 'settings' | 'projects' | 'project' | 'usage' | 'remote' | 'upcoming';
 /** The pages of Settings, listed in its own sidebar. */
 export type SettingsSection = 'general' | 'theme' | 'sidebar' | 'sessions' | 'projects' | 'conversation' | 'mods' | 'notifications' | 'focus' | 'profiles' | 'usage' | 'memory' | 'prompts' | 'vscode' | 'remote' | 'backup' | 'diagnostics' | 'about';
 

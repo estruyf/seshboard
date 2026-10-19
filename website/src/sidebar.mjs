@@ -37,7 +37,7 @@ export const sidebar = [
   {
     label: 'Stay on top',
     collapsed: true,
-    items: ['sessions/sidebar', 'sessions/states', 'sessions/home', 'sessions/catch-up', 'sessions/search', 'settings/notifications', 'focus-limit'],
+    items: ['sessions/sidebar', 'sessions/states', 'sessions/home', 'sessions/upcoming', 'sessions/catch-up', 'sessions/search', 'settings/notifications', 'focus-limit'],
   },
   {
     label: 'Inside a session',

@@ -24,6 +24,8 @@ import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { popOut } from '../../state/popoutsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
+import { openUpcoming } from '../../state/upcomingStore.ts';
+import { openToSchedule } from '../../state/schedulesStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { ownerSession } from '../terminal/appTerminal.ts';
@@ -87,6 +89,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
   return {
     goHome: () => useSessions.getState().goHome(),
     openUsage: () => openUsage(),
+    openUpcoming: (kind) => openUpcoming({ kind }),
     showSearch: () => useOverlay.getState().show('search'),
     showMemorySearch: () => useOverlay.getState().searchMemory(),
     showShortcuts: () => useOverlay.getState().show('shortcuts'),
@@ -268,6 +271,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     },
     newSessionRequest: (kind) => usePaletteBus.getState().requestNewSession(kind),
     openNewSession: () => useSessions.getState().openNewSession(),
+    openToSchedule: () => openToSchedule(),
     newSessionOn: (computerId) => newSessionOn(computerId),
     showOnlyComputer: (computerId) => {
       const computers = useComputers.getState().status?.computers ?? [];

@@ -23,6 +23,8 @@ export interface NotifierOptions {
   /** The session the user is looking at in the window in front (reported by its renderer). */
   focusedSession: () => string | null;
   openSession: (sessionId: string) => void;
+  /** Upcoming, with a schedule's run in view (a scheduled run that went to the queue, was skipped or didn't start). */
+  openUpcoming?: (scheduleId: string) => void;
   /** Settings → Show sessions from other apps. */
   showAllSessions: () => boolean;
   /** Settings › Notifications: notifications on or off, and the sounds. */
@@ -185,8 +187,13 @@ export class Notifier {
         // system's own notification sound (Windows plays one) would be a second one.
         const notification = new Notification({ title: event.title, body: hint ? `${event.body}\n${hint}` : event.body, silent: prefs.sounds.enabled });
         // The test has no session to open.
-        // The test, and a scheduled run that has no session (queued, not started), only bring the window forward.
-        notification.on('click', () => (test || !event.sessionId ? this.options.window()?.show() : this.options.openSession(event.sessionId)));
+        // A scheduled run that didn't start opens Upcoming on it; the test, and anything else without a session, only
+        // bring the window forward.
+        notification.on('click', () => {
+          if (!test && event.scheduleId && this.options.openUpcoming) this.options.openUpcoming(event.scheduleId);
+          else if (test || !event.sessionId) this.options.window()?.show();
+          else this.options.openSession(event.sessionId);
+        });
         notification.on('close', () => this.shown.delete(notification));
         this.shown.add(notification);
         notification.show();

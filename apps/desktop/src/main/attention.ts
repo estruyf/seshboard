@@ -7,6 +7,8 @@ export interface AttentionEvent {
   body: string;
   /** Where the session ran (a finished turn): the queue's hint looks for what waits on its project. */
   cwd?: string | null;
+  /** A scheduled run that didn't start (queued, skipped, failed): a click opens Upcoming with that schedule's run in view. */
+  scheduleId?: string;
 }
 
 /** A folder's name, from a `/` or a Windows `\` path. */

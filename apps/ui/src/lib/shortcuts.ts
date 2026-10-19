@@ -217,7 +217,7 @@ export const sameShortcut = (a: string, b: string) =>
 
 /** Where you are, for `when()`. Built from the stores (and where focus was) when the shortcuts sheet opens. */
 export interface ShortcutContext {
-  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage";
+  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage" | "upcoming";
   /** A session is open in the session view. */
   session: boolean;
   /** Claude is working, or waiting for you, in that session. */
@@ -336,6 +336,12 @@ export const SHORTCUTS = [
     section: "general",
   },
   { id: "home", keys: ["mod+shift+h"], action: "Home", section: "general" },
+  {
+    id: "upcoming",
+    keys: ["mod+shift+y"],
+    action: "Upcoming: queued and scheduled",
+    section: "general",
+  },
   {
     id: "usage.open",
     keys: [],

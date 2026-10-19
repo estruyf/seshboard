@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert } from 'lucide-react';
+import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { CatchUp } from '@switchboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -15,6 +15,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
+import { SidebarNav } from './SidebarNav.tsx';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
 import { closedSections, isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
 import { addedProjects } from '../../state/projectList.ts';
@@ -515,8 +516,6 @@ export function Sidebar() {
   const complete = useSessions((s) => s.complete);
   const loaded = useSessions((s) => s.loaded);
   const view = useSessions((s) => s.view);
-  // Home is the main area with no session open (also behind Settings when it was opened from there).
-  const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
   // Settings is a sheet over the session, which stays selected in the list behind it.
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
   const { setFilter: setSearch, select, setView } = useSessions.getState();
@@ -965,19 +964,6 @@ export function Sidebar() {
             className="h-full min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
           />
         </label>
-        <Button
-          variant="quiet"
-          size="lg"
-          iconOnly
-          icon={<House size={15} aria-hidden />}
-          aria-label="Home"
-          shortcut="home"
-          selected={atHome}
-          data-go-home
-          onClick={() => useSessions.getState().goHome()}
-          aria-current={atHome ? 'page' : undefined}
-          className="no-drag shrink-0 rounded-lg!"
-        />
         {/* The sidebar's one primary action: a yellow fill, like every primary button. With an unsent New session
             prompt it carries a pen, and opens New session on that prompt's project. */}
         <span className="no-drag relative flex shrink-0">
@@ -995,6 +981,8 @@ export function Sidebar() {
           {newDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />}
         </span>
       </div>
+
+      <SidebarNav now={now} />
 
       {/* The order: by time and state, or what takes least to unblock first. */}
       <div className="px-3 pb-1.5">

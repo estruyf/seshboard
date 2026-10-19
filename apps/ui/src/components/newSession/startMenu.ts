@@ -27,6 +27,8 @@ export interface StartButtonInput {
    * menu.
    */
   queueFirst?: boolean;
+  /** Opened with Schedule a session (Upcoming): the main part is Schedule…, and starting moves into the menu. */
+  scheduleFirst?: boolean;
   /** Offer Schedule… (New session; the palette's prompt step has no dialog for it). */
   canSchedule?: boolean;
   /** A schedule is open (Edit…): Schedule… becomes Save schedule. */
@@ -44,8 +46,8 @@ export interface StartMenuItem {
 export interface StartButtonState {
   /** What the main part does: start, or add to the queue (`queueFirst`). */
   main: StartAction;
-  /** The main part's key. */
-  shortcut: ShortcutId;
+  /** The main part's key; Schedule… has none. */
+  shortcut: ShortcutId | null;
   label: string;
   /** On its way: the label says so, without the shortcut. */
   sending: boolean;
@@ -76,6 +78,19 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
   // A schedule keeps the prompt with its choices, like a queued item, and runs it at set times (#173).
   if (input.canSchedule && !input.question) items.push({ action: 'schedule', label: input.editingSchedule ? 'Save schedule' : 'Schedule…', disabled: !canQueue });
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
+  if (input.scheduleFirst && input.canSchedule && !input.question) {
+    const schedule = items.find((item) => item.action === 'schedule')!;
+    return {
+      main: 'schedule',
+      shortcut: null,
+      label: schedule.label,
+      sending,
+      disabled: !canQueue,
+      menuDisabled: items.every((item) => item.disabled),
+      reason: sending ? null : (blocked ?? (!hasText ? 'Type a message first' : null)),
+      items: [schedule, ...items.filter((item) => item !== schedule)],
+    };
+  }
   if (input.queueFirst && !input.question) {
     return {
       main: 'queue',

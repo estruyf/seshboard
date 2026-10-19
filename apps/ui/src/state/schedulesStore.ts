@@ -3,8 +3,10 @@ import { create } from 'zustand';
 import { formatNext, nextRuns, type Schedule, type ScheduleRunEvent, type ScheduleSave, type ScheduleSession } from '@switchboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
+import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
 import { toast } from './toastStore.ts';
+import { skippedToast } from './upcoming.ts';
 
 // Scheduled sessions (#173). The engine keeps and runs them; every window shows the same list.
 
@@ -15,6 +17,8 @@ interface SchedulesState {
   loaded: boolean;
   /** Edit…: New session fills itself in from this schedule's draft, and Start ▾ offers Save schedule. */
   request: { schedule: Schedule; seq: number } | null;
+  /** Schedule a session (Upcoming): New session opens with Start ▾ on Schedule…; it takes this once. */
+  scheduleFirst: boolean;
   replace(schedules: Schedule[], sessions: ScheduleSession[]): void;
   /** Opens New session filled in from a schedule, to change its prompt and choices. */
   edit(schedule: Schedule): void;
@@ -29,6 +33,7 @@ export const useSchedules = create<SchedulesState>()((set, get) => ({
   bySession: new Map(),
   loaded: false,
   request: null,
+  scheduleFirst: false,
   replace: (schedules, sessions) => set({ schedules, bySession: new Map(sessions.map((s) => [s.sessionId, s.scheduleId])), loaded: true }),
   edit: (schedule) => {
     set({ request: { schedule, seq: ++seq } });
@@ -40,6 +45,13 @@ export const useSchedules = create<SchedulesState>()((set, get) => ({
     return request?.schedule ?? null;
   },
 }));
+
+/** Opens New session (on a project, when given) with Start ▾ on Schedule…, to write the prompt a schedule runs. */
+export function openToSchedule(root: string | null = null): void {
+  if (root) useProjects.getState().startIn(root);
+  useSchedules.setState({ scheduleFirst: true });
+  useSessions.getState().openNewSession();
+}
 
 /** Loads the schedules once per connection and follows changes from every window and every run. */
 export function useSchedulesSync(): void {
@@ -103,4 +115,26 @@ export async function runScheduleNow(schedule: Schedule): Promise<void> {
   } catch (error) {
     toast(`Couldn't run it: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/** Takes back Skip this run: the run starts at its time again. */
+export async function unskipRun(schedule: Pick<Schedule, 'id'>, at: number): Promise<void> {
+  await clientNow().call('schedules.unskipRun', { id: schedule.id, at: new Date(at).toISOString() });
+}
+
+/** Skip this run: the run at `at` doesn't start; the toast says which, with Undo. */
+export async function skipRun(schedule: Pick<Schedule, 'id' | 'name'>, at: number): Promise<void> {
+  try {
+    await clientNow().call('schedules.skipRun', { id: schedule.id, at: new Date(at).toISOString() });
+    toast(skippedToast(at, schedule.name), { undo: () => void unskipRun(schedule, at).catch(() => {}), data: { 'data-run-skipped-toast': true } });
+  } catch (error) {
+    toast(`Couldn't skip it: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** The next run that isn't skipped yet, or null (paused, or no run to come). */
+export function nextRunToSkip(schedule: Schedule, now = Date.now()): number | null {
+  if (schedule.paused) return null;
+  const skipped = new Set(schedule.skippedRuns);
+  return nextRuns(schedule.rule, now, 32).find((run) => !skipped.has(run.toISOString()))?.getTime() ?? null;
 }

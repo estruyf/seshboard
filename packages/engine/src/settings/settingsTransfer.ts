@@ -210,7 +210,7 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
   }
   if (want.has('schedules') && stores.schedules) {
     // The last run stays here: it points at sessions on this computer.
-    file.schedules = stores.schedules.list().map(({ lastRun: _lastRun, ...schedule }) => schedule);
+    file.schedules = stores.schedules.list().map(({ lastRun: _lastRun, runs: _runs, skippedRuns: _skipped, ...schedule }) => schedule);
   }
   if (want.has('choices')) {
     const choices: Record<string, JsonValue> = {};
@@ -617,7 +617,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       const from = typeof draft?.cwd === 'string' ? draft.cwd : null;
       const root = from === null ? null : locate(from);
       const moved = from !== null && root === null ? from : (root ?? from);
-      const parsed = Schedule.safeParse({ ...(raw as object), draft: { ...draft, cwd: moved }, lastRun: null });
+      const parsed = Schedule.safeParse({ ...(raw as object), draft: { ...draft, cwd: moved }, lastRun: null, runs: [], skippedRuns: [] });
       const name = (raw as { name?: unknown })?.name;
       const label = parsed.success ? parsed.data.name : typeof name === 'string' ? name : `Schedule ${index + 1}`;
       if (!parsed.success) {
@@ -630,14 +630,14 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       seen.add(incoming.id);
       const existing = current.get(incoming.id);
       const detail = missingFolder ? `paused: folder not found on ${THIS_COMPUTER}` : null;
-      const strip = ({ lastRun: _l, createdAt: _c, updatedAt: _u, ...rest }: Schedule) => rest;
+      const strip = ({ lastRun: _l, runs: _r, skippedRuns: _s, createdAt: _c, updatedAt: _u, ...rest }: Schedule) => rest;
       if (!existing) {
         note('schedules', label, 'add', detail);
         writes.push(() => scheduleStore.restore(incoming));
       } else if (same(strip(existing), strip(incoming))) unchanged++;
       else if (replace) {
         note('schedules', label, 'change', detail);
-        writes.push(() => scheduleStore.restore({ ...incoming, lastRun: existing.lastRun }));
+        writes.push(() => scheduleStore.restore({ ...incoming, lastRun: existing.lastRun, runs: existing.runs, skippedRuns: existing.skippedRuns }));
       } else note('schedules', label, 'keep', 'yours differs');
     }
     if (replace) {

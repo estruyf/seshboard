@@ -270,6 +270,13 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - UI: Schedule… and Save schedule in Start ▾, `ScheduleDialog`, the Home card and the project section (`components/schedules/`), the repeat icon on rows, *Schedule a session…* and *Schedules…* in the palette. Row text and labels are pure (`state/schedules.ts`).
 - Not yet: starting Switchboard or waking the computer for a run; on Windows the app quits with its last window, so schedules run only while one is open.
 
+### 5.8.3 Upcoming ✅
+
+- One main view (`upcoming` in `MainView`, `components/upcoming/UpcomingView.tsx`) for the queue, the scheduled runs of the next 7 days and every schedule, across projects, with an All | Queue | Schedules control and a project filter kept per window (`state/upcomingStore.ts`, sessionStorage).
+- The timeline is `upcomingRuns` in `packages/protocol/src/schedules.ts` (runs still to come, from `nextRuns`, so DST and short months are the timer's); History is `pastRuns` (the last 7 days of every schedule's runs). A one-time schedule that has run leaves every list (`oneTimeDone`) and only shows in History; the scheduler removes it 8 days after its run. Day groups, folding of repeating days, the sidebar hint and the filters are pure in `apps/ui/src/state/upcoming.ts`.
+- A schedule keeps its last 20 runs (`runs`) and the single runs you skipped (`skippedRuns`, ISO times), both on its row (migration v35). `schedules.skipRun` / `unskipRun`; the timer records a skipped time as `skipped`, "Skipped by you", without a notification.
+- Reached from Home and Upcoming rows under the sidebar's search, the rail's Upcoming button (in place of the queue button), ⌘⇧Y, *Go to Upcoming*, *Queue…* and *Schedules…*, Home's See all in Upcoming, and notifications of runs that didn't start.
+
 ### 5.9 VS Code companion and context tray ([#42](https://github.com/estruyf/switchboard/issues/42))
 
 - **Context tray** ✅: chips above the message box, kept in the drafts store with the draft (`context`), from drops, the `@` list, the Add context picker (⌘⇧A) and the companion. Sending turns them into `@path#L12-40` mentions and fenced text (`promptWithContext`).

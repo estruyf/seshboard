@@ -610,4 +610,11 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX schedule_runs_schedule ON schedule_runs (schedule_id);
   `,
+
+  // v35: Upcoming. A schedule keeps its last runs (today's past runs in the timeline) and the single runs you skipped
+  // (Skip this run), both as JSON on its row. User data like the schedule itself.
+  `
+  ALTER TABLE schedules ADD COLUMN runs_json TEXT;
+  ALTER TABLE schedules ADD COLUMN skipped_runs_json TEXT;
+  `,
 ];

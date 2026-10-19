@@ -32,8 +32,8 @@ export function StartButton({ state, onAction, data, itemData }: { state: StartB
   return (
     <SplitButton
       onClick={() => onAction(state.main)}
-      shortcut={state.sending ? undefined : state.shortcut}
-      icon={state.main === 'queue' ? <ListEnd size={14} aria-hidden /> : undefined}
+      shortcut={state.sending ? undefined : (state.shortcut ?? undefined)}
+      icon={state.main === 'queue' ? <ListEnd size={14} aria-hidden /> : state.main === 'schedule' ? <Repeat size={14} aria-hidden /> : undefined}
       disabled={state.disabled}
       reason={state.reason}
       entries={entries}

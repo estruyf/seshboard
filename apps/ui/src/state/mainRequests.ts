@@ -2,6 +2,7 @@ import type { MainWindowRequest } from '@switchboard/protocol/bridge';
 import { otherModalOpen } from '../lib/modalGuards.ts';
 import { useOverlay } from './overlayStore.ts';
 import { openUsage } from './usageViewStore.ts';
+import { openUpcoming } from './upcomingStore.ts';
 import { PROJECT_TABS, openProject, type ProjectTab } from './projectPageStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from './sessionNav.ts';
@@ -37,6 +38,9 @@ export function runMainRequest(request: MainWindowRequest): void {
       if (otherModalOpen()) return;
       if (request.memory) useOverlay.getState().searchMemory();
       else useOverlay.getState().show('search');
+      return;
+    case 'upcoming':
+      openUpcoming({ kind: request.filter ?? undefined, scheduleId: request.scheduleId });
       return;
     case 'navigate':
       if (request.to === 'needs-you') goToNextNeedsYou();

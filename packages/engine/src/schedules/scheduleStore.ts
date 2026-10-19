@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { LaterDraft, Schedule, ScheduleLastRun, ScheduleMissedSchema, ScheduleRuleSchema, ScheduleSave, type ScheduleSession } from '@switchboard/protocol';
+import { LaterDraft, Schedule, SCHEDULE_HISTORY, SCHEDULE_SKIPS, ScheduleLastRun, ScheduleMissedSchema, ScheduleRuleSchema, ScheduleSave, type ScheduleSession } from '@switchboard/protocol';
 
 interface Row {
   id: string;
@@ -11,6 +11,8 @@ interface Row {
   paused: number;
   paused_reason: string | null;
   last_run_json: string | null;
+  runs_json: string | null;
+  skipped_runs_json: string | null;
   checked_at: number;
   created_at: number;
   updated_at: number;
@@ -38,13 +40,14 @@ export class ScheduleStore {
       all: db.prepare('SELECT * FROM schedules ORDER BY created_at, rowid'),
       one: db.prepare('SELECT * FROM schedules WHERE id = ?'),
       upsert: db.prepare(`
-        INSERT INTO schedules (id, name, draft_json, rule_json, missed, paused, paused_reason, last_run_json, checked_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO schedules (id, name, draft_json, rule_json, missed, paused, paused_reason, last_run_json, runs_json, skipped_runs_json, checked_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET name = excluded.name, draft_json = excluded.draft_json, rule_json = excluded.rule_json,
           missed = excluded.missed, paused = excluded.paused, paused_reason = excluded.paused_reason, last_run_json = excluded.last_run_json,
-          checked_at = excluded.checked_at, created_at = excluded.created_at, updated_at = excluded.updated_at`),
+          runs_json = excluded.runs_json, skipped_runs_json = excluded.skipped_runs_json, checked_at = excluded.checked_at, created_at = excluded.created_at, updated_at = excluded.updated_at`),
       setPaused: db.prepare('UPDATE schedules SET paused = ?, paused_reason = ?, checked_at = ?, updated_at = ? WHERE id = ?'),
-      setLastRun: db.prepare('UPDATE schedules SET last_run_json = ? WHERE id = ?'),
+      setLastRun: db.prepare('UPDATE schedules SET last_run_json = ?, runs_json = ? WHERE id = ?'),
+      setSkipped: db.prepare('UPDATE schedules SET skipped_runs_json = ? WHERE id = ?'),
       setChecked: db.prepare('UPDATE schedules SET checked_at = ? WHERE id = ?'),
       remove: db.prepare('DELETE FROM schedules WHERE id = ?'),
       runs: db.prepare('SELECT session_id, schedule_id FROM schedule_runs'),
@@ -74,8 +77,8 @@ export class ScheduleStore {
   }
 
   /**
-   * Creates a schedule or changes one. It keeps its age and last run; its runs count from now, so a time already past
-   * today doesn't run at once. Resuming it here (paused off) clears the reason Switchboard paused it for.
+   * Creates a schedule or changes one. It keeps its age, its runs and the runs you skipped; its runs count from now, so
+   * a time already past today doesn't run at once. Resuming it here (paused off) clears the reason Switchboard paused it for.
    */
   save(input: ScheduleSave): Schedule {
     const parsed = ScheduleSave.parse(input);
@@ -86,6 +89,8 @@ export class ScheduleStore {
       id: parsed.id ?? randomUUID(),
       pausedReason: parsed.paused ? (before?.pausedReason ?? null) : null,
       lastRun: before?.lastRun ?? null,
+      runs: before?.runs ?? [],
+      skippedRuns: before?.skippedRuns ?? [],
       createdAt: before?.createdAt ?? now,
       updatedAt: now,
     });
@@ -109,8 +114,25 @@ export class ScheduleStore {
     return this.get(id);
   }
 
+  /** Records a run: it becomes the last run and goes on top of the run history (the last `SCHEDULE_HISTORY`). */
   setLastRun(id: string, lastRun: ScheduleLastRun): void {
-    this.statements.setLastRun.run(JSON.stringify(ScheduleLastRun.parse(lastRun)), id);
+    const run = ScheduleLastRun.parse(lastRun);
+    const runs = [run, ...(this.get(id)?.runs ?? [])].slice(0, SCHEDULE_HISTORY);
+    this.statements.setLastRun.run(JSON.stringify(run), JSON.stringify(runs), id);
+  }
+
+  /**
+   * Skip this run (`skip` true) or take it back. `at` is the run's moment; it is kept as an ISO time. Runs already dealt
+   * with (before `checkedAt`) are cleaned up on the way. Null when the schedule is gone.
+   */
+  setSkipped(id: string, at: number, skip: boolean): Schedule | null {
+    const stored = this.getStored(id);
+    if (!stored) return null;
+    const iso = new Date(at).toISOString();
+    const kept = stored.schedule.skippedRuns.filter((time) => time !== iso && Date.parse(time) > stored.checkedAt);
+    const next = skip ? [...kept, iso].sort().slice(-SCHEDULE_SKIPS) : kept;
+    this.statements.setSkipped.run(next.length > 0 ? JSON.stringify(next) : null, id);
+    return this.get(id);
   }
 
   /** Its runs up to `at` were dealt with. */
@@ -142,6 +164,8 @@ export class ScheduleStore {
       schedule.paused ? 1 : 0,
       schedule.pausedReason,
       schedule.lastRun ? JSON.stringify(schedule.lastRun) : null,
+      schedule.runs.length > 0 ? JSON.stringify(schedule.runs) : null,
+      schedule.skippedRuns.length > 0 ? JSON.stringify(schedule.skippedRuns) : null,
       checkedAt,
       schedule.createdAt,
       schedule.updatedAt,
@@ -155,6 +179,12 @@ function toStored(row: Row): StoredSchedule | null {
   const rule = ScheduleRuleSchema.safeParse(safeJson(row.rule_json));
   if (!draft.success || !rule.success) return null;
   const lastRun = row.last_run_json === null ? null : ScheduleLastRun.safeParse(safeJson(row.last_run_json));
+  // A run or a skipped time that doesn't read is left out, rather than the whole schedule.
+  const runs = row.runs_json === null ? [] : listOf(safeJson(row.runs_json)).flatMap((r) => {
+    const run = ScheduleLastRun.safeParse(r);
+    return run.success ? [run.data] : [];
+  });
+  const skippedRuns = row.skipped_runs_json === null ? [] : listOf(safeJson(row.skipped_runs_json)).filter((t): t is string => typeof t === 'string' && !Number.isNaN(Date.parse(t)));
   const schedule = Schedule.safeParse({
     id: row.id,
     name: row.name,
@@ -164,11 +194,15 @@ function toStored(row: Row): StoredSchedule | null {
     paused: row.paused === 1,
     pausedReason: row.paused_reason,
     lastRun: lastRun?.success ? lastRun.data : null,
+    runs: runs.slice(0, SCHEDULE_HISTORY),
+    skippedRuns: skippedRuns.slice(-SCHEDULE_SKIPS),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
   return schedule.success ? { schedule: schedule.data, checkedAt: row.checked_at } : null;
 }
+
+const listOf = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 function safeJson(text: string): unknown {
   try {

@@ -10,6 +10,7 @@ import { promptLabel } from '../../state/queue.ts';
 import { useUnsent } from '../drafts/useUnsent.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
+import { listedSchedules } from '../../state/upcoming.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
@@ -102,7 +103,8 @@ export function usePaletteContext(): PaletteContext {
   const themes = useThemes((s) => s.themes);
   const activeTheme = useThemes((s) => s.active.entry.id);
   const queue = useQueue();
-  const scheduleCount = useSchedules((s) => s.schedules.length);
+  // One-time schedules that have run aren't listed anywhere but Upcoming's History.
+  const scheduleCount = useSchedules((s) => listedSchedules(s.schedules, Date.now()).length);
   const unsent = useUnsent().length;
   const digest = usePaletteBus((s) => s.digest);
   const newSessionInfo = usePaletteBus((s) => s.newSessionInfo);
@@ -117,7 +119,7 @@ export function usePaletteContext(): PaletteContext {
   const computers = useComputers((s) => s.status?.computers);
 
   const pageRoot = useProjectPage((s) => s.root);
-  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
+  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
   // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
   const id = view === 'session' ? localSessionId(selectedId) : null;
 

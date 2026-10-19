@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { describe as describeRule, formatNext, formatPast, formatRun, nameFromPrompt, nextRuns, ordinal, ruleProblem, runsBetween, runTitle, speakNext, type ScheduleRule } from './schedules.ts';
+import { describe as describeRule, oneTimeDone, pastRuns, upcomingRuns, formatNext, formatPast, formatRun, nameFromPrompt, nextRuns, ordinal, ruleProblem, runsBetween, runTitle, speakNext, type ScheduleRule } from './schedules.ts';
 
 // Local time is the computer's: these run in real zones with DST (Node picks up a TZ set at runtime, on macOS and
 // Windows alike), and put back what was there.
@@ -137,5 +137,76 @@ describe('rules', () => {
     expect(nameFromPrompt('\n  Review open pull requests  \nand more')).toBe('Review open pull requests');
     expect(nameFromPrompt('word '.repeat(40)).endsWith('…')).toBe(true);
     expect(nameFromPrompt('word '.repeat(40)).length).toBeLessThanOrEqual(81);
+  });
+});
+
+describe('a one-time rule', () => {
+  beforeAll(() => useZone('Europe/Brussels'));
+
+  it('runs once, on its date, and never again', () => {
+    const rule: ScheduleRule = { kind: 'once', date: '2026-10-21', time: '09:30' };
+    expect(runs(rule, local(2026, 10, 19, 10))).toEqual(['2026-10-21 09:30']);
+    expect(runs(rule, local(2026, 10, 21, 9, 30))).toEqual([]);
+    expect(runsBetween(rule, local(2026, 10, 19), local(2026, 10, 30)).map(clock)).toEqual(['2026-10-21 09:30']);
+  });
+
+  it('is described in words and needs a real date', () => {
+    expect(describeRule({ kind: 'once', date: '2026-10-21', time: '09:30' })).toBe('Once on Wed 21 Oct at 09:30');
+    expect(ruleProblem({ kind: 'once', date: '2026-02-30', time: '09:30' })).toBe('Pick a date.');
+    expect(ruleProblem({ kind: 'once', date: '2026-10-21', time: '09:30' })).toBeNull();
+  });
+});
+
+describe('upcomingRuns and pastRuns (Europe/Brussels)', () => {
+  beforeAll(() => useZone('Europe/Brussels'));
+  type Item = Parameters<typeof upcomingRuns>[0][number];
+  const item = (id: string, rule: ScheduleRule, over: Partial<Item> = {}): Item => ({ id, rule, paused: false, draft: { cwd: `/work/${id}` } as Item['draft'], runs: [], skippedRuns: [], lastRun: null, ...over });
+  const times = (list: { scheduleId: string; at: number }[]) => list.map((r) => `${r.scheduleId} ${clock(new Date(r.at))}`);
+
+  it('lists the runs still to come to the end of the 7th day, in order, without paused schedules', () => {
+    const list = upcomingRuns([item('a', { kind: 'weekdays', time: '08:00' }), item('b', { kind: 'weekly', days: [1], time: '07:00' }), item('p', { kind: 'daily', time: '06:00' }, { paused: true })], local(2026, 10, 19, 7, 30), 7);
+    // Monday 07:00 has passed: only what is still to come.
+    expect(times(list)).toEqual(['a 2026-10-19 08:00', 'a 2026-10-20 08:00', 'a 2026-10-21 08:00', 'a 2026-10-22 08:00', 'a 2026-10-23 08:00', 'b 2026-10-26 07:00', 'a 2026-10-26 08:00']);
+    expect(list.every((r) => !r.skipped)).toBe(true);
+    expect(list[0]!.cwd).toBe('/work/a');
+  });
+
+  it('follows the clocks across DST and a month end', () => {
+    // 25 October 2026 the clocks go back; 31 October is a month end.
+    const list = upcomingRuns([item('a', { kind: 'daily', time: '02:30' }), item('m', { kind: 'monthly', day: 31, time: '10:00' })], local(2026, 10, 24, 12), 7);
+    expect(times(list).filter((t) => t.startsWith('a')).slice(0, 3)).toEqual(['a 2026-10-25 02:30', 'a 2026-10-26 02:30', 'a 2026-10-27 02:30']);
+    expect(times(list).filter((t) => t.startsWith('m'))).toEqual(['m 2026-10-31 10:00']);
+    // November has 30 days: the 31st runs on the 30th.
+    expect(times(upcomingRuns([item('m', { kind: 'monthly', day: 31, time: '10:00' })], local(2026, 11, 25), 7))).toEqual(['m 2026-11-30 10:00']);
+    // Spring: 02:30 doesn't exist on 29 March, it runs at 03:00.
+    expect(times(upcomingRuns([item('a', { kind: 'daily', time: '02:30' })], local(2026, 3, 29, 1), 0))).toEqual(['a 2026-03-29 03:00']);
+  });
+
+  it('marks the runs you skipped, and leaves out a one-time run that has passed', () => {
+    const skip = new Date(local(2026, 10, 20, 8)).toISOString();
+    expect(upcomingRuns([item('a', { kind: 'daily', time: '08:00' }, { skippedRuns: [skip] })], local(2026, 10, 19, 9), 2).map((r) => r.skipped)).toEqual([true, false]);
+    expect(upcomingRuns([item('o', { kind: 'once', date: '2026-10-19', time: '08:00' })], local(2026, 10, 19, 9), 7)).toEqual([]);
+    expect(oneTimeDone({ kind: 'once', date: '2026-10-19', time: '08:00' }, local(2026, 10, 19, 9))).toBe(true);
+    expect(oneTimeDone({ kind: 'once', date: '2026-10-19', time: '08:00' }, local(2026, 10, 19, 7))).toBe(false);
+    expect(oneTimeDone({ kind: 'daily', time: '08:00' }, local(2026, 10, 19, 9))).toBe(false);
+  });
+
+  it('lists the runs of the last days, newest first, with each result, paused and one-time schedules too', () => {
+    const run = (m: number, d: number, h: number, result: 'started' | 'queued' | 'skipped' | 'missed' | 'failed', reason: string | null = null) => ({ at: local(2026, m, d, h), result, sessionId: result === 'started' ? 's1' : null, itemId: null, reason });
+    const schedules = [
+      item('daily', { kind: 'daily', time: '08:00' }, { runs: [run(10, 19, 8, 'started'), run(10, 18, 8, 'skipped', 'the last run was still working'), run(10, 17, 8, 'missed'), run(10, 11, 8, 'started')] }),
+      item('paused', { kind: 'daily', time: '09:00' }, { paused: true, runs: [run(10, 16, 9, 'queued'), run(10, 15, 9, 'skipped', 'Skipped by you')] }),
+      // Recorded before schedules kept their runs: only the last run.
+      item('once', { kind: 'once', date: '2026-10-19', time: '07:00' }, { lastRun: run(10, 19, 7, 'failed', 'Folder not found') }),
+    ];
+    const list = pastRuns(schedules, local(2026, 10, 19, 12), 7);
+    expect(list.map((r) => [r.scheduleId, clock(new Date(r.at)), r.run.result, r.run.reason])).toEqual([
+      ['daily', '2026-10-19 08:00', 'started', null],
+      ['once', '2026-10-19 07:00', 'failed', 'Folder not found'],
+      ['daily', '2026-10-18 08:00', 'skipped', 'the last run was still working'],
+      ['daily', '2026-10-17 08:00', 'missed', null],
+      ['paused', '2026-10-16 09:00', 'queued', null],
+      ['paused', '2026-10-15 09:00', 'skipped', 'Skipped by you'],
+    ]);
   });
 });
