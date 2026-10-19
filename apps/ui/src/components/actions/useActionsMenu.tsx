@@ -160,10 +160,10 @@ export function useActionsMenu({
           initialAction={editor.action}
           initial={editor.fresh ? {} : null}
           onChanged={reload}
-          onSaved={(saved, previous) => {
+          onSaved={(saved, previous, another) => {
             // The pill changes now; the reload that follows confirms it.
             update((list) => applySavedAction(list, saved, previous));
-            setEditor(null);
+            if (!another) setEditor(null);
             flash('Action saved');
           }}
           onClose={() => setEditor(null)}

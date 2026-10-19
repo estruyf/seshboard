@@ -339,8 +339,8 @@ export function ProjectActionsTab({ root }: { root: string }) {
           initialAction={editing.action}
           initial={editing.action ? null : {}}
           onChanged={reload}
-          onSaved={() => {
-            setEditing(null);
+          onSaved={(_saved, _previous, another) => {
+            if (!another) setEditing(null);
             flash('Action saved');
           }}
           onClose={() => setEditing(null)}

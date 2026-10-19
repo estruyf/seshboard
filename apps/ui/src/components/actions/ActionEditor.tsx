@@ -289,8 +289,8 @@ export function ActionEditor({
   /** The action to start on (Edit… on a pill). */
   initialAction?: ListedAction | null;
   onChanged(): void;
-  /** After a successful save: the action as saved, and the one it was edited from (null for a new one). */
-  onSaved(saved: ListedAction, previous: { scope: ListedAction['scope']; id: string } | null): void;
+  /** After a successful save: the action as saved, and the one it was edited from (null for a new one). `another` is set by "Save and add another": the editor stays open on a blank form. */
+  onSaved(saved: ListedAction, previous: { scope: ListedAction['scope']; id: string } | null, another: boolean): void;
   onClose(): void;
 }) {
   const connection = useEngineConnection();
@@ -349,7 +349,7 @@ export function ActionEditor({
     setError(null);
   };
 
-  const save = async () => {
+  const save = async (another = false) => {
     if (!client || saving) return;
     const editing = selected;
     const invalid = validateDraft(draft, actions, editing);
@@ -393,7 +393,12 @@ export function ActionEditor({
         trusted: true,
       };
       onChanged();
-      onSaved(saved, editing && { scope: editing.scope, id: editing.id });
+      onSaved(saved, editing && { scope: editing.scope, id: editing.id }, another);
+      if (another) {
+        // Stay open on a blank form, keeping the scope picked for the last one.
+        select(null, { scope });
+        setSaving(false);
+      }
     } catch (e) {
       setError(friendlySaveError(e));
       setSaving(false);
@@ -750,6 +755,11 @@ export function ActionEditor({
               </span>
               <span className="mx-1 h-5 w-px shrink-0 bg-edge" aria-hidden />
               <Button onClick={onClose}>Cancel</Button>
+              {!selected && (
+                <Button disabled={saving} onClick={() => void save(true)} data-save-action-another>
+                  Save and add another
+                </Button>
+              )}
               <Button type="submit" variant="primary" kbd="⌘↵" disabled={saving} data-save-action>
                 {saving ? 'Saving…' : 'Save'}
               </Button>
