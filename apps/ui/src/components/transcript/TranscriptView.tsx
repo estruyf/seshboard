@@ -34,6 +34,7 @@ import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
 import { ModBands } from '../mods/ModBands.tsx';
+import { StartsAfterBand } from '../queue/StartsAfterBand.tsx';
 import { ModPanePanel } from '../mods/ModPanePanel.tsx';
 import { ModFooterChips } from '../mods/ModFooterChips.tsx';
 import { ModsChip } from '../mods/ModsChip.tsx';
@@ -1757,6 +1758,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 />
               )}
               {profileId && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
+              {/* A queued item that starts by itself once this session finishes: next to Up next, under mods' bands. */}
+              <StartsAfterBand sessionId={sessionId} />
               <UpNext queue={upNext} hold={upNextHold} limited={limitHeld} actions={upNextActions} />
               <div className="relative">
                 <Composer

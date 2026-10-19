@@ -1,4 +1,4 @@
-import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, bringsAnything, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -12,8 +12,9 @@ import { nextMode, randomWorktreeName } from '../../lib/modes.ts';
 import { passFocusGate, useFocus } from '../../state/focusGate.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
-import { addToQueue, removeFromQueue, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
-import { busyInProject, promptLabel, sameDraft } from '../../state/queue.ts';
+import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
+import { useStartAfter } from '../../state/startAfterStore.ts';
+import { autoStartBlock, busyInProject, promptLabel, queueSession, sameDraft } from '../../state/queue.ts';
 import { useLinks } from '../../state/linksStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -171,6 +172,11 @@ function LocalNewSession() {
   const unsavedQueued = useRef<{ id: string; draft: LaterDraft; timer: ReturnType<typeof setTimeout> } | null>(null);
   /** What the prompt would wait for once queued, when changed with "Wait for…"; null: the item's own, else its project. */
   const [queueWait, setQueueWait] = useState<QueueWaitFor | null>(null);
+  /** Start by itself, when changed here; null: the item's own, else off. Never remembered for the next item. */
+  const [queueAuto, setQueueAuto] = useState<boolean | null>(null);
+  /** Opened with Start after this one…: the session it follows. Add to queue leads while Wait for still says it. */
+  const [startAfterId, setStartAfterId] = useState<string | null>(null);
+  const startAfterRequest = useStartAfter((s) => s.request);
   const waitMenu = useMenu();
   /** Start anyway in the focus note sends what is in the box, without asking again. */
   const [submitRequest, setSubmitRequest] = useState(0);
@@ -272,6 +278,8 @@ function LocalNewSession() {
     saveQueued();
     setFromLater(null);
     setQueueWait(null);
+    setQueueAuto(null);
+    setStartAfterId(null);
     setPreset(undefined);
     setDraftPrompt('');
     touchedFor.current = null;
@@ -335,6 +343,17 @@ function LocalNewSession() {
       setLinkPrompt(link.prompt.length);
     }
   }, [linkRequest]);
+  // Start after this one…: the session's project (through `startIn`, above), Wait for that session, Start by itself on.
+  useEffect(() => {
+    if (!startAfterRequest) return;
+    const request = useStartAfter.getState().take();
+    if (!request) return;
+    if (fromLater) leaveQueued();
+    setCwd(request.root);
+    setQueueWait({ kind: 'session', sessionId: request.sessionId });
+    setQueueAuto(true);
+    setStartAfterId(request.sessionId);
+  }, [startAfterRequest]);
   // New session from an issue or pull request: its project, then (once gh has read it) the worktree, chip and prompt.
   // Like a link's, it never starts on its own.
   useEffect(() => {
@@ -422,6 +441,8 @@ function LocalNewSession() {
     setDraftPrompt(item.typed ?? item.prompt);
     setFromLater(asNew ? null : item);
     setQueueWait(null);
+    setQueueAuto(null);
+    setStartAfterId(null);
   }, [laterRequest]);
   // The command palette's prompt step, moved here with ⌘E: its folder, choices, profile and prompt.
   const handoff = usePaletteBus((s) => s.handoff);
@@ -653,6 +674,8 @@ function LocalNewSession() {
     setPendingStart(null);
     setProfileOverride(null);
     setQueueWait(null);
+    setQueueAuto(null);
+    setStartAfterId(null);
     setCwd(folder);
     setAddAsProject(true);
     // Quick question is never the folder New session opens on next time: ⌘N stays on your last project.
@@ -791,10 +814,12 @@ function LocalNewSession() {
     if (!draft) throw new Error('Choose a folder first');
     const queuedFrom = fromLater && useLater.getState().items.some((i) => i.id === fromLater.id) ? fromLater : null;
     forgetUnsavedQueued();
-    await addToQueue(draft, { waitFor: queueWait ?? undefined, replacing: queuedFrom });
+    await addToQueue({ ...draft, autoStart: queueAutoOn && !queueAutoBlocked }, { waitFor: queueWait ?? undefined, replacing: queuedFrom });
     if (fromLater) leaveQueued();
     else useDrafts.getState().removeDraft(newDraftKey(cwd));
     setQueueWait(null);
+    setQueueAuto(null);
+    setStartAfterId(null);
   };
   /** The focus note's, the gate's and the palette's Add to queue: queue it and empty the box. */
   const parkInQueue = async (text: string, attachments: ImageAttachment[], parts?: SentParts) => {
@@ -984,9 +1009,14 @@ function LocalNewSession() {
   const lastQueued = queueItems.filter((i) => i.id !== fromLater?.id).at(-1) ?? null;
   const wait: QueueWaitFor = queueWait ?? (fromLater ? (queuedNow ?? fromLater).waitFor : { kind: 'project' });
   const waitTitle = (id: string) => `“${promptLabel(rows.find((r) => r.id === id)?.title || 'Untitled session', 60)}”`;
+  const queueStarted = useLater((s) => s.started);
+  /** Start by itself: what was picked here, else the open item's, else off. */
+  const queueAutoOn = queueAuto ?? (fromLater ? (queuedNow ?? fromLater).autoStart : false);
+  const queueAutoBlocked = useMemo(() => (cwd ? autoStartBlock(wait, { cwd, sessions: rows.map(queueSession), started: queueStarted }) : null), [wait, cwd, rows, queueStarted]);
+  const startsByItself = queueAutoOn && !queueAutoBlocked;
   const waitText =
     wait.kind === 'none'
-      ? 'Queued, it waits until you start it.'
+      ? 'Queued, you start this one yourself.'
       : wait.kind === 'session'
         ? `Queued, this waits for ${waitTitle(wait.sessionId)} to finish.`
         : wait.kind === 'item'
@@ -994,11 +1024,13 @@ function LocalNewSession() {
           : busyHere.length === 1
             ? `Queued, this waits for ${waitTitle(busyHere[0]!.id)} to finish.`
             : 'Queued, this waits for them to finish.';
-  const queueLine = cwd && projectName && busyHere.length > 0 && (
+  // Shown while the project has a session working, or once Wait for names a session or the item above.
+  const queueLine = cwd && projectName && (busyHere.length > 0 || wait.kind === 'session' || wait.kind === 'item') && (
     <div className="-mt-3 flex min-w-0 items-center gap-1.5 px-2 text-meta text-muted" data-queue-busy-line>
-      <Clock size={12} className="shrink-0 text-faint" aria-hidden />
+      {startsByItself ? <Play size={11} fill="currentColor" className="shrink-0 text-link" aria-hidden /> : <Clock size={12} className="shrink-0 text-faint" aria-hidden />}
       <span className="min-w-0 truncate">
-        {projectName} has {busyHere.length === 1 ? 'a session' : `${busyHere.length} sessions`} working. {waitText}
+        {busyHere.length > 0 && `${projectName} has ${busyHere.length === 1 ? 'a session' : `${busyHere.length} sessions`} working. `}
+        {waitText}
       </span>
       <button
         type="button"
@@ -1010,6 +1042,19 @@ function LocalNewSession() {
         Wait for…
         <ChevronDown size={11} aria-hidden />
       </button>
+      <Checkbox
+        checked={startsByItself}
+        disabledReason={queueAutoBlocked}
+        onChange={(next) => {
+          setQueueAuto(next);
+          // A queued item open here takes the change at once, like Wait for.
+          if (queuedNow) void setAutoStart(queuedNow, next).catch(() => {});
+        }}
+        className="ml-1 shrink-0 items-center text-meta text-text"
+        dataAttrs={{ 'data-queue-autostart-box': true }}
+      >
+        Start by itself
+      </Checkbox>
       {waitMenu.at && (
         <Menu
           x={waitMenu.at.x}
@@ -1363,7 +1408,16 @@ function LocalNewSession() {
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <StartButton
-                  state={startButtonState({ ...box, startBlocked, branchBlocked: branchTaken ?? (githubPr && !useWorktree ? prCurrentBlocked : null), canWorktree, worktree: useWorktree, question })}
+                  state={startButtonState({
+                    ...box,
+                    startBlocked,
+                    branchBlocked: branchTaken ?? (githubPr && !useWorktree ? prCurrentBlocked : null),
+                    canWorktree,
+                    worktree: useWorktree,
+                    question,
+                    // Opened with Start after this one…: queueing is what it is for.
+                    queueFirst: startAfterId !== null && wait.kind === 'session' && wait.sessionId === startAfterId,
+                  })}
                   onAction={(action) =>
                     action === 'queue' ? box.submitSecondary() : action === 'start-worktree' ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true })) : box.submit()
                   }

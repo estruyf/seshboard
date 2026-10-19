@@ -31,7 +31,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import type { ModsEvents, ModsSurface } from './modsSurface.ts';
-import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery } from './sessionHost.ts';
+import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
 import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
@@ -99,7 +99,7 @@ export interface HostManagerDeps {
   /** A session's Up next changed (running or not), for windows showing it. */
   onUpNext?: (sessionId: string, queue: QueuedMessage[]) => void;
   /** A session's turn ended: finished, or stopped with an error. */
-  onTurnEnd?: (sessionId: string, outcome: { ok: boolean; error: string | null }) => void;
+  onTurnEnd?: (sessionId: string, outcome: TurnOutcome) => void;
   /**
    * Plan usage limits per profile (`UsageLimits`): a turn a limit stopped sets one, a turn that gets through clears it,
    * and while one is set the profile's queues wait. Call `limitChanged` when one is set or cleared from elsewhere.

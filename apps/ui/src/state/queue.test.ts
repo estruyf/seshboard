@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LaterItem, LiveSession, QueueWaitFor } from '@switchboard/protocol/client';
 import type { SessionRowData } from './sessionsStore.ts';
-import { busyInProject, dropIndex, moveTarget, projectOf, queueInList, queueStates, queueToast, readyTransitions, sameDraft, sameWait, type QueueEntry } from './queue.ts';
+import { busyInProject, dropIndex, moveTarget, projectOf, queueInList, queueStates, queueToast, readyTransitions, sameDraft, sameWait, startsAfter, type QueueEntry } from './queue.ts';
 
 const NOW = Date.UTC(2026, 9, 9, 12);
 
@@ -16,6 +16,7 @@ const item = (id: string, overrides: Partial<LaterItem> = {}): LaterItem => ({
   baseRef: 'fresh',
   branch: null,
   profileId: null,
+  autoStart: false,
   attachments: [],
   typed: null,
   context: [],
@@ -263,5 +264,23 @@ describe('queued context', () => {
     const file = { kind: 'file' as const, path: '/work/switchboard/notes.json', directory: false };
     expect(sameDraft({ ...queued, typed: 'hi', context: [file] }, { ...draft, typed: 'hi', context: [file] })).toBe(true);
     expect(sameDraft({ ...queued, typed: 'hi', context: [file] }, { ...draft, typed: 'hi', context: [] })).toBe(false);
+  });
+});
+
+describe('what starts after a session (its band)', () => {
+  const auto = (id: string, waitFor: QueueWaitFor) => item(id, { autoStart: true, waitFor });
+  it('names the first item that starts by itself after it, and counts the chain behind it', () => {
+    const rows = [session('fix', 'running', { title: 'Fix login' })];
+    const items = [auto('a', { kind: 'session', sessionId: 'fix' }), auto('b', { kind: 'item', itemId: 'a' }), item('c', { waitFor: { kind: 'item', itemId: 'b' } }), auto('d', { kind: 'item', itemId: 'b' })];
+    const after = startsAfter(states(items, rows).entries, 'fix');
+    expect(after?.first.item.id).toBe('a');
+    // b and d follow; c is one you start yourself.
+    expect(after?.more).toBe(2);
+  });
+
+  it('says nothing for items you start yourself, or for another session', () => {
+    const rows = [session('fix', 'running'), session('other', 'running')];
+    expect(startsAfter(states([item('a', { waitFor: { kind: 'session', sessionId: 'fix' } })], rows).entries, 'fix')).toBeNull();
+    expect(startsAfter(states([auto('a', { kind: 'session', sessionId: 'other' })], rows).entries, 'fix')).toBeNull();
   });
 });

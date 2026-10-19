@@ -250,8 +250,16 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 
 - The Later list becomes the **queue** (the names stay `later` inside: `later_prompts`, `later.*`, `laterStore`). Migration v16 adds `position` (numbered by age, oldest first) and `wait_json` (NULL is "any session in the project"), and `later_started` to remember which session a started item became, so an item waiting on it follows that session.
 - RPCs: `later.reorder`, `later.update` (what it waits for) and `later.start`, which creates the session through the same path as `session.create`; `later.remove` takes `startedAs` for an item edited and started from New session.
-- Ready logic is a pure module (`apps/ui/src/state/queue.ts`): busy means starting, running or needs you, measured on the rows the sidebar lists. Nothing starts by itself; the toast and the notification only say an item is ready.
+- Ready logic is a pure module (now `packages/protocol/src/queueStates.ts`, see 5.8.1): busy means starting, running or needs you, measured on the rows the sidebar lists. The toast and the notification say an item is ready; only items with Start by itself start (5.8.1).
 - Sidebar sections close (`sidebarSections.ts`, saved in app state as `ui.sidebarSections`); the open session's row stays under a closed header.
+
+### 5.8.1 Start by itself ✅ ([#172](https://github.com/estruyf/switchboard/issues/172))
+
+- `autoStart` on `LaterItem`, kept in `settings_json` (no migration); waiting for nothing turns it off. `later.update` takes it.
+- The ready rules moved to `packages/protocol/src/queueStates.ts`, shared by the UI (what rows say) and the engine (what starts), with how the session waited on ended (`SessionOutcome`: clean, error, stopped, quit) and the items held at the focus limit, sent with `later.changed` as `auto`.
+- `QueueAutoStarter` (`packages/engine/src/later/autoStart.ts`) arms an item once it has seen it waiting, and starts it through `later.start`'s path when it turns ready after clean finishes only; at the focus limit (from main as a standing `focus` message, counted with the shared `focusSessions`) it waits for a slot, at a usage limit for the reset. Errors and stops leave it ready and emit `later.autoSkipped`; starts emit `later.autoStarted`; main's notifier shows both.
+- Sessions Claude Code runs outside Switchboard (the terminal, other apps) show in the registry as busy or idle, but not how a turn ended, so Start by itself is off for them (`autoStartBlock`).
+- Not yet: other computers' sessions are counted by the window's focus count but not the engine's.
 
 ### 5.9 VS Code companion and context tray ([#42](https://github.com/estruyf/switchboard/issues/42))
 

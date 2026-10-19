@@ -1,3 +1,4 @@
+import { startAfter } from '../../state/startAfterStore.ts';
 import { fileManagerName } from '../../lib/platform.ts';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useBackup } from '../../state/backupStore.ts';
@@ -119,6 +120,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     renameSession: () => session && usePaletteBus.getState().showDialog({ kind: 'rename-session', sessionId, title: session.title }),
     githubStart: (type, root) => usePaletteBus.getState().showDialog({ kind: 'github-start', type, root }),
     newLinkedSession: () => session?.projectRoot && startLinkedSession({ id: sessionId, title: session.title, projectRoot: session.projectRoot }),
+    startAfterSession: () => session?.projectRoot && startAfter({ id: sessionId, projectRoot: session.projectRoot }),
     showCatchUp: () => {
       const card = useCatchUp.getState().cards.get(sessionId);
       if (card) useCatchUp.getState().setCollapsed(card, false);

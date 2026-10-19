@@ -106,6 +106,24 @@ describe('queue (the Later list)', () => {
     cache.close();
   });
 
+  it('keeps Start by itself with the item, off unless it waits for something', () => {
+    const cache = openCacheDatabase(cachePath());
+    const later = new LaterStore(cache.db);
+    const plain = later.add({ cwd: WEB, prompt: 'Plain' });
+    expect(plain.autoStart).toBe(false);
+    const after = later.add({ cwd: WEB, prompt: 'After', autoStart: true }, { waitFor: { kind: 'session', sessionId: 's-1' } });
+    expect(after.autoStart).toBe(true);
+    // Waiting for nothing, there is nothing to start after.
+    expect(later.add({ cwd: WEB, prompt: 'Nothing', autoStart: true }, { waitFor: { kind: 'none' } }).autoStart).toBe(false);
+    expect(later.update(plain.id, { autoStart: true })?.autoStart).toBe(true);
+    // An edit in New session that doesn't say keeps it; one that does changes it.
+    expect(later.update(after.id, { draft: { cwd: WEB, prompt: 'After, edited' } })?.autoStart).toBe(true);
+    expect(later.update(after.id, { draft: { cwd: WEB, prompt: 'After, edited', autoStart: false } })?.autoStart).toBe(false);
+    expect(later.update(plain.id, { waitFor: { kind: 'none' } })).toMatchObject({ waitFor: { kind: 'none' }, autoStart: false });
+    expect(later.update(plain.id, { autoStart: true })?.autoStart).toBe(false);
+    cache.close();
+  });
+
   it('edits an item in its place, keeping its age and what it waits for', () => {
     const cache = openCacheDatabase(cachePath());
     const later = new LaterStore(cache.db);

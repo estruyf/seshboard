@@ -22,6 +22,11 @@ export interface StartButtonInput {
   worktree: boolean;
   /** A quick question: it asks rather than starts. */
   question: boolean;
+  /**
+   * Opened to follow a session (Start after this one…): the main part adds to the queue, and starting moves into the
+   * menu.
+   */
+  queueFirst?: boolean;
 }
 
 export interface StartMenuItem {
@@ -33,6 +38,10 @@ export interface StartMenuItem {
 }
 
 export interface StartButtonState {
+  /** What the main part does: start, or add to the queue (`queueFirst`). */
+  main: StartAction;
+  /** The main part's key. */
+  shortcut: ShortcutId;
   label: string;
   /** On its way: the label says so, without the shortcut. */
   sending: boolean;
@@ -61,7 +70,21 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
     { action: 'queue', label: 'Add to queue', shortcut: 'new-session.queue', disabled: !canQueue },
   ];
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
+  if (input.queueFirst && !input.question) {
+    return {
+      main: 'queue',
+      shortcut: 'new-session.queue',
+      label: sending ? 'Adding…' : 'Add to queue',
+      sending,
+      disabled: !canQueue,
+      menuDisabled: items.every((item) => item.disabled),
+      reason: sending ? null : (blocked ?? (!hasText ? 'Type a message first' : null)),
+      items: [items[1]!, items[0]!, ...items.slice(2)],
+    };
+  }
   return {
+    main: 'start',
+    shortcut: 'new-session.start',
     label: sending ? `${input.question ? 'Asking' : 'Starting'}…` : verb,
     sending,
     disabled: !canStartHere,

@@ -67,8 +67,9 @@ export class LaterStore {
 
   /** Queues a prompt at the end, or (Undo) puts a removed item back where it was, as it was. */
   add(draft: LaterDraft, restore: Restore = {}): LaterItem {
-    const { cwd, prompt, ...settings } = LaterDraft.parse(draft);
+    const { cwd, prompt, ...parsed } = LaterDraft.parse(draft);
     const waitFor = restore.waitFor ? QueueWaitFor.parse(restore.waitFor) : DEFAULT_WAIT;
+    const settings = startsBy(parsed, waitFor);
     const id = restore.id ?? randomUUID();
     const createdAt = restore.createdAt ?? Date.now();
     this.transaction(() => {
@@ -95,15 +96,20 @@ export class LaterStore {
     return found;
   }
 
-  /** Changes what an item waits for, or its prompt and choices; it keeps its place and age. Null when it is gone. */
-  update(id: string, patch: { waitFor?: QueueWaitFor; draft?: LaterDraft }): LaterItem | null {
-    if (!this.get(id)) return null;
+  /**
+   * Changes what an item waits for, whether it starts by itself, or its prompt and choices; it keeps its place and
+   * age. Waiting for nothing turns starting by itself off. Null when it is gone.
+   */
+  update(id: string, patch: { waitFor?: QueueWaitFor; autoStart?: boolean; draft?: LaterDraft }): LaterItem | null {
+    const item = this.get(id);
+    if (!item) return null;
     this.transaction(() => {
-      if (patch.waitFor) this.statements.setWait.run(waitJson(QueueWaitFor.parse(patch.waitFor)), id);
-      if (patch.draft) {
-        const { cwd, prompt, ...settings } = LaterDraft.parse(patch.draft);
-        this.statements.setDraft.run(cwd, prompt, JSON.stringify(settings satisfies Settings), id);
-      }
+      const waitFor = patch.waitFor ? QueueWaitFor.parse(patch.waitFor) : item.waitFor;
+      if (patch.waitFor) this.statements.setWait.run(waitJson(waitFor), id);
+      // A draft that doesn't say whether it starts by itself keeps what the item had.
+      const { cwd, prompt, ...settings } = patch.draft ? LaterDraft.parse({ ...patch.draft, autoStart: patch.draft.autoStart ?? item.autoStart }) : settingsOf(item);
+      const next = startsBy({ ...settings, autoStart: patch.autoStart ?? settings.autoStart }, waitFor);
+      this.statements.setDraft.run(cwd, prompt, JSON.stringify(next satisfies Settings), id);
     });
     return this.get(id);
   }
@@ -172,6 +178,12 @@ function toItem(row: Row): LaterItem | null {
   const wait = row.wait_json === null ? null : QueueWaitFor.safeParse(safeJson(row.wait_json));
   return { ...parsed.data, id: row.id, createdAt: row.created_at, position: row.position, waitFor: wait?.success ? wait.data : DEFAULT_WAIT };
 }
+
+/** An item's draft: everything but its place in the queue. */
+const settingsOf = ({ id: _id, createdAt: _createdAt, position: _position, waitFor: _waitFor, ...draft }: LaterItem) => draft;
+
+/** Starting by itself only means something while the item waits for something: waiting for nothing turns it off. */
+const startsBy = <T extends { autoStart: boolean }>(settings: T, waitFor: QueueWaitFor): T => (waitFor.kind === 'none' && settings.autoStart ? { ...settings, autoStart: false } : settings);
 
 /** The default is stored as NULL, so rows from before the queue and new ones read the same. */
 const waitJson = (waitFor: QueueWaitFor) => (waitFor.kind === 'project' ? null : JSON.stringify(waitFor));

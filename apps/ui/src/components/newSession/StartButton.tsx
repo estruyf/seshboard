@@ -30,8 +30,9 @@ export function StartButton({ state, onAction, data, itemData }: { state: StartB
   if (state.disabled && !state.menuDisabled && state.reason) entries.push({ note: state.reason });
   return (
     <SplitButton
-      onClick={() => onAction('start')}
-      shortcut={state.sending ? undefined : 'new-session.start'}
+      onClick={() => onAction(state.main)}
+      shortcut={state.sending ? undefined : state.shortcut}
+      icon={state.main === 'queue' ? <ListEnd size={14} aria-hidden /> : undefined}
       disabled={state.disabled}
       reason={state.reason}
       entries={entries}

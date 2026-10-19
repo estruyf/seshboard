@@ -97,6 +97,7 @@ const PLANS: Record<string, Plan> = {
   'rename-session': 'here',
   // New session lives in the main window, and its box is the one the link goes in.
   'new-session-linked': 'hide',
+  'start-after-session': 'hide',
   pin: 'here',
   archive: 'here',
   fork: 'here',

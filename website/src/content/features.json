@@ -462,6 +462,11 @@
       "page": "sessions/linking"
     },
     {
+      "id": "palette:start-after-session",
+      "name": "Start after this session…",
+      "page": "new-session/queue"
+    },
+    {
       "id": "palette:new-session-from-issue",
       "name": "New session from issue…",
       "page": "sessions/github-issues"
@@ -2787,6 +2792,11 @@
       "page": "new-session/queue"
     },
     {
+      "id": "feature:queue-start-by-itself",
+      "name": "Start by itself (queue item menu and New session)",
+      "page": "new-session/queue"
+    },
+    {
       "id": "feature:queue-messages",
       "name": "Queue messages while Claude works",
       "page": "sessions/conversation"
@@ -2980,6 +2990,11 @@
       "id": "feature:session-context-menu",
       "name": "Session context menu",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:session-menu-start-after",
+      "name": "Start after this one… (session menu and the conversation's ⋯ menu)",
+      "page": "new-session/queue"
     },
     {
       "id": "feature:session-menu-project",

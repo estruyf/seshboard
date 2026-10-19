@@ -164,6 +164,8 @@ export interface PaletteApi {
   renameSession(): void;
   /** New session on this session's project, linked to it (session linking). */
   newLinkedSession(): void;
+  /** New session on this session's project, queued to start by itself once it finishes. */
+  startAfterSession(): void;
   /** New session from an issue or pull request of the project: the # list on its own, then New session filled in. */
   githubStart(type: 'issue' | 'pr', root: string): void;
   /** Opens the session's catch-up from its strip (or for a read session). */
@@ -619,6 +621,15 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'link mention stack pull request pr branch context reference @',
     when: (ctx) => indexed(ctx) && !!session(ctx)!.projectRoot,
     run: (api) => api.newLinkedSession(),
+  },
+  {
+    id: 'start-after-session',
+    title: 'Start after this session…',
+    group: 'session',
+    icon: Play,
+    keywords: 'queue follow up then next chain finish finished when done start by itself auto',
+    when: (ctx) => indexed(ctx) && !!session(ctx)!.projectRoot,
+    run: (api) => api.startAfterSession(),
   },
   {
     id: 'pin',

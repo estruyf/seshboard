@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -70,6 +71,8 @@ if (scripted) {
   process.env.SWITCHBOARD_STUB_BTW = '1';
   // Catch-up cards are written from the tool calls, never by a model.
   process.env.SWITCHBOARD_STUB_CATCHUP = '1';
+  // Queued items that start by themselves leave the queue without sending their prompt to Claude.
+  process.env.SWITCHBOARD_STUB_QUEUE = '1';
   // Clone from GitHub clones from local bare repositories in the throwaway profile, never from the network.
   process.env.SWITCHBOARD_CLONE_SOURCE ??= join(app.getPath('userData'), 'clone-source');
 }
@@ -173,6 +176,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
   engine?.sendStanding({ type: 'chrome', enabled: prefs.chrome });
+  // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
+  engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -5823,6 +5828,88 @@ async function runQueueStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Start by itself (#172), in the throwaway profile and against a temp folder: a stand-in session "works" there (the
+ * engine's `smokeQueueHost`, as `SWITCHBOARD_STUB_QUEUE` allows), and Start after this one… on its row opens New session
+ * with Wait for on it and Start by itself on. Queued, the row says "starts after". A clean finish starts it once and
+ * takes it off the queue (the stub never sends the prompt to Claude); after an error a second item stays, ready, and
+ * says why. Both notifications are recorded.
+ */
+async function runQueueAutoStartStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-autostart-')));
+  const standIn = `smoke-autostart-${randomUUID()}`;
+  const host = (state: 'running' | 'idle' | 'closed', outcome?: 'clean' | 'error') => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(outcome ? { outcome } : {}) });
+  const sidebarItems = "[...document.querySelectorAll('[data-session-list] [data-queue-item]')].map((el) => el.dataset.queueItem)";
+  const box = '[data-new-session-view] [data-composer]';
+  const recorded = (kind: RecordedAlert['kind'], prompt: string) => recordedNotifications.filter((n) => n.kind === kind && n.title.includes(prompt)).length;
+  /** Start after this one… on the stand-in's row, then Add to queue (the main part of Start, opened this way). */
+  const queueAfter = async (prompt: string): Promise<string | null> => {
+    const opened = await js(
+      `(() => { const row = document.querySelector('[data-session-list] [data-session-id="${standIn}"]'); if (!row) return false; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 20 })); return true; })()`,
+    );
+    if (!opened) return 'the stand-in session has no row';
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-start-after]')", 2_000))) return 'the session menu has no Start after this one…';
+    await js("document.querySelector('[role=menu] [data-start-after]').click()");
+    const ready = `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && document.querySelector('[data-queue-autostart-box]')?.getAttribute('aria-checked') === 'true' && !!document.querySelector('[data-queue-busy-line]')`;
+    if (!(await waitInPage(win, ready, 5_000))) return 'Start after this one… did not open New session on the project with Start by itself on';
+    if (!(await js("document.querySelector('[data-new-session-view] [data-composer-submit]')?.innerText.includes('Add to queue')"))) return 'Add to queue did not lead in New session';
+    await setFieldValue(win, box, prompt);
+    if (!(await waitInPage(win, `!document.querySelector('[data-new-session-view] [data-composer-submit]')?.disabled`, 2_000))) return 'Add to queue stayed disabled';
+    await js("document.querySelector('[data-new-session-view] [data-composer-submit]').click()");
+    const row = `[...document.querySelectorAll('[data-session-list] [data-queue-item]')].find((el) => el.getAttribute('aria-label')?.includes(${JSON.stringify(prompt)}))`;
+    if (!(await waitInPage(win, `${row}?.closest('[data-queue-autostart]')?.dataset.queueState === 'waiting'`, 3_000))) return 'the queued item did not wait to start by itself';
+    const label = (await js(`${row}.getAttribute('aria-label')`)) as string;
+    if (!label.includes('Starts by itself')) return `its row did not say it starts by itself (${label})`;
+    return null;
+  };
+  try {
+    if (!(await js("!!document.querySelector('[data-sidebar-open]')"))) return 'the sidebar is not open';
+    if ((await js(`${sidebarItems}.length`)) !== 0) return 'the throwaway profile already had a queue';
+    host('running');
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+
+    // A clean finish: it starts once and leaves the queue.
+    const first = 'Smoke autostart: run the tests';
+    const failed = await queueAfter(first);
+    if (failed) return failed;
+    await shot(win, 'queue-autostart.png');
+    host('idle', 'clean');
+    if (!(await waitInPage(win, `${sidebarItems}.length === 0`, 5_000))) return 'the item did not start after a clean finish';
+    if (!(await until(() => recorded('queue-started', first) === 1, 3_000))) return 'no "Started" notification';
+    // Long enough for a second start to show: there must be none.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    if (recorded('queue-started', first) !== 1) return `it started ${recorded('queue-started', first)} times`;
+
+    // An error: it doesn't start, stays in the queue, ready, and says why.
+    host('running');
+    const second = 'Smoke autostart: write the changelog';
+    const failedAgain = await queueAfter(second);
+    if (failedAgain) return failedAgain;
+    host('idle', 'error');
+    const row = `[...document.querySelectorAll('[data-session-list] [data-queue-item]')].find((el) => el.getAttribute('aria-label')?.includes(${JSON.stringify(second)}))`;
+    if (!(await waitInPage(win, `${row}?.closest('[data-queue-state]')?.dataset.queueState === 'ready' && ${row}.closest('[data-queue-state]').innerText.includes('ended with an error')`, 5_000))) return 'after an error the item did not turn ready and say why';
+    if (!(await until(() => recorded('queue-skipped', second) === 1, 3_000))) return 'no "didn\'t start" notification';
+    if (recorded('queue-started', second) !== 0) return 'it started after an error';
+    return 'ok: Start after this one… opened New session (Wait for set, Start by itself on, Add to queue first), the row said it starts by itself, a clean finish started it once and took it off the queue, an error left the next one ready with the reason, both notified';
+  } finally {
+    if (await js("!!document.querySelector('[data-new-session-view] [data-composer]')?.value")) await setFieldValue(win, box, '');
+    for (let i = 0; i < 4 && (await js(`${sidebarItems}.length`)) > 0; i++) {
+      await js("document.querySelector('[data-session-list] [data-queue-item]').focus()");
+      pressKey(win, 'Backspace');
+      await waitInPage(win, `${sidebarItems}.length < ${(await js(`${sidebarItems}.length`)) as number}`, 2_000);
+    }
+    host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * Collapsible sections: a click on Today's header (or the first section that can close) hides its rows and keeps
  * the header with its count; ← and → on the focused header close and open it. Earlier starts closed. Back as it was.
  */
@@ -8057,6 +8144,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
+  await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));

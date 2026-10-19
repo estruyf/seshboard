@@ -225,7 +225,7 @@ function setup(
   const permissions: PermissionRequest[] = [];
   const resolved: string[] = [];
   const created: string[] = [];
-  const turns: Array<{ sessionId: string; ok: boolean; error: string | null }> = [];
+  const turns: Array<{ sessionId: string; ok: boolean; error: string | null; stopped?: boolean; superseded?: boolean }> = [];
   const warmups: Array<{ options: Options; closed: boolean }> = [];
   const ephemeral = new Set<string>();
   const sdk: SdkRuntime = {
@@ -345,10 +345,24 @@ describe('HostManager', () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
     await until(() => t.turns.length === 1);
-    expect(t.turns).toEqual([{ sessionId: id, ok: true, error: null }]);
+    expect(t.turns).toEqual([{ sessionId: id, ok: true, error: null, stopped: false, superseded: false }]);
     await t.manager.send({ sessionId: id, text: 'fail', attachments: [], fork: false });
     await until(() => t.turns.length === 2);
-    expect(t.turns[1]).toMatchObject({ sessionId: id, ok: false });
+    expect(t.turns[1]).toMatchObject({ sessionId: id, ok: false, stopped: false });
+    t.manager.closeAll();
+  });
+
+  it('says a turn you stopped was stopped, whatever its result, for queued items that start after it', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test' });
+    await until(() => t.permissions.length === 1);
+    await t.manager.interrupt(id);
+    await until(() => t.turns.length === 1);
+    expect(t.turns[0]).toMatchObject({ sessionId: id, stopped: true, superseded: false });
+    // The next turn is its own.
+    await t.manager.send({ sessionId: id, text: 'Say hi', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(t.turns[1]).toMatchObject({ ok: true, stopped: false });
     t.manager.closeAll();
   });
 

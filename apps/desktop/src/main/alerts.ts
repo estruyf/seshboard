@@ -11,8 +11,8 @@ export interface Alert {
 }
 
 // A session resuming after a usage limit is news like a finished turn: it shares that moment's sound. So does a large
-// session's cache about to lapse (Settings › Usage). Checks that finish are like an action that ends, and failed ones
-// like an error.
+// session's cache about to lapse (Settings › Usage), and a queued item that started by itself. Checks that finish are
+// like an action that ends, and failed ones like an error, as is a queued item that didn't start.
 const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = {
   'needs-you': 'needsYou',
   finished: 'finished',
@@ -22,6 +22,8 @@ const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = {
   'checks-failed': 'error',
   'checks-passed': 'actionEnded',
   'cache-expiring': 'finished',
+  'queue-started': 'finished',
+  'queue-skipped': 'error',
 };
 
 /** Each kind of event has its own moment, and so its own sound. */

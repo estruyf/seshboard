@@ -254,11 +254,23 @@ describe('buildListRows', () => {
     baseRef: 'fresh',
     branch: null,
     profileId: null,
+    autoStart: false,
     createdAt: NOW,
     position: 0,
     waitFor: { kind: 'project' },
   });
-  const entry = (prompt: string, state: QueueEntry['state'] = 'waiting'): QueueEntry => ({ item: saved(prompt), state, label: null, detail: null, blockers: [] });
+  const entry = (prompt: string, state: QueueEntry['state'] = 'waiting'): QueueEntry => ({
+    item: saved(prompt),
+    state,
+    label: null,
+    detail: null,
+    blockers: [],
+    baseState: state,
+    autoStart: false,
+    autoBlocked: null,
+    finished: null,
+    hold: null,
+  });
   const queueOf = (...prompts: string[]) => ({ entries: prompts.map((p) => entry(p)), ready: 0 });
 
   it('puts a header above each section and an open Archived last', () => {

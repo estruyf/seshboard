@@ -1162,10 +1162,34 @@ const screens: Screen[] = [
   {
     name: 'queue',
     async take(t) {
+      // The payments-api item starts by itself after the session working there, shown as one Switchboard runs (its
+      // terminal stand-in would keep Start by itself off). The engine's stub never starts it.
+      const working = await t.sessionId(WORKING);
+      writeFileSync(demoQueueHostFile(t.world), JSON.stringify({ sessionId: working, cwd: join(t.world.home, 'Developer', 'payments-api') }));
       await t.home();
       await t.need('[data-home-queue] [data-queue-item]', 'Home shows no queue');
+      const item = `[...document.querySelectorAll('[data-home-queue] [data-queue-item]')].find((el) => el.innerText.includes('idempotency'))`;
+      await t.until(`!!${item}`, 'Home shows no payments-api item');
+      const more = `[data-home-queue] [data-queue-more="${await t.page.evaluate(`${item}.dataset.queueItem`)}"]`;
+      await t.click(more);
+      await t.click('[role=menu] [data-queue-menu-wait]');
+      await t.click(`[role=menu] [data-queue-wait="session:${working}"]`, 'Wait for… does not offer the working session');
+      // The menu is made when it opens: open it again until the engine's stand-in has reached the window.
+      for (let tries = 0; ; tries++) {
+        await t.click(more);
+        await t.need('[role=menu] [data-queue-menu-autostart]', 'the item menu has no Start by itself');
+        if (!(await t.q('[role=menu] [data-queue-menu-autostart]').getAttribute('aria-disabled'))) break;
+        if (tries === 20) throw new Error('Start by itself stayed off in the menu');
+        await t.escape();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      // The second scheme's run finds it on already.
+      if ((await t.q('[role=menu] [data-queue-menu-autostart]').getAttribute('aria-checked')) === 'true') await t.escape();
+      else await t.click('[role=menu] [data-queue-menu-autostart]');
+      await t.until(`${item}?.closest('[data-queue-autostart]') && ${item}.innerText.includes('Starts after')`, 'the item does not say it starts by itself');
       await hideUsageStatus(t);
       await t.shot('queue');
+      writeFileSync(demoQueueHostFile(t.world), 'null');
     },
   },
   {
@@ -1804,6 +1828,7 @@ function demoUsage(world: DemoWorld): string {
       autoPicks: demoAutoPicks(world, now),
       catchUps: demoCatchUps(world, now),
       limitFile: demoLimitFile(world),
+      queueHostFile: demoQueueHostFile(world),
     }),
   );
   return file;
@@ -1811,6 +1836,9 @@ function demoUsage(world: DemoWorld): string {
 
 /** Where the tour writes the made-up usage limit for its picture; the demo engine watches it (see `DemoUsage.limitFile`). */
 const demoLimitFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-limit.json');
+
+/** Where the tour names the demo session shown as working in Switchboard for the queue's picture (see `DemoUsage.queueHostFile`). */
+const demoQueueHostFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-queue-host.json');
 
 /**
  * What Auto model picked for some of the demo sessions, and a few more routing calls, so a session shows its pick

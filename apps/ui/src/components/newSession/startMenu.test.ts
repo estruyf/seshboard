@@ -15,6 +15,14 @@ describe('the Start button', () => {
     ]);
   });
 
+  it('leads with Add to queue when opened to follow a session, with starting in the menu', () => {
+    const state = startButtonState({ ...ready, queueFirst: true });
+    expect(state).toMatchObject({ main: 'queue', shortcut: 'new-session.queue', label: 'Add to queue', disabled: false, reason: null });
+    expect(state.items.map((i) => i.action)).toEqual(['queue', 'start', 'start-worktree']);
+    expect(startButtonState({ ...ready, queueFirst: true, hasText: false, hasMessage: false })).toMatchObject({ disabled: true, reason: 'Type a message first' });
+    expect(startButtonState(ready)).toMatchObject({ main: 'start', shortcut: 'new-session.start' });
+  });
+
   it('keeps a new worktree and the queue when the branch is checked out in another worktree', () => {
     const reason = 'feature is checked out in another worktree. Pick another branch, or start in a new worktree.';
     const state = startButtonState({ ...ready, branchBlocked: reason });
