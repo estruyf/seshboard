@@ -1566,7 +1566,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       data-item-kind={renderItems[row.index]!.kind}
                       ref={virtualizer.measureElement}
                       className={`absolute inset-x-6 pt-3 ${row.key === highlightKey ? 'search-highlight' : ''} ${row.key === landingKey ? 'prompt-landing' : ''}`}
-                      style={{ transform: `translateY(${row.start}px)` }}
+                      style={{ top: row.start }}
                     >
                       {autoPick && row.index === firstAnswer && <AutoPickLine sessionId={sessionId} pick={autoPick} />}
                       <TranscriptItem
