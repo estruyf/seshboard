@@ -33,6 +33,7 @@ export const IpcChannel = {
   rendererReady: "switchboard:renderer-ready",
   pickFolder: "switchboard:pick-folder",
   pickImage: "switchboard:pick-image",
+  pasteClipboard: "switchboard:paste-clipboard",
   pickContextFiles: "switchboard:pick-context-files",
   chooseExportFile: "switchboard:choose-export-file",
   chooseImportFile: "switchboard:choose-import-file",
@@ -739,6 +740,8 @@ export interface SwitchboardBridge {
   onSelectSession(listener: (sessionId: string) => void): () => void;
   /** Native image picker (for project icons). Resolves to null when cancelled. */
   pickImage(defaultPath?: string): Promise<string | null>;
+  /** Pastes the clipboard into the focused field as Cmd/Ctrl+V does, so images and files reach the field's paste handler too. */
+  pasteClipboard(): Promise<void>;
   /** Native open dialog for files (and folders, on macOS) to add as context, starting in `defaultPath`. Empty when cancelled. */
   pickContextFiles(defaultPath?: string): Promise<PickedPath[]>;
   /** Native save dialog for a settings export, suggesting `defaultName`. Resolves to null when cancelled. */

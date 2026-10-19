@@ -1,4 +1,4 @@
-import { ImagePlus, MessageCircleQuestion, Paperclip } from 'lucide-react';
+import { ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
 import { Fragment, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -11,6 +11,8 @@ import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
+import { Menu, type MenuEntry } from '../Menu.tsx';
+import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
 import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
@@ -248,6 +250,22 @@ export function Composer(props: ComposerProps) {
       const link = addContext && githubRoot && client ? pastedGithubLink(pasted) : null;
       if (link) void githubStatus(client!, githubRoot!).then((status) => status.available && setPasteOffer(link), () => {});
     }
+  };
+  /** Right-click (or Shift+F10) in the box: Electron has no menu of its own, so Cut, Copy, Paste and Select all are here. */
+  const [menuAt, setMenuAt] = useState<ContextMenuPoint | null>(null);
+  const textMenu = (): MenuEntry[] => {
+    const el = ref.current;
+    const selected = !!el && el.selectionStart !== el.selectionEnd;
+    // The menu hands focus back to the box as it closes; the command runs after that.
+    const run = (command: () => void) => () => setTimeout(() => { ref.current?.focus(); command(); }, 0);
+    return [
+      { label: 'Cut', icon: <Scissors size={13} />, disabled: !selected, onSelect: run(() => document.execCommand('cut')) },
+      { label: 'Copy', icon: <Copy size={13} />, disabled: !selected, onSelect: run(() => document.execCommand('copy')) },
+      // Through the main process, so an image on the clipboard arrives as a paste event like Cmd/Ctrl+V does.
+      { label: 'Paste', icon: <ClipboardPaste size={13} />, onSelect: run(() => void window.switchboard?.pasteClipboard()), data: { 'data-composer-menu-paste': true } },
+      'separator',
+      { label: 'Select all', icon: <TextSelect size={13} />, onSelect: run(() => ref.current?.select()) },
+    ];
   };
   /** Bumped whenever the palette's input moves on: a file search that answers after that is dropped. */
   const searchSeq = useRef(0);
@@ -783,6 +801,11 @@ export function Composer(props: ComposerProps) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isContextMenuKey(event)) {
+      event.preventDefault();
+      setMenuAt(contextMenuPoint(null, event.currentTarget.getBoundingClientRect(), window.innerHeight));
+      return;
+    }
     // Tab takes a mod's suggestion into the empty box.
     if (suggestion && event.key === 'Tab' && !event.shiftKey && !text) {
       event.preventDefault();
@@ -1159,6 +1182,11 @@ export function Composer(props: ComposerProps) {
             onKeyDown={onKeyDown}
             {...deadKeyWrap(setText)}
             onPaste={onPaste}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              const pointer = e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : null;
+              setMenuAt(contextMenuPoint(pointer, e.currentTarget.getBoundingClientRect(), window.innerHeight));
+            }}
             onBlur={() => {
               // A search still on its way must not reopen the list after focus left; the open list waits a moment so a click on it lands.
               ++searchSeq.current;
@@ -1167,6 +1195,7 @@ export function Composer(props: ComposerProps) {
             className={`block field-sizing-content max-h-80 w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large && !fillState ? 'min-h-24 px-1 pt-1 text-title font-normal' : 'text-body'}`}
           />
         </div>
+        {menuAt && <Menu x={menuAt.x} y={menuAt.y} above={menuAt.above} width={180} label="Message" onClose={() => setMenuAt(null)} entries={textMenu()} />}
         {props.controls && notice && (
           <p role="alert" className="mt-1 truncate text-meta text-error" data-tooltip={notice}>
             {notice}

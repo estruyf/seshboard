@@ -19,6 +19,7 @@ const bridge: SwitchboardBridge = {
   },
   reportReady: (report: RendererReadyReport) => ipcRenderer.send(IpcChannel.rendererReady, report),
   pickFolder: (defaultPath?: string) => ipcRenderer.invoke(IpcChannel.pickFolder, defaultPath) as Promise<string | null>,
+  pasteClipboard: () => ipcRenderer.invoke(IpcChannel.pasteClipboard) as Promise<void>,
   pickImage: (defaultPath?: string) => ipcRenderer.invoke(IpcChannel.pickImage, defaultPath) as Promise<string | null>,
   pickContextFiles: (defaultPath?: string) => ipcRenderer.invoke(IpcChannel.pickContextFiles, defaultPath) as Promise<PickedPath[]>,
   chooseExportFile: (defaultName: string) => ipcRenderer.invoke(IpcChannel.chooseExportFile, defaultName) as Promise<string | null>,

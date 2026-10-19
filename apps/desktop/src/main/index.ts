@@ -848,6 +848,10 @@ ipcMain.handle(IpcChannel.pickFolder, async (event, defaultPath: unknown) => {
   return result.canceled ? null : (result.filePaths[0] ?? null);
 });
 
+ipcMain.handle(IpcChannel.pasteClipboard, (event) => {
+  event.sender.paste();
+});
+
 ipcMain.handle(IpcChannel.pickImage, async (event, defaultPath: unknown) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
