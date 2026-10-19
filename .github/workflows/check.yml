@@ -1,4 +1,4 @@
-# Every check on macOS and Windows, for every pull request (and on demand), so a change for one platform
+# Every check on macOS, Windows and Linux, for every pull request (and on demand), so a change for one platform
 # can't break the other: typecheck and unit tests (npm run check), then the smoke test.
 #
 # The smoke test builds the app, launches the real Electron window with a throwaway profile and drives the UI
@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-latest]
+        os: [macos-15, windows-latest, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -38,6 +38,12 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      # Ubuntu 24.04 keeps unprivileged user namespaces from apps without an AppArmor profile, which Electron's
+      # sandbox needs; the development copy in node_modules has none (the .deb installs one for the app).
+      - name: Let Electron's sandbox start
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       # The engine's tests make real git repositories and commits.
       - name: Git identity for the tests
@@ -57,7 +63,8 @@ jobs:
       # Also after failed unit tests, so one run shows both.
       - name: Smoke test
         if: ${{ !cancelled() }}
-        run: npm run smoke:demo
+        # Linux runners have no screen: the window opens on a virtual one (Xvfb).
+        run: ${{ runner.os == 'Linux' && 'xvfb-run --auto-servernum --server-args="-screen 0 1920x1200x24"' || '' }} npm run smoke:demo
 
       - name: Upload screenshots and results
         if: ${{ !cancelled() }}

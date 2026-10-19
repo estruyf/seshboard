@@ -102,6 +102,13 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 const appUserModelId = app.isPackaged ? 'dev.switchboard.app' : process.execPath;
 if (process.platform === 'win32') app.setAppUserModelId(appUserModelId);
 
+// On Linux, Chromium picks the keychain from the desktop's name: one it doesn't know (Hyprland, Sway, i3) gets no
+// keychain at all, even with gnome-keyring or KeePassXC running, and Remote can't keep its keys. Ask for the Secret
+// Service there; KDE keeps KWallet, and a --password-store the user passes wins.
+if (process.platform === 'linux' && !app.commandLine.hasSwitch('password-store') && !/KDE/i.test(process.env.XDG_CURRENT_DESKTOP ?? '')) {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+}
+
 // SWITCHBOARD_COLOR_SCHEME=light|dark forces a scheme without saving it (to check both in the smoke test).
 const forcedScheme = process.env.SWITCHBOARD_COLOR_SCHEME;
 const preferences = new PreferencesStore(join(app.getPath('userData'), 'preferences.json'), sanitizePreferences({ colorScheme: forcedScheme }).colorScheme);
@@ -133,6 +140,9 @@ const updater = new Updater({
     devServer: Boolean(process.env.ELECTRON_RENDERER_URL),
     hasFeed: app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml')),
     mockFeed: Boolean(mockFeedUrl),
+    // On Linux electron-updater replaces the AppImage it runs from, or installs the .deb or .rpm the build marked
+    // in package-type; the unpacked folder is neither.
+    installer: process.platform !== 'linux' || Boolean(process.env.APPIMAGE) || (app.isPackaged && existsSync(join(process.resourcesPath, 'package-type'))),
   }),
   markerFile: join(app.getPath('userData'), 'update-marker.json'),
   ...(mockFeedUrl ? { mockFeedUrl } : {}),
@@ -2880,7 +2890,7 @@ async function runProjectMemoryStep(win: BrowserWindow, root: string): Promise<s
     if (!(await waitInPage(win, `${legend}.includes('MEMORY.md') && ${legend}.includes('CLAUDE.md')`, 5_000))) return `What loads here did not list the sandbox profile's files (${String(await js(legend))})`;
     await shot(win, 'memory-load-order.png');
     // Search finds the sandbox memory in its own Memory group above the conversations. Nothing is opened.
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: ['meta', 'shift'] });
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: [MOD_MODIFIER, 'shift'] });
     if (!(await waitInPage(win, "document.querySelector('[data-search] input[role=combobox]')", 3_000))) return 'search did not open';
     await setFieldValue(win, '[data-search] input[role=combobox]', 'smoke share');
     if (!(await waitInPage(win, "document.querySelector('[data-search-memory-group] [data-search-memory-hit]')", 5_000))) return 'search did not find the sandbox memory';
@@ -6469,8 +6479,13 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
     pressKey(win, 'Escape');
     if (!(await waitInPage(win, `!document.querySelector('[data-changes-panel]') && document.querySelector('${banner}')`, 3_000))) return 'Esc did not close the Changes panel before the banner';
   }
+  // Details is open with the banner; Space closes it and opens it again.
+  const details = `document.querySelector('${banner} [data-catchup-details]')`;
+  if (!(await waitInPage(win, details, 3_000))) return 'the banner opened without its Details';
   pressKey(win, 'Space');
-  if (!(await waitInPage(win, `document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Space did not open the banner’s Details';
+  if (!(await waitInPage(win, `document.querySelector('${banner}') && !${details}`, 3_000))) return 'Space did not close the banner’s Details';
+  pressKey(win, 'Space');
+  if (!(await waitInPage(win, details, 3_000))) return 'Space did not open the banner’s Details again';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector('${banner}') && !document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Esc did not close Details first';
   pressKey(win, 'Escape');
@@ -6492,7 +6507,7 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-sort-recent]')?.click()");
   if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
   if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
-  return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Space opened Details, Esc closed Details then folded the banner, Space opened it again, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
+  return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Details open, Space closed and reopened it, Esc closed Details then folded the banner, Space opened it again, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
 }
 
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {

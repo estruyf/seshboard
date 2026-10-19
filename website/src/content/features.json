@@ -3895,6 +3895,31 @@
       "id": "feature:schedule-once",
       "name": "Schedules: Once, a single run at a date and time",
       "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:linux-support",
+      "name": "Switchboard on Linux (x64 and Arm64)",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "feature:linux-packages",
+      "name": "AppImage, .deb and .rpm for Linux",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:linux-updates",
+      "name": "Updates on Linux through the AppImage or the package manager",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "feature:linux-open-in",
+      "name": "Open in Files and Linux terminals",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "feature:linux-sounds",
+      "name": "Freedesktop system sounds on Linux",
+      "page": "getting-started/linux"
     }
   ]
 }

@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { LaterDraft, ScheduleRunEvent, ScheduleSave } from '@switchboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
+import { removeDir } from '../util/removeDir.ts';
 import { Scheduler, type RunHold } from './scheduler.ts';
 import { ScheduleStore } from './scheduleStore.ts';
 
@@ -19,10 +20,19 @@ afterAll(() => {
 
 const WEB = resolve('/work/web');
 const dirs: string[] = [];
-afterEach(() => {
+const databases: { close(): void }[] = [];
+// Databases close first: Windows can't delete a folder with an open file in it.
+afterEach(async () => {
   vi.useRealTimers();
-  dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
+  databases.splice(0).forEach((db) => db.close());
+  await Promise.all(dirs.splice(0).map((d) => removeDir(d)));
 });
+/** The cache database at `path`, closed after the test. */
+const openDb = (path: string) => {
+  const { db } = openCacheDatabase(path);
+  databases.push(db);
+  return db;
+};
 const cachePath = () => {
   const dir = mkdtempSync(join(tmpdir(), 'switchboard-schedules-'));
   dirs.push(dir);
@@ -41,7 +51,7 @@ const schedule = (over: Partial<ScheduleSave> = {}): ScheduleSave => ({
 describe('schedule store', () => {
   it('saves, lists, changes and keeps a schedule with its draft and images', () => {
     const path = cachePath();
-    const store = new ScheduleStore(openCacheDatabase(path).db);
+    const store = new ScheduleStore(openDb(path));
     const image = { type: 'image' as const, mediaType: 'image/png' as const, data: 'aGVsbG8=', name: 'shot.png' };
     const saved = store.save(schedule({ draft: { cwd: WEB, prompt: 'Look at this', attachments: [image] } }));
     expect(saved).toMatchObject({ name: 'Review open pull requests', rule: { kind: 'daily', time: '08:00' }, missed: 'run', paused: false, pausedReason: null, lastRun: null });
@@ -53,18 +63,18 @@ describe('schedule store', () => {
     expect(changed).toMatchObject({ id: saved.id, name: 'Standup summary', createdAt: saved.createdAt, lastRun: { result: 'started', sessionId: 's1' } });
 
     // A new store over the same file (a restart, or a cache rebuild that keeps user choices).
-    const again = new ScheduleStore(openCacheDatabase(path).db);
+    const again = new ScheduleStore(openDb(path));
     expect(again.list().map((s) => s.name)).toEqual(['Standup summary']);
   });
 
   it('refuses a week without days', () => {
-    const store = new ScheduleStore(openCacheDatabase(cachePath()).db);
+    const store = new ScheduleStore(openDb(cachePath()));
     expect(() => store.save(schedule({ rule: { kind: 'weekly', days: [], time: '08:00' } }))).toThrow(/at least one day/);
     expect(store.list()).toEqual([]);
   });
 
   it('deletes and restores a schedule as it was', () => {
-    const store = new ScheduleStore(openCacheDatabase(cachePath()).db);
+    const store = new ScheduleStore(openDb(cachePath()));
     const saved = store.save(schedule());
     store.setLastRun(saved.id, { at: 5, result: 'skipped', sessionId: 's1', itemId: null, reason: 'the last run was still working' });
     const before = store.get(saved.id)!;
@@ -74,7 +84,7 @@ describe('schedule store', () => {
   });
 
   it('pauses with a reason and resumes without it', () => {
-    const store = new ScheduleStore(openCacheDatabase(cachePath()).db);
+    const store = new ScheduleStore(openDb(cachePath()));
     const saved = store.save(schedule());
     expect(store.setPaused(saved.id, true, 'Folder not found')).toMatchObject({ paused: true, pausedReason: 'Folder not found' });
     expect(store.setPaused(saved.id, false)).toMatchObject({ paused: false, pausedReason: null });
@@ -83,7 +93,7 @@ describe('schedule store', () => {
   });
 
   it('remembers the sessions a schedule started', () => {
-    const store = new ScheduleStore(openCacheDatabase(cachePath()).db);
+    const store = new ScheduleStore(openDb(cachePath()));
     const saved = store.save(schedule());
     store.addRun('s1', saved.id, 1);
     store.addRun('s1', saved.id, 2);
@@ -94,7 +104,7 @@ describe('schedule store', () => {
 /** A store on a real SQLite file, a fake clock and a scheduler whose sessions and limits the test drives. */
 function world(options: { at: number }) {
   vi.useFakeTimers({ now: options.at });
-  const store = new ScheduleStore(openCacheDatabase(cachePath()).db);
+  const store = new ScheduleStore(openDb(cachePath()));
   const started: { draft: LaterDraft; title: string; scheduleId: string; sessionId: string }[] = [];
   const queued: LaterDraft[] = [];
   const batches: ScheduleRunEvent[][] = [];
@@ -349,7 +359,7 @@ describe('scheduler', () => {
 
 describe('run history and Skip this run', () => {
   it('keeps the last 20 runs, newest first, and keeps them on an edit', () => {
-    const store = new ScheduleStore(openCacheDatabase(cachePath()).db);
+    const store = new ScheduleStore(openDb(cachePath()));
     const saved = store.save(schedule());
     for (let i = 1; i <= 22; i++) store.setLastRun(saved.id, { at: i, result: i % 2 ? 'started' : 'missed', sessionId: i % 2 ? `s${i}` : null, itemId: null, reason: null });
     const runs = store.get(saved.id)!.runs;
@@ -361,7 +371,7 @@ describe('run history and Skip this run', () => {
 
   it('skips and unskips a run, and cleans up runs already dealt with', () => {
     vi.useFakeTimers({ now: local(10, 19, 7) });
-    const store = new ScheduleStore(openCacheDatabase(cachePath()).db);
+    const store = new ScheduleStore(openDb(cachePath()));
     const saved = store.save(schedule());
     const tomorrow = local(10, 20, 8);
     expect(store.setSkipped(saved.id, tomorrow, true)!.skippedRuns).toEqual([new Date(tomorrow).toISOString()]);

@@ -1,6 +1,6 @@
 ---
 title: Install Switchboard
-description: Install Switchboard on a Mac or a Windows PC, with Homebrew on a Mac, or build it yourself.
+description: Install Switchboard on a Mac, a Windows PC or Linux, with Homebrew on a Mac, or build it yourself.
 sidebar:
   label: Install
 ---
@@ -12,13 +12,13 @@ import Screenshot from '../../../components/Screenshot.astro';
 import Related from '../../../components/Related.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Switchboard is a desktop app for macOS and Windows for running and keeping track of your Claude Code sessions: you see which one works, which one waits for you and what each one changed. It uses the Claude Code you already have, with your own login, settings, commands and skills, so there is nothing extra to sign in to.
+Switchboard is a desktop app for macOS, Windows and Linux for running and keeping track of your Claude Code sessions: you see which one works, which one waits for you and what each one changed. It uses the Claude Code you already have, with your own login, settings, commands and skills, so there is nothing extra to sign in to.
 
 <Screenshot name="main-window" alt="Switchboard on a Mac with a finished session open: the sidebar with Needs you and Working groups on the left, the conversation in the middle and the Changes panel with a diff on the right" eager />
 
 ## Requirements
 
-- A Mac with Apple Silicon, or a PC with Windows 10 or 11 (x64 or Arm64).
+- A Mac with Apple Silicon, a PC with Windows 10 or 11 (x64 or Arm64), or a Linux computer (x64 or Arm64).
 - [Claude Code](https://github.com/anthropics/claude-code) installed and signed in. If `claude` works in your terminal, you are ready. If it doesn't, Switchboard shows you how to install it when it opens; see [First launch](/getting-started/first-launch/#if-claude-code-isnt-installed).
 - On Windows: [Git for Windows](https://gitforwindows.org), for Claude Code and for the [Changes](/terminal-changes-git/changes/) panel and [git](/terminal-changes-git/git/) features. PowerShell 7 is recommended; the Windows PowerShell every PC has works too.
 
@@ -56,6 +56,31 @@ If Windows SmartScreen says "Windows protected your PC", the installer isn't sig
 
 </OnlyOn>
 
+## Install on Linux
+
+Every release has an AppImage, a `.deb` and an `.rpm`, for x64 and Arm64. Download the one for your distribution from the [latest release](https://github.com/estruyf/switchboard/releases/latest).
+
+- **Debian, Ubuntu and their derivatives:** install the `.deb` with apt, which also installs what it needs:
+
+  ```bash
+  sudo apt install ./Switchboard-<version>-amd64.deb
+  ```
+
+- **Fedora, RHEL and openSUSE:** install the `.rpm`:
+
+  ```bash
+  sudo dnf install ./Switchboard-<version>-x86_64.rpm
+  ```
+
+- **Any distribution:** make the AppImage executable and run it. It needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04).
+
+  ```bash
+  chmod +x Switchboard-<version>-x86_64.AppImage
+  ./Switchboard-<version>-x86_64.AppImage
+  ```
+
+The `.deb` and `.rpm` add Switchboard to your applications menu. On Arm64 the files end in `arm64` (and `aarch64` for the `.rpm`). What works differently on Linux is in [Switchboard on Linux](/getting-started/linux/).
+
 <OnlyOn os="mac">
 
 ## Install with Homebrew
@@ -76,7 +101,7 @@ brew upgrade --cask estruyf/tap/switchboard
 
 ## Build it from source
 
-You can also build the app from the [repository](https://github.com/estruyf/switchboard). You need Node 24 or later, and it takes a couple of minutes. `npm run dist` builds for the system it runs on: a `.dmg` on a Mac, an installer on Windows.
+You can also build the app from the [repository](https://github.com/estruyf/switchboard). You need Node 24 or later, and it takes a couple of minutes. `npm run dist` builds for the system it runs on: a `.dmg` on a Mac, an installer on Windows, and an AppImage, `.deb` and `.rpm` on Linux.
 
 ```bash
 npm install
@@ -96,6 +121,10 @@ Then open `apps/desktop/dist/Switchboard-<version>-arm64.dmg` and drag Switchboa
 On Windows 10 or 11, run the same commands in PowerShell, with Node 24 and npm 11 or later, and Git for Windows. No Visual Studio build tools are needed. The build makes `apps\desktop\dist\Switchboard-<version>-setup.exe`; run it to install. A build you make yourself updates like a release.
 
 </OnlyOn>
+
+### Build it on Linux
+
+Run the same commands with Node 24 and npm 11 or later, git, and the tools to compile a Node module (`build-essential` and `python3` on Debian and Ubuntu). The `.rpm` also needs `rpmbuild` (the `rpm` package on Debian and Ubuntu); without it the build makes the AppImage and the `.deb`. The files are in `apps/desktop/dist`.
 
 <OnlyOn os="mac">
 
@@ -135,7 +164,9 @@ Open Windows **Settings › Apps**, find Switchboard and choose **Uninstall**. T
 
 </OnlyOn>
 
-Your sessions stay in Claude Code's folder, and Switchboard's own data (projects, actions, preferences) stays in <Os mac="~/Library/Application Support/Switchboard" windows="%APPDATA%\Switchboard" />. Delete that folder too if you don't want to keep it.
+On Linux, run `sudo apt remove switchboard` or `sudo dnf remove switchboard`, or delete the AppImage.
+
+Your sessions stay in Claude Code's folder, and Switchboard's own data (projects, actions, preferences) stays in <Os mac="~/Library/Application Support/Switchboard" windows="%APPDATA%\Switchboard" />. On Linux it is `~/.config/Switchboard`. Delete that folder too if you don't want to keep it.
 
 ## Updates
 

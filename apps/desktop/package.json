@@ -35,5 +35,7 @@
     "electron-vite": "^5.0.0"
   },
   "description": "A fast desktop app for managing Claude Code sessions",
+  "homepage": "https://switchboard.struyfconsulting.com/",
+  "desktopName": "switchboard.desktop",
   "author": "Elio Struyf"
 }

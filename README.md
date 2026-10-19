@@ -4,10 +4,10 @@
 
 <h1 align="center">Switchboard</h1>
 
-<p align="center">A fast app for Mac and Windows to run and keep track of your Claude Code sessions, across all your Claude accounts.</p>
+<p align="center">A fast app for Mac, Windows and Linux to run and keep track of your Claude Code sessions, across all your Claude accounts.</p>
 
 <p align="center">
-  <a href="https://github.com/estruyf/switchboard/releases/latest"><b>Download for Mac or Windows</b></a> · <a href="https://switchboard.struyfconsulting.com/">Docs</a> · <code>brew install --cask estruyf/tap/switchboard</code>
+  <a href="https://github.com/estruyf/switchboard/releases/latest"><b>Download for Mac, Windows or Linux</b></a> · <a href="https://switchboard.struyfconsulting.com/">Docs</a> · <code>brew install --cask estruyf/tap/switchboard</code>
 </p>
 
 <p align="center">
@@ -126,16 +126,26 @@ It uses the Claude Code you already have installed, with your login, settings, c
 
 ## Requirements
 
-- A Mac with Apple Silicon, or a PC with Windows 10 or 11
+- A Mac with Apple Silicon, a PC with Windows 10 or 11, or Linux (x64 or Arm64)
 - [Claude Code](https://github.com/anthropics/claude-code) installed and signed in (`claude` works in your terminal)
 
-What works differently on Windows is in [Windows support](docs/windows-support.md).
+What works differently on Windows is in [Windows support](docs/windows-support.md), and on Linux in [Switchboard on Linux](https://switchboard.struyfconsulting.com/getting-started/linux/).
 
 ## Install
 
 Download the `.dmg` from the [latest release](https://github.com/estruyf/switchboard/releases/latest), open it and drag Switchboard to Applications.
 
 On Windows, download `Switchboard-<version>-setup.exe` from the same release and run it. It installs for you only, without admin rights, and updates itself.
+
+On Linux, download the `.deb` (Debian, Ubuntu), the `.rpm` (Fedora, RHEL, openSUSE) or the AppImage (any distribution) from the same release, for x64 or Arm64:
+
+```bash
+sudo apt install ./Switchboard-<version>-amd64.deb     # or
+sudo dnf install ./Switchboard-<version>-x86_64.rpm    # or
+chmod +x Switchboard-<version>-x86_64.AppImage && ./Switchboard-<version>-x86_64.AppImage
+```
+
+All three update themselves: the AppImage in place, the `.deb` and `.rpm` through your package manager.
 
 Or install it with [Homebrew](https://brew.sh):
 
@@ -152,7 +162,7 @@ npm install
 npm run dist
 ```
 
-Then open `apps/desktop/dist/Switchboard-<version>-arm64.dmg` and drag Switchboard to Applications.
+Then open `apps/desktop/dist/Switchboard-<version>-arm64.dmg` and drag Switchboard to Applications. On Windows the build makes the installer, and on Linux the AppImage, `.deb` and `.rpm` (the `.rpm` needs `rpmbuild`).
 
 If macOS blocks the app the first time you open it, see [Building, signing and notarisation](docs/building-and-signing.md).
 
@@ -181,7 +191,7 @@ To stop the checks, turn off *Check for Claude Code updates automatically* in Se
 
 Press **⌘/** (or Help › Keyboard Shortcuts) to see every shortcut in the app, with the ones that work where you are and your project actions' shortcuts. Type in its field to filter by name or by keys ("terminal", "⌘J").
 
-On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them that way. In the terminal panel, Ctrl keys belong to the shell and Ctrl+Shift keys to Switchboard.
+On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them that way. In the terminal panel, Ctrl keys belong to the shell and Ctrl+Shift keys to Switchboard.
 
 <p align="center"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/shortcuts-dark.png">
@@ -410,7 +420,7 @@ A schedule starts a session from a prompt at set times, for work that comes back
 
 **Where they show.** A **Schedules** card on Home and a section in a project's Sessions tab, each row with the rule, the last run (linked to its session), the next run, **Run now** and a menu with Edit…, Pause or Resume, and Delete (with Undo). *Schedules…* in the palette lists them. Sessions a schedule started have a repeat icon in the sidebar.
 
-**When it runs.** A notification says it started. A run never asks: while the last run is still working or waiting for you it's skipped; at the focus limit or a usage limit it goes to the queue and starts by itself when it can; a schedule whose folder is gone pauses. Runs missed while Switchboard was closed or the computer slept run once at the next start or wake, or are skipped, as you chose. On a Mac, schedules run while Switchboard is running, also with its windows closed; on Windows, while a Switchboard window is open.
+**When it runs.** A notification says it started. A run never asks: while the last run is still working or waiting for you it's skipped; at the focus limit or a usage limit it goes to the queue and starts by itself when it can; a schedule whose folder is gone pauses. Runs missed while Switchboard was closed or the computer slept run once at the next start or wake, or are skipped, as you chose. On a Mac, schedules run while Switchboard is running, also with its windows closed; on Windows and Linux, while a Switchboard window is open.
 
 ## Project pages and worktrees
 

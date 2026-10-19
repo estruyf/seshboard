@@ -23,9 +23,16 @@ describe('soundListFrom', () => {
     expect(new Set(Object.values(fallback)).size).toBe(4);
   });
 
+  it('reads the freedesktop sound theme on Linux', () => {
+    expect(soundListFrom(['dialog-error.oga', 'bell.oga', 'complete.oga', 'message-new-instant.oga', 'index.theme'], 'linux')).toEqual({
+      sounds: ['bell', 'complete', 'dialog-error', 'message-new-instant'],
+      fallback: { needsYou: 'message-new-instant', finished: 'complete', error: 'dialog-error', actionEnded: 'bell' },
+    });
+  });
+
   it('has nothing to offer elsewhere, or in an empty folder', () => {
     const none = { needsYou: null, finished: null, error: null, actionEnded: null };
-    expect(soundListFrom(['bell.oga'], 'linux')).toEqual({ sounds: [], fallback: none });
+    expect(soundListFrom(['bell.oga'], 'freebsd')).toEqual({ sounds: [], fallback: none });
     expect(soundListFrom([], 'darwin')).toEqual({ sounds: [], fallback: none });
   });
 });
@@ -43,7 +50,11 @@ describe('playCommand', () => {
     expect(command.args.at(-1)).toContain("[Uri]'C:\\Windows\\Media\\it''s.wav'");
   });
 
+  it('uses paplay on Linux, with its volume scale', () => {
+    expect(playCommand('linux', '/usr/share/sounds/freedesktop/stereo/bell.oga', 0.5)).toEqual({ command: 'paplay', args: ['--volume=32768', '/usr/share/sounds/freedesktop/stereo/bell.oga'] });
+  });
+
   it('has no player elsewhere', () => {
-    expect(playCommand('linux', '/x.wav', 1)).toBeNull();
+    expect(playCommand('freebsd', '/x.wav', 1)).toBeNull();
   });
 });

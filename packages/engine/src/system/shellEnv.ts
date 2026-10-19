@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { userShell } from './shell.ts';
+import { defaultPosixShell, userShell } from './shell.ts';
 
 export interface ShellEnv {
   shell: string;
@@ -54,7 +54,7 @@ export function resolveShellEnv(timeoutMs = 5000): Promise<ShellEnv> {
   const started = performance.now();
   // Read now: the engine points process.env.CLAUDE_CONFIG_DIR at a profile's folder while it reads transcripts.
   const base = processEnv();
-  const shell = process.platform === 'win32' ? userShell(base).file : process.env.SHELL || '/bin/zsh';
+  const shell = process.platform === 'win32' ? userShell(base).file : process.env.SHELL || defaultPosixShell();
   const fallback = (): ShellEnv => ({
     shell,
     env: base,

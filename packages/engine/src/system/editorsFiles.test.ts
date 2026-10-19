@@ -56,6 +56,13 @@ describe('openCommand', () => {
     const wt = win('windows-terminal', 'C:\\repo;x\\a.ts', false, undefined, undefined, { PATH: 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps' });
     expect(wt).toEqual({ command: 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe', args: ['-d', 'C:\\repo\\;x'], window: true });
   });
+  it('on Linux, shows a file\'s folder in the file manager and opens terminals by their CLI', () => {
+    const linux = (editorId: string, path: string, isDirectory: boolean) => openCommand(editorId, path, undefined, { PATH: '/usr/bin' }, isDirectory, undefined, 'linux', installed('/usr/bin/kitty', '/usr/bin/ghostty'));
+    expect(linux('finder', '/repo/src/a.ts', false)).toEqual({ command: 'xdg-open', args: ['/repo/src'] });
+    expect(linux('finder', '/repo', true)).toEqual({ command: 'xdg-open', args: ['/repo'] });
+    expect(linux('kitty', '/repo/src/a.ts', false)).toEqual({ command: '/usr/bin/kitty', args: ['--directory', '/repo/src'] });
+    expect(linux('ghostty', '/repo', true)).toEqual({ command: '/usr/bin/ghostty', args: ['--working-directory=/repo'] });
+  });
 });
 
 describe('spawnOptions', () => {
@@ -67,6 +74,17 @@ describe('spawnOptions', () => {
 });
 
 describe('detectEditors', () => {
+  it('on Linux, offers Files when xdg-open is there, and what has a CLI', () => {
+    const exists = (path: string) => ['/usr/bin/xdg-open', '/usr/bin/code', '/usr/bin/konsole', '/usr/bin/ghostty'].includes(path);
+    expect(detectEditors({ PATH: '/usr/bin' }, '/home/me', 'linux', exists)).toEqual([
+      { id: 'vscode', name: 'VS Code', kind: 'editor' },
+      { id: 'finder', name: 'Files', kind: 'finder' },
+      { id: 'ghostty', name: 'Ghostty', kind: 'terminal' },
+      { id: 'konsole', name: 'Konsole', kind: 'terminal' },
+    ]);
+    expect(detectEditors({ PATH: '/usr/bin' }, '/home/me', 'linux', () => false)).toEqual([]);
+  });
+
   it('on Windows, offers File Explorer and what has a CLI, also where installers put one off PATH', () => {
     const env = { PATH: 'C:\\Windows', PATHEXT: '.EXE;.CMD', LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local', ProgramFiles: 'C:\\Program Files' };
     const exists = (path: string) => ['C:\\Users\\me\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd', 'C:\\Program Files\\Sublime Text\\subl.exe'].includes(path);

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working on Switchboard, a macOS desktop app (that runs on Windows too, see [docs/windows-support.md](docs/windows-support.md)) for managing Claude Code sessions. People should start with [README.md](README.md); the design and roadmap are in [PLAN.md](PLAN.md).
+Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working on Switchboard, a macOS desktop app (that runs on Windows and Linux too, see [docs/windows-support.md](docs/windows-support.md) and [Building: Linux](docs/building-and-signing.md#linux)) for managing Claude Code sessions. People should start with [README.md](README.md); the design and roadmap are in [PLAN.md](PLAN.md).
 
 ## Architecture
 
@@ -40,7 +40,7 @@ npm run website:dev  # the website and docs with hot reload
 npm run website:build          # build the website; fails on a broken internal link
 npm run website:screenshots    # retake the website's screenshots in a made-up demo home folder
 npm run chaos -- --phase repro # chaos testing in a sandbox (macOS; docs/chaos-testing.md)
-npm run dist         # package the app for this OS: Switchboard.app and a .dmg, or the Windows installer
+npm run dist         # package the app for this OS: Switchboard.app and a .dmg, the Windows installer, or the Linux AppImage, .deb and .rpm
 ```
 
 Run `npm run check` after every change, and `npm run smoke` after UI or engine changes. Both must pass before you report work as done.
@@ -51,12 +51,14 @@ Run `npm run check` after every change, and `npm run smoke` after UI or engine c
 - **Comments** explain why, in plain sentences, at the density of the surrounding code. JSDoc on exported functions and on non-obvious fields.
 - **Testable logic lives in pure modules.** Unit tests must not import modules that touch `window` or `localStorage` at load time; put pure helpers in their own file (see `toolSummary.ts`, `agentRuns.ts`, `lib/fuzzy.ts`, `lib/unifiedDiff.ts`). Tests sit next to the code (`*.test.ts`).
 - **Engine tests** use real temporary directories, real git repositories and a real SQLite file, not mocks. The SDK is injected (`SdkRuntime`), so host tests fake Claude Code.
-- **macOS and Windows.** Code that differs per platform goes through one helper for each question, never a path or key written for macOS:
+- **macOS, Windows and Linux.** Code that differs per platform goes through one helper for each question, never a path or key written for macOS:
   - paths: `isAbsolutePath`, `isSameOrInside`, `pathInside`, `joinPath` (`packages/protocol/src/paths.ts`) and `basename` (`apps/ui/src/lib/format.ts`), never `split('/')` or `startsWith('/')`; the zod `AbsolutePath` takes only this platform's form;
   - the shell: `userShell()` (`packages/engine/src/system/shell.ts`), for the file, its arguments, `quote` and `sequence`;
   - starting a `.cmd`: `viaCmd()` (`system/windowsCommand.ts`);
   - keys: `mod` in the registry, `modKey(event)` in handlers;
   - wording: `fileManagerName()` and `trashName()` (`apps/ui/src/lib/platform.ts`).
+
+  Linux takes the POSIX side of each (paths, `$SHELL`, the Ctrl keys of Windows); where macOS calls an app by its bundle (`open -a`), Linux uses a command on `PATH` or `xdg-open`.
 
   Pure helpers take the platform as a parameter, so the macOS tests run on Windows and the other way round.
 - **Schema changes** go through a new migration appended to `packages/engine/src/db/migrations.ts`. The cache is derived from `~/.claude` and may be dropped and rebuilt; `owned_sessions`, `session_flags`, `project_settings` and `project_actions` hold user choices and must survive.
@@ -209,7 +211,7 @@ Releases are built by `.github/workflows/release.yml`, which runs when a release
 
 **Beta.** Lighter, for testing what comes next between releases: publish a GitHub *pre-release* tagged `vX.Y.Z-beta.N` on `dev` (only when the user asks), where `X.Y.Z` is the next release, never one already out (the workflow checks). Leave `## [Unreleased]` and `apps/desktop/package.json` as they are; the version comes from the tag and the notes from Unreleased. Screenshots and the docs checklist wait for the release. Only apps on the Beta channel are offered it (see [docs/building-and-signing.md](docs/building-and-signing.md#channels-and-pre-releases)).
 
-The workflow builds for macOS and Windows side by side, with the version from the tag: the Mac job signs and notarises the app and checks Gatekeeper accepts it; the Windows job builds the installer, signs it (Azure Trusted Signing through a secretless OpenID Connect login in the `windows-signing` environment, or a `.pfx`) and checks the signatures and their publisher. Only when both pass does the publish job attach all the files to the release, the update feeds last, so a release never has one platform without the other. It never attaches an unsigned build. Run by hand, the workflow is a dry run: both builds are signed and kept as workflow artifacts, and nothing is published. For a Stable release it then pushes the stamped cask (`homebrew/switchboard.rb`) to `estruyf/homebrew-tap`; edit the cask here, never in the tap (see `docs/homebrew.md`). `npm run dist:notarized` is for checking a signed build locally.
+The workflow builds for macOS, Windows and Linux side by side, with the version from the tag: the Mac job signs and notarises the app and checks Gatekeeper accepts it; the Windows job builds the installer, signs it (Azure Trusted Signing through a secretless OpenID Connect login in the `windows-signing` environment, or a `.pfx`) and checks the signatures and their publisher; the Linux jobs (x64 and Arm64 runners) build the AppImage, `.deb` and `.rpm`, which aren't signed. Only when all pass does the publish job attach all the files to the release, the update feeds last, so a release never has one platform without the others. It never attaches an unsigned macOS or Windows build. Run by hand, the workflow is a dry run: every build is made (macOS and Windows signed) and kept as workflow artifacts, and nothing is published. For a Stable release it then pushes the stamped cask (`homebrew/switchboard.rb`) to `estruyf/homebrew-tap`; edit the cask here, never in the tap (see `docs/homebrew.md`). `npm run dist:notarized` is for checking a signed build locally.
 
 The VS Code companion is released separately by `.github/workflows/release-vscode.yml`, to the Visual Studio Marketplace and Open VSX: a GitHub release tagged `vscode-vX.Y.Z` (which `release.yml` skips), a commit on `main` whose message has both `#release` and `#vscode`, or a manual run. Bump `version` in `apps/vscode-extension/package.json` and add a section to `apps/vscode-extension/CHANGELOG.md` first; only release when the user asks. See [docs/vscode-companion.md](docs/vscode-companion.md#releasing-the-extension).
 
