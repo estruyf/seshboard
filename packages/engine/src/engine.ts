@@ -1784,6 +1784,7 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'session.taskOutput': async ({ outputFile }) => readTaskOutput(outputFile),
+    'session.savedSettings': ({ sessionId }) => hosts.savedSettings(sessionId),
     'session.setPermissionMode': async ({ sessionId, mode }) => {
       await hosts.setPermissionMode(sessionId, mode);
       return {};

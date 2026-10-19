@@ -1192,6 +1192,21 @@ describe('HostManager', () => {
     second.manager.closeAll();
   });
 
+  it('saves the model, effort and mode of a session that is not running, and resumes with them', async () => {
+    const t = setup({ cwds: { old: '/w' } });
+    await t.manager.setModel('old', 'sonnet');
+    await t.manager.setEffort('old', 'high');
+    await t.manager.setPermissionMode('old', 'acceptEdits');
+    await expect(t.manager.setPermissionMode('old', 'bypassPermissions')).rejects.toMatchObject({ code: 'INVALID' });
+    expect(t.manager.savedSettings('old')).toEqual({ model: 'sonnet', effort: 'high', permissionMode: 'acceptEdits' });
+    expect(t.queries).toHaveLength(0);
+
+    await t.manager.send({ sessionId: 'old', text: 'hello', attachments: [], fork: false });
+    await until(() => t.queries.length === 1);
+    expect(t.queries[0]!.options).toMatchObject({ model: 'sonnet', effort: 'high', permissionMode: 'acceptEdits' });
+    t.manager.closeAll();
+  });
+
   it('passes on the model list Claude Code reports', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });

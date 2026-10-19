@@ -67,7 +67,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
-import { SessionControls } from '../session/StatusBar.tsx';
+import { SavedSessionControls, SessionControls } from '../session/StatusBar.tsx';
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { SessionCost } from '../usage/SessionCost.tsx';
@@ -1816,6 +1816,19 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   controls={
                     activeHost ? (
                       <SessionControls host={activeHost} />
+                    ) : !restart && !registryLive ? (
+                      // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
+                      <SavedSessionControls
+                        sessionId={sessionId}
+                        profileId={profileId}
+                        note={
+                          host?.state === 'error' && (
+                            <span className="min-w-0 shrink truncate px-1.5 text-meta text-error" data-tooltip={host.error ?? undefined} data-session-elsewhere>
+                              Last run failed: {host.error}
+                            </span>
+                          )
+                        }
+                      />
                     ) : (
                       <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-tooltip={host?.state === 'error' ? (host.error ?? undefined) : undefined} data-session-elsewhere>
                         {host?.state === 'error' ? (

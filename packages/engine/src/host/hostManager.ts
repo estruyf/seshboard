@@ -413,12 +413,25 @@ export class HostManager {
     return this.require(sessionId).stopTask(taskId);
   }
 
-  setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
-    return this.require(sessionId).setPermissionMode(mode);
+  /**
+   * What a session resumes with, for the chips of a session that isn't running here. Setting the model, effort or
+   * mode while it isn't running only saves it: the next message resumes the session that way.
+   */
+  savedSettings(sessionId: string): { model: string | null; effort: Effort | null; permissionMode: PermissionMode } {
+    const saved = this.settings.get(sessionId);
+    return { model: saved?.model ?? null, effort: saved?.effort ?? null, permissionMode: this.lastMode.get(sessionId) ?? saved?.permissionMode ?? 'default' };
+  }
+
+  async setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
+    if (this.running(sessionId)) return this.require(sessionId).setPermissionMode(mode);
+    // Bypass needs an extra flag at startup, so a resume never starts in it.
+    if (mode === 'bypassPermissions') throw new RpcError('INVALID', 'Bypass permissions can only be turned on while the session runs.');
+    this.lastMode.set(sessionId, mode);
+    this.settings.set(sessionId, { permissionMode: mode });
   }
 
   async setEffort(sessionId: string, effort: Effort | null): Promise<void> {
-    await this.require(sessionId).setEffort(effort);
+    if (this.running(sessionId)) await this.require(sessionId).setEffort(effort);
     this.settings.set(sessionId, { effort });
   }
 
@@ -458,8 +471,8 @@ export class HostManager {
   async setModel(sessionId: string, model: string | null): Promise<void> {
     // Changed while Auto was still choosing: your model stays, and Auto's pick won't replace it.
     this.choosing.delete(sessionId);
-    const host = this.require(sessionId);
-    await host.setModel(model);
+    const host = this.running(sessionId);
+    await host?.setModel(model);
     // Once you pick a model yourself, the session is no longer on Auto's pick: its chip shows the plain model.
     const pick = this.autoPick(sessionId);
     const left = pick && !pick.left ? { ...pick, left: true } : null;
@@ -467,7 +480,7 @@ export class HostManager {
     if (!left) return;
     this.picks.set(sessionId, left);
     // The host already reported the new model, with the pick it had then: report it again so the chip drops "Auto".
-    this.deps.onInfo(this.withPick(host.info));
+    if (host) this.deps.onInfo(this.withPick(host.info));
   }
 
   /** What Auto picked for a session (null: it didn't), also when it isn't running. */

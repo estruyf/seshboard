@@ -455,6 +455,11 @@ export const contract = {
       params: z.object({ sessionId: SessionId, messageUuid: z.string(), dryRun: z.boolean().default(false) }),
       result: RewindResult,
     },
+    /** The model, effort and permission mode a session resumes with (the set calls only save them while it isn't running). */
+    'session.savedSettings': {
+      params: z.object({ sessionId: SessionId }),
+      result: z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode }),
+    },
     'session.setPermissionMode': { params: z.object({ sessionId: SessionId, mode: PermissionMode }), result: z.object({}) },
     'session.setModel': { params: z.object({ sessionId: SessionId, model: z.string().max(200).nullable() }), result: z.object({}) },
     /** Changes how hard Claude thinks, for this session only (null: back to the default). */
