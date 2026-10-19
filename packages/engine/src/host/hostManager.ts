@@ -20,7 +20,7 @@ import {
   type SlashCommand,
   type StreamDelta,
   type UsageLimitHit,
-  type WorktreeRequest,
+  type ClaudeWorktreeRequest,
   type ModLog,
   type ModPromptAnswer,
   type ModPromptAsk,
@@ -156,7 +156,7 @@ export interface CreateParams {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Effort | null;
-  worktree: WorktreeRequest | null;
+  worktree: ClaudeWorktreeRequest | null;
   /**
    * Runs after Claude Code has started (and created the worktree) but before
    * the first message, e.g. setup actions. Failures are logged; the message still goes.

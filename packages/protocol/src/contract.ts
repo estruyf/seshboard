@@ -54,7 +54,8 @@ import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
-import { GithubIssue, GithubPullRequest, PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './savedPromptSchema.ts';
+import { PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './savedPromptSchema.ts';
+import { GithubIssueDetail, GithubOrigin, GithubPrDetail, GithubReason, GithubSearchResult } from './github.ts';
 import { CompanionTarget } from './companion.ts';
 import { DeviceName, RemoteSettings, RemoteStatus } from './remote.ts';
 import { ComputerEvent, ComputerMethodSchema, ComputersStatus } from './computers.ts';
@@ -361,6 +362,16 @@ export const contract = {
         profileId: ProfileId.nullable().default(null),
         /** Check out this branch in `cwd` first (not with a worktree). Fails when git refuses, e.g. over uncommitted changes. */
         checkoutBranch: z.string().min(1).max(250).nullable().default(null),
+        /**
+         * Check out this pull request in `cwd` first (`gh pr checkout`; not with a worktree or a branch). DIRTY when the
+         * folder has changes ("3 changed files. Commit or stash them first."), GH_FAILED with gh's reason.
+         */
+        checkoutPullRequest: z.object({ number: z.number().int().positive(), repo: GithubOrigin.shape.repo }).optional(),
+        /**
+         * The issue or pull request New session was filled in from, kept with the session (`github.origin`). In a
+         * session from a fork's pull request Switchboard can't push to (`readOnly`), push and Create pull request are off.
+         */
+        github: GithubOrigin.optional(),
       }),
       result: z.object({ sessionId: z.string() }),
     },
@@ -612,15 +623,34 @@ export const contract = {
     'savedPrompts.move': { params: z.object({ id: SavedPromptId, from: PromptScope, to: PromptScope }), result: z.object({ prompt: SavedPrompt }) },
     /** A prompt was sent: counts it, for ordering. Shared prompts' counts stay in the database. */
     'savedPrompts.used': { params: z.object({ id: SavedPromptId, scope: PromptScope }), result: z.object({}) },
-    /** Open pull requests of the project, for a `pr` blank (cached for a minute). Empty with a `reason` without gh or a GitHub remote. */
-    'github.pullRequests': {
+    // --- GitHub issues and pull requests (through gh, read-only) --------------------------------------
+    /** Whether the `#` list works in a project: `no-gh`, `not-signed-in`, `not-github` or `ok`. Checked once a minute. */
+    'github.status': {
       params: z.object({ root: AbsolutePath }),
-      result: z.object({ pullRequests: z.array(GithubPullRequest), repo: z.string().nullable(), reason: z.string().nullable() }),
+      result: z.object({ available: z.boolean(), reason: z.enum(['ok', 'no-gh', 'not-signed-in', 'not-github']), repo: z.string().nullable() }),
     },
-    /** An issue from a link, `#123` or `123`, for an `issue` blank (cached for a minute). Null with a `reason` when it can't be found. */
+    /**
+     * Open issues and pull requests of the project's repository, at most 10 of each, for the `#` list and saved prompts'
+     * blanks (cached per project and query for a minute; `refresh` asks gh again). An empty query lists the most
+     * recently updated; a number or `#123` puts that item first, open or closed; a pasted link finds that item, in any
+     * repository. Never fails: without gh, a sign-in or a GitHub remote the lists are empty with a `reason`, and a
+     * rate limit or a network error keeps the last lists (`stale`).
+     */
+    'github.search': {
+      params: z.object({ root: AbsolutePath, query: z.string().max(500).default(''), refresh: z.boolean().default(false) }),
+      result: GithubSearchResult,
+    },
+    /** An issue with its text, from a link, `#123` or `123` (cached for a minute). Null with a reason when it can't be read. */
     'github.issue': {
       params: z.object({ root: AbsolutePath, ref: z.string().trim().min(1).max(500) }),
-      result: z.object({ issue: GithubIssue.nullable(), reason: z.string().nullable() }),
+      result: z.object({ issue: GithubIssueDetail.nullable(), reason: GithubReason, message: z.string().nullable() }),
+    },
+    /** A pull request with its text, branches, whether you can push to it and its unresolved review comments. */
+    /** The issue or pull request a session was started from (New session from it); null for any other session. */
+    'github.origin': { params: z.object({ sessionId: SessionId }), result: z.object({ origin: GithubOrigin.nullable() }) },
+    'github.pr': {
+      params: z.object({ root: AbsolutePath, ref: z.string().trim().min(1).max(500) }),
+      result: z.object({ pr: GithubPrDetail.nullable(), reason: GithubReason, message: z.string().nullable() }),
     },
 
     /**

@@ -4,8 +4,9 @@ import { useMods } from '../../state/modsStore.ts';
 import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
 import { replaceableOf } from '../mods/modReplace.ts';
 import { memo, useId, useMemo, useState, type ReactNode } from 'react';
-import { isAbsolutePath, parseBriefs } from '@switchboard/protocol/client';
+import { isAbsolutePath, parseBriefs, parseGithubBlocks } from '@switchboard/protocol/client';
 import { LinkedSessions } from './LinkedSessions.tsx';
+import { GithubAttached } from './GithubAttached.tsx';
 import { fileLinkChipLabel } from './fileLinkAction.ts';
 import { useFileLinkActions } from './useFileLinkActions.tsx';
 import { DiffView } from './DiffView.tsx';
@@ -243,8 +244,13 @@ function ToolOrMemory({ item, cwd, sessionId }: { item: ToolItem; cwd: string | 
 function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'user' }>; sessionId: string }) {
   const device = useRemote((s) => s.sentFrom.get(messageUuid(item.key)) ?? null);
   const sent = item.at !== null ? sentLine(item.at, device) : undefined;
-  // Linked sessions' briefs show as rows under what you typed, not as code blocks in it.
-  const { text, briefs } = useMemo(() => (item.subagent ? { text: item.text, briefs: [] } : parseBriefs(item.text)), [item.text, item.subagent]);
+  // Linked sessions' briefs and attached issues show as rows under what you typed, not as code blocks in it.
+  const { text, briefs, issues } = useMemo(() => {
+    if (item.subagent) return { text: item.text, briefs: [], issues: [] };
+    const github = parseGithubBlocks(item.text);
+    const parsed = parseBriefs(github.text);
+    return { text: parsed.text, briefs: parsed.briefs, issues: github.blocks };
+  }, [item.text, item.subagent]);
   return (
     // Your prompt sits on the right as a card, so the conversation reads like a chat.
     <div className="flex justify-end">
@@ -273,6 +279,7 @@ function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'u
           </ClampedPrompt>
         )}
         <LinkedSessions briefs={briefs} />
+        <GithubAttached blocks={issues} at={item.at} divided={briefs.length === 0} />
       </div>
     </div>
   );

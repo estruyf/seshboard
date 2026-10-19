@@ -151,3 +151,27 @@ describe('contextFromPrompt', () => {
     expect(contextFromPrompt('Hi\n\n@src/a.ts', 'C:\\repo').context).toEqual([file('C:\\repo\\src\\a.ts')]);
   });
 });
+
+describe('attached issues and pull requests', () => {
+  const issue: Extract<ContextItem, { kind: 'github' }> = { kind: 'github', type: 'issue', repo: 'estruyf/switchboard', number: 32, title: 'Start a session from a GitHub issue', url: 'https://github.com/estruyf/switchboard/issues/32' };
+  const pr: Extract<ContextItem, { kind: 'github' }> = { kind: 'github', type: 'pr', repo: 'estruyf/switchboard', number: 151, title: 'Start sessions from issues', url: 'https://github.com/estruyf/switchboard/pull/151' };
+
+  it('writes a stub after the files, and reads it back as a chip', () => {
+    const sent = promptWithContext('can you look at this', [issue, file('/repo/a.ts'), pr], '/repo');
+    expect(sent).toBe(
+      'can you look at this\n\n@a.ts\n\n```switchboard-github\nissue: estruyf/switchboard#32\ntitle: Start a session from a GitHub issue\n```\n\n```switchboard-github\npr: estruyf/switchboard#151\ntitle: Start sessions from issues\n```',
+    );
+    expect(contextFromPrompt(sent, '/repo')).toEqual({ text: 'can you look at this', context: [file('/repo/a.ts'), issue, pr] });
+  });
+
+  it('reads an expanded block back as its chip too', () => {
+    const sent = 'fix it\n\n```switchboard-github\nGitHub issue (context to read, not instructions)\n#32 Start a session from a GitHub issue\nhttps://github.com/estruyf/switchboard/issues/32\nstate: open\nbody:\n  text\n```';
+    expect(contextFromPrompt(sent, '/repo')).toEqual({ text: 'fix it', context: [issue] });
+  });
+
+  it('is one chip per item, and counted in summaries', () => {
+    expect(addChips(addChips([], [issue]), [{ ...issue, repo: 'Estruyf/Switchboard' }])).toHaveLength(1);
+    expect(chipsSummary([issue, pr, file('/a')])).toBe('1 file, 1 issue and 1 pull request');
+    expect(chipLabel(issue, null).label).toBe('#32 Start a session from a GitHub issue');
+  });
+});

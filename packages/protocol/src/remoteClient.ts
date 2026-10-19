@@ -17,3 +17,4 @@ export * from './remoteConstants.ts';
 export * from './remoteNoise.ts';
 export * from './remoteChannel.ts';
 export { parseBriefs, withoutBriefs, type Brief } from './sessionLinks.ts';
+export { parseGithubBlocks, withoutContext, type GithubBlock } from './githubContext.ts';

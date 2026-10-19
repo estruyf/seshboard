@@ -57,7 +57,8 @@ function commitFile(cwd: string, path: string, content: string, message: string,
 /**
  * The tour's gh (SWITCHBOARD_GH): signed in, unless the file `.fake-gh-signed-out` is in the demo home, and nothing
  * else works, so pull request lists stay empty and nothing ever reaches GitHub. While `.fake-gh-checks` is there (the
- * checks it holds), feat/dark-mode has pull request #42 with those checks.
+ * checks it holds), feat/dark-mode has pull request #42 with those checks. The # list's issues and pull requests of
+ * acme/acme-store come from the smoke test's fake (tests/fixtures/fake-gh.cjs), which refuses anything else.
  */
 function fakeGh(home: string): string {
   const path = join(home, '.local', 'bin', 'fake-gh');
@@ -77,8 +78,7 @@ function fakeGh(home: string): string {
       `  if [ "$1 $2" = "pr list" ]; then echo '${pr}'; exit 0; fi`,
       `  if [ "$1 $2" = "pr checks" ]; then cat '${checks}'; exit 1; fi`,
       'fi',
-      `echo "the screenshot tour's gh never reaches GitHub" >&2`,
-      'exit 1',
+      `FAKE_GH_REPOS=acme/acme-store FAKE_GH_SIGNED_OUT='${signedOut}' exec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(import.meta.dirname, '..', 'tests', 'fixtures', 'fake-gh.cjs'))} "$@"`,
       '',
     ].join('\n'),
   );
@@ -982,6 +982,54 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'github-list',
+    async take(t) {
+      const restore = githubOrigin(t.world);
+      try {
+        await typeHashInHero(t);
+        await t.shot('github-list', { keepFocus: true });
+        await t.escape();
+        await t.page.locator('[data-current-session] [data-composer]').first().fill('');
+      } finally {
+        restore();
+      }
+    },
+  },
+  {
+    name: 'github-new-session',
+    async take(t) {
+      const restore = githubOrigin(t.world);
+      try {
+        await typeHashInHero(t);
+        // ⌥↩ on the first issue: New session, filled in from it. Nothing is started.
+        await t.press('Alt+Enter');
+        await t.need('[data-new-session-view] [data-github-chip="issue:57"]', 'New session was not filled in from #57', 15_000);
+        await t.need('[data-new-session-view] [data-github-chip="issue:57"] [data-github-label], [data-github-start-note]', 'no note under the box');
+        await t.until(`document.querySelector('[data-new-session-view] [data-github-chip="issue:57"]')?.innerText.includes('comments')`, 'the chip did not read its comments');
+        await t.shot('github-new-session');
+        await t.page.evaluate(() => document.querySelectorAll<HTMLElement>('[data-new-session-view] [data-context-chip-remove]').forEach((b) => b.click()));
+        await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+        // ⌥↩ left "can you look at " in the hero's box: empty it, or it shows as an unsent draft in later pictures.
+        await t.openSession(HERO);
+        await t.page.locator('[data-current-session] [data-composer]').first().fill('');
+      } finally {
+        restore();
+      }
+    },
+  },
+  {
+    name: 'github-attached',
+    async take(t) {
+      const id = await t.openSession('Write a getting started guide');
+      const row = `[data-current-session="${id}"] [data-github-attached="issue:87"]`;
+      await t.need(row, 'the message with an attached issue has no Attached row');
+      await t.click(`${row} [data-what-claude-got]`);
+      await t.need(`[data-current-session="${id}"] [data-github-got]`, 'What Claude got did not open');
+      await t.shot('github-attached');
+      await t.click(`${row} [data-what-claude-got]`);
+    },
+  },
+  {
     name: 'new-session-options',
     async take(t) {
       await openNewSession(t, 'acme-store');
@@ -1623,6 +1671,17 @@ async function openChanges(t: Tour): Promise<void> {
     await t.click('[data-changed-file="src/lib/theme.ts"] [data-file-toggle]');
   }
   await t.need('[data-file-diff] div', 'the diff did not open');
+}
+
+/** The hero session's message box with "can you look at #" typed, and the # list open on acme-store's issues and pull requests. */
+async function typeHashInHero(t: Tour): Promise<void> {
+  await t.openSession(HERO);
+  const box = t.page.locator('[data-current-session] [data-composer]').first();
+  await box.fill('');
+  await box.focus();
+  await t.page.keyboard.type('can you look at #');
+  await t.need('[data-current-session] [data-github-list] [data-github-option="pr:61"]', 'the # list did not list acme-store\'s pull requests', 15_000);
+  await t.settle();
 }
 
 async function openNewSession(t: Tour, project: string): Promise<void> {

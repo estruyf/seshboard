@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ChevronRight, Link2 } from 'lucide-react';
-import { parseBriefs, withoutBriefs, type RemoteMessage } from '@switchboard/protocol/remote-client';
+import { ChevronRight, CircleDot, GitPullRequest, Link2 } from 'lucide-react';
+import { parseBriefs, parseGithubBlocks, withoutContext, type RemoteMessage } from '@switchboard/protocol/remote-client';
 import { runSummary, type TranscriptItem } from '../lib/steps.ts';
 import { editLines, toolSummary, type resultsByCall } from '../lib/transcript.ts';
 import { Markdown } from './Markdown.tsx';
@@ -33,9 +33,10 @@ export function ItemView({ item, results, live }: { item: TranscriptItem; result
 
 function UserMessage({ message }: { message: RemoteMessage }) {
   const sent = message.blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
-  // A linked session's brief is one line here (session linking); what you typed shows as it is.
-  const text = withoutBriefs(sent);
-  const linked = parseBriefs(sent).briefs;
+  // A linked session's brief and an attached issue are one line each here; what you typed shows as it is.
+  const text = withoutContext(sent);
+  const attached = parseGithubBlocks(sent);
+  const linked = parseBriefs(attached.text).briefs;
   return (
     <div className="ml-8 rounded-xl border border-border bg-card px-3 py-2 sm:ml-16">
       {text && <p className="text-body break-words whitespace-pre-wrap">{text}</p>}
@@ -43,6 +44,14 @@ function UserMessage({ message }: { message: RemoteMessage }) {
         <p key={brief.sessionId} className="mt-1 flex items-center gap-1.5 border-t border-border pt-1 text-meta text-muted" data-linked-session={brief.sessionId}>
           <Link2 aria-hidden className="size-3 shrink-0 text-accent-ink" />
           <span className="min-w-0 truncate">Linked: {brief.label}</span>
+        </p>
+      ))}
+      {attached.blocks.map((block) => (
+        <p key={`${block.type}:${block.repo}#${block.number}`} className="mt-1 flex items-center gap-1.5 border-t border-border pt-1 text-meta text-muted" data-github-attached={`${block.type}:${block.number}`}>
+          {block.type === 'pr' ? <GitPullRequest aria-hidden className="size-3 shrink-0 text-ok" /> : <CircleDot aria-hidden className="size-3 shrink-0 text-ok" />}
+          <span className="min-w-0 truncate">
+            Attached: #{block.number} {block.title}
+          </span>
         </p>
       ))}
       {message.blocks.some((b) => b.type === 'image') && <p className="text-meta text-faint">Image (on your computer)</p>}

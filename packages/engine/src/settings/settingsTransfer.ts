@@ -84,6 +84,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   contextWarning: 'Large context',
   showMods: 'Show mods',
   hiddenMods: 'Mods with their UI hidden',
+  githubHintSeen: 'Projects that showed the GitHub CLI hint',
   sidebarSort: 'Sidebar order',
   githubStar: 'Star on GitHub',
   notifications: 'Notifications',

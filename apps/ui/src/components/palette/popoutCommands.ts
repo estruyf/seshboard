@@ -28,6 +28,9 @@ const PLANS: Record<string, Plan> = {
   'quick-question': newSession((ctx) => ctx.questionsDir),
   'new-session-clone': 'hide',
   'new-session-worktree': 'hide',
+  // The picker is a dialog of the main window.
+  'new-session-from-issue': 'hide',
+  'new-session-from-pr': 'hide',
   'queue-add': newSession(() => null),
   'go-to-session': () => ({ kind: 'go-to' }),
   'next-session': navigate('next'),

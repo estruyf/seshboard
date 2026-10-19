@@ -52,6 +52,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - **Clean up branches.** A project's **Branches** tab lists its branches here and on the remote, says which are merged or deleted on the remote, and deletes the ones you tick: the local copy, the one on the remote, or both. See [Branches](#branches).
 - Chat as you would in the terminal. You get streaming replies, `/` commands (your own commands and skills included), `@` file mentions, and images you paste, drop or attach. Drag files anywhere over a session and the message box shows what a drop does: images are attached, other files and folders are added as context.
 - **Context** shows as chips above the message: files you drop, pick from the `@` list, or choose several at once with **Add context** (⌘⇧A, or the paperclip). Remove one with its ×. Files go to Claude as references it reads itself, so a large file stays small. With the [VS Code companion](#vs-code-companion) you can send the lines you have selected in VS Code, problems and terminal output too.
+- **GitHub issues and pull requests:** type `#` in the message box to attach one of the project's open issues or pull requests as a chip. When the message goes to Claude, it gets the title, link, labels and text, and for a pull request its branch and unresolved review comments, marked as context to read, not instructions. Press ⌥↩ on one in the list (or run *New session from issue…* or *New session from pull request…* in the command palette, or open a [link](docs/deep-links.md#from-an-issue-or-pull-request)) to open New session with a worktree named after it and the prompt filled in; nothing runs until you press Start. Switchboard only reads from GitHub. This needs the [GitHub CLI](https://cli.github.com/), signed in once with `gh auth login`; without it you can still paste a link to an issue. See [GitHub issues and pull requests](https://switchboard.struyfconsulting.com/sessions/github-issues/).
 - Approve or deny permission requests, answer Claude's questions and review plans in the conversation. **Why?** on a permission or question card says why Claude needs it and what saying yes does.
 - Follow what Claude does without the noise: each run of tool calls is one line ("Reading src/app.ts…", then "Ran 3 commands and edited 2 files"), and a click shows every step, with diffs, command output, to-do lists and subagent runs.
 - Images Claude reads or you attach are shown in the conversation.
@@ -277,6 +278,8 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⇧↩ | New line |
 | / | Commands and skills (at the start of the message) |
 | @ | Mention a file |
+| # | Attach an issue or pull request (at the start of a word, in a project on GitHub) |
+| ⌥↩ | New session from it (on an issue or pull request in the # list) |
 | ⌘⇧A | Add files as context (Several at once; they show as chips) |
 | ⇥ | Next blank (in a saved prompt; After the last blank, on to the text under the prompt) |
 | ⇧⇥ | Previous blank (in a saved prompt; Backspace in an empty blank takes it out of the prompt) |

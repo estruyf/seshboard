@@ -18,6 +18,8 @@ export type LineRange = z.infer<typeof LineRange>;
  *   problems, terminal output, a long paste into the message box (`paste`), or a failed check's log (`checks`).
  *   `path` and `range` say where it came from, when it came from a file.
  * - `session`: another session, linked with `@`; the engine adds a brief about it when the message goes to Claude.
+ * - `github`: an issue or pull request, attached with `#`; the engine adds its title, link, labels and text (and a pull
+ *   request's branch and unresolved review comments) when the message goes to Claude, as context, not instructions.
  */
 const FileItem = z.object({
   kind: z.literal('file'),
@@ -44,7 +46,18 @@ const SessionItem = z.object({
   label: z.string().trim().min(1).max(80),
 });
 
-export const ContextItem = z.discriminatedUnion('kind', [FileItem, TextItem, SessionItem]);
+/** An issue or pull request on GitHub, attached with `#` (githubContext.ts). */
+const GithubItem = z.object({
+  kind: z.literal('github'),
+  type: z.enum(['issue', 'pr']),
+  number: z.number().int().positive(),
+  /** `owner/name`. */
+  repo: z.string().regex(/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/),
+  title: z.string().max(500),
+  url: z.string().max(500),
+});
+
+export const ContextItem = z.discriminatedUnion('kind', [FileItem, TextItem, SessionItem, GithubItem]);
 export type ContextItem = z.infer<typeof ContextItem>;
 /** A context item as it is sent (defaults may be left out). */
 export type ContextItemInput = z.input<typeof ContextItem>;

@@ -2,6 +2,12 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### Added
+
+- **Attach a GitHub issue or pull request with #** ([#32](https://github.com/estruyf/switchboard/issues/32)). Type # to attach a GitHub issue or pull request to a message. Start a session from an issue or pull request from the # list, the palette or a link. The list shows the project's open issues, then its open pull requests; typing narrows it, and a number or a pasted link finds that one. Claude gets the title, link, labels and text, and for a pull request its branch and unresolved review comments, as context to read, not instructions. A new session from an issue starts in a worktree named after it, with "Fix #32: …" in the box; a pull request is worked on in a new worktree at its latest commit, or in your current checkout. Nothing runs until you press Start, and Switchboard never pushes to a pull request from a fork it can't push back to. It needs the GitHub CLI, signed in.
+
 ## [1.0.0] - 2026-10-19
 
 ### Added

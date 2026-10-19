@@ -1763,6 +1763,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   draftKey={sessionId}
                   savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
                   links={{ sessionId, root: projectRoot }}
+                  github={{ root: options.projectActions ? projectRoot : null }}
                   status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}

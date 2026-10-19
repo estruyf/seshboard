@@ -34,6 +34,8 @@ export { randomWorktreeName } from './worktreeName.ts';
 export { expandHome, isAbsolutePath, isLocalAbsolutePath, isSameOrInside, joinPath, pathInside, separatorOf, trimTrailingSeparators } from './paths.ts';
 export type * from './context.ts';
 export * from './sessionLinks.ts';
+export type * from './github.ts';
+export * from './githubContext.ts';
 export type * from './companion.ts';
 export { CONTINUE_EDITORS, MAX_CONTEXT_ITEMS, type ContinueEditor } from './companionConstants.ts';
 export type * from './memory.ts';

@@ -42,6 +42,8 @@ switchboard://new-session?question=1&prompt=How%20do%20I%20undo%20a%20git%20reba
 | `repo` | A GitHub repository as `owner/name`. Switchboard looks for a checkout of it among your projects, then among the other folders you've used Claude Code in. |
 | `autostart` | `1` (or `true`) starts the session right away. Leave it out (or use `0`) to fill in New session and wait for you. |
 | `question` | `1` (or `true`) makes it a [quick question](/new-session/quick-questions/): no project. `cwd`, `project` and `repo` are then ignored. |
+| `issue` | An issue of the project: its number (`32`, or `%2332` for `#32`) or its link on GitHub. New session opens [filled in from it](/sessions/github-issues/#start-a-session-from-one). Needs `project`, `repo` or `cwd`. |
+| `pr` | A pull request of the project, the same way: `pr=151`, or its link. A link has `issue` or `pr`, not both. |
 
 Every parameter is optional. When a link has more than one of `cwd`, `project` and `repo`, `cwd` wins, then `project`, then `repo`. A link that names no folder doesn't guess: the folder stays empty and the project list opens so you can pick one.
 
@@ -60,6 +62,17 @@ A session started by a link never runs in a mode that skips permission prompts. 
 <Aside type="caution">
 Only use `autostart` in links you write for yourself or your team. Clicking an `autostart` link someone else made starts Claude with their prompt in your project.
 </Aside>
+
+### From an issue or pull request
+
+```text
+switchboard://new-session?project=switchboard&issue=32
+switchboard://new-session?repo=estruyf/switchboard&pr=151
+```
+
+New session opens as **New session from issue…** does: a new worktree named after the issue, its chip above the message box, and "Fix #32: …" in the box (or the link's `prompt`). A banner on top says **Opened from a link with issue #32. Check the prompt, then start.**
+
+These links **never start a session on their own**: anyone can write an issue's text. With `autostart=1` as well, the banner adds **Links with an issue or pull request never start on their own.** An issue from another repository than the project's is refused. See [GitHub issues and pull requests](/sessions/github-issues/).
 
 ## Open a session
 
@@ -154,6 +167,7 @@ Links can come from any web page or chat message, so Switchboard checks each one
 - a `project` that isn't one of your projects;
 - a `repo` that isn't `owner/name`;
 - an `autostart` value other than `1`, `true`, `yes`, `0`, `false` or `no`;
+- an `issue` or `pr` that isn't a number, `#123` or its link on GitHub; both in one link; or one without `project`, `repo` or `cwd`;
 - a session ID that isn't one, or a session that isn't on this computer.
 
 Parameters Switchboard doesn't know are ignored, so a link made for a newer version still opens.
@@ -171,4 +185,4 @@ Links have no settings. What a started session uses comes from the [project's se
 
 ## Related
 
-<Related pages={['new-session/form', 'projects/clone-from-github', 'sessions/saved-prompts', 'projects/settings']} />
+<Related pages={['new-session/form', 'projects/clone-from-github', 'sessions/github-issues', 'sessions/saved-prompts', 'projects/settings']} />

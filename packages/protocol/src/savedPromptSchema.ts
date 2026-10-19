@@ -38,20 +38,3 @@ export const SavedPrompt = z.object({
   lastUsedAt: z.number().nullable(),
 });
 export type SavedPrompt = z.infer<typeof SavedPrompt>;
-
-/** An open pull request, for a `pr` blank. */
-export const GithubPullRequest = z.object({
-  number: z.number().int(),
-  title: z.string(),
-  url: z.string(),
-  draft: z.boolean(),
-  /** "approved", "changes requested", "review required", or null when GitHub says nothing. */
-  review: z.string().nullable(),
-  /** How many reviews it has. */
-  reviews: z.number().int(),
-  branch: z.string(),
-});
-export type GithubPullRequest = z.infer<typeof GithubPullRequest>;
-
-export const GithubIssue = z.object({ number: z.number().int(), title: z.string(), url: z.string() });
-export type GithubIssue = z.infer<typeof GithubIssue>;

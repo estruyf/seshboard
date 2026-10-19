@@ -19,6 +19,7 @@ import {
   Bookmark,
   BookmarkPlus,
   Brain,
+  CircleDot,
   CircleHelp,
   CloudDownload,
   Code,
@@ -163,6 +164,8 @@ export interface PaletteApi {
   renameSession(): void;
   /** New session on this session's project, linked to it (session linking). */
   newLinkedSession(): void;
+  /** New session from an issue or pull request of the project: the # list on its own, then New session filled in. */
+  githubStart(type: 'issue' | 'pr', root: string): void;
   /** Opens the session's catch-up from its strip (or for a read session). */
   showCatchUp(): void;
   /** Makes the catch-up for the session's last finished turn now, and shows it. */
@@ -323,6 +326,9 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: Lucid
   { id: 'about', label: 'About', icon: Info },
 ];
 
+/** The project New session from an issue or pull request works on: New session's folder there, else the one on screen. */
+const githubProject = (ctx: PaletteContext): string | null => (ctx.connected ? (ctx.newSession?.root ?? ctx.currentProject?.root ?? null) : null);
+
 /** Every command that doesn't depend on the project's actions. */
 export const COMMANDS: PaletteCommand[] = [
   // Always
@@ -356,6 +362,24 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'clone git github url repository repo download start',
     when: (ctx) => ctx.cloneEnabled,
     next: () => ({ kind: 'clone', chip: 'Clone from GitHub' }),
+  },
+  {
+    id: 'new-session-from-issue',
+    title: 'New session from issue…',
+    group: 'general',
+    icon: CircleDot,
+    keywords: 'github issue # fix start worktree bug',
+    when: (ctx) => githubProject(ctx) !== null,
+    run: (api, ctx) => api.githubStart('issue', githubProject(ctx)!),
+  },
+  {
+    id: 'new-session-from-pr',
+    title: 'New session from pull request…',
+    group: 'general',
+    icon: GitPullRequest,
+    keywords: 'github pull request pr # review checkout worktree',
+    when: (ctx) => githubProject(ctx) !== null,
+    run: (api, ctx) => api.githubStart('pr', githubProject(ctx)!),
   },
   {
     id: 'new-session-worktree',

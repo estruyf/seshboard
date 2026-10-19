@@ -462,6 +462,16 @@
       "page": "sessions/linking"
     },
     {
+      "id": "palette:new-session-from-issue",
+      "name": "New session from issue…",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "palette:new-session-from-pr",
+      "name": "New session from pull request…",
+      "page": "sessions/github-issues"
+    },
+    {
       "id": "palette:rename-session",
       "name": "Rename session…",
       "page": "sessions/sidebar"
@@ -800,6 +810,16 @@
       "id": "shortcut:composer.commands",
       "name": "composer.commands",
       "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.github",
+      "name": "composer.github",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "shortcut:composer.github-new-session",
+      "name": "composer.github-new-session",
+      "page": "sessions/github-issues"
     },
     {
       "id": "shortcut:composer.history",
@@ -2870,6 +2890,21 @@
       "id": "feature:new-linked-session",
       "name": "New session linked to this one (session menu)",
       "page": "sessions/linking"
+    },
+    {
+      "id": "feature:github-list",
+      "name": "Attach a GitHub issue or pull request with # in the message box",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "feature:new-session-from-github",
+      "name": "New session from a GitHub issue or pull request, with the worktree and prompt filled in",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "feature:link-issue-pr",
+      "name": "issue and pr parameters in switchboard://new-session links",
+      "page": "links"
     },
     {
       "id": "feature:rename-session",

@@ -328,6 +328,11 @@ export interface Preferences {
   showMods: boolean;
   /** Mods whose UI is hidden here, as `modKey(profileId, name)`; kept while Show mods is off. */
   hiddenMods: string[];
+  /**
+   * Projects (their roots) where the `#` list already showed its one hint about the GitHub CLI: there `#` stays plain
+   * text until gh works.
+   */
+  githubHintSeen: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
   githubStar: GithubStar;
@@ -377,6 +382,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   contextWarning: DEFAULT_CONTEXT_WARNING,
   showMods: true,
   hiddenMods: [],
+  githubHintSeen: [],
   sidebarSort: "recent",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
@@ -554,6 +560,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.showMods === "boolean") out.showMods = raw.showMods;
   if (Array.isArray(raw.hiddenMods))
     out.hiddenMods = [...new Set(raw.hiddenMods.filter((m): m is string => typeof m === "string" && m.length > 0 && m.length <= 400))].slice(0, 500);
+  if (Array.isArray(raw.githubHintSeen))
+    out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
@@ -659,6 +667,12 @@ export type DeepLink =
       autostart: boolean;
       /** A quick question: no project, in the scratch folder the engine keeps (`cwd`, `project` and `repo` are null). */
       question: boolean;
+      /**
+       * New session from this issue or pull request of the project (a number, or a link to it on GitHub): the worktree,
+       * chip and prompt are filled in. Such a link never starts a session, whatever `autostart` says.
+       */
+      issue?: string | null;
+      pr?: string | null;
     }
   | { action: "session"; sessionId: string };
 

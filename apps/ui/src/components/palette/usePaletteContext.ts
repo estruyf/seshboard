@@ -29,6 +29,7 @@ import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { APP_TERMINAL, appTerminalFolder, ownerSession, terminalOwner } from '../terminal/appTerminal.ts';
 import { planGit } from '../git/gitPlan.ts';
+import { useReadOnlyFork } from '../../state/githubOriginStore.ts';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './paletteContext.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -36,7 +37,7 @@ import { localSessionId } from '../../state/remoteSelection.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
-function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
+function useGitState(cwd: string | null, busy: boolean, readOnly: boolean): PaletteGit | null {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [git, setGit] = useState<PaletteGit | null>(null);
@@ -55,7 +56,7 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
     ]).then(
       ([status, changes, github, { pr }, { checks }]) => {
         if (cancelled) return;
-        const plan = planGit(status, busy);
+        const plan = planGit(status, busy, readOnly);
         setGit({
           changed: changes.files.length,
           unstaged: changes.files.filter((file) => !file.staged).length,
@@ -72,7 +73,7 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
     return () => {
       cancelled = true;
     };
-  }, [client, cwd, busy]);
+  }, [client, cwd, busy, readOnly]);
   return git;
 }
 
@@ -151,7 +152,7 @@ export function usePaletteContext(): PaletteContext {
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);
-  const git = useGitState(question ? null : (session?.cwd ?? null), session?.running ?? false);
+  const git = useGitState(question ? null : (session?.cwd ?? null), session?.running ?? false, useReadOnlyFork(id));
   const projectRoot = question ? null : (session?.projectRoot ?? null);
   const { actions } = useProjectActionList(projectRoot);
 
