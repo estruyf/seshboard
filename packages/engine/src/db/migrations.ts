@@ -584,4 +584,30 @@ export const migrations: readonly string[] = [
     created_at INTEGER NOT NULL
   );
   `,
+
+  // v34: Scheduled sessions (#173). A schedule is a user choice like a queued prompt: keep it. `checked_at` is the moment
+  // up to which its runs were dealt with, so runs due while Switchboard was closed are found at the next start.
+  // `schedule_runs` remembers which sessions a schedule started (the repeat icon on their rows); it can't be read back
+  // from a transcript, so keep it too.
+  `
+  CREATE TABLE schedules (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    draft_json    TEXT NOT NULL,
+    rule_json     TEXT NOT NULL,
+    missed        TEXT NOT NULL DEFAULT 'run',
+    paused        INTEGER NOT NULL DEFAULT 0,
+    paused_reason TEXT,
+    last_run_json TEXT,
+    checked_at    INTEGER NOT NULL,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+  );
+  CREATE TABLE schedule_runs (
+    session_id  TEXT PRIMARY KEY,
+    schedule_id TEXT NOT NULL,
+    at          INTEGER NOT NULL
+  );
+  CREATE INDEX schedule_runs_schedule ON schedule_runs (schedule_id);
+  `,
 ];

@@ -32,6 +32,8 @@ const PLANS: Record<string, Plan> = {
   'new-session-from-issue': 'hide',
   'new-session-from-pr': 'hide',
   'queue-add': newSession(() => null),
+  // Schedules: New session (and its dialog) are the main window's.
+  'schedule-add': newSession(() => null),
   'go-to-session': () => ({ kind: 'go-to' }),
   'next-session': navigate('next'),
   'previous-session': navigate('previous'),
@@ -59,6 +61,7 @@ const PLANS: Record<string, Plan> = {
   unsent: 'hide',
   'queue-start-next': 'hide',
   'queue-pick': 'hide',
+  schedules: 'hide',
   'open-in-new-window': 'hide',
 
   // Settings, Usage and project pages: their stores send them to the main window.

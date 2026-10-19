@@ -1,12 +1,13 @@
 import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow, type NativeImage } from 'electron';
 import { resolveSound } from '@switchboard/protocol/bridge';
-import { createRpcClient, promptLabel, type Contract, type LaterItem, type QueueAuto, type QueueStarted, type RpcClient } from '@switchboard/protocol/client';
+import { createRpcClient, promptLabel, type Contract, type LaterItem, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@switchboard/protocol/client';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
 import { CacheReminder, REMIND_BEFORE_MS, type CacheReminderPrefs } from './cacheReminder.ts';
 import type { EngineProcess } from './engineProcess.ts';
 import { queueHint } from './queueHint.ts';
+import { scheduleAlerts } from './scheduleAlerts.ts';
 import type { SoundPlayer } from './sounds.ts';
 import { badgeDescription, badgeDotBitmap } from './taskbarBadge.ts';
 
@@ -31,6 +32,8 @@ export interface NotifierOptions {
   sounds: SoundPlayer;
   /** Smoke tests record events (whether they'd be suppressed, and what they'd do) instead of showing notifications. */
   record?: (event: RecordedAlert) => void;
+  /** Smoke tests record scheduled runs too, to check what a run would be titled (the stubbed run has no session). */
+  recordRuns?: (runs: ScheduleRunEvent[]) => void;
 }
 
 /**
@@ -110,6 +113,11 @@ export class Notifier {
         },
       ]),
     );
+    // Scheduled runs (#173): started, queued, skipped or not started; several missed runs at once give one.
+    client.on('schedules.ran', ({ runs }) => {
+      this.options.recordRuns?.(runs);
+      this.handle(scheduleAlerts(runs));
+    });
     void client.call('later.list', {}).then((queue) => void (this.queue = queue), () => {});
 
     // Seed state silently: only changes from here on deserve a notification.
@@ -177,7 +185,8 @@ export class Notifier {
         // system's own notification sound (Windows plays one) would be a second one.
         const notification = new Notification({ title: event.title, body: hint ? `${event.body}\n${hint}` : event.body, silent: prefs.sounds.enabled });
         // The test has no session to open.
-        notification.on('click', () => (test ? this.options.window()?.show() : this.options.openSession(event.sessionId)));
+        // The test, and a scheduled run that has no session (queued, not started), only bring the window forward.
+        notification.on('click', () => (test || !event.sessionId ? this.options.window()?.show() : this.options.openSession(event.sessionId)));
         notification.on('close', () => this.shown.delete(notification));
         this.shown.add(notification);
         notification.show();

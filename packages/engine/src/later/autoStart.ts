@@ -56,6 +56,11 @@ export class QueueAutoStarter {
   private readonly outcomes = new Map<string, SessionOutcome>();
   /** Armed items and the sessions they waited on while waiting. */
   private readonly armed = new Map<string, Set<string>>();
+  /**
+   * Items queued only because of a limit (a scheduled run at the focus limit or a usage limit): they start when the
+   * slot frees or the limit resets, without a session to wait on. Kept for this run only, like `armed`.
+   */
+  private readonly heldByLimit = new Set<string>();
   /** Items being started, so each starts once. */
   private readonly starting = new Set<string>();
   private focusHeld = new Set<string>();
@@ -77,6 +82,13 @@ export class QueueAutoStarter {
   /** What the windows show: how the sessions items wait on ended, and the items held at the focus limit. */
   auto(): QueueAuto {
     return { outcomes: [...this.outcomes].map(([sessionId, outcome]) => ({ sessionId, outcome })), focusHeld: [...this.focusHeld] };
+  }
+
+  /** Arms an item that waits only for a limit: it starts by itself once nothing holds it (#173's scheduled runs). */
+  armForLimit(itemId: string): void {
+    this.heldByLimit.add(itemId);
+    if (!this.armed.has(itemId)) this.armed.set(itemId, new Set());
+    void this.check();
   }
 
   outcomeOf(sessionId: string): SessionOutcome | null {
@@ -154,10 +166,13 @@ export class QueueAutoStarter {
       live.add(item.id);
       if (!entry.autoStart) {
         this.armed.delete(item.id);
+        this.heldByLimit.delete(item.id);
         continue;
       }
       if (this.starting.has(item.id)) continue;
       if (entry.baseState === 'waiting') {
+        // It waits on a session now: its finish decides, as for any item that starts by itself.
+        this.heldByLimit.delete(item.id);
         const blockers = this.armed.get(item.id) ?? new Set<string>();
         entry.blockers.forEach((id) => blockers.add(id));
         this.armed.set(item.id, blockers);
@@ -166,7 +181,7 @@ export class QueueAutoStarter {
       const blockers = this.armed.get(item.id);
       if (entry.baseState !== 'ready' || !blockers) continue;
       // Nothing it waited on ran (the item above it left the queue without starting): you start it.
-      if (blockers.size === 0) {
+      if (blockers.size === 0 && !this.heldByLimit.has(item.id)) {
         this.armed.delete(item.id);
         continue;
       }
@@ -194,6 +209,7 @@ export class QueueAutoStarter {
       ready.push(entry);
     }
     for (const id of this.armed.keys()) if (!live.has(id)) this.armed.delete(id);
+    for (const id of this.heldByLimit) if (!live.has(id)) this.heldByLimit.delete(id);
 
     const held = new Set<string>();
     for (const entry of ready) {
@@ -217,6 +233,7 @@ export class QueueAutoStarter {
     const { item } = entry;
     this.starting.add(item.id);
     this.armed.delete(item.id);
+    this.heldByLimit.delete(item.id);
     try {
       const sessionId = await this.deps.start(item);
       this.deps.log('info', `Queue: started “${promptLabel(item.prompt)}” by itself as ${sessionId}`);

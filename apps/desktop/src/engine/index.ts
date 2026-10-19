@@ -102,6 +102,17 @@ process.parentPort.on('message', (event) => {
     }
     return;
   }
+  // The computer woke (powerMonitor's resume): scheduled runs due while it slept are dealt with now.
+  if (data?.type === 'wake') {
+    engine.wake();
+    return;
+  }
+  // The smoke run's schedules step: moves the schedules' clock on (with SWITCHBOARD_STUB_QUEUE only).
+  if (data?.type === 'smokeScheduleClock') {
+    const { ms } = data as { ms?: unknown };
+    if (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) engine.advanceScheduleClock(ms);
+    return;
+  }
   // The smoke run's mods step.
   if (data?.type === 'smokeMods') {
     void engine.startModsSmoke();

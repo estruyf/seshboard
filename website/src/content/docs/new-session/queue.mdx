@@ -107,6 +107,10 @@ Closing the windows leaves Switchboard running, so an item still starts after yo
 Switchboard can only tell how a turn ended for sessions it runs. When the session runs in the terminal or in another app, **Start by itself** is off, with the reason in its tooltip: "“Deploy check” runs in the terminal, so Switchboard can't tell when it finishes. Start this one yourself."
 </Aside>
 
+## Runs from a schedule
+
+A [scheduled](/new-session/schedules/) run that comes at the focus limit, or while its profile is at its usage limit, waits in the queue as an item that starts by itself. It starts when a slot frees or the limit resets. Its schedule's row says "Queued" with the reason.
+
 ## Start an item
 
 - Click **Start** on the item, or press <Kbd shortcut="queue.start" /> on it. It starts straight away, through the focus limit.
@@ -134,4 +138,4 @@ The queue has no settings of its own. Starting an item goes through the [focus l
 
 ## Related
 
-<Related pages={['focus-limit', 'sessions/home', 'new-session/form', 'sessions/linking', 'usage']} />
+<Related pages={['focus-limit', 'new-session/schedules', 'sessions/home', 'new-session/form', 'sessions/linking', 'usage']} />

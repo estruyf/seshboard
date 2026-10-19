@@ -261,6 +261,15 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - Sessions Claude Code runs outside Switchboard (the terminal, other apps) show in the registry as busy or idle, but not how a turn ended, so Start by itself is off for them (`autoStartBlock`).
 - Not yet: other computers' sessions are counted by the window's focus count but not the engine's.
 
+### 5.8.2 Scheduled sessions ✅ ([#173](https://github.com/estruyf/switchboard/issues/173))
+
+- The rules are a pure module (`packages/protocol/src/schedules.ts`: `nextRuns`, `describe`, `formatNext`), in local time: a time DST skips runs at the jump, one it repeats runs once, day 31 runs on a shorter month's last day. The zod side is `scheduleSchema.ts`.
+- `schedules` and `schedule_runs` (migration v34) are user choices that survive a rebuild. `checked_at` is the moment up to which a schedule's runs were dealt with, so runs missed while closed are found at the next start.
+- `Scheduler` (`packages/engine/src/schedules/scheduler.ts`) owns one timer, capped at a minute so a clock or time zone change is seen (and logged as a jump), and re-armed after every change and on wake (`powerMonitor` `resume`, forwarded by main). A run is skipped while the last one is busy, queued at the focus or usage limit as an item that starts by itself (`QueueAutoStarter.armForLimit`), and pauses its schedule when the folder is gone; removing a project pauses its schedules. Titles are set with the SDK's rename once the transcript exists.
+- `schedules.*` RPCs, `schedules.changed` and `schedules.ran` (main's notifier, one notification for several missed runs); a **Schedules** section in the settings file (missing folders import paused).
+- UI: Schedule… and Save schedule in Start ▾, `ScheduleDialog`, the Home card and the project section (`components/schedules/`), the repeat icon on rows, *Schedule a session…* and *Schedules…* in the palette. Row text and labels are pure (`state/schedules.ts`).
+- Not yet: starting Switchboard or waking the computer for a run; on Windows the app quits with its last window, so schedules run only while one is open.
+
 ### 5.9 VS Code companion and context tray ([#42](https://github.com/estruyf/switchboard/issues/42))
 
 - **Context tray** ✅: chips above the message box, kept in the drafts store with the draft (`context`), from drops, the `@` list, the Add context picker (⌘⇧A) and the companion. Sending turns them into `@path#L12-40` mentions and fenced text (`promptWithContext`).

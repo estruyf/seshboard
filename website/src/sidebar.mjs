@@ -29,6 +29,7 @@ export const sidebar = [
       'new-session/worktrees',
       'new-session/quick-questions',
       'new-session/queue',
+      'new-session/schedules',
       'sessions/saved-prompts',
       'links',
     ],

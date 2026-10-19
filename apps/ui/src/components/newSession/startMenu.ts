@@ -1,7 +1,7 @@
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 
 /** What New session's Start button (and the palette's prompt step) can do with the prompt. */
-export type StartAction = 'start' | 'queue' | 'start-worktree';
+export type StartAction = 'start' | 'queue' | 'schedule' | 'start-worktree';
 
 export interface StartButtonInput {
   /** Why nothing can go anywhere: connecting, no folder yet. */
@@ -27,6 +27,10 @@ export interface StartButtonInput {
    * menu.
    */
   queueFirst?: boolean;
+  /** Offer Schedule… (New session; the palette's prompt step has no dialog for it). */
+  canSchedule?: boolean;
+  /** A schedule is open (Edit…): Schedule… becomes Save schedule. */
+  editingSchedule?: boolean;
 }
 
 export interface StartMenuItem {
@@ -55,7 +59,7 @@ export interface StartButtonState {
 }
 
 /**
- * The split Start button: the main part starts, the ▾ opens Start session, Add to queue and (in a git
+ * The split Start button: the main part starts, the ▾ opens Start session, Add to queue, Schedule… and (in a git
  * repository on the current checkout) Start in a new worktree. A reason that stops everything disables
  * the whole button; one that only stops starting leaves the ▾ for Add to queue.
  */
@@ -69,6 +73,8 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
     { action: 'start', label: input.question ? 'Ask' : 'Start session', shortcut: 'new-session.start', disabled: !canStartHere },
     { action: 'queue', label: 'Add to queue', shortcut: 'new-session.queue', disabled: !canQueue },
   ];
+  // A schedule keeps the prompt with its choices, like a queued item, and runs it at set times (#173).
+  if (input.canSchedule && !input.question) items.push({ action: 'schedule', label: input.editingSchedule ? 'Save schedule' : 'Schedule…', disabled: !canQueue });
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
   if (input.queueFirst && !input.question) {
     return {

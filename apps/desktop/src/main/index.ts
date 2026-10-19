@@ -5,10 +5,11 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpat
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, sep } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, screen, shell, type MenuItemConstructorOptions } from 'electron';
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
+import type { ScheduleRunEvent } from '@switchboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { EngineProcess } from './engineProcess.ts';
@@ -291,6 +292,8 @@ function sessionOnScreen(): string | null {
   return win ? (focusedSessions.get(win.webContents.id) ?? null) : null;
 }
 const recordedNotifications: RecordedAlert[] = [];
+/** Scheduled runs the engine reported (the smoke run's schedules step reads their titles). */
+const recordedScheduleRuns: ScheduleRunEvent[] = [];
 /** Sounds the smoke run would have played (it never makes a sound). */
 const recordedSounds: Array<{ id: string; volume: number }> = [];
 const sounds = new SoundPlayer(smokeOutDir ? { record: (sound) => void recordedSounds.push(sound) } : {});
@@ -5910,6 +5913,97 @@ async function runQueueAutoStartStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Scheduled sessions (#173), in the throwaway profile: a demo prompt in New session goes through Start ▾ › Schedule…
+ * (every day, a minute from now), and shows on Home. The engine's schedule clock (`smokeScheduleClock`, with
+ * `SWITCHBOARD_STUB_QUEUE`, which also keeps the run from sending anything to Claude) moves on: the run is titled
+ * "<name> · <day>", notified, and the row shows Last. Paused, a day later nothing runs. Delete, then Undo, puts it back;
+ * it is deleted for good at the end.
+ */
+async function runSchedulesStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const name = 'Smoke schedule: review open pull requests';
+  const prompt = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const rowOf = `[...document.querySelectorAll('[data-schedules-card] [data-schedule-row]')].find((el) => el.innerText.includes(${JSON.stringify(name)}))`;
+  const started = () => recordedNotifications.filter((n) => n.kind === 'schedule-started' && n.title === `Scheduled: ${name} started`).length;
+  const menu = async (item: string) => {
+    await js(`${rowOf}?.querySelector('[data-schedule-more]')?.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[role=menu] ${item}')`, 2_000))) return false;
+    await js(`document.querySelector('[role=menu] ${item}').click()`);
+    return true;
+  };
+  const clock = (ms: number) => engine.send({ type: 'smokeScheduleClock', ms });
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-schedules-')));
+  const goHome = async () => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
+    await waitInPage(win, "!!document.querySelector('[data-home], [data-onboarding]')", 3_000);
+  };
+  try {
+    // A folder of its own, opened with a link, so the run finds it (and nothing real is touched).
+    const text = `${name}\nList yesterday's open pull requests.`;
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${prompt}?.value === ${JSON.stringify(text)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)}`, 5_000))) return 'New session did not open on the schedule\'s folder';
+    await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-schedule-add]')", 2_000))) return 'Start ▾ has no Schedule…';
+    await js("document.querySelector('[role=menu] [data-schedule-add]').click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-schedule-dialog] [data-schedule-name]')?.value === ${JSON.stringify(name)}`, 3_000))) return 'Schedule… did not open the dialog with the name from the first line';
+    await js("document.querySelector('[data-schedule-dialog] [data-schedule-repeat=\"daily\"]').click()");
+    // Two minutes from now on the clock, so the real clock can't reach it during the step: the run is due once the
+    // engine's clock has moved 150 seconds on, and still on time.
+    const at = new Date(Date.now() + 120_000);
+    const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+    await setFieldValue(win, '[data-schedule-dialog] [data-schedule-time]', time);
+    if (!(await waitInPage(win, `document.querySelector('[data-schedule-dialog] [data-schedule-describe]')?.innerText === 'Every day at ${time}' && document.querySelectorAll('[data-schedule-dialog] [data-schedule-next-runs] li').length === 3`, 2_000))) {
+      return `the dialog did not say "Every day at ${time}" with three next runs`;
+    }
+    await shot(win, 'schedule-dialog.png');
+    await js("document.querySelector('[data-schedule-dialog] [data-schedule-save]').click()");
+    if (!(await waitInPage(win, `!document.querySelector('[data-schedule-dialog]') && ${prompt}?.value === '' && !!document.querySelector('[data-schedule-saved-toast]')`, 3_000))) return 'saving did not close the dialog, clear New session and say it is scheduled';
+
+    await goHome();
+    if (!(await waitInPage(win, `!!${rowOf}`, 5_000))) return 'the schedule did not show in the Schedules card on Home';
+    const label = (await js(`${rowOf}.getAttribute('aria-label')`)) as string;
+    if (!label.startsWith(`${name}, every day at ${time}, next `)) return `its row's label is "${label}"`;
+    if (!(await js("!!document.querySelector('[data-schedules-platform]')"))) return 'no line under the card says when schedules run';
+
+    clock(150_000);
+    if (!(await until(() => started() === 1, 5_000))) return 'the run did not start after the clock moved on';
+    const run = recordedScheduleRuns.find((r) => r.name === name && r.result === 'started');
+    if (!run?.title || !/^Smoke schedule: review open pull requests · \w{3} \d{1,2} \w{3}$/.test(run.title)) return `the run was titled "${run?.title}"`;
+    if (!(await waitInPage(win, `${rowOf}?.querySelector('[data-schedule-last]')?.innerText.startsWith('Last: ')`, 3_000))) return 'the row did not show Last';
+    await shot(win, 'schedules-card.png');
+
+    // Paused: a day later, nothing starts.
+    if (!(await menu('[data-schedule-menu-pause="pause"]'))) return 'the row menu has no Pause';
+    if (!(await waitInPage(win, `${rowOf}?.dataset.schedulePaused === 'true' && ${rowOf}.innerText.includes('Paused')`, 3_000))) return 'Pause did not dim the row and say Paused';
+    clock(24 * 60 * 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    if (started() !== 1) return 'a paused schedule ran';
+
+    // Delete, then Undo.
+    if (!(await menu('[data-schedule-menu-delete]'))) return 'the row menu has no Delete';
+    if (!(await waitInPage(win, `!${rowOf} && !!document.querySelector('[data-schedule-deleted-toast] [data-toast-undo]')`, 3_000))) return 'Delete did not remove the row with an Undo';
+    await js("document.querySelector('[data-schedule-deleted-toast] [data-toast-undo]').click()");
+    if (!(await waitInPage(win, `${rowOf}?.dataset.schedulePaused === 'true'`, 3_000))) return 'Undo did not put the schedule back as it was';
+    return `ok: Schedule… opened the dialog (name from the first line, "Every day at ${time}", three next runs), the card listed it, the moved clock ran it once as "${run.title}" and the row showed Last; paused, nothing ran a day later; Delete and Undo put it back`;
+  } finally {
+    // Deleted for good (whatever the step got to), and New session left empty.
+    await goHome();
+    for (let i = 0; i < 2 && (await js(`!!${rowOf}`)); i++) {
+      await menu('[data-schedule-menu-delete]');
+      await waitInPage(win, `!${rowOf}`, 2_000);
+    }
+    if (await js(`!!${prompt}?.value`)) await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * Collapsible sections: a click on Today's header (or the first section that can close) hides its rows and keeps
  * the header with its count; ← and → on the focused header close and open it. Earlier starts closed. Back as it was.
  */
@@ -8145,6 +8239,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
+  await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
@@ -8244,7 +8339,7 @@ app.whenReady().then(() => {
     alerts: () => preferences.get(),
     cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),
     sounds,
-    ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event) } : {}),
+    ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event), recordRuns: (runs: ScheduleRunEvent[]) => void recordedScheduleRuns.push(...runs) } : {}),
   });
   notifier.connect();
   // Running pull request checks are read every 30 seconds while a window has focus, else every 5 minutes. A blur
@@ -8252,6 +8347,9 @@ app.whenReady().then(() => {
   const sendForeground = () => engine.sendStanding({ type: 'foreground', foreground: BrowserWindow.getFocusedWindow() !== null });
   app.on('browser-window-focus', sendForeground);
   app.on('browser-window-blur', () => setTimeout(sendForeground, 100));
+  // Scheduled sessions (#173): runs due while the computer slept are dealt with when it wakes. The engine's own timer
+  // sees a clock or time zone change within a minute.
+  powerMonitor.on('resume', () => engine.send({ type: 'wake' }));
   createWindow();
   updater.start();
   // The packaged app declares the scheme in Info.plist; this also takes it back if another app claimed it.

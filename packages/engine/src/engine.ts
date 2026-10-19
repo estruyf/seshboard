@@ -54,8 +54,12 @@ import {
   focusSessions,
   projectOf,
   type LaterItem,
+  type LaterDraft,
   type QueueSession,
   type SessionHostInfo as HostInfo,
+  clockTime,
+  limitAhead,
+  Schedule,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -79,6 +83,8 @@ import { checkoutPullRequest as checkoutPullRequest_, PrCheckoutError } from './
 import { makeWorktreeFrom, WorktreeFromError } from './git/worktreeFrom.ts';
 import { LaterStore } from './later/laterStore.ts';
 import { QueueAutoStarter } from './later/autoStart.ts';
+import { ScheduleStore } from './schedules/scheduleStore.ts';
+import { Scheduler, type RunHold } from './schedules/scheduler.ts';
 import { summarise, UpNextStore } from './host/upNextStore.ts';
 import { Asker, AskStore } from './host/sideQuestions.ts';
 import { MemoryService, type MemoryTrashScope } from './memory/memoryService.ts';
@@ -212,6 +218,8 @@ export interface EngineOptions {
    * wait on. Never set in normal use.
    */
   stubQueueStarts?: boolean;
+  /** Run scheduled sessions (#173). Off in tests that don't look at them, so no timer outlives them. */
+  schedules?: boolean;
 }
 
 /** See `EngineOptions.demoUsage`. */
@@ -236,6 +244,12 @@ export interface DemoUsage {
    * no file) clears it. With `stubQueueStarts` only, which keeps the item from starting Claude Code.
    */
   queueHostFile?: string;
+  /**
+   * A file the screenshot tour writes to show schedules with past runs (skipped, missed, paused), only for their
+   * pictures: a list of schedules puts them in as they are, anything else (or no file) takes them out again. With
+   * `stubQueueStarts` only, which keeps a run from starting Claude Code.
+   */
+  schedulesFile?: string;
 }
 
 /** What one run of the clean-up of archived sessions did. */
@@ -271,6 +285,13 @@ export interface Engine {
    * a turn, `idle` ends it with `outcome`, `closed` takes it away.
    */
   smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped' }): void;
+  /** The computer woke (`powerMonitor` `resume`, from main): scheduled runs due while it slept are dealt with now. */
+  wake(): void;
+  /**
+   * With `stubQueueStarts` only: moves the schedules' clock on by `ms`, for the smoke test, and looks for runs that are
+   * due now.
+   */
+  advanceScheduleClock(ms: number): void;
   /** Settings › Mods › Show mods, from main: sessions attach or detach their mods at once. */
   setShowMods(enabled: boolean): void;
   /** Settings › General › Use Claude in Chrome, from main: sessions started or resumed after it changes get `--chrome`. */
@@ -417,6 +438,8 @@ export function createEngine(options: EngineOptions): Engine {
   });
   /** Starts queued items by themselves (set up with the queue, below); sessions and the registry poke it from here on. */
   let autoStarter: QueueAutoStarter | undefined;
+  /** Titles scheduled runs once their transcript is there (set up with the schedules, below). */
+  let titleRuns: ((ids: readonly string[]) => void) | undefined;
   const sessions = new SessionIndex({
     baseline,
     isOwned: (id) => owned.has(id),
@@ -428,6 +451,7 @@ export function createEngine(options: EngineOptions): Engine {
     log,
     onChange: (change) => {
       broadcast('sessions.changed', change);
+      if (change.upserted.length) titleRuns?.(change.upserted.map((s) => s.id));
       // Reading a session frees a slot under the focus limit.
       void autoStarter?.check();
       scheduleSearchSync();
@@ -1076,6 +1100,136 @@ export function createEngine(options: EngineOptions): Engine {
     if (demoQueueHost) standInHost({ ...demoQueueHost, state: 'running' });
   };
   if (demoQueueFile) watchFile(demoQueueFile, { interval: 200 }, demoQueue);
+
+  // --- Scheduled sessions (#173) -------------------------------------------------------------------------------------
+  /** The smoke test's clock (`advanceScheduleClock`, with `stubQueueStarts` only): runs come due without waiting. */
+  let scheduleClockOffset = 0;
+  const scheduleNow = () => Date.now() + scheduleClockOffset;
+  const schedules = new ScheduleStore(cache.db, scheduleNow);
+  const schedulesBroadcast = () => broadcast('schedules.changed', { schedules: schedules.list(), sessions: schedules.sessions() });
+  /**
+   * Runs' titles ("Review open pull requests · Mon 19 Oct"), set the way Rename does once the session has a transcript to
+   * write it to: a new session has none until Claude Code writes its first message.
+   */
+  const pendingTitles = new Map<string, string>();
+  const applyTitles = (ids: readonly string[]) => {
+    for (const id of ids) {
+      const title = pendingTitles.get(id);
+      if (!title || !sessions.pathFor(id) || !source.rename) continue;
+      pendingTitles.delete(id);
+      void source
+        .rename(id, title)
+        .then(() => sessions.reread(id))
+        .catch((error: Error) => log('warn', `Schedules: could not title ${id}: ${error.message}`));
+    }
+  };
+  titleRuns = (ids) => {
+    if (pendingTitles.size) applyTitles(ids);
+  };
+  /** Whether the session a run started is still busy: working, or waiting for you. */
+  const scheduledState = (sessionId: string): 'working' | 'waiting' | null => {
+    const host = [...hosts.list().hosts, ...smokeHosts.values()].find((h) => h.sessionId === sessionId);
+    if (host) return host.state === 'needs-you' ? 'waiting' : host.state === 'starting' || host.state === 'running' ? 'working' : null;
+    const live = liveList().find((l) => l.sessionId === sessionId);
+    return live?.status === 'needs-you' ? 'waiting' : live?.status === 'running' ? 'working' : null;
+  };
+  /** Why a run can't start now: the focus limit (it never asks), or its profile's usage limit. */
+  const scheduleHold = (draft: LaterDraft): RunHold | null => {
+    if (queueFocus.limit !== null) {
+      const count = focusCount();
+      if (count >= queueFocus.limit) return { reason: 'at the focus limit', detail: `You're at your focus limit (${count} of ${queueFocus.limit}). It starts when a slot frees.` };
+    }
+    const hit = limits.of(draft.profileId && profiles.has(draft.profileId) ? draft.profileId : folderProfile(draft.cwd));
+    if (hit && limitAhead(hit)) {
+      const at = hit.resetsAt === null ? null : clockTime(hit.resetsAt);
+      return at
+        ? { reason: `at the usage limit until ${at}`, detail: `The usage limit resets at ${at}. It starts then.` }
+        : { reason: 'at the usage limit', detail: 'It starts when the usage limit resets.' };
+    }
+    return null;
+  };
+  /** Starts a run as `later.start` starts a queued item, as a new session titled for its day. */
+  const startScheduled = async (draft: LaterDraft, title: string): Promise<string> => {
+    // The smoke test never sends a prompt to Claude: the run is recorded with a session that doesn't exist.
+    if (options.stubQueueStarts) return `smoke-scheduled-${randomUUID()}`;
+    const { sessionId } = await createSession({
+      cwd: draft.cwd,
+      prompt: draft.prompt,
+      attachments: draft.attachments ?? [],
+      model: draft.model ?? null,
+      permissionMode: draft.permissionMode ?? 'default',
+      effort: draft.effort ?? null,
+      worktree: draft.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: draft.baseRef ?? 'fresh' } : null,
+      profileId: draft.profileId && profiles.has(draft.profileId) ? draft.profileId : null,
+      checkoutBranch: draft.workspace === 'worktree' ? null : (draft.branch ?? null),
+    });
+    pendingTitles.set(sessionId, title);
+    applyTitles([sessionId]);
+    return sessionId;
+  };
+  const scheduler = new Scheduler({
+    store: schedules,
+    folderExists: (cwd) => !!statSafe(cwd)?.isDirectory(),
+    sessionState: scheduledState,
+    queued: (itemId) => !!later.get(itemId),
+    hold: scheduleHold,
+    start: startScheduled,
+    // At a limit it goes to the queue as an item that starts by itself (#172), once the slot frees or the limit resets.
+    queue: (draft) => {
+      const item = later.add({ ...draft, autoStart: true }, { waitFor: { kind: 'project' } });
+      laterBroadcast();
+      autoStarter?.armForLimit(item.id);
+      return item.id;
+    },
+    projectName: (root) => listProjects().find((p) => p.root === root)?.name ?? basename(root),
+    changed: schedulesBroadcast,
+    ran: (runs) => broadcast('schedules.ran', { runs }),
+    log,
+    now: scheduleNow,
+    // Node keeps the time zone it started with: writing TZ makes it look again, so a change is seen within a tick.
+    refreshZone: () => {
+      if (process.env.TZ === undefined) delete process.env.TZ;
+    },
+  });
+  /** Pauses the schedules of a folder (a project removed from Switchboard), with the reason the row shows. */
+  const pauseSchedulesIn = (root: string, reason: string) => {
+    let changed = false;
+    for (const schedule of schedules.list()) {
+      if (schedule.paused || !isSameOrInside(root, schedule.draft.cwd)) continue;
+      schedules.setPaused(schedule.id, true, reason);
+      changed = true;
+    }
+    if (changed) {
+      schedulesBroadcast();
+      scheduler.rearm();
+    }
+  };
+  const demoSchedulesFile = options.stubQueueStarts ? options.demoUsage?.schedulesFile : undefined;
+  /** The demo schedules the screenshot tour put in, to take out again. */
+  let demoScheduleIds: string[] = [];
+  if (demoSchedulesFile) {
+    watchFile(demoSchedulesFile, { interval: 200 }, () => {
+      const wanted = ((): unknown => {
+        try {
+          return JSON.parse(readFileSync(demoSchedulesFile, 'utf8')) as unknown;
+        } catch {
+          return null;
+        }
+      })();
+      for (const id of demoScheduleIds) schedules.remove(id);
+      demoScheduleIds = [];
+      for (const raw of Array.isArray(wanted) ? wanted : []) {
+        const parsed = Schedule.safeParse(raw);
+        if (!parsed.success) continue;
+        schedules.restore(parsed.data);
+        demoScheduleIds.push(parsed.data.id);
+      }
+      schedulesBroadcast();
+      scheduler.rearm();
+    });
+  }
+  // Runs due while Switchboard was closed are dealt with once it has settled (profiles, the shell, main's notifier).
+  if (options.schedules !== false) scheduler.start(options.stubQueueStarts ? 0 : 5_000);
   /** Projects' memory and instructions: every profile's memory folder, the project's own profile first. */
   const memory = new MemoryService({
     profiles: (root) => {
@@ -1304,7 +1458,7 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   const defaultEditorKey = 'editor.default';
-  const settingsStores: SettingsStores = { db: cache.db, appState, projects, profiles, actions };
+  const settingsStores: SettingsStores = { db: cache.db, appState, projects, profiles, actions, schedules };
   const editorEnv = () => shell.forLookup();
 
   /** Session count and latest activity per project folder, for the project list. */
@@ -1807,6 +1961,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'projects.remove': ({ root }) => {
       projects.remove(root);
+      pauseSchedulesIn(root, 'Project removed');
       return {};
     },
     'projects.setIcon': ({ root, icon }) => {
@@ -2197,6 +2352,38 @@ export function createEngine(options: EngineOptions): Engine {
       const item = later.get(id);
       if (!item) throw new RpcError('NOT_FOUND', 'That item is no longer in the queue');
       return { sessionId: await startQueued(item) };
+    },
+    'schedules.list': () => ({ schedules: schedules.list(), sessions: schedules.sessions() }),
+    'schedules.save': ({ schedule: input }) => {
+      if (input.id && !schedules.get(input.id)) throw new RpcError('NOT_FOUND', 'That schedule was deleted');
+      const schedule = schedules.save(input);
+      schedulesBroadcast();
+      scheduler.rearm();
+      return { schedule };
+    },
+    'schedules.delete': ({ id }) => {
+      schedules.remove(id);
+      schedulesBroadcast();
+      scheduler.rearm();
+      return {};
+    },
+    'schedules.restore': ({ schedule: input }) => {
+      const schedule = schedules.restore(input);
+      schedulesBroadcast();
+      scheduler.rearm();
+      return { schedule };
+    },
+    'schedules.setPaused': ({ id, paused }) => {
+      const schedule = schedules.setPaused(id, paused);
+      if (!schedule) throw new RpcError('NOT_FOUND', 'That schedule was deleted');
+      schedulesBroadcast();
+      scheduler.rearm();
+      return { schedule };
+    },
+    'schedules.runNow': async ({ id }) => {
+      const run = await scheduler.runNow(id);
+      if (!run) throw new RpcError('NOT_FOUND', 'That schedule was deleted');
+      return { run };
     },
     'search.query': async ({ query, limit, scope, only, memoryTypes, memoryScope }) => {
       if (only !== 'conversations') syncMemorySearch(1_000);
@@ -2787,6 +2974,8 @@ export function createEngine(options: EngineOptions): Engine {
       for (const { id } of cache.db.prepare('SELECT id FROM owned_sessions').all() as Array<{ id: string }>) owned.add(id);
       for (const { id } of cache.db.prepare('SELECT id FROM continued_sessions').all() as Array<{ id: string }>) continued.add(id);
       sessions.reloadFlags();
+      schedulesBroadcast();
+      scheduler.rearm();
       broadcast('settings.imported', {});
       log('info', `Imported settings from ${path} (${mode}); backup at ${backupPath}`);
       return { preview: plan.preview, backupPath, preferences: result.preferences, themes: result.themes };
@@ -2846,6 +3035,12 @@ export function createEngine(options: EngineOptions): Engine {
       resumeAtLimit = mode;
     },
     smokeQueueHost: standInHost,
+    wake: () => scheduler.wake(),
+    advanceScheduleClock: (ms) => {
+      if (!options.stubQueueStarts) return;
+      scheduleClockOffset += ms;
+      scheduler.rearm();
+    },
     setQueueFocus: (focus) => {
       queueFocus = focus;
       void autoStarter?.check();
@@ -2893,6 +3088,7 @@ export function createEngine(options: EngineOptions): Engine {
       servers.clear();
       limits.close();
       autoStarter?.close();
+      scheduler.close();
       if (demoLimitFile) unwatchFile(demoLimitFile);
       if (demoQueueFile) unwatchFile(demoQueueFile);
       hosts.closeAll();

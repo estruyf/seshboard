@@ -96,6 +96,8 @@ export interface PaletteContext {
   sounds: boolean;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */
   queue: { count: number; readyCount: number; firstReady: { id: string; prompt: string } | null };
+  /** How many scheduled sessions there are (#173). */
+  schedules: number;
   /** Unsent messages (sessions and New session prompts) that count. */
   unsent: number;
   projectCount: number;

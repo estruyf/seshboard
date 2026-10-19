@@ -222,4 +222,29 @@ describe('starting queued items by themselves', () => {
     await w.finish('fix-login');
     expect(w.started.map((s) => s.itemId)).toEqual([item.id]);
   });
+
+  it('starts an item held only by a limit (a scheduled run) when the slot frees, and not before', async () => {
+    const w = world({ focusLimit: 2 });
+    w.focus.count = 2;
+    const item = w.queue('Review open pull requests', { kind: 'project' });
+    w.starter.armForLimit(item.id);
+    await w.starter.check();
+    expect(w.started).toEqual([]);
+    expect(w.starter.auto().focusHeld).toEqual([item.id]);
+    w.focus.count = 1;
+    await w.starter.check();
+    expect(w.started.map((s) => s.itemId)).toEqual([item.id]);
+  });
+
+  it('starts an item held only by a usage limit once it resets', async () => {
+    const w = world();
+    w.setLimit({ profileId: 'default', resetsAt: Date.now() + 60_000 } as UsageLimitHit);
+    const item = w.queue('Review open pull requests', { kind: 'project' });
+    w.starter.armForLimit(item.id);
+    await w.starter.check();
+    expect(w.started).toEqual([]);
+    w.setLimit(null);
+    await w.starter.check();
+    expect(w.started.map((s) => s.itemId)).toEqual([item.id]);
+  });
 });

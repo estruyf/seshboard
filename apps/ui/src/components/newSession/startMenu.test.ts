@@ -39,6 +39,19 @@ describe('the Start button', () => {
     expect(startButtonState({ ...ready, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);
   });
 
+  it('offers Schedule… after Add to queue in New session, and Save schedule while a schedule is open', () => {
+    const state = startButtonState({ ...ready, canSchedule: true });
+    expect(state.items.map((i) => [i.action, i.label])).toEqual([
+      ['start', 'Start session'],
+      ['queue', 'Add to queue'],
+      ['schedule', 'Schedule…'],
+      ['start-worktree', 'Start in a new worktree'],
+    ]);
+    expect(startButtonState({ ...ready, canSchedule: true, editingSchedule: true }).items[2]).toMatchObject({ action: 'schedule', label: 'Save schedule', disabled: false });
+    expect(startButtonState({ ...ready, canSchedule: true, hasText: false, hasMessage: false }).items[2]!.disabled).toBe(true);
+    expect(startButtonState({ ...ready, canSchedule: true, question: true, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);
+  });
+
   it('asks for a quick question', () => {
     const state = startButtonState({ ...ready, canWorktree: false, question: true });
     expect(state.label).toBe('Ask');

@@ -467,6 +467,16 @@
       "page": "new-session/queue"
     },
     {
+      "id": "palette:schedule-add",
+      "name": "Schedule a session…",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "palette:schedules",
+      "name": "Schedules… (Run now, Edit…, Pause or Resume, Delete)",
+      "page": "new-session/schedules"
+    },
+    {
       "id": "palette:new-session-from-issue",
       "name": "New session from issue…",
       "page": "sessions/github-issues"
@@ -2795,6 +2805,46 @@
       "id": "feature:queue-start-by-itself",
       "name": "Start by itself (queue item menu and New session)",
       "page": "new-session/queue"
+    },
+    {
+      "id": "feature:schedule-start-menu",
+      "name": "Schedule… in New session's Start menu, and Save schedule after Edit…",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedule-dialog",
+      "name": "Schedule a session dialog: Name, Repeat, At, If missed, Next runs, Runs with",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedules-home-card",
+      "name": "Schedules card on Home",
+      "page": "sessions/home"
+    },
+    {
+      "id": "feature:schedules-project-tab",
+      "name": "Schedules section in a project's Sessions tab",
+      "page": "projects/sessions"
+    },
+    {
+      "id": "feature:schedule-row-menu",
+      "name": "Schedule row menu: Run now, Edit…, Pause or Resume, Delete with Undo",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedule-runs",
+      "name": "Scheduled runs: skipped while the last run works, queued at a limit, missed runs, notifications",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedule-session-icon",
+      "name": "Repeat icon on sessions a schedule started",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedules-backup",
+      "name": "Schedules in settings export and import",
+      "page": "settings/backup"
     },
     {
       "id": "feature:queue-messages",

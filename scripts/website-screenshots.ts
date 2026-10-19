@@ -1193,6 +1193,38 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'schedule-dialog',
+    async take(t) {
+      // A prompt in New session, through Start ▾ › Schedule…: Monday to Friday at 08:00 (the dialog's own start).
+      await openNewSession(t, 'acme-store');
+      const box = t.page.locator('[data-new-session-view] [data-composer]').first();
+      await box.fill('Review open pull requests\nGo through yesterday’s open pull requests and say what each one still needs.');
+      await t.click('[data-new-session-view] [data-start-menu]');
+      await t.click('[role=menu] [data-schedule-add]', 'Start ▾ has no Schedule…');
+      await t.need('[data-schedule-dialog] [data-schedule-next-runs]', 'the schedule dialog did not open');
+      await t.shot('schedule-dialog');
+      await t.escape();
+      await t.gone('[data-schedule-dialog]', 'the schedule dialog did not close');
+      await box.fill('');
+    },
+  },
+  {
+    name: 'schedules',
+    async take(t) {
+      // Four schedules with past runs (one fine, one skipped, one missed, one paused), from the demo file the engine
+      // watches; taken out again after the picture.
+      writeFileSync(demoSchedulesFile(t.world), JSON.stringify(demoSchedules(t.world, Date.now())));
+      await t.home();
+      await t.until("document.querySelectorAll('[data-schedules-card] [data-schedule-row]').length === 4", 'Home shows no schedules');
+      await hideUsageStatus(t);
+      // The card sits under the queue: bring all of it on screen first.
+      await t.page.evaluate(() => document.querySelector('[data-schedules-card]')?.scrollIntoView({ block: 'center' }));
+      await t.shot('schedules', { clip: '[data-schedules-home]', pad: 12 });
+      writeFileSync(demoSchedulesFile(t.world), 'null');
+      await t.until("!document.querySelector('[data-schedules-card]')", 'the demo schedules stayed');
+    },
+  },
+  {
     name: 'saved-prompts-slash',
     async take(t) {
       await openNewSession(t, 'acme-store');
@@ -1829,6 +1861,7 @@ function demoUsage(world: DemoWorld): string {
       catchUps: demoCatchUps(world, now),
       limitFile: demoLimitFile(world),
       queueHostFile: demoQueueHostFile(world),
+      schedulesFile: demoSchedulesFile(world),
     }),
   );
   return file;
@@ -1839,6 +1872,71 @@ const demoLimitFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-
 
 /** Where the tour names the demo session shown as working in Switchboard for the queue's picture (see `DemoUsage.queueHostFile`). */
 const demoQueueHostFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-queue-host.json');
+
+/** Where the tour puts the demo schedules for their picture (see `DemoUsage.schedulesFile`). */
+const demoSchedulesFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-schedules.json');
+
+/**
+ * Four schedules as the Schedules card shows them after a few days: one whose last run started (linked to a demo
+ * session), one skipped while its last run worked, one that missed a run while the computer slept (Skip it), and one
+ * paused. Their runs are made relative to now.
+ */
+function demoSchedules(world: DemoWorld, now: number) {
+  const project = (name: string) => join(world.home, 'Developer', name);
+  /** The most recent weekday at this time, before now. */
+  const lastWeekday = (hours: number, minutes: number) => {
+    const day = new Date(now);
+    day.setHours(hours, minutes, 0, 0);
+    while (day.getTime() >= now || day.getDay() === 0 || day.getDay() === 6) day.setDate(day.getDate() - 1);
+    return day.getTime();
+  };
+  const lastMonday = (() => {
+    const day = new Date(lastWeekday(9, 30));
+    while (day.getDay() !== 1) day.setDate(day.getDate() - 1);
+    return day.getTime();
+  })();
+  const firstOfMonth = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), 1, 10, 0).getTime();
+  const draft = (name: string, prompt: string, permissionMode: string) => ({
+    cwd: project(name),
+    prompt,
+    attachments: [],
+    typed: null,
+    context: [],
+    model: 'opus',
+    effort: null,
+    permissionMode,
+    workspace: 'worktree',
+    baseRef: 'fresh',
+    branch: null,
+    profileId: null,
+    autoStart: false,
+  });
+  const schedule = (id: string, name: string, rest: Record<string, unknown>) => ({ id: `demo-schedule-${id}`, name, missed: 'run', paused: false, pausedReason: null, createdAt: now - 30 * 86_400_000, updatedAt: now - 30 * 86_400_000, ...rest });
+  return [
+    schedule('prs', 'Review open pull requests', {
+      draft: draft('acme-store', 'Review open pull requests\nGo through yesterday’s open pull requests and say what each one still needs.', 'acceptEdits'),
+      rule: { kind: 'weekdays', time: '08:00' },
+      lastRun: { at: lastWeekday(8, 0), result: 'started', sessionId: world.history[CATCH_UP]?.id ?? null, itemId: null, reason: null },
+    }),
+    schedule('deps', 'Check dependency updates', {
+      draft: draft('payments-api', 'Check for dependency updates and open a pull request for the safe ones.', 'auto'),
+      rule: { kind: 'weekly', days: [1], time: '09:30' },
+      lastRun: { at: lastMonday, result: 'skipped', sessionId: world.history[WORKING]?.id ?? null, itemId: null, reason: 'the last run was still working' },
+    }),
+    schedule('standup', 'Standup summary', {
+      draft: draft('docs-site', 'Write the standup summary from yesterday’s commits.', 'acceptEdits'),
+      rule: { kind: 'weekdays', time: '08:45' },
+      missed: 'skip',
+      lastRun: { at: lastWeekday(8, 45), result: 'missed', sessionId: null, itemId: null, reason: null },
+    }),
+    schedule('invoices', 'Monthly invoice check', {
+      draft: draft('payments-api', 'Check this month’s invoices for rounding errors.', 'acceptEdits'),
+      rule: { kind: 'monthly', day: 1, time: '10:00' },
+      paused: true,
+      lastRun: { at: firstOfMonth, result: 'started', sessionId: world.history['Add CSV export to the reports endpoint']?.id ?? null, itemId: null, reason: null },
+    }),
+  ];
+}
 
 /**
  * What Auto model picked for some of the demo sessions, and a few more routing calls, so a session shows its pick

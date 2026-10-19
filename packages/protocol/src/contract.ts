@@ -48,6 +48,7 @@ import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
 import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
+import { Schedule, ScheduleRunEvent, ScheduleSave, ScheduleSession } from './scheduleSchema.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { CatchUp, RequestWhy } from './catchUp.ts';
@@ -935,6 +936,28 @@ export const contract = {
      */
     'later.start': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ sessionId: z.string() }) },
 
+    // --- Scheduled sessions (#173) -----------------------------------------------------------------
+    /**
+     * Every schedule, oldest first, with the sessions they started (for the repeat icon on their rows). The engine runs
+     * them; the windows only show them.
+     */
+    'schedules.list': { params: z.object({}), result: z.object({ schedules: z.array(Schedule), sessions: z.array(ScheduleSession) }) },
+    /**
+     * Creates a schedule (no `id`) or changes one: its name, draft, rule, missed rule and paused. It keeps its last run.
+     * Saving starts counting its runs from now, so a time already past today doesn't run at once.
+     */
+    'schedules.save': { params: z.object({ schedule: ScheduleSave }), result: z.object({ schedule: Schedule }) },
+    'schedules.delete': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Puts a deleted schedule back as it was (Undo). */
+    'schedules.restore': { params: z.object({ schedule: Schedule }), result: z.object({ schedule: Schedule }) },
+    /** Pauses or resumes. A resumed schedule counts its runs from now: what was due while it was paused doesn't run. */
+    'schedules.setPaused': { params: z.object({ id: z.string().min(1).max(100), paused: z.boolean() }), result: z.object({ schedule: Schedule }) },
+    /**
+     * Runs it now, with the same rules as a run at its time (skipped while the last run is busy, queued at a limit). It
+     * doesn't move the next run. The result is the run's.
+     */
+    'schedules.runNow': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ run: ScheduleRunEvent }) },
+
     // --- Settings backup -----------------------------------------------------------------------
     /** Writes the chosen kinds of user choices (never the cache) to a settings file. */
     'settings.export': {
@@ -1305,6 +1328,13 @@ export const contract = {
      * stopped. It stays in the queue, ready.
      */
     'later.autoSkipped': z.object({ itemId: z.string(), prompt: z.string(), sessionId: z.string(), title: z.string(), outcome: z.enum(['error', 'stopped']) }),
+    /** Every schedule, after any change and after each run. */
+    'schedules.changed': z.object({ schedules: z.array(Schedule), sessions: z.array(ScheduleSession) }),
+    /**
+     * Schedules ran (at their time, as missed runs at a start or a wake, or Run now): main's notifier says so, one
+     * notification for several missed runs.
+     */
+    'schedules.ran': z.object({ runs: z.array(ScheduleRunEvent) }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
     /** A profile hit or left a usage limit, or a resume was armed, fired or gave up. */

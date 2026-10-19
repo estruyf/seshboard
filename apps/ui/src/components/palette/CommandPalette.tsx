@@ -12,6 +12,9 @@ import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued } from '../../state/laterStore.ts';
 import { useQueue } from '../../state/useQueue.ts';
+import { describe as describeRule } from '@switchboard/protocol/client';
+import { nextRunLine } from '../../state/schedules.ts';
+import { deleteSchedule, runScheduleNow, setSchedulePaused, useSchedules } from '../../state/schedulesStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { formatKeys, keysFor, localizeKeys, modKey, shortcutById } from '../../lib/shortcuts.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
@@ -97,6 +100,8 @@ const PICK_PLACEHOLDER: Record<PickList, string> = {
   queue: 'Pick a queued prompt to start',
   memory: 'Pick a memory to share',
   prompt: 'Pick a saved prompt',
+  schedules: 'Pick a schedule',
+  'schedule-action': 'What to do with it',
 };
 /** What a command that asks for more shows next, on its row while it's highlighted. */
 const NEXT_HINT: Record<PaletteStep['kind'], string> = { projects: 'picks a project next', prompt: 'write the prompt next', pick: 'pick one next', clone: 'paste the URL next' };
@@ -160,6 +165,7 @@ export function CommandPalette() {
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
   const focusLimit = usePreferences((s) => s.prefs.focusLimit);
   const queue = useQueue();
+  const schedules = useSchedules((s) => s.schedules);
   // The current project's memories, read when the Share memory step shows.
   const memoryRoot = step?.kind === 'pick' && step.list === 'memory' ? (ctx.currentProject?.root ?? null) : null;
   const { list: memoryList } = useMemoryList(memoryRoot);
@@ -269,7 +275,7 @@ export function CommandPalette() {
       return rows.length ? [{ id: list, label: PICK_PLACEHOLDER[list].replace(/^Pick (a |an )?/, ''), rows }] : [];
     }
     // The pick lists and project rows read these; the functions above are only called from here.
-  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList]);
+  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules]);
 
   /** The choices of a pick step, the current one marked. */
   function pickOptions(list: PickList): Option[] {
@@ -315,6 +321,24 @@ export function CommandPalette() {
         return (memoryList?.memories ?? []).map((m) => ({ value: m.path, title: m.name, detail: [m.type, m.description].filter(Boolean).join(' · ') || undefined }));
       case 'prompt':
         return ctx.prompts.map((p, i) => ({ value: String(i), title: p.name, detail: p.scope.kind === 'global' ? 'Every project' : p.scope.kind === 'personal' ? 'This project, just for you' : 'Shared with the project' }));
+      case 'schedules':
+        // Each with its project, its rule and its next run, or Paused.
+        return schedules.map((schedule) => ({
+          value: schedule.id,
+          title: schedule.name,
+          detail: [nameOf(schedule.draft.cwd), describeRule(schedule.rule), nextRunLine(schedule, Date.now())?.text].filter(Boolean).join(' · '),
+          dot: schedule.paused ? 'bg-caution' : undefined,
+        }));
+      case 'schedule-action': {
+        const schedule = schedules.find((s) => s.id === (step?.kind === 'pick' ? step.target : undefined));
+        if (!schedule) return [];
+        return [
+          { value: 'run', title: 'Run now', detail: 'Starts it now; the next run stays as it is' },
+          { value: 'edit', title: 'Edit…', detail: 'Opens New session filled in' },
+          schedule.paused ? { value: 'resume', title: 'Resume' } : { value: 'pause', title: 'Pause' },
+          { value: 'delete', title: 'Delete', detail: 'Shows Undo' },
+        ];
+      }
     }
   }
 
@@ -335,6 +359,12 @@ export function CommandPalette() {
 
   const pick = (list: PickList, value: string) => {
     const sessionId = ctx.session?.id;
+    // A schedule: what to do with it is the next step, in the palette.
+    if (list === 'schedules') {
+      const schedule = schedules.find((s) => s.id === value);
+      if (schedule) setState((s) => pushStep(s, { kind: 'pick', list: 'schedule-action', chip: schedule.name, target: schedule.id }));
+      return;
+    }
     // The palette has closed by then, so a failure is said in a toast.
     const run = (what: string, call: () => Promise<unknown>) => void call().catch((e: Error) => toast(`Couldn't ${what}: ${e.message}`));
     close();
@@ -361,6 +391,15 @@ export function CommandPalette() {
       case 'queue': {
         const entry = queue.entries.find((e) => e.item.id === value);
         if (entry) void startQueued(entry.item);
+        return;
+      }
+      case 'schedule-action': {
+        const schedule = schedules.find((s) => s.id === (step?.kind === 'pick' ? step.target : undefined));
+        if (!schedule) return;
+        if (value === 'run') void runScheduleNow(schedule);
+        else if (value === 'edit') useSchedules.getState().edit(schedule);
+        else if (value === 'pause' || value === 'resume') run(value === 'pause' ? 'pause it' : 'resume it', () => setSchedulePaused(schedule, value === 'pause'));
+        else if (value === 'delete') run('delete it', () => deleteSchedule(schedule));
         return;
       }
       case 'prompt': {
