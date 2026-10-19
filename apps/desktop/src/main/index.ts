@@ -12,6 +12,7 @@ import type { RemoteContract } from '@switchboard/protocol';
 import type { ScheduleRunEvent } from '@switchboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
+import { AppIcon } from './appIcon.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
@@ -161,9 +162,28 @@ ipcMain.on(IpcChannel.updateCommand, (_event, command: unknown) => {
   if (command === 'check' || command === 'download' || command === 'install' || command === 'retry' || command === 'dismiss') updater.run(command satisfies UpdateCommand);
 });
 
+/**
+ * Settings › Theme › App icon, in the Dock or on the windows; applied on `ready`, before the first window, and on every
+ * change. The colourways ship with the app (extraResources), from resources/app-icons in development.
+ */
+const appIcon = new AppIcon({
+  platform: process.platform,
+  dir: app.isPackaged ? join(process.resourcesPath, 'app-icons') : join(here, '../../resources/app-icons'),
+  bundled: app.isPackaged,
+  dock: app.dock,
+  windows: () => BrowserWindow.getAllWindows(),
+  exists: existsSync,
+});
+/** A new window's icon option: the colourway's, where the bundle's isn't the one chosen. */
+const windowIcon = (): Electron.BrowserWindowConstructorOptions => {
+  const icon = appIcon.windowIcon();
+  return icon ? { icon } : {};
+};
+
 /** Applies a change from any window or the menu bar, and tells every window. */
 function updatePreferences(patch: unknown): void {
   const next = preferences.update(patch);
+  if (next.appIcon !== appIcon.key) appIcon.apply(next.appIcon);
   updater.setAutoCheck(next.autoUpdate);
   updater.setChannel(next.updateChannel);
   const item = Menu.getApplicationMenu()?.getMenuItemById(`scheme-${next.colorScheme}`);
@@ -189,6 +209,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'chrome', enabled: prefs.chrome });
   // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
+  // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
+  engine?.sendStanding({ type: 'appIcon', key: prefs.appIconOnRemote ? prefs.appIcon : DEFAULT_PREFERENCES.appIcon });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -630,6 +652,7 @@ function createWindow(): BrowserWindow {
     enableLargerThanScreen: scripted,
     show: false,
     ...titleBar(),
+    ...windowIcon(),
     backgroundColor: windowBackground(),
     webPreferences: webPreferences(),
   });
@@ -738,6 +761,7 @@ function popOut(sessionId: string, view: unknown = null): void {
     minHeight: POPOUT_MIN.height,
     show: false,
     ...titleBar(),
+    ...windowIcon(),
     backgroundColor: windowBackground(),
     webPreferences: webPreferences(),
   });
@@ -3671,6 +3695,56 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
   await click('[data-close-settings]');
   smokeThemeFile = null;
   return `ok (${cards.length} themes, 2 imported and removed)`;
+}
+
+/**
+ * Settings › Theme › App icon: pick Signal yellow (checked, saved, applied in main), the keys, both modes, the saved
+ * file as the next launch reads it, then Reset to Graphite.
+ */
+async function runAppIconStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const checked = (key: string) => waitInPage(win, `document.querySelector('[data-app-icon="${key}"][aria-checked="true"][data-app-icon-selected]') && document.querySelectorAll('[data-app-icon-picker] [aria-checked="true"]').length === 1`, 2_000);
+  const key = (name: string) => js(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(name)}, bubbles: true }))`);
+  const saved = () => sanitizePreferences(JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8'))).appIcon ?? 'graphite';
+
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  await click('[data-settings-section="theme"]');
+  if (!(await waitInPage(win, "document.querySelectorAll('[data-app-icon-picker] [data-app-icon]').length === 9", 3_000))) return 'failed: the picker has no nine tiles';
+  if (!(await js("document.querySelector('[data-app-icon-picker]').closest('[role=radiogroup]')?.getAttribute('aria-label') === 'App icon'"))) return 'failed: the tiles are not a radio group named App icon';
+  if (!(await checked('graphite')) || (await js("Boolean(document.querySelector('[data-app-icon-reset]'))"))) return 'failed: Graphite is not the one checked, or Reset shows for it';
+  const broken = (await js("[...document.querySelectorAll('[data-app-icon] img')].filter((img) => !img.complete || img.naturalWidth === 0).length")) as number;
+  if (broken) return `failed: ${broken} tiles have no image`;
+
+  await click('[data-app-icon="signal"]');
+  if (!(await checked('signal'))) return 'failed: Signal yellow is not checked after a click';
+  if (!(await until(() => preferences.get().appIcon === 'signal' && appIcon.key === 'signal' && saved() === 'signal', 2_000))) return `failed: not saved and applied (preferences ${preferences.get().appIcon}, main ${appIcon.key}, file ${saved()})`;
+  if (process.platform !== 'darwin' && !appIcon.windowIcon()?.includes('signal')) return `failed: new windows would get ${appIcon.windowIcon()}`;
+  if (!(await waitInPage(win, "document.querySelector('[data-app-icon-reset]')", 2_000))) return 'failed: no Reset to Graphite';
+
+  // Arrow keys move and pick, as in any radio group.
+  await js("document.querySelector('[data-app-icon=\"signal\"]').focus()");
+  await key('ArrowRight');
+  if (!(await checked('forest')) || !(await until(() => preferences.get().appIcon === 'forest', 2_000))) return 'failed: → did not pick Forest';
+  await key('ArrowLeft');
+  if (!(await checked('signal'))) return 'failed: ← did not go back to Signal yellow';
+
+  for (const mode of ['light', 'dark'] as const) {
+    await click(`[data-color-scheme="${mode}"]`);
+    if (!(await waitInPage(win, `matchMedia('(prefers-color-scheme: ${mode})').matches`, 2_000))) return `failed: ${mode} did not apply`;
+    const frame = (await js("getComputedStyle(document.querySelector('[data-app-icon=\"signal\"]')).borderTopColor")) as string;
+    if (!frame || frame === 'rgba(0, 0, 0, 0)') return `failed: the chosen tile has no frame in ${mode} mode`;
+    await shot(win, `app-icon-${mode}.png`);
+  }
+  await click('[data-color-scheme="system"]');
+
+  // A restart: launch reads the saved file before the first window.
+  const atLaunch = saved();
+  await click('[data-app-icon-reset]');
+  if (!(await checked('graphite')) || !(await until(() => preferences.get().appIcon === 'graphite' && appIcon.key === 'graphite' && saved() === 'graphite', 2_000))) return 'failed: Reset to Graphite did not apply';
+  if (!(await waitInPage(win, "!document.querySelector('[data-app-icon-reset]')", 2_000))) return 'failed: Reset still shows for Graphite';
+  await click('[data-close-settings]');
+  return atLaunch === 'signal' ? 'ok (Signal yellow saved for the next launch, keys, light and dark, reset)' : `failed: the next launch would read ${atLaunch}`;
 }
 
 /** Tool calls are summarised by default: open the last finished group and count its steps. */
@@ -8401,6 +8475,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));
+  await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });
   rendering = (await js(
@@ -8421,8 +8496,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 }
 
 app.whenReady().then(() => {
-  // Packaged builds take the icon from the bundle's icon.icns; in development, set it on the Dock.
-  if (!app.isPackaged) app.dock?.setIcon(join(here, '../../build/icon.png'));
+  // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
+  // Dock gets Graphite's, which is build/icon.png.
+  appIcon.apply(preferences.get().appIcon);
   // The commit shows in brackets after the version, handy when someone reports a bug from a build.
   app.setAboutPanelOptions({
     applicationName: 'Switchboard',
@@ -8460,6 +8536,7 @@ app.whenReady().then(() => {
     alerts: () => preferences.get(),
     cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),
     sounds,
+    notificationIcon: () => appIcon.windowIcon(),
     ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event), recordRuns: (runs: ScheduleRunEvent[]) => void recordedScheduleRuns.push(...runs) } : {}),
   });
   notifier.connect();

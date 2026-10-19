@@ -32,6 +32,11 @@ export interface NotifierOptions {
   /** Settings › Usage: Large context, and how a cost reads. */
   cachePrefs: () => CacheReminderPrefs;
   sounds: SoundPlayer;
+  /**
+   * Settings › Theme › App icon on Windows and Linux: the colourway's file for the notification's icon, or undefined for
+   * the app's own. macOS always shows the bundle's icon on notifications.
+   */
+  notificationIcon?: () => string | undefined;
   /** Smoke tests record events (whether they'd be suppressed, and what they'd do) instead of showing notifications. */
   record?: (event: RecordedAlert) => void;
   /** Smoke tests record scheduled runs too, to check what a run would be titled (the stubbed run has no session). */
@@ -185,7 +190,8 @@ export class Notifier {
         const hint = event.kind === 'finished' ? queueHint(this.queue.items, this.queue.started, { sessionId: event.sessionId, cwd: event.cwd ?? null, outcome }) : null;
         // With sounds on, the sound is ours (its volume applies, and it plays with notifications off too), so the
         // system's own notification sound (Windows plays one) would be a second one.
-        const notification = new Notification({ title: event.title, body: hint ? `${event.body}\n${hint}` : event.body, silent: prefs.sounds.enabled });
+        const icon = this.options.notificationIcon?.();
+        const notification = new Notification({ title: event.title, body: hint ? `${event.body}\n${hint}` : event.body, silent: prefs.sounds.enabled, ...(icon ? { icon } : {}) });
         // The test has no session to open.
         // A scheduled run that didn't start opens Upcoming on it; the test, and anything else without a session, only
         // bring the window forward.

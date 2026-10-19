@@ -27,6 +27,7 @@ phone browser ── https ──▶ switchboard.struyfconsulting.com/remote/   
   - the app's code comes from the site, not from the tunnel provider, who terminates TLS and could otherwise change it;
   - it is a secure context (installable, WebCrypto, service workers and push notifications).
 - **The engine only accepts sockets whose `Origin` is the remote app's.** Browsers always send `Origin` on a WebSocket and a page can't fake it, so another site open on the phone or the computer can't reach the engine.
+- **The app icon colourway** (Settings › Theme › App icon, `packages/protocol/src/appIcons.ts`) can't be served by the engine, which only speaks the socket. So every colourway's icons ship with the remote app (`public/app-icons/<key>/`, Graphite's where they always were), with a manifest each made from the app's own at build time (`appIconManifest`, in `vite.config.ts`). The engine says which one in `hello` (`appIcon`, Graphite while Use it on your phone too is off) and in `app.icon` when it changes; the app points its manifest, apple-touch-icon and favicon links there, with `?v=<key>`, and keeps the key for its next load (`src/lib/favicon.ts`). A Home Screen app keeps the icon it was added with.
 
 ### Why tunnels and not the local network
 

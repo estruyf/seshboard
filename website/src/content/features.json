@@ -1287,6 +1287,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:app-icon",
+      "name": "Settings: Theme: App icon (nine colourways, Use it on your phone too)",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"

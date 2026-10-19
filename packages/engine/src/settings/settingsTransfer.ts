@@ -75,6 +75,8 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   focusCountExternal: 'Count terminal and IDE sessions',
   focusCountRemote: 'Count sessions on other computers',
   themeId: 'Theme',
+  appIcon: 'App icon',
+  appIconOnRemote: 'Use the app icon on your phone too',
   archiveAfterDays: 'Archive finished sessions after',
   deleteArchived: 'Delete archived sessions',
   whileWorking: 'Enter while Claude is working',

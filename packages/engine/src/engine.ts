@@ -297,6 +297,8 @@ export interface Engine {
   setShowMods(enabled: boolean): void;
   /** Settings › General › Use Claude in Chrome, from main: sessions started or resumed after it changes get `--chrome`. */
   setChrome(enabled: boolean): void;
+  /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
+  setAppIcon(key: string): void;
   /** Whether a window has focus, from main: running pull request checks are read every 30 seconds then, else every 5 minutes. */
   setForeground(foreground: boolean): void;
   /**
@@ -3063,6 +3065,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setShowMods: (enabled) => hosts.setShowMods(enabled),
     setChrome: (enabled) => hosts.setChrome(enabled),
+    setAppIcon: (key) => remote?.setAppIcon(key),
     setForeground: (foreground) => checksWatcher.setForeground(foreground),
     startModsSmoke: async () => {
       const spec = JSON.parse(process.env.SWITCHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;

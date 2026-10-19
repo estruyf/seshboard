@@ -1215,7 +1215,8 @@ const screens: Screen[] = [
       // watches; taken out again after the picture.
       writeFileSync(demoSchedulesFile(t.world), JSON.stringify(demoSchedules(t.world, Date.now())));
       await t.home();
-      await t.until("document.querySelectorAll('[data-schedules-card] [data-schedule-row]').length === 4", 'Home shows no schedules');
+      // Home lists the first three; Upcoming has the rest.
+      await t.until("document.querySelectorAll('[data-schedules-card] [data-schedule-row]').length === 3", 'Home shows no schedules');
       await hideUsageStatus(t);
       // The card sits under the queue: bring all of it on screen first.
       await t.page.evaluate(() => document.querySelector('[data-schedules-card]')?.scrollIntoView({ block: 'center' }));
@@ -1715,6 +1716,21 @@ const screens: Screen[] = [
       await t.need('[data-mods-popover]', 'the mods popover did not open');
       await t.shot('mods-popover', { clip: '[data-mods-popover]', pad: 12, keepFocus: true });
       await t.page.keyboard.press('Escape');
+    },
+  },
+  {
+    // Settings › Theme › App icon with another colourway picked, so the chosen tile and Reset to Graphite show; put back after.
+    name: 'settings-app-icon',
+    async take(t) {
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="theme"]');
+      await t.click('[data-app-icon="signal"]');
+      await t.need('[data-app-icon="signal"][aria-checked="true"]', 'picking Signal yellow did not check its tile');
+      await t.need('[data-app-icon-reset]', 'no Reset to Graphite');
+      await t.shot('settings-app-icon', { clip: '[data-app-icon-settings]', pad: 16 });
+      await t.click('[data-app-icon-reset]');
+      await t.need('[data-app-icon="graphite"][aria-checked="true"]', 'Reset to Graphite did not apply');
+      await t.click('[data-close-settings]');
     },
   },
   ...(['general', 'theme', 'sidebar', 'projects', 'conversation', 'mods', 'focus', 'profiles', 'usage', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(

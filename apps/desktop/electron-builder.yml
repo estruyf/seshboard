@@ -31,6 +31,12 @@ mac:
     - package.json
     - '!node_modules/node-pty/prebuilds/win32-*/**'
   category: public.app-category.developer-tools
+  # The app icon colourways (Settings › Theme › App icon): main reads them from Resources/app-icons. The Dock takes
+  # the 1024px icons; the tiles and .ico files are for the other systems.
+  extraResources:
+    - from: resources/app-icons
+      to: app-icons
+      filter: ['*.png', '!*-256.png']
   target:
     - target: dmg
       arch: [arm64]
@@ -58,6 +64,11 @@ win:
     # node-pty's install leaves a copy of conpty for the build machine's architecture here; the app loads the
     # one in prebuilds/win32-<arch> instead.
     - '!node_modules/node-pty/build/**'
+  # The app icon colourways, as .ico files for the window and the taskbar (resources\app-icons).
+  extraResources:
+    - from: resources/app-icons
+      to: app-icons
+      filter: ['*.ico']
   # One installer for both: it installs the build that matches the PC.
   target:
     - target: nsis
@@ -73,6 +84,11 @@ linux:
     # node-pty has no Linux prebuilds: npm install compiles it into build/Release, of which the app needs pty.node.
     - '!node_modules/node-pty/build/{Makefile,config.gypi,*.mk,deps,node_gyp_bins,obj.target}/**'
     - '!node_modules/node-pty/build/Release/{.deps,obj.target}/**'
+  # The app icon colourways, as 256px tiles for the windows (resources/app-icons).
+  extraResources:
+    - from: resources/app-icons
+      to: app-icons
+      filter: ['*-256.png']
   # Lowercase, as Linux commands are: /opt/Switchboard/switchboard.
   executableName: switchboard
   # Names the desktop entry switchboard.desktop, after desktopName in package.json, which Electron also gives the

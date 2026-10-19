@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createEngine, type DemoUsage, type TrashScope } from '@switchboard/engine';
-import { ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@switchboard/protocol/bridge';
+import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@switchboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
 function argValue(name: string): string | undefined {
@@ -126,6 +126,11 @@ process.parentPort.on('message', (event) => {
   // Settings › Mods › Show mods.
   if (data?.type === 'mods') {
     engine.setShowMods((data as { show?: unknown }).show !== false);
+    return;
+  }
+  // Settings › Theme › App icon, for paired phones.
+  if (data?.type === 'appIcon') {
+    engine.setAppIcon(appIconKey((data as { key?: unknown }).key));
     return;
   }
   // Settings › General › Use Claude in Chrome.

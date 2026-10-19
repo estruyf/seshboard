@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  DEFAULT_APP_ICON,
   defuseStubs,
   keyPairFromSecret,
   REMOTE_APP_URL,
@@ -249,6 +250,8 @@ export class RemoteHub {
    */
   private readonly archivedFromPhone = new Map<string, number>();
   private applying: Promise<void> = Promise.resolve();
+  /** Settings › Theme › App icon's colourway for phones, from main (`setAppIcon`). */
+  private appIcon: string = DEFAULT_APP_ICON;
 
   constructor(private readonly options: RemoteHubOptions) {
     this.devices = new DeviceStore(options.db);
@@ -263,6 +266,7 @@ export class RemoteHub {
       pairing: this.pairing,
       appVersion: options.appVersion,
       ...(options.computerName ? { computerName: options.computerName } : {}),
+      appIcon: () => this.appIcon,
       // Switchboard on another computer pairs and connects as a phone does (docs/remote-access.md, Other computers).
       origins: [new URL(this.appUrl).origin, REMOTE_DESKTOP_ORIGIN],
       address: () => this.address,
@@ -378,6 +382,13 @@ export class RemoteHub {
     for (const [phone, watch] of this.watches) if (watch.sessionId === event.sessionId) phones.add(phone);
     for (const phone of phones) phone.emit('session.ask', event);
     if (event.done) this.askedBy.delete(event.id);
+  }
+
+  /** Settings › Theme › App icon changed (Graphite with "Use it on your phone too" off): connected phones swap their icons. */
+  setAppIcon(key: string): void {
+    if (key === this.appIcon) return;
+    this.appIcon = key;
+    if (this.server.listening) this.server.each((rpc) => rpc.emit('app.icon', { key }));
   }
 
   /** A profile's plan usage changed: every phone hears it, for its Home. */

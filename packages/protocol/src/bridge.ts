@@ -13,9 +13,11 @@ import {
 
 import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./autoModel.ts";
 import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
+import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
+export * from "./appIcons.ts";
 
 /**
  * The small API the preload script exposes on `window.switchboard`.
@@ -291,6 +293,13 @@ export interface Preferences {
   focusCountRemote: boolean;
   /** The colour theme: a built-in's id (`demo-time`, `github`…) or an imported theme's file name. */
   themeId: string;
+  /**
+   * Settings › Theme › App icon: the colourway of the icon in the Dock and the app switcher (macOS), or on the windows
+   * and the taskbar. Main applies it at launch, before the first window. The bundle's own icon stays Graphite.
+   */
+  appIcon: AppIconKey;
+  /** Settings › Theme › App icon: "Use it on your phone too", the remote app's icon and its browser tab. Off is Graphite there. */
+  appIconOnRemote: boolean;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
@@ -372,6 +381,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   focusCountExternal: false,
   focusCountRemote: true,
   themeId: DEFAULT_THEME_ID,
+  appIcon: DEFAULT_APP_ICON,
+  appIconOnRemote: true,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   whileWorking: "queue",
@@ -540,6 +551,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.focusCountRemote === "boolean")
     out.focusCountRemote = raw.focusCountRemote;
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
+  if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
+  if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
   // Both fields or neither: half a setting would turn deleting on or off by accident.

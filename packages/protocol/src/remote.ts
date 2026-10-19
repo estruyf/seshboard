@@ -263,6 +263,11 @@ export const remoteContract = {
         computer: z.object({ name: z.string() }),
         /** What it takes beyond what every version does (`REMOTE_FEATURE_ATTACHMENTS`); missing from an older one. */
         features: z.array(z.string().max(50)).max(50).default([]),
+        /**
+         * The app icon colourway the remote app shows (`AppIconKey`; Settings › Theme › App icon there), Graphite
+         * while "Use it on your phone too" is off. Missing from an older one, and a key the phone doesn't know, is Graphite.
+         */
+        appIcon: z.string().max(50).optional(),
       }),
     },
     'sessions.list': { params: z.object({}), result: RemoteSessions },
@@ -443,6 +448,8 @@ export const remoteContract = {
     'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
     /** A clone this connection started moved on (`projects.clone`). */
     'projects.cloneProgress': RemoteCloneProgress,
+    /** The app icon colourway changed on the computer (as `appIcon` in hello): the open tab swaps its icons. */
+    'app.icon': z.object({ key: z.string().max(50) }),
   },
 } as const satisfies ContractShape;
 export type RemoteContract = typeof remoteContract;

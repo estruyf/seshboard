@@ -508,6 +508,20 @@ describe('Remote hub', () => {
     expect(heard).toEqual(['work']);
   });
 
+  it('tells phones the app icon colourway in hello and when it changes', async () => {
+    const { hub, port, on } = await setup();
+    hub.setAppIcon('signal');
+    await on();
+    const { remote } = await pair(hub, port);
+    expect((await remote.call('hello', { client: { version: '1' } })).appIcon).toBe('signal');
+    const heard: string[] = [];
+    remote.on('app.icon', (event) => heard.push(event.key));
+    hub.setAppIcon('signal');
+    hub.setAppIcon('graphite');
+    await until(() => heard.length > 0);
+    expect(heard).toEqual(['graphite']);
+  });
+
   it('answers token usage for the profile signed in to an account, with projects by id and name and never their folder', async () => {
     const { hub, port, on, calls } = await setup();
     await on();
