@@ -802,7 +802,7 @@ describe('Claude profiles', () => {
     // A terminal can be opened with a profile of its own (Settings signs a new profile in that way), whatever its folder's is.
     await client.call('terminal.open', { sessionId: null, kind: 'shell', cols: 80, rows: 24, profileId: 'default' });
     expect(terminalEnvs.at(-1)?.configDir).toBe(personal);
-    await client.call('terminal.open', { sessionId: null, cwd: resolve('/tmp'), kind: 'shell', cols: 80, rows: 24 });
+    await client.call('terminal.open', { sessionId: null, cwd: tmpdir(), kind: 'shell', cols: 80, rows: 24 });
     expect(terminalEnvs.at(-1)?.configDir).toBe(work);
     await expect(client.call('terminal.open', { sessionId: null, kind: 'claude', cols: 80, rows: 24, profileId: 'gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
