@@ -102,6 +102,13 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 const appUserModelId = app.isPackaged ? 'dev.switchboard.app' : process.execPath;
 if (process.platform === 'win32') app.setAppUserModelId(appUserModelId);
 
+// On Linux, Chromium picks the keychain from the desktop's name: one it doesn't know (Hyprland, Sway, i3) gets no
+// keychain at all, even with gnome-keyring or KeePassXC running, and Remote can't keep its keys. Ask for the Secret
+// Service there; KDE keeps KWallet, and a --password-store the user passes wins.
+if (process.platform === 'linux' && !app.commandLine.hasSwitch('password-store') && !/KDE/i.test(process.env.XDG_CURRENT_DESKTOP ?? '')) {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+}
+
 // SWITCHBOARD_COLOR_SCHEME=light|dark forces a scheme without saving it (to check both in the smoke test).
 const forcedScheme = process.env.SWITCHBOARD_COLOR_SCHEME;
 const preferences = new PreferencesStore(join(app.getPath('userData'), 'preferences.json'), sanitizePreferences({ colorScheme: forcedScheme }).colorScheme);
