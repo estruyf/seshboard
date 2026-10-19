@@ -6472,8 +6472,13 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
     pressKey(win, 'Escape');
     if (!(await waitInPage(win, `!document.querySelector('[data-changes-panel]') && document.querySelector('${banner}')`, 3_000))) return 'Esc did not close the Changes panel before the banner';
   }
+  // Details is open with the banner; Space closes it and opens it again.
+  const details = `document.querySelector('${banner} [data-catchup-details]')`;
+  if (!(await waitInPage(win, details, 3_000))) return 'the banner opened without its Details';
   pressKey(win, 'Space');
-  if (!(await waitInPage(win, `document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Space did not open the banner’s Details';
+  if (!(await waitInPage(win, `document.querySelector('${banner}') && !${details}`, 3_000))) return 'Space did not close the banner’s Details';
+  pressKey(win, 'Space');
+  if (!(await waitInPage(win, details, 3_000))) return 'Space did not open the banner’s Details again';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector('${banner}') && !document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Esc did not close Details first';
   pressKey(win, 'Escape');
@@ -6495,7 +6500,7 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-sort-recent]')?.click()");
   if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
   if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
-  return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Space opened Details, Esc closed Details then folded the banner, Space opened it again, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
+  return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Details open, Space closed and reopened it, Esc closed Details then folded the banner, Space opened it again, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
 }
 
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
