@@ -12,6 +12,7 @@ import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts
 import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
 import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
 import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
+import { readOnlyFork } from '../../state/githubOriginStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { cleanUpWorktrees, openProject } from '../../state/projectPageStore.ts';
@@ -116,6 +117,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     setFocusLimit: (on) => usePreferences.getState().update({ focusLimit: on ? lastLimit() : null }),
 
     renameSession: () => session && usePaletteBus.getState().showDialog({ kind: 'rename-session', sessionId, title: session.title }),
+    githubStart: (type, root) => usePaletteBus.getState().showDialog({ kind: 'github-start', type, root }),
     newLinkedSession: () => session?.projectRoot && startLinkedSession({ id: sessionId, title: session.title, projectRoot: session.projectRoot }),
     showCatchUp: () => {
       const card = useCatchUp.getState().cards.get(sessionId);
@@ -219,7 +221,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       cwd &&
       call('sync with the remote', async (c) => {
         const status = await c.call('worktree.status', { cwd });
-        const { terminalId } = await c.call('git.sync', { sessionId, cwd, action: syncStep(status, session?.running ?? false) });
+        const { terminalId } = await c.call('git.sync', { sessionId, cwd, action: syncStep(status, session?.running ?? false, readOnlyFork(sessionId)) });
         showTerminal(sessionId, terminalId);
       }),
     stageAll: () =>

@@ -66,7 +66,8 @@ export async function mapLimit<T, R>(items: readonly T[], limit: number, run: (i
 }
 
 /** Changed and new files in a checkout. Renames carry their old path as an extra entry; only entries that start with a status count. */
-const countUncommitted = async (path: string) =>
+/** Changed files in a checkout: staged, unstaged and untracked. */
+export const countUncommitted = async (path: string) =>
   (await git(path, ['status', '--porcelain=v1', '-z', '--untracked-files=all']).catch(() => '')).split('\0').filter((e) => /^[ MADRCU?!]{2} /.test(e)).length;
 
 /** A session that may be in one of the worktrees. */

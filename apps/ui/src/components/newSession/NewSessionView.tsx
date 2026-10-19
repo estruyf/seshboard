@@ -1,6 +1,6 @@
-import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion } from 'lucide-react';
+import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, bringsAnything, type ContextItem, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -62,6 +62,9 @@ import { OpenInButton } from '../OpenInButton.tsx';
 import { CatchUpButton } from '../git/CatchUpButton.tsx';
 import { UsageBand } from '../UsageBand.tsx';
 import { linkNoticeText } from './linkNotice.ts';
+import { startFromGithub, useGithubStart, type GithubStartRequest } from '../../state/githubStartStore.ts';
+import { currentCheckoutBlocked, forkCaution, linkBanner, NO_AUTOSTART, otherRepository, prBranch, readOnlyFork, startNote, startPrompt, takenWorktreeNames, uniqueWorktreeName, worktreeNameFor } from '../github/githubStart.ts';
+import { chipItem, reasonLine } from '../github/githubText.ts';
 import { activityByProject, latestBranches, orderProjects, pickUpRows, tileStatus } from './projectTiles.ts';
 import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote, freshBase } from './trayLabels.ts';
@@ -171,6 +174,14 @@ function LocalNewSession() {
   const waitMenu = useMenu();
   /** Start anyway in the focus note sends what is in the box, without asking again. */
   const [submitRequest, setSubmitRequest] = useState(0);
+  /**
+   * Filled in from an issue or pull request (⌥↩ in the # list, the palette, a link): the request, the item once gh has
+   * read it, or why it can't be used. Cleared when the prompt is, the project changes or the session starts.
+   */
+  const [fromGithub, setFromGithub] = useState<{ request: GithubStartRequest; issue: GithubIssueDetail | null; pr: GithubPrDetail | null; error: string | null; loading: boolean } | null>(null);
+  const githubRequest = useGithubStart((s) => s.request);
+  /** A link's issue or pull request, waiting for the link's folder (a `repo` is looked up first). */
+  const [linkGithub, setLinkGithub] = useState<{ type: 'issue' | 'pr'; ref: string; prompt: string | null; autostart: boolean } | null>(null);
   // Clone from GitHub: the form (kept in the store, so Run on can move it to another computer) and its clone here.
   const cloneEnabled = useCloneEnabled();
   const cloneForm = useClone((s) => s.form);
@@ -307,6 +318,14 @@ function LocalNewSession() {
     setLinkRepo(link.repo ? { repo: link.repo, state: 'looking' } : null);
     setLinkNoFolder(!link.cwd && !link.repo);
     if (!link.cwd && !link.repo) setPickerRequest((n) => n + 1);
+    // An issue or pull request: filled in once its folder is known (below), and never started on its own.
+    const githubType = link.issue ? 'issue' : link.pr ? 'pr' : null;
+    setLinkGithub(githubType ? { type: githubType, ref: (link.issue ?? link.pr)!, prompt: link.prompt, autostart: link.autostart } : null);
+    setFromGithub(null);
+    if (githubType) {
+      setPendingStart(null);
+      return;
+    }
     // Starting needs a folder the link chose; a link without one waits for the user like any other.
     setPendingStart(link.autostart && link.prompt && (link.cwd || link.repo) ? link.prompt : null);
     if (link.prompt) {
@@ -316,6 +335,65 @@ function LocalNewSession() {
       setLinkPrompt(link.prompt.length);
     }
   }, [linkRequest]);
+  // New session from an issue or pull request: its project, then (once gh has read it) the worktree, chip and prompt.
+  // Like a link's, it never starts on its own.
+  useEffect(() => {
+    if (!githubRequest) return;
+    const request = useGithubStart.getState().take();
+    if (!request) return;
+    if (fromLater) leaveQueued();
+    folderFromLink.current = true;
+    touchedFor.current = null;
+    setProfileOverride(null);
+    setPendingStart(null);
+    setLinkRepo(null);
+    setLinkNoFolder(false);
+    setLinkPrompt(null);
+    setCwd(request.root);
+    setFromGithub({ request, issue: null, pr: null, error: null, loading: true });
+  }, [githubRequest]);
+  const githubLoading = fromGithub?.loading ? fromGithub.request : null;
+  useEffect(() => {
+    if (!client || !githubLoading) return;
+    const request = githubLoading;
+    const { root, type, ref } = request;
+    let cancelled = false;
+    const fail = (error: string) => !cancelled && setFromGithub((current) => (current?.request === request ? { ...current, error, loading: false } : current));
+    void (async () => {
+      const [status, found] = await Promise.all([
+        client.call('github.status', { root }).catch(() => null),
+        type === 'pr'
+          ? client.call('github.pr', { root, ref }).then(({ pr, reason, message }) => ({ item: pr, reason, message }))
+          : client.call('github.issue', { root, ref }).then(({ issue, reason, message }) => ({ item: issue, reason, message })),
+      ]).catch(() => [null, null] as const);
+      if (cancelled) return;
+      const item = found?.item ?? null;
+      const name = projects.get(root)?.name ?? basename(root);
+      if (!item) return fail(found ? (reasonLine(found.reason, found.message) ?? `Couldn't read ${ref}.`) : `Couldn't read ${ref}.`);
+      if (status?.repo && item.repo.toLowerCase() !== status.repo.toLowerCase()) return fail(otherRepository(type, name));
+      // A worktree named after it, made unique against the worktrees and branches there already.
+      const [listed, branches] = await Promise.all([client.call('worktrees.list', { root }).catch(() => null), client.call('git.branches', { cwd: root }).catch(() => null)]);
+      if (cancelled) return;
+      const worktreeName = uniqueWorktreeName(worktreeNameFor(type, item.number, item.title), takenWorktreeNames(listed?.worktrees ?? [], branches?.branches ?? []));
+      touchedFor.current = root;
+      setD((current) => ({ ...current, workspace: 'worktree', branch: '' }));
+      setWorktreeName(worktreeName);
+      setNameTouched(true);
+      // The chip replaces whatever the box held for this project; the prompt is the link's, else "Fix #32: …".
+      const key = newDraftKey(root);
+      const drafts = useDrafts.getState();
+      drafts.removeContext(key, (drafts.drafts[key]?.context ?? []).map((chip) => chip.id));
+      drafts.addContext(key, [chipItem(item)]);
+      const prompt = request.link?.prompt ?? startPrompt(type, item.number, item.title);
+      setRestored(null);
+      setPreset({ text: prompt, seq: ++presets.current });
+      setDraftPrompt(prompt);
+      setFromGithub((current) => (current?.request === request ? { ...current, issue: type === 'issue' ? item : null, pr: type === 'pr' ? (item as GithubPrDetail) : null, loading: false } : current));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, githubLoading]);
   // A prompt from the queue: its folder, choices and prompt, to check before starting. It opens in a box of its own;
   // one that left the queue (Undo of Add to queue) comes back as New session's prompt instead.
   useEffect(() => {
@@ -409,6 +487,12 @@ function LocalNewSession() {
   /** The form is open and Start would clone first: the box works without a folder. */
   const cloning = !!cloneForm && clonedRoot === null;
 
+  // The link's folder is known: fill New session in from its issue or pull request, as ⌥↩ in the # list does.
+  useEffect(() => {
+    if (!linkGithub || !cwd || linkRepo) return;
+    setLinkGithub(null);
+    startFromGithub({ root: cwd, type: linkGithub.type, ref: linkGithub.ref, item: null, link: { prompt: linkGithub.prompt, autostart: linkGithub.autostart } });
+  }, [linkGithub, cwd, linkRepo]);
   // Find a checkout of the link's repository among your projects and folders with sessions.
   const lookingFor = linkRepo?.state === 'looking' ? linkRepo.repo : null;
   useEffect(() => {
@@ -441,9 +525,16 @@ function LocalNewSession() {
     if (draftPrompt) return;
     if (linkPrompt !== null) setLinkPrompt(null);
     setRestored(null);
+    // An issue or pull request filled in ends too; one still being read, or refused (its reason stays), doesn't.
+    setFromGithub((current) => (current && !current.loading && !current.error ? null : current));
   }, [draftPrompt, linkPrompt]);
+  // Another project (from any path: the picker, the palette, a project's page) leaves the issue behind.
+  useEffect(() => {
+    if (fromGithub && cwd !== fromGithub.request.root) setFromGithub(null);
+  }, [cwd]);
   const clearPrompt = () => {
     setPendingStart(null);
+    setFromGithub(null);
     setPreset({ text: '', attachments: [], context: [], seq: ++presets.current });
     setDraftPrompt('');
     setLinkPrompt(null);
@@ -556,6 +647,7 @@ function LocalNewSession() {
   };
   const changeFolder = (folder: string) => {
     touchedFor.current = null;
+    if (folder !== fromGithub?.request.root) setFromGithub(null);
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
@@ -602,6 +694,26 @@ function LocalNewSession() {
     isGitRepo: inspection?.isGitRepo ?? null,
   });
 
+  // Filled in from an issue or pull request. A pull request is worked on in a new worktree or here (after
+  // `gh pr checkout`, only without changes); a fork's that Switchboard can't push back turns push and Create PR off.
+  const githubPr = fromGithub?.pr ?? null;
+  const githubItem = fromGithub?.issue ?? githubPr;
+  const prCurrentBlocked = githubPr ? currentCheckoutBlocked(gitStatus) : null;
+  const prReadOnly = githubPr ? readOnlyFork(githubPr, useWorktree ? 'worktree' : 'current') : false;
+  const githubNumber = githubItem?.number ?? (fromGithub ? Number(/(\d+)\D*$/.exec(fromGithub.request.ref)?.[1] ?? 0) : 0);
+  /** What `session.create` gets for it: where it came from, and a pull request's worktree or checkout. */
+  const githubStart = (worktree: boolean) =>
+    githubItem
+      ? {
+          origin: { type: githubItem.type, repo: githubItem.repo, number: githubItem.number, readOnly: githubPr ? readOnlyFork(githubPr, worktree ? 'worktree' : 'current') : false },
+          ...(githubPr
+            ? worktree
+              ? { worktreeFrom: { branch: prBranch(githubPr), pullRequest: githubPr.number, fork: githubPr.isCrossRepository } }
+              : { checkoutPullRequest: { number: githubPr.number, repo: githubPr.repo } }
+            : {}),
+        }
+      : undefined;
+
   const saveAsProjectDefault = async () => {
     if (!client || !cwd) return;
     await client.call('projects.setDefaults', { root: cwd, defaults: asDefaults });
@@ -615,8 +727,8 @@ function LocalNewSession() {
   /** The palette's Update from remote: the git button runs its step. */
   const [catchUpRequest, setCatchUpRequest] = useState(0);
   useEffect(() => {
-    usePaletteBus.setState({ newSessionInfo: { canWorktree, canSaveDefaults: unsaved, canQueue, canCatchUp } });
-  }, [canWorktree, unsaved, canQueue, canCatchUp]);
+    usePaletteBus.setState({ newSessionInfo: { canWorktree, canSaveDefaults: unsaved, canQueue, canCatchUp, root: cwd && !question ? cwd : null } });
+  }, [canWorktree, unsaved, canQueue, canCatchUp, cwd, question]);
   useEffect(() => () => usePaletteBus.setState({ newSessionInfo: null }), []);
   const paletteRequest = usePaletteBus((s) => s.newSessionRequest);
   const seenRequest = useRef(usePaletteBus.getState().newSessionRequest?.nonce ?? 0);
@@ -733,6 +845,7 @@ function LocalNewSession() {
         addProject: !cloned && options.addAsProject && !isProject && addAsProject && !!inspection?.exists,
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
+        github: fresh ? undefined : githubStart(worktree),
       },
       {
         createSession: (params) => client.call('session.create', params),
@@ -755,6 +868,11 @@ function LocalNewSession() {
             if (cloned?.root) useDrafts.getState().removeDraft(newDraftKey(cloned.root));
           }
           if (!fresh && worktree && !nameTouched) setSuggestedName(randomWorktreeName());
+          if (fromGithub) {
+            setFromGithub(null);
+            setNameTouched(false);
+            setWorktreeName('');
+          }
           select(sessionId);
         },
       },
@@ -997,6 +1115,26 @@ function LocalNewSession() {
             />
           )}
 
+          {fromGithub && (fromGithub.request.link || fromGithub.error) && (
+            <div className="-mb-2 grid gap-2" data-from-link-banner={fromGithub.request.link ? true : undefined}>
+              {fromGithub.request.link && (
+                <Notice tone="info" icon={<GitBranch size={14} aria-hidden />}>
+                  {linkBanner(fromGithub.request.type, githubNumber)}
+                </Notice>
+              )}
+              {fromGithub.request.link?.autostart && (
+                <Notice tone="caution" icon={<TriangleAlert size={14} aria-hidden />} data-from-link-no-autostart>
+                  {NO_AUTOSTART}
+                </Notice>
+              )}
+              {fromGithub.error && (
+                <Notice tone="error" data-github-start-error>
+                  {fromGithub.error}
+                </Notice>
+              )}
+            </div>
+          )}
+
           {!fromLater && <PromptChips root={cwd && !question ? cwd : null} draftKey={draftKey} />}
 
           {/* The message box with its route strip on top: the strip's bottom edge is the card's top border.
@@ -1066,21 +1204,36 @@ function LocalNewSession() {
                     name="workspace"
                     value={useWorktree ? 'worktree' : 'current'}
                     onChange={(workspace) => update({ workspace })}
-                    title={routeHint({ worktree: useWorktree, isGitRepo: canWorktree, branch: checkoutBranch ?? branch, name: effectiveName })}
-                    heading="Where"
+                    title={routeHint({ worktree: useWorktree, isGitRepo: canWorktree, branch: githubPr ? prBranch(githubPr) : (checkoutBranch ?? branch), name: effectiveName })}
+                    heading={githubPr ? `Work on #${githubPr.number} in` : 'Where'}
                     chevron
-                    width={300}
-                    choices={[
-                      { value: 'current', label: 'Current checkout', description: 'Edits land in your working copy' },
-                      { value: 'worktree', label: 'New worktree', description: canWorktree ? 'Isolated copy, branched from the one you pick' : 'Needs a git repository', disabled: !canWorktree },
-                    ]}
+                    width={githubPr ? 340 : 300}
+                    choices={
+                      githubPr
+                        ? [
+                            { value: 'current', label: 'Current checkout', description: prCurrentBlocked ?? `Checks out ${githubPr.headRefName} here first`, disabled: prCurrentBlocked !== null },
+                            { value: 'worktree', label: 'New worktree from the pull request', description: canWorktree ? `Branch ${prBranch(githubPr)}, at the pull request's latest commit` : 'Needs a git repository', disabled: !canWorktree },
+                          ]
+                        : [
+                            { value: 'current', label: 'Current checkout', description: 'Edits land in your working copy' },
+                            { value: 'worktree', label: 'New worktree', description: canWorktree ? 'Isolated copy, branched from the one you pick' : 'Needs a git repository', disabled: !canWorktree },
+                          ]
+                    }
                     extra={
-                      useWorktree && (
+                      (useWorktree || prReadOnly) && (
+                        <>
+                        {prReadOnly && githubPr && (
+                          <p className="mx-3 mt-1 mb-1 flex items-start gap-1.5 text-meta text-caution" data-github-fork-caution>
+                            <TriangleAlert size={12} className="mt-0.5 shrink-0" aria-hidden />
+                            {forkCaution(githubPr.number)}
+                          </p>
+                        )}
+                        {useWorktree && (
                         <label
                           className="mx-3 mt-1 mb-1 flex h-6 items-center rounded-md border border-border bg-bg px-2 font-mono text-meta focus-within:border-accent-ink"
-                          data-tooltip={`Branch worktree-${effectiveName} in .claude/worktrees/${effectiveName}`}
+                          data-tooltip={`Branch ${githubPr ? prBranch(githubPr) : `worktree-${effectiveName}`} in .claude/worktrees/${effectiveName}`}
                         >
-                          <span className="text-faint">worktree-</span>
+                          {!githubPr && <span className="text-faint">worktree-</span>}
                           <input
                             data-worktree-name
                             aria-label="Worktree name"
@@ -1094,6 +1247,8 @@ function LocalNewSession() {
                             }}
                           />
                         </label>
+                        )}
+                        </>
                       )
                     }
                     actions={
@@ -1106,7 +1261,14 @@ function LocalNewSession() {
                     <span>{useWorktree ? 'New worktree' : 'Current checkout'}</span>
                   </ChoiceMenu>
 
-                  {useWorktree ? (
+                  {githubPr ? (
+                    <span className="flex min-w-0 items-center gap-1.5 px-2 font-mono text-ui text-muted" data-tooltip={useWorktree ? `The pull request's branch, at its latest commit` : `gh pr checkout ${githubPr.number} switches this folder to it`}>
+                      <GitBranch size={14} className="shrink-0" aria-hidden />
+                      <span className="truncate" data-route-branch>
+                        {useWorktree ? prBranch(githubPr) : githubPr.headRefName}
+                      </span>
+                    </span>
+                  ) : useWorktree ? (
                     <ChoiceMenu
                       name="base"
                       value={d.baseRef}
@@ -1177,6 +1339,7 @@ function LocalNewSession() {
               carryOver
               savedPrompts={{ root: cwd && !question ? cwd : null, projectName: projectName ?? 'This project' }}
               links={{ sessionId: null, root: cwd }}
+              github={{ root: cwd && !question ? cwd : null }}
               onDraftLoaded={onDraftLoaded}
               restored={restored !== null}
               history={promptHistory}
@@ -1200,7 +1363,7 @@ function LocalNewSession() {
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <StartButton
-                  state={startButtonState({ ...box, startBlocked, branchBlocked: branchTaken, canWorktree, worktree: useWorktree, question })}
+                  state={startButtonState({ ...box, startBlocked, branchBlocked: branchTaken ?? (githubPr && !useWorktree ? prCurrentBlocked : null), canWorktree, worktree: useWorktree, question })}
                   onAction={(action) =>
                     action === 'queue' ? box.submitSecondary() : action === 'start-worktree' ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true })) : box.submit()
                   }
@@ -1217,6 +1380,14 @@ function LocalNewSession() {
               <UsageBand tray profileId={profileId} />
             </span>
           </div>
+
+          {/* Its own line, so it is read whole: what starting from an issue or pull request does, and doesn't. */}
+          {githubItem && (
+            <p className="-mt-3 flex items-center justify-center gap-1.5 px-2 text-center text-meta text-muted" data-github-start-note>
+              <ShieldCheck size={13} className="shrink-0" aria-hidden />
+              {startNote(githubItem.type)}
+            </p>
+          )}
 
           {queueLine}
 

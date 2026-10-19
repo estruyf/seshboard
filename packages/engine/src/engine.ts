@@ -50,6 +50,7 @@ import {
   type PermissionRequest,
   type PromptScope,
   accountKey,
+  type ClaudeWorktreeRequest,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -58,7 +59,7 @@ import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
-import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
@@ -67,7 +68,10 @@ import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
 import { ActionStore, expandCommand, suggestActions } from './actions/actionStore.ts';
 import { SharedFileWatcher } from './actions/sharedFileWatcher.ts';
 import { SavedPromptStore } from './prompts/savedPromptStore.ts';
-import { findIssue, openPullRequests } from './git/githubLookups.ts';
+import { GithubService } from './git/github.ts';
+import { FORK_READ_ONLY, GithubOriginStore } from './git/githubOrigins.ts';
+import { checkoutPullRequest as checkoutPullRequest_, PrCheckoutError } from './git/prCheckout.ts';
+import { makeWorktreeFrom, WorktreeFromError } from './git/worktreeFrom.ts';
 import { LaterStore } from './later/laterStore.ts';
 import { summarise, UpNextStore } from './host/upNextStore.ts';
 import { Asker, AskStore } from './host/sideQuestions.ts';
@@ -82,6 +86,7 @@ import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessions
 import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profiles/cleanupPeriod.ts';
 import { HostManager, type SdkRuntime } from './host/hostManager.ts';
 import { LinkService } from './links/linkService.ts';
+import { expandMessage, GithubExpander } from './links/githubExpand.ts';
 import { LinkStore } from './links/linkStore.ts';
 import { lastTurn } from './catchUp/turn.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
@@ -427,6 +432,12 @@ export function createEngine(options: EngineOptions): Engine {
     lastReply: async (id) => lastTurn(await source.messages(id))?.finalText ?? null,
     log,
   });
+  /** Issues and pull requests through gh: the `#` list, blanks, New session and what Claude gets share its cache. */
+  const github = new GithubService({ gh: defaultGh, env: () => shell.ready.then(({ env }) => env) });
+  /** Attached issues and pull requests, written out for Claude right before it reads the message. */
+  const githubContext = new GithubExpander(github);
+  /** The issue or pull request each session started from, and the forks' pull requests Switchboard can't push to. */
+  const githubOrigins = new GithubOriginStore(cache.db);
   // A fixed delay, not a debounce: busy sessions change every second and must not keep pushing it back.
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   function scheduleSearchSync(delayMs = 3_000) {
@@ -728,7 +739,12 @@ export function createEngine(options: EngineOptions): Engine {
     sessionSettings: createSessionSettingsStore(cache.db),
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
-    links: { expand: (id, text) => links.expand(id, text), warm: (text) => links.warmText(text) },
+    links: {
+      expand: (id, text) => expandMessage(text, (message, others) => links.expand(id, message, others), githubContext),
+      warm: async (text) => {
+        await Promise.all([links.warmText(text), githubContext.warm(text)]);
+      },
+    },
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -871,17 +887,6 @@ export function createEngine(options: EngineOptions): Engine {
   });
   const promptsChanged = (...scopes: PromptScope[]) => {
     for (const root of new Set(scopes.map((scope) => (scope.kind === 'global' ? null : scope.root)))) broadcast('savedPrompts.changed', { root });
-  };
-  /** What `gh` said about a project's pull requests and issues, for a minute (a network call, and blanks ask often). */
-  const githubLookups = new Map<string, { at: number; value: Promise<unknown> }>();
-  const githubLookup = <T>(key: string, load: (env: Record<string, string>) => Promise<T>): Promise<T> => {
-    const cached = githubLookups.get(key);
-    if (cached && Date.now() - cached.at < 60_000) return cached.value as Promise<T>;
-    const value = shell.ready.then(({ env }) => load(env));
-    githubLookups.set(key, { at: Date.now(), value });
-    // A failure isn't kept: the next blank asks again.
-    value.catch(() => githubLookups.delete(key));
-    return value;
   };
   /** The queue (first called the Later list). */
   const later = new LaterStore(cache.db);
@@ -1083,7 +1088,7 @@ export function createEngine(options: EngineOptions): Engine {
    * For a new worktree: wait until Claude Code has created it, then run the
    * project's setup actions there one by one (untrusted shared ones are skipped).
    */
-  const worktreeSetup = (sessionId: string, repoCwd: string, worktreeName: string) => {
+  const worktreeSetup = (sessionId: string, repoCwd: string, worktreeName: string, branch = `worktree-${worktreeName}`) => {
     const root = resolver.resolve(repoCwd).root;
     const setup = actions.list(root).actions.filter((a) => a.runOnWorktreeCreate && a.type === 'shell');
     if (setup.length === 0) return undefined;
@@ -1099,7 +1104,7 @@ export function createEngine(options: EngineOptions): Engine {
           log('warn', `Skipped setup action "${action.name}": approve it once by running it from the actions menu`);
           continue;
         }
-        const vars = { cwd: path, projectRoot: root, branch: `worktree-${worktreeName}`, worktreeName, sessionId, sessionTitle: '' };
+        const vars = { cwd: path, projectRoot: root, branch, worktreeName, sessionId, sessionTitle: '' };
         let command: string;
         try {
           command = expandCommand(action.command, vars, await terminals.shell());
@@ -1135,7 +1140,7 @@ export function createEngine(options: EngineOptions): Engine {
   const createSession = async (params: Parameters<Handlers<Contract>['session.create']>[0]) => {
     if (questions.contains(params.cwd)) {
       // A quick question has no checkout to branch from or switch.
-      if (params.worktree || params.checkoutBranch) throw new RpcError('INVALID', 'Quick questions have no git options');
+      if (params.worktree || params.checkoutBranch || params.checkoutPullRequest) throw new RpcError('INVALID', 'Quick questions have no git options');
       questions.ensure();
     }
     const folder = statSafe(params.cwd);
@@ -1145,7 +1150,7 @@ export function createEngine(options: EngineOptions): Engine {
     if (params.worktree && !resolver.resolve(params.cwd).gitDir) {
       throw new RpcError('NOT_A_REPO', 'Worktrees need a git repository');
     }
-    const { checkoutBranch, profileId: chosenProfile, ...create } = params;
+    const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, ...create } = params;
     const profileId = requireProfile(chosenProfile ?? folderProfile(params.cwd));
     // Auto routes once the session is open, so starting doesn't wait for it; the session says Auto is choosing until
     // it has picked. With Auto off it starts on the default model.
@@ -1167,9 +1172,38 @@ export function createEngine(options: EngineOptions): Engine {
         throw new RpcError('GIT_FAILED', `Could not check out ${checkoutBranch}: ${(error as Error).message}`);
       }
     }
-    const worktree = params.worktree;
-    const setup = worktree ? (id: string) => worktreeSetup(id, params.cwd, worktree.name)?.() ?? Promise.resolve() : undefined;
-    const sessionId = await hosts.create({ ...create, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
+    if (checkoutPullRequest) {
+      if (asked || checkoutBranch) throw new RpcError('INVALID', 'A pull request is checked out in the current folder; not with a worktree or another branch');
+      await assertCheckoutIdle(params.cwd);
+      try {
+        await checkoutPullRequest_(params.cwd, checkoutPullRequest, { gh: defaultGh(), env: (await shell.ready).env });
+      } catch (error) {
+        if (error instanceof PrCheckoutError) throw new RpcError(error.code, error.message);
+        throw error;
+      }
+    }
+    // A worktree from a branch (a pull request's) is made here; Claude Code makes the others itself (`--worktree`).
+    let cwd = params.cwd;
+    let worktree: ClaudeWorktreeRequest | null = null;
+    let setupBranch: string | undefined;
+    if (asked && typeof asked.baseRef === 'object') {
+      try {
+        const made = await makeWorktreeFrom(resolver.resolve(params.cwd).root, asked.name, asked.baseRef, { env: (await shell.ready).env });
+        cwd = made.path;
+        setupBranch = made.branch;
+      } catch (error) {
+        if (error instanceof WorktreeFromError) throw new RpcError('GIT_FAILED', error.message);
+        throw error;
+      }
+    } else if (asked) worktree = { name: asked.name, baseRef: asked.baseRef as ClaudeWorktreeRequest['baseRef'] };
+    const setup = asked ? (id: string) => worktreeSetup(id, params.cwd, asked.name, setupBranch)?.() ?? Promise.resolve() : undefined;
+    const sessionId = await hosts.create({ ...create, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
+    if (origin) {
+      // Where it works on the pull request (the checkout's top folder, as git status reports it), and on which branch.
+      const top = await topLevel(cwd).catch(() => cwd);
+      const branch = setupBranch ?? (checkoutPullRequest ? (await listBranches(cwd).catch(() => ({ current: null }))).current : null);
+      githubOrigins.save(sessionId, origin, { cwd: top, branch });
+    }
     return { sessionId };
   };
 
@@ -1900,8 +1934,11 @@ export function createEngine(options: EngineOptions): Engine {
       promptsChanged(scope);
       return {};
     },
-    'github.pullRequests': ({ root }) => githubLookup(`prs\u0000${root}`, (env) => openPullRequests(root, env, defaultGh())),
-    'github.issue': ({ root, ref }) => githubLookup(`issue\u0000${root}\u0000${ref.trim().toLowerCase()}`, (env) => findIssue(root, ref, env, defaultGh())),
+    'github.status': ({ root }) => github.status(root),
+    'github.search': ({ root, query, refresh }) => github.search(root, query, { refresh }),
+    'github.issue': ({ root, ref }) => github.issue(root, ref),
+    'github.pr': ({ root, ref }) => github.pr(root, ref),
+    'github.origin': ({ sessionId }) => ({ origin: githubOrigins.get(sessionId) }),
 
     'actions.list': ({ projectRoot }) => {
       sharedFileWatcher.watch(projectRoot);
@@ -2056,6 +2093,8 @@ export function createEngine(options: EngineOptions): Engine {
       const status = await worktreeStatus(cwd).catch((error: Error) => {
         throw new RpcError('GIT_FAILED', error.message);
       });
+      // A fork's pull request Switchboard can't push to: nothing goes back from here (the header has push off too).
+      if (action === 'push' && (githubOrigins.get(sessionId)?.readOnly || githubOrigins.readOnlyAt(status.path, status.branch))) throw new RpcError('READ_ONLY', FORK_READ_ONLY);
       const sync = syncCommand(status, action, (await terminals.shell()).quote);
       if ('code' in sync) throw new RpcError(sync.code, sync.message);
       if (action === 'pull') await assertCheckoutIdle(cwd);
@@ -2109,6 +2148,7 @@ export function createEngine(options: EngineOptions): Engine {
       const status = await worktreeStatus(cwd).catch((error: Error) => {
         throw new RpcError('GIT_FAILED', error.message);
       });
+      if (githubOrigins.readOnlyAt(status.path, status.branch)) throw new RpcError('READ_ONLY', FORK_READ_ONLY);
       if (prJobs.has(status.path)) throw new RpcError('BUSY', 'A pull request is being created here already.');
       prJobs.add(status.path);
       const progress = (step: PrProgress['step'], rest: Partial<Pick<PrProgress, 'pr' | 'compareUrl' | 'error'>> = {}) =>

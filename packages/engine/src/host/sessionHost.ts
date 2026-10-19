@@ -15,7 +15,7 @@ import type {
   SessionHostInfo,
   SlashCommand,
   StreamDelta,
-  WorktreeRequest,
+  ClaudeWorktreeRequest,
 } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
@@ -81,7 +81,7 @@ export interface HostConfig {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Effort | null;
-  worktree: WorktreeRequest | null;
+  worktree: ClaudeWorktreeRequest | null;
   env: Record<string, string>;
   claudePath: string | undefined;
   canUseTool: CanUseTool;

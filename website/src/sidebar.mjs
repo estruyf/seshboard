@@ -46,6 +46,7 @@ export const sidebar = [
       'permissions',
       'sessions/ask',
       'sessions/linking',
+      'sessions/github-issues',
       'sessions/agents',
       'sessions/commands',
       'sessions/mods',

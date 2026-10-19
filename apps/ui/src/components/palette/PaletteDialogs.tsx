@@ -13,6 +13,7 @@ import { RememberDialog } from '../memory/RememberDialog.tsx';
 import { PromptEditor } from '../savedPrompts/PromptEditor.tsx';
 import { ShareDialog } from '../memory/ShareDialog.tsx';
 import { RenameProjectDialog } from '../projects/RenameProjectDialog.tsx';
+import { GithubStartDialog } from '../github/GithubStartDialog.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { TranscriptDiagnosisDialog } from '../transcript/TranscriptDiagnosisDialog.tsx';
 
@@ -37,6 +38,8 @@ export function PaletteDialogs() {
       return <RenameSessionDialog sessionId={dialog.sessionId} title={dialog.title} onClose={close} />;
     case 'rename-project':
       return <RenameProjectDialog root={dialog.root} onClose={close} />;
+    case 'github-start':
+      return <GithubStartDialog type={dialog.type} root={dialog.root} onClose={close} />;
     case 'prompt-editor':
       return <PromptEditor editing={dialog.editing} text={dialog.text} fromMessage={dialog.fromMessage} root={dialog.root} scope={dialog.scope} onClose={close} />;
     case 'delete-session': {

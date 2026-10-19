@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { PrCheck, PrChecks, GitSyncAction, WorktreePullRequest, WorktreeStatus } from '@switchboard/protocol/client';
+import { useReadOnlyFork } from '../../state/githubOriginStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { useSessionRequests } from '../../state/paletteBus.ts';
@@ -27,7 +28,7 @@ import { toast } from '../../state/toastStore.ts';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
 import { checksLine, checkTime, checkTitle, failedChecks, fixChecksDraft, MAX_FIX_CHECKS, MENU_CHECKS } from './checks.ts';
 import { CommitDialog } from './CommitDialog.tsx';
-import { gitSummary, planGit, showsViewPr, STEP_LABEL, stepCount, type GitStep } from './gitPlan.ts';
+import { gitSummary, planGit, showsViewPr, STEP_LABEL, stepCount, type GitStep, FORK_READ_ONLY } from './gitPlan.ts';
 import { PullRequestDialog, type CreatedPr } from './PullRequestDialog.tsx';
 import { ariaKeysFor, formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 
@@ -186,7 +187,9 @@ export function GitButton({
     return () => window.removeEventListener('focus', onFocus);
   }, []);
 
-  const plan = status ? planGit(status, busy) : null;
+  // A fork's pull request Switchboard can't push back: push and Create PR are off here.
+  const readOnly = useReadOnlyFork(sessionId);
+  const plan = status ? planGit(status, busy, readOnly) : null;
   const openTerminal = (terminalId: string) => {
     togglePanel(sessionId, true);
     setActive(sessionId, terminalId);
@@ -326,6 +329,8 @@ export function GitButton({
     disabled: plan.blocked[s] !== null || (pending && s !== 'commit'),
     onSelect: () => void run(s),
     data: { 'data-git-step': s },
+    // The menu says why push and Create PR are off on a fork's pull request; a tooltip alone isn't seen in a menu.
+    ...(readOnly && (s === 'push' || s === 'pr') ? { detail: FORK_READ_ONLY } : {}),
     ...extra,
   });
   const entries: MenuEntry[] = [

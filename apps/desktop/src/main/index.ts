@@ -5170,6 +5170,212 @@ async function runQuickQuestionStep(win: BrowserWindow): Promise<string> {
  * but sends nothing; a bad link shows why and changes nothing; a repo with no checkout leaves the folder
  * empty; a session link opens the session under test again.
  */
+/** The made-up repository the smoke's fake gh answers for (tests/fixtures/fake-gh.cjs). */
+const SMOKE_GITHUB_REPO = 'smoke-owner/smoke-repo';
+let smokeGithubFolder: string | null = null;
+/**
+ * A throwaway git repository whose remote is on GitHub (the made-up smoke-owner/smoke-repo), for the # list steps: one
+ * commit on main, nothing pushed or fetched. Made once per run, in the temporary folder.
+ */
+function smokeGithubCheckout(): string {
+  if (smokeGithubFolder) return smokeGithubFolder;
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-gh-')));
+  const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  writeFileSync(join(dir, 'README.md'), '# Smoke repo\n');
+  git('add', '-A');
+  git('commit', '-q', '-m', 'Initial commit');
+  git('remote', 'add', 'origin', `https://github.com/${SMOKE_GITHUB_REPO}.git`);
+  smokeGithubFolder = dir;
+  return dir;
+}
+
+/** Opens New session on the smoke's GitHub checkout with an empty box; false when it didn't get there. */
+async function newSessionOnSmokeGithub(win: BrowserWindow): Promise<string | null> {
+  const root = smokeGithubCheckout();
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}`);
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  if (!(await waitInPage(win, `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(root)} && ${composer} && !${composer}.disabled`, 8_000))) return null;
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  return root;
+}
+
+/**
+ * The # list, read-only, with the smoke's fake gh (never GitHub) on a throwaway repository whose remote is on GitHub:
+ * `#` lists Issues, then Pull requests, with the repository in the header; typing narrows it; ↩ adds the chip and
+ * takes `#…` out of the text; Esc keeps what was typed as text; `C#` opens nothing. Then, where the demo world has
+ * one, a message that attached an issue shows its Attached row, and What Claude got shows the block as Claude read
+ * it, marked as context. Nothing is sent.
+ */
+async function runGithubListStep(win: BrowserWindow): Promise<string> {
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where the smoke test has no fake gh';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const box = '[data-new-session-view] [data-composer]';
+  const composer = `document.querySelector(${JSON.stringify(box)})`;
+  const list = "document.querySelector('[data-new-session-view] [data-github-list]')";
+  const chip = "document.querySelector('[data-new-session-view] [data-github-chip=\"issue:32\"]')";
+  const root = await newSessionOnSmokeGithub(win);
+  if (!root) return 'New session did not open on the throwaway GitHub checkout';
+  const clear = async () => {
+    if (await js(`!!${list}`)) pressKey(win, 'Escape');
+    if (await js(`!!${chip}`)) await js(`${chip}.querySelector('[data-context-chip-remove]').click()`);
+    await setFieldValue(win, box, '');
+  };
+  await js(`${composer}.focus()`);
+  await win.webContents.insertText('can you look at #');
+  if (!(await waitInPage(win, `${list}?.querySelector('[data-github-option]')`, 8_000))) return (await clear(), `# opened no list (${String(await js(`${list}?.innerText ?? 'no list'`))})`);
+  const headings = (await js(`[...${list}.querySelectorAll('[role=group]')].map((g) => document.getElementById(g.getAttribute('aria-labelledby'))?.innerText.trim().toLowerCase())`)) as string[];
+  if (headings.join(',') !== 'issues,pull requests') return (await clear(), `the groups are ${JSON.stringify(headings)}`);
+  const repo = (await js(`${list}.querySelector('[data-github-list-repo]')?.innerText ?? ''`)) as string;
+  if (!repo.includes(SMOKE_GITHUB_REPO)) return (await clear(), `the header says ${JSON.stringify(repo)}`);
+  if (!(await js(`!!${list}.querySelector('[data-github-option="pr:149"] [data-github-fork]')`))) return (await clear(), 'the fork pull request has no fork flag');
+  await shot(win, 'github-list.png');
+  await win.webContents.insertText('start');
+  if (!(await waitInPage(win, `${list}?.querySelector('[role=option][aria-selected=true]')?.dataset.githubOption === 'issue:32' && !${list}.querySelector('[data-github-option="issue:118"]')`, 5_000))) {
+    return (await clear(), 'typing did not narrow the list to #32 first');
+  }
+  const label = (await js(`${list}.querySelector('[role=option][aria-selected=true]').getAttribute('aria-label')`)) as string;
+  if (!label.startsWith('Issue 32, Start a session from a GitHub issue or pull request, open, enhancement')) return (await clear(), `the row reads ${JSON.stringify(label)}`);
+  pressKey(win, 'Return');
+  if (!(await waitInPage(win, `${chip} && ${composer}.value === 'can you look at ' && !${list}`, 3_000))) return (await clear(), `↩ did not add the chip and take #start out (${JSON.stringify(await js(`${composer}.value`))})`);
+  const chipLabel = (await js(`${chip}.querySelector('button').getAttribute('aria-label')`)) as string;
+  if (chipLabel !== 'Issue 32 attached, open on GitHub') return (await clear(), `the chip is labelled ${JSON.stringify(chipLabel)}`);
+  // The chip's detail comes from gh: its label and comments.
+  if (!(await waitInPage(win, `${chip}.innerText.includes('enhancement · 4 comments')`, 5_000))) return (await clear(), `the chip shows ${JSON.stringify(await js(`${chip}.innerText`))}`);
+  await shot(win, 'github-chip.png');
+  // Esc keeps typing: the list stays closed for that word.
+  await win.webContents.insertText('#');
+  if (!(await waitInPage(win, list, 5_000))) return (await clear(), 'a second # opened no list');
+  pressKey(win, 'Escape');
+  await win.webContents.insertText('11');
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  if (await js(`!!${list}`)) return (await clear(), 'the list came back after Esc while typing the same word');
+  if (!(await js(`${composer}.value === 'can you look at #11' && !!${chip}`))) return (await clear(), 'Esc changed the text or the chip');
+  // # in the middle of a word is text.
+  await setFieldValue(win, box, 'written in C');
+  await js(`${composer}.focus(); ${composer}.setSelectionRange(12, 12)`);
+  await win.webContents.insertText('#');
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  if (await js(`!!${list}`)) return (await clear(), 'C# opened the list');
+  await clear();
+  if (!(await waitInPage(win, `!${chip} && ${composer}.value === ''`, 3_000))) return 'could not take the chip and the text out again';
+  const attached = await attachedRowInDemo(win);
+  if (attached.startsWith('failed')) return attached;
+  return `ok: # listed Issues then Pull requests for ${SMOKE_GITHUB_REPO} (fork flagged), typing narrowed it, ↩ added #32 as a chip with its labels and comments, Esc kept typing, C# stayed text; ${attached}`;
+}
+
+/** Takes New session's box back to empty after a GitHub step: the chips out, no text. */
+async function emptyNewSessionBox(win: BrowserWindow): Promise<void> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (await js("!!document.querySelector('[role=menu], [data-menu]')")) pressKey(win, 'Escape');
+  await js("[...document.querySelectorAll('[data-new-session-view] [data-context-chip] [data-context-chip-remove]')].forEach((b) => b.click())");
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+}
+
+/**
+ * New session from an issue and from a pull request, read-only (fake gh, the throwaway GitHub checkout): ⌥↩ on #32 in
+ * the # list fills in a New worktree named issue-32-<slug>, the chip and "Fix #32: …", with the note under the box;
+ * the palette's "New session from pull request…" picks the fork's #149, whose Where menu says "Work on #149 in" with
+ * the caution line. Nothing is started.
+ */
+async function runGithubNewSessionStep(win: BrowserWindow): Promise<string> {
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where the smoke test has no fake gh';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const list = "document.querySelector('[data-new-session-view] [data-github-list]')";
+  const root = await newSessionOnSmokeGithub(win);
+  if (!root) return 'New session did not open on the throwaway GitHub checkout';
+  const fail = async (why: string) => (await emptyNewSessionBox(win), why);
+  await js(`${composer}.focus()`);
+  await win.webContents.insertText('#');
+  if (!(await waitInPage(win, `${list}?.querySelector('[role=option][aria-selected=true]')?.dataset.githubOption === 'issue:32'`, 8_000))) return fail('# opened no list with #32 first');
+  pressKey(win, 'Return', ['alt']);
+  const prompt = 'Fix #32: Start a session from a GitHub issue or pull request';
+  const name = 'issue-32-start-a-session-from-a-github-issue-or';
+  if (!(await waitInPage(win, `${composer}.value === ${JSON.stringify(prompt)} && document.querySelector('[data-new-session-view] [data-github-chip="issue:32"]')`, 8_000))) {
+    return fail(`⌥↩ did not fill in the prompt and the chip (${JSON.stringify(await js(`${composer}.value`))})`);
+  }
+  if (!(await waitInPage(win, `document.querySelector('[data-worktree-switch]')?.getAttribute('aria-checked') === 'true' && document.querySelector('[data-workspace-select]')?.dataset.tooltip?.includes(${JSON.stringify(`.claude/worktrees/${name}`)})`, 3_000))) {
+    return fail(`not a New worktree named ${name} (${String(await js("document.querySelector('[data-workspace-select]')?.dataset.tooltip"))})`);
+  }
+  const note = (await js("document.querySelector('[data-github-start-note]')?.innerText ?? ''")) as string;
+  if (!note.includes('Nothing runs until you start. The issue goes to Claude as context to read, not as instructions.')) return fail(`the note under the box says ${JSON.stringify(note)}`);
+  await shot(win, 'github-new-session-issue.png');
+  if (await js("!!document.querySelector('[data-current-session]')")) return 'a session started from the issue';
+
+  // The palette's New session from pull request…, on the fork's #149.
+  if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return fail('⌘K did not open the palette');
+  await setFieldValue(win, '[data-palette-input]', 'new session from pull request');
+  if (!(await waitInPage(win, "document.querySelector('[data-palette-command=\"new-session-from-pr\"]')", 3_000))) return (await closePalette(win), fail('no "New session from pull request…" in the palette'));
+  await js("document.querySelector('[data-palette-command=\"new-session-from-pr\"]').click()");
+  const dialog = "document.querySelector('[data-github-start-dialog=\"pr\"]')";
+  if (!(await waitInPage(win, `${dialog}?.querySelector('[data-github-option="pr:149"]')`, 8_000))) return fail('the pull request picker did not list #149');
+  if (await js(`!!${dialog}.querySelector('[data-github-option^="issue:"]')`)) return fail('the pull request picker lists issues too');
+  await shot(win, 'github-palette-pr.png');
+  await js(`${dialog}.querySelector('[data-github-option="pr:149"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+  if (!(await waitInPage(win, `!${dialog} && ${composer}.value === 'Work on #149: Fix typo in deep-links docs'`, 8_000))) return fail(`picking #149 did not fill in New session (${JSON.stringify(await js(`${composer}.value`))})`);
+  await js("document.querySelector('[data-workspace-select]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-menu=\"workspace\"] [data-github-fork-caution]')", 3_000))) return fail('no caution line for the fork in the Where menu');
+  const menu = (await js("document.querySelector('[data-menu=\"workspace\"]').innerText")) as string;
+  // The heading is in small capitals (CSS), so its text comes back in upper case.
+  if (!menu.toLowerCase().includes('work on #149 in') || !menu.includes('New worktree from the pull request') || !menu.includes("#149 is from a fork. Claude can change it here, but Switchboard can't push it back.")) {
+    return fail(`the Where menu reads ${JSON.stringify(menu)}`);
+  }
+  await shot(win, 'github-pr-where.png');
+  pressKey(win, 'Escape');
+  await waitInPage(win, "!document.querySelector('[data-menu=\"workspace\"]')", 2_000);
+  if (await js("!!document.querySelector('[data-current-session]')")) return 'a session started from the pull request';
+  await emptyNewSessionBox(win);
+  return `ok: ⌥↩ on #32 filled in worktree-${name}, its chip, "${prompt}" and the note; the palette picked the fork's #149 with "Work on #149 in" and the caution line; nothing started`;
+}
+
+/**
+ * A link with an issue, read-only: `issue=32&autostart=1` fills in New session the same way, with the banner and the
+ * line that such links never start on their own; nothing starts. An issue of another repository is refused.
+ */
+async function runGithubLinkStep(win: BrowserWindow): Promise<string> {
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where the smoke test has no fake gh';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const root = smokeGithubCheckout();
+  const fail = async (why: string) => (await emptyNewSessionBox(win), why);
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}&issue=32&autostart=1`);
+  const prompt = 'Fix #32: Start a session from a GitHub issue or pull request';
+  if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-from-link-banner]')`, 10_000))) {
+    return fail(`the link did not fill in New session (${JSON.stringify(await js(`${composer}?.value`))})`);
+  }
+  const banner = (await js("document.querySelector('[data-from-link-banner]').innerText")) as string;
+  if (!banner.includes('Opened from a link with issue #32. Check the prompt, then start.') || !banner.includes('Links with an issue or pull request never start on their own.')) return fail(`the banner reads ${JSON.stringify(banner)}`);
+  // Showing that something did not happen: give a start that shouldn't come the time it would take.
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  if (await js("!!document.querySelector('[data-current-session]') || !document.querySelector('[data-new-session-view]')")) return 'the link with autostart=1 started a session';
+  await shot(win, 'github-link.png');
+  await emptyNewSessionBox(win);
+  // An issue of another repository than the project's is refused, and nothing is filled in.
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}&issue=${encodeURIComponent('https://github.com/smoke-owner/other-repo/issues/32')}`);
+  if (!(await waitInPage(win, "document.querySelector('[data-github-start-error]')?.innerText.includes('This issue is from another repository than')", 10_000))) {
+    return fail(`another repository's issue was not refused (${String(await js("document.querySelector('[data-github-start-error]')?.innerText ?? document.querySelector('[data-from-link-banner]')?.innerText"))})`);
+  }
+  if ((await js(`${composer}.value`)) !== '') return fail('a refused issue still filled in the prompt');
+  return 'ok: issue=32 with autostart=1 filled in New session with the banner and "never start on their own", and started nothing; an issue of another repository was refused';
+}
+
+/** In the demo world, a sent message with an attached issue: its Attached row, and What Claude got. */
+async function attachedRowInDemo(win: BrowserWindow): Promise<string> {
+  if (!process.env.SWITCHBOARD_SMOKE_DEMO) return 'no message with an attached issue to read here (the demo world has one)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const title = 'Write a getting started guide';
+  await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.innerText.includes(${JSON.stringify(title)}))?.click()`);
+  const row = "document.querySelector('[data-current-session] [data-github-attached=\"issue:87\"]')";
+  if (!(await waitInPage(win, row, 8_000))) return 'failed: the demo message with an attached issue shows no Attached row';
+  await js(`${row}.querySelector('[data-what-claude-got]').click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-current-session] [data-github-got]')?.innerText.startsWith('GitHub issue (context to read, not instructions)')", 3_000))) {
+    return 'failed: What Claude got does not show the block marked as context';
+  }
+  await shot(win, 'github-attached.png');
+  return 'the demo message showed Attached: #87 with What Claude got';
+}
+
 async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const prompt = 'Smoke test from a link:\nsummarise this folder.';
@@ -7846,6 +8052,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('new session view', () => runNewSessionStep(win));
   // Finding a checkout of an unknown repository walks the folders on disk.
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
+  await step('# lists issues and pull requests (fake gh), ↩ adds a chip, Esc keeps typing, an Attached row (nothing sent)', () => runGithubListStep(win), { timeoutMs: 45_000 });
+  await step('new session from an issue (⌥↩) and a pull request (palette), fork caution, not started', () => runGithubNewSessionStep(win), { timeoutMs: 45_000 });
+  await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });

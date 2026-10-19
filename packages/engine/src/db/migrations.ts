@@ -568,4 +568,20 @@ export const migrations: readonly string[] = [
     PRIMARY KEY (session_id, repo, number)
   );
   `,
+
+  // v33: The issue or pull request a session was started from (New session from it), where it works on it, and whether
+  // it is a pull request from a fork Switchboard can't push to (push and Create pull request are off there). Set when
+  // the session starts and never read back from a transcript: keep it.
+  `
+  CREATE TABLE session_github (
+    session_id TEXT PRIMARY KEY,
+    type       TEXT NOT NULL,
+    repo       TEXT NOT NULL,
+    number     INTEGER NOT NULL,
+    read_only  INTEGER NOT NULL DEFAULT 0,
+    cwd        TEXT NOT NULL,
+    branch     TEXT,
+    created_at INTEGER NOT NULL
+  );
+  `,
 ];

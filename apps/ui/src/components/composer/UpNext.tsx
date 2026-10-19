@@ -1,6 +1,6 @@
 import { GripVertical, Pencil, Play, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { withoutBriefs, type QueuedMessage, type SessionHostInfo } from '@switchboard/protocol/client';
+import { withoutContext, type QueuedMessage, type SessionHostInfo } from '@switchboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { moveTarget } from '../../state/queue.ts';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
@@ -128,7 +128,7 @@ export function UpNext({ queue, hold, limited = false, actions }: { queue: reado
       >
         {queue.map((message, index) => {
           // A linked session's stub isn't something you typed: the row shows your words only.
-          const typed = withoutBriefs(message.text);
+          const typed = withoutContext(message.text);
           const text = firstLine(typed);
           const attachments = attachmentLabel(message.attachments);
           const mark = drag.markFor(message.id);

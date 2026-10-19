@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { BUILTIN_PROFILE_ID, withoutBriefs, type LogLevel, type SessionsChanged, type SessionSummary } from '@switchboard/protocol';
+import { BUILTIN_PROFILE_ID, withoutContext, type LogLevel, type SessionsChanged, type SessionSummary } from '@switchboard/protocol';
 import { originFromEntrypoint, readHead, readLastActivity, type TranscriptHead } from '../claude/origin.ts';
 import type { ProjectResolver } from '../claude/projectResolver.ts';
 import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
@@ -367,7 +367,7 @@ export class SessionIndex {
     const cwd = info.cwd ?? previous?.summary.cwd ?? readOnce().cwd;
     const location = cwd ? this.options.resolver.resolve(cwd) : null;
     // A linked session's brief is part of the first message, but not what you asked (session linking).
-    const firstPrompt = info.firstPrompt ? withoutBriefs(info.firstPrompt) : '';
+    const firstPrompt = info.firstPrompt ? withoutContext(info.firstPrompt) : '';
     const title = oneLine(info.customTitle || info.summary || firstPrompt || 'Untitled session', TITLE_MAX);
     // The SDK's lastModified is the file's mtime, which moves when Claude Code merely exits or
     // reopens the session; use the last message instead. Read again only when the file changed.

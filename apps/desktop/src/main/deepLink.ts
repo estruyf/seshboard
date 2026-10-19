@@ -20,6 +20,18 @@ const PROMPT_INVISIBLE = /[­؜᠎​‌‎‏‪-‮⁠-⁤⁦-⁯﻿]/;
 const CONTROL = /[\u0000-\u001F\u007F-\u009F]/;
 const PROMPT_CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/;
 const REPO = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+/** An issue's or pull request's number (`123`, `#123`), or its page on GitHub. */
+const GITHUB_NUMBER = /^#?([1-9]\d{0,8})$/;
+const GITHUB_ITEM_URL = /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\/(?:issues|pull)\/[1-9]\d{0,8}\/?$/;
+
+/** An `issue` or `pr` parameter as New session reads it: the number, or the link; a string with why it was refused otherwise. */
+function githubRef(value: string, word: string): { ref: string } | { error: string } {
+  const text = value.trim();
+  const number = GITHUB_NUMBER.exec(text);
+  if (number) return { ref: number[1]! };
+  if (text.length <= 300 && GITHUB_ITEM_URL.test(text)) return { ref: text.replace(/\/$/, '') };
+  return { error: `The ${word} in the link must be a number, #123, or its link on GitHub.` };
+}
 const SESSION_ID = /^[A-Za-z0-9-]{1,100}$/;
 
 export type ParsedLink = { ok: true; link: DeepLink } | { ok: false; error: string };
@@ -54,6 +66,8 @@ function checkFolder(cwd: string, platform: string): string | ParsedLink {
  * - `switchboard://new-session?prompt=…&cwd=/abs/path` (or `project=name`, or `repo=owner/name`; `q` is an alias
  *   of `prompt`). `autostart=1` starts the session; by default it waits for the user to press Enter.
  *   `question=1` makes it a quick question, without a project (a folder, project or repo is then ignored).
+ *   `issue=` or `pr=` (a number, `#123` or a link) fills New session in from that issue or pull request of the
+ *   project; it needs `cwd`, `project` or `repo`, and such a link never starts on its own (`autostart` is ignored).
  * - `switchboard://session/<sessionId>`
  *
  * `platform` decides what an absolute folder looks like (a drive path on Windows); tests pass it.
@@ -112,6 +126,20 @@ export function parseDeepLink(raw: string, platform: string = process.platform):
       if (!REPO.test(trimmed) || trimmed.length > 200) return fail('The repo in the link must look like owner/name.');
       repo = trimmed;
     }
+    // New session from an issue or pull request: one of them, in a project the link names.
+    let issue: string | null = null;
+    let pr: string | null = null;
+    for (const [key, word] of [['issue', 'issue'], ['pr', 'pull request']] as const) {
+      const raw = params.get(key);
+      if (raw === null || raw.trim() === '') continue;
+      const parsed = githubRef(raw, word);
+      if ('error' in parsed) return fail(parsed.error);
+      if (key === 'issue') issue = parsed.ref;
+      else pr = parsed.ref;
+    }
+    if (issue && pr) return fail('A link can have an issue or a pull request, not both.');
+    if ((issue || pr) && question) return fail('A quick question has no issue or pull request.');
+    if ((issue || pr) && !cwd && !project && !repo) return fail('A link with an issue or pull request needs project, repo or cwd.');
     // A quick question has no folder. Otherwise a folder wins over a project, and a project over a repository:
     // only the strongest is passed on.
     return {
@@ -124,6 +152,8 @@ export function parseDeepLink(raw: string, platform: string = process.platform):
         repo: question || cwd || project ? null : repo,
         autostart,
         question,
+        ...(issue ? { issue } : {}),
+        ...(pr ? { pr } : {}),
       },
     };
   }

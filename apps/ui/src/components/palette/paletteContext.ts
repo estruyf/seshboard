@@ -116,7 +116,7 @@ export interface PaletteContext {
   sidebar: SidebarState;
   settingsSection: SettingsSection;
   /** New session is on screen: what its route can do. */
-  newSession: { canWorktree: boolean; canSaveDefaults: boolean; canQueue: boolean; canCatchUp: boolean } | null;
+  newSession: { canWorktree: boolean; canSaveDefaults: boolean; canQueue: boolean; canCatchUp: boolean; root?: string | null } | null;
   /** The scratch folder quick questions run in; null until the engine has said. */
   questionsDir: string | null;
   /** The saved prompts the message box on screen can use ("Prompt: <name>", Use saved prompt…). */

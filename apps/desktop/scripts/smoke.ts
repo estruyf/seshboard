@@ -48,13 +48,15 @@ if (process.argv.includes('--demo')) {
   console.log(`demo home: ${world.home}`);
 }
 
-// A fake gh, so the Create pull request step never reaches GitHub: it says it is signed in, and refuses everything
-// else (so the pull request lists are empty, as without gh). Windows can't start a script without a shell; there the
-// step stays read-only with the real gh.
+// A fake gh (tests/fixtures/fake-gh.cjs), so nothing reaches GitHub: it says it is signed in, answers the # list's
+// issues and pull requests for the made-up smoke-owner/smoke-repo only, and refuses everything else (so the pull
+// request lists of real projects are empty, as without gh). Windows can't start a script without a shell; there the
+// steps stay read-only with the real gh, and the # list steps are skipped.
 if (process.platform !== 'win32') {
   mkdirSync(outDir, { recursive: true });
   const fakeGh = join(outDir, 'gh');
-  writeFileSync(fakeGh, '#!/bin/sh\nif [ "$1 $2" = "auth status" ]; then exit 0; fi\necho "the smoke test\'s gh never reaches GitHub" >&2\nexit 1\n');
+  const script = join(appDir, '..', '..', 'tests', 'fixtures', 'fake-gh.cjs');
+  writeFileSync(fakeGh, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`);
   chmodSync(fakeGh, 0o755);
   childEnv.SWITCHBOARD_GH = fakeGh;
 }
