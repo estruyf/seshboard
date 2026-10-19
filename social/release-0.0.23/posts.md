@@ -13,7 +13,7 @@ Links:
 - Download: https://github.com/estruyf/switchboard/releases/tag/v0.0.23
 - Homebrew: `brew install --cask estruyf/tap/switchboard`
 
-Not released yet: everything here is in the `[Unreleased]` section of the CHANGELOG (the app is on 0.0.22). The version 0.0.23 is assumed; if the release gets another number, change it in `index.html` (then `social/render.sh release-0.0.23`) and below. Post once the release is published.
+Released: 0.0.23, tagged `v0.0.23` on 2026-10-17.
 
 ## Alt text
 
