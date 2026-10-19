@@ -262,6 +262,8 @@ jobs:
     name: Build the Linux packages (${{ matrix.arch }})
     if: ${{ !startsWith(github.event.release.tag_name, 'vscode-') }}
     strategy:
+      # Each architecture finishes and reports on its own; the publish job still needs both.
+      fail-fast: false
       matrix:
         include:
           - arch: x64

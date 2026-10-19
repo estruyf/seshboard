@@ -44,10 +44,13 @@ function setup(spawn?: SpawnPty, env: Record<string, string> = { PATH: process.e
 }
 
 // The same steps in the shell each platform runs: /bin/sh, or PowerShell on Windows (which reads Enter as \r).
+// `long` prints "started" from the program Stop ends, not from the shell: by then that program has the terminal, so
+// Ctrl+C reaches it. A builtin echo comes before `sleep` starts, and an interactive dash (Ubuntu's /bin/sh) ignores
+// a Ctrl+C that comes in between, and SIGTERM too.
 const windows = process.platform === 'win32';
 const real = windows
   ? { env: withUpperCasePath(process.env as Record<string, string>), input: 'pwd; echo "TERM=$env:TERM"\r', exit: 'exit 7\r', long: 'echo started; Start-Sleep 30', silent: '$null = 1' }
-  : { env: { PATH: process.env.PATH ?? '', SHELL: '/bin/sh' }, input: 'pwd; echo "TERM=$TERM"\n', exit: 'exit 7\n', long: 'echo started; sleep 30', silent: 'true' };
+  : { env: { PATH: process.env.PATH ?? '', SHELL: '/bin/sh' }, input: 'pwd; echo "TERM=$TERM"\n', exit: 'exit 7\n', long: "sh -c 'echo started; exec sleep 30'", silent: 'true' };
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 describe('TerminalManager with a real pty', () => {

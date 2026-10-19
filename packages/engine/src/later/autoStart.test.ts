@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LaterItem, QueueSession, SessionHostInfo, UsageLimitHit } from '@switchboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
+import { removeDir } from '../util/removeDir.ts';
 import { QueueAutoStarter, type AutoSkipped, type AutoStarted } from './autoStart.ts';
 import { LaterStore } from './laterStore.ts';
 
@@ -11,7 +12,12 @@ import { LaterStore } from './laterStore.ts';
 const WEB = resolve('/work/web');
 
 const dirs: string[] = [];
-afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
+const databases: { close(): void }[] = [];
+// Databases close first: Windows can't delete a folder with an open file in it.
+afterEach(async () => {
+  databases.splice(0).forEach((db) => db.close());
+  await Promise.all(dirs.splice(0).map((d) => removeDir(d)));
+});
 
 /** A host's state as the engine reports it. */
 const host = (sessionId: string, state: SessionHostInfo['state']) => ({ sessionId, state }) as SessionHostInfo;
@@ -20,7 +26,9 @@ const host = (sessionId: string, state: SessionHostInfo['state']) => ({ sessionI
 function world(options: { focusLimit?: number | null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'switchboard-autostart-'));
   dirs.push(dir);
-  const store = new LaterStore(openCacheDatabase(join(dir, 'cache.sqlite')).db);
+  const { db } = openCacheDatabase(join(dir, 'cache.sqlite'));
+  databases.push(db);
+  const store = new LaterStore(db);
   const sessions = new Map<string, QueueSession>();
   const started: AutoStarted[] = [];
   const skipped: AutoSkipped[] = [];
