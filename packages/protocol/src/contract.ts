@@ -47,7 +47,8 @@ import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts'
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
 import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
-import { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from './later.ts';
+import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
+import { Schedule, ScheduleRunEvent, ScheduleSave, ScheduleSession } from './scheduleSchema.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { CatchUp, RequestWhy } from './catchUp.ts';
@@ -901,9 +902,10 @@ export const contract = {
     // --- Queue (the Later list, as it was first called) -------------------------------------------
     /**
      * The queue in order, first to start first; only one folder's with `cwd`. `started` maps queued items that
-     * were started to their sessions, for the items still waiting on them.
+     * were started to their sessions, for the items still waiting on them; `auto` is what the engine knows about
+     * items that start by themselves.
      */
-    'later.list': { params: z.object({ cwd: AbsolutePath.optional() }), result: z.object({ items: z.array(LaterItem), started: z.array(QueueStarted) }) },
+    'later.list': { params: z.object({ cwd: AbsolutePath.optional() }), result: z.object({ items: z.array(LaterItem), started: z.array(QueueStarted), auto: QueueAuto }) },
     /**
      * Queues a prompt, at the end unless `index` says where. `id`, `createdAt`, `index` and `waitFor` put a removed
      * item back as it was (Undo).
@@ -926,15 +928,40 @@ export const contract = {
     /** Moves an item to `toIndex` in the queue (clamped to its length). */
     'later.reorder': { params: z.object({ id: z.string().min(1).max(100), toIndex: z.number().int().min(0) }), result: z.object({}) },
     /**
-     * Changes what an item waits for, or its prompt and choices (edited in New session, kept as you type). It keeps
-     * its place. NOT_FOUND when it is gone.
+     * Changes what an item waits for, whether it starts by itself, or its prompt and choices (edited in New session,
+     * kept as you type). It keeps its place. Waiting for nothing turns `autoStart` off. NOT_FOUND when it is gone.
      */
-    'later.update': { params: z.object({ id: z.string().min(1).max(100), waitFor: QueueWaitFor.optional(), draft: LaterDraft.optional() }), result: z.object({ item: LaterItem }) },
+    'later.update': {
+      params: z.object({ id: z.string().min(1).max(100), waitFor: QueueWaitFor.optional(), autoStart: z.boolean().optional(), draft: LaterDraft.optional() }),
+      result: z.object({ item: LaterItem }),
+    },
     /**
      * Starts a queued item: the session is created from its draft exactly as New session creates one, then the
      * item leaves the queue. The focus limit's gate is the caller's (the UI asks before calling this).
      */
     'later.start': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ sessionId: z.string() }) },
+
+    // --- Scheduled sessions (#173) -----------------------------------------------------------------
+    /**
+     * Every schedule, oldest first, with the sessions they started (for the repeat icon on their rows). The engine runs
+     * them; the windows only show them.
+     */
+    'schedules.list': { params: z.object({}), result: z.object({ schedules: z.array(Schedule), sessions: z.array(ScheduleSession) }) },
+    /**
+     * Creates a schedule (no `id`) or changes one: its name, draft, rule, missed rule and paused. It keeps its last run.
+     * Saving starts counting its runs from now, so a time already past today doesn't run at once.
+     */
+    'schedules.save': { params: z.object({ schedule: ScheduleSave }), result: z.object({ schedule: Schedule }) },
+    'schedules.delete': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Puts a deleted schedule back as it was (Undo). */
+    'schedules.restore': { params: z.object({ schedule: Schedule }), result: z.object({ schedule: Schedule }) },
+    /** Pauses or resumes. A resumed schedule counts its runs from now: what was due while it was paused doesn't run. */
+    'schedules.setPaused': { params: z.object({ id: z.string().min(1).max(100), paused: z.boolean() }), result: z.object({ schedule: Schedule }) },
+    /**
+     * Runs it now, with the same rules as a run at its time (skipped while the last run is busy, queued at a limit). It
+     * doesn't move the next run. The result is the run's.
+     */
+    'schedules.runNow': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ run: ScheduleRunEvent }) },
 
     // --- Settings backup -----------------------------------------------------------------------
     /** Writes the chosen kinds of user choices (never the cache) to a settings file. */
@@ -1298,7 +1325,21 @@ export const contract = {
     /** A session's pull request's checks all finished after some were running: main's notifier says so. */
     'git.checksFinished': ChecksFinished,
     /** The whole queue, in order, whenever an item is added, moved, changed, started or removed. */
-    'later.changed': z.object({ items: z.array(LaterItem), started: z.array(QueueStarted) }),
+    'later.changed': z.object({ items: z.array(LaterItem), started: z.array(QueueStarted), auto: QueueAuto }),
+    /** A queued item started by itself (main's notifier says so; a click opens the session). */
+    'later.autoStarted': z.object({ itemId: z.string(), sessionId: z.string(), prompt: z.string(), cwd: z.string(), projectName: z.string() }),
+    /**
+     * A queued item that starts by itself didn't, because the session it waited for ended with an error or was
+     * stopped. It stays in the queue, ready.
+     */
+    'later.autoSkipped': z.object({ itemId: z.string(), prompt: z.string(), sessionId: z.string(), title: z.string(), outcome: z.enum(['error', 'stopped']) }),
+    /** Every schedule, after any change and after each run. */
+    'schedules.changed': z.object({ schedules: z.array(Schedule), sessions: z.array(ScheduleSession) }),
+    /**
+     * Schedules ran (at their time, as missed runs at a start or a wake, or Run now): main's notifier says so, one
+     * notification for several missed runs.
+     */
+    'schedules.ran': z.object({ runs: z.array(ScheduleRunEvent) }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
     /** A profile hit or left a usage limit, or a resume was armed, fired or gave up. */

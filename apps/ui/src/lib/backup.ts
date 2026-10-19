@@ -7,6 +7,7 @@ export const SECTION_INFO: Record<BackupSection, { label: string; detail: string
   profiles: { label: 'Claude profiles', detail: 'Profiles with their folders, colours and defaults for new sessions, the default profile and which projects use which. Logins are never in the file.' },
   projects: { label: 'Projects', detail: 'Your projects in order, with their names, icons and defaults for new sessions.' },
   actions: { label: 'Project actions', detail: 'Global and per-project actions, with their shortcuts and worktree setup.' },
+  schedules: { label: 'Schedules', detail: 'Scheduled sessions with their prompts and choices. One for a folder that isn’t on this computer comes in paused.' },
   choices: { label: 'App choices', detail: 'Default editor, New session defaults, Claude Code update checks.' },
   sessions: { label: 'Pinned and archived sessions', detail: 'Only useful on this Mac, or when ~/.claude is copied too.' },
 };

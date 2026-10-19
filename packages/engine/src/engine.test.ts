@@ -195,6 +195,63 @@ describe('engine over a MessagePort', () => {
     expect(usage.totals.tokens.input).toBe(1_000);
   });
 
+  it('saves, lists, runs now, pauses, deletes and restores schedules, and tells every window', async () => {
+    const created: Array<{ cwd?: string; model?: string; permissionMode?: string }> = [];
+    const { client, dataDir } = connect({ sdk: fakeSdk(created) });
+    const changes: number[] = [];
+    const ran: string[] = [];
+    client.on('schedules.changed', ({ schedules }) => changes.push(schedules.length));
+    client.on('schedules.ran', ({ runs }) => ran.push(...runs.map((r) => `${r.result}:${r.title}`)));
+    const draft = { cwd: dataDir, prompt: 'Review the open pull requests', model: 'opus', permissionMode: 'acceptEdits' as const };
+    const { schedule } = await client.call('schedules.save', { schedule: { name: 'Review open pull requests', draft, rule: { kind: 'weekdays', time: '08:00' }, missed: 'run', paused: false } });
+    expect(schedule).toMatchObject({ name: 'Review open pull requests', rule: { kind: 'weekdays', time: '08:00' }, paused: false, lastRun: null });
+    await expect(client.call('schedules.save', { schedule: { name: 'No days', draft, rule: { kind: 'weekly', days: [], time: '08:00' }, missed: 'run', paused: false } })).rejects.toThrow();
+
+    // Run now: one new session from the draft, as New session starts one.
+    const { run } = await client.call('schedules.runNow', { id: schedule.id });
+    expect(run).toMatchObject({ result: 'started', missed: false });
+    expect(run.title).toMatch(/^Review open pull requests · \w{3} \d{1,2} \w{3}$/);
+    expect(created).toEqual([expect.objectContaining({ cwd: dataDir, model: 'opus', permissionMode: 'acceptEdits' })]);
+    const listed = await client.call('schedules.list', {});
+    expect(listed.schedules[0]!.lastRun).toMatchObject({ result: 'started', sessionId: run.sessionId });
+    expect(listed.sessions).toEqual([{ sessionId: run.sessionId, scheduleId: schedule.id }]);
+
+    // While that session works, another run is skipped.
+    const again = await client.call('schedules.runNow', { id: schedule.id });
+    expect(again.run).toMatchObject({ result: 'skipped', reason: 'the last run was still working' });
+    expect(created).toHaveLength(1);
+
+    const { schedule: paused } = await client.call('schedules.setPaused', { id: schedule.id, paused: true });
+    expect(paused.paused).toBe(true);
+    const before = (await client.call('schedules.list', {})).schedules[0]!;
+    await client.call('schedules.delete', { id: schedule.id });
+    expect((await client.call('schedules.list', {})).schedules).toEqual([]);
+    await client.call('schedules.restore', { schedule: before });
+    expect((await client.call('schedules.list', {})).schedules).toEqual([before]);
+    await expect(client.call('schedules.setPaused', { id: 'gone', paused: true })).rejects.toThrow(/deleted/);
+    for (let tries = 0; ran.length < 2 || changes.length < 6; tries++) {
+      if (tries > 100) throw new Error(`windows heard ${changes.length} changes and ${ran.length} runs`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(ran).toEqual([`started:${run.title}`, 'skipped:null']);
+  });
+
+  it('pauses the schedules of a project removed from Switchboard, and a run whose folder is gone', async () => {
+    const { client, dataDir } = connect({ sdk: fakeSdk([]) });
+    const folder = join(dataDir, 'web');
+    mkdirSync(folder);
+    await client.call('projects.add', { path: folder });
+    const save = (cwd: string) => client.call('schedules.save', { schedule: { name: 'Standup summary', draft: { cwd, prompt: 'Write the standup summary' }, rule: { kind: 'daily', time: '09:00' }, missed: 'run', paused: false } });
+    const { schedule } = await save(folder);
+    await client.call('projects.remove', { root: folder });
+    expect((await client.call('schedules.list', {})).schedules[0]).toMatchObject({ id: schedule.id, paused: true, pausedReason: 'Project removed' });
+
+    const { schedule: gone } = await save(join(dataDir, 'missing'));
+    const { run } = await client.call('schedules.runNow', { id: gone.id });
+    expect(run).toMatchObject({ result: 'failed', reason: 'Folder not found' });
+    expect((await client.call('schedules.list', {})).schedules.find((s) => s.id === gone.id)).toMatchObject({ paused: true, pausedReason: 'Folder not found' });
+  });
+
   it('starts a queued item the way New session does, and takes it off the queue', async () => {
     const created: Array<{ cwd?: string; model?: string; permissionMode?: string }> = [];
     const { client, dataDir } = connect({ sdk: fakeSdk(created) });

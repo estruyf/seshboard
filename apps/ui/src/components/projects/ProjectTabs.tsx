@@ -23,6 +23,7 @@ import { ACTION_ICON } from '../actions/actionIcon.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { QueuedInProject } from '../queue/QueuedInProject.tsx';
+import { ProjectSchedules } from '../schedules/SchedulesCard.tsx';
 import { reviewOf, SessionRow } from '../sidebar/Sidebar.tsx';
 import { useSessionMenu } from '../sidebar/useSessionMenu.tsx';
 import { useProjectActions } from '../sidebar/ProjectMenu.tsx';
@@ -200,6 +201,7 @@ export function ProjectOverview({ root, status }: { root: string; status: Worktr
 
 /**
  * Sessions: the project's sessions with the sidebar's rows and grouping (Needs you, Working, then by day), its queue,
+ * its schedules,
  * and its archived sessions in their own section at the end, closed unless nothing else is listed.
  */
 export function ProjectSessions({ root, name }: { root: string; name: string }) {
@@ -242,6 +244,7 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
   return (
     <div className="grid gap-4" data-project-sessions>
       <QueuedInProject cwd={root} projectName={name} now={now} />
+      <ProjectSchedules root={root} now={now} />
       {rows.length === 0 ? (
         <div className="grid justify-items-start gap-2 rounded-xl border border-dashed border-border px-4 py-5">
           <p className="text-ui text-muted">No sessions in {name} yet.</p>

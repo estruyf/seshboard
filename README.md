@@ -69,7 +69,8 @@ It uses the Claude Code you already have installed, with your login, settings, c
 
 **Stay on top of things**
 - A notification and Dock badge when a session needs you or finishes, so you can leave it running in the background.
-- A **queue** of prompts to start next, each one saying when it's ready (when its project is free). See [Queue](#queue).
+- A **queue** of prompts to start next, each one saying when it's ready (when its project is free), or starting by itself once the session it waits for finishes. See [Queue](#queue).
+- **Schedules** that start a prompt at set times, every day, on weekdays, on the days you pick or once a month. See [Schedules](#schedules).
 - **Unsent messages** are kept, also after you quit. See [Unsent messages](#unsent-messages).
 - **Saved prompts** with blanks: type / in any message box, pick one, fill in an issue, a pull request, a branch or your own options, and send. Keep them for every project, for one project just for you, or share them with the project in its `.switchboard.json`. See [Saved prompts](https://switchboard.struyfconsulting.com/sessions/saved-prompts/).
 - An optional **focus limit**: how many sessions you want going at the same time, so starting another doesn't come at the cost of the ones already running. See [Focus limit](#focus-limit).
@@ -382,7 +383,7 @@ Everything that starts work asks the same way: a message that brings back a sess
 
 ## Queue
 
-The queue holds prompts you want to start later, in the order you want them. It never starts anything by itself: it tells you when an item is ready, and you start it.
+The queue holds prompts you want to start later, in the order you want them. It tells you when an item is ready, and you start it, or it starts by itself when you turned on **Start by itself**.
 
 **Add to the queue.** In New session, write the prompt and choose **Add to queue** (⌘⇧↩) in Start's menu (the ▾ next to Start). The prompt is kept with its project and settings (model, effort, mode, branch or worktree), the box empties and you stay in New session to write the next one. The command palette's New session step has the same menu, and *Add to queue…* in the palette opens New session. Images you attached aren't kept with the prompt.
 
@@ -396,14 +397,26 @@ When the project you picked in New session has a session working, a line under t
 
 **Where it shows.** The **Queue** section in the sidebar sits right under Working. Ready items have a green tint and a **Start** button; the others show what they wait for, with Start on hover. Home has a Queue card with every item. When an item turns ready because a session finished, a message in the corner says so ("switchboard is free") with **Start it** and **Review first**, and the "Claude finished" notification names what's next in the queue.
 
-**Working with items.** Click an item to open it in New session, filled in, to check or change it first; it stays queued until you start it or add it again. **Start** starts it straight away, through the focus limit. Right-click an item (or ⋯ on Home) for Start now, Edit in New session…, Wait for…, Move to top, Move up and down, and Remove. Drag an item to reorder it, or use ⌥↑ and ⌥↓. Removing one doesn't ask: **Undo** brings it back. *Start next in queue* and *Queue: pick one to start…* are in the command palette.
+**Start by itself.** An item can start by itself once the session it waits for finishes, such as "once this session is finished, run the tests and write the changelog entry". Choose **Start after this one…** in a session's menu (or the conversation's ⋯ menu, or *Start after this session…* in the palette): New session opens on its project with Wait for set to that session and Start by itself on, and **Add to queue** queues it. The check is also next to **Wait for…** in New session and in an item's menu. Its row says "starts after “Fix login”" with a play mark, and the session it waits for shows "Starts after this one" above its message box. It only starts after a clean finish: after an error or a stop it stays in the queue, ready, and a notification says why. At the focus limit it waits for a free slot instead of asking; at a usage limit it waits for the reset. It starts with or without a window open, never at launch after Switchboard quit while that session worked, and not for a session that runs in the terminal, whose end Switchboard can't see.
+
+**Working with items.** Click an item to open it in New session, filled in, to check or change it first; it stays queued until you start it or add it again. **Start** starts it straight away, through the focus limit. Right-click an item (or ⋯ on Home) for Start now, Edit in New session…, Wait for…, Start by itself, Move to top, Move up and down, and Remove. Drag an item to reorder it, or use ⌥↑ and ⌥↓. Removing one doesn't ask: **Undo** brings it back. *Start next in queue* and *Queue: pick one to start…* are in the command palette.
+
+## Schedules
+
+A schedule starts a session from a prompt at set times, for work that comes back, such as "review yesterday's open pull requests" every weekday at 08:00. Every run is a new session, titled with the schedule's name and the day.
+
+**Make one.** In New session, write the prompt, set its choices, and choose **Schedule…** in Start's menu. The dialog takes a name, **Repeat** (Every day, Monday to Friday, Every week with the days you pick, or Every month on a day; the 31st runs on a shorter month's last day), **At**, and **If missed** (**Run when Switchboard starts** or **Skip it**), and shows the next three runs. With the mode on Ask before edits it warns that Claude will stop at its first permission. *Schedule a session…* in the palette does the same.
+
+**Where they show.** A **Schedules** card on Home and a section in a project's Sessions tab, each row with the rule, the last run (linked to its session), the next run, **Run now** and a menu with Edit…, Pause or Resume, and Delete (with Undo). *Schedules…* in the palette lists them. Sessions a schedule started have a repeat icon in the sidebar.
+
+**When it runs.** A notification says it started. A run never asks: while the last run is still working or waiting for you it's skipped; at the focus limit or a usage limit it goes to the queue and starts by itself when it can; a schedule whose folder is gone pauses. Runs missed while Switchboard was closed or the computer slept run once at the next start or wake, or are skipped, as you chose. On a Mac, schedules run while Switchboard is running, also with its windows closed; on Windows, while a Switchboard window is open.
 
 ## Project pages and worktrees
 
 Click a project in the **Projects** view, choose **Open project** in a project's menu in the sidebar, or run *Project: &lt;name&gt;* in the command palette to open its page. The header shows the folder, the branch checked out and its upstream, with **Open in editor** and **New session** (⌘N starts in this project while its page is open). The tabs below:
 
 - **Overview:** a card per area: sessions (working, needing you, in total), worktrees (how many, their size, how many can go), branches (here, on the remote, how many can go), the queue (when something is queued here) and git (branch, commits behind its upstream, changed files). Each card opens its tab.
-- **Sessions:** the project's sessions as the sidebar groups them, and its queued prompts.
+- **Sessions:** the project's sessions as the sidebar groups them, its queued prompts and its schedules.
 - **Worktrees:** every worktree of the repository, not only the ones Switchboard made. See below.
 - **Branches:** every branch, here and on the remote. See [Branches](#branches).
 - **Memory:** what Claude Code remembers about the project, and the instructions the team shares. See [Memory](#memory).

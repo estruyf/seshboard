@@ -1,12 +1,13 @@
 import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow, type NativeImage } from 'electron';
 import { resolveSound } from '@switchboard/protocol/bridge';
-import { createRpcClient, type Contract, type LaterItem, type QueueStarted, type RpcClient } from '@switchboard/protocol/client';
+import { createRpcClient, promptLabel, type Contract, type LaterItem, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@switchboard/protocol/client';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
 import { CacheReminder, REMIND_BEFORE_MS, type CacheReminderPrefs } from './cacheReminder.ts';
 import type { EngineProcess } from './engineProcess.ts';
 import { queueHint } from './queueHint.ts';
+import { scheduleAlerts } from './scheduleAlerts.ts';
 import type { SoundPlayer } from './sounds.ts';
 import { badgeDescription, badgeDotBitmap } from './taskbarBadge.ts';
 
@@ -31,6 +32,8 @@ export interface NotifierOptions {
   sounds: SoundPlayer;
   /** Smoke tests record events (whether they'd be suppressed, and what they'd do) instead of showing notifications. */
   record?: (event: RecordedAlert) => void;
+  /** Smoke tests record scheduled runs too, to check what a run would be titled (the stubbed run has no session). */
+  recordRuns?: (runs: ScheduleRunEvent[]) => void;
 }
 
 /**
@@ -45,7 +48,7 @@ export class Notifier {
   /** The dot over the taskbar button on Windows, made once. */
   private dot: NativeImage | undefined;
   /** The queue, so a finished turn can say what is next there. */
-  private queue: { items: LaterItem[]; started: QueueStarted[] } = { items: [], started: [] };
+  private queue: { items: LaterItem[]; started: QueueStarted[]; auto: QueueAuto } = { items: [], started: [], auto: { outcomes: [], focusHeld: [] } };
   /** Reminds you before a large session's cache lapses (Settings › Usage). */
   private readonly cache: CacheReminder;
 
@@ -95,6 +98,26 @@ export class Notifier {
     client.on('limits.resumed', ({ sessionId }) => this.handle(this.attention.onResumed(sessionId)));
     client.on('git.checksFinished', (event) => this.handle(this.attention.onChecksFinished(event)));
     client.on('later.changed', (queue) => void (this.queue = queue));
+    // Queued items that start by themselves: the engine started one, or one didn't start after an error or a stop.
+    client.on('later.autoStarted', ({ sessionId, prompt, projectName }) =>
+      this.handle([{ kind: 'queue-started', sessionId, title: `Started: ${promptLabel(prompt, 80)}`, body: projectName }]),
+    );
+    client.on('later.autoSkipped', ({ prompt, sessionId, title, outcome }) =>
+      this.handle([
+        {
+          kind: 'queue-skipped',
+          // A click opens the session that didn't finish cleanly: that is what to look at first.
+          sessionId,
+          title: `“${promptLabel(prompt, 60)}” didn't start`,
+          body: `“${promptLabel(title, 60)}” ${outcome === 'error' ? 'ended with an error' : 'was stopped'}.`,
+        },
+      ]),
+    );
+    // Scheduled runs (#173): started, queued, skipped or not started; several missed runs at once give one.
+    client.on('schedules.ran', ({ runs }) => {
+      this.options.recordRuns?.(runs);
+      this.handle(scheduleAlerts(runs));
+    });
     void client.call('later.list', {}).then((queue) => void (this.queue = queue), () => {});
 
     // Seed state silently: only changes from here on deserve a notification.
@@ -156,12 +179,14 @@ export class Notifier {
       if (suppressed) continue;
       if (alert.notify && Notification.isSupported()) {
         // A finished turn says what is next in the queue there, rather than a second notification.
-        const hint = event.kind === 'finished' ? queueHint(this.queue.items, this.queue.started, { sessionId: event.sessionId, cwd: event.cwd ?? null }) : null;
+        const outcome = this.queue.auto.outcomes.find((o) => o.sessionId === event.sessionId)?.outcome ?? null;
+        const hint = event.kind === 'finished' ? queueHint(this.queue.items, this.queue.started, { sessionId: event.sessionId, cwd: event.cwd ?? null, outcome }) : null;
         // With sounds on, the sound is ours (its volume applies, and it plays with notifications off too), so the
         // system's own notification sound (Windows plays one) would be a second one.
         const notification = new Notification({ title: event.title, body: hint ? `${event.body}\n${hint}` : event.body, silent: prefs.sounds.enabled });
         // The test has no session to open.
-        notification.on('click', () => (test ? this.options.window()?.show() : this.options.openSession(event.sessionId)));
+        // The test, and a scheduled run that has no session (queued, not started), only bring the window forward.
+        notification.on('click', () => (test || !event.sessionId ? this.options.window()?.show() : this.options.openSession(event.sessionId)));
         notification.on('close', () => this.shown.delete(notification));
         this.shown.add(notification);
         notification.show();

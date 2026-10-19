@@ -35,6 +35,7 @@ import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
+import { useSchedulesSync } from './state/schedulesStore.ts';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
@@ -204,6 +205,7 @@ export function App() {
   usePreferencesSync();
   useThemesSync();
   useLaterSync();
+  useSchedulesSync();
   useCatchUpSync();
   useUpNextSync();
   useModsSync();

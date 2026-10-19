@@ -9,6 +9,7 @@ import { showOf } from '../../state/catchUpShow.ts';
 import { promptLabel } from '../../state/queue.ts';
 import { useUnsent } from '../drafts/useUnsent.ts';
 import { useQueue } from '../../state/useQueue.ts';
+import { useSchedules } from '../../state/schedulesStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
@@ -101,6 +102,7 @@ export function usePaletteContext(): PaletteContext {
   const themes = useThemes((s) => s.themes);
   const activeTheme = useThemes((s) => s.active.entry.id);
   const queue = useQueue();
+  const scheduleCount = useSchedules((s) => s.schedules.length);
   const unsent = useUnsent().length;
   const digest = usePaletteBus((s) => s.digest);
   const newSessionInfo = usePaletteBus((s) => s.newSessionInfo);
@@ -188,6 +190,7 @@ export function usePaletteContext(): PaletteContext {
     notifications: prefs.notifications.enabled,
     sounds: prefs.sounds.enabled,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },
+    schedules: scheduleCount,
     unsent,
     projectCount: added.length,
     projects: added.map((p) => ({ root: p.root, name: p.name })),

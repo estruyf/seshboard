@@ -12,6 +12,7 @@ import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { keepUnread } from '../../state/keptUnread.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
+import { startAfter } from '../../state/startAfterStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
@@ -124,6 +125,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
         { label: 'New session linked to this one', onSelect: () => data.summary && startLinkedSession({ id: data.id, title: data.title, projectRoot: data.summary.projectRoot }), disabled: !data.summary, data: { 'data-new-linked-session': true } },
+        { label: 'Start after this one…', onSelect: () => startAfter({ id: data.id, projectRoot: data.projectRoot }), data: { 'data-start-after': true } },
         { label: 'Open folder in editor', onSelect: () => cwd && void openIn(cwd).catch(() => {}), disabled: !cwd },
         { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(data.id) },
         'separator',

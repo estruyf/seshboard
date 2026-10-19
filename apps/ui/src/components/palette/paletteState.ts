@@ -26,7 +26,7 @@ export function modeForPrefix(char: string | undefined): Exclude<PaletteMode, 'g
 }
 
 /** Lists a `pick` step chooses from. */
-export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory' | 'prompt';
+export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory' | 'prompt' | 'schedules' | 'schedule-action';
 
 /**
  * One step of a command that needs more input. `chip` is how it shows in the input; `from` is the
@@ -35,7 +35,8 @@ export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-
 export type PaletteStep =
   | { kind: 'projects'; purpose: 'new-session' | 'rename-project' | 'worktrees' | 'branches'; worktree: boolean; chip: string; from?: string }
   | { kind: 'prompt'; root: string; worktree: boolean; chip: string; from?: string }
-  | { kind: 'pick'; list: PickList; chip: string }
+  /** `target`: what the list is about (the schedule `schedule-action` offers actions for). */
+  | { kind: 'pick'; list: PickList; chip: string; target?: string }
   /** Clone from GitHub: the repository's URL (or owner/name) is typed or pasted, then New session clones it. */
   | { kind: 'clone'; chip: string };
 

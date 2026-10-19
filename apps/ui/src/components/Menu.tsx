@@ -3,6 +3,7 @@ import { localizeKeys } from '../lib/shortcuts.ts';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../lib/contextMenu.ts';
 import { Popover } from './ui/Popover.tsx';
+import { CheckMark } from './ui/Checkbox.tsx';
 
 export interface MenuItem {
   label: string;
@@ -12,6 +13,13 @@ export interface MenuItem {
   hint?: string;
   /** Marks the current choice with a check. */
   checked?: boolean;
+  /** A check item that turns something on or off (`menuitemcheckbox`): a box before the label shows `checked`. */
+  checkbox?: boolean;
+  /**
+   * Why it can't be picked now. The item stays focusable (`aria-disabled`), so the reason can be read: it is the item's
+   * description and its tooltip.
+   */
+  disabledReason?: string;
   danger?: boolean;
   disabled?: boolean;
   /** `data-*` attributes for the item's button (test hooks). */
@@ -43,7 +51,7 @@ const SUBMENU_DELAY = 150;
 
 /** The enabled items of a menu, in order. */
 function menuItems(menu: HTMLElement | null): HTMLElement[] {
-  return menu ? Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled)')) : [];
+  return menu ? Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)')) : [];
 }
 
 /**
@@ -220,12 +228,16 @@ export function Menu({
             <MenuRow key={i} entry={entry} onClose={onClose}>
               <button
                 type="button"
-                role={entry.checked === undefined ? 'menuitem' : 'menuitemradio'}
-                aria-checked={entry.checked}
-                disabled={entry.disabled}
+                role={entry.checkbox ? 'menuitemcheckbox' : entry.checked === undefined ? 'menuitem' : 'menuitemradio'}
+                aria-checked={entry.checkbox ? (entry.checked ?? false) : entry.checked}
+                disabled={entry.disabled && !entry.disabledReason}
+                aria-disabled={entry.disabledReason ? true : undefined}
+                aria-describedby={entry.disabledReason ? `${id}-reason-${i}` : undefined}
+                data-tooltip={entry.disabledReason}
                 {...entry.data}
                 onMouseEnter={leaveSub}
                 onClick={() => {
+                  if (entry.disabledReason) return;
                   onClose();
                   entry.onSelect();
                 }}
@@ -245,8 +257,14 @@ export function Menu({
                     openItemMenu(entry, event.currentTarget, null);
                   })
                 }
-                className={`flex w-full items-center gap-2 px-3 py-1 text-left text-ui hover:bg-accent/15 focus-visible:bg-accent/15 disabled:opacity-40 ${entry.danger ? 'text-error' : 'text-text'}`}
+                className={`flex w-full items-center gap-2 px-3 py-1 text-left text-ui hover:bg-accent/15 focus-visible:bg-accent/15 disabled:opacity-40 aria-disabled:opacity-40 ${entry.danger ? 'text-error' : 'text-text'}`}
               >
+                {entry.checkbox && <CheckMark checked={entry.checked ?? false} />}
+                {entry.disabledReason && (
+                  <span id={`${id}-reason-${i}`} className="sr-only">
+                    {entry.disabledReason}
+                  </span>
+                )}
                 {entry.icon && (
                   <span aria-hidden className="flex w-4 shrink-0 justify-center text-muted">
                     {entry.icon}
@@ -261,7 +279,7 @@ export function Menu({
                   <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                 )}
                 {entry.hint && <span className="shrink-0 text-meta text-faint">{localizeKeys(entry.hint)}</span>}
-                {entry.checked && <Check size={13} className="shrink-0 text-accent-ink" aria-hidden />}
+                {entry.checked && !entry.checkbox && <Check size={13} className="shrink-0 text-accent-ink" aria-hidden />}
               </button>
             </MenuRow>
           ),
