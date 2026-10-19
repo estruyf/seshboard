@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareCode, SquareTerminal } from 'lucide-react';
+import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
 import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -227,9 +227,6 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
             <Button variant="quiet" size="sm" iconOnly disabled icon={<SquareTerminal size={14} aria-hidden />} aria-label={onlyThereLine('Terminal', name)} data-remote-terminal />
           </OnlyThere>
         </div>
-        <OnlyThere feature="The editor" name={name}>
-          <Button variant="quiet" iconOnly disabled icon={<SquareCode size={15} aria-hidden />} aria-label={onlyThereLine('The editor', name)} className="@max-[420px]:hidden" data-remote-open-in />
-        </OnlyThere>
         <Button
           variant="quiet"
           iconOnly
