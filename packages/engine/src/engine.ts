@@ -113,6 +113,7 @@ import { ModelRouter, RoutingStore, stubRoute } from './autoModel/router.ts';
 import { CatchUpService } from './catchUp/catchUpService.ts';
 import { CatchUpStore, CatchUpUsageStore } from './catchUp/catchUpStore.ts';
 import { stubAnswer, Summarizer } from './catchUp/summary.ts';
+import { COMMIT_SYSTEM_PROMPT, commitContext, commitMessageInput, parseCommitMessage, stubCommitMessage } from './git/commitMessage.ts';
 import { ProjectRegistry, type FolderActivity } from './projects/projectRegistry.ts';
 import { QuestionsFolder } from './questions/questionsFolder.ts';
 import { createAppStateStore, type JsonValue } from './db/appState.ts';
@@ -879,6 +880,22 @@ export function createEngine(options: EngineOptions): Engine {
     },
     log,
     ...(options.stubCatchUp ? { stub: stubAnswer } : {}),
+  });
+  /** Ask Claude to commit: Haiku reads the change (up to about 10,000 tokens), so it has longer than a summary. */
+  const commitWriter = new Summarizer({
+    sdk,
+    env: envFor,
+    claudePath: async () => (await claude)?.path,
+    ephemeral,
+    record: (profileId, entry) => {
+      catchUpUsage.record({ ...entry, scope: scopeOf(profiles.runtime(profileId).configDir) });
+      broadcast('usage.tokens', { profileIds: [profileId], scan: null });
+    },
+    log,
+    what: 'Commit message',
+    startMs: 15_000,
+    answerMs: 30_000,
+    ...(options.stubCatchUp ? { stub: stubCommitMessage } : {}),
   });
   /** Where a session works now: its process's folder (a worktree once it has one), else what its transcript says. */
   const sessionCwd = (id: string) => hosts.list().hosts.find((h) => h.sessionId === id)?.cwd ?? sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null;
@@ -2502,6 +2519,16 @@ export function createEngine(options: EngineOptions): Engine {
       if (files === 0) throw new RpcError('NOTHING_TO_COMMIT', 'There is nothing to commit.');
       // In a terminal tab: commit hooks can take a while, and their output is worth seeing.
       return { terminalId: await runShellAction(sessionId, cwd, 'Commit', `git commit -m ${(await terminals.shell()).quote(message)}`) };
+    },
+    'git.commitMessage': async ({ sessionId, cwd }) => {
+      if (!resolver.resolve(cwd).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');
+      const context = await commitContext(cwd).catch((error: Error) => {
+        throw new RpcError('GIT_FAILED', error.message);
+      });
+      if (!context) throw new RpcError('NOTHING_TO_COMMIT', 'There is nothing to commit.');
+      const message = parseCommitMessage(await commitWriter.ask(sessionProfile(sessionId), sessionId, commitMessageInput(context), COMMIT_SYSTEM_PROMPT));
+      if (!message) throw new RpcError('NO_MESSAGE', "Claude didn't write a commit message in time. Try again, or use Commit… to write one.");
+      return { message };
     },
     'git.prDraft': async ({ cwd, base, projectBase }) => {
       if (!resolver.resolve(cwd).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');

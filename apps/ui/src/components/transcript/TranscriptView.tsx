@@ -1391,7 +1391,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             activity={gitActivity}
             isWorktree={isWorktree}
             projectBase={project?.defaults.branch ?? null}
-            onCommit={() => void send('Commit the current changes with a clear, conventional commit message.', [], openElsewhere, true).catch((e: Error) => setActionError(e.message))}
             onBranchMenu={() => setBranchMenuRequest((n) => n + 1)}
             onNewWorktree={() => {
               // New session is the main window's view: from a pop-out it opens there.

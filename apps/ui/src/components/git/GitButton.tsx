@@ -54,8 +54,9 @@ function CheckIcon({ bucket, size = 13 }: { bucket: PrCheck['bucket'] | 'none'; 
  * Split button in the session header. Its face runs the step the checkout needs next (pull when
  * behind, commit when dirty, push when ahead, a pull request when a branch is ready, else fetch), or
  * shows the branch's open pull request (View PR #123) once it has one; the menu has every git step,
- * plus switching branch and starting a worktree session. Commit asks Claude (or opens the commit
- * dialog from the menu); fetch, pull and push run git in a terminal tab so the output stays visible;
+ * plus switching branch and starting a worktree session. Commit has Haiku write the message from the changes and
+ * commits (Commit… in the menu opens the commit dialog); commit, fetch, pull and push run git in a terminal tab so the
+ * output stays visible;
  * Create PR opens the Create pull request dialog. With an open pull request, its checks show as an icon on View PR
  * and as a Checks group in the menu, where failed ones can be handed to Claude with their logs.
  * `activity` changes when the session does something, so the status follows along.
@@ -68,7 +69,6 @@ export function GitButton({
   activity,
   isWorktree,
   projectBase,
-  onCommit,
   onBranchMenu,
   onNewWorktree,
 }: {
@@ -81,8 +81,6 @@ export function GitButton({
   isWorktree: boolean;
   /** The project's default branch, where a pull request goes into first. */
   projectBase: string | null;
-  /** Asks Claude to commit. */
-  onCommit(): void;
   /** Opens the branch menu (or, in a worktree, the worktree's merge and remove menu). */
   onBranchMenu(): void;
   onNewWorktree(): void;
@@ -110,6 +108,8 @@ export function GitButton({
   /** A git step is starting: a second click (or ⌘⇧L) waits until it has, instead of running it twice. */
   const pendingRef = useRef(false);
   const [pending, setPending] = useState(false);
+  /** Ask Claude to commit is writing the message. */
+  const [writing, setWriting] = useState(false);
   /** The folder whose status has been read once. */
   const loaded = useRef<string | null>(null);
 
@@ -196,12 +196,20 @@ export function GitButton({
   };
   const run = async (step: GitStep) => {
     setError(null);
-    if (step === 'commit') return onCommit();
     if (step === 'pr') return setCreatingPr(true);
     if (!client || pendingRef.current) return;
     pendingRef.current = true;
     setPending(true);
     try {
+      if (step === 'commit') {
+        // Haiku writes the message from the change alone, in a call of its own: sending the session "commit this"
+        // would have the model read the whole conversation again.
+        setWriting(true);
+        const { message } = await client.call('git.commitMessage', { sessionId, cwd }).finally(() => setWriting(false));
+        const { terminalId } = await client.call('git.commit', { sessionId, cwd, message });
+        openTerminal(terminalId);
+        return;
+      }
       const { terminalId } = await client.call('git.sync', { sessionId, cwd, action: step satisfies GitSyncAction });
       openTerminal(terminalId);
     } catch (e) {
@@ -309,7 +317,7 @@ export function GitButton({
   const tooltipFor = (step: GitStep): string => {
     const blocked = plan.blocked[step];
     if (blocked) return blocked;
-    if (step === 'commit') return `Ask Claude to commit ${status.uncommitted === 1 ? 'the changed file' : `the ${status.uncommitted} changed files`}`;
+    if (step === 'commit') return `Ask Claude to commit ${status.uncommitted === 1 ? 'the changed file' : `the ${status.uncommitted} changed files`}. Haiku writes the message from the changes`;
     if (step === 'fetch') return 'Fetch from the remote in a terminal tab, to see whether the upstream moved on';
     if (step === 'pull') return `Pull from ${status.upstream} in a terminal tab (${pullShortcut()})`;
     if (step === 'push') return status.upstream ? `Push to ${status.upstream} in a terminal tab` : `Publish ${status.branch} to ${status.pushRemote} in a terminal tab`;
@@ -319,14 +327,14 @@ export function GitButton({
   const face = plan.primary;
   const FaceIcon = ICON[face];
   // While a step is starting, the face waits (the reason is only for its tooltip).
-  const faceBlocked = plan.blocked[face] ?? (pending && face !== 'commit' ? 'Starting…' : null);
+  const faceBlocked = plan.blocked[face] ?? (writing ? 'Writing the commit message…' : pending ? 'Starting…' : null);
   const count = COUNT[face] ? stepCount(status, face) : null;
   // The header's one yellow button, whenever there is something to do (pull, commit, push or a PR).
   // With nothing to do the face is Fetch, which stays a quiet bordered button.
   const primary = face !== 'fetch' && faceBlocked === null;
   const step = (s: GitStep, label: string, extra: Partial<Extract<MenuEntry, { label: string }>> = {}): MenuEntry => ({
     label,
-    disabled: plan.blocked[s] !== null || (pending && s !== 'commit'),
+    disabled: plan.blocked[s] !== null || pending,
     onSelect: () => void run(s),
     data: { 'data-git-step': s },
     // The menu says why push and Create PR are off on a fork's pull request; a tooltip alone isn't seen in a menu.
@@ -347,7 +355,7 @@ export function GitButton({
       onSelect: () => setCommitting(true),
       data: { 'data-git-step': 'commit-dialog' },
     },
-    step('commit', 'Ask Claude to commit', { icon: <Sparkles size={13} /> }),
+    step('commit', writing ? 'Writing the message…' : 'Ask Claude to commit', { icon: <Sparkles size={13} /> }),
     step('push', 'Push', { icon: <CloudUpload size={13} /> }),
     ...(openPr
       ? [

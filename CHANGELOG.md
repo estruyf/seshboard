@@ -13,6 +13,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Queued items can start by themselves** ([#172](https://github.com/estruyf/switchboard/issues/172)). Queued items can start by themselves when the session they wait for finishes. Use Start after this one… on a session to set one up. An item only starts after a clean finish: after an error or a stop it stays in the queue, ready, and says why. At the focus limit it waits for a free slot instead of asking, and it starts with or without a window open.
 - **Pick an app icon.** Pick an app icon in Settings › Theme: nine colourways of the Switchboard icon for the Dock and taskbar, and for the remote app on your phone.
 
+### Changed
+
+- **Ask Claude to commit is fast and uses far fewer tokens.** It used to send the session a message to commit, so Claude read the whole conversation again: in a long session, that was close to a million tokens for one commit message. Now Haiku writes the message from the changes alone (the files, the diff stat and up to about 10,000 tokens of the diff, lock files left out), in the style of your recent commits, and the commit runs in a terminal tab as with **Commit…**. The conversation is not touched. The tokens count on the session's profile, in Usage.
+
 ### Fixed
 
 - **A new permission mode applies to requests that are already waiting.** If you switched a session to Auto mode or Accept edits while Claude was asking, you still had to answer the requests that were already waiting. Answering one request sends the next one right away, so switching after answering didn't help either. Requests the new mode allows now close, and Claude makes those calls again without asking. Questions and plans still wait for your answer.

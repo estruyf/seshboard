@@ -736,6 +736,13 @@ export const contract = {
      */
     'git.commit': { params: z.object({ sessionId: SessionId, cwd: AbsolutePath, message: z.string().trim().min(1).max(20_000) }), result: z.object({ terminalId: z.string() }) },
     /**
+     * A commit message for what `git.commit` would commit now, written by Haiku on the session's profile from the
+     * change alone (files, stat and a capped patch, plus recent subjects for the style), never the conversation, so it
+     * costs a few thousand tokens however long the session is. Nothing is staged. NOTHING_TO_COMMIT on a clean
+     * checkout, NO_MESSAGE when Haiku didn't answer in time.
+     */
+    'git.commitMessage': { params: z.object({ sessionId: SessionId, cwd: AbsolutePath }), result: z.object({ message: z.string() }) },
+    /**
      * What the Create pull request dialog starts with for the branch checked out at `cwd`: its commits and diff against
      * `base` (else the project's base, `projectBase`, else the remote's default branch), the remote's branches, the
      * repository's templates, a pull request it may have already, and whether gh is there and signed in.
