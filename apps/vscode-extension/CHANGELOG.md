@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Works with Switchboard on Linux: it starts Switchboard and brings it up there with `xdg-open`.
+
 ## [0.2.0]
 
 - Works with Switchboard on Windows (where it listens on a named pipe), and matches Windows folders without regard to case. It starts Switchboard and brings it up there too (with a `switchboard://show` link).

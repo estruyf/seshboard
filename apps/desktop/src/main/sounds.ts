@@ -14,6 +14,12 @@ const SYSTEM_SOUNDS: Record<string, { dir: () => string; extension: string; fall
     extension: '.wav',
     fallback: { needsYou: 'Windows Notify Messaging', finished: 'Windows Notify System Generic', error: 'Windows Critical Stop', actionEnded: 'Windows Ding' },
   },
+  // The freedesktop sound theme, which GNOME, KDE and most distributions install.
+  linux: {
+    dir: () => '/usr/share/sounds/freedesktop/stereo',
+    extension: '.oga',
+    fallback: { needsYou: 'message-new-instant', finished: 'complete', error: 'dialog-error', actionEnded: 'bell' },
+  },
 };
 
 const NO_FALLBACK: SoundList['fallback'] = { needsYou: null, finished: null, error: null, actionEnded: null };
@@ -34,8 +40,9 @@ export function soundListFrom(files: string[], platform: string): SoundList {
 }
 
 /**
- * How to play a sound file at a volume (0 to 1): `afplay` on macOS, and on Windows PowerShell's MediaPlayer,
- * which has a volume (SoundPlayer has none). Null where there is no player.
+ * How to play a sound file at a volume (0 to 1): `afplay` on macOS, on Windows PowerShell's MediaPlayer, which has a
+ * volume (SoundPlayer has none), and on Linux `paplay`, which PulseAudio and PipeWire both have (its volume goes to
+ * 65536). Null where there is no player.
  */
 export function playCommand(platform: string, file: string, volume: number): { command: string; args: string[] } | null {
   const level = Math.min(1, Math.max(0, volume)).toFixed(2);
@@ -46,6 +53,7 @@ export function playCommand(platform: string, file: string, volume: number): { c
     const script = `Add-Type -AssemblyName PresentationCore; $p = New-Object System.Windows.Media.MediaPlayer; $p.Volume = ${level}; $p.Open([Uri]'${path}'); $p.Play(); Start-Sleep -Seconds 4; $p.Close()`;
     return { command: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script] };
   }
+  if (platform === 'linux') return { command: 'paplay', args: [`--volume=${Math.round(Number(level) * 65536)}`, file] };
   return null;
 }
 

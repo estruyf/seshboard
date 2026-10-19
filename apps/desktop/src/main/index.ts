@@ -133,6 +133,9 @@ const updater = new Updater({
     devServer: Boolean(process.env.ELECTRON_RENDERER_URL),
     hasFeed: app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml')),
     mockFeed: Boolean(mockFeedUrl),
+    // On Linux electron-updater replaces the AppImage it runs from, or installs the .deb or .rpm the build marked
+    // in package-type; the unpacked folder is neither.
+    installer: process.platform !== 'linux' || Boolean(process.env.APPIMAGE) || (app.isPackaged && existsSync(join(process.resourcesPath, 'package-type'))),
   }),
   markerFile: join(app.getPath('userData'), 'update-marker.json'),
   ...(mockFeedUrl ? { mockFeedUrl } : {}),
@@ -2880,7 +2883,7 @@ async function runProjectMemoryStep(win: BrowserWindow, root: string): Promise<s
     if (!(await waitInPage(win, `${legend}.includes('MEMORY.md') && ${legend}.includes('CLAUDE.md')`, 5_000))) return `What loads here did not list the sandbox profile's files (${String(await js(legend))})`;
     await shot(win, 'memory-load-order.png');
     // Search finds the sandbox memory in its own Memory group above the conversations. Nothing is opened.
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: ['meta', 'shift'] });
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: [MOD_MODIFIER, 'shift'] });
     if (!(await waitInPage(win, "document.querySelector('[data-search] input[role=combobox]')", 3_000))) return 'search did not open';
     await setFieldValue(win, '[data-search] input[role=combobox]', 'smoke share');
     if (!(await waitInPage(win, "document.querySelector('[data-search-memory-group] [data-search-memory-hit]')", 5_000))) return 'search did not find the sandbox memory';

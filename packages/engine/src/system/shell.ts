@@ -106,6 +106,9 @@ const EXIT_CODE = `\nif (-not $?) { ${EXIT_FAILED} }`;
  * Values are quoted for how this PowerShell hands arguments to programs: `powershellQuote` for 7.3 and later, which
  * escape double quotes themselves, `windowsPowershellQuote` for Windows PowerShell and 7.0 to 7.2.
  */
+/** The shell when `$SHELL` isn't set: zsh is macOS's own, while bash is the one every Linux has. */
+export const defaultPosixShell = (platform: NodeJS.Platform = process.platform) => (platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
+
 export function userShell(
   env: Record<string, string>,
   platform: NodeJS.Platform = process.platform,
@@ -113,7 +116,7 @@ export function userShell(
   read: (path: string) => string | null = readDeps,
 ): UserShell {
   if (platform !== 'win32') {
-    return { file: env.SHELL || '/bin/zsh', kind: 'posix', interactive: ['-l'], run: (command) => ['-ilc', command], quote: posixQuote, sequence: andAnd, unsafe: () => null };
+    return { file: env.SHELL || defaultPosixShell(platform), kind: 'posix', interactive: ['-l'], run: (command) => ['-ilc', command], quote: posixQuote, sequence: andAnd, unsafe: () => null };
   }
   const pwsh = (env.PATH ?? '')
     .split(win32.delimiter)

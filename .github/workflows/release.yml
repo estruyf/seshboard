@@ -1,28 +1,31 @@
-# Builds Switchboard for a GitHub release, for macOS and Windows, and publishes both at once.
+# Builds Switchboard for a GitHub release, for macOS, Windows and Linux, and publishes them all at once.
 #
 # Runs when a release is published on GitHub (for a tag like v0.2.0):
 # - mac: builds the app on an Apple Silicon runner, signs and notarises it, with the .zip and the update feed
 #   the in-app updater reads (latest-mac.yml);
 # - windows: builds the installer (x64 and Arm64 in one), signs it with Azure Trusted Signing (or a .pfx), with
 #   its update feed (latest.yml);
-# - publish: only once both builds passed their checks, attaches all their files to the release (the update
-#   feeds last), fills in empty notes and updates the Homebrew cask. When either build fails, nothing is
-#   attached, so a release never offers one platform without the other. Re-run the failed jobs to retry.
+# - linux: builds the AppImage, .deb and .rpm on an x64 and an Arm64 runner (node-pty is compiled for the machine
+#   it's built on), with their update feeds (latest-linux.yml, latest-linux-arm64.yml). Linux packages aren't
+#   signed;
+# - publish: only once every build passed its checks, attaches all their files to the release (the update
+#   feeds last), fills in empty notes and updates the Homebrew cask. When any build fails, nothing is
+#   attached, so a release never offers one platform without the others. Re-run the failed jobs to retry.
 # The version comes from the tag (.github/scripts/release-version.sh). When the release has no notes, the
 # matching CHANGELOG.md section is used.
 #
 # Branches: a release must be tagged on main, a beta on dev (.github/scripts/release-branch.sh).
 #
-# Channels: a release is the Stable feed (latest-mac.yml, latest.yml). A pre-release tagged vX.Y.Z-beta.N is
-# the Beta feed (beta-mac.yml, beta.yml); apps on Beta are offered it and the releases. Any other pre-release
+# Channels: a release is the Stable feed (latest-mac.yml, latest.yml, latest-linux*.yml). A pre-release tagged
+# vX.Y.Z-beta.N is the Beta feed (beta-mac.yml, beta.yml, beta-linux*.yml); apps on Beta are offered it and the releases. Any other pre-release
 # gets the builds but no feed, so no one is ever updated to it. A beta's notes come from the CHANGELOG's
 # Unreleased section, unless it has a section of its own.
 #
-# Dry run: run this workflow by hand (Actions → Release → Run workflow). Both builds are made, signed (the Mac
-# one notarised) and checked, with a version like 1.2.3-dryrun.42, and kept as workflow artifacts for a week.
+# Dry run: run this workflow by hand (Actions → Release → Run workflow). Every build is made, signed (the Mac
+# one notarised; Linux isn't signed) and checked, with a version like 1.2.3-dryrun.42, and kept as workflow artifacts for a week.
 # Nothing is published: there is no publish job, no feed and no Homebrew update.
 #
-# Nothing is ever attached unsigned: without the signing settings the run fails.
+# Nothing for macOS or Windows is ever attached unsigned: without the signing settings the run fails.
 # See docs/building-and-signing.md for the secrets and variables.
 #
 # Releases tagged vscode-vX.Y.Z are the VS Code companion's (release-vscode.yml); this workflow skips them.
@@ -255,9 +258,109 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  linux:
+    name: Build the Linux packages (${{ matrix.arch }})
+    if: ${{ !startsWith(github.event.release.tag_name, 'vscode-') }}
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+            feed-suffix: ''
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            feed-suffix: '-arm64'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      DRY_RUN: ${{ github.event_name != 'release' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Version and update channel from the tag
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: bash .github/scripts/release-version.sh
+
+      - name: Check the release comes from its branch
+        # Stable from main, a beta from dev (and for a version after the latest release).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: bash .github/scripts/release-branch.sh
+
+      # rpmbuild for the .rpm (scripts/dist.mjs leaves the .rpm out without it).
+      - name: Packaging tools
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Install
+        run: npm ci
+
+      # The engine's tests make real git repositories and commits.
+      - name: Git identity for the tests
+        run: |
+          git config --global user.name "Switchboard CI"
+          git config --global user.email "ci@switchboard.invalid"
+
+      - name: Typecheck and unit tests
+        run: npm run check
+
+      - name: Build
+        run: |
+          # The app's version (About, the packages' names) is the release's.
+          npm pkg set version="$VERSION" -w @switchboard/desktop
+          if [ "$FEED" == "beta" ]; then
+            # electron-builder names a GitHub feed latest-linux.yml unless told the channel.
+            npm run dist -w @switchboard/desktop -- -c.publish.channel=beta
+          else
+            npm run dist
+          fi
+
+      - name: Check the packages and the update feed
+        env:
+          SUFFIX: ${{ matrix.feed-suffix }}
+        run: |
+          cd apps/desktop/dist
+          ls -la
+          # Each named the way its distributions do (x86_64.AppImage, amd64.deb, x86_64.rpm; arm64, aarch64).
+          for ext in AppImage deb rpm; do
+            [ "$(ls Switchboard-"$VERSION"-*."$ext" 2>/dev/null | wc -l)" == "1" ] || { echo "::error::Expected one Switchboard-$VERSION-*.$ext."; exit 1; }
+          done
+          # The .deb is called switchboard in apt, and holds the app where its desktop entry starts it.
+          deb=$(ls Switchboard-"$VERSION"-*.deb)
+          dpkg-deb -f "$deb" Package | grep -qx switchboard
+          dpkg-deb -c "$deb" | grep -q "/opt/Switchboard/switchboard$"
+          expected="$FEED-linux$SUFFIX.yml"
+          if [ "$FEED" != "none" ]; then
+            grep -q "^version: $VERSION\$" "$expected" || { echo "::error::$expected is not for $VERSION."; cat "$expected"; exit 1; }
+            for ext in AppImage deb rpm; do
+              grep -q "url: Switchboard-$VERSION-.*\.$ext\$" "$expected" || { echo "::error::$expected doesn't list the .$ext."; cat "$expected"; exit 1; }
+            done
+          fi
+
+      - name: Keep the build for the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: |
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.deb
+            apps/desktop/dist/*.rpm
+            apps/desktop/dist/*-linux*.yml
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
-    name: Attach both builds to the release
-    needs: [mac, windows]
+    name: Attach every build to the release
+    needs: [mac, windows, linux]
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -275,7 +378,7 @@ jobs:
           PRERELEASE: ${{ github.event.release.prerelease }}
         run: bash .github/scripts/release-version.sh
 
-      - name: Download both builds
+      - name: Download every build
         uses: actions/download-artifact@v7
         with:
           pattern: release-*
@@ -288,11 +391,11 @@ jobs:
         run: |
           cd apps/desktop/dist
           ls -la
-          # Both platforms' files first, then both feeds, so a feed never points at a file that isn't there yet.
-          files=(*.dmg *.zip *.zip.blockmap "Switchboard-$VERSION-setup.exe" "Switchboard-$VERSION-setup.exe.blockmap")
+          # Every platform's files first, then the feeds, so a feed never points at a file that isn't there yet.
+          files=(*.dmg *.zip *.zip.blockmap "Switchboard-$VERSION-setup.exe" "Switchboard-$VERSION-setup.exe.blockmap" *.AppImage *.deb *.rpm)
           gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           if [ "$FEED" != "none" ]; then
-            gh release upload "$TAG" "$FEED-mac.yml" "$FEED.yml" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$TAG" "$FEED-mac.yml" "$FEED.yml" "$FEED-linux.yml" "$FEED-linux-arm64.yml" --clobber --repo "$GITHUB_REPOSITORY"
           fi
 
       - name: Guard against a feed on the wrong release

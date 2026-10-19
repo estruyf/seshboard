@@ -27,12 +27,15 @@ const outDir = join(appDir, '.smoke');
 rmSync(outDir, { recursive: true, force: true });
 
 // --packaged runs the built app (npm run dist) instead of the development build: Switchboard.app, or on Windows
-// the unpacked folder for this PC's architecture.
+// and Linux the unpacked folder for this computer's architecture.
 const packaged = process.argv.includes('--packaged');
+const unpacked = (os: string) => join(appDir, 'dist', process.arch === 'arm64' ? `${os}-arm64-unpacked` : `${os}-unpacked`);
 const packagedApp = () =>
   process.platform === 'win32'
-    ? join(appDir, 'dist', process.arch === 'arm64' ? 'win-arm64-unpacked' : 'win-unpacked', 'Switchboard.exe')
-    : join(appDir, 'dist', 'mac-arm64', 'Switchboard.app', 'Contents', 'MacOS', 'Switchboard');
+    ? join(unpacked('win'), 'Switchboard.exe')
+    : process.platform === 'linux'
+      ? join(unpacked('linux'), 'switchboard')
+      : join(appDir, 'dist', 'mac-arm64', 'Switchboard.app', 'Contents', 'MacOS', 'Switchboard');
 const command = packaged ? packagedApp() : (createRequire(import.meta.url)('electron') as unknown as string);
 const started = performance.now();
 const childEnv: NodeJS.ProcessEnv = { ...process.env };

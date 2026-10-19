@@ -64,6 +64,40 @@ win:
       arch: [x64, arm64]
   # Signing: the release workflow passes Azure Trusted Signing's settings (azureSignOptions) or a
   # certificate file (WIN_CSC_LINK); without either the build is unsigned (docs/building-and-signing.md).
+linux:
+  icon: build/icon.png
+  files:
+    - out/**
+    - package.json
+    - '!node_modules/node-pty/prebuilds/**'
+    # node-pty has no Linux prebuilds: npm install compiles it into build/Release, of which the app needs pty.node.
+    - '!node_modules/node-pty/build/{Makefile,config.gypi,*.mk,deps,node_gyp_bins,obj.target}/**'
+    - '!node_modules/node-pty/build/Release/{.deps,obj.target}/**'
+  # Lowercase, as Linux commands are: /opt/Switchboard/switchboard.
+  executableName: switchboard
+  # Names the desktop entry switchboard.desktop, after desktopName in package.json, which Electron also gives the
+  # window as its app id (WM_CLASS), so the desktop links the window to the entry and its icon.
+  syncDesktopName: true
+  category: Development
+  synopsis: Manage your Claude Code sessions
+  maintainer: Elio Struyf <elio@struyfconsulting.be>
+  vendor: Elio Struyf
+  # Built for the machine's own architecture, as node-pty is compiled there (x64 in the release workflow).
+  # The in-app updater updates each one the way it was installed: the AppImage in place, the .deb and .rpm through
+  # the package manager, which asks for the password. latest-linux.yml names all three.
+  target:
+    - AppImage
+    - deb
+    - rpm
+  # No spaces, and the architecture in the name, as for the other platforms' files.
+  artifactName: ${productName}-${version}-${arch}.${ext}
+# The package's name in apt and dnf (the productName otherwise). electron-builder's usual dependencies stay; git is
+# what Switchboard uses next to Claude Code.
+deb:
+  packageName: switchboard
+  recommends: [git]
+rpm:
+  packageName: switchboard
 # The installer installs for the current user, without asking for an administrator, in
 # %LOCALAPPDATA%\Programs\switchboard (scripts/dist.mjs gives it that name), and the in-app updater installs updates the same way (latest.yml).
 nsis:

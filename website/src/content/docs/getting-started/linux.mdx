@@ -1,0 +1,90 @@
+---
+title: Switchboard on Linux
+description: Everything that works differently when you run Switchboard on Linux, with links to the pages that cover it.
+sidebar:
+  label: On Linux
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Related from '../../../components/Related.astro';
+import { Aside } from '@astrojs/starlight/components';
+
+Switchboard runs on Linux, on x64 and Arm64, with the same features as on a Mac. This page lists what you notice that is different on Linux, in one place, and links the page that covers each part.
+
+## Where to find it
+
+This site shows keys and steps for macOS or Windows, picked with the switch in the header. On Linux, pick Windows: the keys are the same (Ctrl, Alt and Shift). Where a page says File Explorer, Linux uses your file manager, and where it says PowerShell, Linux uses your own shell.
+
+## Install and update
+
+- **Install:** the `.deb` for Debian and Ubuntu, the `.rpm` for Fedora, RHEL and openSUSE, or the AppImage for any distribution, from the [latest release](https://github.com/estruyf/switchboard/releases/latest). See [Install on Linux](/getting-started/install/#install-on-linux).
+- **Updates:** Switchboard updates itself as on a Mac. The AppImage replaces itself. The `.deb` and `.rpm` install the new package through your package manager, which asks for your password. See [Updates](/settings/updates/).
+- **Uninstall:** `sudo apt remove switchboard` or `sudo dnf remove switchboard`, or delete the AppImage. Your data stays.
+- **Packages aren't signed.** Download them from the GitHub release only.
+
+## Keys
+
+- Every shortcut uses Ctrl where a Mac uses ⌘, Alt for ⌥ and Shift for ⇧, and the app writes keys as words (Ctrl, Shift, Enter), as on Windows. The [keyboard shortcuts](/keyboard-shortcuts/) page (with Windows picked) and the shortcuts sheet (<Kbd shortcut="shortcuts" />) show them.
+- Quitting is <Kbd shortcut="quit" />, and closing the window quits too. Both ask first while **Ask before quitting** is on. See [Settings, General](/settings/#general).
+- A [project action](/projects/actions/)'s shortcut needs Ctrl or Alt.
+
+## The terminal
+
+The [terminal panel](/terminal-changes-git/terminal/) runs your login shell (`$SHELL`, or bash when it isn't set), as on a Mac. Actions and git steps run there too. Ctrl keys belong to the shell; Switchboard's own shortcuts take Ctrl+Shift there (<Kbd keys="mod+shift+p" /> opens the command palette). Select text and press <Kbd keys="ctrl+c" /> to copy it; with nothing selected it stops the program.
+
+## The window and the menu
+
+- The window has your desktop's own title bar.
+- The menu bar is hidden: press Alt to show **File**, **Edit**, **View**, **Window** and **Help**, as on Windows.
+- Tiling window managers, such as Hyprland, i3 or Sway, size the window themselves. Switchboard works at any size.
+
+## Notifications, sounds and the badge
+
+- Notifications are your desktop's notifications.
+- Sounds come from the freedesktop sound theme (`/usr/share/sounds/freedesktop`), played with `paplay`, which PulseAudio and PipeWire both have. Without that theme, Settings says there are no system sounds. See [Notifications](/settings/notifications/).
+- While sessions need you, the count shows on Switchboard's icon where your desktop shows counts (KDE Plasma, Ubuntu's dock), and the window asks for attention when a session starts waiting while you are in another app.
+- Closing the window quits Switchboard, so keep it open or minimised to keep getting notifications and to run [schedules](/new-session/schedules/).
+
+## Files and the Trash
+
+- **Open in → Files** opens the folder in your file manager (through `xdg-open`). For a file it opens the folder the file is in.
+- What Switchboard deletes goes to the Trash of your desktop.
+
+## Open in editors and terminals
+
+**Open in** lists the editors whose command is on your `PATH` (VS Code, VS Code Insiders, Cursor, Windsurf, Zed, Sublime Text, WebStorm and IntelliJ IDEA), the terminals it finds (Ghostty, GNOME Terminal, Konsole, kitty, Alacritty and WezTerm), and **Files**. See [Working in a session](/sessions/conversation/).
+
+## Claude Code
+
+Install Claude Code with its native installer or npm. Switchboard looks for `claude` on your `PATH` and in `~/.local/bin`, and reads your login shell's environment when it starts, as on a Mac. Updates run `claude update` or `npm install -g`. See [Claude Code isn't found](/troubleshooting/#claude-code-isnt-found).
+
+## The VS Code companion
+
+The [VS Code companion](/vscode-companion/) works the same, over a socket. It finds Switchboard through `~/.config/Switchboard`, and starts or shows it with `xdg-open` and a `switchboard://` link.
+
+## switchboard:// links
+
+[Links](/links/) work with the `.deb` and `.rpm`, which register `switchboard://` with your desktop. The AppImage registers it only when your desktop integrates AppImages (for example with AppImageLauncher). Open a link from a terminal with `xdg-open`.
+
+## Where your data lives
+
+| What | Where |
+|---|---|
+| Switchboard's preferences, themes, backups and cache | `~/.config/Switchboard` |
+| Your sessions (Claude Code's folder) | `~/.claude` |
+| The app (`.deb` and `.rpm`) | `/opt/Switchboard` |
+
+See [Your data](/troubleshooting/#your-data). A settings file from **Settings → Backup** imports on any system; see [Backup](/settings/backup/).
+
+## If the AppImage doesn't start
+
+- **"AppImages require FUSE to run":** install FUSE 2 (`sudo apt install libfuse2`, or `libfuse2t64` on Ubuntu 24.04).
+- **A sandbox error on Ubuntu 24.04 and later:** Ubuntu only lets apps with an AppArmor profile use the sandbox Switchboard runs in. The `.deb` installs that profile, so use the `.deb` there.
+
+<Aside type="note">
+Something that works on a Mac but not on Linux? Report it on [GitHub](https://github.com/estruyf/switchboard/issues) with your distribution and the version from [Settings → About](/settings/#about).
+</Aside>
+
+## Related
+
+<Related pages={['getting-started/install', 'getting-started/windows', 'troubleshooting', 'settings/backup']} />

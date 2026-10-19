@@ -221,5 +221,7 @@ export class Notifier {
     if (process.platform === 'win32' && win && !win.isDestroyed()) {
       win.setOverlayIcon(count > 0 ? (this.dot ??= nativeImage.createFromBitmap(badgeDotBitmap(32), { width: 32, height: 32 })) : null, count > 0 ? badgeDescription(count) : '');
     }
+    // Linux: the count on the launcher icon, where the desktop shows one (KDE Plasma, Ubuntu's dock).
+    if (process.platform === 'linux') app.setBadgeCount(count);
   }
 }

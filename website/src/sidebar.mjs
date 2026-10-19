@@ -12,7 +12,7 @@ export const sidebar = [
   {
     label: 'Get started',
     collapsed: true,
-    items: ['getting-started/install', 'getting-started/first-launch', 'getting-started/first-session', 'getting-started/next-steps', 'getting-started/windows'],
+    items: ['getting-started/install', 'getting-started/first-launch', 'getting-started/first-session', 'getting-started/next-steps', 'getting-started/windows', 'getting-started/linux'],
   },
   {
     label: 'Guides',

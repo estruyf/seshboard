@@ -1,6 +1,6 @@
 # Building, signing and notarisation
 
-How to package Switchboard as a Mac app, and how to sign and notarise it with an Apple Developer ID so it opens on any Mac without warnings. Windows has [its own section](#windows): an installer, signed with Authenticode.
+How to package Switchboard as a Mac app, and how to sign and notarise it with an Apple Developer ID so it opens on any Mac without warnings. Windows has [its own section](#windows): an installer, signed with Authenticode. So does [Linux](#linux): an AppImage, a `.deb` and an `.rpm`, unsigned.
 
 [← Back to the README](../README.md)
 
@@ -118,6 +118,36 @@ The status should be `Valid`. Once the installed app is signed, the in-app updat
 - [`build/installer.nsh`](../apps/desktop/build/installer.nsh) adds to the installer: uninstalling removes the `switchboard://` link handler, except during an update.
 - `scripts/dist.mjs` names the package `switchboard` for the installer (`extraMetadata.name`, in a config file it writes for Windows builds that extends the one asked for: `scripts/windowsBuildConfig.mjs`), so it installs to `Programs\switchboard` rather than a folder named after the npm workspace. The data folder comes from the product name, so it stays `Switchboard`.
 
+## Linux
+
+### Building the packages
+
+Needs Linux on x64 or Arm64, Node 24+ and npm 11+, git, and what compiles a Node module (`build-essential` and `python3` on Debian and Ubuntu): `node-pty` has no Linux prebuilds, so `npm install` compiles it for this machine. The `.rpm` also needs `rpmbuild` (the `rpm` package on Debian and Ubuntu, `rpm-tools` on Arch). The same commands work:
+
+```bash
+npm install
+npm run dist
+```
+
+This builds, for this machine's architecture only (a build for the other one needs `node-pty` compiled for it, so the release builds each on its own runner):
+
+- `Switchboard-<version>-x86_64.AppImage` (`arm64` on Arm);
+- `Switchboard-<version>-amd64.deb` (`arm64`), named `switchboard` in apt, installed in `/opt/Switchboard`, with an AppArmor profile so Electron's sandbox starts on Ubuntu 24.04 and later;
+- `Switchboard-<version>-x86_64.rpm` (`aarch64`), named `switchboard` in dnf;
+- the update feed `latest-linux.yml` (`latest-linux-arm64.yml` on Arm), which lists all three.
+
+Without `rpmbuild`, [`scripts/dist.mjs`](../apps/desktop/scripts/dist.mjs) says so and builds the AppImage and the `.deb`. electron-builder makes the `.deb` and `.rpm` with its own copy of `fpm`, which needs `libcrypt.so.1`: on Arch that is the `libxcrypt-compat` package. The unpacked app is in `dist/linux-unpacked` (`linux-arm64-unpacked`).
+
+The desktop entry is `switchboard.desktop`, after `desktopName` in `apps/desktop/package.json`, which Electron also gives the window as its app id, so the desktop links the window to the entry and its icon. The `.deb` and `.rpm` register `switchboard://` through the entry.
+
+### Updates
+
+electron-updater updates each package the way it was installed: the AppImage replaces itself (it knows where from `$APPIMAGE`), and the `.deb` and `.rpm` download the new package and install it with `pkexec` (it asks for the password). Which one is in `resources/package-type`, written by the build. A copy run from the unpacked folder can't update, and **Settings → About** says so.
+
+### Signing
+
+Linux packages aren't signed: the release attaches them as they are, next to the signed macOS and Windows builds.
+
 ## Releasing (automated in GitHub Actions)
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs when a release is published on GitHub. To release:
@@ -126,7 +156,7 @@ The status should be `Valid`. Once the installed app is signed, the in-app updat
 2. Retake the README screenshots with `npm run screenshots` (see [README screenshots](development.md#readme-screenshots)) and look at each one: does it still match the app and the README text, and does it show what this release changed? A failing run means a view in the tour has changed; fix the tour instead of keeping the old pictures. Commit the images with the CHANGELOG and push.
 3. On GitHub, create a release with a new tag `vX.Y.Z` (Releases → Draft a new release) and publish it. You can leave the notes empty.
 
-The workflow then builds for macOS and Windows side by side, and publishes both together. The macOS job:
+The workflow then builds for macOS, Windows and Linux side by side, and publishes them together. The macOS job:
 
 1. runs the typecheck and unit tests;
 2. builds the app on an Apple Silicon runner, with the version taken from the tag;
@@ -140,24 +170,30 @@ The Windows job, on a Windows runner:
 3. builds the installer with the version from the tag, signed with Azure Trusted Signing or the `.pfx` (it fails when neither is set up);
 4. checks that the installer and both apps carry a valid signature by the publisher the app checks updates against (`scripts/checkWindowsSignatures.mjs`, matching the way the in-app updater does). A publisher that didn't match would make every installed copy of the release refuse all later updates, and no later release could fix that. It also checks the update feed (`latest.yml`).
 
-Only when both have passed, the publish job:
+The Linux job runs on an x64 and an Arm64 Ubuntu runner:
 
-1. attaches `Switchboard-X.Y.Z-arm64.dmg`, the `.zip` and its `.blockmap`, and `Switchboard-X.Y.Z-setup.exe` and its `.blockmap` to the release, then both update feeds last, so a feed never points at a file that isn't there yet;
+1. runs the typecheck and unit tests there too;
+2. builds the AppImage, `.deb` and `.rpm` with the version from the tag;
+3. checks that there is one of each, that the `.deb` is called `switchboard` and holds the app in `/opt/Switchboard`, and that the update feed (`latest-linux.yml` or `latest-linux-arm64.yml`) lists all three.
+
+Only when all of them have passed, the publish job:
+
+1. attaches `Switchboard-X.Y.Z-arm64.dmg`, the `.zip` and its `.blockmap`, `Switchboard-X.Y.Z-setup.exe` and its `.blockmap`, and the Linux AppImages, `.deb`s and `.rpm`s to the release, then the update feeds last, so a feed never points at a file that isn't there yet;
 2. fails if a `latest*.yml` ended up on a draft or pre-release;
 3. fills in the release notes from the CHANGELOG section, if you left them empty. The in-app updater shows these notes (cleaned up and shortened) for the new version;
 4. for a Stable release, stamps the Homebrew cask with the version and the `.zip`'s checksum and pushes it to [estruyf/homebrew-tap](https://github.com/estruyf/homebrew-tap) (see [Homebrew](homebrew.md)).
 
-When either build fails, nothing is attached: the release never offers one platform without the other. Fix the cause and re-run the failed jobs (the publish job runs once both pass).
+When any build fails, nothing is attached: the release never offers one platform without the others. Fix the cause and re-run the failed jobs (the publish job runs once both pass).
 
-**Dry run.** Actions → Release → *Run workflow* builds, signs (and notarises) and checks both apps with a version like `X.Y.Z-dryrun.N`, and keeps them as workflow artifacts (`release-mac`, `release-windows`) for a week. There is no publish job: nothing is attached, no feed is written and the Homebrew tap is left alone. Use it after changing a certificate, a secret or a variable, before a real release.
+**Dry run.** Actions → Release → *Run workflow* builds, signs (and notarises) and checks every build with a version like `X.Y.Z-dryrun.N`, and keeps them as workflow artifacts (`release-mac`, `release-windows`, `release-linux-x64`, `release-linux-arm64`) for a week. There is no publish job: nothing is attached, no feed is written and the Homebrew tap is left alone. Use it after changing a certificate, a secret or a variable, before a real release.
 
 Everyone on the Stable channel is offered the release within a few hours, or straight away with **Check for Updates…**.
 
 ### Channels and pre-releases
 
-- **Stable:** a normal (not pre-release) release with a version like `v1.2.3`. Its feeds are `latest-mac.yml` and `latest.yml` (Windows), and the updater finds them on the repository's latest release.
-- **Beta:** a *pre-release* tagged like `v1.3.0-beta.1`. The workflow builds it with `-c.publish.channel=beta`, so its feeds are `beta-mac.yml` and `beta.yml`. Apps on the Beta channel look at the newest release or beta pre-release, whichever was published last: they read `beta-mac.yml` from a beta, and fall back to `latest-mac.yml` on a release. So Beta users get each beta and each release. A beta version published as a normal release fails the workflow. Its release notes come from the `## [Unreleased]` section of `CHANGELOG.md`, which keeps sections for releases only.
-- **Any other pre-release** (`v1.2.3-rc.1`, say) gets the `.dmg`, `.zip` and installer but no feed, so no one is updated to it. A pre-release version published as a normal release fails the workflow, since Stable users would be offered it.
+- **Stable:** a normal (not pre-release) release with a version like `v1.2.3`. Its feeds are `latest-mac.yml`, `latest.yml` (Windows) and `latest-linux.yml` and `latest-linux-arm64.yml`, and the updater finds them on the repository's latest release.
+- **Beta:** a *pre-release* tagged like `v1.3.0-beta.1`. The workflow builds it with `-c.publish.channel=beta`, so its feeds are `beta-mac.yml`, `beta.yml` and `beta-linux*.yml`. Apps on the Beta channel look at the newest release or beta pre-release, whichever was published last: they read `beta-mac.yml` from a beta, and fall back to `latest-mac.yml` on a release. So Beta users get each beta and each release. A beta version published as a normal release fails the workflow. Its release notes come from the `## [Unreleased]` section of `CHANGELOG.md`, which keeps sections for releases only.
+- **Any other pre-release** (`v1.2.3-rc.1`, say) gets the `.dmg`, `.zip`, installer and Linux packages but no feed, so no one is updated to it. A pre-release version published as a normal release fails the workflow, since Stable users would be offered it.
 
 Each comes from its own branch, and the workflow fails otherwise (`.github/scripts/release-branch.sh`): a release from `main`, a beta from `dev`. `main` holds only what was released; work lands on `dev` and is merged into `main` for a release.
 
@@ -209,7 +245,7 @@ There is no client secret. The Windows job runs in the GitHub environment `windo
 npm run smoke:packaged
 ```
 
-Runs the smoke test (see [Development](development.md)) against `dist/mac-arm64/Switchboard.app` instead of the development build, or on Windows against `dist/win-unpacked/Switchboard.exe` (`win-arm64-unpacked` on an Arm PC).
+Runs the smoke test (see [Development](development.md)) against `dist/mac-arm64/Switchboard.app` instead of the development build, or on Windows against `dist/win-unpacked/Switchboard.exe` (`win-arm64-unpacked` on an Arm PC), or on Linux against `dist/linux-unpacked/switchboard` (`linux-arm64-unpacked`).
 
 ## Testing updates with the mock server
 

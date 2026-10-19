@@ -20,6 +20,8 @@ interface EditorSpec extends EditorInfo {
   folderFirst?: boolean;
   /** Only offered on these platforms (all when left out). */
   platforms?: readonly NodeJS.Platform[];
+  /** A terminal's arguments to open in a folder, through its `cli` (Linux, where there are no app bundles to `open`). */
+  inFolder?: (folder: string) => string[];
 }
 
 const dashG = (path: string, line: number | undefined) => ['-g', line ? `${path}:${line}` : path];
@@ -54,12 +56,17 @@ export const EDITOR_SPECS: readonly EditorSpec[] = [
   { id: 'finder', name: 'Finder', kind: 'finder' },
   { id: 'terminal', name: 'Terminal', kind: 'terminal', app: 'Terminal', platforms: ['darwin'] },
   { id: 'iterm', name: 'iTerm', kind: 'terminal', app: 'iTerm', platforms: ['darwin'] },
-  { id: 'ghostty', name: 'Ghostty', kind: 'terminal', app: 'Ghostty', platforms: ['darwin'] },
+  { id: 'ghostty', name: 'Ghostty', kind: 'terminal', app: 'Ghostty', cli: 'ghostty', inFolder: (dir) => [`--working-directory=${dir}`], platforms: ['darwin', 'linux'] },
   { id: 'warp', name: 'Warp', kind: 'terminal', app: 'Warp', platforms: ['darwin'] },
   { id: 'windows-terminal', name: 'Windows Terminal', kind: 'terminal', cli: 'wt', platforms: ['win32'] },
+  { id: 'gnome-terminal', name: 'GNOME Terminal', kind: 'terminal', cli: 'gnome-terminal', inFolder: (dir) => [`--working-directory=${dir}`], platforms: ['linux'] },
+  { id: 'konsole', name: 'Konsole', kind: 'terminal', cli: 'konsole', inFolder: (dir) => ['--workdir', dir], platforms: ['linux'] },
+  { id: 'kitty', name: 'kitty', kind: 'terminal', cli: 'kitty', inFolder: (dir) => ['--directory', dir], platforms: ['linux'] },
+  { id: 'alacritty', name: 'Alacritty', kind: 'terminal', cli: 'alacritty', inFolder: (dir) => ['--working-directory', dir], platforms: ['linux'] },
+  { id: 'wezterm', name: 'WezTerm', kind: 'terminal', cli: 'wezterm', inFolder: (dir) => ['start', '--cwd', dir], platforms: ['linux'] },
 ];
 
-/** What the file manager is called: Finder on macOS, File Explorer on Windows. */
+/** What the file manager is called: Finder on macOS, File Explorer on Windows, Files on Linux. */
 export const fileManagerName = (platform: NodeJS.Platform) => (platform === 'win32' ? 'File Explorer' : platform === 'darwin' ? 'Finder' : 'Files');
 
 function appInstalled(app: string, home: string): boolean {
@@ -113,8 +120,10 @@ export function detectEditors(env: Record<string, string>, home = homedir(), pla
   const named = ({ id, name, kind }: EditorSpec): EditorInfo => ({ id, name: kind === 'finder' ? fileManagerName(platform) : name, kind });
   const specs = EDITOR_SPECS.filter((e) => offeredOn(e, platform));
   if (platform === 'darwin') return specs.filter((e) => e.kind === 'finder' || (e.app && appInstalled(e.app, home)) || (e.cli && findOnPath(e.cli, env, platform, exists))).map(named);
-  // Elsewhere only what can be started: File Explorer always on Windows, the rest by their CLI.
-  return specs.filter((e) => (e.kind === 'finder' && platform === 'win32') || findCli(e, env, platform, exists)).map(named);
+  // Elsewhere only what can be started: File Explorer always on Windows, the file manager through xdg-open on Linux,
+  // the rest by their CLI.
+  const fileManager = platform === 'win32' || !!findOnPath('xdg-open', env, platform, exists);
+  return specs.filter((e) => (e.kind === 'finder' ? fileManager : findCli(e, env, platform, exists))).map(named);
 }
 
 /** A program to start: `verbatim` arguments are passed as written (Windows), not quoted again by Node. */
@@ -151,6 +160,8 @@ export function openCommand(
   if (spec.kind === 'finder') {
     // Explorer reads `/select,"C:\a b\c.txt"` itself; Node's quoting of the whole argument would break it.
     if (windows) return { command: 'explorer.exe', args: [isDirectory ? `"${path}"` : `/select,"${path}"`], verbatim: true, window: true };
+    // xdg-open opens a folder in the file manager, but a file in its own app: a file shows its folder instead.
+    if (platform !== 'darwin') return { command: 'xdg-open', args: [isDirectory ? path : posix.dirname(path)] };
     return { command: 'open', args: isDirectory ? [path] : ['-R', path] };
   }
   const where = isDirectory ? path : (windows ? win32 : posix).dirname(path);
@@ -159,6 +170,7 @@ export function openCommand(
     // Windows Terminal splits its command line at `;`, so one in a folder name is escaped.
     return { command: wt, args: ['-d', where.replace(/;/g, '\\;')], window: true };
   }
+  if (spec.kind === 'terminal' && platform !== 'darwin' && spec.inFolder) return { command: findCli(spec, env, platform, exists) ?? spec.cli!, args: spec.inFolder(where) };
   if (spec.kind === 'terminal') return { command: 'open', args: ['-a', spec.app!, where] };
   const cli = findCli(spec, env, platform, exists);
   if (cli && spec.gotoArgs) return launch(cli, [...(spec.folderFirst && folder && !isDirectory ? [folder] : []), ...spec.gotoArgs(path, line)], env, platform);

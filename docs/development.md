@@ -61,7 +61,7 @@ Each check is a step run by `SmokeRun` (`apps/desktop/src/main/smokeRunner.ts`):
 
 Screenshots and `result.json` go to `apps/desktop/.smoke`. Set `SWITCHBOARD_COLOR_SCHEME=light` or `dark` to force a colour scheme for a run without saving it.
 
-`npm run smoke:demo` runs it in the made-up home folder the README screenshots are taken in (`scripts/screenshot-demo.ts`: a few git projects, their sessions, one of them running) instead of yours, so it finds the same things on every machine. It has no login: the usage band step is skipped there. Every pull request and push to `main` runs `npm run check` and then `npm run smoke:demo` on macOS and Windows (`.github/workflows/check.yml`), since a runner's home folder has no `~/.claude`. The screenshots and `result.json` of each run are attached to it as an artifact.
+`npm run smoke:demo` runs it in the made-up home folder the README screenshots are taken in (`scripts/screenshot-demo.ts`: a few git projects, their sessions, one of them running) instead of yours, so it finds the same things on every machine. It has no login: the usage band step is skipped there. Every pull request and push to `main` runs `npm run check` and then `npm run smoke:demo` on macOS, Windows and Linux (`.github/workflows/check.yml`, on Linux under Xvfb), since a runner's home folder has no `~/.claude`. The screenshots and `result.json` of each run are attached to it as an artifact.
 
 ### README screenshots
 
