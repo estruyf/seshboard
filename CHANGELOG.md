@@ -14,6 +14,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Copy text in Remote settings.** You can now select the Remote address and the connection line in Settings and copy them, not only with the Copy button. Right-click selected text anywhere you can select it to get **Copy**.
 - **Change the model, effort and mode of a session that isn't running.** A session that wasn't running in Switchboard showed "Not running in Switchboard" under the message box instead of its chips, so you couldn't change its model, effort or permission mode before you sent. The chips are now there, and what you pick is what the session resumes with. If its last run failed, the reason shows next to them.
 - **Right-click in the message box.** The message box on the New session page and in a session now has a right-click menu (or Shift+F10) with **Cut**, **Copy**, **Paste** and **Select all**. **Paste** works like the keyboard shortcut, so an image on the clipboard is attached too.
 

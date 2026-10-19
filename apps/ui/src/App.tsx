@@ -72,6 +72,7 @@ import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 import { UpcomingView } from './components/upcoming/UpcomingView.tsx';
+import { SelectionMenu } from './components/SelectionMenu.tsx';
 import { openUpcoming } from './state/upcomingStore.ts';
 
 /** What the main area shows, as the terminal sees it: Home is the session view without a session. */
@@ -272,6 +273,7 @@ export function App() {
       {overlay === 'search' && <SearchDialog />}
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'shortcuts' && <ShortcutsSheet />}
+      <SelectionMenu />
       <PaletteDialogs />
       <AddContextDialogHost />
       <UnsentList />
