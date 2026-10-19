@@ -1,4 +1,4 @@
-import { Clock, GripVertical, Play } from 'lucide-react';
+import { GripVertical, Play } from 'lucide-react';
 import type { SidebarStyle } from '@switchboard/protocol/bridge';
 import { memo, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
@@ -6,7 +6,8 @@ import { savedAgo } from '../../state/focus.ts';
 import { startQueued, useLater } from '../../state/laterStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import type { QueueEntry } from '../../state/queue.ts';
+import { queueRowLabel, type QueueEntry } from '../../state/queue.ts';
+import { QueueMark } from '../queue/QueueMark.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Button } from '../ui/Button.tsx';
 
@@ -84,6 +85,7 @@ export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, ma
     <div
       className={`group/queue relative flex w-full items-center gap-2 rounded-lg pr-2 ${compact ? 'h-8 pl-2.5' : `pl-3 ${style === 'large' ? 'h-12' : 'h-11'}`} ${QUEUE_SURFACE[state]}`}
       data-queue-state={state}
+      data-queue-autostart={entry.autoStart || undefined}
       {...drag}
     >
       {mark && <span aria-hidden className={`absolute inset-x-2 h-0.5 rounded-full bg-accent-ink ${mark === 'before' ? '-top-px' : '-bottom-px'}`} data-queue-drop={mark} />}
@@ -93,7 +95,7 @@ export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, ma
         type="button"
         tabIndex={tabbable ? 0 : -1}
         data-queue-item={item.id}
-        aria-label={`Queued in ${projectName}: ${item.prompt.slice(0, 200)}. ${meta}`}
+        aria-label={entry.autoStart ? `Queued in ${projectName}: ${queueRowLabel(entry)}` : `Queued in ${projectName}: ${item.prompt.slice(0, 200)}. ${meta}`}
         data-tooltip={[item.prompt.length > 300 ? `${item.prompt.slice(0, 299)}…` : item.prompt, `${projectName} · queued ${savedAgo(item.createdAt, now)}`].join('\n')}
         onClick={open}
         onContextMenu={(e) => {
@@ -107,13 +109,14 @@ export const QueueRow = memo(function QueueRow({ entry, now, style, tabbable, ma
         {compact ? (
           <>
             <span className="min-w-0 flex-1 truncate text-body text-text/85">{item.prompt}</span>
+            {entry.autoStart && <QueueMark entry={entry} />}
             {!ready && <span className="shrink-0 text-meta text-faint tabular-nums group-hover/queue:hidden">{shortAge(item.createdAt, now)}</span>}
           </>
         ) : (
           <span className="grid min-w-0 flex-1 gap-px">
             <span className="min-w-0 truncate text-body leading-5 text-text/90">{item.prompt}</span>
             <span className={`flex min-w-0 items-center gap-1 text-meta ${ready ? 'text-ok' : 'text-faint'}`}>
-              {state === 'waiting' && <Clock size={10} className="shrink-0" aria-hidden />}
+              <QueueMark entry={entry} />
               <span className="min-w-0 truncate">{meta}</span>
             </span>
           </span>

@@ -1,53 +1,28 @@
-import { trimTrailingSeparators, type LaterDraft, type LaterItem, type QueueStarted, type QueueWaitFor, type UsageLimitHit } from '@switchboard/protocol/client';
-import { clockTime, limitAhead } from '../lib/usageLimit.ts';
+import { queueStates as sharedQueueStates, type LaterDraft, type LaterItem, type QueueInputs as SharedQueueInputs, type QueueSession, type QueueSummary, type QueueWaitFor } from '@switchboard/protocol/client';
 import type { SessionRowData } from './sessionsStore.ts';
 import { rowStatus } from './sidebarRows.ts';
 
-// The queue's states, without React or the stores: what each item waits for, whether that is busy, and when an
-// item turned ready because a session finished (the "project is free" toast). Nothing here starts anything:
-// ready only means the item says so.
+// The queue's states as the UI shows them. The rules are shared with the engine (`queueStates` in the protocol), which
+// starts the items that start by themselves; this side maps the sidebar's rows onto them, and says when an item
+// turned ready because a session finished (the "project is free" toast).
 
-/** How a queued item stands. `queued` is an item that waits for nothing: never ready, always startable. */
-export type QueueStateKind = 'ready' | 'waiting' | 'queued';
+export {
+  autoStartBlock,
+  FOCUS_HELD_LABEL,
+  projectOf,
+  promptLabel,
+  queueRowLabel,
+  type QueueEntry,
+  type QueueSession,
+  type QueueStateKind,
+  type QueueSummary,
+} from '@switchboard/protocol/client';
+import { projectOf, promptLabel, type QueueEntry } from '@switchboard/protocol/client';
 
-export interface QueueEntry {
-  item: LaterItem;
-  state: QueueStateKind;
-  /**
-   * In a few words, for the sidebar: why it is ready ("switchboard is free"), what it waits for ("after “Fix
-   * the parser”", "after the item above", "switchboard has a session working"); null while queued.
-   */
-  label: string | null;
-  /** The same for Home's longer line: "Ready: switchboard is free", "Waits for “Fix the parser”". Null while queued. */
-  detail: string | null;
-  /** The busy sessions it waits on: when one of them finishes and the item turns ready, that one is "the finished session". */
-  blockers: string[];
-}
-
-export interface QueueInputs {
-  /** The queue in order. */
-  items: readonly LaterItem[];
-  /** Started items and their sessions. */
-  started: readonly QueueStarted[];
+export interface QueueInputs extends Omit<SharedQueueInputs, 'sessions'> {
   /** The sessions the sidebar lists, with their live state. */
   rows: readonly SessionRowData[];
-  /** A project's name for a folder. */
-  projectName(root: string): string;
-  /** The usage limit the item's Claude profile is at, or null: a session started there now would stop on it. */
-  limitOf?(item: LaterItem): UsageLimitHit | null;
-  /** The time, for whether a limit has reset. */
-  now?: number;
 }
-
-export interface QueueSummary {
-  entries: QueueEntry[];
-  readyCount: number;
-  /** The first ready item in queue order, for "Start next in queue". */
-  firstReady: QueueEntry | null;
-}
-
-/** A worktree inside a project (`<root>/.claude/worktrees/<name>/…`) counts as the project. */
-export const projectOf = (path: string) => trimTrailingSeparators(path.replace(/[\\/]\.claude[\\/]worktrees[\\/][^\\/]+.*$/, ''));
 
 /** Starting, running or waiting for you: what the sidebar shows under Needs you and Working. */
 export const isBusy = (row: SessionRowData) => {
@@ -55,10 +30,13 @@ export const isBusy = (row: SessionRowData) => {
   return status === 'running' || status === 'needs-you';
 };
 
-/** A prompt's first line, shortened for a label. */
-export function promptLabel(prompt: string, max = 48): string {
-  const line = prompt.trim().split('\n')[0]!.trim();
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+/**
+ * A row as the queue sees it. A session Claude Code runs outside Switchboard (the terminal, another app) is
+ * `elsewhere`: Switchboard sees it go idle, but not how its turn ended.
+ */
+export function queueSession(row: SessionRowData): QueueSession {
+  const origin = row.remote ? null : row.live?.origin;
+  return { id: row.id, title: row.title, projectRoot: row.projectRoot, busy: isBusy(row), elsewhere: !origin || origin === 'app' ? null : origin === 'cli' ? 'terminal' : 'app' };
 }
 
 const quoted = (text: string) => `“${text}”`;
@@ -66,63 +44,8 @@ const sessionTitle = (row: SessionRowData | undefined) => promptLabel(row?.title
 
 /** Every item's state, in queue order, with how many are ready and the first of them. */
 export function queueStates(inputs: QueueInputs): QueueSummary {
-  const byId = new Map(inputs.rows.map((row) => [row.id, row]));
-  const busyIn = new Map<string, SessionRowData[]>();
-  for (const row of inputs.rows) {
-    if (!isBusy(row)) continue;
-    // A session in a worktree of the project counts for the project.
-    const root = projectOf(row.projectRoot);
-    const list = busyIn.get(root);
-    if (list) list.push(row);
-    else busyIn.set(root, [row]);
-  }
-  const startedAs = new Map(inputs.started.map((s) => [s.itemId, s.sessionId]));
-  const index = new Map(inputs.items.map((item, i) => [item.id, i]));
-
-  const entries = inputs.items.map((item, i): QueueEntry => {
-    const name = inputs.projectName(item.cwd);
-    const wait: QueueWaitFor = item.waitFor;
-    // Its profile is at a usage limit: it waits for the reset, whatever else it waits for.
-    const limit = inputs.limitOf?.(item) ?? null;
-    if (limit && limitAhead(limit, inputs.now)) {
-      const at = limit.resetsAt === null ? null : clockTime(limit.resetsAt, inputs.now);
-      return { item, state: 'waiting', label: at ? `usage limit until ${at}` : 'usage limit', detail: at ? `Waits for the usage limit to reset at ${at}` : 'Waits for the usage limit to reset', blockers: [] };
-    }
-    const ready = (label: string): QueueEntry => ({ item, state: 'ready', label, detail: `Ready: ${label}`, blockers: [] });
-    const onSession = (sessionId: string): QueueEntry => {
-      const row = byId.get(sessionId);
-      if (!row || !isBusy(row)) return ready(row ? `${quoted(sessionTitle(row))} finished` : `${name} is free`);
-      const title = quoted(sessionTitle(row));
-      return { item, state: 'waiting', label: `after ${title}`, detail: `Waits for ${title}`, blockers: [sessionId] };
-    };
-    switch (wait.kind) {
-      case 'none':
-        return { item, state: 'queued', label: null, detail: null, blockers: [] };
-      case 'project': {
-        const busy = busyIn.get(projectOf(item.cwd)) ?? [];
-        if (busy.length === 0) return ready(`${name} is free`);
-        const label = busy.length === 1 ? `${name} has a session working` : `${name} has ${busy.length} sessions working`;
-        const detail = busy.length === 1 ? `Waits for ${quoted(sessionTitle(busy[0]))}` : `Waits for ${busy.length} sessions in ${name}`;
-        return { item, state: 'waiting', label, detail, blockers: busy.map((row) => row.id) };
-      }
-      case 'session':
-        return onSession(wait.sessionId);
-      case 'item': {
-        const at = index.get(wait.itemId);
-        if (at !== undefined) {
-          // Still queued: it hasn't started, so this one can't follow it yet.
-          const above = at === i - 1;
-          const target = above ? 'the item above' : quoted(promptLabel(inputs.items[at]!.prompt));
-          return { item, state: 'waiting', label: `after ${target}`, detail: `Waits for ${target}`, blockers: [] };
-        }
-        const sessionId = startedAs.get(wait.itemId);
-        // Removed without starting: there is nothing left to wait for.
-        return sessionId ? onSession(sessionId) : ready('nothing to wait for');
-      }
-    }
-  });
-  const readyEntries = entries.filter((e) => e.state === 'ready');
-  return { entries, readyCount: readyEntries.length, firstReady: readyEntries[0] ?? null };
+  const { rows, ...rest } = inputs;
+  return sharedQueueStates({ ...rest, sessions: rows.map(queueSession) });
 }
 
 /** An item that turned ready because a session it waited on finished. */
@@ -135,13 +58,16 @@ export interface ReadyTransition {
 /**
  * Items that went from waiting to ready since `before` because a session they waited on is no longer busy. An
  * item turns ready once per transition: it has to wait again before it can say so again. Items new to the queue,
- * items you changed to wait for something free, and items that wait for nothing never count.
+ * items you changed to wait for something free, items that wait for nothing and items that start by themselves
+ * never count.
  */
 export function readyTransitions(before: ReadonlyMap<string, QueueEntry> | null, after: readonly QueueEntry[], rows: readonly SessionRowData[]): ReadyTransition[] {
   if (!before) return [];
   const busy = new Set(rows.filter(isBusy).map((row) => row.id));
   return after.flatMap((entry) => {
     const was = before.get(entry.item.id);
+    // An item that starts by itself says so through the engine's notifications, not "Start it".
+    if (entry.autoStart) return [];
     if (!was || was.state !== 'waiting' || entry.state !== 'ready') return [];
     const finished = was.blockers.find((id) => !busy.has(id));
     return finished ? [{ entry, finishedId: finished }] : [];
@@ -201,6 +127,8 @@ export function sameDraft(item: LaterItem, draft: LaterDraft): boolean {
     item.baseRef === (draft.baseRef ?? 'fresh') &&
     item.branch === (draft.branch ?? null) &&
     item.profileId === (draft.profileId ?? null) &&
+    // A draft that doesn't say whether it starts by itself keeps the item's.
+    (draft.autoStart === undefined || item.autoStart === draft.autoStart) &&
     sameImages(item.attachments, draft.attachments ?? []) &&
     item.typed === (draft.typed ?? null) &&
     JSON.stringify(item.context) === JSON.stringify(draft.context ?? [])
@@ -236,4 +164,26 @@ export function dropIndex(ids: readonly string[], sourceId: string, targetId: st
   if (from === -1 || target === -1 || sourceId === targetId) return null;
   const to = target - (from < target ? 1 : 0) + (after ? 1 : 0);
   return to === from ? null : to;
+}
+
+/**
+ * The items that start by themselves once `sessionId` finishes, for the band above its message box: the first in
+ * queue order, and how many more follow it in a chain ("+1 after it"). Items that also wait on other sessions (a
+ * busy project) are left out: "after this one" wouldn't be the whole story. Null when nothing starts after it.
+ */
+export function startsAfter(entries: readonly QueueEntry[], sessionId: string): { first: QueueEntry; more: number } | null {
+  const next = entries.filter((e) => e.autoStart && e.state === 'waiting' && e.hold === null && e.blockers.length === 1 && e.blockers[0] === sessionId);
+  if (next.length === 0) return null;
+  // Items that start by themselves after one of these, and after those, in a chain.
+  const chained = new Set(next.map((e) => e.item.id));
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const e of entries) {
+      if (!e.autoStart || chained.has(e.item.id) || e.item.waitFor.kind !== 'item' || !chained.has(e.item.waitFor.itemId)) continue;
+      chained.add(e.item.id);
+      grew = true;
+    }
+  }
+  return { first: next[0]!, more: chained.size - 1 };
 }

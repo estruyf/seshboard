@@ -16,6 +16,7 @@ import { homeSessions, homeSummary, profileActivity, profileActivityLine, projec
 import { useProfiles } from '../../state/profilesStore.ts';
 import { ProfileUsageCard } from '../UsageBand.tsx';
 import { QueueCard } from './QueueCard.tsx';
+import { SchedulesCard } from '../schedules/SchedulesCard.tsx';
 import { UnsentCard } from './UnsentCard.tsx';
 
 const newSession = () => useSessions.getState().openNewSession();
@@ -85,11 +86,12 @@ export function HomeView() {
         <div className="drag flex h-13 shrink-0 items-center px-4">
           <SidebarToggle />
         </div>
-        {/* Queued prompts (in folders that aren't projects) still show, under the way to add the first project. */}
+        {/* Queued prompts and schedules (in folders that aren't projects) still show, under the way to add the first project. */}
         <div className="@container flex flex-1 flex-col items-center justify-center gap-8 px-6 pb-16">
           <Onboarding />
-          <div className="w-full max-w-3xl">
+          <div className="grid w-full max-w-3xl gap-7">
             <QueueCard now={now} />
+            <SchedulesCard now={now} />
           </div>
         </div>
       </div>
@@ -173,6 +175,8 @@ export function HomeView() {
           <UnsentCard now={now} />
 
           <QueueCard now={now} />
+
+          <SchedulesCard now={now} />
 
           {tiles.length > 0 && (
             <section aria-labelledby="home-start" className="grid gap-2">

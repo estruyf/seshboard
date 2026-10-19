@@ -1,7 +1,7 @@
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 
 /** What New session's Start button (and the palette's prompt step) can do with the prompt. */
-export type StartAction = 'start' | 'queue' | 'start-worktree';
+export type StartAction = 'start' | 'queue' | 'schedule' | 'start-worktree';
 
 export interface StartButtonInput {
   /** Why nothing can go anywhere: connecting, no folder yet. */
@@ -22,6 +22,15 @@ export interface StartButtonInput {
   worktree: boolean;
   /** A quick question: it asks rather than starts. */
   question: boolean;
+  /**
+   * Opened to follow a session (Start after this one…): the main part adds to the queue, and starting moves into the
+   * menu.
+   */
+  queueFirst?: boolean;
+  /** Offer Schedule… (New session; the palette's prompt step has no dialog for it). */
+  canSchedule?: boolean;
+  /** A schedule is open (Edit…): Schedule… becomes Save schedule. */
+  editingSchedule?: boolean;
 }
 
 export interface StartMenuItem {
@@ -33,6 +42,10 @@ export interface StartMenuItem {
 }
 
 export interface StartButtonState {
+  /** What the main part does: start, or add to the queue (`queueFirst`). */
+  main: StartAction;
+  /** The main part's key. */
+  shortcut: ShortcutId;
   label: string;
   /** On its way: the label says so, without the shortcut. */
   sending: boolean;
@@ -46,7 +59,7 @@ export interface StartButtonState {
 }
 
 /**
- * The split Start button: the main part starts, the ▾ opens Start session, Add to queue and (in a git
+ * The split Start button: the main part starts, the ▾ opens Start session, Add to queue, Schedule… and (in a git
  * repository on the current checkout) Start in a new worktree. A reason that stops everything disables
  * the whole button; one that only stops starting leaves the ▾ for Add to queue.
  */
@@ -60,8 +73,24 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
     { action: 'start', label: input.question ? 'Ask' : 'Start session', shortcut: 'new-session.start', disabled: !canStartHere },
     { action: 'queue', label: 'Add to queue', shortcut: 'new-session.queue', disabled: !canQueue },
   ];
+  // A schedule keeps the prompt with its choices, like a queued item, and runs it at set times (#173).
+  if (input.canSchedule && !input.question) items.push({ action: 'schedule', label: input.editingSchedule ? 'Save schedule' : 'Schedule…', disabled: !canQueue });
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
+  if (input.queueFirst && !input.question) {
+    return {
+      main: 'queue',
+      shortcut: 'new-session.queue',
+      label: sending ? 'Adding…' : 'Add to queue',
+      sending,
+      disabled: !canQueue,
+      menuDisabled: items.every((item) => item.disabled),
+      reason: sending ? null : (blocked ?? (!hasText ? 'Type a message first' : null)),
+      items: [items[1]!, items[0]!, ...items.slice(2)],
+    };
+  }
   return {
+    main: 'start',
+    shortcut: 'new-session.start',
     label: sending ? `${input.question ? 'Asking' : 'Starting'}…` : verb,
     sending,
     disabled: !canStartHere,

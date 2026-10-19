@@ -16,6 +16,7 @@ const item = (id: string, overrides: Partial<LaterItem> = {}): LaterItem => ({
   baseRef: 'fresh',
   branch: null,
   profileId: null,
+  autoStart: false,
   createdAt: 0,
   position: 0,
   waitFor: { kind: 'project' },
@@ -36,6 +37,13 @@ describe('queue hint on "Claude finished"', () => {
     expect(queueHint([item('none', { waitFor: { kind: 'none' } })], [], { sessionId: 's1', cwd: '/work/app' })).toBeNull();
     expect(queueHint([item('other', { cwd: '/work/other' })], [], { sessionId: 's1', cwd: '/work/app' })).toBeNull();
     expect(queueHint([], [], { sessionId: 's1', cwd: '/work/app' })).toBeNull();
+  });
+
+  it('says "Starting next" for an item that starts by itself, only after a clean finish', () => {
+    const items = [item('auto', { autoStart: true, waitFor: { kind: 'session', sessionId: 's1' } })];
+    expect(queueHint(items, [], { sessionId: 's1', cwd: '/work/app', outcome: 'clean' })).toBe('Starting next: Prompt auto');
+    expect(queueHint(items, [], { sessionId: 's1', cwd: '/work/app', outcome: 'error' })).toBe('Next in the queue: Prompt auto');
+    expect(queueHint(items, [], { sessionId: 's1', cwd: '/work/app' })).toBe('Next in the queue: Prompt auto');
   });
 
   it('keeps the first line, shortened', () => {

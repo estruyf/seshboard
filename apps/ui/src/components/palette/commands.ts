@@ -73,6 +73,7 @@ import {
   Pin,
   PinOff,
   Play,
+  Repeat,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -122,7 +123,7 @@ import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteS
 /** Requests the session view answers, because the dialog or menu they open lives there. */
 export type SessionRequest = 'commit' | 'create-pr' | 'fix-checks' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next';
 /** Requests the New session view answers: they change its own choices. */
-export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up' | 'add-project';
+export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'schedule' | 'catch-up' | 'add-project';
 
 /** What commands do, implemented against the stores in `paletteApi.ts` (and faked in tests). */
 export interface PaletteApi {
@@ -164,6 +165,8 @@ export interface PaletteApi {
   renameSession(): void;
   /** New session on this session's project, linked to it (session linking). */
   newLinkedSession(): void;
+  /** New session on this session's project, queued to start by itself once it finishes. */
+  startAfterSession(): void;
   /** New session from an issue or pull request of the project: the # list on its own, then New session filled in. */
   githubStart(type: 'issue' | 'pr', root: string): void;
   /** Opens the session's catch-up from its strip (or for a read session). */
@@ -589,6 +592,27 @@ export const COMMANDS: PaletteCommand[] = [
     // In New session with a prompt: queue it. Anywhere else: New session, to write one.
     run: (api, ctx) => (ctx.newSession?.canQueue ? api.newSessionRequest('add-to-queue') : api.openNewSession()),
   },
+  {
+    id: 'schedule-add',
+    title: 'Schedule a session…',
+    group: 'general',
+    icon: Repeat,
+    keywords: 'schedule repeat recurring every day weekday week month cron timer daily',
+    hint: (ctx) => (ctx.newSession?.canQueue ? '' : 'opens New session'),
+    when: (ctx) => ctx.connected,
+    // In New session with a prompt: the schedule dialog. Anywhere else: New session, to write the prompt.
+    run: (api, ctx) => (ctx.newSession?.canQueue ? api.newSessionRequest('schedule') : api.openNewSession()),
+  },
+  {
+    id: 'schedules',
+    title: 'Schedules…',
+    group: 'general',
+    icon: Repeat,
+    keywords: 'schedule repeat recurring run now pause resume delete edit',
+    hint: (ctx) => String(ctx.schedules),
+    when: (ctx) => ctx.schedules > 0 && ctx.connected,
+    next: () => ({ kind: 'pick', list: 'schedules', chip: 'Schedules' }),
+  },
 
   // A session is open
   { id: 'show-catch-up', title: 'Show catch-up', group: 'session', shortcut: 'space', icon: NotebookText, keywords: 'briefing summary what happened review', when: (ctx) => session(ctx)?.catchUp === 'strip', run: (api) => api.showCatchUp() },
@@ -619,6 +643,15 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'link mention stack pull request pr branch context reference @',
     when: (ctx) => indexed(ctx) && !!session(ctx)!.projectRoot,
     run: (api) => api.newLinkedSession(),
+  },
+  {
+    id: 'start-after-session',
+    title: 'Start after this session…',
+    group: 'session',
+    icon: Play,
+    keywords: 'queue follow up then next chain finish finished when done start by itself auto',
+    when: (ctx) => indexed(ctx) && !!session(ctx)!.projectRoot,
+    run: (api) => api.startAfterSession(),
   },
   {
     id: 'pin',

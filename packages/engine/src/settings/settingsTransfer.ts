@@ -2,7 +2,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { basename, dirname, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  BACKUP_SECTIONS,
   DEFAULT_PREFERENCES,
+  Schedule,
   BUILTIN_PROFILE_ID,
   ExportedProfile,
   ExportedProject,
@@ -31,6 +33,7 @@ import {
 } from '@switchboard/protocol';
 import { parseThemeFile } from '@switchboard/protocol/theme';
 import type { ActionStore } from '../actions/actionStore.ts';
+import type { ScheduleStore } from '../schedules/scheduleStore.ts';
 import type { AppStateStore, JsonValue } from '../db/appState.ts';
 import { readProfileDefaults, type ProfileStore } from '../profiles/profileStore.ts';
 import { parseDefaults, type ProjectRegistry, type StoredIcon } from '../projects/projectRegistry.ts';
@@ -101,6 +104,8 @@ export interface SettingsStores {
   projects: ProjectRegistry;
   profiles: ProfileStore;
   actions: ActionStore;
+  /** Scheduled sessions; a file's schedules are skipped without it. */
+  schedules?: ScheduleStore;
 }
 
 export interface ExportOptions {
@@ -203,6 +208,10 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
     }
     file.actions = { global, projects: [...byProject].map(([path, actions]) => ({ path, actions })) };
   }
+  if (want.has('schedules') && stores.schedules) {
+    // The last run stays here: it points at sessions on this computer.
+    file.schedules = stores.schedules.list().map(({ lastRun: _lastRun, ...schedule }) => schedule);
+  }
   if (want.has('choices')) {
     const choices: Record<string, JsonValue> = {};
     for (const key of Object.keys(CHOICE_KEYS)) {
@@ -302,7 +311,7 @@ const THIS_COMPUTER = process.platform === 'darwin' ? 'this Mac' : 'this compute
 export function planImport(stores: SettingsStores, file: SettingsFile, options: ImportOptions): ImportPlan {
   const replace = options.mode === 'replace';
   const want = new Set(options.sections);
-  const present = (['preferences', 'themes', 'profiles', 'projects', 'actions', 'choices', 'sessions'] as const).filter((s) => file[s] !== undefined);
+  const present = BACKUP_SECTIONS.filter((s) => file[s] !== undefined);
   const has = (section: BackupSection) => want.has(section) && file[section] !== undefined;
   const relocated = new Map(options.relocate.map((m) => [m.from, m.to]));
   const target = (path: string) => relocated.get(path) ?? path;
@@ -592,6 +601,50 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
         if (seen.has(k)) continue;
         note('actions', `${entry.action.name} · ${entry.projectRoot === null ? 'all projects' : basename(entry.projectRoot)}`, 'remove');
         writes.push(() => stores.actions.remove(entry.projectRoot, entry.action.id));
+      }
+    }
+  }
+
+  // --- Scheduled sessions -------------------------------------------------------------------
+  // By id, like actions. A schedule whose folder isn't here (and wasn't pointed elsewhere) comes in paused, with the
+  // reason its row shows, so it doesn't run until you have the folder and resume it.
+  if (has('schedules') && stores.schedules) {
+    const scheduleStore = stores.schedules;
+    const current = new Map(scheduleStore.list().map((s) => [s.id, s]));
+    const seen = new Set<string>();
+    for (const [index, raw] of file.schedules!.entries()) {
+      const draft = (raw as { draft?: { cwd?: unknown } } | null)?.draft;
+      const from = typeof draft?.cwd === 'string' ? draft.cwd : null;
+      const root = from === null ? null : locate(from);
+      const moved = from !== null && root === null ? from : (root ?? from);
+      const parsed = Schedule.safeParse({ ...(raw as object), draft: { ...draft, cwd: moved }, lastRun: null });
+      const name = (raw as { name?: unknown })?.name;
+      const label = parsed.success ? parsed.data.name : typeof name === 'string' ? name : `Schedule ${index + 1}`;
+      if (!parsed.success) {
+        note('schedules', label, 'skip', from !== null && root === null ? `folder not found on ${THIS_COMPUTER}` : 'not readable');
+        continue;
+      }
+      const missingFolder = root === null;
+      const incoming: Schedule = { ...parsed.data, ...(missingFolder ? { paused: true, pausedReason: 'Folder not found' } : {}) };
+      if (seen.has(incoming.id)) continue;
+      seen.add(incoming.id);
+      const existing = current.get(incoming.id);
+      const detail = missingFolder ? `paused: folder not found on ${THIS_COMPUTER}` : null;
+      const strip = ({ lastRun: _l, createdAt: _c, updatedAt: _u, ...rest }: Schedule) => rest;
+      if (!existing) {
+        note('schedules', label, 'add', detail);
+        writes.push(() => scheduleStore.restore(incoming));
+      } else if (same(strip(existing), strip(incoming))) unchanged++;
+      else if (replace) {
+        note('schedules', label, 'change', detail);
+        writes.push(() => scheduleStore.restore({ ...incoming, lastRun: existing.lastRun }));
+      } else note('schedules', label, 'keep', 'yours differs');
+    }
+    if (replace) {
+      for (const [id, schedule] of current) {
+        if (seen.has(id)) continue;
+        note('schedules', schedule.name, 'remove');
+        writes.push(() => scheduleStore.remove(id));
       }
     }
   }

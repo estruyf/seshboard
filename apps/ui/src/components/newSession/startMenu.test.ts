@@ -15,6 +15,14 @@ describe('the Start button', () => {
     ]);
   });
 
+  it('leads with Add to queue when opened to follow a session, with starting in the menu', () => {
+    const state = startButtonState({ ...ready, queueFirst: true });
+    expect(state).toMatchObject({ main: 'queue', shortcut: 'new-session.queue', label: 'Add to queue', disabled: false, reason: null });
+    expect(state.items.map((i) => i.action)).toEqual(['queue', 'start', 'start-worktree']);
+    expect(startButtonState({ ...ready, queueFirst: true, hasText: false, hasMessage: false })).toMatchObject({ disabled: true, reason: 'Type a message first' });
+    expect(startButtonState(ready)).toMatchObject({ main: 'start', shortcut: 'new-session.start' });
+  });
+
   it('keeps a new worktree and the queue when the branch is checked out in another worktree', () => {
     const reason = 'feature is checked out in another worktree. Pick another branch, or start in a new worktree.';
     const state = startButtonState({ ...ready, branchBlocked: reason });
@@ -29,6 +37,19 @@ describe('the Start button', () => {
   it('offers a new worktree only on the current checkout of a git repository', () => {
     expect(startButtonState({ ...ready, worktree: true }).items.map((i) => i.action)).toEqual(['start', 'queue']);
     expect(startButtonState({ ...ready, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);
+  });
+
+  it('offers Schedule… after Add to queue in New session, and Save schedule while a schedule is open', () => {
+    const state = startButtonState({ ...ready, canSchedule: true });
+    expect(state.items.map((i) => [i.action, i.label])).toEqual([
+      ['start', 'Start session'],
+      ['queue', 'Add to queue'],
+      ['schedule', 'Schedule…'],
+      ['start-worktree', 'Start in a new worktree'],
+    ]);
+    expect(startButtonState({ ...ready, canSchedule: true, editingSchedule: true }).items[2]).toMatchObject({ action: 'schedule', label: 'Save schedule', disabled: false });
+    expect(startButtonState({ ...ready, canSchedule: true, hasText: false, hasMessage: false }).items[2]!.disabled).toBe(true);
+    expect(startButtonState({ ...ready, canSchedule: true, question: true, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);
   });
 
   it('asks for a quick question', () => {

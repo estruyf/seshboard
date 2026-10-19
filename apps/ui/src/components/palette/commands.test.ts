@@ -38,6 +38,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     notifications: true,
     sounds: false,
     queue: { count: 0, readyCount: 0, firstReady: null },
+    schedules: 0,
     unsent: 0,
     projectCount: 2,
     projects: [
@@ -129,6 +130,16 @@ describe('when(): always', () => {
     expect(titleOf(add, inNew)).toBe('Add to queue');
     add.run!(api, inNew);
     expect(api.newSessionRequest).toHaveBeenCalledWith('add-to-queue');
+    // Schedule a session… does the same with the schedule dialog; Schedules… lists them once there are some.
+    const schedule = visibleCommands(ctx).find((c) => c.id === 'schedule-add')!;
+    expect(hintOf(schedule, ctx)).toBe('opens New session');
+    schedule.run!(api, inNew);
+    expect(api.newSessionRequest).toHaveBeenCalledWith('schedule');
+    expect(visibleCommands(ctx).some((c) => c.id === 'schedules')).toBe(false);
+    const withSchedules = context({ schedules: 4 });
+    const list = visibleCommands(withSchedules).find((c) => c.id === 'schedules')!;
+    expect(hintOf(list, withSchedules)).toBe('4');
+    expect(list.next!(withSchedules)).toEqual({ kind: 'pick', list: 'schedules', chip: 'Schedules' });
   });
 
   it('asks a quick question in the scratch folder, once the engine has said where it is', () => {

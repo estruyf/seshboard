@@ -19,15 +19,9 @@ export function limitName(kind: string | null): string {
   return (kind && KIND_NAME[kind]) || 'Usage limit';
 }
 
-/** "15:16" today, or "Mon 15:16" further away. `locale` is for tests; the app uses the system's. */
-export function clockTime(at: number, now = Date.now(), locale?: string): string {
-  const time = new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-  const sameDay = new Date(at).toDateString() === new Date(now).toDateString();
-  return sameDay ? time : `${new Date(at).toLocaleDateString(locale, { weekday: 'short' })} ${time}`;
-}
-
-/** Whether the limit still holds by the clock (it has no reset time, or that is still ahead). */
-export const limitAhead = (limit: UsageLimitHit, now = Date.now()) => limit.resetsAt === null || limit.resetsAt > now;
+// "15:16" or "Mon 15:16", and whether a limit still holds by the clock: shared with the queue's rules in the engine.
+export { clockTime, limitAhead } from '@switchboard/protocol/client';
+import { clockTime } from '@switchboard/protocol/client';
 
 /**
  * The notice's line: "5-hour limit reached. Resets at 15:16 · in 4h 42m". Without a reset time it only says it was

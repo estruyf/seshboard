@@ -58,6 +58,11 @@ export class EngineProcess {
     });
   }
 
+  /** Sends a one-off message to the running engine (the smoke test's); a replacement process doesn't get it. */
+  send(message: { type: string } & Record<string, unknown>): void {
+    this.child?.postMessage(message);
+  }
+
   /** Sends a setting to the engine now and again to every process that replaces it, so a restart keeps it. */
   sendStanding(message: { type: string } & Record<string, unknown>): void {
     this.standing.set(message.type, message);

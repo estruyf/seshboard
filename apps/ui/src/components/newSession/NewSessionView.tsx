@@ -1,6 +1,6 @@
-import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, bringsAnything, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -12,8 +12,11 @@ import { nextMode, randomWorktreeName } from '../../lib/modes.ts';
 import { passFocusGate, useFocus } from '../../state/focusGate.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
-import { addToQueue, removeFromQueue, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
-import { busyInProject, promptLabel, sameDraft } from '../../state/queue.ts';
+import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
+import { useSchedules } from '../../state/schedulesStore.ts';
+import { ScheduleDialog } from '../schedules/ScheduleDialog.tsx';
+import { useStartAfter } from '../../state/startAfterStore.ts';
+import { autoStartBlock, busyInProject, promptLabel, queueSession, sameDraft } from '../../state/queue.ts';
 import { useLinks } from '../../state/linksStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -167,10 +170,23 @@ function LocalNewSession() {
    * which is left as it was. Edits are kept on the item; it stays queued until it starts (which takes it off).
    */
   const [fromLater, setFromLater] = useState<LaterItem | null>(null);
+  /**
+   * A schedule is open (Edit…): the box holds its prompt and choices, apart from New session's own prompt. Nothing is
+   * kept until Save schedule; Start ▾ offers it instead of Schedule….
+   */
+  const [fromSchedule, setFromSchedule] = useState<Schedule | null>(null);
+  /** The schedule dialog is open, with the draft it will run. */
+  const [scheduling, setScheduling] = useState<LaterDraft | null>(null);
+  const scheduleRequest = useSchedules((s) => s.request);
   /** Edits to the open queued item not saved yet: they go to the item a moment after you stop, or when you leave it. */
   const unsavedQueued = useRef<{ id: string; draft: LaterDraft; timer: ReturnType<typeof setTimeout> } | null>(null);
   /** What the prompt would wait for once queued, when changed with "Wait for…"; null: the item's own, else its project. */
   const [queueWait, setQueueWait] = useState<QueueWaitFor | null>(null);
+  /** Start by itself, when changed here; null: the item's own, else off. Never remembered for the next item. */
+  const [queueAuto, setQueueAuto] = useState<boolean | null>(null);
+  /** Opened with Start after this one…: the session it follows. Add to queue leads while Wait for still says it. */
+  const [startAfterId, setStartAfterId] = useState<string | null>(null);
+  const startAfterRequest = useStartAfter((s) => s.request);
   const waitMenu = useMenu();
   /** Start anyway in the focus note sends what is in the box, without asking again. */
   const [submitRequest, setSubmitRequest] = useState(0);
@@ -271,7 +287,10 @@ function LocalNewSession() {
   const leaveQueued = () => {
     saveQueued();
     setFromLater(null);
+    setFromSchedule(null);
     setQueueWait(null);
+    setQueueAuto(null);
+    setStartAfterId(null);
     setPreset(undefined);
     setDraftPrompt('');
     touchedFor.current = null;
@@ -284,7 +303,7 @@ function LocalNewSession() {
   useEffect(() => {
     if (focusRequest === seenFocusRequest.current) return;
     seenFocusRequest.current = focusRequest;
-    if (fromLater && !useLater.getState().request) leaveQueued();
+    if ((fromLater && !useLater.getState().request) || (fromSchedule && !useSchedules.getState().request)) leaveQueued();
   }, [focusRequest]);
 
   // The palette or Projects view asked for a folder (a session's git menu: in a new worktree).
@@ -292,7 +311,7 @@ function LocalNewSession() {
   const worktreeFor = useRef<string | null>(null);
   useEffect(() => {
     if (!newSessionIn) return;
-    if (fromLater) leaveQueued();
+    if (fromLater || fromSchedule) leaveQueued();
     worktreeFor.current = useProjects.getState().newSessionWorktree ? newSessionIn : null;
     setCwd(newSessionIn);
     useProjects.getState().startIn(null);
@@ -308,7 +327,7 @@ function LocalNewSession() {
     if (!linkRequest) return;
     const link = useLinks.getState().take();
     if (!link) return;
-    if (fromLater) leaveQueued();
+    if (fromLater || fromSchedule) leaveQueued();
     // The store has already turned a project name into its folder.
     folderFromLink.current = true;
     touchedFor.current = null;
@@ -335,13 +354,24 @@ function LocalNewSession() {
       setLinkPrompt(link.prompt.length);
     }
   }, [linkRequest]);
+  // Start after this one…: the session's project (through `startIn`, above), Wait for that session, Start by itself on.
+  useEffect(() => {
+    if (!startAfterRequest) return;
+    const request = useStartAfter.getState().take();
+    if (!request) return;
+    if (fromLater || fromSchedule) leaveQueued();
+    setCwd(request.root);
+    setQueueWait({ kind: 'session', sessionId: request.sessionId });
+    setQueueAuto(true);
+    setStartAfterId(request.sessionId);
+  }, [startAfterRequest]);
   // New session from an issue or pull request: its project, then (once gh has read it) the worktree, chip and prompt.
   // Like a link's, it never starts on its own.
   useEffect(() => {
     if (!githubRequest) return;
     const request = useGithubStart.getState().take();
     if (!request) return;
-    if (fromLater) leaveQueued();
+    if (fromLater || fromSchedule) leaveQueued();
     folderFromLink.current = true;
     touchedFor.current = null;
     setProfileOverride(null);
@@ -422,14 +452,42 @@ function LocalNewSession() {
     setDraftPrompt(item.typed ?? item.prompt);
     setFromLater(asNew ? null : item);
     setQueueWait(null);
+    setQueueAuto(null);
+    setStartAfterId(null);
   }, [laterRequest]);
+  // Edit… on a schedule: its folder, choices and prompt, in a box of its own, until Save schedule (or leaving it).
+  useEffect(() => {
+    if (!scheduleRequest) return;
+    const schedule = useSchedules.getState().take();
+    if (!schedule) return;
+    if (fromLater) leaveQueued();
+    const { draft } = schedule;
+    folderFromLink.current = true;
+    touchedFor.current = draft.cwd;
+    worktreeFor.current = null;
+    setLinkRepo(null);
+    setLinkNoFolder(false);
+    setPendingStart(null);
+    setLinkPrompt(null);
+    setAddAsProject(true);
+    setProfileOverride(draft.profileId);
+    setCwd(draft.cwd);
+    setD({ model: draft.model ?? '', permissionMode: draft.permissionMode, effort: draft.effort ?? '', workspace: draft.workspace, baseRef: draft.baseRef, branch: draft.branch ?? '' });
+    setRestored(null);
+    setPreset({ text: draft.typed ?? draft.prompt, attachments: draft.attachments, context: draft.context, seq: ++presets.current });
+    setDraftPrompt(draft.typed ?? draft.prompt);
+    setFromSchedule(schedule);
+    setQueueWait(null);
+    setQueueAuto(null);
+    setStartAfterId(null);
+  }, [scheduleRequest]);
   // The command palette's prompt step, moved here with ⌘E: its folder, choices, profile and prompt.
   const handoff = usePaletteBus((s) => s.handoff);
   useEffect(() => {
     if (!handoff) return;
     const item = usePaletteBus.getState().takeHandoff();
     if (!item) return;
-    if (fromLater) leaveQueued();
+    if (fromLater || fromSchedule) leaveQueued();
     // Like a link, it chose the folder; the choices made in the palette must not be replaced by the project's defaults.
     folderFromLink.current = true;
     touchedFor.current = item.root;
@@ -451,7 +509,7 @@ function LocalNewSession() {
     if (!cloneRequest) return;
     const request = useClone.getState().take();
     if (!request) return;
-    if (fromLater) leaveQueued();
+    if (fromLater || fromSchedule) leaveQueued();
     setLinkRepo(null);
     setLinkNoFolder(false);
     // A clone never starts a session on its own: Start does, after asking about what the repository brings.
@@ -543,8 +601,9 @@ function LocalNewSession() {
 
   // The prompt is kept per project, with the choices made for it: picking a project with a prompt of its own brings
   // that back (and its choices); one without takes the prompt in the box along.
-  // A queued item open here is kept on the queue, not as New session's prompt: no draft key while it is.
-  const draftKey = fromLater ? undefined : newDraftKey(cwd);
+  // A queued item open here is kept on the queue, not as New session's prompt: no draft key while it is (nor while a
+  // schedule is open).
+  const draftKey = fromLater || fromSchedule ? undefined : newDraftKey(cwd);
   const hasDraft = useDrafts((s) => draftKey !== undefined && draftKey in s.drafts);
   const onDraftLoaded = (draft: ComposerDraft) => {
     setRestored(draft.seeded ? null : draft);
@@ -653,6 +712,8 @@ function LocalNewSession() {
     setPendingStart(null);
     setProfileOverride(null);
     setQueueWait(null);
+    setQueueAuto(null);
+    setStartAfterId(null);
     setCwd(folder);
     setAddAsProject(true);
     // Quick question is never the folder New session opens on next time: ⌘N stays on your last project.
@@ -738,6 +799,7 @@ function LocalNewSession() {
     if (paletteRequest.kind === 'toggle-worktree' && canWorktree) update({ workspace: useWorktree ? 'current' : 'worktree' });
     else if (paletteRequest.kind === 'save-defaults' && unsaved) void saveAsProjectDefault();
     else if (paletteRequest.kind === 'add-to-queue' && canQueue) void parkInQueue(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext }).catch(() => {});
+    else if (paletteRequest.kind === 'schedule' && canQueue && !question) openSchedule();
     else if (paletteRequest.kind === 'catch-up' && canCatchUp) setCatchUpRequest((n) => n + 1);
     else if (paletteRequest.kind === 'add-project') setAddingProject(true);
   }, [paletteRequest]);
@@ -791,10 +853,26 @@ function LocalNewSession() {
     if (!draft) throw new Error('Choose a folder first');
     const queuedFrom = fromLater && useLater.getState().items.some((i) => i.id === fromLater.id) ? fromLater : null;
     forgetUnsavedQueued();
-    await addToQueue(draft, { waitFor: queueWait ?? undefined, replacing: queuedFrom });
-    if (fromLater) leaveQueued();
+    await addToQueue({ ...draft, autoStart: queueAutoOn && !queueAutoBlocked }, { waitFor: queueWait ?? undefined, replacing: queuedFrom });
+    if (fromLater || fromSchedule) leaveQueued();
     else useDrafts.getState().removeDraft(newDraftKey(cwd));
     setQueueWait(null);
+    setQueueAuto(null);
+    setStartAfterId(null);
+  };
+  /** Schedule… (or Save schedule): the prompt in the box with this folder and these choices, in the schedule dialog. */
+  const openSchedule = () => {
+    const draft = laterDraft(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext });
+    if (draft && draft.prompt.trim()) setScheduling(draft);
+  };
+  /** Saved: the box is emptied (or, for a schedule that was open, back to New session's own prompt). */
+  const onScheduled = () => {
+    setScheduling(null);
+    if (fromSchedule) leaveQueued();
+    else {
+      useDrafts.getState().removeDraft(newDraftKey(cwd));
+      clearPrompt();
+    }
   };
   /** The focus note's, the gate's and the palette's Add to queue: queue it and empty the box. */
   const parkInQueue = async (text: string, attachments: ImageAttachment[], parts?: SentParts) => {
@@ -861,6 +939,8 @@ function LocalNewSession() {
             void removeFromQueue(fromLater, true, sessionId).catch(() => {});
             leaveQueued();
           }
+          // Started once from a schedule's box: the schedule stays as it was saved.
+          else if (fromSchedule) leaveQueued();
           // The view goes away before the composer empties itself, so forget the prompt and its images here (and where
           // it moved to when the clone was picked while Start waited).
           else {
@@ -984,9 +1064,14 @@ function LocalNewSession() {
   const lastQueued = queueItems.filter((i) => i.id !== fromLater?.id).at(-1) ?? null;
   const wait: QueueWaitFor = queueWait ?? (fromLater ? (queuedNow ?? fromLater).waitFor : { kind: 'project' });
   const waitTitle = (id: string) => `“${promptLabel(rows.find((r) => r.id === id)?.title || 'Untitled session', 60)}”`;
+  const queueStarted = useLater((s) => s.started);
+  /** Start by itself: what was picked here, else the open item's, else off. */
+  const queueAutoOn = queueAuto ?? (fromLater ? (queuedNow ?? fromLater).autoStart : false);
+  const queueAutoBlocked = useMemo(() => (cwd ? autoStartBlock(wait, { cwd, sessions: rows.map(queueSession), started: queueStarted }) : null), [wait, cwd, rows, queueStarted]);
+  const startsByItself = queueAutoOn && !queueAutoBlocked;
   const waitText =
     wait.kind === 'none'
-      ? 'Queued, it waits until you start it.'
+      ? 'Queued, you start this one yourself.'
       : wait.kind === 'session'
         ? `Queued, this waits for ${waitTitle(wait.sessionId)} to finish.`
         : wait.kind === 'item'
@@ -994,11 +1079,13 @@ function LocalNewSession() {
           : busyHere.length === 1
             ? `Queued, this waits for ${waitTitle(busyHere[0]!.id)} to finish.`
             : 'Queued, this waits for them to finish.';
-  const queueLine = cwd && projectName && busyHere.length > 0 && (
+  // Shown while the project has a session working, or once Wait for names a session or the item above.
+  const queueLine = cwd && projectName && (busyHere.length > 0 || wait.kind === 'session' || wait.kind === 'item') && (
     <div className="-mt-3 flex min-w-0 items-center gap-1.5 px-2 text-meta text-muted" data-queue-busy-line>
-      <Clock size={12} className="shrink-0 text-faint" aria-hidden />
+      {startsByItself ? <Play size={11} fill="currentColor" className="shrink-0 text-link" aria-hidden /> : <Clock size={12} className="shrink-0 text-faint" aria-hidden />}
       <span className="min-w-0 truncate">
-        {projectName} has {busyHere.length === 1 ? 'a session' : `${busyHere.length} sessions`} working. {waitText}
+        {busyHere.length > 0 && `${projectName} has ${busyHere.length === 1 ? 'a session' : `${busyHere.length} sessions`} working. `}
+        {waitText}
       </span>
       <button
         type="button"
@@ -1010,6 +1097,19 @@ function LocalNewSession() {
         Wait for…
         <ChevronDown size={11} aria-hidden />
       </button>
+      <Checkbox
+        checked={startsByItself}
+        disabledReason={queueAutoBlocked}
+        onChange={(next) => {
+          setQueueAuto(next);
+          // A queued item open here takes the change at once, like Wait for.
+          if (queuedNow) void setAutoStart(queuedNow, next).catch(() => {});
+        }}
+        className="ml-1 shrink-0 items-center text-meta text-text"
+        dataAttrs={{ 'data-queue-autostart-box': true }}
+      >
+        Start by itself
+      </Checkbox>
       {waitMenu.at && (
         <Menu
           x={waitMenu.at.x}
@@ -1334,7 +1434,7 @@ function LocalNewSession() {
 
             {/* A queued item gets a box of its own: opening or leaving one never touches New session's prompt. */}
             <Composer
-              key={fromLater ? `queued:${fromLater.id}` : 'new'}
+              key={fromLater ? `queued:${fromLater.id}` : fromSchedule ? `schedule:${fromSchedule.id}` : 'new'}
               draftKey={draftKey}
               carryOver
               savedPrompts={{ root: cwd && !question ? cwd : null, projectName: projectName ?? 'This project' }}
@@ -1363,9 +1463,26 @@ function LocalNewSession() {
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <StartButton
-                  state={startButtonState({ ...box, startBlocked, branchBlocked: branchTaken ?? (githubPr && !useWorktree ? prCurrentBlocked : null), canWorktree, worktree: useWorktree, question })}
+                  state={startButtonState({
+                    ...box,
+                    startBlocked,
+                    branchBlocked: branchTaken ?? (githubPr && !useWorktree ? prCurrentBlocked : null),
+                    canWorktree,
+                    worktree: useWorktree,
+                    question,
+                    // Opened with Start after this one…: queueing is what it is for.
+                    queueFirst: startAfterId !== null && wait.kind === 'session' && wait.sessionId === startAfterId,
+                    canSchedule: true,
+                    editingSchedule: fromSchedule !== null,
+                  })}
                   onAction={(action) =>
-                    action === 'queue' ? box.submitSecondary() : action === 'start-worktree' ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true })) : box.submit()
+                    action === 'queue'
+                      ? box.submitSecondary()
+                      : action === 'schedule'
+                        ? openSchedule()
+                        : action === 'start-worktree'
+                          ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true }))
+                          : box.submit()
                   }
                   data={{ 'data-composer-submit': true }}
                 />
@@ -1430,6 +1547,7 @@ function LocalNewSession() {
           {cwd && projectName && <QueuedInProject cwd={cwd} projectName={projectName} now={now} />}
         </div>
       </div>
+      {scheduling && <ScheduleDialog draft={scheduling} schedule={fromSchedule} onClose={() => setScheduling(null)} onSaved={onScheduled} />}
     </div>
   );
 }

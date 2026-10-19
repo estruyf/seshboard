@@ -49,8 +49,11 @@ export interface HostEvents {
   commandsChanged?(): void;
   /** Up next changed: the whole list with its images, to keep it when the app quits or the session stops. */
   queue?(sessionId: string, messages: StoredUpNext[]): void;
-  /** Claude's turn ended (its `result`): finished, or stopped with an error, with Claude Code's message. */
-  turnEnded?(sessionId: string, outcome: { ok: boolean; error: string | null }): void;
+  /**
+   * Claude's turn ended (its `result`): finished, or stopped with an error, with Claude Code's message. `stopped`: you
+   * stopped it (Stop); `superseded`: Send now stopped it to send a message, so another turn follows at once.
+   */
+  turnEnded?(sessionId: string, outcome: TurnOutcome): void;
   /** A usage limit stopped Claude's turn (called before the session goes idle, so the queue already waits). */
   limitHit?(sessionId: string, stop: LimitStop): void;
   /** A turn finished without an error: whatever limit the profile was at no longer holds. */
@@ -119,6 +122,14 @@ const NO_MODS: ModsEvents = {
 };
 
 const STATE_FROM_SDK: Record<string, HostState> = { running: 'running', requires_action: 'needs-you', idle: 'idle' };
+
+/** How a turn ended, as `turnEnded` reports it. */
+export interface TurnOutcome {
+  ok: boolean;
+  error: string | null;
+  stopped?: boolean;
+  superseded?: boolean;
+}
 
 /** How a turn ended, from its `result`: Claude Code's first error, or its text when it flagged the result as one. */
 export function resultOutcome(message: Extract<SDKMessage, { type: 'result' }>): { ok: boolean; error: string | null } {
@@ -364,6 +375,8 @@ export class SessionHost {
     }
   }
 
+  /** You stopped Claude in this turn: its end is a stop, whatever the result says. */
+  private stopRequested = false;
   /** Why the queue isn't sending by itself (see `SessionHostInfo.queueHold`). */
   private queueHold: SessionHostInfo['queueHold'] = null;
   /**
@@ -494,7 +507,10 @@ export class SessionHost {
 
   async interrupt(): Promise<void> {
     // Stopping Claude is not a reason to fire off what is queued, so it waits for you.
-    if (this.busy) this.holdQueue('stopped');
+    if (this.busy) {
+      this.stopRequested = true;
+      this.holdQueue('stopped');
+    }
     await (await this.query)?.interrupt();
   }
 
@@ -653,7 +669,9 @@ export class SessionHost {
         this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache() });
         void this.refreshContext();
         this.events.usageHint?.();
-        this.events.turnEnded?.(this.sessionId, outcome);
+        const stopped = this.stopRequested;
+        this.stopRequested = false;
+        this.events.turnEnded?.(this.sessionId, { ...outcome, stopped, superseded: this.nowPhase !== null });
         return;
       }
       case 'rate_limit_event':
