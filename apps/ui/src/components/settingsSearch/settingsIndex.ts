@@ -259,6 +259,15 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-profile-defaults-toggle]',
       fallback: '[data-profiles]',
     },
+    {
+      id: 'profile-sign-in',
+      page: 'profiles',
+      label: 'Sign in',
+      detail: 'Opens Claude Code with a profile that isn’t signed in yet, in Switchboard’s terminal.',
+      keywords: 'account login /login terminal claude_config_dir',
+      target: '[data-profile-sign-in]',
+      fallback: '[data-profiles]',
+    },
     { id: 'add-profile', page: 'profiles', label: 'Add profile', detail: 'A Claude Code config folder with its own login.', keywords: 'account new', target: '[data-add-profile]', fallback: '[data-profiles]' },
     { id: 'profile-guide', page: 'profiles', label: 'How to set up another profile', detail: 'Create a config folder and sign in, add it here, and link your projects.', keywords: 'account help', target: '[data-profile-guide-toggle]' },
 

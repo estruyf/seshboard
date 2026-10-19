@@ -2950,6 +2950,8 @@ async function addSmokeProfile(win: BrowserWindow, name: string, folder: string)
   if (!(await waitInPage(win, "document.querySelector('[data-new-profile-folder]')", 3_000))) return 'the add profile form did not open';
   await setFieldValue(win, '[data-new-profile-name]', name);
   await setFieldValue(win, '[data-new-profile-folder]', folder);
+  // Sign in now off, so no Claude Code starts in the terminal.
+  await click('[data-new-profile-sign-in]');
   await click('[data-add-profile-submit]');
   if (!(await waitInPage(win, `document.querySelectorAll('[data-profiles] [data-profile]').length === ${before + 1}`, 5_000))) return 'the sandbox profile was not added';
   const id = (await js(`document.querySelectorAll('[data-profiles] [data-profile]')[${before}].dataset.profile`)) as string;
@@ -3044,6 +3046,10 @@ async function runProfilesStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-new-profile-folder]')", 3_000))) return 'the add profile form did not open';
   await setFieldValue(win, '[data-new-profile-name]', 'Smoke work');
   await setFieldValue(win, '[data-new-profile-folder]', folder);
+  // Sign in now is on by default; off here, so no Claude Code starts in the terminal.
+  if ((await js("document.querySelector('[data-new-profile-sign-in]')?.getAttribute('aria-checked')")) !== 'true') return 'Sign in now was not on by default';
+  await click('[data-new-profile-sign-in]');
+  if (!(await waitInPage(win, "document.querySelector('[data-new-profile-sign-in]').getAttribute('aria-checked') === 'false'", 2_000))) return 'Sign in now did not turn off';
   await click('[data-add-profile-submit]');
   if (!(await waitInPage(win, "document.querySelectorAll('[data-profiles] [data-profile]').length === 2", 5_000))) {
     return `the profile was not added (${String(await js("document.querySelector('[data-add-profile-form]')?.innerText ?? ''"))})`;
@@ -3051,6 +3057,9 @@ async function runProfilesStep(win: BrowserWindow): Promise<string> {
   const id = (await js("document.querySelectorAll('[data-profiles] [data-profile]')[1].dataset.profile")) as string;
   const card = `[data-profile=${JSON.stringify(id)}]`;
   if (!(await js(`document.querySelector(${JSON.stringify(card)}).innerText.includes(${JSON.stringify(folder)})`))) return 'the sign-in command does not name the folder';
+  // The sandbox folder has no login, so the profile offers Sign in (not pressed: it would start Claude Code).
+  if (!(await js(`!!document.querySelector(${JSON.stringify(`[data-profile-sign-in=${JSON.stringify(id)}]`)})`))) return 'the new profile did not offer Sign in';
+  if (await js("!!document.querySelector('[data-terminal-panel]')")) return 'a terminal opened with Sign in now off';
   await shot(win, 'profiles.png');
   // Its defaults for new sessions: Max effort, which New session takes where the project sets none.
   await click(`${card} [data-profile-defaults-toggle]`);

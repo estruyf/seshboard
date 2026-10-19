@@ -2301,7 +2301,7 @@ export function createEngine(options: EngineOptions): Engine {
         }
       }
       const cwd = params.cwd ?? homedir();
-      const profileId = params.sessionId ? sessionProfile(params.sessionId) : folderProfile(cwd);
+      const profileId = params.profileId ? requireProfile(params.profileId) : (params.sessionId ? sessionProfile(params.sessionId) : folderProfile(cwd));
       if (questions.contains(cwd)) questions.ensure();
       try {
         return await terminals.open({ ...params, cwd, env: profileEnv(profileId) });

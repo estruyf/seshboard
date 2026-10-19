@@ -64,6 +64,8 @@ export async function runScreenshotTour(win: BrowserWindow, outDir: string, hook
   await need("document.querySelector('[data-new-profile-folder]')", 'the add profile form did not open');
   await setFieldValue(win, '[data-new-profile-name]', 'Work');
   await setFieldValue(win, '[data-new-profile-folder]', join(homedir(), '.claude-work'));
+  // The demo folder is signed in already; off anyway, so no Claude Code starts in the terminal.
+  await click('[data-new-profile-sign-in]');
   await click('[data-add-profile-submit]');
   await need("document.querySelectorAll('[data-profiles] [data-profile]').length === 2", 'the Work profile was not added');
   await click('[data-close-settings]');

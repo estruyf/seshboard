@@ -1820,6 +1820,8 @@ async function setUp(t: Tour): Promise<void> {
   await t.click('[data-add-profile]');
   await (await t.need('[data-new-profile-name]', 'the add profile form did not open')).fill('Work');
   await t.q('[data-new-profile-folder]').fill(join(t.world.home, '.claude-work'));
+  // The demo folder is signed in already; off anyway, so no Claude Code starts in the terminal.
+  await t.click('[data-new-profile-sign-in]');
   await t.click('[data-add-profile-submit]');
   await t.until(`document.querySelectorAll('[data-profiles] [data-profile]').length === 2`, 'the Work profile was not added');
   await t.click('[data-close-settings]');

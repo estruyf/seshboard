@@ -736,12 +736,18 @@ describe('Claude profiles', () => {
         },
         startup: async () => ({ query: () => undefined, close() {} }),
       }) as never;
+    // And the config folder each terminal gets.
+    const terminalEnvs: Array<{ configDir: string | undefined }> = [];
     const engine = createEngine({
       dataDir,
       claudeConfigDir: personal,
       shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '' }, resolved: false, durationMs: 0 }),
       claudeBinary: '/nonexistent/claude',
       sdk,
+      spawnPty: async () => (_file, _args, options) => {
+        terminalEnvs.push({ configDir: options.env.CLAUDE_CONFIG_DIR });
+        return { pid: 1, onData: () => ({ dispose() {} }), onExit: () => ({ dispose() {} }), write() {}, resize() {}, kill() {} };
+      },
     });
     const { port1, port2 } = new MessageChannel();
     const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -792,6 +798,13 @@ describe('Claude profiles', () => {
     expect((await client.call('profiles.list', {})).defaultId).toBe(workId);
     await client.call('session.commands', { cwd: resolve('/var') });
     expect(envs.at(-1)?.CLAUDE_CONFIG_DIR).toBe(work);
+
+    // A terminal can be opened with a profile of its own (Settings signs a new profile in that way), whatever its folder's is.
+    await client.call('terminal.open', { sessionId: null, kind: 'shell', cols: 80, rows: 24, profileId: 'default' });
+    expect(terminalEnvs.at(-1)?.configDir).toBe(personal);
+    await client.call('terminal.open', { sessionId: null, cwd: resolve('/tmp'), kind: 'shell', cols: 80, rows: 24 });
+    expect(terminalEnvs.at(-1)?.configDir).toBe(work);
+    await expect(client.call('terminal.open', { sessionId: null, kind: 'claude', cols: 80, rows: 24, profileId: 'gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
     // Removing the profile forgets its sessions and links; the folder stays.
     await expect(client.call('profiles.remove', { id: 'default' })).rejects.toMatchObject({ code: 'BUILTIN' });

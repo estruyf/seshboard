@@ -32,26 +32,33 @@ Switchboard never handles your login. You sign in with Claude Code itself, once 
 1. Click **Add profile**.
 2. Give it a name and pick a colour.
 3. Check the **Config folder**. Switchboard suggests one in your home folder from the name (`.claude-work` for "Work"); type another path or click **Choose…**. A folder that doesn't exist yet is created. To see the sessions of a folder you already use with `CLAUDE_CONFIG_DIR`, pick that folder.
-4. Click **Add profile**.
+4. Leave **Sign in now** on to sign in right after, in Switchboard's terminal. See [Sign in](#sign-in).
+5. Click **Add profile**.
 
 </Steps>
 
 ## Sign in
 
-A profile that isn't signed in yet says **Not signed in yet** and shows the command to run, with a copy button:
+A profile that isn't signed in yet says **Not signed in yet**, with a **Sign in** button:
 
 <Steps>
 
-1. Open <Os mac="Terminal" windows="PowerShell" /> and run the command. On a Mac that is, for example, `CLAUDE_CONFIG_DIR=~/.claude-work claude`. On Windows, see [Sign in on Windows](#sign-in-on-windows).
-2. Type `/login` and sign in with the other account.
+1. Click **Sign in**. Switchboard's terminal opens next to Settings, with Claude Code running on the profile's folder.
+2. Follow Claude Code's steps to sign in with the other account. If it doesn't ask, type `/login`.
 
 </Steps>
 
-Once you're signed in, the profile shows **Signed in as** with the account's email (and its organisation, if it has one).
+When you add a profile with **Sign in now** on, this happens by itself, unless the folder you picked is signed in already.
+
+Once you're signed in, the profile shows **Signed in as** with the account's email (and its organisation, if it has one). Close the terminal tab when you're done.
+
+### Sign in from your own terminal
+
+Under **Sign in**, the profile also shows the command to run in a terminal of your own, with a copy button. Run it in <Os mac="Terminal" windows="PowerShell" />, then type `/login`. On a Mac that is, for example, `CLAUDE_CONFIG_DIR=~/.claude-work claude`. On Windows, see [Sign in on Windows](#sign-in-on-windows).
 
 ### Sign in on Windows
 
-Settings shows the sign-in command in the form a Mac terminal understands (`CLAUDE_CONFIG_DIR=… claude`), on Windows too. PowerShell doesn't run that form. Set the variable first, then start Claude Code, using the folder Settings shows:
+**Sign in** works the same on Windows. The command Settings shows for your own terminal is in the form a Mac terminal understands (`CLAUDE_CONFIG_DIR=… claude`), on Windows too. PowerShell doesn't run that form. Set the variable first, then start Claude Code, using the folder Settings shows:
 
 ```powershell
 $env:CLAUDE_CONFIG_DIR = "$HOME\.claude-work"

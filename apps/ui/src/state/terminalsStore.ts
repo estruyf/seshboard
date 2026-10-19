@@ -121,17 +121,19 @@ export const useTerminals = create<TerminalsState>()((set) => ({
 /**
  * Opens a terminal tab in a panel (a session's, or the window's own with `APP_TERMINAL`) and shows it. When it
  * can't (the session runs here or in another Claude Code), the reason goes to the panel, which offers to stop
- * it or open a fork. `cwd` null: the home folder.
+ * it or open a fork. `cwd` null: the home folder. `profileId` runs it with that Claude profile's login instead of
+ * the session's or the folder's (signing a profile in).
  */
-export async function openTerminal(client: EngineClient, owner: string, cwd: string | null, kind: TerminalKind, fork = false): Promise<string | null> {
+export async function openTerminal(client: EngineClient, owner: string, cwd: string | null, kind: TerminalKind, fork = false, profileId?: string): Promise<string | null> {
   const sessionId = ownerSession(owner);
   // Claude in the terminal starts work too: the focus limit's gate, as for a message (a fork is a new session).
-  if (kind === 'claude' && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return null;
+  // Signing a profile in starts none.
+  if (kind === 'claude' && !profileId && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return null;
   const state = useTerminals.getState();
   state.setNotice(owner, null);
   state.togglePanel(owner, true);
   try {
-    const info = await client.call('terminal.open', { sessionId, ...(cwd ? { cwd } : {}), kind, cols: 100, rows: 20, fork });
+    const info = await client.call('terminal.open', { sessionId, ...(cwd ? { cwd } : {}), kind, cols: 100, rows: 20, fork, ...(profileId ? { profileId } : {}) });
     useTerminals.getState().setActive(owner, info.id);
     return info.id;
   } catch (e) {

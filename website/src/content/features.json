@@ -2623,7 +2623,7 @@
     },
     {
       "id": "feature:profile-sign-in",
-      "name": "Sign in to a profile with CLAUDE_CONFIG_DIR and /login",
+      "name": "Sign in to a profile in Switchboard's terminal, or with CLAUDE_CONFIG_DIR and /login",
       "page": "settings/claude-profiles"
     },
     {

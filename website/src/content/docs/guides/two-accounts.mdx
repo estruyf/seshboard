@@ -6,7 +6,6 @@ sidebar:
 ---
 
 import Kbd from '../../../components/Kbd.astro';
-import OnlyOn from '../../../components/OnlyOn.astro';
 import Os from '../../../components/Os.astro';
 import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
@@ -22,16 +21,12 @@ Your first profile is Claude Code's own folder, usually <Os mac="~/.claude" wind
 
 1. Open Settings (<Kbd shortcut="settings" />) and choose **Claude profiles**.
 2. Click **Add profile**, give it a name such as "Work" and pick a colour.
-3. Check the **Config folder**. For "Work", Switchboard suggests `.claude-work` in your home folder. Click **Add profile**.
-4. The profile says **Not signed in yet** and shows a command. Run it in <Os mac="Terminal" windows="PowerShell" />, type `/login` and sign in with the other account.
+3. Check the **Config folder**. For "Work", Switchboard suggests `.claude-work` in your home folder. Leave **Sign in now** on and click **Add profile**.
+4. Switchboard's terminal opens next to Settings, with Claude Code running on the new folder. Follow its steps and sign in with the other account. If it doesn't ask, type `/login`.
 
 </Steps>
 
-<OnlyOn os="windows">
-
-The command Settings shows is in the form a Mac terminal understands. In PowerShell, set `$env:CLAUDE_CONFIG_DIR` first, then run `claude`. See [Sign in on Windows](/settings/claude-profiles/#sign-in-on-windows).
-
-</OnlyOn>
+Signing in later works too: the profile says **Not signed in yet**, with a **Sign in** button that does the same. It also shows a command to run in your own terminal instead. See [Sign in](/settings/claude-profiles/#sign-in).
 
 The profile then says **Signed in as** with the account's email. Switchboard never handles your login: Claude Code does. Choose **Default** on the profile most of your projects should use. See [Claude profiles](/settings/claude-profiles/).
 

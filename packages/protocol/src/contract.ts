@@ -813,6 +813,8 @@ export const contract = {
      * Starts a terminal. `claude` runs `claude --resume <session>` (or `--fork-session` with `fork`);
      * it refuses with SESSION_RUNNING_HERE / SESSION_BUSY_ELSEWHERE when the session is open in a process already.
      * Without a session it is the window's own terminal (outside session views); without `cwd` it starts in the home folder.
+     * It gets the Claude profile of its session, or of its folder's project; `profileId` picks one instead (Settings › Claude
+     * profiles opens `claude` with a new profile's folder to sign in), and is refused with NOT_FOUND when that profile is gone.
      */
     'terminal.open': {
       params: z.object({
@@ -822,6 +824,7 @@ export const contract = {
         cols: z.number().int().min(2).max(1000),
         rows: z.number().int().min(1).max(500),
         fork: z.boolean().default(false),
+        profileId: ProfileId.optional(),
       }),
       result: TerminalInfo,
     },
