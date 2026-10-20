@@ -725,7 +725,11 @@ function createWindow(): BrowserWindow {
 /** What every window's page needs: ready tracking, a reload after a crash, links in the browser, and the page itself. */
 function loadRenderer(win: BrowserWindow, popout?: string): void {
   const contentsId = win.webContents.id;
-  win.webContents.on('did-start-loading', () => readyRenderers.delete(contentsId));
+  // Only a new page in the window itself: `did-start-loading` also fires for frames inside it (a previewed HTML file),
+  // and the page says it is ready only once, so it would never count as ready again.
+  win.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) readyRenderers.delete(contentsId);
+  });
   // A crashed page leaves the window blank: reload it, unless it keeps crashing.
   const reloads = new ReloadLimiter();
   win.webContents.on('render-process-gone', (_event, details) => {
