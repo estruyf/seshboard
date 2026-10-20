@@ -3930,6 +3930,11 @@
       "id": "feature:linux-sounds",
       "name": "Freedesktop system sounds on Linux",
       "page": "getting-started/linux"
+    },
+    {
+      "id": "terminal-context-menu",
+      "name": "Terminal right-click menu: Copy, Paste, Explain or Fix with Claude",
+      "page": "terminal-changes-git/terminal"
     }
   ]
 }

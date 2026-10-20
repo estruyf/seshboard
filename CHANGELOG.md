@@ -26,6 +26,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Change the model, effort and mode of a session that isn't running.** A session that wasn't running in Switchboard showed "Not running in Switchboard" under the message box instead of its chips, so you couldn't change its model, effort or permission mode before you sent. The chips are now there, and what you pick is what the session resumes with. If its last run failed, the reason shows next to them.
 - **A computer that is away takes one line in the remote app.** When the remote app couldn't reach a computer, it showed a large banner with the reason and a try counter, which took a lot of the sidebar. It is now one short line, "Can't reach Elio's iMac · Reconnecting…". Tap it for **Help** with the reason and what to do.
 - **Right-click in the message box.** The message box on the New session page and in a session now has a right-click menu (or Shift+F10) with **Cut**, **Copy**, **Paste** and **Select all**. **Paste** works like the keyboard shortcut, so an image on the clipboard is attached too.
+- **Right-click in the terminal.** Right-click, or press Shift+F10, for **Copy**, **Paste** and **Select all**. In a session's terminal, select an error or some output and choose **Explain with Claude** or **Fix with Claude** to put it in the message box, in a code block under the question, ready to send.
 
 ## [1.0.0] - 2026-10-19
 
