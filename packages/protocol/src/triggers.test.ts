@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Trigger, TriggerSave, TriggerSource } from './triggerSchema.ts';
 import {
+  assignsOnPickUp,
   blockingStateLabel,
   effectiveMaxAtOnce,
   eventKey,
@@ -14,6 +15,7 @@ import {
   triggerDue,
   triggerProblem,
   triggerSessionTitle,
+  TRIGGER_RUNS_REMEMBERED,
   type CiRunItem,
   type IssueItem,
   type SlotEvent,
@@ -152,6 +154,18 @@ describe('newEvents', () => {
     expect(found.skipped[0]?.reason).toBe('already assigned to @mara-k');
   });
 
+  it("doesn't skip assigned issues when the filter has an assignee", () => {
+    // Every issue of an assignee filter has one: Assign to me only applies to a label alone.
+    for (const source of [{ kind: 'issues', assignee: '@me' }, { kind: 'issues', label: 'switchboard', assignee: '@me' }]) {
+      const assigning = trigger(source, { assignOnPickUp: true });
+      expect(assignsOnPickUp(assigning)).toBe(false);
+      const found = newEvents(assigning, [issue(1, { assignees: [{ login: 'estruyf' }] })], {});
+      expect(found.events.map((e) => e.key)).toEqual(['#1']);
+      expect(found.skipped).toEqual([]);
+    }
+    expect(assignsOnPickUp(trigger({ kind: 'issues', label: 'switchboard' }, { assignOnPickUp: true }))).toBe(true);
+  });
+
   it('makes one event of a failed workflow on a commit, and a new one for a new commit', () => {
     const ci = trigger({ kind: 'ci', branch: 'main' });
     const first = newEvents(ci, [run(2, 'test', 'aaa'), run(1, 'test', 'aaa')], {}, 'main');
@@ -160,6 +174,25 @@ describe('newEvents', () => {
     expect(newEvents(ci, [run(3, 'test', 'aaa'), run(2, 'test', 'aaa')], first.seen, 'main').events).toEqual([]);
     expect(newEvents(ci, [run(4, 'test', 'bbb'), run(2, 'test', 'aaa')], first.seen, 'main').events.map((e) => e.key)).toEqual(['test@bbb']);
     expect(triggerSessionTitle(first.events[0]!)).toBe('Fix test on main');
+  });
+
+  it("doesn't start a re-run that fails again on the same commit", () => {
+    const ci = trigger({ kind: 'ci', branch: 'main' });
+    const first = newEvents(ci, [run(1, 'test', 'aaa')], {}, 'main');
+    // Re-running: it isn't a failure for now, so it leaves the answer.
+    const rerunning = newEvents(ci, [], first.seen, 'main');
+    expect(rerunning.seen).toEqual({ 'test@aaa': 'match' });
+    // Failed again: the same event, already seen.
+    expect(newEvents(ci, [run(1, 'test', 'aaa')], rerunning.seen, 'main').events).toEqual([]);
+  });
+
+  it('remembers a bounded number of failed runs, the latest answer first', () => {
+    const ci = trigger({ kind: 'ci', branch: 'main' });
+    const old = Object.fromEntries(Array.from({ length: TRIGGER_RUNS_REMEMBERED }, (_, i) => [`test@old${i}`, 'match' as const]));
+    const found = newEvents(ci, [run(1, 'test', 'new')], old, 'main');
+    expect(Object.keys(found.seen)).toHaveLength(TRIGGER_RUNS_REMEMBERED);
+    expect(Object.keys(found.seen)[0]).toBe('test@new');
+    expect(found.seen[`test@old${TRIGGER_RUNS_REMEMBERED - 1}`]).toBeUndefined();
   });
 });
 

@@ -1,4 +1,5 @@
 import {
+  assignsOnPickUp,
   blockingStateLabel,
   eventKey,
   eventRef,
@@ -141,15 +142,23 @@ export class TriggerWatcher {
     this.nudge();
   }
 
-  /** A queued item an event became has started: the event follows its session. */
-  queuedStarted(itemId: string, sessionId: string): void {
+  /**
+   * A queued item an event became has started: the event follows its session, and is told as a direct start is.
+   * Returns the session's title, which the queue doesn't know, or null when the item isn't a trigger's.
+   */
+  queuedStarted(itemId: string, sessionId: string): string | null {
     const stored = this.deps.store.eventOfItem(itemId);
-    if (!stored) return;
+    if (!stored) return null;
     const trigger = this.deps.store.get(stored.event.triggerId);
     const event = this.deps.store.setStatus(stored.event.id, 'started', { sessionId, itemId, startedAt: this.now() });
-    if (event) this.linkSession(trigger, event, sessionId);
+    const title = triggerSessionTitle(stored.event);
+    if (event) {
+      this.linkSession(trigger, event, sessionId);
+      if (trigger) this.announce(trigger, event, title, sessionId);
+    }
     this.deps.changed();
     this.nudge();
+    return title;
   }
 
   /**
@@ -333,7 +342,7 @@ export class TriggerWatcher {
     const working = labels ? names.working : null;
     // An issue picked up again (labelled again after it failed) still has its last state label: that one comes off.
     const had = (event.fields.labels ?? '').split(',').map((l) => l.trim()).find((l) => Object.values(names).some((n) => n.toLowerCase() === l.toLowerCase()));
-    const args = stateLabelEdit(number, working, labels ? (event.label ?? had ?? null) : null, { removeTrigger: labels ? trigger.source.label : null, assign: trigger.assignOnPickUp });
+    const args = stateLabelEdit(number, working, labels ? (event.label ?? had ?? null) : null, { removeTrigger: labels ? trigger.source.label : null, assign: assignsOnPickUp(trigger) });
     if (args && (await this.edit(trigger, event, args)) && working) this.deps.store.setLabel(event.id, working);
     this.deps.notify([{ kind: 'pickedUp', triggerId: trigger.id, triggerName: trigger.name, projectRoot: trigger.projectRoot, projectName: this.deps.projectName(trigger.projectRoot), eventKind: 'issue', branch: null, ref: eventRef(event), title: event.title, sessionId: null, reason: null }]);
   }
@@ -388,9 +397,7 @@ export class TriggerWatcher {
       const started = store.setStatus(event.id, 'started', { sessionId, startedAt: this.now() });
       if (started) this.linkSession(trigger, started, sessionId);
       this.deps.log('info', `Triggers: “${trigger.name}” started ${eventRef(event)} as ${sessionId}`);
-      if (event.kind === 'ci') {
-        this.deps.notify([{ kind: 'started', triggerId: trigger.id, triggerName: trigger.name, projectRoot: trigger.projectRoot, projectName: this.deps.projectName(trigger.projectRoot), eventKind: 'ci', branch: event.fields.branch ?? null, ref: eventRef(event), title, sessionId, reason: null }]);
-      }
+      this.announce(trigger, event, title, sessionId);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.deps.log('warn', `Triggers: couldn't start ${eventRef(event)} of “${trigger.name}”: ${reason}`);
@@ -399,6 +406,12 @@ export class TriggerWatcher {
     } finally {
       this.starting.delete(event.id);
     }
+  }
+
+  /** Tells about a CI session that started, now or from the queue. An issue was told about when it was picked up. */
+  private announce(trigger: Trigger, event: TriggerEvent, title: string, sessionId: string): void {
+    if (event.kind !== 'ci') return;
+    this.deps.notify([{ kind: 'started', triggerId: trigger.id, triggerName: trigger.name, projectRoot: trigger.projectRoot, projectName: this.deps.projectName(trigger.projectRoot), eventKind: 'ci', branch: event.fields.branch ?? null, ref: eventRef(event), title, sessionId, reason: null }]);
   }
 
   /** What the session gets to read: the issue's text and comments, or the end of the failed jobs' log. */

@@ -1065,7 +1065,12 @@ export function createEngine(options: EngineOptions): Engine {
     });
     later.started(item.id, sessionId);
     laterChanged();
-    triggerWatcher?.queuedStarted(item.id, sessionId);
+    // A trigger's event that waited in the queue gets its title now, as one that started at once does.
+    const title = triggerWatcher?.queuedStarted(item.id, sessionId);
+    if (title) {
+      pendingTitles.set(sessionId, title);
+      applyTitles([sessionId]);
+    }
     return sessionId;
   };
   /** Queued items that start by themselves (#172): the engine decides, so they start once, with or without a window. */

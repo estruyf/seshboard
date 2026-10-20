@@ -320,9 +320,50 @@ describe('the watcher', () => {
     expect(w.started).toEqual([]);
     expect(w.queued).toHaveLength(1);
     expect(w.store.events()).toMatchObject([{ key: '#7', status: 'queued', itemId: 'item-1', reason: 'at the focus limit' }]);
-    w.watcher.queuedStarted('item-1', 'from-queue');
+    // The queue doesn't know the title: the watcher gives it, for the session to be named as a direct start is.
+    expect(w.watcher.queuedStarted('item-1', 'from-queue')).toBe('#7 Issue 7');
     expect(w.store.events()).toMatchObject([{ status: 'started', sessionId: 'from-queue' }]);
     expect(w.store.sessions()).toMatchObject([{ sessionId: 'from-queue', ref: '#7' }]);
+    expect(w.watcher.queuedStarted('not-a-trigger-item', 'other')).toBeNull();
+  });
+
+  it('tells about a CI failure that started from the queue', async () => {
+    const w = world({ runs: [] });
+    w.save({ name: 'CI fails on main', source: { kind: 'ci' }, prompt: 'Fix it.' });
+    await w.watcher.check();
+    w.holds.next = { reason: 'at the usage limit', detail: '' };
+    w.fake.write((s) => s.runs!.unshift({ databaseId: 4512, number: 4512, workflowName: 'test', headSha: '9f3c2e1abc' }));
+    await w.tick();
+    expect(w.queued).toHaveLength(1);
+    expect(w.notices).toEqual([]);
+    expect(w.watcher.queuedStarted('item-1', 'from-queue')).toBe('Fix test on main');
+    expect(w.notices).toMatchObject([{ kind: 'started', eventKind: 'ci', ref: 'CI #4512', title: 'Fix test on main', sessionId: 'from-queue' }]);
+  });
+
+  it("doesn't start a CI failure again when its re-run fails on the same commit", async () => {
+    const w = world({ runs: [] });
+    w.save({ name: 'CI fails on main', source: { kind: 'ci' }, prompt: 'Fix it.' });
+    await w.watcher.check();
+    w.fake.write((s) => s.runs!.unshift({ databaseId: 4512, number: 4512, workflowName: 'test', headSha: '9f3c2e1abc' }));
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+    // Re-run: it isn't a failure while it runs, then fails again with the same run id and commit.
+    w.fake.write((s) => (s.runs = []));
+    await w.tick();
+    w.fake.write((s) => s.runs!.unshift({ databaseId: 4512, number: 4512, workflowName: 'test', headSha: '9f3c2e1abc' }));
+    await w.tick();
+    expect(w.started).toHaveLength(1);
+    expect(w.store.events()).toMatchObject([{ status: 'started', sessionId: 'session-1' }]);
+  });
+
+  it('starts an issue assigned to you with Assign to me on, when the filter is an assignee', async () => {
+    const w = world();
+    w.save({ source: { kind: 'issues', assignee: '@me' }, assignOnPickUp: true });
+    await w.watcher.check();
+    w.fake.write((s) => s.issues!.push(issue(9, { labels: [], assignees: ['estruyf'] })));
+    await w.tick();
+    expect(w.started.map((s) => s.title)).toEqual(['#9 Issue 9']);
+    expect(edits(w.fake.calls()).some((c) => c.includes('--add-assignee'))).toBe(false);
   });
 
   it('marks what is there as seen again after a resume', async () => {

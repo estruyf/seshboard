@@ -27,6 +27,12 @@ describe('the trigger editor', () => {
     expect(formSource(form({ which: 'label' }))).toEqual({ kind: 'issues', label: 'switchboard', assignee: null, collaboratorsOnly: true });
   });
 
+  it('assigns you only with a label alone, since an assignee filter has one on every issue', () => {
+    expect(formToSave(form({ which: 'label', assignOnPickUp: true })).assignOnPickUp).toBe(true);
+    expect(formToSave(form({ which: 'assignee', assignOnPickUp: true })).assignOnPickUp).toBe(false);
+    expect(formToSave(form({ which: 'both', assignOnPickUp: true })).assignOnPickUp).toBe(false);
+  });
+
   it('holds one session at a time in the project folder', () => {
     const inFolder = updateForm(form({ maxAtOnce: 5 }), { workspace: 'current' });
     expect(inFolder.maxAtOnce).toBe(1);
