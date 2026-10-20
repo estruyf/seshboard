@@ -1,3 +1,4 @@
+import { moreUrgent } from '@switchboard/protocol/client';
 import { archivedSince as archivedSinceOf, listedInMainList, type ListingState, type SessionScope, type SidebarSort, type StartupView } from '@switchboard/protocol/bridge';
 import type { QueueEntry } from './queue.ts';
 import type { SessionRowData } from './sessionsStore.ts';
@@ -7,6 +8,11 @@ import type { SectionKey } from './sidebarSections.ts';
 export type RowStatus = 'needs-you' | 'running' | 'error' | 'unread' | 'background' | 'idle' | null;
 
 export function rowStatus(row: SessionRowData): RowStatus {
+  // A parent shows what is most urgent in it and its steps (a step that needs you puts it in Needs you).
+  return row.pipeline ? moreUrgent(ownStatus(row), row.pipeline.rolled) : ownStatus(row);
+}
+
+function ownStatus(row: SessionRowData): RowStatus {
   // Another computer says how its sessions are (`remoteRowStatus`).
   if (row.remote) return row.remote.status;
   if (row.live?.status === 'needs-you') return 'needs-you';
@@ -34,9 +40,10 @@ export function startupSession(rows: SessionRowData[], lastId: unknown, startupV
 
 /** What the archive rule reads from a row (`listedInMainList`, shared with the VS Code companion and the engine). */
 export function rowListing(row: SessionRowData): ListingState {
+  const rolled = row.pipeline?.rolled;
   return {
-    attention: row.live?.status === 'needs-you' || row.error,
-    working: row.live?.status === 'running',
+    attention: row.live?.status === 'needs-you' || row.error || rolled === 'needs-you' || rolled === 'error',
+    working: row.live?.status === 'running' || rolled === 'running',
     pinned: row.pinned,
     archivedAt: row.archivedAt,
     restoredAt: row.restoredAt,
@@ -98,7 +105,11 @@ export function buildSessionList(
   const needle = options.search.trim().toLowerCase();
   const active: SessionRowData[] = [];
   const archived: SessionRowData[] = [];
-  for (const row of rows) {
+  // Sub-sessions sit under their parent. A search lists every match flat, as it does for any row.
+  const source = needle ? rows.flatMap((r) => (r.children ? [r, ...r.children] : [r])) : rows;
+  for (const sub of source) {
+    if (sub.depth && !needle) continue;
+    const row = needle && (sub.depth || sub.children) ? { ...sub, depth: 0, children: undefined } : sub;
     if (options.scope && !inScope(row, options.scope)) continue;
     if (options.project && row.projectRoot !== options.project) continue;
     if (needle && !matches(row, needle)) continue;
@@ -227,6 +238,14 @@ export function groupsFor(active: readonly SessionRowData[], now: number, sort: 
 }
 
 /**
+ * The rows with each open parent's sub-sessions right after it, in step order. `'all'` opens every parent (a list that
+ * has to find any session, such as ⌘P). Rows without children come back as they are.
+ */
+export function withOpenChildren(rows: readonly SessionRowData[], open: ReadonlySet<string> | 'all'): SessionRowData[] {
+  return rows.flatMap((row) => (row.children?.length && (open === 'all' || open.has(row.id)) ? [row, ...row.children] : [row]));
+}
+
+/**
  * One row of the virtualised sidebar list: a session, a section header, the queue's header and its items,
  * the "+N hidden" line under a closed section's kept row, or the Archived header (only while it's in the list).
  */
@@ -251,7 +270,11 @@ export interface ListRowOptions {
   /** The order (Recent by default) and, for Quickest to unblock, each session's review time. */
   sort?: SidebarSort;
   quick?: ReadonlyMap<string, QuickInfo>;
+  /** The parents whose sub-sessions are listed under them (pipelines). */
+  open?: ReadonlySet<string>;
 }
+
+const NO_OPEN: ReadonlySet<string> = new Set();
 
 /**
  * The flat row list the sidebar virtualises: each non-empty section under its header, the Queue right under
@@ -280,7 +303,7 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
     const unread = rows.filter((row) => rowStatus(row) === 'unread').length;
     list.push({ kind: 'group', group, count: rows.length, first: list.length === 0, open, unread });
     if (open) {
-      for (const data of rows) list.push({ kind: 'session', data, archived: false });
+      for (const data of withOpenChildren(rows, options.open ?? NO_OPEN)) list.push({ kind: 'session', data, archived: false });
     } else {
       const kept = rows.find((row) => row.id === options.selectedId);
       if (kept) {
@@ -296,7 +319,7 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
   if (!queued) pushQueue();
   if (archived.length && options.archivedOpen) {
     list.push({ kind: 'archived', count: archived.length, open: true });
-    for (const data of archived) list.push({ kind: 'session', data, archived: true });
+    for (const data of withOpenChildren(archived, options.open ?? NO_OPEN)) list.push({ kind: 'session', data, archived: true });
   }
   return list;
 }

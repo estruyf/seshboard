@@ -1,4 +1,4 @@
-import { Bot, Code, Ellipsis, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope } from 'lucide-react';
+import { Bot, Code, Ellipsis, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope, Workflow } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -7,6 +7,8 @@ import { toast } from '../../state/toastStore.ts';
 import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { startAfter } from '../../state/startAfterStore.ts';
+import { scopeLabel } from '../../state/pipelines.ts';
+import { openRunPipeline, usePipelineList } from '../../state/pipelinesStore.ts';
 import { openTerminal } from '../../state/terminalsStore.ts';
 import type { ActionsMenu } from '../actions/useActionsMenu.tsx';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
@@ -66,6 +68,8 @@ export function MoreMenu({
   const client = connection.status === 'connected' ? connection.client : null;
 
   const memories = useSessionMemories(sessionId, !!menu.at);
+  // The project's pipelines, read when the menu opens: the session becomes the parent of the run.
+  const pipelines = usePipelineList(projectRoot ?? null, !!menu.at && !!projectRoot);
   const openIn = useOpenInEntries(cwd);
   const hasVSCode = useHosts((s) => s.editors.some((e) => e.id === 'vscode'));
   const busy = useHosts((s) => {
@@ -147,6 +151,22 @@ export function MoreMenu({
           },
         ]
       : []),
+    {
+      label: 'Run pipeline',
+      icon: <Workflow size={13} />,
+      disabled: !projectRoot || !cwd || !client,
+      submenu: pipelines
+        ? pipelines.pipelines.map(
+            (pipeline): MenuEntry => ({
+              label: pipeline.name,
+              hint: scopeLabel(pipeline.scope),
+              onSelect: () => projectRoot && cwd && openRunPipeline({ root: projectRoot, cwd, parentSessionId: sessionId, task: title ?? '', pipeline }),
+              data: { 'data-run-pipeline-item': pipeline.id },
+            }),
+          )
+        : [{ label: 'Loading…', disabled: true, onSelect: () => {} }],
+      data: { 'data-run-pipeline-menu': true },
+    },
     {
       label: 'Start after this one…',
       icon: <Play size={12} />,

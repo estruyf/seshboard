@@ -2,6 +2,8 @@ import { ArrowRightLeft, PanelBottomClose, PanelLeftClose, PanelRightClose, Pane
 import { useEffect, useMemo, useRef } from 'react';
 import { useComputers } from '../../state/computersStore.ts';
 import { parseRemoteRowId } from '../../state/remoteSelection.ts';
+import { runIdOfRow } from '@switchboard/protocol/client';
+import { RunRowView } from '../pipelines/RunRowView.tsx';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useTilingArea } from '../../state/tilingArea.ts';
@@ -67,6 +69,7 @@ export function SplitPanes() {
         const box = roomy ? (boxes.get(id) ?? WHOLE) : WHOLE;
         const leading = box.x < 1e-6 && box.y < 1e-6;
         const remote = parseRemoteRowId(id);
+        const runId = runIdOfRow(id);
         return (
           <div
             key={id}
@@ -86,6 +89,8 @@ export function SplitPanes() {
             >
               {remote ? (
                 <RemotePane remote={remote} pane={{ id, tiled, active: isActive, leading }} />
+              ) : runId !== null ? (
+                <RunRowView runId={runId} pane={{ id, tiled, active: isActive, leading }} />
               ) : (
                 <TranscriptView sessionId={id} tiled={tiled} active={isActive} leading={leading} />
               )}

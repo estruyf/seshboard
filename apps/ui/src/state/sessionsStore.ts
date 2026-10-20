@@ -8,6 +8,7 @@ import { leafIds, type Tile } from './tiling.ts';
 import { useTilingArea } from './tilingArea.ts';
 import type { DropTarget, Way } from './tilingGeometry.ts';
 import type { RemoteRowInfo } from './remoteRows.ts';
+import type { PipelineRowInfo, PipelineStepInfo } from './pipelineRows.ts';
 import { useRunOn } from './runOnStore.ts';
 import { toast } from './toastStore.ts';
 
@@ -220,6 +221,18 @@ export interface SessionRowData {
    * `remoteRowId`, never a local session id; `live` and `summary` are null.
    */
   remote?: RemoteRowInfo | null;
+  /** The session this one is a step of (a pipeline, #179), or `run:<runId>`. */
+  parentId?: string;
+  /** A parent's sub-sessions in step order (`withPipelines`); the sidebar nests them under it while it is open. */
+  children?: SessionRowData[];
+  /** 1 for a sub-session listed under its parent. */
+  depth?: number;
+  /** A parent's run: the progress line and why it waits. Its `rolled` status puts the parent where its most urgent child is. */
+  pipeline?: PipelineRowInfo;
+  /** A sub-session's place in its run. */
+  step?: PipelineStepInfo;
+  /** A run row (a run started from New session): the row stands for the run, not a session. */
+  run?: { runId: string };
 }
 
 export function toRows(
@@ -252,6 +265,7 @@ export function toRows(
       inApp: s.inApp || l?.origin === 'app',
       error: hosts.get(s.id)?.state === 'error',
       profileId: s.profileId,
+      ...(s.parentId ? { parentId: s.parentId } : {}),
     });
   }
   // Running sessions that have not written a transcript yet still deserve a row.

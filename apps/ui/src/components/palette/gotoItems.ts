@@ -62,7 +62,7 @@ export function matchProjects(roots: readonly string[], query: string, nameOf: (
  */
 export function gotoGroups(rows: readonly SessionRowData[], now: number, archiveAfterDays: number, limit: number): { group: SessionGroup; rows: SessionRowData[] }[] {
   let left = limit;
-  return sidebarGroups(rows, { now, archiveAfterDays }).flatMap(({ group, rows: inGroup }) => {
+  return sidebarGroups(rows, { now, archiveAfterDays, open: 'all' }).flatMap(({ group, rows: inGroup }) => {
     const shown = inGroup.slice(0, Math.max(0, left));
     left -= shown.length;
     return shown.length ? [{ group, rows: shown }] : [];

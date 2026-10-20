@@ -130,6 +130,8 @@ export class Notifier {
     });
     // Event triggers (#180): a session started, an issue picked up, a trigger paused.
     client.on('triggers.notice', ({ notices }) => this.handle(triggerAlerts(notices)));
+    // Pipelines (#179): a run stopped for you. A click opens its parent.
+    client.on('pipelines.needsYou', (needs) => this.handle(this.attention.onPipelineNeedsYou(needs)));
     void client.call('later.list', {}).then((queue) => void (this.queue = queue), () => {});
 
     // Seed state silently: only changes from here on deserve a notification.
@@ -212,7 +214,7 @@ export class Notifier {
       }
       sound = louder(sound, alert.sound);
       // The Dock and the taskbar stay independent of the notification setting, like the badge.
-      if (event.kind === 'needs-you' && !focused && !test) {
+      if ((event.kind === 'needs-you' || event.kind === 'pipeline-needs-you') && !focused && !test) {
         app.dock?.bounce('informational');
         // Windows and Linux have no Dock: the taskbar button flashes until the window is focused.
         if (process.platform !== 'darwin' && win && !win.isDestroyed()) win.flashFrame(true);

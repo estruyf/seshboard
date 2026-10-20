@@ -1,6 +1,6 @@
-import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert, Workflow } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, bringsAnything, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, pipelineBlanks, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type Pipeline, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -16,6 +16,7 @@ import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, us
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { ScheduleDialog } from '../schedules/ScheduleDialog.tsx';
 import { openTriggerEditor } from '../../state/triggersStore.ts';
+import { openRunPipeline, startRun } from '../../state/pipelinesStore.ts';
 import { useStartAfter } from '../../state/startAfterStore.ts';
 import { autoStartBlock, busyInProject, promptLabel, queueSession, sameDraft } from '../../state/queue.ts';
 import { useLinks } from '../../state/linksStore.ts';
@@ -130,6 +131,9 @@ function LocalNewSession() {
   const [suggestedName, setSuggestedName] = useState(randomWorktreeName);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [draftPrompt, setDraftPrompt] = useState('');
+  /** Run pipeline…: the picked pipeline runs the text as its task; it sets the folder choice, model, effort and mode. */
+  const [pipeline, setPipeline] = useState<Pipeline | null>(null);
+  const [pipelineStarting, setPipelineStarting] = useState(false);
   /** The images in the message box, which go to the queue with the prompt. */
   const [draftAttachments, setDraftAttachments] = useState<ImageAttachment[]>([]);
   /** The context chips in the message box (files, folders, pasted text), which go to the queue as chips. */
@@ -602,6 +606,8 @@ function LocalNewSession() {
   useEffect(() => {
     if (fromGithub && cwd !== fromGithub.request.root) setFromGithub(null);
   }, [cwd]);
+  // A pipeline is picked for a project: another folder has its own.
+  useEffect(() => setPipeline(null), [cwd]);
   const clearPrompt = () => {
     setPendingStart(null);
     setFromGithub(null);
@@ -894,6 +900,28 @@ function LocalNewSession() {
       },
     });
   };
+  /** Run pipeline…: choose which one; the box keeps the text, which becomes the task. */
+  const choosePipeline = () => {
+    if (!cwd) return;
+    openRunPipeline({ root: projectOf(cwd), cwd, parentSessionId: null, task: '', pipeline: null, onChoose: setPipeline });
+  };
+  /** Runs the picked pipeline with the box as its task. A pipeline that asks for blanks opens its dialog; the others start at once. */
+  const runPicked = async () => {
+    const task = promptWithContext(draftPrompt, draftContext, cwd).trim();
+    if (!pipeline || !cwd || !task || pipelineStarting) return;
+    const done = () => {
+      useDrafts.getState().removeDraft(newDraftKey(cwd));
+      clearPrompt();
+      setPipeline(null);
+    };
+    if (pipelineBlanks(pipeline).length > 0) return openRunPipeline({ root: projectOf(cwd), cwd, parentSessionId: null, task, pipeline, onStarted: done });
+    setPipelineStarting(true);
+    try {
+      if (await startRun({ pipeline, parentSessionId: null, cwd, task })) done();
+    } finally {
+      setPipelineStarting(false);
+    }
+  };
   /** Saved: the box is emptied (or, for a schedule that was open, back to New session's own prompt). */
   const onScheduled = () => {
     setScheduling(null);
@@ -1008,7 +1036,11 @@ function LocalNewSession() {
   const shownModel = effectiveModel(d.model, autoModel.enabled);
   const autoOff = d.model === AUTO_MODEL && !autoModel.enabled;
   // The same chip row as in a session.
-  const controls = (
+  const controls = pipeline ? (
+    <span className="px-2 text-ui text-muted" data-pipeline-set-by>
+      Model, effort and mode: Set by the pipeline
+    </span>
+  ) : (
     <ComposerChipRow
       profile={{
         value: profileId,
@@ -1330,6 +1362,14 @@ function LocalNewSession() {
                   <span aria-hidden className="text-faint">
                     /
                   </span>
+                  {pipeline ? (
+                    // The pipeline picks the folder it works in (a new worktree or this one) and each step's model and mode.
+                    <span className="flex min-w-0 items-center gap-1.5 px-2 text-ui text-muted" data-route-pipeline data-tooltip={pipeline.name}>
+                      <Workflow size={14} className="shrink-0" aria-hidden />
+                      <span className="truncate">Where: Set by the pipeline</span>
+                    </span>
+                  ) : (
+                  <>
                   <ChoiceMenu
                     name="workspace"
                     value={useWorktree ? 'worktree' : 'current'}
@@ -1458,6 +1498,8 @@ function LocalNewSession() {
                     Worktree
                     <Switch checked={useWorktree} disabled={!canWorktree} onChange={(on) => update({ workspace: on ? 'worktree' : 'current' })} dataAttrs={{ 'data-worktree-switch': true }} />
                   </label>
+                  </>
+                  )}
                 </>
               )}
             </div>
@@ -1490,6 +1532,11 @@ function LocalNewSession() {
               onCycleMode={() => update({ permissionMode: nextMode(d.permissionMode) })}
               disabledReason={!client ? 'Connecting to the engine…' : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
               onSubmit={(text, attachments, requested, parts) => {
+                // A picked pipeline runs the text as its task; the text stays until the run has started.
+                if (pipeline && !question) {
+                  void runPicked();
+                  return false;
+                }
                 // Scheduling, Enter opens the dialog rather than starting a session; the text stays in the box.
                 if (scheduleFirst && !question && !fromLater) {
                   openSchedule();
@@ -1502,6 +1549,7 @@ function LocalNewSession() {
                 <StartButton
                   state={startButtonState({
                     ...box,
+                    sending: box.sending || pipelineStarting,
                     startBlocked,
                     branchBlocked: branchTaken ?? (githubPr && !useWorktree ? prCurrentBlocked : null),
                     canWorktree,
@@ -1511,6 +1559,8 @@ function LocalNewSession() {
                     queueFirst: startAfterId !== null && wait.kind === 'session' && wait.sessionId === startAfterId,
                     canSchedule: true,
                     canTrigger: !fromLater,
+                    canPipeline: !fromLater && !fromSchedule && !!cwd,
+                    pipeline: pipeline?.name ?? null,
                     scheduleFirst: scheduleFirst && !fromLater,
                     editingSchedule: fromSchedule !== null,
                   })}
@@ -1519,6 +1569,12 @@ function LocalNewSession() {
                       ? box.submitSecondary()
                       : action === 'schedule'
                         ? openSchedule()
+                        : action === 'pipeline'
+                          ? pipeline
+                            ? void runPicked()
+                            : choosePipeline()
+                          : action === 'pipeline-off'
+                            ? setPipeline(null)
                         : action === 'trigger'
                           ? openTrigger()
                         : action === 'start-worktree'

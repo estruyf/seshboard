@@ -65,6 +65,9 @@ const PLANS: Record<string, Plan> = {
   // Triggers: the editor is a dialog of the main window.
   'trigger-new': 'hide',
   triggers: 'hide',
+  // Pipelines: the dialog that starts a run is mounted in every window, and the session here is the parent.
+  'pipeline-run': 'here',
+  pipelines: 'here',
   'open-in-new-window': 'hide',
 
   // Settings, Usage, Upcoming and project pages: their stores send them to the main window.

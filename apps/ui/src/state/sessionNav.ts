@@ -9,6 +9,8 @@ import { nextNeedsYou, sidebarGroups, sidebarOrder, stepSession } from './sideba
 import { inScope } from './sidebarRows.ts';
 import { useComputers } from './computersStore.ts';
 import { filterBySource } from './remoteRows.ts';
+import { currentPipelineRows } from './usePipelineRows.ts';
+import { usePipelineTree } from './pipelineTreeStore.ts';
 import { currentRemoteRows, openRow, shownRowId } from './useRemoteRows.ts';
 
 /** What the HUD says after a jump: where you landed ("2 of 6"), or that there was nowhere to go. */
@@ -37,11 +39,11 @@ export const useHud = create<HudState>()((set) => ({
 export function currentOrder() {
   const { sessions, live, filter } = useSessions.getState();
   const { sessionScope: scope, archiveAfterDays, sidebarSort: sort } = usePreferences.getState().prefs;
-  const local = toRows(sessions, live, useHosts.getState().hosts).filter((row) => inScope(row, scope));
+  const local = currentPipelineRows(toRows(sessions, live, useHosts.getState().hosts).filter((row) => inScope(row, scope)));
   const rows = filterBySource([...local, ...currentRemoteRows()], useComputers.getState().hidden);
   const open = useSidebar.getState().state === 'open';
   const quick = quickInfoOf(useCatchUp.getState().cards);
-  return sidebarOrder(sidebarGroups(rows, { now: Date.now(), archiveAfterDays, search: open ? filter : '', project: open ? useProjects.getState().filter : null, sort, quick }));
+  return sidebarOrder(sidebarGroups(rows, { now: Date.now(), archiveAfterDays, search: open ? filter : '', project: open ? useProjects.getState().filter : null, sort, quick, open: usePipelineTree.getState().open }));
 }
 
 function land(id: string, order: readonly { id: string }[]) {

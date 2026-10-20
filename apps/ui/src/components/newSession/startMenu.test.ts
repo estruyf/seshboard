@@ -39,6 +39,30 @@ describe('the Start button', () => {
     expect(startButtonState({ ...ready, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);
   });
 
+  it('offers Run pipeline… in New session, with a folder, and not for a question', () => {
+    const state = startButtonState({ ...ready, canPipeline: true });
+    expect(state.items.map((i) => [i.action, i.label, i.disabled])).toEqual([
+      ['start', 'Start session', false],
+      ['queue', 'Add to queue', false],
+      ['pipeline', 'Run pipeline…', false],
+      ['start-worktree', 'Start in a new worktree', false],
+    ]);
+    expect(startButtonState({ ...ready, canPipeline: true, question: true }).items.map((i) => i.action)).toEqual(['start', 'queue']);
+    expect(startButtonState({ ...ready, canPipeline: true, blocked: 'Choose a folder first' }).items.find((i) => i.action === 'pipeline')).toMatchObject({ disabled: true });
+  });
+
+  it('runs the picked pipeline from the main part, with the text as its task', () => {
+    const state = startButtonState({ ...ready, canPipeline: true, pipeline: 'Plan, execute, validate, push' });
+    expect(state).toMatchObject({ main: 'pipeline', shortcut: 'new-session.start', label: 'Run pipeline', disabled: false, reason: null });
+    expect(state.items.map((i) => [i.action, i.label])).toEqual([
+      ['pipeline', 'Run Plan, execute, validate, push'],
+      ['pipeline-off', 'Start a session instead'],
+    ]);
+    expect(startButtonState({ ...ready, pipeline: 'P', hasText: false })).toMatchObject({ disabled: true, reason: 'Type the task first' });
+    expect(startButtonState({ ...ready, pipeline: 'P', sending: true })).toMatchObject({ label: 'Starting…', disabled: true, menuDisabled: true, reason: null });
+    expect(startButtonState({ ...ready, pipeline: 'P', blocked: 'Connecting…' })).toMatchObject({ disabled: true, reason: 'Connecting…' });
+  });
+
   it('offers Schedule… after Add to queue in New session, and Save schedule while a schedule is open', () => {
     const state = startButtonState({ ...ready, canSchedule: true });
     expect(state.items.map((i) => [i.action, i.label])).toEqual([

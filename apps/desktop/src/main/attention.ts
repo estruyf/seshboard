@@ -1,7 +1,7 @@
-import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
+import type { ChecksFinished, HostState, LiveSession, PermissionRequest, PipelineNeedsYou, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
 
 export interface AttentionEvent {
-  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring' | 'queue-started' | 'queue-skipped' | 'schedule-started' | 'schedule-queued' | 'schedule-skipped' | 'trigger-started' | 'trigger-paused';
+  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring' | 'queue-started' | 'queue-skipped' | 'schedule-started' | 'schedule-queued' | 'schedule-skipped' | 'trigger-started' | 'trigger-paused' | 'pipeline-needs-you';
   sessionId: string;
   title: string;
   body: string;
@@ -85,6 +85,14 @@ export class Attention {
         body: `${counts} · ${this.titles.get(event.sessionId) ?? event.branch}`,
       },
     ];
+  }
+
+  /**
+   * A pipeline's run stopped for you (#179): a step that waits, a verdict to decide, a push to approve. A click opens the
+   * parent: the session the run started from, or the run's own row (`run:<id>`).
+   */
+  onPipelineNeedsYou(needs: PipelineNeedsYou): AttentionEvent[] {
+    return [{ kind: 'pipeline-needs-you', sessionId: needs.parentId, title: 'A pipeline needs you', body: [needs.title, needs.reason].filter(Boolean).join(': ') }];
   }
 
   onPermissionResolved(requestId: string): void {

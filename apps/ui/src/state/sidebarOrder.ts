@@ -1,6 +1,6 @@
 import type { SessionRowData } from './sessionsStore.ts';
 import type { SidebarSort } from '@switchboard/protocol/bridge';
-import { buildSessionList, groupsFor, quickestGroups, rowStatus, type QuickInfo, type RowStatus, type SessionGroup } from './sidebarRows.ts';
+import { buildSessionList, groupsFor, quickestGroups, rowStatus, withOpenChildren, type QuickInfo, type RowStatus, type SessionGroup } from './sidebarRows.ts';
 
 /** A permission or question a session waits on, as far as the rail's tooltip and the needs-you pill care. */
 export interface WaitingRequest {
@@ -13,15 +13,28 @@ export interface WaitingRequest {
 /**
  * The sidebar's sections and their sessions, in the order it lists them: Needs you, Working, Pinned, Today, Yesterday,
  * Earlier (Recent), or Needs review, Read, Still working (Quickest to unblock). Archived sessions are left out. The
- * minimal rail, ⌃⇥ and ⌘P all read this, so the order never differs between them.
+ * minimal rail, ⌃⇥ and ⌘P all read this, so the order never differs between them. A pipeline's sub-sessions are not
+ * rows of their own: they follow their parent while it is open.
  */
 export function sidebarGroups(
   rows: readonly SessionRowData[],
-  options: { now: number; archiveAfterDays: number; search?: string; project?: string | null; sort?: SidebarSort; quick?: ReadonlyMap<string, QuickInfo> },
+  options: {
+    now: number;
+    archiveAfterDays: number;
+    search?: string;
+    project?: string | null;
+    sort?: SidebarSort;
+    quick?: ReadonlyMap<string, QuickInfo>;
+    /** The parents whose sub-sessions are listed after them (a pipeline's steps), as in the open sidebar; `'all'` lists every one. */
+    open?: ReadonlySet<string> | 'all';
+  },
 ): { group: SessionGroup; rows: SessionRowData[] }[] {
   const { active } = buildSessionList(rows, { search: options.search ?? '', project: options.project ?? null, now: options.now, archiveAfterDays: options.archiveAfterDays });
-  return groupsFor(active, options.now, options.sort, options.quick);
+  const open = options.open ?? NO_OPEN;
+  return groupsFor(active, options.now, options.sort, options.quick).map((g) => ({ ...g, rows: withOpenChildren(g.rows, open) }));
 }
+
+const NO_OPEN: ReadonlySet<string> = new Set();
 
 /** The sessions of `sidebarGroups`, one after the other. */
 export const sidebarOrder = (groups: readonly { rows: readonly SessionRowData[] }[]): SessionRowData[] => groups.flatMap((g) => g.rows);

@@ -42,6 +42,11 @@ import { shownMods } from '../mods/modVisibility.ts';
 import { useMods, useSessionMods } from '../../state/modsStore.ts';
 import { ModReplaced } from '../mods/ModReplaced.tsx';
 import { TriggerOriginBar } from '../triggers/TriggerOriginBar.tsx';
+import { PipelineOriginBar } from '../pipelines/PipelineOriginBar.tsx';
+import { PipelineRunPanel } from '../pipelines/PipelineRunPanel.tsx';
+import { mergeRunRows, runsOfParent } from '../../state/pipelines.ts';
+import { useRuns } from '../../state/pipelinesStore.ts';
+import { runRows } from '@switchboard/protocol/client';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
 import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
@@ -374,9 +379,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // A memory Claude saved shows as its own line, also between summarised runs of tool calls.
   useMemoryFoldersSync();
   const memoryFolders = useKnownMemoryFolders();
+  // A pipeline this session started adds a muted row for each step that ended (the app's own notes, never sent to Claude).
+  const pipelineRuns = useRuns();
+  const shownItems = useMemo(
+    () => mergeRunRows(items, runsOfParent(sessionId, pipelineRuns).flatMap(({ run, steps }) => runRows(run, steps))),
+    [items, pipelineRuns, sessionId],
+  );
   const renderItems = useMemo<RenderItem[]>(
-    () => (toolActivity === 'summary' ? groupActivity(items, (item) => item.kind === 'tool' && memoryWriteOf(item.name, item.input, memoryFolders) !== null) : items),
-    [items, toolActivity, memoryFolders],
+    () => (toolActivity === 'summary' ? groupActivity(shownItems, (item) => item.kind === 'tool' && memoryWriteOf(item.name, item.input, memoryFolders) !== null) : shownItems),
+    [shownItems, toolActivity, memoryFolders],
   );
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   /** The first answer after your first message: Auto's line goes above it (-1 before Claude answers). */
@@ -1476,6 +1487,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         )}
       </header>
       <TriggerOriginBar sessionId={sessionId} />
+      <PipelineOriginBar sessionId={sessionId} />
+      <PipelineRunPanel parentId={sessionId} />
 
       {/* In a narrow pop-out a panel on the right fills the view (the rule in styles.css), as an expanded Changes does. */}
       <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>

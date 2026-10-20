@@ -30,6 +30,7 @@ const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = {
   'schedule-skipped': 'error',
   'trigger-started': 'finished',
   'trigger-paused': 'error',
+  'pipeline-needs-you': 'needsYou',
 };
 
 /** Each kind of event has its own moment, and so its own sound. */

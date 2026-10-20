@@ -57,6 +57,12 @@ describe('sounds for events that arrive together', () => {
     expect(KINDS.map(soundEventOf)).toEqual(['needsYou', 'finished', 'error', 'actionEnded', 'finished', 'error', 'actionEnded']);
   });
 
+  it('gives a pipeline that needs you the sound of needing you', () => {
+    expect(soundEventOf('pipeline-needs-you')).toBe('needsYou');
+    expect(alertFor('pipeline-needs-you', false, prefs({ enabled: true })).notify).toBe(true);
+    expect(alertFor('pipeline-needs-you', true, prefs({ enabled: true }))).toEqual({ notify: false, sound: null });
+  });
+
   it('plays one: needing you, then an error, a finished turn, an action', () => {
     expect(louder(null, null)).toBeNull();
     expect(louder(null, 'finished')).toBe('finished');

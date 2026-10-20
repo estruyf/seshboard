@@ -3952,6 +3952,16 @@
       "page": "projects/triggers"
     },
     {
+      "id": "palette:pipeline-run",
+      "name": "Run pipeline… (pick one, then the task; in a session the session is the parent)",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:pipelines",
+      "name": "Pipelines: pick one… (Run…, Duplicate, Delete)",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "palette:triggers-here",
       "name": "Triggers in <current project>",
       "page": "projects/triggers"

@@ -1,3 +1,6 @@
+import { usePipelineRows } from '../../state/usePipelineRows.ts';
+import { scopeLabel } from '../../state/pipelines.ts';
+import { deletePipeline, duplicatePipeline, openRunPipeline, usePipelineList } from '../../state/pipelinesStore.ts';
 import { FolderDown, GitBranchPlus, PencilLine, Search, SquarePen } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN } from '@switchboard/protocol/bridge';
@@ -27,7 +30,7 @@ import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { openRow, useRemoteRows } from '../../state/useRemoteRows.ts';
-import { GROUP_LABEL, inScope } from '../../state/sidebarRows.ts';
+import { GROUP_LABEL, inScope, withOpenChildren } from '../../state/sidebarRows.ts';
 import { toast } from '../../state/toastStore.ts';
 import { rememberLimit } from '../focus/focusLimit.ts';
 import { activityByProject, latestBranches, orderProjects, tileStatus } from '../newSession/projectTiles.ts';
@@ -38,7 +41,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
-import { arrangeCommands, hintOf, recentCommands, rememberCommand, visibleCommands, type CommandSection, type PaletteCommand } from './commands.ts';
+import { arrangeCommands, hintOf, pipelineRoot, recentCommands, rememberCommand, visibleCommands, type CommandSection, type PaletteCommand } from './commands.ts';
 import { gotoWithDrafts, matchProjects, matchSessions } from './gotoItems.ts';
 import { openDraft, useUnsent, type UnsentEntry } from '../drafts/useUnsent.ts';
 import { createPaletteApi } from './paletteApi.ts';
@@ -107,6 +110,9 @@ const PICK_PLACEHOLDER: Record<PickList, string> = {
   'schedule-action': 'What to do with it',
   triggers: 'Pick a trigger',
   'trigger-action': 'What to do with it',
+  'pipelines-run': 'Pick a pipeline to run',
+  pipelines: 'Pick a pipeline',
+  'pipeline-action': 'What to do with it',
 };
 /** What a command that asks for more shows next, on its row while it's highlighted. */
 const NEXT_HINT: Record<PaletteStep['kind'], string> = { projects: 'picks a project next', prompt: 'write the prompt next', pick: 'pick one next', clone: 'paste the URL next' };
@@ -174,6 +180,9 @@ export function CommandPalette() {
   // One-time schedules that have run aren't offered: only Upcoming's History shows them.
   const schedules = useMemo(() => listedSchedules(allSchedules, Date.now()), [allSchedules]);
   const triggers = useTriggers((s) => s.triggers);
+  // The pipelines of the project on screen, read when a pipelines step shows.
+  const pipelineStep = step?.kind === 'pick' && (step.list === 'pipelines-run' || step.list === 'pipelines' || step.list === 'pipeline-action');
+  const pipelineList = usePipelineList(pipelineRoot(ctx), pipelineStep);
   // The current project's memories, read when the Share memory step shows.
   const memoryRoot = step?.kind === 'pick' && step.list === 'memory' ? (ctx.currentProject?.root ?? null) : null;
   const { list: memoryList } = useMemoryList(memoryRoot);
@@ -184,7 +193,10 @@ export function CommandPalette() {
   const remoteRows = useRemoteRows();
   const remoteNames = useMemo(() => new Map(remoteRows.flatMap((row) => (row.remote ? [[row.projectRoot, `${row.remote.projectName} · ${row.remote.computerName}`] as const] : []))), [remoteRows]);
   const nameOf = (root: string) => remoteNames.get(root) ?? projects.get(root)?.name ?? basename(root);
-  const localRows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const scopedRows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  // Pipelines: a run started from New session is a row too, and ⌘P finds a run's steps whether or not the sidebar lists them.
+  const withRuns = usePipelineRows(scopedRows);
+  const localRows = useMemo(() => withOpenChildren(withRuns, 'all'), [withRuns]);
   const sessionRows = useMemo(() => [...localRows, ...remoteRows], [localRows, remoteRows]);
   const activity = useMemo(() => activityByProject(localRows), [localRows]);
   const branches = useMemo(() => latestBranches(sessions.values()), [sessions]);
@@ -283,7 +295,7 @@ export function CommandPalette() {
       return rows.length ? [{ id: list, label: PICK_PLACEHOLDER[list].replace(/^Pick (a |an )?/, ''), rows }] : [];
     }
     // The pick lists and project rows read these; the functions above are only called from here.
-  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers]);
+  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers, pipelineList]);
 
   /** The choices of a pick step, the current one marked. */
   function pickOptions(list: PickList): Option[] {
@@ -345,6 +357,18 @@ export function CommandPalette() {
           detail: [nameOf(trigger.projectRoot), pausedLine(trigger) ?? checkedLine(trigger.lastCheckedAt, Date.now())].filter(Boolean).join(' · '),
           dot: trigger.paused ? 'bg-caution' : undefined,
         }));
+      case 'pipelines-run':
+      case 'pipelines':
+        return (pipelineList?.pipelines ?? []).map((p, i) => ({ value: String(i), title: p.name, detail: [scopeLabel(p.scope), p.steps.map((s) => s.name).join(' → ')].join(' · ') }));
+      case 'pipeline-action': {
+        const target = pipelineList?.pipelines.find((p) => `${p.scope.kind}:${p.id}` === (step?.kind === 'pick' ? step.target : undefined));
+        if (!target) return [];
+        return [
+          { value: 'run', title: 'Run…', detail: 'Asks for the task' },
+          { value: 'duplicate', title: 'Duplicate', detail: target.scope.kind === 'builtin' ? 'A copy you can change, in All projects' : 'A copy next to it' },
+          ...(target.scope.kind === 'builtin' ? [] : [{ value: 'delete', title: 'Delete', detail: 'Shows Undo' }]),
+        ];
+      }
       case 'trigger-action': {
         const trigger = triggers.find((t) => t.id === (step?.kind === 'pick' ? step.target : undefined));
         if (!trigger) return [];
@@ -396,6 +420,11 @@ export function CommandPalette() {
       if (trigger) setState((s) => pushStep(s, { kind: 'pick', list: 'trigger-action', chip: trigger.name, target: trigger.id }));
       return;
     }
+    if (list === 'pipelines') {
+      const chosen = pipelineList?.pipelines[Number(value)];
+      if (chosen) setState((s) => pushStep(s, { kind: 'pick', list: 'pipeline-action', chip: chosen.name, target: `${chosen.scope.kind}:${chosen.id}` }));
+      return;
+    }
     // The palette has closed by then, so a failure is said in a toast.
     const run = (what: string, call: () => Promise<unknown>) => void call().catch((e: Error) => toast(`Couldn't ${what}: ${e.message}`));
     close();
@@ -440,6 +469,16 @@ export function CommandPalette() {
         else if (value === 'edit') openTriggerEditor({ root: trigger.projectRoot, trigger });
         else if (value === 'pause' || value === 'resume') run(value === 'pause' ? 'pause it' : 'resume it', () => setTriggerPaused(trigger, value === 'pause'));
         else if (value === 'delete') run('delete it', () => deleteTrigger(trigger));
+        return;
+      }
+      case 'pipelines-run':
+      case 'pipeline-action': {
+        const chosen = list === 'pipelines-run' ? pipelineList?.pipelines[Number(value)] : pipelineList?.pipelines.find((p) => `${p.scope.kind}:${p.id}` === (step?.kind === 'pick' ? step.target : undefined));
+        const root = pipelineRoot(ctx);
+        if (!chosen || !root) return;
+        if (list === 'pipelines-run' || value === 'run') openRunPipeline({ root, cwd: ctx.session?.cwd ?? root, parentSessionId: ctx.session?.id ?? null, task: ctx.session?.title ?? '', pipeline: chosen });
+        else if (value === 'duplicate') void duplicatePipeline(chosen);
+        else if (value === 'delete') void deletePipeline(chosen);
         return;
       }
       case 'prompt': {

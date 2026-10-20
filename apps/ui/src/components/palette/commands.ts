@@ -102,6 +102,7 @@ import {
   Users,
   Volume2,
   VolumeX,
+  Workflow,
   Wrench,
   X,
   Zap,
@@ -337,6 +338,9 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: Lucid
 
 /** The project New session from an issue or pull request works on: New session's folder there, else the one on screen. */
 const githubProject = (ctx: PaletteContext): string | null => (ctx.connected ? (ctx.newSession?.root ?? ctx.currentProject?.root ?? null) : null);
+
+/** The project a pipeline runs in: the open session's, else the one on screen. */
+export const pipelineRoot = (ctx: PaletteContext): string | null => ctx.session?.projectRoot ?? ctx.currentProject?.root ?? null;
 
 /** Every command that doesn't depend on the project's actions. */
 export const COMMANDS: PaletteCommand[] = [
@@ -667,6 +671,25 @@ export const COMMANDS: PaletteCommand[] = [
     hint: (ctx) => String(ctx.triggers),
     when: (ctx) => ctx.triggers > 0 && ctx.connected,
     next: () => ({ kind: 'pick', list: 'triggers', chip: 'Triggers' }),
+  },
+  {
+    id: 'pipeline-run',
+    title: 'Run pipeline…',
+    group: 'general',
+    icon: Workflow,
+    keywords: 'pipeline plan execute validate push steps workflow chain sub-sessions',
+    // In a session, that session becomes the parent of the run; elsewhere the run gets a row of its own.
+    when: (ctx) => ctx.connected && pipelineRoot(ctx) !== null,
+    next: () => ({ kind: 'pick', list: 'pipelines-run', chip: 'Run pipeline' }),
+  },
+  {
+    id: 'pipelines',
+    title: 'Pipelines: pick one…',
+    group: 'general',
+    icon: Workflow,
+    keywords: 'pipeline run duplicate copy delete built-in plan execute validate steps',
+    when: (ctx) => ctx.connected,
+    next: () => ({ kind: 'pick', list: 'pipelines', chip: 'Pipelines' }),
   },
   {
     id: 'schedules',

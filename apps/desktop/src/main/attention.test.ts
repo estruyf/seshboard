@@ -133,4 +133,13 @@ describe('Attention', () => {
     expect(a.onTerminals([term(1)])).toEqual([{ kind: 'action-done', sessionId: 's1', title: 'Publish failed (exit 1)', body: 'app' }]);
     expect(a.onTerminals([term(1)])).toEqual([]);
   });
+
+  it('tells you a pipeline run stopped for you, and opens its parent', () => {
+    const a = new Attention();
+    expect(a.onPipelineNeedsYou({ runId: 'r1', parentId: 's1', title: 'Add dark mode', step: 'Validate', reason: 'Validate needs a decision' })).toEqual([
+      { kind: 'pipeline-needs-you', sessionId: 's1', title: 'A pipeline needs you', body: 'Add dark mode: Validate needs a decision' },
+    ]);
+    // A run started from New session has a row of its own.
+    expect(a.onPipelineNeedsYou({ runId: 'r2', parentId: 'run:r2', title: '', step: 'Push', reason: 'Ready to push' })[0]).toMatchObject({ sessionId: 'run:r2', body: 'Ready to push' });
+  });
 });

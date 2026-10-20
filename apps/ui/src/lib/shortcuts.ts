@@ -479,7 +479,7 @@ export const SHORTCUTS = [
     keys: ["arrowleft", "arrowright"],
     action: "Close or open a section",
     section: "sessions",
-    context: "On a section header in the sidebar",
+    context: "On a section header, or a session with pipeline steps, in the sidebar",
     where: "sidebar",
   },
   {

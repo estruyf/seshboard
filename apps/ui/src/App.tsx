@@ -37,7 +37,10 @@ import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useSchedulesSync } from './state/schedulesStore.ts';
 import { useTriggersSync } from './state/triggersStore.ts';
+import { usePipelinesSync } from './state/pipelinesStore.ts';
+import { usePipelineTreeSync } from './state/pipelineTreeStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
+import { RunPipelineHost } from './components/pipelines/RunPipelineDialog.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
@@ -67,6 +70,7 @@ import { useComputersSync } from './state/useComputersSync.ts';
 import { useRemoteSync } from './state/useRemoteSync.ts';
 import { RemoteView } from './components/computers/RemoteView.tsx';
 import { localSessionId } from './state/remoteSelection.ts';
+import { runIdOfRow } from '@switchboard/protocol/client';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { runMainRequest } from './state/mainRequests.ts';
 import { usePopoutsSync } from './state/usePopoutsSync.ts';
@@ -177,7 +181,8 @@ function useWindowFocus() {
   const view = useSessions((s) => s.view);
   const selectedId = useSessions((s) => s.selectedId);
   useEffect(() => {
-    window.switchboard?.reportFocus(view === 'session' ? localSessionId(selectedId) : null);
+    // A run row (`run:<id>`) is reported too, so its notification doesn't interrupt while you look at it.
+    window.switchboard?.reportFocus(view === 'session' ? (localSessionId(selectedId) ?? (selectedId !== null && runIdOfRow(selectedId) !== null ? selectedId : null)) : null);
   }, [view, selectedId]);
   useEffect(() => window.switchboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
   // A pop-out has no Settings, Usage, project pages or New session: they open here, with the window in front.
@@ -215,6 +220,8 @@ export function App() {
   useLaterSync();
   useSchedulesSync();
   useTriggersSync();
+  usePipelinesSync();
+  usePipelineTreeSync();
   useCatchUpSync();
   useUpNextSync();
   useModsSync();
@@ -279,6 +286,7 @@ export function App() {
       <SelectionMenu />
       <PaletteDialogs />
       <TriggerEditorHost />
+      <RunPipelineHost />
       <AddContextDialogHost />
       <UnsentList />
       <ArchiveDraftDialog />

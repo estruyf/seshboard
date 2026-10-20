@@ -156,6 +156,24 @@ describe('when(): always', () => {
     expect(list.next!(withTriggers)).toEqual({ kind: 'pick', list: 'triggers', chip: 'Triggers' });
   });
 
+  it('runs a pipeline in the project of the open session or the page on screen, and lists them anywhere', () => {
+    const onSession = inSession({ projectRoot: '/work/app' });
+    const run = visibleCommands(onSession).find((c) => c.id === 'pipeline-run')!;
+    expect(titleOf(run, onSession)).toBe('Run pipeline…');
+    expect(run.next!(onSession)).toEqual({ kind: 'pick', list: 'pipelines-run', chip: 'Run pipeline' });
+    expect(ids(context({ currentProject: { root: '/work/app', name: 'app' } }))).toContain('pipeline-run');
+    // Nothing says which project, so there is no pipeline to run yet; offline, none.
+    expect(ids(context())).not.toContain('pipeline-run');
+    expect(ids(inSession({ projectRoot: '/work/app' }, { connected: false }))).not.toContain('pipeline-run');
+    const pick = visibleCommands(context()).find((c) => c.id === 'pipelines')!;
+    expect(titleOf(pick, context())).toBe('Pipelines: pick one…');
+    expect(pick.next!(context())).toEqual({ kind: 'pick', list: 'pipelines', chip: 'Pipelines' });
+    expect(ids(context({ connected: false }))).not.toContain('pipelines');
+    // The dialog that starts a run is mounted in every window, so a pop-out keeps both.
+    expect(popoutClass('pipeline-run')).toBe('here');
+    expect(popoutClass('pipelines')).toBe('here');
+  });
+
   it('asks a quick question in the scratch folder, once the engine has said where it is', () => {
     const ctx = context();
     const ask = visibleCommands(ctx).find((c) => c.id === 'quick-question')!;

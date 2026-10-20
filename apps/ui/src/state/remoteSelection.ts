@@ -4,6 +4,8 @@
  * a local one (the panes, the hosts, the engine's session requests). Pure, so it can be tested.
  */
 
+import { runIdOfRow } from '@switchboard/protocol/client';
+
 /** A session on another computer. */
 export interface RemoteRef {
   computerId: string;
@@ -24,9 +26,9 @@ export const isRemoteRowId = (id: string): boolean => id.startsWith(PREFIX);
 
 /**
  * A pane's session as code for this computer's sessions takes it (the engine, the hosts, the terminal): its id, or null
- * for a session on another computer, which can be in a pane too.
+ * for a session on another computer, or a pipeline run's row (`run:<id>`), which can be in a pane too.
  */
-export const localSessionId = (id: string | null): string | null => (id !== null && !isRemoteRowId(id) ? id : null);
+export const localSessionId = (id: string | null): string | null => (id !== null && !isRemoteRowId(id) && runIdOfRow(id) === null ? id : null);
 
 /** The computer and session a remote row's key stands for; null for a local id or a key that isn't one. */
 export function parseRemoteRowId(id: string): RemoteRef | null {

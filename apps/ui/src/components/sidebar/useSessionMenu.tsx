@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { popOut } from '../../state/popoutsStore.ts';
+import { stopRun } from '../../state/pipelinesStore.ts';
 import { useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { archivesOnMiddleClick, isActive } from '../../state/sidebarRows.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
@@ -95,6 +96,19 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
       const computer = { id: computerId, name: computerName, state: offline ? ('offline' as const) : ('connected' as const) };
       const session = { id: sessionId, title: data.title, pinned: data.pinned, projectId, projectName };
       setMenu({ ...at, label: `Session “${data.title}” on ${computerName}`, entries: remoteSessionEntries(client, computer, session, { open: true }) });
+      return;
+    }
+    // A run started from New session: it has no session to rename, pin or delete; it can open beside and stop.
+    if (data.run) {
+      const open = data.pipeline && data.pipeline.state !== 'done' && data.pipeline.state !== 'stopped';
+      setMenu({
+        ...at,
+        label: `Pipeline run “${data.title}”`,
+        entries: [
+          { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
+          ...(open ? ['separator' as const, { label: 'Stop the run', danger: true, onSelect: () => void stopRun(data.run!.runId), data: { 'data-stop-run': true } }] : []),
+        ],
+      });
       return;
     }
     const archivedNow = !isActive(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays);

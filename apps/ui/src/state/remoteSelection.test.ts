@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRemoteRowId, parseRemoteRowId, remoteRowId, sameRemote, selectionOf } from './remoteSelection.ts';
+import { isRemoteRowId, localSessionId, parseRemoteRowId, remoteRowId, sameRemote, selectionOf } from './remoteSelection.ts';
 
 describe('the selection', () => {
   it('keeps a remote session as its computer and id', () => {
@@ -21,6 +21,14 @@ describe('the selection', () => {
     expect(parseRemoteRowId('remote:only')).toBeNull();
     expect(parseRemoteRowId('remote::s')).toBeNull();
     expect(parseRemoteRowId('remote:c:')).toBeNull();
+  });
+
+  it('hands the engine only real local sessions: not another computer’s, and not a pipeline run’s row', () => {
+    const local = '6c1d7f0e-2b9a-4f3e-9d61-0a2b3c4d5e6f';
+    expect(localSessionId(local)).toBe(local);
+    expect(localSessionId(remoteRowId({ computerId: 'c', sessionId: 's' }))).toBeNull();
+    expect(localSessionId('run:r1')).toBeNull();
+    expect(localSessionId(null)).toBeNull();
   });
 
   it('compares remote sessions by computer and id', () => {

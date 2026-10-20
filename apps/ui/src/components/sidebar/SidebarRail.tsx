@@ -13,6 +13,8 @@ import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
+import { usePipelineRows } from '../../state/usePipelineRows.ts';
+import { usePipelineTree } from '../../state/pipelineTreeStore.ts';
 import { sidebarGroups, statusLine, waitingDetail, type WaitingRequest } from '../../state/sidebarOrder.ts';
 import { GROUP_LABEL, inScope, rowStatus, type RowStatus, type SessionGroup } from '../../state/sidebarRows.ts';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
@@ -255,12 +257,14 @@ export function SidebarRail() {
   // Other computers' sessions too, in the same groups, with the Computers filter applied: the same list as the open sidebar.
   const remoteRows = useRemoteRows();
   const hidden = useComputers((s) => s.hidden);
-  const listed = useMemo(() => filterBySource([...all, ...remoteRows], hidden), [all, remoteRows, hidden]);
+  const nested = usePipelineRows(all);
+  const treeOpen = usePipelineTree((s) => s.open);
+  const listed = useMemo(() => filterBySource([...nested, ...remoteRows], hidden), [nested, remoteRows, hidden]);
   const shownId = useShownRowId();
   const sort = usePreferences((s) => s.prefs.sidebarSort);
   const catchUps = useCatchUp((s) => s.cards);
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
-  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick }), [listed, now, archiveAfterDays, sort, quick]);
+  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, open: treeOpen }), [listed, now, archiveAfterDays, sort, quick, treeOpen]);
   const sectionsOpen = useSidebarSections((s) => s.open);
   const items = useMemo<RailItem[]>(() => {
     // Blocks in the open sidebar's order, a thin line between them.

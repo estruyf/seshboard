@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, ArchiveRestore, Check, ChevronRight, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { CatchUp } from '@switchboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -23,6 +23,8 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
+import { usePipelineRows } from '../../state/usePipelineRows.ts';
+import { usePipelineTree } from '../../state/pipelineTreeStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useLimits } from '../../state/limitsStore.ts';
 import { rowLimitLabel, stoppedBy } from '../../lib/usageLimit.ts';
@@ -245,6 +247,8 @@ export const SessionRow = memo(function SessionRow({
   draft,
   review = null,
   outside = false,
+  treeOpen = null,
+  onToggleTree,
   onClick,
   onTogglePick,
   onMenu,
@@ -271,6 +275,9 @@ export const SessionRow = memo(function SessionRow({
   review?: number | null;
   /** Its last turn changed files outside the plan (or what you asked for). */
   outside?: boolean;
+  /** A parent with steps: whether they are listed under it. Null for a row without any. */
+  treeOpen?: boolean | null;
+  onToggleTree?(id: string): void;
   onClick(event: MouseEvent, data: SessionRowData): void;
   onTogglePick(id: string): void;
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
@@ -284,6 +291,11 @@ export const SessionRow = memo(function SessionRow({
   // With a project filter on, every row is in that project: the name would only repeat.
   const filtered = useProjects((s) => s.filter !== null);
   const status = rowStatus(data);
+  // A pipeline's parent says how far its run is and why it waits, instead of what the session itself asks.
+  const pipeline = data.pipeline ?? null;
+  const ownWaiting = data.live?.status === 'needs-you';
+  if (pipeline && !ownWaiting) waitingFor = null;
+  const hasSteps = treeOpen !== null;
   /** A schedule started it (#173): the repeat icon before its second line. */
   const scheduled = useSchedules((s) => !remote && s.bySession.has(data.id));
   /** A trigger started it (#180): the bolt, in the trigger colour, before its status. */
@@ -354,7 +366,7 @@ export const SessionRow = memo(function SessionRow({
     'data-archived': archived || undefined,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, pipeline?.progress ? `pipeline: ${pipeline.progress}` : null, data.step ? `step ${data.step.number} of ${data.step.total}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -377,6 +389,10 @@ export const SessionRow = memo(function SessionRow({
       }
     },
     'data-row-limit': limitText !== null || undefined,
+    'data-pipeline-parent': hasSteps || pipeline !== null ? (data.run?.runId ?? pipeline?.runId ?? true) : undefined,
+    'data-pipeline-child': data.depth ? (data.step?.runId ?? true) : undefined,
+    'data-run-row': data.run?.runId,
+    'aria-expanded': hasSteps ? treeOpen : undefined,
     'data-remote-row': remote ? remote.computerId : undefined,
     'data-remote-offline': remote?.offline || undefined,
     'data-tooltip': [
@@ -405,9 +421,37 @@ export const SessionRow = memo(function SessionRow({
         ? 'bg-border/45 ring-1 ring-inset ring-border'
         : 'hover:bg-border/45';
 
+  // A parent's chevron sits beside its row, not in it (a button cannot hold a button); a sub-session is indented.
+  const nest = (row: ReactNode) =>
+    !hasSteps && !data.depth ? (
+      row
+    ) : (
+      <div className={`relative ${data.depth ? 'pl-5' : ''}`}>
+        {row}
+        {hasSteps && (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={treeOpen ? `Hide the steps of ${data.title}` : `Show the steps of ${data.title}`}
+            aria-expanded={treeOpen}
+            data-tooltip={treeOpen ? 'Hide steps' : 'Show steps'}
+            data-pipeline-toggle={treeOpen ? 'open' : 'closed'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleTree?.(data.id);
+            }}
+            className={`absolute top-1/2 left-0.5 flex h-5 w-4 -translate-y-1/2 items-center justify-center rounded text-faint hover:bg-border/50 hover:text-muted`}
+          >
+            <ChevronRight size={12} className={`transition-transform ${treeOpen ? 'rotate-90' : ''}`} aria-hidden />
+          </button>
+        )}
+      </div>
+    );
+  const lead = hasSteps ? 'pl-5' : style === 'compact' ? 'pl-2.5' : 'pl-3';
+
   if (style === 'compact') {
-    return (
-      <button {...common} className={`relative flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-meta ${surface} ${dim}`}>
+    return nest(
+      <button {...common} className={`relative flex h-8 w-full items-center gap-2 rounded-md pr-2.5 ${lead} text-left text-meta ${surface} ${dim}`}>
         {rail}
         {icon(16)}
         <span className={`min-w-0 flex-1 truncate text-body ${titleTone}`}>{data.title}</span>
@@ -417,13 +461,15 @@ export const SessionRow = memo(function SessionRow({
         {warning}
         {remote && <ComputerChip name={remote.computerName} offline={remote.offline} />}
         {status ? <StatusIcon status={status} /> : age}
-      </button>
+      </button>,
     );
   }
 
   // Two lines: the title with its age, then what it waits for (needs you) or where it runs. A session a schedule
   // started has the repeat icon first.
-  const place = [branch, filtered ? null : projectName].filter(Boolean);
+  const place = data.step
+    ? [`Step ${data.step.number} of ${data.step.total}`, branch]
+    : [branch, filtered ? null : projectName].filter(Boolean);
   const lines = (
     <span className="grid min-w-0 flex-1 gap-px">
       <span className="flex min-w-0 items-center gap-2">
@@ -440,7 +486,13 @@ export const SessionRow = memo(function SessionRow({
       <span className="flex h-4 min-w-0 items-center gap-1.5 text-meta text-faint">
         {triggered !== null && <Zap size={11} className="shrink-0 text-trigger" aria-label={`Started by ${triggered || 'a trigger'}`} role="img" data-row-triggered />}
         {scheduled && <Repeat size={11} className="shrink-0" aria-label="From a schedule" role="img" data-row-scheduled />}
-        {reviewText ? (
+        {pipeline && pipeline.progress && !ownWaiting ? (
+          // The run's progress ("Validate · 3 of 4"), then why it waits when it does.
+          <span className="min-w-0 flex-1 truncate" data-row-pipeline={pipeline.runId || true}>
+            <span className={pipeline.state === 'needs-you' ? 'font-medium text-warn' : pipeline.state === 'running' ? 'text-accent-ink' : ''}>{pipeline.progress}</span>
+            {pipeline.wait && <span className={pipeline.state === 'needs-you' ? 'text-warn' : ''}>{` · ${pipeline.wait}`}</span>}
+          </span>
+        ) : reviewText ? (
           <span className="min-w-0 flex-1 truncate" data-row-review={review}>
             {!filtered && `${projectName} · `}
             <span className={status === 'needs-you' ? 'font-medium text-warn' : ''}>{reviewText}</span>
@@ -472,16 +524,16 @@ export const SessionRow = memo(function SessionRow({
     </span>
   );
 
-  return (
+  return nest(
     <button
       {...common}
-      className={`relative flex w-full items-center gap-2.5 rounded-lg pr-2.5 pl-3 text-left ${style === 'large' ? 'h-12' : 'h-11'} ${surface} ${dim}`}
+      className={`relative flex w-full items-center gap-2.5 rounded-lg pr-2.5 ${lead} text-left ${style === 'large' ? 'h-12' : 'h-11'} ${surface} ${dim}`}
     >
       {rail}
       {/* The project's icon tells rows from different projects apart inside a status group. */}
       {icon(style === 'large' ? 24 : 18)}
       {lines}
-    </button>
+    </button>,
   );
 });
 
@@ -552,7 +604,10 @@ export function Sidebar() {
   // Other computers' sessions sit in the same groups; the Computers filter can leave out any computer, this one too.
   const remoteRows = useRemoteRows();
   const hidden = useComputers((s) => s.hidden);
-  const merged = useMemo(() => filterBySource([...all, ...remoteRows], hidden), [all, remoteRows, hidden]);
+  // Pipelines: sub-sessions nest under their parent, and a run started from New session is a row of its own.
+  const nested = usePipelineRows(all);
+  const treeOpen = usePipelineTree((s) => s.open);
+  const merged = useMemo(() => filterBySource([...nested, ...remoteRows], hidden), [nested, remoteRows, hidden]);
   const { active, archived } = useMemo(() => buildSessionList(merged, { search, project: projectFilter, now, archiveAfterDays }), [merged, search, projectFilter, now, archiveAfterDays]);
   const counts = useMemo(() => {
     const map = new Map<string, { total: number; active: number }>();
@@ -593,9 +648,10 @@ export function Sidebar() {
   const shownId = useShownRowId();
   const listSelected = shownId;
   const rows = useMemo(
-    () => buildListRows(active, archived, { now, archivedOpen: archivedAt === 'list', queue: { entries: queueEntries, ready: queueReady }, closed, selectedId: listSelected, sort, quick }),
-    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick],
+    () => buildListRows(active, archived, { now, archivedOpen: archivedAt === 'list', queue: { entries: queueEntries, ready: queueReady }, closed, selectedId: listSelected, sort, quick, open: treeOpen }),
+    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, treeOpen],
   );
+  const toggleTree = useCallback((id: string) => usePipelineTree.getState().toggle(id), []);
   const queueMenus = useQueueMenu(queue.rows);
   const drag = useQueueDrag();
   /** A header's chevron or label: that section, or (⌥-click) every section. */
@@ -807,6 +863,13 @@ export function Sidebar() {
     if (target.closest('[data-archived-header]') && matches(event.nativeEvent, 'sidebar.section-toggle')) {
       event.preventDefault();
       if ((event.key === 'ArrowRight') !== archivedOpen) toggleArchivedSection();
+      return;
+    }
+    // ← → on a session with steps hides and shows them.
+    const parentRow = target.closest<HTMLElement>('[data-session-id][aria-expanded]');
+    if (parentRow && matches(event.nativeEvent, 'sidebar.section-toggle') && parentRow.dataset.sessionId) {
+      event.preventDefault();
+      usePipelineTree.getState().setOpen(parentRow.dataset.sessionId, event.key === 'ArrowRight');
       return;
     }
     const header = target.closest<HTMLElement>('[data-section-toggle]');
@@ -1097,6 +1160,8 @@ export function Sidebar() {
                       draft={draftPreviews.get(row.data.id) ?? null}
                       review={reviewOf(catchUps.get(row.data.id))}
                       outside={(catchUps.get(row.data.id)?.signals.outOfScope.length ?? 0) > 0}
+                      treeOpen={row.data.children?.length ? treeOpen.has(row.data.id) : null}
+                      onToggleTree={toggleTree}
                       onClick={rowClick}
                       onTogglePick={togglePicked}
                       onMenu={sessionMenu}

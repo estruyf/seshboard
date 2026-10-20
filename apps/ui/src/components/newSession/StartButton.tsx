@@ -1,4 +1,4 @@
-import { ListEnd, Repeat, Zap } from 'lucide-react';
+import { ListEnd, Repeat, Workflow, Zap } from 'lucide-react';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import type { MenuEntry } from '../Menu.tsx';
 import { SplitButton } from '../ui/SplitButton.tsx';
@@ -12,6 +12,8 @@ const ITEM_DATA: Record<StartAction, DataHooks> = {
   schedule: { 'data-schedule-add': true },
   trigger: { 'data-trigger-add': true },
   'start-worktree': { 'data-start-worktree': true },
+  pipeline: { 'data-pipeline-add': true },
+  'pipeline-off': { 'data-pipeline-off': true },
 };
 
 /**
@@ -22,7 +24,7 @@ const ITEM_DATA: Record<StartAction, DataHooks> = {
 export function StartButton({ state, onAction, data, itemData }: { state: StartButtonState; onAction(action: StartAction): void; data?: DataHooks; itemData?: Partial<Record<StartAction, DataHooks>> }) {
   const entries: MenuEntry[] = state.items.map((item) => ({
     label: item.label,
-    icon: item.action === 'queue' ? <ListEnd size={14} /> : item.action === 'schedule' ? <Repeat size={14} /> : item.action === 'trigger' ? <Zap size={14} /> : undefined,
+    icon: item.action === 'queue' ? <ListEnd size={14} /> : item.action === 'schedule' ? <Repeat size={14} /> : item.action === 'trigger' ? <Zap size={14} /> : item.action === 'pipeline' ? <Workflow size={14} /> : undefined,
     hint: item.shortcut ? formatKeys(keysFor(item.shortcut)) : undefined,
     disabled: item.disabled,
     onSelect: () => onAction(item.action),
@@ -34,7 +36,7 @@ export function StartButton({ state, onAction, data, itemData }: { state: StartB
     <SplitButton
       onClick={() => onAction(state.main)}
       shortcut={state.sending ? undefined : (state.shortcut ?? undefined)}
-      icon={state.main === 'queue' ? <ListEnd size={14} aria-hidden /> : state.main === 'schedule' ? <Repeat size={14} aria-hidden /> : undefined}
+      icon={state.main === 'queue' ? <ListEnd size={14} aria-hidden /> : state.main === 'schedule' ? <Repeat size={14} aria-hidden /> : state.main === 'pipeline' ? <Workflow size={14} aria-hidden /> : undefined}
       disabled={state.disabled}
       reason={state.reason}
       entries={entries}
