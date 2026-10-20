@@ -6,6 +6,8 @@ import {
   DEFAULT_PREFERENCES,
   Schedule,
   Trigger,
+  Pipeline,
+  isBuiltInPipeline,
   BUILTIN_PROFILE_ID,
   ExportedProfile,
   ExportedProject,
@@ -36,6 +38,7 @@ import { parseThemeFile } from '@switchboard/protocol/theme';
 import type { ActionStore } from '../actions/actionStore.ts';
 import type { ScheduleStore } from '../schedules/scheduleStore.ts';
 import type { TriggerStore } from '../triggers/triggerStore.ts';
+import type { PipelineStore } from '../pipelines/pipelineStore.ts';
 import type { AppStateStore, JsonValue } from '../db/appState.ts';
 import { readProfileDefaults, type ProfileStore } from '../profiles/profileStore.ts';
 import { parseDefaults, type ProjectRegistry, type StoredIcon } from '../projects/projectRegistry.ts';
@@ -112,6 +115,8 @@ export interface SettingsStores {
   schedules?: ScheduleStore;
   /** Event triggers; a file's triggers are skipped without it. */
   triggers?: TriggerStore;
+  /** Your pipelines; a file's pipelines are skipped without it. */
+  pipelines?: PipelineStore;
 }
 
 export interface ExportOptions {
@@ -221,6 +226,10 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
   if (want.has('triggers') && stores.triggers) {
     // What its checks found stays here: it points at issues and sessions on this computer.
     file.triggers = stores.triggers.list().map(exportedTrigger);
+  }
+  if (want.has('pipelines') && stores.pipelines) {
+    // Built-ins come with every Switchboard, and runs point at sessions on this computer: neither goes in the file.
+    file.pipelines = stores.pipelines.own();
   }
   if (want.has('choices')) {
     const choices: Record<string, JsonValue> = {};
@@ -655,6 +664,47 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
         if (seen.has(id)) continue;
         note('schedules', schedule.name, 'remove');
         writes.push(() => scheduleStore.remove(id));
+      }
+    }
+  }
+
+  // --- Pipelines ----------------------------------------------------------------------------
+  // By id, like schedules. A pipeline for a project that isn't on this computer is skipped.
+  if (has('pipelines') && stores.pipelines) {
+    const pipelineStore = stores.pipelines;
+    const current = new Map(pipelineStore.own().map((p) => [p.id, p]));
+    const seen = new Set<string>();
+    for (const [index, raw] of file.pipelines!.entries()) {
+      const scope = (raw as { scope?: { kind?: unknown; root?: unknown } } | null)?.scope;
+      const from = scope?.kind === 'project' && typeof scope.root === 'string' ? scope.root : null;
+      const root = from === null ? null : locate(from);
+      const at = Date.now();
+      const parsed = Pipeline.safeParse({ createdAt: at, updatedAt: at, ...(raw as object), ...(from !== null ? { scope: { kind: 'project', root: root ?? from } } : {}), builtIn: false });
+      const name = (raw as { name?: unknown })?.name;
+      const label = parsed.success ? parsed.data.name : typeof name === 'string' ? name : `Pipeline ${index + 1}`;
+      if (!parsed.success || (from !== null && root === null) || isBuiltInPipeline(parsed.data.id)) {
+        if (!(parsed.success && isBuiltInPipeline(parsed.data.id))) note('pipelines', label, 'skip', from !== null && root === null ? `folder not found on ${THIS_COMPUTER}` : 'not readable');
+        continue;
+      }
+      const incoming = parsed.data;
+      if (seen.has(incoming.id)) continue;
+      seen.add(incoming.id);
+      const existing = current.get(incoming.id);
+      const strip = ({ createdAt: _c, updatedAt: _u, ...rest }: Pipeline) => rest;
+      if (!existing) {
+        note('pipelines', label, 'add');
+        writes.push(() => pipelineStore.restore(incoming));
+      } else if (same(strip(existing), strip(incoming))) unchanged++;
+      else if (replace) {
+        note('pipelines', label, 'change');
+        writes.push(() => pipelineStore.restore({ ...incoming, createdAt: existing.createdAt }));
+      } else note('pipelines', label, 'keep', 'yours differs');
+    }
+    if (replace) {
+      for (const [id, pipeline] of current) {
+        if (seen.has(id)) continue;
+        note('pipelines', pipeline.name, 'remove');
+        writes.push(() => pipelineStore.remove(id));
       }
     }
   }

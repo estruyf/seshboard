@@ -14,6 +14,8 @@ import { useOpenInEntries } from '../OpenInButton.tsx';
 import { ProfileDot } from '../profiles/ProfileBadge.tsx';
 import { sessionMemoryEntries, useSessionMemories } from '../memory/sessionMemories.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
+import { usePipelines } from '../../state/pipelinesStore.ts';
+import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { Button } from '../ui/Button.tsx';
 
 const MENU_WIDTH = 260;
@@ -59,6 +61,7 @@ export function MoreMenu({
   // Start after this one… opens New session on the session's project.
   const projectRoot = useSessions((s) => s.sessions.get(sessionId)?.projectRoot) ?? cwd;
   const { total, running } = agents;
+  const pipelines = usePipelines((s) => s.pipelines);
   const [renaming, setRenaming] = useState(false);
   const multipleProfiles = useMultipleProfiles();
   const profile = useProfile(profileId);
@@ -147,6 +150,8 @@ export function MoreMenu({
           },
         ]
       : []),
+    // A pipeline with this session as the parent (#179).
+    runPipelineSubmenu(pipelines, { id: sessionId, projectRoot }),
     {
       label: 'Start after this one…',
       icon: <Play size={12} />,

@@ -115,6 +115,13 @@ export interface HostManagerDeps {
    * reads gh and git for them first (briefly) when a message is sent or queued.
    */
   links?: { expand(sessionId: string, text: string): string; warm(text: string): Promise<void> };
+  /** A read-only pipeline step (#179): its resumes keep the read-only hook. */
+  readOnly?: (sessionId: string) => boolean;
+  /**
+   * You approved a plan (`ExitPlanMode`). A pipeline's plan step keeps it and answers with what Claude Code gets
+   * instead of the approval (the next step builds it); null lets the approval through as it is.
+   */
+  planApproved?: (sessionId: string, plan: string) => string | null;
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -166,6 +173,8 @@ export interface CreateParams {
   beforeFirstMessage?: (sessionId: string) => Promise<void>;
   /** Auto picked `model`: kept with the session and reported in its info. */
   autoPick?: AutoPick | null;
+  /** Only tools that read: a read-only pipeline step (#179). */
+  readOnly?: boolean;
   /**
    * Auto picks the model after the session has opened: it starts on `model`, shows your message and that Auto is
    * choosing, and the message goes once the pick is in (and setup has finished). Null model: the default model.
@@ -235,7 +244,8 @@ export class HostManager {
 
   async create(params: CreateParams): Promise<string> {
     await this.deps.links?.warm(params.prompt);
-    const warm = this.takeWarm(params);
+    // A warm process started without the read-only hook.
+    const warm = params.readOnly ? undefined : this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
       {
@@ -247,6 +257,7 @@ export class HostManager {
         permissionMode: params.permissionMode,
         effort: params.effort,
         worktree: params.worktree,
+        ...(params.readOnly ? { readOnly: true } : {}),
       },
       warm,
     );
@@ -301,7 +312,7 @@ export class HostManager {
     const permissionMode = this.lastMode.get(sessionId) ?? saved?.permissionMode ?? 'default';
     const model = saved?.model ?? null;
     const effort = saved?.effort ?? null;
-    const common = { cwd, profileId, model, permissionMode, effort, worktree: null };
+    const common = { cwd, profileId, model, permissionMode, effort, worktree: null, ...(this.deps.readOnly?.(sessionId) ? { readOnly: true } : {}) };
     // A fork gets its own id up front, so it is never stored or reported under the original's id
     // (which would show the original as starting, or replace it in the map while it runs here).
     if (fork) return this.spawn({ ...common, sessionId: randomUUID(), forkFrom: sessionId, mode: 'fork' });
@@ -334,6 +345,36 @@ export class HostManager {
       if (saved?.model || saved?.effort) this.settings.set(sessionId, { model: saved.model, effort: saved.effort });
     } else this.deps.onContinued?.(sessionId);
     return { sessionId, messageUuid, queued };
+  }
+
+  /**
+   * Forks a session with its own model, effort and mode, and the first message: a pipeline step that starts as a fork
+   * of an earlier one (#179). Waits for the fork to start; its id.
+   */
+  async fork(params: { from: string; text: string; model: string | null; effort: Effort | null; permissionMode: PermissionMode; readOnly?: boolean }): Promise<string> {
+    const cwd = this.deps.sessionCwd(params.from);
+    if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');
+    await this.deps.links?.warm(params.text);
+    const saved = this.settings.get(params.from);
+    const model = params.model ?? saved?.model ?? null;
+    const effort = params.effort ?? saved?.effort ?? null;
+    const host = await this.spawn({
+      sessionId: randomUUID(),
+      forkFrom: params.from,
+      mode: 'fork',
+      cwd,
+      profileId: this.deps.sessionProfile(params.from),
+      model,
+      permissionMode: params.permissionMode,
+      effort,
+      worktree: null,
+      ...(params.readOnly ? { readOnly: true } : {}),
+    });
+    host.send(params.text, []);
+    const sessionId = await host.initialized;
+    this.deps.onCreated(sessionId);
+    if (model || effort) this.settings.set(sessionId, { model, effort });
+    return sessionId;
   }
 
   /** Takes a message out of a session's queue (null when it was already sent). Works while the session isn't running too. */
@@ -560,6 +601,14 @@ export class HostManager {
   respond(requestId: string, decision: PermissionDecision): void {
     const pending = this.pending.get(requestId);
     if (!pending) throw new RpcError('NOT_FOUND', 'This request was already answered or cancelled');
+    if (decision.behavior === 'allow' && pending.request.toolName === 'ExitPlanMode') {
+      const input = decision.updatedInput ?? pending.input;
+      const instead = this.deps.planApproved?.(pending.request.sessionId, typeof input.plan === 'string' ? input.plan : '') ?? null;
+      if (instead) {
+        this.settle(requestId, { behavior: 'deny', message: instead, interrupt: false });
+        return;
+      }
+    }
     if (decision.behavior === 'allow') {
       const result: PermissionResult = {
         behavior: 'allow',

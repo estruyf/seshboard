@@ -32,6 +32,14 @@ import { useSessionMenu } from './useSessionMenu.tsx';
 import { RailStarButton } from './StarOnGithub.tsx';
 import { RailDevices, useDeviceAnnouncement } from '../remote/ConnectedDevices.tsx';
 import { localizeKeys, matches, modKey } from '../../lib/shortcuts.ts';
+import { runOfParent, usePipelines } from '../../state/pipelinesStore.ts';
+import { runIsActive } from '../../state/pipelines.ts';
+import { parentRunLine, runRowLine } from '../../state/pipelineTree.ts';
+import { isRunRowId } from '../../state/runSelection.ts';
+import { PipelineTile } from './pipelineTreeRow.tsx';
+
+/** The rail lists parents only: no pipeline's sub-sessions, open or not. */
+const NO_OPEN_PARENTS: ReadonlySet<string> = new Set();
 
 /**
  * One row of the rail: a session, the thin line between two groups, a closed section as one chip (its count, and a
@@ -161,6 +169,11 @@ const RailRow = memo(function RailRow({
   const remote = data.remote ?? null;
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const status = rowStatus(data);
+  // A pipeline's run row, or a session a run started from: where the run is, in the tooltip.
+  const runRow = isRunRowId(data.id);
+  const runs = usePipelines((s) => s.runs);
+  const run = useMemo(() => (remote ? null : runOfParent(runs, data.id)), [runs, data.id, remote]);
+  const progress = run && (runRow || runIsActive(run)) ? (runRow ? runRowLine(run, null) : parentRunLine(run, null)) : null;
   // With more than one Claude profile the rail is the profile's colour on every row, as in the open sidebar.
   const multipleProfiles = useMultipleProfiles();
   const profile = useProfile(data.profileId);
@@ -170,7 +183,7 @@ const RailRow = memo(function RailRow({
   const line = remote?.offline
     ? { text: offlineLine(remote.computerName, remote.lastSeen, now), tone: 'faint' as const }
     : statusLine(status, status === 'needs-you' ? (remote ? waitingDetail(remote.waitingTool ? { toolName: remote.waitingTool, input: null } : null) : waitingDetail(request)) : null);
-  const meta = [projectName, data.branch, remote ? `on ${remote.computerName}` : null, shortAge(data.updatedAt, now)].filter(Boolean).join(' · ');
+  const meta = [progress, projectName, data.branch, remote ? `on ${remote.computerName}` : null, shortAge(data.updatedAt, now)].filter(Boolean).join(' · ');
   const hint = remote ? 'Click to open' : localizeKeys('Click to open · ⌥-click to open beside');
   const menuAt = (el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
@@ -180,6 +193,7 @@ const RailRow = memo(function RailRow({
     <button
       type="button"
       data-sidebar-rail-row={data.id}
+      data-run-row={runRow || undefined}
       data-remote-row={remote?.computerId}
       data-session-status={status ?? undefined}
       tabIndex={tabbable ? 0 : -1}
@@ -212,7 +226,7 @@ const RailRow = memo(function RailRow({
       className={`relative mx-auto flex h-10 w-11 items-center justify-center rounded-lg ${selected ? 'bg-selected' : beside ? 'bg-border/45 ring-1 ring-inset ring-border' : 'hover:bg-border/45'} ${remote?.offline ? 'opacity-55' : ''}`}
     >
       {railTone && <span aria-hidden className={`${railShape(selected || beside)} ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
-      <ProjectIcon project={project} root={data.projectRoot} size={26} name={remote?.projectName} remote={remote !== null} />
+      {runRow ? <PipelineTile size={26} /> : <ProjectIcon project={project} root={data.projectRoot} size={26} name={remote?.projectName} remote={remote !== null} />}
       {draft !== null && <PenBadge size={14} className="absolute bottom-0.5 left-0.5" data-rail-pen />}
       {outside && (
         <span aria-hidden className="absolute right-0.5 bottom-0.5 flex size-3.5 items-center justify-center rounded-full bg-sidebar text-caution" data-rail-outside>
@@ -260,7 +274,13 @@ export function SidebarRail() {
   const sort = usePreferences((s) => s.prefs.sidebarSort);
   const catchUps = useCatchUp((s) => s.cards);
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
-  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick }), [listed, now, archiveAfterDays, sort, quick]);
+  // Pipelines (#179): run rows are listed and a parent takes its children's state; its children stay out of the rail.
+  const runs = usePipelines((s) => s.runs);
+  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), openParents: NO_OPEN_PARENTS }), [listed, now, archiveAfterDays, sort, quick, runs]);
+  // A sub-session in the main area: its parent's icon is the one that shows it.
+  const shownParent = useSessions((s) => (shownId ? (s.sessions.get(shownId)?.parentId ?? null) : null));
+  const railIds = useMemo(() => new Set(groups.flatMap((g) => g.rows.map((row) => row.id))), [groups]);
+  const railShownId = shownId && !railIds.has(shownId) && shownParent ? shownParent : shownId;
   const sectionsOpen = useSidebarSections((s) => s.open);
   const items = useMemo<RailItem[]>(() => {
     // Blocks in the open sidebar's order, a thin line between them.
@@ -269,12 +289,12 @@ export function SidebarRail() {
       if (isSectionKey(group) && !sectionsOpen[group]) {
         // A closed section is one chip; the open session stays beside it, as in the sidebar.
         const unread = rows.filter((row) => rowStatus(row) === 'unread').length;
-        const kept = rows.filter((row) => row.id === shownId).map((data) => ({ kind: 'session' as const, data }));
+        const kept = rows.filter((row) => row.id === railShownId).map((data) => ({ kind: 'session' as const, data }));
         blocks.push({ key: group, items: [{ kind: 'chip', section: group, group, count: rows.length, unread }, ...kept] });
       } else blocks.push({ key: group, items: rows.map((data) => ({ kind: 'session' as const, data })) });
     }
     return blocks.flatMap((block, i) => [...(i > 0 ? [{ kind: 'divider' as const, key: `divider-${block.key}` }] : []), ...block.items]);
-  }, [groups, sectionsOpen, shownId]);
+  }, [groups, sectionsOpen, railShownId]);
   const order = useMemo(() => items.flatMap((item) => (item.kind === 'session' ? [item.data.id] : [])), [items]);
   // The oldest open request of each waiting session: what its tooltip says it waits for.
   const requests = useMemo(() => {
@@ -286,6 +306,9 @@ export function SidebarRail() {
     return map;
   }, [permissions]);
   const menus = useSessionMenu(order);
+  // A run row isn't a session yet: no session menu, and a middle-click doesn't archive it.
+  const railMenu = useCallback((at: { x: number; y: number }, data: SessionRowData) => !isRunRowId(data.id) && menus.openSessionMenu(at, data), [menus]);
+  const railMiddleClick = useCallback((data: SessionRowData) => !isRunRowId(data.id) && menus.middleClick(data), [menus]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -310,7 +333,7 @@ export function SidebarRail() {
   });
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const tabStopId =
-    focusedId && renderedIds.includes(focusedId) ? focusedId : shownId && renderedIds.includes(shownId) ? shownId : (renderedIds[0] ?? null);
+    focusedId && renderedIds.includes(focusedId) ? focusedId : railShownId && renderedIds.includes(railShownId) ? railShownId : (renderedIds[0] ?? null);
 
   const focusRow = (id: string) => {
     setFocusedId(id);
@@ -406,7 +429,7 @@ export function SidebarRail() {
                 ) : (
                   <RailRow
                     data={item.data}
-                    selected={item.data.id === shownId}
+                    selected={item.data.id === railShownId}
                     beside={listView === 'session' && item.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(item.data.id)}
                     tabbable={item.data.id === tabStopId}
                     now={now}
@@ -414,8 +437,8 @@ export function SidebarRail() {
                     draft={draftPreviews.get(item.data.id) ?? null}
                     outside={(catchUps.get(item.data.id)?.signals.outOfScope.length ?? 0) > 0}
                     onClick={rowClick}
-                    onMenu={menus.openSessionMenu}
-                    onMiddleClick={menus.middleClick}
+                    onMenu={railMenu}
+                    onMiddleClick={railMiddleClick}
                   />
                 )}
               </div>

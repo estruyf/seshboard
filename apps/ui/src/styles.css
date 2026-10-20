@@ -31,6 +31,8 @@
   --sb-remote: #7048e8;
   /* Event triggers: the bolt on a session a trigger started, event fields in a trigger's prompt. Never a state. */
   --sb-trigger: #6f42c1;
+  /* Pipelines: the icon on a parent row and a run row, step kinds and @ links in the editor. Never a state. */
+  --sb-pipeline: #6741d9;
   /*
    * The selected row in a list: a neutral fill (a yellow tint disappears on the light sidebar). A tint
    * of the text colour rather than a fixed grey, so it shows on every surface: sidebar, card, dialog.
@@ -94,6 +96,7 @@
     --sb-memory: #b197fc;
     --sb-remote: #b197fc;
     --sb-trigger: #b197fc;
+    --sb-pipeline: #9775fa;
     --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
     --sb-profile-yellow: #ffd43b;
     --sb-profile-blue: #74c0fc;
@@ -149,6 +152,7 @@
   --sb-memory: #b197fc;
   --sb-remote: #b197fc;
   --sb-trigger: #b197fc;
+  --sb-pipeline: #9775fa;
   --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
   --sb-profile-yellow: #ffd43b;
   --sb-profile-blue: #74c0fc;
@@ -196,6 +200,7 @@
   --color-memory: var(--sb-memory);
   --color-remote: var(--sb-remote);
   --color-trigger: var(--sb-trigger);
+  --color-pipeline: var(--sb-pipeline);
   --color-paper: var(--sb-paper);
   --color-paper-text: var(--sb-paper-text);
   --color-selected: var(--sb-selected);

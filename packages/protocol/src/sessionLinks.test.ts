@@ -73,6 +73,22 @@ describe('briefs', () => {
     expect(tight.fields['pull request']).toContain('#148');
   });
 
+  it('writes and reads back an approved plan, with blank lines and a list in it', () => {
+    const brief = full({ plan: '1. Add the setting.\n\n2. Hide the cost:\n   - on the bars\n   - on the cards' });
+    expect(parseBriefs(writeBrief(brief)).briefs).toEqual([brief]);
+  });
+
+  it('never drops the plan to fit, and cuts it last', () => {
+    const plan = `Plan:\n${'p'.repeat(2_500)}`;
+    const tight = parseBriefs(writeBrief(full({ plan, lastReply: 'x'.repeat(5_000) }), 3_000)).briefs[0]!;
+    expect(tight.plan).toBe(plan);
+    expect(tight.lastReply).toBeNull();
+    const huge = parseBriefs(writeBrief(full({ plan: 'q'.repeat(9_000) }))).briefs[0]!;
+    expect(huge.plan!.length).toBeLessThan(9_000);
+    expect(huge.plan!.length).toBeGreaterThanOrEqual(1_000);
+    expect(huge.shortened).toContain('plan cut');
+  });
+
   it('shares the message budget between briefs', () => {
     const texts = writeBriefs([full({ lastReply: 'x'.repeat(5_000) }), full({ lastReply: 'y'.repeat(5_000) }), full({ lastReply: 'z'.repeat(5_000) }), full({ lastReply: 'w'.repeat(5_000) })]);
     expect(texts.reduce((sum, t) => sum + t.length, 0)).toBeLessThanOrEqual(12_000);

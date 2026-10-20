@@ -8,7 +8,7 @@ import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
 import { coalesce } from '../util/coalesce.ts';
 
 /** What the index derives from disk; user flags are added on the way out (see `decorate`). */
-type RawSummary = Omit<SessionSummary, 'pinned' | 'archivedAt' | 'restoredAt' | 'viewedAt' | 'unread' | 'inApp'>;
+type RawSummary = Omit<SessionSummary, 'pinned' | 'archivedAt' | 'restoredAt' | 'viewedAt' | 'unread' | 'inApp' | 'parentId'>;
 
 interface Flags {
   pinned: boolean;
@@ -59,6 +59,8 @@ export interface SessionIndexOptions {
   isOwned?: (sessionId: string) => boolean;
   /** Sessions started elsewhere that the user continued in this app. */
   isContinued?: (sessionId: string) => boolean;
+  /** The session (or pipeline run) a session sits under: a pipeline's sub-sessions (#179). */
+  parentOf?: (sessionId: string) => string | null;
   /** Safety-net full rescan, in case file events were missed. */
   refreshIntervalMs?: number;
 }
@@ -159,7 +161,7 @@ export class SessionIndex {
     const flags = this.flags.get(raw.id) ?? NO_FLAGS;
     const seen = flags.viewedAt ?? this.options.baseline;
     const inApp = raw.origin === 'app' || (this.options.isContinued?.(raw.id) ?? false);
-    return { ...raw, ...flags, unread: raw.updatedAt > seen + UNREAD_SLACK_MS, inApp };
+    return { ...raw, ...flags, unread: raw.updatedAt > seen + UNREAD_SLACK_MS, inApp, parentId: this.options.parentOf?.(raw.id) ?? null };
   }
 
   /** The transcript file behind a session, when known. */

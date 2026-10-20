@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useHosts } from './hostsStore.ts';
+import { usePipelineTree } from './pipelineTreeStore.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { toRows, useSessions } from './sessionsStore.ts';
 import { useSidebar } from './sidebarStore.ts';
@@ -43,8 +44,8 @@ export const useSidebarSections = create<SectionsStore>()((set) => ({
 
 /**
  * Restores which sections are open and saves changes. Opening a session in a closed section (⌘P, ⌃⇥, a
- * notification, Home, the needs-you pill) opens that section: every way in goes through `select`, so this
- * follows the selection rather than each of them.
+ * notification, Home, the needs-you pill) opens that section, and opening a pipeline's sub-session opens its parent:
+ * every way in goes through `select`, so this follows the selection rather than each of them.
  */
 export function useSidebarSectionsSync(): void {
   const connection = useEngineConnection();
@@ -72,6 +73,9 @@ export function useSidebarSectionsSync(): void {
         const rows = toRows(state.sessions, state.live, useHosts.getState().hosts);
         const section = sectionOfSession(rows, id, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
         if (isSectionKey(section)) useSidebarSections.getState().setOpen(section, true);
+        // A pipeline's sub-session opens its parent in the tree, so its row is in sight.
+        const parentId = state.sessions.get(id)?.parentId;
+        if (parentId) usePipelineTree.getState().setOpen(parentId, true);
       }),
     [],
   );

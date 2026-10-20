@@ -34,6 +34,17 @@ describe('the Start button', () => {
     ]);
   });
 
+  it('offers Run pipeline after Start when…, with a reason while there is no task', () => {
+    const state = startButtonState({ ...ready, canSchedule: true, canTrigger: true, canPipeline: true });
+    expect(state.items.map((i) => i.action)).toEqual(['start', 'queue', 'schedule', 'trigger', 'pipeline', 'start-worktree']);
+    expect(state.items[4]).toEqual({ action: 'pipeline', label: 'Run pipeline', disabled: false });
+    expect(startButtonState({ ...ready, canPipeline: true, hasText: false, hasMessage: false }).items.find((i) => i.action === 'pipeline')).toMatchObject({ disabled: true, reason: 'Type the task first' });
+    expect(startButtonState({ ...ready, canPipeline: true, blocked: 'Choose a folder first' }).items.find((i) => i.action === 'pipeline')).toMatchObject({ disabled: true, reason: 'Choose a folder first' });
+    expect(startButtonState({ ...ready, canPipeline: true, question: true }).items.some((i) => i.action === 'pipeline')).toBe(false);
+    expect(startButtonState({ ...ready, canPipeline: true, editingSchedule: true }).items.some((i) => i.action === 'pipeline')).toBe(false);
+    expect(startButtonState(ready).items.some((i) => i.action === 'pipeline')).toBe(false);
+  });
+
   it('offers a new worktree only on the current checkout of a git repository', () => {
     expect(startButtonState({ ...ready, worktree: true }).items.map((i) => i.action)).toEqual(['start', 'queue']);
     expect(startButtonState({ ...ready, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);

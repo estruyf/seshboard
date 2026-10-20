@@ -30,6 +30,9 @@ const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = {
   'schedule-skipped': 'error',
   'trigger-started': 'finished',
   'trigger-paused': 'error',
+  // A pipeline that stopped is like an error; one that is done like a finished turn.
+  'pipeline-stopped': 'error',
+  'pipeline-done': 'finished',
 };
 
 /** Each kind of event has its own moment, and so its own sound. */

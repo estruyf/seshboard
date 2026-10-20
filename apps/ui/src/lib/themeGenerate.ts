@@ -170,6 +170,7 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     // Chips and badges on another computer's sessions are text on the sidebar and cards too, not only on the canvas.
     remote: solvedHex(toOklch(read(demo.remote)), surfaces, CONTRAST.status, away),
     trigger: keepHue(demo.trigger, CONTRAST.profile),
+    pipeline: keepHue(demo.pipeline, CONTRAST.profile),
     unread: blue,
     accent: toHex(read(accent)),
     'accent-ink': accentInk,

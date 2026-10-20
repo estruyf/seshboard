@@ -65,6 +65,8 @@ const PLANS: Record<string, Plan> = {
   // Triggers: the editor is a dialog of the main window.
   'trigger-new': 'hide',
   triggers: 'hide',
+  // Pipelines: Settings › Pipelines opens on the one picked, in the main window's state.
+  pipelines: 'hide',
   'open-in-new-window': 'hide',
 
   // Settings, Usage, Upcoming and project pages: their stores send them to the main window.
@@ -109,6 +111,8 @@ const PLANS: Record<string, Plan> = {
   // New session lives in the main window, and its box is the one the link goes in.
   'new-session-linked': 'hide',
   'start-after-session': 'hide',
+  // The engine runs it; this window's session is the parent.
+  'run-pipeline': 'here',
   pin: 'here',
   archive: 'here',
   fork: 'here',

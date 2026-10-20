@@ -46,6 +46,11 @@ export const SessionSummary = z.object({
   inApp: z.boolean(),
   /** The Claude profile whose config folder holds the transcript (resume and fork use it). */
   profileId: z.string(),
+  /**
+   * The session (or pipeline run row) it sits under in the sidebar: a pipeline's step under the session it was run
+   * from (#179). Kept in Switchboard's database; Claude Code doesn't know about it.
+   */
+  parentId: z.string().nullable().optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummary>;
 

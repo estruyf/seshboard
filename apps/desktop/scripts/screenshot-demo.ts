@@ -9,6 +9,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
+// Straight from the source file: Node runs these scripts as they are, and the package's index has TypeScript it can't strip.
+import { BUILT_IN_PIPELINES, changesMessage, fillStepPrompt } from '../../../packages/protocol/src/pipelines.ts';
+import type { PipelineClaudeStep, StepActionResult } from '../../../packages/protocol/src/pipelineSchema.ts';
 
 const VERSION = '2.1.287';
 const MODEL = 'claude-opus-5-5';
@@ -149,7 +152,8 @@ class Transcript {
     return this.assistant({ type: 'text', text });
   }
 
-  write(configDir: string, title: string): void {
+  /** Writes the transcript and returns its file. */
+  write(configDir: string, title: string): string {
     this.lines.push(JSON.stringify({ type: 'ai-title', sessionId: this.id, aiTitle: title }));
     const folder = join(configDir, 'projects', this.cwd.replace(/[^a-zA-Z0-9]/g, '-'));
     mkdirSync(folder, { recursive: true });
@@ -157,6 +161,7 @@ class Transcript {
     writeFileSync(file, `${this.lines.join('\n')}\n`);
     // The file's time is when the conversation last moved, as it would be for a real one.
     utimesSync(file, new Date(this.last), new Date(this.last));
+    return file;
   }
 }
 
@@ -567,6 +572,120 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id },
     history: written,
     stop: () => sleepers.forEach((child) => child.kill()),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// A pipeline run (#179), for the website's pictures of it.
+
+/** What `writePipelineDemo` wrote: the sessions of the run, and their files, to take away again. */
+export interface PipelineDemo {
+  title: string;
+  sessions: { parent: string; plan: string; execute: string; validate1: string; validate2: string };
+  /** What the project actions that ran before each Validate round gave. */
+  actions: { round1: StepActionResult[]; round2: StepActionResult[] };
+  /** The plan Plan's session had approved. */
+  plan: string;
+  files: string[];
+}
+
+const GIFT_WRAP_PLAN = [
+  '## Gift wrap at checkout',
+  '',
+  '1. Add `giftWrap` and `giftNote` to the cart, with a price of 350 cents.',
+  '2. A `GiftWrap` checkbox and note field under the shipping options.',
+  '3. Add the gift wrap to the total in `cartTotal`, so the summary and the pay button agree.',
+  '4. Tests for the total with and without gift wrap.',
+].join('\n');
+
+/**
+ * A session on acme-store that ran the built-in "Plan, execute, validate, push" (the website's Pipelines pictures):
+ * the parent, then Plan (its plan approved), Execute (a fork of Plan, with the changes Validate sent back), Validate
+ * (changes needed) and Validate · round 2, still working. Each step's first message is the prompt the run fills in,
+ * with its links and the actions that ran first. `cwd` is the run's worktree. Written only while the tour needs them,
+ * so no other picture shows these sessions; the run itself is the tour's (`DemoUsage.pipelinesFile`).
+ */
+export function writePipelineDemo(home: string, cwd: string, branch: string, now = Date.now()): PipelineDemo {
+  const configDir = join(home, '.claude');
+  const acme = join(home, 'Developer', 'acme-store');
+  const title = 'Add gift wrap at checkout';
+  const pipeline = BUILT_IN_PIPELINES[0]!;
+  const step = (name: string) => pipeline.steps.find((s): s is PipelineClaudeStep => s.kind === 'claude' && s.name === name)!;
+  const files: string[] = [];
+
+  const parent = new Transcript(acme, 'main', now - 22 * MINUTE)
+    .user('Add a gift wrap option at checkout: a checkbox under the shipping options that adds €3.50, and a note for the card.')
+    .tool('Grep', { pattern: 'cartTotal', path: `${acme}/src` }, `${acme}/src/cart/total.ts\n${acme}/src/components/PayButton.tsx`)
+    .say('Sure. The total is worked out in `cartTotal`, and the summary and the pay button both show it. Gift wrap fits there, with its own line in the summary.');
+  files.push(parent.write(configDir, title));
+  const parentLink = { kind: 'session' as const, sessionId: parent.id, label: title };
+
+  const plan = new Transcript(cwd, branch, now - 18 * MINUTE);
+  plan
+    .user(fillStepPrompt(step('Plan'), { task: null, parent: parentLink, steps: {} }).text)
+    .tool('Read', { file_path: `${cwd}/src/cart/total.ts` }, numbered('export function cartTotal(lines: CartLine[]): number {\n  return lines.reduce((sum, l) => sum + l.price * l.quantity, 0);\n}'))
+    .tool('ExitPlanMode', { plan: GIFT_WRAP_PLAN }, 'The user approved this plan. Don’t start building it: the next step of the pipeline does that. Reply with one line that says the plan is ready, and stop.')
+    .say('The plan is ready for Execute.');
+  files.push(plan.write(configDir, 'Plan'));
+
+  const execute = new Transcript(cwd, branch, now - 14 * MINUTE, { model: 'claude-sonnet-5-5' });
+  execute
+    .user(fillStepPrompt(step('Execute'), { task: null, parent: parentLink, steps: { Plan: plan.id } }).text)
+    .tool('Write', { file_path: `${cwd}/src/components/GiftWrap.tsx`, content: 'export function GiftWrap() {}\n' }, `File created successfully at: ${cwd}/src/components/GiftWrap.tsx`)
+    .tool('Edit', { file_path: `${cwd}/src/cart/total.ts`, old_string: '  return lines', new_string: '  return giftWrapCents(cart) + lines' }, `The file ${cwd}/src/cart/total.ts has been updated.`)
+    .tool('Bash', { command: 'npm test', description: 'Run the tests' }, ' Test Files  10 passed (10)\n      Tests  42 passed (42)')
+    .say('Gift wrap is in: the checkbox and the note under the shipping options, and €3.50 on the total. Changed 4 files, and the tests pass.');
+
+  const test = (passed: number): StepActionResult => ({
+    name: 'Test',
+    exitCode: 0,
+    tail: ` RUN  v3.2.4\n\n ✓ src/cart/total.test.ts (8 tests) 14ms\n ✓ src/components/GiftWrap.test.tsx (4 tests) 41ms\n\n Test Files  10 passed (10)\n      Tests  ${passed} passed (${passed})\n   Duration  1.21s`,
+    ms: 1_840,
+  });
+  const round1: StepActionResult[] = [
+    test(42),
+    {
+      name: 'Lint',
+      exitCode: 1,
+      tail: "src/components/GiftWrap.tsx\n   3:10  error  'useMemo' is defined but never used     @typescript-eslint/no-unused-vars\n  21:9   error  Missing \"key\" prop for element in iterator  react/jsx-key\n\n✖ 2 problems (2 errors, 0 warnings)",
+      ms: 2_310,
+    },
+  ];
+  const round2: StepActionResult[] = [test(43), { name: 'Lint', exitCode: 0, tail: '✔ No problems found', ms: 2_120 }];
+  const steps = { Plan: plan.id, Execute: execute.id };
+
+  const verdict = {
+    kind: 'changes' as const,
+    items: ['PayButton still charges the total from before gift wrap, so it asks €3.50 less than the summary shows.', 'Two lint errors in GiftWrap.tsx: an unused import and a missing key.'],
+  };
+  const validate1 = new Transcript(cwd, branch, now - 9 * MINUTE);
+  validate1
+    .user(fillStepPrompt(step('Validate'), { task: null, parent: parentLink, steps, actions: round1 }).text)
+    .tool('Bash', { command: 'git diff main --stat', description: 'Show what changed' }, ' src/cart/total.ts           | 12 +++++++---\n src/components/GiftWrap.tsx | 38 ++++++++++++++++++\n src/components/Summary.tsx  |  9 +++++\n src/cart/total.test.ts      | 24 +++++++++++\n 4 files changed, 79 insertions(+), 4 deletions(-)')
+    .tool('Read', { file_path: `${cwd}/src/components/PayButton.tsx` }, numbered('export function PayButton({ total }: { total: number }) {\n  return <button>Pay {formatPrice(total)}</button>;\n}'))
+    .say(['The checkbox and the note work, and the summary adds gift wrap to the total. The pay button still gets its total from before gift wrap is added.', '', 'Verdict: changes needed', '', ...verdict.items.map((item, i) => `${i + 1}. ${item}`)].join('\n'));
+  files.push(validate1.write(configDir, 'Validate'));
+
+  // Validate's changes went back to Execute, which made them before round 2 started.
+  execute
+    .user(changesMessage({ name: 'Validate', sessionId: validate1.id }, verdict, 1, 2))
+    .tool('Edit', { file_path: `${cwd}/src/components/PayButton.tsx`, old_string: 'total', new_string: 'cartTotal(cart)' }, `The file ${cwd}/src/components/PayButton.tsx has been updated.`)
+    .say('PayButton now reads `cartTotal`, and both lint errors are fixed. The tests pass.');
+  files.push(execute.write(configDir, 'Execute'));
+
+  const validate2 = new Transcript(cwd, branch, now - 2 * MINUTE);
+  validate2
+    .user(fillStepPrompt(step('Validate'), { task: null, parent: parentLink, steps, actions: round2 }).text)
+    .tool('Bash', { command: 'git diff main --stat', description: 'Show what changed' }, ' 5 files changed, 83 insertions(+), 5 deletions(-)')
+    .pending('Read', { file_path: `${cwd}/src/components/PayButton.tsx` }, 'Test and Lint pass now. Reading the new diff of PayButton.tsx.');
+  files.push(validate2.write(configDir, 'Validate · round 2'));
+
+  return {
+    title,
+    sessions: { parent: parent.id, plan: plan.id, execute: execute.id, validate1: validate1.id, validate2: validate2.id },
+    actions: { round1, round2 },
+    plan: GIFT_WRAP_PLAN,
+    files,
   };
 }
 

@@ -678,4 +678,65 @@ export const migrations: readonly string[] = [
     at           INTEGER NOT NULL
   );
   `,
+
+  // v37: Pipelines (#179). Pipelines and their runs are user data, so they survive a cache rebuild. A run keeps the
+  // pipeline as it was when it started (`pipeline_json`), its steps one row per round. `session_parents` puts a
+  // pipeline's sub-sessions under the session (or run row) they were run from: the `sessions` table is a cache of
+  // ~/.claude that may be dropped, and this can't be read back from a transcript.
+  `
+  CREATE TABLE pipelines (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    scope_json  TEXT NOT NULL,
+    steps_json  TEXT NOT NULL,
+    auto_push   INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+  CREATE TABLE pipeline_runs (
+    id                TEXT PRIMARY KEY,
+    pipeline_id       TEXT NOT NULL,
+    pipeline_json     TEXT NOT NULL,
+    parent_session_id TEXT,
+    task              TEXT,
+    title             TEXT NOT NULL,
+    project_root      TEXT NOT NULL,
+    cwd               TEXT NOT NULL,
+    profile_id        TEXT,
+    status            TEXT NOT NULL,
+    reason            TEXT,
+    waiting_for       TEXT,
+    step              INTEGER NOT NULL DEFAULT 0,
+    round             INTEGER NOT NULL DEFAULT 1,
+    sent_back_to      INTEGER,
+    pr_json           TEXT,
+    created_at        INTEGER NOT NULL,
+    updated_at        INTEGER NOT NULL,
+    ended_at          INTEGER
+  );
+  CREATE INDEX pipeline_runs_parent ON pipeline_runs (parent_session_id);
+  CREATE TABLE pipeline_run_steps (
+    run_id       TEXT NOT NULL,
+    idx          INTEGER NOT NULL,
+    round        INTEGER NOT NULL,
+    step         TEXT NOT NULL,
+    session_id   TEXT,
+    status       TEXT NOT NULL,
+    outcome      TEXT,
+    verdict_json TEXT,
+    reason       TEXT,
+    plan         TEXT,
+    actions_json TEXT,
+    started_at   INTEGER NOT NULL,
+    ended_at     INTEGER,
+    PRIMARY KEY (run_id, idx, round)
+  );
+  CREATE INDEX pipeline_run_steps_session ON pipeline_run_steps (session_id);
+  CREATE TABLE session_parents (
+    session_id TEXT PRIMARY KEY,
+    parent_id  TEXT NOT NULL,
+    run_id     TEXT
+  );
+  CREATE INDEX session_parents_parent ON session_parents (parent_id);
+  `,
 ];

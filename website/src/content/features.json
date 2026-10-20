@@ -4075,6 +4075,81 @@
       "id": "feature:open-at-login",
       "name": "Settings: General, Open at login",
       "page": "settings"
+    },
+    {
+      "id": "palette:run-pipeline",
+      "name": "Run pipeline…",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "palette:pipelines",
+      "name": "Pipelines: pick one…",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "settings:pipelines",
+      "name": "Settings › Pipelines",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-session-menu",
+      "name": "Run pipeline › in a session’s ⋯ menu",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-new-session",
+      "name": "Start ▾ › Run pipeline › in New session",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-sidebar-tree",
+      "name": "Steps nested under their parent in the sidebar",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-run-row",
+      "name": "A run row for a pipeline started from New session",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-step-tree",
+      "name": "The step tree in the parent’s view",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-handoff",
+      "name": "Steps hand over with @ links",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-verdicts",
+      "name": "Verdicts and rounds",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-push",
+      "name": "The Push step",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-run-brief",
+      "name": "The run’s brief when you write in the parent",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-notifications",
+      "name": "Notifications when a run needs you, stops or is done",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipelines-backup",
+      "name": "Pipelines in the settings file",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "palette:settings-pipelines",
+      "name": "Settings: Pipelines",
+      "page": "sessions/pipelines"
     }
   ]
 }

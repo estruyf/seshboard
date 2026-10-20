@@ -37,6 +37,7 @@ import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useSchedulesSync } from './state/schedulesStore.ts';
 import { useTriggersSync } from './state/triggersStore.ts';
+import { usePipelinesSync } from './state/pipelinesStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
@@ -217,6 +218,7 @@ export function App() {
   useLaterSync();
   useSchedulesSync();
   useTriggersSync();
+  usePipelinesSync();
   useCatchUpSync();
   useUpNextSync();
   useModsSync();

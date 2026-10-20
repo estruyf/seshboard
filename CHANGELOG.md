@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Added
 
+- **Pipelines** ([#179](https://github.com/estruyf/switchboard/issues/179)). Pipelines: run a saved set of steps for one task, each in its own sub-session under the session you start it from. Plan with one model, build with another, have a fresh session check the work, then push. Steps hand over with @ links. Run one from a session's ⋯ menu, from New session's **Start ▾**, or from the command palette, and set them up in Settings › Pipelines.
 - **Reading mode.** Reading mode: open any reply on its own, full window, with an outline of its headings and tool calls folded away. Use **Read** in the reply's actions.
 - **Triggers** ([#180](https://github.com/estruyf/switchboard/issues/180)). Triggers: start a session when CI fails on a branch or an issue is labelled or assigned to you. Set them up on a project's Triggers tab. Switchboard checks through gh, keeps a state label on the issue if you want, and never bypasses permissions.
 - **Upcoming.** Upcoming: one view in the sidebar for everything queued and scheduled, across all projects, with the next 7 days of scheduled runs. Skip a single run without pausing its schedule. Open it from **Upcoming** under the search field, with ⌘⇧Y (Ctrl+Shift+Y on Windows), or from the command palette. **History** shows the runs of the last 7 days and how they went, and Home's Queue and Schedules cards now show three rows with **See all in Upcoming**.

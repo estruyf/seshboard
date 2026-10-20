@@ -1,12 +1,26 @@
 import { archivedSince as archivedSinceOf, listedInMainList, type ListingState, type SessionScope, type SidebarSort, type StartupView } from '@switchboard/protocol/bridge';
 import type { QueueEntry } from './queue.ts';
+import { isRunRowId } from './runSelection.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import type { SectionKey } from './sidebarSections.ts';
 
 /** What the status icon on a row shows, most urgent first. */
 export type RowStatus = 'needs-you' | 'running' | 'error' | 'unread' | 'background' | 'idle' | null;
 
+/**
+ * What the pipelines tree (`pipelineTree.ts`) adds to a parent's row: its state with its sub-sessions' and its run's,
+ * so a child that needs you makes the parent Needs you, in its group, its rail and its icon.
+ */
+export interface TreeFacts {
+  treeStatus?: RowStatus;
+}
+
+/** A parent's state with its sub-sessions', when the tree lifted it. */
+const liftedStatus = (row: SessionRowData): RowStatus | undefined => (row as SessionRowData & TreeFacts).treeStatus;
+
 export function rowStatus(row: SessionRowData): RowStatus {
+  const lifted = liftedStatus(row);
+  if (lifted !== undefined) return lifted;
   // Another computer says how its sessions are (`remoteRowStatus`).
   if (row.remote) return row.remote.status;
   if (row.live?.status === 'needs-you') return 'needs-you';
@@ -34,9 +48,10 @@ export function startupSession(rows: SessionRowData[], lastId: unknown, startupV
 
 /** What the archive rule reads from a row (`listedInMainList`, shared with the VS Code companion and the engine). */
 export function rowListing(row: SessionRowData): ListingState {
+  const lifted = liftedStatus(row);
   return {
-    attention: row.live?.status === 'needs-you' || row.error,
-    working: row.live?.status === 'running',
+    attention: lifted === 'needs-you' || row.live?.status === 'needs-you' || row.error,
+    working: lifted === 'running' || row.live?.status === 'running',
     pinned: row.pinned,
     archivedAt: row.archivedAt,
     restoredAt: row.restoredAt,
@@ -55,8 +70,9 @@ export function rowListing(row: SessionRowData): ListingState {
  * then the days count from there.
  */
 export function isActive(row: SessionRowData, now: number, archiveAfterDays: number): boolean {
-  // Another computer only lists what its own sidebar does, outside Archived.
-  if (row.remote) return true;
+  // Another computer only lists what its own sidebar does, outside Archived. A pipeline's run row is only there while
+  // it counts (`listedRunRows`).
+  if (row.remote || isRunRowId(row.id)) return true;
   return listedInMainList(rowListing(row), now, archiveAfterDays);
 }
 
@@ -81,6 +97,8 @@ export interface SessionListOptions {
   archiveAfterDays: number;
   /** Default: every session. */
   scope?: SessionScope;
+  /** Each parent's sub-sessions (`pipelineTree.ts`): a parent matches a search when one of them does. */
+  children?: ReadonlyMap<string, readonly SessionRowData[]>;
 }
 
 const matches = (row: SessionRowData, needle: string) =>
@@ -101,7 +119,7 @@ export function buildSessionList(
   for (const row of rows) {
     if (options.scope && !inScope(row, options.scope)) continue;
     if (options.project && row.projectRoot !== options.project) continue;
-    if (needle && !matches(row, needle)) continue;
+    if (needle && !matches(row, needle) && !options.children?.get(row.id)?.some((child) => matches(child, needle))) continue;
     (isActive(row, options.now, options.archiveAfterDays) ? active : archived).push(row);
   }
   active.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt);
@@ -231,7 +249,16 @@ export function groupsFor(active: readonly SessionRowData[], now: number, sort: 
  * the "+N hidden" line under a closed section's kept row, or the Archived header (only while it's in the list).
  */
 export type SidebarListRow =
-  | { kind: 'session'; data: SessionRowData; archived: boolean; kept?: boolean }
+  | {
+      kind: 'session';
+      data: SessionRowData;
+      archived: boolean;
+      kept?: boolean;
+      /** A parent in the pipelines tree: whether its sub-sessions show, and how many it has. */
+      parent?: { open: boolean; count: number };
+      /** A sub-session, under its parent: its place among its siblings (from 1). */
+      child?: { parentId: string; position: number; count: number; level: number };
+    }
   | { kind: 'group'; group: SessionGroup; count: number; first: boolean; open: boolean; unread: number }
   | { kind: 'hidden'; group: SessionGroup; count: number }
   | { kind: 'queue-header'; count: number; ready: number; open: boolean; first: boolean }
@@ -251,6 +278,9 @@ export interface ListRowOptions {
   /** The order (Recent by default) and, for Quickest to unblock, each session's review time. */
   sort?: SidebarSort;
   quick?: ReadonlyMap<string, QuickInfo>;
+  /** The pipelines tree: each parent's sub-sessions, and the parents that are open (closed by default). */
+  children?: ReadonlyMap<string, readonly SessionRowData[]>;
+  openParents?: ReadonlySet<string>;
 }
 
 /**
@@ -261,6 +291,23 @@ export interface ListRowOptions {
 export function buildListRows(active: readonly SessionRowData[], archived: readonly SessionRowData[], options: ListRowOptions): SidebarListRow[] {
   const list: SidebarListRow[] = [];
   const closed = options.closed ?? new Set<SectionKey>();
+  const children = options.children ?? new Map<string, readonly SessionRowData[]>();
+  const openParents = options.openParents ?? new Set<string>();
+  // A row, and under it (when it is an open parent) its sub-sessions, theirs too. `seen` stops a loop of parents.
+  const pushSession = (data: SessionRowData, archived: boolean, kept: boolean, seen: Set<string> = new Set()) => {
+    const kids = seen.has(data.id) ? [] : (children.get(data.id) ?? []);
+    const open = kids.length > 0 && openParents.has(data.id);
+    list.push({ kind: 'session', data, archived, ...(kept ? { kept: true } : {}), ...(kids.length ? { parent: { open, count: kids.length } } : {}) });
+    if (!open) return;
+    seen.add(data.id);
+    kids.forEach((kid, i) => {
+      const at = list.length;
+      pushSession(kid, archived, false, seen);
+      const row = list[at];
+      if (row?.kind === 'session') row.child = { parentId: data.id, position: i + 1, count: kids.length, level: seen.size + 1 };
+    });
+    seen.delete(data.id);
+  };
   // The Queue only shows in Recent.
   const queue = options.sort === 'quickest' ? undefined : options.queue;
   const pushQueue = () => {
@@ -280,11 +327,12 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
     const unread = rows.filter((row) => rowStatus(row) === 'unread').length;
     list.push({ kind: 'group', group, count: rows.length, first: list.length === 0, open, unread });
     if (open) {
-      for (const data of rows) list.push({ kind: 'session', data, archived: false });
+      for (const data of rows) pushSession(data, false, false);
     } else {
-      const kept = rows.find((row) => row.id === options.selectedId);
+      // The open session, or the parent of the open sub-session.
+      const kept = rows.find((row) => row.id === options.selectedId || children.get(row.id)?.some((child) => child.id === options.selectedId));
       if (kept) {
-        list.push({ kind: 'session', data: kept, archived: false, kept: true });
+        pushSession(kept, false, true);
         if (rows.length > 1) list.push({ kind: 'hidden', group, count: rows.length - 1 });
       }
     }
@@ -296,7 +344,7 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
   if (!queued) pushQueue();
   if (archived.length && options.archivedOpen) {
     list.push({ kind: 'archived', count: archived.length, open: true });
-    for (const data of archived) list.push({ kind: 'session', data, archived: true });
+    for (const data of archived) pushSession(data, true, false);
   }
   return list;
 }
@@ -326,9 +374,14 @@ export function headerSummary(row: Extract<SidebarListRow, { kind: 'group' | 'qu
   return { text: `${row.unread} unread`, tone: 'unread' };
 }
 
-/** The section a session sits in (its group), so opening it can open a closed section. Null for an archived one. */
+/**
+ * The section a session sits in (its group), so opening it can open a closed section. Null for an archived one. A
+ * pipeline's sub-session sits in its parent's section.
+ */
 export function sectionOfSession(rows: readonly SessionRowData[], id: string, now: number, archiveAfterDays: number): SessionGroup | null {
-  const row = rows.find((r) => r.id === id);
+  const own = rows.find((r) => r.id === id);
+  const parentId = own?.summary?.parentId;
+  const row = (parentId && rows.find((r) => r.id === parentId)) || own;
   return row && isActive(row, now, archiveAfterDays) ? sessionGroup(row, now) : null;
 }
 

@@ -85,6 +85,7 @@ With more than one Claude profile, the rail on a session row shows the profile's
 - [Sidebar states](../../docs/ui-patterns.md#sidebar-states): open, minimal and closed sidebar, its widths and keys.
 - [Split view](../../docs/ui-patterns.md#split-view): the tiling pane tree, drag and drop, dividers, pane keys.
 - [Collapsible sections and the queue](../../docs/ui-patterns.md#collapsible-sections-and-the-queue): sidebar section headers, Up next.
+- [Pipelines](../../docs/ui-patterns.md#pipelines): sub-sessions nested in the sidebar's tree, run rows, the step tree.
 - [Unsent messages](../../docs/ui-patterns.md#unsent-messages): the draft pen on rows and buttons.
 - [Saved prompts](../../docs/ui-patterns.md#saved-prompts): `{{blanks}}`, the / picker, sharing.
 - [Other computers](../../docs/ui-patterns.md#other-computers): a paired computer's sessions in the sidebar, the violet `remote` token.

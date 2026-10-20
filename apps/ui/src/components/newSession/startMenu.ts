@@ -1,7 +1,7 @@
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 
 /** What New session's Start button (and the palette's prompt step) can do with the prompt. */
-export type StartAction = 'start' | 'queue' | 'schedule' | 'trigger' | 'start-worktree';
+export type StartAction = 'start' | 'queue' | 'schedule' | 'trigger' | 'pipeline' | 'start-worktree';
 
 export interface StartButtonInput {
   /** Why nothing can go anywhere: connecting, no folder yet. */
@@ -35,6 +35,8 @@ export interface StartButtonInput {
   editingSchedule?: boolean;
   /** Offer Start when… (New session, with a project): the prompt and its choices in a new trigger. */
   canTrigger?: boolean;
+  /** Offer Run pipeline › (New session, in a git repository): the prompt is the run's task (#179). */
+  canPipeline?: boolean;
 }
 
 export interface StartMenuItem {
@@ -43,6 +45,8 @@ export interface StartMenuItem {
   /** The key that does the same without the menu. */
   shortcut?: ShortcutId;
   disabled: boolean;
+  /** Why it can't be picked now, when that isn't the whole button's reason. */
+  reason?: string;
 }
 
 export interface StartButtonState {
@@ -63,8 +67,8 @@ export interface StartButtonState {
 }
 
 /**
- * The split Start button: the main part starts, the ▾ opens Start session, Add to queue, Schedule… and (in a git
- * repository on the current checkout) Start in a new worktree. A reason that stops everything disables
+ * The split Start button: the main part starts, the ▾ opens Start session, Add to queue, Schedule…, Start when…, Run
+ * pipeline › and (in a git repository on the current checkout) Start in a new worktree. A reason that stops everything disables
  * the whole button; one that only stops starting leaves the ▾ for Add to queue.
  */
 export function startButtonState(input: StartButtonInput): StartButtonState {
@@ -81,6 +85,11 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
   if (input.canSchedule && !input.question) items.push({ action: 'schedule', label: input.editingSchedule ? 'Save schedule' : 'Schedule…', disabled: !canQueue });
   // A trigger starts it when there is work: a CI failure, an issue for you (#180).
   if (input.canTrigger && !input.question && !input.editingSchedule) items.push({ action: 'trigger', label: 'Start when…', disabled: !canQueue });
+  // A pipeline runs with the prompt as its task: Run pipeline › picks which (#179).
+  if (input.canPipeline && !input.question && !input.editingSchedule) {
+    const reason = sending ? undefined : (blocked ?? (!hasText ? 'Type the task first' : undefined));
+    items.push({ action: 'pipeline', label: 'Run pipeline', disabled: !canQueue, ...(reason ? { reason } : {}) });
+  }
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
   if (input.scheduleFirst && input.canSchedule && !input.question) {
     const schedule = items.find((item) => item.action === 'schedule')!;

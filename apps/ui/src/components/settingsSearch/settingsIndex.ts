@@ -370,6 +370,48 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'prompts-new', page: 'prompts', label: 'New prompt', detail: 'Prompts with blanks you fill in when you use them. Type / in any message box.', keywords: 'prompts templates snippets saved blanks create add', target: '[data-saved-prompts-new]' },
     { id: 'prompts-list', page: 'prompts', label: 'Saved prompts', detail: 'Every project, just for you, or shared with the project.', keywords: 'prompts templates snippets saved blanks share move delete edit', target: '[data-saved-prompts-settings]', fallback: '[data-settings-page="prompts"] section' },
 
+    // Pipelines
+    {
+      id: 'pipelines',
+      page: 'pipelines',
+      label: 'Pipelines',
+      detail: 'Steps Switchboard runs for one task, each as a sub-session under the session you run it from.',
+      keywords: 'pipeline workflow plan execute validate push steps sub-session chain automate',
+      target: '[data-pipelines-settings]',
+    },
+    { id: 'pipelines-new', page: 'pipelines', label: 'New pipeline', detail: 'Start your own, for this project or all projects.', keywords: 'pipeline create add workflow', target: '[data-pipeline-new]', fallback: '[data-pipelines-settings]' },
+    {
+      id: 'pipelines-duplicate',
+      page: 'pipelines',
+      label: 'Duplicate',
+      detail: 'Built-in pipelines are read only. Duplicate one to change it.',
+      keywords: 'pipeline copy built in edit',
+      target: '[data-pipeline-duplicate]',
+      fallback: '[data-pipelines-settings]',
+    },
+    {
+      id: 'pipelines-steps',
+      page: 'pipelines',
+      label: 'Steps',
+      detail: 'Fresh or a fork of an earlier step, with its model, effort, mode and prompt. @ links the parent or an earlier step.',
+      keywords: 'pipeline step fork fresh model effort mode read only prompt @parent mention add reorder',
+      target: '[data-pipeline-steps]',
+      fallback: '[data-pipelines-settings]',
+    },
+    { id: 'pipelines-run-first', page: 'pipelines', label: 'Run first', detail: 'Project actions a step runs before Claude starts. Their results go in the prompt.', keywords: 'pipeline actions test lint before', target: '[data-pipeline-run-first]', fallback: '[data-pipeline-steps]' },
+    {
+      id: 'pipelines-verdict',
+      page: 'pipelines',
+      label: 'Ends with a verdict',
+      detail: 'Changes go back to an earlier step, up to a number of rounds.',
+      keywords: 'pipeline review validate pass changes needed rounds loop',
+      target: '[data-pipeline-verdict]',
+      fallback: '[data-pipeline-steps]',
+    },
+    { id: 'pipelines-confirm', page: 'pipelines', label: 'Wait for me before this step', detail: 'The run waits for you to continue before the step starts.', keywords: 'pipeline confirm pause hold continue', target: '[data-pipeline-confirm]', fallback: '[data-pipeline-steps]' },
+    { id: 'pipelines-auto-push', page: 'pipelines', label: 'Push without asking', detail: 'Push commits, pushes and opens the pull request by itself. Only for your own pipelines.', keywords: 'pipeline push commit pull request pr auto', target: '[data-pipeline-auto-push]', fallback: '[data-pipeline-steps]' },
+    { id: 'pipelines-tree', page: 'pipelines', label: 'The tree it makes', detail: 'Each step is a sub-session under the session you run it from.', keywords: 'pipeline tree sub-sessions parent preview', target: '[data-pipeline-tree]', fallback: '[data-pipelines-settings]' },
+
     // VS Code
     {
       id: 'companion',

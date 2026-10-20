@@ -16,6 +16,8 @@ import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, us
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { ScheduleDialog } from '../schedules/ScheduleDialog.tsx';
 import { openTriggerEditor } from '../../state/triggersStore.ts';
+import { runPipeline, usePipelines } from '../../state/pipelinesStore.ts';
+import { pipelinesFor } from '../../state/pipelines.ts';
 import { useStartAfter } from '../../state/startAfterStore.ts';
 import { autoStartBlock, busyInProject, promptLabel, queueSession, sameDraft } from '../../state/queue.ts';
 import { useLinks } from '../../state/linksStore.ts';
@@ -894,6 +896,20 @@ function LocalNewSession() {
       },
     });
   };
+  /**
+   * Run pipeline › (#179): the prompt is the run's task, in this project. Started, the box is emptied, as after Start
+   * session, and the run's row opens. The Start button says Starting… meanwhile (making the worktree takes a moment).
+   */
+  const pipelineRoot = cwd ? projectOf(cwd) : null;
+  const allPipelines = usePipelines((s) => s.pipelines);
+  const projectPipelines = useMemo(() => pipelinesFor(allPipelines, pipelineRoot), [allPipelines, pipelineRoot]);
+  const runPipelineWith = async (pipelineId: string, text: string): Promise<void | false> => {
+    if (!pipelineRoot || !text.trim()) return false;
+    const state = await runPipeline({ pipelineId, task: text, project: pipelineRoot, profileId });
+    if (!state) return false;
+    useDrafts.getState().removeDraft(newDraftKey(cwd));
+    useSessions.getState().select(state.run.id);
+  };
   /** Saved: the box is emptied (or, for a schedule that was open, back to New session's own prompt). */
   const onScheduled = () => {
     setScheduling(null);
@@ -1511,6 +1527,7 @@ function LocalNewSession() {
                     queueFirst: startAfterId !== null && wait.kind === 'session' && wait.sessionId === startAfterId,
                     canSchedule: true,
                     canTrigger: !fromLater,
+                    canPipeline: canWorktree && !fromLater,
                     scheduleFirst: scheduleFirst && !fromLater,
                     editingSchedule: fromSchedule !== null,
                   })}
@@ -1526,6 +1543,7 @@ function LocalNewSession() {
                           : box.submit()
                   }
                   data={{ 'data-composer-submit': true }}
+                  pipelines={{ list: projectPipelines, onRun: (pipeline) => box.submitWith((text) => runPipelineWith(pipeline.id, text)) }}
                 />
               )}
             />

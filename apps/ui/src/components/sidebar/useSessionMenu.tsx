@@ -20,6 +20,9 @@ import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
 import { useProjects } from '../../state/projectsStore.ts';
 import { remoteSessionEntries, setRemoteFlags } from '../computers/remoteActions.ts';
+import { usePipelines } from '../../state/pipelinesStore.ts';
+import { isRunRowId } from '../../state/runSelection.ts';
+import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -54,6 +57,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   const openIn = useOpenIn();
   const projectIcons = useProjectIconEntries();
   const projects = useProjects((s) => s.projects);
+  const pipelines = usePipelines((s) => s.pipelines);
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[]; label: string } | null>(null);
   const [deleting, setDeleting] = useState<SessionRowData[] | null>(null);
   const [renaming, setRenaming] = useState<SessionRowData | null>(null);
@@ -125,6 +129,8 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
         { label: 'New session linked to this one', onSelect: () => data.summary && startLinkedSession({ id: data.id, title: data.title, projectRoot: data.summary.projectRoot }), disabled: !data.summary, data: { 'data-new-linked-session': true } },
+        // A run row (#179) has no conversation to be the parent of another run.
+        ...(isRunRowId(data.id) ? [] : [runPipelineSubmenu(pipelines, { id: data.id, projectRoot: data.projectRoot })]),
         { label: 'Start after this one…', onSelect: () => startAfter({ id: data.id, projectRoot: data.projectRoot }), data: { 'data-start-after': true } },
         { label: 'Open folder in editor', onSelect: () => cwd && void openIn(cwd).catch(() => {}), disabled: !cwd },
         { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(data.id) },

@@ -121,6 +121,9 @@ import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
 import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
 import { CatchUpSlot } from '../catchUp/CatchUp.tsx';
+import { BackToRunButton, ParentRunRows, ParentStepTree, StepCrumb, StepStopNotice, StepTopLines, StepVerdictCard, useRunPlaceholder } from '../pipelines/RunParts.tsx';
+import { withRunStub } from '../pipelines/runView.ts';
+import { useRunOfParent } from '../../state/pipelinesStore.ts';
 import { replyPlaceholder } from '../catchUp/catchUpModel.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useCatchUpShow } from '../../state/catchUpShow.ts';
@@ -1281,6 +1284,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const canSendNow = running && Boolean(activeHost);
   const whileWorking = usePreferences((p) => p.prefs.whileWorking);
   const otherMode: SendMode = whileWorking === 'queue' ? 'steer' : 'queue';
+  // A pipeline run's parent: what you write there links the run, so Claude gets its brief first (#179).
+  const parentRun = useRunOfParent(sessionId);
+  const toRun = (text: string) => (parentRun ? withRunStub(text, parentRun.run) : text);
+  const runPlaceholder = useRunPlaceholder(sessionId);
   const compact = activeHost ?() => void send('/compact', [], false, true).catch((e: Error) => setActionError(e.message)) : undefined;
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
@@ -1326,6 +1333,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           </h1>
           {/* Status · project · branch. In a narrow pane: the dot and the branch. */}
           <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
+            {/* A pipeline step's parent, before its state: the way back to the run. */}
+            <StepCrumb sessionId={sessionId} />
             <span className={`flex shrink-0 items-center gap-1.5 ${statusTone}`} data-session-status>
               {live ? <StatusDot live={live} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
               <span className="@max-[860px]:sr-only" data-tooltip={failed ? (host?.error ?? undefined) : undefined}>
@@ -1472,6 +1481,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             }}
           />
         )}
+        <BackToRunButton sessionId={sessionId} />
         <ModsChip sessionId={sessionId} profileId={profileId} />
         <MoreMenu
           sessionId={sessionId}
@@ -1573,6 +1583,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               changesOpen={showChanges}
             />
           )}
+          {/* A pipeline run's step tree in its parent; the read-only line and the round at the top of a step. */}
+          {!terminalMaximized && <ParentStepTree sessionId={sessionId} />}
+          {!terminalMaximized && <StepTopLines sessionId={sessionId} />}
           <MessageActionsContext.Provider value={messageActions}>
           <PromptExpansionContext.Provider value={promptExpansion}>
           <MessageMenuContext.Provider value={remember.openMenu}>
@@ -1656,6 +1669,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               {autoPick && firstAnswer < 0 && renderItems.length > 0 && (
                 <div className="mx-auto max-w-3xl px-6 pt-3">
                   <AutoPickLine sessionId={sessionId} pick={autoPick} />
+                </div>
+              )}
+              {/* Switchboard's own rows of a run in its parent, and a step's verdict: after the conversation, never sent to Claude. */}
+              {status === 'ready' && <ParentRunRows sessionId={sessionId} />}
+              {status === 'ready' && (
+                <div className="mx-auto max-w-3xl px-6">
+                  <StepVerdictCard sessionId={sessionId} items={items} working={running} />
                 </div>
               )}
               <div ref={tailRef}>
@@ -1834,6 +1854,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               {/* A queued item that starts by itself once this session finishes: next to Up next, under mods' bands. */}
               <StartsAfterBand sessionId={sessionId} />
               <UpNext queue={upNext} hold={upNextHold} limited={limitHeld} actions={upNextActions} />
+              <StepStopNotice sessionId={sessionId} />
               <div className="relative">
                 <Composer
                   draftKey={sessionId}
@@ -1849,7 +1870,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   cwd={cwd}
                   commands={commands}
                   running={running}
-                  placeholder={replying && !running ? replyPlaceholder(title) : running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
+                  placeholder={replying && !running ? replyPlaceholder(title) : runPlaceholder && !running ? runPlaceholder : running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
                   submitLabel={openElsewhere ? 'Fork and send' : undefined}
                   dropHint={status === 'ready' && messages.length === 0}
                   disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
@@ -1858,9 +1879,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : 'Messages go to Claude now'} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
                       : undefined
                   }
-                  onSubmit={(text, attachments) => send(text, attachments, openElsewhere, false, whileWorking)}
-                  secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(text, attachments, false, false, 'now') } : undefined}
-                  others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(text, attachments, false, false, otherMode) }] : undefined}
+                  onSubmit={(text, attachments) => send(toRun(text), attachments, openElsewhere, false, whileWorking)}
+                  secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, 'now') } : undefined}
+                  others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, otherMode) }] : undefined}
                   onRecallQueued={() => {
                     const last = lastQueued(upNext);
                     if (!last) return false;

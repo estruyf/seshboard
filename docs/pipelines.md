@@ -16,7 +16,7 @@ The case that drives it:
 
 Today you can do this by hand: start a session in plan mode, approve the plan, change the model, ask for a review in a new session, copy its findings back, then open Create pull request. "Start after this session" and the queue do part of it, but every queued item starts an unrelated session in the project's root, with nothing from the step before. A pipeline keeps the steps together under one parent, in one worktree, hands each step what the one before did, and stops when it needs you.
 
-This note is the design. Nothing is built yet. Places in the code are named as they are on `dev` on 2026-10-19.
+This note is the design. Phases 1 and 2 are built (see [Phases 1 and 2 as built](#phases-1-and-2-as-built)); one thing changed from the first version of this note: steps hand over with @ session links instead of briefs of their own (see [The handoff: @ links](#the-handoff--links)). Places in the code are named as they are on `dev` on 2026-10-20.
 
 [← Back to the README](../README.md)
 
@@ -63,40 +63,54 @@ The parent's transcript gets a row for each step as it ends (*Plan approved*, *V
 type PipelineStep =
   | {
       kind: 'claude';
-      name: string;
-      prompt: string;                 // with {{task}}, {{previous.reply}}, {{step:<name>.reply}} and saved-prompt blanks
-      /** Fresh (with briefs), or a fork of an earlier step's sub-session, which keeps its context and cache. */
-      start: { kind: 'fresh'; briefOf?: string[] } | { kind: 'fork'; step: string };
+      name: string;                   // unique in the pipeline; `parent` is taken
+      prompt: string;                 // with {{task}}, @parent and @<earlier step>
+      /** A new session, or a fork of an earlier step's latest sub-session, which keeps its context and cache. */
+      start: 'fresh' | { fork: string };
       model: string | null;           // null: the project's default
       effort: Effort | null;
       permissionMode: PermissionMode | null;
       /** Only tools that read (`isReadOnlyTool`). Plan mode would end in a plan to approve. */
-      readOnly?: boolean;
-      /** Project actions run before Claude starts; exit codes and output tails go in the prompt. */
-      actionsFirst?: string[];
+      readOnly: boolean;
+      /** Project actions run before Claude starts, by name; exit codes and output tails go in the prompt. */
+      actionsFirst: string[];
       /** The step ends with a verdict. On "changes needed", the list goes to `sendTo` and the step runs again. */
-      verdict?: { sendTo: string; rounds: number };
+      verdict: { sendTo: string; rounds: number } | null;   // rounds 1 to 5
+      /** The run waits for you (Continue) before this step starts. */
+      confirmBefore: boolean;
     }
-  | { kind: 'push'; name: string; commit: boolean; pullRequest: { base: string | null; draft: boolean } | null };
+  | { kind: 'push'; name: string; draft: boolean };
 
 type Pipeline = {
   id: string;
   name: string;
-  /** Where the sub-sessions work: one new worktree for the run, or the parent's folder. */
-  workspace: 'worktree' | 'current';
+  /** This project, or All projects. Shared with the project (`.switchboard.json`) is phase 3. */
+  scope: { kind: 'project'; root: string } | { kind: 'all' };
   steps: PipelineStep[];
-  /** Steps that wait for you before they start, by name. A push step always waits, unless `autoPush` is on. */
-  confirmBefore: string[];
   /** Push without asking. Only for your own pipelines: ignored in `.switchboard.json`. */
-  autoPush?: boolean;
+  autoPush: boolean;
 };
 ```
 
 - **Two kinds of step.** A `claude` step is a sub-session. A `push` step is Switchboard's own: commit, push and Create pull request, no model. Actions run inside a `claude` step (`actionsFirst`) rather than as steps of their own, so their results always reach a model that can read them.
 - **Fork or fresh.** Execute forks Plan, because building needs everything planning learned. Validate starts fresh, because a reviewer that shares the author's context grades its own work.
-- **The verdict** is read from the step's last reply, `Verdict: pass` or `Verdict: changes needed`. When the SDK's structured output is there for the version Switchboard ships, the step asks for it instead. No verdict line counts as *changes needed* and stops the run, so a confused reviewer never lets work through.
-- **`{{previous.reply}}`** after a plan step is the approved plan (the input of `ExitPlanMode`), not the short reply after it. Briefs need a `plan` field for that.
+- **One folder.** A run makes one workspace when it starts: a new worktree from the parent's branch, or the parent's worktree when it has one. Every step runs in it; sub-sessions never make their own.
+- **The verdict** is read from the step's last reply, `Verdict: pass` or `Verdict: changes needed` (any case, in bold or code too), with the list after it (`readVerdict`). No verdict line stops the run, so a confused reviewer never lets work through.
 - **No branches or loops** beyond the verdict's rounds. See [Decisions](#decisions).
+
+## The handoff: @ links
+
+Steps hand work to each other with session linking ([session-linking.md](session-linking.md)), so there is one mechanism for it:
+
+- A step's prompt can say `@parent` and `@<step>`, for example `@Plan` or `@Execute`. `pipelineIssues` refuses a name that isn't a step before this one.
+- When the step starts, `fillStepPrompt` turns each into a real session link: the same `switchboard-session` stub the message box writes when you pick a session with @, pointing at the parent's session or that step's latest sub-session. The label stays in the text: "@Add a usage cost toggle", "@Execute".
+- The engine expands the stubs into briefs right before Claude reads the prompt, as it does for any message (`LinkService.expand`). The step's prompt card then shows the "Linked:" row and "What Claude got", like any linked session.
+- **Briefs have a `plan` field:** the approved `ExitPlanMode` input. A step that links `@Plan` gets the plan. When you approve the plan in a plan step, the step keeps it, and Claude is told not to build it (the next step does): the approval goes to Claude Code as an answer that says so, and the turn ends.
+- **A run row** (a run started from New session, with no conversation yet) has no session to link: `@parent` brings a short block with the task text.
+- **Fork steps** keep the context of the step they fork from. They still link `@parent`, so the task is always in the prompt.
+- **Validate's changes.** When Validate sends changes back to Execute, the message sent to Execute lists them and links `@Validate`, so Execute gets the verdict in its brief too.
+- The brief budget holds: 4,000 characters per brief, 12,000 per message. The task and the plan are never dropped to fit; a plan that alone is too long is cut, last.
+- **The run's brief.** When you write in the parent, the message box puts a `switchboard-run` stub before your text, which the engine expands into a brief of the run: each step with its state, its verdict and its reason, and the pull request (`writeRunBrief`). A run row you write in gets a session of its own, in the run's folder, with the same brief first.
 
 ## When a step is done, and when the run stops
 
@@ -153,17 +167,17 @@ All copy follows AGENTS.md › Copy. New palette commands and the Settings secti
 
 ## Protocol
 
-- `packages/protocol/src/pipelines.ts`: the zod `Pipeline`, `PipelineStep`, `PipelineRun` (`id`, `pipelineId`, `parentSessionId` or null for a run row, `cwd`, `task`, `state: 'running' | 'held' | 'needs-you' | 'done' | 'stopped'`, `heldBy`) and `PipelineRunStep` (`runId`, `step`, `round`, `sessionId`, `state`, `verdict`).
+- `packages/protocol/src/pipelineSchema.ts`: the zod `Pipeline`, `PipelineStep`, `PipelineSave`, `PipelineRun` (`id`, `pipelineId`, a snapshot of the pipeline, `parentSessionId` or null for a run row, `task`, `cwd`, `status: 'running' | 'waiting' | 'stopped' | 'paused' | 'done'`, `waitingFor: 'you' | 'confirm' | 'push'`, `reason`, `hold`, `step`, `round`, `sentBackTo`, `pr`), `PipelineRunStep` (`runId`, `step`, `index`, `round`, `sessionId`, `status`, `outcome`, `verdict`, `reason`, `plan`, `actions`), `PushPreview` and `PipelineNotice`.
+- `packages/protocol/src/pipelines.ts`, plain TypeScript for the UI too: the built-ins, and the pure rules `nextStep` / `enterStep`, `readVerdict`, `fillStepPrompt`, `changesMessage`, `pipelineIssues`, `sidebarTree`, `runProgress`, `writeRunBrief` / `parseRunBriefs`, `writeActionResult` / `parseActionResults`.
 - `SessionSummary` gets `parentId` (a session or a run), so the sidebar can nest any session.
-- Pure rules in the same file, for tests: `nextStep(run, steps, outcome, catchUp, verdict)`, `readVerdict(reply)`, `fillStepPrompt(step, run, replies)`, `sharedPipelineIssues(pipeline)`, and `sidebarTree(sessions, runs)` for the nesting and the parent's status.
-- RPCs: `pipelines.list`, `pipelines.save`, `pipelines.remove`, `pipelines.run` (pipeline id, parent session id or cwd, task, blanks), `pipelines.continue`, `pipelines.retryStep`, `pipelines.skipStep`, `pipelines.stop`, `pipelines.push`. Events: `pipelines.changed`, `pipelines.runChanged`, `pipelines.needsYou` (for main's notifier).
+- RPCs: `pipelines.list`, `pipelines.save`, `pipelines.delete`, `pipelines.restore`, `pipelines.run` (pipeline id, and a parent session id, or a task and a project), `runs.list`, `runs.get`, `runs.continue`, `runs.retryStep`, `runs.skipStep`, `runs.stop`, `runs.pushPreview`, `runs.write`. Events: `pipelines.changed`, `runs.changed`, `runs.notice` (for main's notifier).
 
 ## Engine
 
-- **`packages/engine/src/pipelines/`**: `pipelineStore.ts` (the user's pipelines, plus the shared ones read with the rest of `.switchboard.json`), `runStore.ts` (`pipeline_runs`, `pipeline_run_steps`, and `parent_id` on sessions, one migration), and `runner.ts`.
-- **`PipelineRunner`** listens for the same session outcomes as `QueueAutoStarter`, and for catch-ups. It uses the queue's holds for the focus limit and usage limits (`armForLimit`). A `fresh` step goes through `session.create` with `cwd` set to the run's folder and `workspace: 'current'`. A `fork` step forks the named step's sub-session at its last message, then sets the model and mode. `actionsFirst` runs the actions through the project actions path, waits for their exit codes and keeps the last 150 lines.
-- **The run's worktree** is made when the first step starts. Sub-sessions never make one. Finish worktree stays with you, as now.
-- **The parent's brief of the run**: when you write in the parent, the engine puts a `run` stub before your text and expands it like a session link: each step, its state, its verdict and its last reply, cut to the brief's size budget.
+- **`packages/engine/src/pipelines/`**: `pipelineStore.ts` (the built-ins and your pipelines), `runStore.ts` (`pipeline_runs`, `pipeline_run_steps`, and `session_parents`, one migration, all user data that survives a cache rebuild), `runner.ts`, `actionsFirst.ts` and `push.ts`.
+- **`PipelineRunner`** hears the same session outcomes as `QueueAutoStarter`, with the turn's catch-up, and uses the same holds: a free slot under the focus limit, the reset of a usage limit. A `fresh` step is a new session in the run's folder (`HostManager.create`); a `fork` step forks the named step's latest sub-session (`HostManager.fork`) with its own model, effort and mode. A read-only step gets the `isReadOnlyTool` PreToolUse hook, and keeps it when it resumes. `actionsFirst` runs the project's actions headless in the run's folder and keeps the last 40 lines of each.
+- **Push** commits (with Haiku's message from the diff, as Ask Claude to commit writes it, or yours), pushes and opens the pull request with the existing code (`git/pullRequest.ts`); its title and description come from the task, the plan and the last verdict.
+- **Quitting** pauses every run that goes on. At the next start a step that was working gets a message to go on; it never picks up in the middle of a turn.
 
 ## Edge cases
 
@@ -174,6 +188,15 @@ All copy follows AGENTS.md › Copy. New palette commands and the Settings secti
 - **Two runs in one project** at once is fine with `workspace: 'worktree'`. With `current`, a second run waits for the first, like an item waiting for the project.
 - **Other computers**: a run belongs to the computer it started on. The remote app shows the tree and the run's buttons, and doesn't start runs in phase 1.
 
+## Phases 1 and 2 as built
+
+- Everything in [The tree](#the-tree), [The model](#the-model) and [The handoff: @ links](#the-handoff--links), the stop rules, verdicts and rounds, `actionsFirst`, `confirmBefore`, the Push step and the run's brief.
+- **Ways in:** a session's ⋯ menu (**Run pipeline ›**, with **Edit pipelines…**), New session's **Start ▾ › Run pipeline ›**, and the palette's **Run pipeline…** and **Pipelines: pick one…**.
+- **Settings › Pipelines**: the list (Built in, All projects, one group per project) and the editor, with the steps as cards on a rail, the tree they make, and `pipelineIssues` inline.
+- **Notifications** through main's notifier: a run that waits for you without a session asking, one that stopped, one that is done. A step's own turns give no Finished notification; a step that needs you or fails says so as any session does.
+- The `pipeline` theme token for the pipeline icon and step kinds; violet stays away from states.
+- Not yet: shared pipelines (phase 3), side by side (phase 4), starting a pipeline from a trigger, forks outside pipelines going under their parent, a run noticing that its worktree was removed while it waits, and the remote app's view of runs. A sub-session closed in the middle of a turn stops its run, as a stop does.
+
 ## Phases
 
 1. **The tree.** `parentId`, the nested sidebar, the parent's step tree and the run row. `claude` steps with `fresh` and `fork`, one shared folder, the stop rules. Saved for this project or all projects. The built-in without Validate's actions and verdict.
@@ -183,7 +206,7 @@ All copy follows AGENTS.md › Copy. New palette commands and the Settings secti
 
 ## Tests
 
-- `pipelines.test.ts` (protocol): `nextStep` for every outcome, catch-up `need` and verdict, rounds and their limit, `confirmBefore`, skip; `readVerdict` with a missing, misspelled or doubled verdict line; `fillStepPrompt`; `sharedPipelineIssues`; `sidebarTree` with nested children, rounds, a run row and a parent whose child needs you.
+- `pipelines.test.ts` (protocol): `nextStep` for every outcome, catch-up `need` and verdict, rounds and their limit, `confirmBefore`; `readVerdict` with a missing, misspelled or doubled verdict line; `fillStepPrompt` with @ links, a run row's task and actions; `pipelineIssues`; `sidebarTree` with nested children, rounds, a run row and a parent whose child needs you.
 - `runner.test.ts` (engine): a run through every step kind with a fake host; a fork step; a failed verdict going back to Execute; focus limit and usage limit holds; quit and resume; a closed sub-session; a removed worktree.
 - Smoke: `smoke:demo` gets a demo run with a parent and three sub-sessions, stopped at Push.
 

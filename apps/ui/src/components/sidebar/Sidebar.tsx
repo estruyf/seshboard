@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { CatchUp } from '@switchboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -59,8 +59,16 @@ import { useQueueMenu } from '../queue/queueMenu.tsx';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
 import { QueueRow } from './QueueRow.tsx';
 import { reducedMotion, tween } from './archivedMotion.ts';
+import { usePipelines, runOfParent } from '../../state/pipelinesStore.ts';
+import { runIsActive } from '../../state/pipelines.ts';
+import { parentRunLine, pipelinesRunning, runRowLine, sidebarForest, treeNeedsYouLine } from '../../state/pipelineTree.ts';
+import { usePipelineTree } from '../../state/pipelineTreeStore.ts';
+import { isRunRowId } from '../../state/runSelection.ts';
+import { PipelineStepRow, PipelineTile, TreeChevron } from './pipelineTreeRow.tsx';
 
 const SESSION_ROW_HEIGHT: Record<SidebarStyle, number> = { large: 52, standard: 48, compact: 34 };
+/** A pipeline's sub-session under its parent: a smaller row. */
+const STEP_ROW_HEIGHT: Record<SidebarStyle, number> = { large: 40, standard: 38, compact: 28 };
 const ARCHIVED_HEADER_HEIGHT = 34;
 const GROUP_HEADER_HEIGHT = 34;
 /** The faint "+N hidden" line under a closed section's kept row. */
@@ -70,7 +78,9 @@ const SESSION_ROW_GAP: Record<SidebarStyle, number> = { large: 4, standard: 4, c
 
 const rowHeight = (row: SidebarListRow, style: SidebarStyle) =>
   row.kind === 'session'
-    ? SESSION_ROW_HEIGHT[style]
+    ? row.child
+      ? STEP_ROW_HEIGHT[style]
+      : SESSION_ROW_HEIGHT[style]
     : row.kind === 'queue'
       ? SESSION_ROW_HEIGHT[style]
       : row.kind === 'hidden'
@@ -245,6 +255,10 @@ export const SessionRow = memo(function SessionRow({
   draft,
   review = null,
   outside = false,
+  treeLevel,
+  expanded,
+  childCount = 0,
+  onToggleTree,
   onClick,
   onTogglePick,
   onMenu,
@@ -271,6 +285,12 @@ export const SessionRow = memo(function SessionRow({
   review?: number | null;
   /** Its last turn changed files outside the plan (or what you asked for). */
   outside?: boolean;
+  /** In the sidebar's tree (#179): the row is a treeitem at this level. Without one it is a plain button. */
+  treeLevel?: number;
+  /** A pipeline's parent: whether its sub-sessions show, and how many it has. A chevron opens or closes them. */
+  expanded?: boolean;
+  childCount?: number;
+  onToggleTree?(id: string): void;
   onClick(event: MouseEvent, data: SessionRowData): void;
   onTogglePick(id: string): void;
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
@@ -284,6 +304,12 @@ export const SessionRow = memo(function SessionRow({
   // With a project filter on, every row is in that project: the name would only repeat.
   const filtered = useProjects((s) => s.filter !== null);
   const status = rowStatus(data);
+  // A pipeline (#179): a run row stands for its run; a session a run started from says where the run is while it goes
+  // on, or while its sub-sessions are listed under it.
+  const runRow = isRunRowId(data.id);
+  const runs = usePipelines((s) => s.runs);
+  const run = useMemo(() => (remote ? null : runOfParent(runs, data.id)), [runs, data.id, remote]);
+  const runShown = run && (runRow || expanded !== undefined || runIsActive(run)) ? run : null;
   /** A schedule started it (#173): the repeat icon before its second line. */
   const scheduled = useSchedules((s) => !remote && s.bySession.has(data.id));
   /** A trigger started it (#180): the bolt, in the trigger colour, before its status. */
@@ -316,6 +342,7 @@ export const SessionRow = memo(function SessionRow({
     />
   );
   const pin = data.pinned && <Pin size={11} className="shrink-0 text-faint" aria-hidden />;
+  const chevron = expanded !== undefined && onToggleTree && <TreeChevron open={expanded} count={childCount} onToggle={() => onToggleTree(data.id)} />;
   // An unsent message: a pen in the same corner, never in a status colour.
   const pen = draft !== null && <PencilLine size={11} className="shrink-0 text-faint" aria-hidden data-row-pen />;
   // Open in a window of its own: a click brings that window to the front.
@@ -334,7 +361,7 @@ export const SessionRow = memo(function SessionRow({
       <PickBox on={picked} size={size} onToggle={() => onTogglePick(data.id)} />
     ) : (
       <span className={`flex shrink-0 ${archived && !selected ? 'opacity-60' : ''}`}>
-        <ProjectIcon project={project} root={data.projectRoot} size={size} name={remote?.projectName} remote={remote !== null} />
+        {runRow ? <PipelineTile size={size} /> : <ProjectIcon project={project} root={data.projectRoot} size={size} name={remote?.projectName} remote={remote !== null} />}
       </span>
     );
   // Below the row's corner, for menus opened from the keyboard (or VoiceOver, which sends a contextmenu at 0,0).
@@ -346,6 +373,9 @@ export const SessionRow = memo(function SessionRow({
     type: 'button' as const,
     'data-session-id': data.id,
     'data-in-app': data.inApp,
+    'data-run-row': runRow || undefined,
+    'data-tree-parent': expanded,
+    ...(treeLevel ? { role: 'treeitem', 'aria-level': treeLevel, 'aria-expanded': expanded, 'aria-selected': selected } : {}),
     tabIndex: tabbable ? 0 : -1,
     'aria-current': selected ? ('true' as const) : undefined,
     // The visible lines lean on icons, colour and short ages; this says the same in words.
@@ -354,7 +384,7 @@ export const SessionRow = memo(function SessionRow({
     'data-archived': archived || undefined,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -417,6 +447,7 @@ export const SessionRow = memo(function SessionRow({
         {warning}
         {remote && <ComputerChip name={remote.computerName} offline={remote.offline} />}
         {status ? <StatusIcon status={status} /> : age}
+        {chevron}
       </button>
     );
   }
@@ -435,6 +466,7 @@ export const SessionRow = memo(function SessionRow({
           {pen}
           {warning}
           {age}
+          {chevron}
         </span>
       </span>
       <span className="flex h-4 min-w-0 items-center gap-1.5 text-meta text-faint">
@@ -447,6 +479,12 @@ export const SessionRow = memo(function SessionRow({
           </span>
         ) : waitingFor ? (
           <span className="min-w-0 flex-1 truncate font-medium text-warn">{waitingFor}</span>
+        ) : runShown ? (
+          // Where the pipeline is: "Validate · 3 of 4 · switchboard", or a run row's "Run · Plan · 1 of 4 · switchboard".
+          <span className="flex min-w-0 flex-1 items-center gap-1" data-row-run={runShown.run.id}>
+            {!runRow && <ListTree size={11} className="shrink-0 text-pipeline" aria-hidden />}
+            <span className="min-w-0 truncate">{runRow ? runRowLine(runShown, filtered ? null : projectName) : parentRunLine(runShown, filtered ? null : projectName)}</span>
+          </span>
         ) : limitText ? (
           <span className="flex min-w-0 flex-1 items-center gap-1 text-muted">
             <Clock size={11} className="shrink-0" aria-hidden />
@@ -553,7 +591,15 @@ export function Sidebar() {
   const remoteRows = useRemoteRows();
   const hidden = useComputers((s) => s.hidden);
   const merged = useMemo(() => filterBySource([...all, ...remoteRows], hidden), [all, remoteRows, hidden]);
-  const { active, archived } = useMemo(() => buildSessionList(merged, { search, project: projectFilter, now, archiveAfterDays }), [merged, search, projectFilter, now, archiveAfterDays]);
+  // Pipelines (#179): run rows join the list, sub-sessions nest under their parent, and a parent takes its children's
+  // most urgent state. Parents start closed.
+  const runs = usePipelines((s) => s.runs);
+  const forest = useMemo(() => sidebarForest(merged, runs.values(), now), [merged, runs, now]);
+  const openParents = usePipelineTree((s) => s.open);
+  const { active, archived } = useMemo(
+    () => buildSessionList(forest.roots, { search, project: projectFilter, now, archiveAfterDays, children: forest.children }),
+    [forest, search, projectFilter, now, archiveAfterDays],
+  );
   const counts = useMemo(() => {
     const map = new Map<string, { total: number; active: number }>();
     for (const row of [...all, ...remoteRows]) {
@@ -593,8 +639,19 @@ export function Sidebar() {
   const shownId = useShownRowId();
   const listSelected = shownId;
   const rows = useMemo(
-    () => buildListRows(active, archived, { now, archivedOpen: archivedAt === 'list', queue: { entries: queueEntries, ready: queueReady }, closed, selectedId: listSelected, sort, quick }),
-    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick],
+    () =>
+      buildListRows(active, archived, {
+        now,
+        archivedOpen: archivedAt === 'list',
+        queue: { entries: queueEntries, ready: queueReady },
+        closed,
+        selectedId: listSelected,
+        sort,
+        quick,
+        children: forest.children,
+        openParents,
+      }),
+    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, forest, openParents],
   );
   const queueMenus = useQueueMenu(queue.rows);
   const drag = useQueueDrag();
@@ -614,6 +671,19 @@ export function Sidebar() {
     }
     return map;
   }, [permissions]);
+  /**
+   * What a row that needs you waits for: its own request, or for a pipeline's parent, which sub-session asks what (or
+   * why the run waits).
+   */
+  const waitingFor = (data: SessionRowData): string | null => {
+    if (rowStatus(data) !== 'needs-you') return null;
+    if (data.remote) return waitingLabel(data.remote.waitingTool);
+    if (data.live?.status === 'needs-you') return waitingLabel(waitingTool.get(data.id)?.tool ?? null);
+    const asking = forest.children.get(data.id)?.find((child) => rowStatus(child) === 'needs-you');
+    return treeNeedsYouLine(runOfParent(runs, data.id), asking ? { title: asking.title, toolName: waitingTool.get(asking.id)?.tool ?? null } : null);
+  };
+  const toggleParent = useCallback((id: string) => usePipelineTree.getState().toggle(id), []);
+  const titleOf = (id: string) => forest.roots.find((row) => row.id === id)?.title ?? null;
 
   // The sessions on screen, in list order: what ⇧-click ranges run over, and the picks that still count.
   const order = useMemo(() => rows.flatMap((r) => (r.kind === 'session' ? [r.data.id] : [])), [rows]);
@@ -818,6 +888,24 @@ export function Sidebar() {
       }
       return;
     }
+    // ← → on a pipeline's parent close and open it; ← on a sub-session goes to its parent.
+    const treeRow = target.closest<HTMLElement>('[data-session-id]');
+    if (treeRow && matches(event.nativeEvent, 'sidebar.section-toggle')) {
+      const id = treeRow.dataset.sessionId!;
+      const listed = rows.find((r) => r.kind === 'session' && r.data.id === id);
+      if (listed?.kind !== 'session') return;
+      if (listed.parent && (event.key === 'ArrowRight') !== listed.parent.open) {
+        event.preventDefault();
+        usePipelineTree.getState().setOpen(id, event.key === 'ArrowRight');
+      } else if (listed.child && event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setPicks(NO_PICKS);
+        openRow(listed.child.parentId);
+        virtualizer.scrollToIndex(rows.findIndex((r) => r.kind === 'session' && r.data.id === listed.child!.parentId), { align: 'auto' });
+        focusRow(listed.child.parentId);
+      }
+      return;
+    }
     // ↑ ↓ on a queued item move between queued items (they aren't sessions to select).
     const queued = target.closest<HTMLElement>('[data-queue-item]')?.dataset.queueItem;
     if (queued) {
@@ -932,6 +1020,8 @@ export function Sidebar() {
   };
 
   const sessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
+    // A run row isn't a session yet: its run has its own controls in its pane.
+    if (isRunRowId(data.id)) return;
     if (multi && picked.has(data.id)) return pickedMenu(at);
     setPicks(NO_PICKS);
     menus.openSessionMenu(at, data);
@@ -939,6 +1029,10 @@ export function Sidebar() {
 
   // Only open sessions the main list shows: a process idling elsewhere sits under Archived and
   // would make the count disagree with what's visible.
+  const middleClick = (data: SessionRowData) => {
+    if (!isRunRowId(data.id)) menus.middleClick(data);
+  };
+  const running = useMemo(() => pipelinesRunning(runs.values()), [runs]);
   const liveCount = all.filter((row) => row.live !== null && isActive(row, now, archiveAfterDays)).length;
   const waitingNotice = useWaitingAnnouncement(all, loaded);
   const deviceNotice = useDeviceAnnouncement();
@@ -1042,7 +1136,9 @@ export function Sidebar() {
           </div>
         ) : (
           // Virtualised: only rows near the viewport exist, so each item says where it sits in the whole list.
-          <div role="list" aria-label="Sessions" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+          // A tree (#179): sessions are treeitems, a pipeline's parent opens to its sub-sessions. Being virtualised, the
+          // levels are told with aria-level rather than nested groups.
+          <div role="tree" aria-label="Sessions" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualItems.map((item) => {
               const row = rows[item.index]!;
               const isPicked = (r: SidebarListRow | undefined) => multi && r?.kind === 'session' && picked.has(r.data.id);
@@ -1051,9 +1147,8 @@ export function Sidebar() {
               return (
                 <div
                   key={item.key}
-                  role="listitem"
-                  aria-setsize={rows.length}
-                  aria-posinset={item.index + 1}
+                  role="none"
+                  data-list-row={item.index + 1}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, height: item.size, transform: `translateY(${item.start}px)` }}
                   // Archived sessions fade in once their header has landed, and out before it goes back to the dock.
                   className={row.kind === 'session' && row.archived ? `transition-opacity ${archivedMotion === 'closing' ? 'duration-100' : 'duration-150'} ${archivedMotion ? 'opacity-0' : ''}` : undefined}
@@ -1083,24 +1178,45 @@ export function Sidebar() {
                       onMenu={queueMenus.openMenu}
                       onKeyDown={queueMenus.onKeyDown}
                     />
+                  ) : row.kind === 'session' && row.child ? (
+                    <PipelineStepRow
+                      data={row.data}
+                      parentTitle={titleOf(row.child.parentId)}
+                      level={row.child.level}
+                      position={row.child.position}
+                      count={row.child.count}
+                      style={sidebarStyle}
+                      selected={row.data.id === listSelected}
+                      beside={listView === 'session' && row.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(row.data.id)}
+                      tabbable={row.data.id === tabStopId}
+                      waitingFor={waitingFor(row.data)}
+                      onClick={rowClick}
+                      onMenu={sessionMenu}
+                      onMiddleClick={middleClick}
+                    />
                   ) : row.kind === 'session' ? (
                     <SessionRow
                       data={row.data}
                       archived={row.archived}
                       picked={multi && picked.has(row.data.id)}
                       picking={multi}
-                      selected={row.data.id === listSelected}
+                      // A closed parent stands for its open sub-session.
+                      selected={row.data.id === listSelected || (row.parent?.open === false && forest.parentOf.get(listSelected ?? '') === row.data.id)}
                       beside={listView === 'session' && row.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(row.data.id)}
                       now={now}
                       tabbable={row.data.id === tabStopId}
-                      waitingFor={rowStatus(row.data) === 'needs-you' ? waitingLabel(row.data.remote ? row.data.remote.waitingTool : (waitingTool.get(row.data.id)?.tool ?? null)) : null}
+                      waitingFor={waitingFor(row.data)}
                       draft={draftPreviews.get(row.data.id) ?? null}
                       review={reviewOf(catchUps.get(row.data.id))}
                       outside={(catchUps.get(row.data.id)?.signals.outOfScope.length ?? 0) > 0}
+                      treeLevel={1}
+                      expanded={row.parent?.open}
+                      childCount={row.parent?.count}
+                      onToggleTree={toggleParent}
                       onClick={rowClick}
                       onTogglePick={togglePicked}
                       onMenu={sessionMenu}
-                      onMiddleClick={menus.middleClick}
+                      onMiddleClick={middleClick}
                     />
                   ) : (
                     // Like a section header: the label sits at the foot of the row, just above its sessions.
@@ -1179,6 +1295,7 @@ export function Sidebar() {
         {/* The count opens every session, in Settings › Sessions. */}
         <button type="button" onClick={() => openSessionManager()} className="min-w-0 flex-1 truncate rounded text-left hover:text-text" data-tooltip="Manage sessions" data-footer-sessions>
           {all.length} {all.length === 1 ? 'session' : 'sessions'}{liveCount > 0 && ` · ${liveCount} open`}
+          {running && <span data-footer-pipelines>{` · ${running}`}</span>}
           {queue.entries.length > 0 && <span data-footer-queued>{` · ${queue.entries.length} queued`}</span>}
           {waiting > 0 && <span className="text-warn">{` · ${waiting} waiting`}</span>}
           {!complete && loaded && ' · scanning…'}

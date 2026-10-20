@@ -1,6 +1,6 @@
 import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow, type NativeImage } from 'electron';
 import { resolveSound } from '@switchboard/protocol/bridge';
-import { createRpcClient, promptLabel, type Contract, type LaterItem, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@switchboard/protocol/client';
+import { createRpcClient, promptLabel, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@switchboard/protocol/client';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
@@ -9,6 +9,7 @@ import type { EngineProcess } from './engineProcess.ts';
 import { queueHint } from './queueHint.ts';
 import { scheduleAlerts } from './scheduleAlerts.ts';
 import { triggerAlerts } from './triggerAlerts.ts';
+import { pipelineAlerts, stepSessions } from './pipelineAlerts.ts';
 import type { SoundPlayer } from './sounds.ts';
 import { badgeDescription, badgeDotBitmap } from './taskbarBadge.ts';
 
@@ -59,6 +60,9 @@ export class Notifier {
   private dot: NativeImage | undefined;
   /** The queue, so a finished turn can say what is next there. */
   private queue: { items: LaterItem[]; started: QueueStarted[]; auto: QueueAuto } = { items: [], started: [], auto: { outcomes: [], focusHeld: [] } };
+  /** Pipeline runs, and the sub-sessions of those that go on: their turns give no Finished notification. */
+  private readonly runs = new Map<string, PipelineRunState>();
+  private steps = new Set<string>();
   /** Reminds you before a large session's cache lapses (Settings › Usage). */
   private readonly cache: CacheReminder;
 
@@ -130,6 +134,16 @@ export class Notifier {
     });
     // Event triggers (#180): a session started, an issue picked up, a trigger paused.
     client.on('triggers.notice', ({ notices }) => this.handle(triggerAlerts(notices)));
+    // Pipelines (#179): a run waits for you, stopped, or is done. Its steps' turns are its news: no Finished for them.
+    client.on('runs.notice', ({ notice }) => this.handle(pipelineAlerts(notice)));
+    client.on('runs.changed', ({ state }) => {
+      this.runs.set(state.run.id, state);
+      this.steps = stepSessions(this.runs.values());
+    });
+    void client.call('runs.list', {}).then(({ runs }) => {
+      for (const state of runs) this.runs.set(state.run.id, state);
+      this.steps = stepSessions(this.runs.values());
+    }, () => {});
     void client.call('later.list', {}).then((queue) => void (this.queue = queue), () => {});
 
     // Seed state silently: only changes from here on deserve a notification.
@@ -181,6 +195,7 @@ export class Notifier {
     const prefs = this.options.alerts();
     let sound: Alert['sound'] = null;
     for (const event of events) {
+      if (event.kind === 'finished' && this.steps.has(event.sessionId)) continue;
       // Already looking at it: no need to interrupt, with a notification or a sound.
       const suppressed = !test && focused && this.options.focusedSession() === event.sessionId;
       const alert = alertFor(event.kind, suppressed, prefs);

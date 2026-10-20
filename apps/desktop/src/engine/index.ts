@@ -102,6 +102,12 @@ process.parentPort.on('message', (event) => {
     }
     return;
   }
+  // The smoke run's pipeline step: a step's turn ends, with the reply its verdict is read from.
+  if (data?.type === 'smokePipelineTurn') {
+    const { sessionId, outcome, reply } = data as { sessionId?: unknown; outcome?: unknown; reply?: unknown };
+    if (typeof sessionId === 'string' && (outcome === 'clean' || outcome === 'error' || outcome === 'stopped') && typeof reply === 'string') void engine.smokePipelineTurn({ sessionId, outcome, reply });
+    return;
+  }
   // The computer woke (powerMonitor's resume): scheduled runs due while it slept are dealt with now.
   if (data?.type === 'wake') {
     engine.wake();

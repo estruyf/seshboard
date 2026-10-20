@@ -33,6 +33,10 @@ Pick a session with <Kbd keys="arrowdown" /> and <Kbd keys="enter" />, or click 
 
 Right-click a session in the sidebar and choose **New session linked to this one**, or run *New session linked to this one* from the command palette for the session you are in. New session opens on that session's project with the chip in place and its name in the box, ready for the rest of your prompt.
 
+### Steps of a pipeline
+
+A [pipeline](/sessions/pipelines/)'s steps link each other the same way. A step's prompt says `@parent` for the session you ran the pipeline from, and `@Plan` or `@Execute` for an earlier step. When the step starts, each becomes a link to that session, with its name in the text, and Claude gets its brief. A step that links the plan step also gets the plan you approved: a brief has the plan, and never leaves it out to fit. When a step finds changes, the message that sends them back links that step too.
+
 ### A follow-up that starts by itself
 
 **Start after this one…** in the same menu queues a prompt that [starts by itself](/new-session/queue/#start-by-itself) once the session finishes. Link that session with @ in the queued prompt: the brief is written when the follow-up starts, so it gets the session's branch, pull request and last reply as they are then.

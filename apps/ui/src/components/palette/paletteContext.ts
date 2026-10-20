@@ -100,6 +100,10 @@ export interface PaletteContext {
   schedules: number;
   /** How many event triggers there are, in every project (#180). */
   triggers: number;
+  /** How many pipelines there are, built-ins and yours (#179). */
+  pipelines: number;
+  /** How many of them the open session's project can run; 0 without a session. */
+  sessionPipelines: number;
   /** Unsent messages (sessions and New session prompts) that count. */
   unsent: number;
   projectCount: number;
