@@ -98,6 +98,8 @@ export interface PaletteContext {
   queue: { count: number; readyCount: number; firstReady: { id: string; prompt: string } | null };
   /** How many scheduled sessions there are (#173). */
   schedules: number;
+  /** How many event triggers there are, in every project (#180). */
+  triggers: number;
   /** Unsent messages (sessions and New session prompts) that count. */
   unsent: number;
   projectCount: number;

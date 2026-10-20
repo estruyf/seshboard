@@ -64,7 +64,7 @@ export const sidebar = [
   {
     label: 'Projects',
     collapsed: true,
-    items: ['projects/projects-view', 'projects/clone-from-github', 'projects/overview', 'projects/sessions', 'projects/worktrees', 'projects/branches', 'projects/memory', 'projects/actions', 'projects/settings'],
+    items: ['projects/projects-view', 'projects/clone-from-github', 'projects/overview', 'projects/sessions', 'projects/triggers', 'projects/worktrees', 'projects/branches', 'projects/memory', 'projects/actions', 'projects/settings'],
   },
   {
     label: 'Memory and knowledge',

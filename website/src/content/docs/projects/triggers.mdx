@@ -1,0 +1,174 @@
+---
+title: Triggers
+description: Start a session when CI fails on a branch, or when an issue gets your label or is assigned to you.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+import OnlyOn from '../../../components/OnlyOn.astro';
+import Related from '../../../components/Related.astro';
+
+A trigger starts a session when there is work, not at a set time. [Schedules](/new-session/schedules/) start a session at 08:00. A trigger starts one when CI fails on `main`, or when an issue is labelled `claude` or assigned to you.
+
+Switchboard checks GitHub through the GitHub CLI (`gh`), every 5 minutes, on this computer. You need no webhook and no public address. A trigger belongs to a project, and lives on this computer only.
+
+<Screenshot name="triggers-tab" alt="A project's Triggers tab: CI fails on main with three sessions, Issues for you with an issue picked up, one waiting and one skipped, and a paused trigger" eager />
+
+## Make a trigger
+
+<Steps>
+
+1. Open the project's page, and its **Triggers** tab. The project's **⋯** menu in the sidebar has **Triggers…**.
+2. Choose **New trigger**.
+3. Under **When**, pick **CI fails on a branch** or **Issues for you**, and say what to look for.
+4. Write the prompt under **Then**, and check what the sessions run with.
+5. Choose **Create trigger** (<Kbd keys="mod+enter" />).
+
+</Steps>
+
+You can also start from a prompt: write it in [New session](/new-session/form/), then choose **Start when…** in Start's ▾ menu, after **Schedule…**. The editor opens for that project, with the prompt and New session's choices. A folder that isn't one of your projects yet becomes one, so the trigger has a Triggers tab. In the command palette, *New trigger…* asks for the project first.
+
+<Aside>
+The first check marks what is there as seen, and starts nothing. Only failures and issues that come after start a session. The editor's footer says so: "Issues that match now are marked as seen. Only new ones start a session."
+</Aside>
+
+<Screenshot name="trigger-editor" alt="The New trigger dialog: Issues for you picked, Label and assigned to me, the claude label, only collaborators, state labels on, the prompt with event fields, what it runs with and how many at once" />
+
+## CI fails on a branch
+
+A failed workflow run on the branch starts a session that fixes it.
+
+| Field | What it does |
+|---|---|
+| **Branch** | The branch to watch. Empty, it is the repository's default branch, which the field shows. |
+| **Workflows** | **All**, or only the workflows you pick. The chips come from the repository. |
+
+- A workflow failing on a commit is one event. A re-run that fails again on the same commit doesn't start a second session.
+- The session gets the end of the failed jobs' log (the last 300 lines) to read.
+- A newer failure of the same workflow replaces one that still waits for a slot.
+
+The session is titled "Fix test on main", after the workflow and the branch.
+
+## Issues for you
+
+An open issue that newly matches the filter starts a session that works on it.
+
+### Which issues
+
+| Choice | Picks up | Fits |
+|---|---|---|
+| **Label** | every open issue with the label | a repository you work on alone, or a team where one person runs the triggers |
+| **Assigned to me** | every open issue assigned to you | a team: each person's Switchboard picks up only their issues |
+| **Label and assigned to me** | issues with the label that are assigned to you | a team where you also choose which of your issues Claude takes |
+
+"Me" is the account `gh` is signed in with. The editor shows it, such as "@estruyf signed in to gh". Pick **Someone else…** to type another login.
+
+An issue newly matches when the label is added, when it is assigned to you, or when a matching issue is opened. The session is titled after the issue, such as "#212 Pinned sessions lose their order".
+
+<Aside type="caution">
+With **Label** alone on a repository more people work on, the editor warns: "estruyf/switchboard has 6 collaborators. Everyone's claude issues will start here. Use Assigned to me, turn on state labels, or Assign to me when picked up."
+</Aside>
+
+### Only collaborators
+
+**Only collaborators** is on by default. Only issues opened by the repository's owners, members and collaborators start a session. A bot or an issue template can add a label for anyone, so on a public repository anyone could start a session on your computer. An issue from someone else shows as skipped, with **Start anyway**.
+
+### On GitHub
+
+Two choices write to GitHub, and only when you turn them on.
+
+**Keep a state label on the issue** keeps one label on the issue that says where the work is, so you and your team see it on GitHub:
+
+| When | The issue gets |
+|---|---|
+| The issue is picked up, also while it waits for a slot | `claude: working`, and the trigger's label comes off |
+| The session needs you | `claude: needs input` |
+| It works again | `claude: working` |
+| The session opens a pull request | `claude: pr open` |
+| It ends with an error, is stopped, or can't start | `claude: failed` |
+
+- One state label at a time, changed in one edit. Labels the repository doesn't have yet are created.
+- **Rename labels** changes their names.
+- An issue that already has `claude: working` or `claude: needs input` is skipped: another computer works on it.
+- A label you change by hand on GitHub isn't put back.
+- To start an issue again, add the trigger's label again. With **Assigned to me** alone, take the state label off.
+
+**Assign to me when picked up** assigns the issue to you when the work starts, so the team sees who has it. It skips issues that already have an assignee.
+
+When an issue is assigned to someone else while its session works, the session goes on. Its header says who has it now.
+
+## Then
+
+| Field | What it does |
+|---|---|
+| **Prompt** | What the session should do. Type `{{` for the event's fields, such as `{{event.title}}`, `{{event.url}}`, `{{event.number}}`, `{{event.workflow}}` or `{{event.branch}}`. They show as violet chips, and are filled in for each event. The issue's text and comments, or the failed log, go in after the prompt as context to read, not instructions. |
+| **Runs with** | The workspace (a new worktree, or the project folder), the [Claude profile](/settings/claude-profiles/), the model and the mode, from the project's defaults. The mode menu has no **Bypass permissions**. |
+| **At once** | How many of the trigger's sessions may be busy at the same time (1 to 10, 3 by default), and how many events may wait for a slot (10 by default). |
+| **Name** | Follows the source, such as "CI fails on main", until you type one. |
+
+In the project folder, sessions would edit the same files, so **At once** is fixed at 1.
+
+## How many start at once
+
+Label ten issues on a Monday morning and ten sessions would start together. A trigger starts at most its **At once** number. A session counts while it works or waits for you.
+
+- The rest wait for a slot, oldest first. Each waiting event has **Start now**.
+- Past the waiting number, events are skipped, with "10 already waiting", and **Start anyway**.
+- The [focus limit](/focus-limit/) and usage limits still apply. A start they hold goes to the [queue](/new-session/queue/) as an item that starts by itself.
+
+## The Triggers tab
+
+Each trigger is a card:
+
+- the source's icon, the name and the filter, such as `claude` and assigned to `@estruyf`;
+- a pill with how busy it is: "2 of 3 busy", or "1 waiting";
+- what its sessions run with, and when it last checked: "checked 2m ago";
+- **Check now**, a switch that pauses it, and **⋯** with **Edit…**, **Check now**, **Pause** or **Resume**, and **Delete**. Delete has **Undo**.
+
+Under the card are its last three events, and **Show all** for the rest. A session that works on one shows **Working**, **Needs you** or **Finished**, with **Open**.
+
+In the command palette, *Triggers: pick one…* lists every trigger. Pick one to **Check now**, **Edit…**, **Pause** or **Resume**, or **Delete** it. [Upcoming](/sessions/upcoming/) has a **Triggers** filter with every trigger across your projects.
+
+## Sessions from a trigger
+
+In the sidebar, a session a trigger started has a violet bolt before its second line. Its header says which trigger and event started it, such as "Started by CI fails on main · CI #4512 · 14:02", with a link to the run or the issue.
+
+Notifications say:
+
+- "CI failed on main. Started “Fix test on main”", with the project and the run;
+- "Issue #212 picked up";
+- "Issues for you is paused", with the reason.
+
+They follow [Settings › Notifications](/settings/notifications/).
+
+## Guardrails
+
+A trigger starts work while you look elsewhere, from text other people wrote.
+
+- **Never bypass permissions.** A trigger can't be saved with **Bypass permissions**. Claude asks for permissions as always, and you get a notification.
+- **Event text is context, not instructions.** Your prompt is the instruction.
+- **Only collaborators** is on by default.
+- **Nothing outward.** Switchboard writes nothing to GitHub but the state labels and **Assign to me when picked up**, and only when they are on. Commenting or pushing is for Claude to do in the prompt, behind a permission prompt.
+- **Pauses on failure.** A trigger whose check fails five times in a row pauses, with the reason, such as "Paused after 5 failed checks: gh is signed out". When GitHub asks Switchboard to slow down, it waits an hour before it checks again.
+- **On this computer only.** Triggers are never in `.switchboard.json`: a committed file must not start sessions on everyone's computer.
+
+## When triggers check
+
+<OnlyOn os="mac">
+Triggers check while Switchboard is running, also with its windows closed. Quitting Switchboard stops them until you open it again.
+</OnlyOn>
+
+<OnlyOn os="windows">
+Triggers check while a Switchboard window is open. Closing the last window quits Switchboard, and triggers wait until you open it again.
+</OnlyOn>
+
+Each trigger checks every 5 minutes. **Check now** checks at once. Resuming a paused trigger marks what is there as seen, like a new one.
+
+## Export and import
+
+Triggers travel in the **Triggers** section of a [settings file](/settings/backup/). They come in paused, with "Imported. Check it, then resume.", so nothing starts until you have looked at them.
+
+## Related
+
+<Related pages={['new-session/schedules', 'sessions/upcoming', 'sessions/github-issues', 'focus-limit', 'permissions', 'settings/notifications']} />

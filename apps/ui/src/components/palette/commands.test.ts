@@ -39,6 +39,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     sounds: false,
     queue: { count: 0, readyCount: 0, firstReady: null },
     schedules: 0,
+    triggers: 0,
     unsent: 0,
     projectCount: 2,
     projects: [
@@ -140,6 +141,19 @@ describe('when(): always', () => {
     const list = visibleCommands(withSchedules).find((c) => c.id === 'schedules')!;
     expect(hintOf(list, withSchedules)).toBe('4');
     expect(list.next!(withSchedules)).toEqual({ kind: 'pick', list: 'schedules', chip: 'Schedules' });
+  });
+
+  it('makes a trigger for a project, and lists the triggers once there are some', () => {
+    const ctx = context({ projects: [{ root: '/work/app', name: 'app' }] });
+    const add = visibleCommands(ctx).find((c) => c.id === 'trigger-new')!;
+    expect(titleOf(add, ctx)).toBe('New trigger…');
+    expect(add.next!(ctx)).toEqual({ kind: 'projects', purpose: 'trigger', worktree: false, chip: 'New trigger' });
+    expect(visibleCommands(context({ projects: [] })).some((c) => c.id === 'trigger-new')).toBe(false);
+    expect(visibleCommands(ctx).some((c) => c.id === 'triggers')).toBe(false);
+    const withTriggers = context({ triggers: 2 });
+    const list = visibleCommands(withTriggers).find((c) => c.id === 'triggers')!;
+    expect(hintOf(list, withTriggers)).toBe('2');
+    expect(list.next!(withTriggers)).toEqual({ kind: 'pick', list: 'triggers', chip: 'Triggers' });
   });
 
   it('asks a quick question in the scratch folder, once the engine has said where it is', () => {

@@ -24,6 +24,8 @@ import { Button } from '../ui/Button.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { Switch } from '../ui/Toggle.tsx';
+import { useTriggers } from '../../state/triggersStore.ts';
+import { TriggersCard } from './UpcomingTriggers.tsx';
 
 const CARD = 'grid content-start gap-1 rounded-xl border border-border bg-card p-3';
 
@@ -57,12 +59,14 @@ export function UpcomingView() {
   const focus = useUpcoming((s) => s.focus);
   const queue = useQueue();
   const schedules = useSchedules((s) => s.schedules);
+  const allTriggers = useTriggers((s) => s.triggers);
+  const triggerEvents = useTriggers((s) => s.events);
   const projects = useProjects((s) => s.projects);
   const projectName = useProjectName();
   const [menu, setMenu] = useState<OpenMenu>(null);
   const chip = useRef<HTMLButtonElement>(null);
 
-  const counts = useMemo(() => projectCounts(queue.entries.map((e) => e.item), listedSchedules(schedules, now), projectName), [queue.entries, schedules, projectName, now]);
+  const counts = useMemo(() => projectCounts(queue.entries.map((e) => e.item), listedSchedules(schedules, now), projectName, allTriggers), [queue.entries, schedules, projectName, now, allTriggers]);
   // A project picked earlier that has nothing left still shows in the chip, so the filter can be cleared.
   const project = filter.project;
   const entries = useMemo(() => queue.entries.filter((e) => inProject(e.item.cwd, project)), [queue.entries, project]);
@@ -72,8 +76,9 @@ export function UpcomingView() {
   const runs = useMemo(() => upcomingRuns(shownSchedules, now, UPCOMING_DAYS), [shownSchedules, now]);
   const history = useMemo(() => pastRuns(inFilter, now, HISTORY_DAYS), [inFilter, now]);
   const byId = useMemo(() => new Map(schedules.map((s) => [s.id, s])), [schedules]);
+  const shownTriggers = useMemo(() => allTriggers.filter((t) => inProject(t.projectRoot, project)), [allTriggers, project]);
   const cards = visibleCards(filter.kind);
-  const nothing = queue.entries.length === 0 && listedSchedules(schedules, now).length === 0 && history.length === 0;
+  const nothing = queue.entries.length === 0 && listedSchedules(schedules, now).length === 0 && history.length === 0 && allTriggers.length === 0;
 
   const nameOf = (cwd: string) => projectName(projectOf(cwd));
   const openProjectMenu = () => {
@@ -129,6 +134,7 @@ export function UpcomingView() {
                   { value: 'all', label: 'All', data: { 'data-upcoming-kind': 'all' } },
                   { value: 'queue', label: 'Queue', badge: entries.length, data: { 'data-upcoming-kind': 'queue' } },
                   { value: 'schedules', label: 'Schedules', badge: shownSchedules.length, data: { 'data-upcoming-kind': 'schedules' } },
+                  { value: 'triggers', label: 'Triggers', badge: shownTriggers.length, data: { 'data-upcoming-kind': 'triggers' } },
                 ]}
               />
               <button
@@ -164,12 +170,14 @@ export function UpcomingView() {
           // Two columns while the view is wider than about 820px (a window of about 1000px beside the sidebar), else one.
           // The schedules take a third of the width, at least 340px; very wide windows keep a readable line length.
           <div
-            className={`mx-auto grid w-full max-w-[1600px] gap-4 px-6 py-5 ${cards.queue && !cards.schedules ? 'grid-cols-1' : 'grid-cols-[minmax(0,2fr)_minmax(340px,1fr)] items-start @max-[820px]:grid-cols-1'}`}
+            className={`mx-auto grid w-full max-w-[1600px] gap-4 px-6 py-5 ${!cards.schedules ? 'grid-cols-1' : 'grid-cols-[minmax(0,2fr)_minmax(340px,1fr)] items-start @max-[820px]:grid-cols-1'}`}
           >
-            {(cards.queue || cards.runs) && (
+            {(cards.queue || cards.runs || cards.triggers) && (
               <div className="grid min-w-0 content-start gap-4">
                 {cards.queue && <QueueCard entries={entries} total={queue.entries} rows={queue.rows} nameOf={nameOf} />}
                 {cards.runs && <RunsCard runs={runs} schedules={schedules} now={now} nameOf={nameOf} onMenu={setMenu} />}
+                {/* In All, only once there are triggers: an empty card would say nothing the others don't. */}
+                {cards.triggers && (filter.kind === 'triggers' || shownTriggers.length > 0) && <TriggersCard triggers={shownTriggers} events={triggerEvents} now={now} nameOf={projectName} />}
               </div>
             )}
             {cards.schedules && <SchedulesColumn schedules={shownSchedules} history={history} byId={byId} now={now} nameOf={nameOf} onMenu={setMenu} />}

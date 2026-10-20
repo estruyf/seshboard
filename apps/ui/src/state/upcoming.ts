@@ -9,8 +9,8 @@ export const UPCOMING_DAYS = 7;
 /** How far History looks back, in days before today. */
 export const HISTORY_DAYS = 7;
 
-/** Which cards show: everything, only the queue, or the two schedule cards. */
-export type UpcomingKind = 'all' | 'queue' | 'schedules';
+/** Which cards show: everything, only the queue, the two schedule cards, or the triggers. */
+export type UpcomingKind = 'all' | 'queue' | 'schedules' | 'triggers';
 /** The view's filters: by type, and by project (a project's root, null for all). */
 export interface UpcomingFilter {
   kind: UpcomingKind;
@@ -208,23 +208,27 @@ export interface ProjectCount {
   schedules: number;
 }
 
-/** The projects that have something queued or scheduled, with their counts, by name (`name` gives a root's). */
-export function projectCounts(queued: readonly { cwd: string }[], schedules: readonly { draft: { cwd: string } }[], name: (root: string) => string = (root) => root): ProjectCount[] {
+/**
+ * The projects that have something queued or scheduled, or a trigger, with their counts, by name (`name` gives a
+ * root's).
+ */
+export function projectCounts(queued: readonly { cwd: string }[], schedules: readonly { draft: { cwd: string } }[], name: (root: string) => string = (root) => root, triggers: readonly { projectRoot: string }[] = []): ProjectCount[] {
   const counts = new Map<string, ProjectCount>();
   const get = (root: string) => counts.get(root) ?? counts.set(root, { root, queued: 0, schedules: 0 }).get(root)!;
   for (const item of queued) get(projectOf(item.cwd)).queued++;
   for (const schedule of schedules) get(projectOf(schedule.draft.cwd)).schedules++;
+  for (const trigger of triggers) get(projectOf(trigger.projectRoot));
   return [...counts.values()].sort((a, b) => name(a.root).localeCompare(name(b.root)) || a.root.localeCompare(b.root));
 }
 
 /** Which cards the view shows for a filter. */
-export function visibleCards(kind: UpcomingKind): { queue: boolean; runs: boolean; schedules: boolean } {
-  return { queue: kind !== 'schedules', runs: kind !== 'queue', schedules: kind !== 'queue' };
+export function visibleCards(kind: UpcomingKind): { queue: boolean; runs: boolean; schedules: boolean; triggers: boolean } {
+  return { queue: kind === 'all' || kind === 'queue', runs: kind === 'all' || kind === 'schedules', schedules: kind === 'all' || kind === 'schedules', triggers: kind === 'all' || kind === 'triggers' };
 }
 
 /** A filter read back from the window's prefs; anything unreadable is the default. */
 export function readFilter(value: unknown): UpcomingFilter {
   const v = value as Partial<UpcomingFilter> | null;
-  const kind = v?.kind === 'queue' || v?.kind === 'schedules' ? v.kind : 'all';
+  const kind = v?.kind === 'queue' || v?.kind === 'schedules' || v?.kind === 'triggers' ? v.kind : 'all';
   return { kind, project: typeof v?.project === 'string' && v.project ? v.project : null };
 }

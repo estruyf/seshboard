@@ -10,6 +10,7 @@ import { promptLabel } from '../../state/queue.ts';
 import { useUnsent } from '../drafts/useUnsent.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
+import { useTriggers } from '../../state/triggersStore.ts';
 import { listedSchedules } from '../../state/upcoming.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -105,6 +106,7 @@ export function usePaletteContext(): PaletteContext {
   const queue = useQueue();
   // One-time schedules that have run aren't listed anywhere but Upcoming's History.
   const scheduleCount = useSchedules((s) => listedSchedules(s.schedules, Date.now()).length);
+  const triggerCount = useTriggers((s) => s.triggers.length);
   const unsent = useUnsent().length;
   const digest = usePaletteBus((s) => s.digest);
   const newSessionInfo = usePaletteBus((s) => s.newSessionInfo);
@@ -193,6 +195,7 @@ export function usePaletteContext(): PaletteContext {
     sounds: prefs.sounds.enabled,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },
     schedules: scheduleCount,
+    triggers: triggerCount,
     unsent,
     projectCount: added.length,
     projects: added.map((p) => ({ root: p.root, name: p.name })),

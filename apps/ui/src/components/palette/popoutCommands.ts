@@ -62,6 +62,9 @@ const PLANS: Record<string, Plan> = {
   'queue-start-next': 'hide',
   'queue-pick': 'hide',
   schedules: 'hide',
+  // Triggers: the editor is a dialog of the main window.
+  'trigger-new': 'hide',
+  triggers: 'hide',
   'open-in-new-window': 'hide',
 
   // Settings, Usage, Upcoming and project pages: their stores send them to the main window.

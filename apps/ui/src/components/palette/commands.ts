@@ -104,6 +104,7 @@ import {
   VolumeX,
   Wrench,
   X,
+  Zap,
   type LucideIcon,
   CalendarClock,
 } from 'lucide-react';
@@ -628,6 +629,25 @@ export const COMMANDS: PaletteCommand[] = [
     hint: (ctx) => (ctx.schedules > 0 ? String(ctx.schedules) : ''),
     when: always,
     run: (api) => api.openUpcoming('schedules'),
+  },
+  {
+    id: 'trigger-new',
+    title: 'New trigger…',
+    group: 'general',
+    icon: Zap,
+    keywords: 'trigger event start when ci failed failing workflow issue label assigned automation watch',
+    when: (ctx) => ctx.projects.length > 0 && ctx.connected,
+    next: () => ({ kind: 'projects', purpose: 'trigger', worktree: false, chip: 'New trigger' }),
+  },
+  {
+    id: 'triggers',
+    title: 'Triggers: pick one…',
+    group: 'general',
+    icon: Zap,
+    keywords: 'trigger event check now pause resume delete edit ci issues',
+    hint: (ctx) => String(ctx.triggers),
+    when: (ctx) => ctx.triggers > 0 && ctx.connected,
+    next: () => ({ kind: 'pick', list: 'triggers', chip: 'Triggers' }),
   },
   {
     id: 'schedules',

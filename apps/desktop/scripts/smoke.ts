@@ -62,6 +62,8 @@ if (process.platform !== 'win32') {
   writeFileSync(fakeGh, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`);
   chmodSync(fakeGh, 0o755);
   childEnv.SWITCHBOARD_GH = fakeGh;
+  // The triggers step's repository: the step writes it, the fake answers triggers' calls from it while it exists.
+  childEnv.FAKE_GH_TRIGGERS = join(outDir, 'fake-gh-triggers.json');
 }
 
 // A second computer for Other computers: the real Remote hub over made-up sessions (scripts/remote-demo.ts), in a

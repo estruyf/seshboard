@@ -71,6 +71,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - A notification and Dock badge when a session needs you or finishes, so you can leave it running in the background.
 - A **queue** of prompts to start next, each one saying when it's ready (when its project is free), or starting by itself once the session it waits for finishes. See [Queue](#queue).
 - **Schedules** that start a prompt at set times, every day, on weekdays, on the days you pick or once a month. See [Schedules](#schedules).
+- **Triggers** that start a session when CI fails on a branch, or when an issue is labelled or assigned to you. See [Triggers](#triggers).
 - **Unsent messages** are kept, also after you quit. See [Unsent messages](#unsent-messages).
 - **Saved prompts** with blanks: type / in any message box, pick one, fill in an issue, a pull request, a branch or your own options, and send. Keep them for every project, for one project just for you, or share them with the project in its `.switchboard.json`. See [Saved prompts](https://switchboard.struyfconsulting.com/sessions/saved-prompts/).
 - An optional **focus limit**: how many sessions you want going at the same time, so starting another doesn't come at the cost of the ones already running. See [Focus limit](#focus-limit).
@@ -422,12 +423,23 @@ A schedule starts a session from a prompt at set times, for work that comes back
 
 **When it runs.** A notification says it started. A run never asks: while the last run is still working or waiting for you it's skipped; at the focus limit or a usage limit it goes to the queue and starts by itself when it can; a schedule whose folder is gone pauses. Runs missed while Switchboard was closed or the computer slept run once at the next start or wake, or are skipped, as you chose. On a Mac, schedules run while Switchboard is running, also with its windows closed; on Windows and Linux, while a Switchboard window is open.
 
+## Triggers
+
+A trigger starts a session when there is work: when CI fails on a branch, or when an open issue gets your label, is assigned to you, or both. Switchboard checks GitHub through the [GitHub CLI](https://cli.github.com) every 5 minutes, on this computer only; no webhook is needed.
+
+**Make one.** On a project's **Triggers** tab, choose **New trigger** (or **Start when…** in New session's Start menu, with the prompt you wrote). Pick the source, write the prompt (type `{{` for the event's fields, such as `{{event.title}}`), and check what the sessions run with and how many may run at once. The first check marks what is there as seen; only new failures and issues start a session.
+
+**On GitHub.** For issues, a trigger can keep a state label on the issue (`claude: working`, `claude: needs input`, `claude: pr open`, `claude: failed`) and assign the issue to you when it is picked up. Nothing else is written to GitHub, and only when you turn these on.
+
+**Guardrails.** Triggered sessions never bypass permissions; issues come from the repository's collaborators only, unless you change it; the issue's text and the CI log are context to read, not instructions; a trigger that fails five checks in a row pauses with the reason. Triggers show on the project's tab and in Upcoming's Triggers filter, sessions they started have a bolt in the sidebar, and notifications say when one starts or pauses.
+
 ## Project pages and worktrees
 
 Click a project in the **Projects** view, choose **Open project** in a project's menu in the sidebar, or run *Project: &lt;name&gt;* in the command palette to open its page. The header shows the folder, the branch checked out and its upstream, with **Open in editor** and **New session** (⌘N starts in this project while its page is open). The tabs below:
 
 - **Overview:** a card per area: sessions (working, needing you, in total), worktrees (how many, their size, how many can go), branches (here, on the remote, how many can go), the queue (when something is queued here) and git (branch, commits behind its upstream, changed files). Each card opens its tab.
 - **Sessions:** the project's sessions as the sidebar groups them, its queued prompts and its schedules.
+- **Triggers:** what starts a session when CI fails or an issue is for you, with their events. See [Triggers](#triggers).
 - **Worktrees:** every worktree of the repository, not only the ones Switchboard made. See below.
 - **Branches:** every branch, here and on the remote. See [Branches](#branches).
 - **Memory:** what Claude Code remembers about the project, and the instructions the team shares. See [Memory](#memory).

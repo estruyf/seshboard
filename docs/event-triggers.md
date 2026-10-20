@@ -2,7 +2,7 @@
 
 A trigger starts a session, or a pipeline, when something happens: CI fails on `main`, an issue gets the `claude` label, a reviewer asks for changes on a pull request a session opened, or a script you wrote reports an error. Schedules start sessions at a time. Triggers start them when there is work.
 
-This note is the design. Nothing is built yet. Places in the code are named as they are on `dev` on 2026-10-19.
+This note is the design. Phase 1 (CI fails on a branch, issues for you) is built; [Built in phase 1](#built-in-phase-1) says where it differs from the design below. Places in the code are named as they are on `dev` on 2026-10-20.
 
 [← Back to the README](../README.md)
 
@@ -207,3 +207,21 @@ A page `website/src/content/docs/new-session/triggers.mdx` next to Schedules, wi
 - **Poll, don't listen.** A webhook needs a public address on your computer. Polling through `gh` works behind any firewall, uses the sign-in you have, and 5 minutes is fast enough for CI and issues. Deep links already cover the scripts that want to push.
 - **Per computer, not per repository**, until suggested triggers. Turning one on is your choice, not a committer's.
 - **A trigger never finishes the job alone.** It starts the work; pushing, commenting and merging stay with you or with a prompt that asks for permission.
+
+## Built in phase 1
+
+Phase 1 is in `packages/protocol/src/triggers.ts` (the rules) and `triggerSchema.ts` (zod), `packages/engine/src/triggers/` (`triggerStore.ts`, `watcher.ts`, `sources/ci.ts`, `sources/issues.ts`, `sources/gh.ts`), and `apps/ui/src/components/triggers/`. The user docs are `website/src/content/docs/projects/triggers.mdx`. What changed from the design while building it:
+
+- **`authorAssociation` isn't a field of `gh issue list --json`.** The list asks for `number,title,url,labels,assignees,author,body,updatedAt`, and one GraphQL call reads `authorAssociation` for the issues that may start (new ones, without a state label), so a check that finds nothing new asks nothing more. An issue whose association can't be read counts as an outsider.
+- **What is new.** A trigger keeps what matched in its last answer (`seen_json` on its row: each key `match`, or `held` for an issue with a state label that keeps it out). An item is new when it matches now and didn't then. An issue that leaves the answer and comes back (labelled again, or its state label taken off) is new again; a CI failure never comes back, since `gh run list` is newest first. The first check of a new, resumed or re-sourced trigger records what is there and starts nothing (`seededAt`). There is no `missed` rule: what came while Switchboard was closed is new at the next check, within `maxAtOnce` and `maxWaiting`.
+- **Events.** `trigger_events` keeps one row per key (the unique index). An issue that matches again takes its row over; the session the first one started keeps its own line in `trigger_sessions` (trigger, event, name, `CI #4512` or `#212`, link), which the bolt and the header read. A fifth status, `queued`, is an event the focus limit or a usage limit sent to the queue; it follows the session once the item starts (`TriggerWatcher.queuedStarted`). Events are pruned to the last 50 per trigger, plus every one that waits.
+- **Which state labels keep an issue out.** With a label in the filter, only `working` and `needs input` do: an issue that ended (`pr open`, `failed`) and has the trigger's label again was labelled again by hand, so it starts again, and the old state label comes off in the pick-up edit. With an assignee alone, any state label keeps it out until it is taken off.
+- **State labels follow the session.** Picked up (also while waiting): `working`, the trigger label off, and `--add-assignee @me` in the same edit when Assign to me is on. Needs you: `needs input`. A pull request of the session (session linking's `session_prs`, open or merged): `pr open`, after which the label isn't moved again. An error or a stop (`onTurnEnd`), or a start that failed: `failed`. A turn that ends cleanly without a pull request leaves the label as it is. Labels move only when the state changes from the one Switchboard set last, so a label changed by hand isn't put back. Missing labels are made once per run with `gh label create` (yellow, pink, green, red); without the right to, the event says why.
+- **Reassigned issues.** At each check, the issues whose sessions are busy are looked at (from the answer, or `gh issue view` when they left it); one assigned to someone else gets `reassignedTo`, which the header shows.
+- **What the session reads.** CI: the last 300 lines of `gh run view <id> --log-failed` (the design said 150). Issues: the text and comments from `gh issue view`, as GitHub context's block (`writeGithubContext`), cut to 16,000 characters.
+- **Timer.** The watcher has none: the Scheduler calls its `tick` dep after every look (each minute at most, on wake, after a clock jump), and the watcher checks the triggers that are due. Host changes nudge it a second later, so a free slot is used at once. Reads go through a one-minute cache; Check now skips it.
+- **Failures.** Rate limits block the trigger for an hour and don't count; any other failure counts, and the fifth in a row pauses it with the reason (`Repository not found`, `gh is signed out`, …). A missing folder pauses it at once. Removing a project pauses its triggers.
+- **The editor** opens from the Triggers tab, the project's ⋯ menu (Triggers… opens the tab), New session's Start ▾ › Start when… (the prompt and choices), and the palette (*New trigger…* asks for the project). The name follows the source until you type one. Notifications that have no session (picked up, paused) open the project's Triggers tab.
+- **Colour.** Triggers have a theme token of their own, `trigger` (violet), for the bolt and the event fields in the prompt; `remote` stays only for other computers.
+- **Backup.** The Triggers section of the settings file leaves out what checks found; every imported trigger is paused with "Imported. Check it, then resume.", and one for a folder that isn't here is skipped.
+

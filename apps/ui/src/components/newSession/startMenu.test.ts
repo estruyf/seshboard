@@ -52,6 +52,20 @@ describe('the Start button', () => {
     expect(startButtonState({ ...ready, canSchedule: true, question: true, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);
   });
 
+  it('offers Start when… after Schedule…, not for a question or while a schedule is open', () => {
+    const state = startButtonState({ ...ready, canSchedule: true, canTrigger: true });
+    expect(state.items.map((i) => [i.action, i.label])).toEqual([
+      ['start', 'Start session'],
+      ['queue', 'Add to queue'],
+      ['schedule', 'Schedule…'],
+      ['trigger', 'Start when…'],
+      ['start-worktree', 'Start in a new worktree'],
+    ]);
+    expect(startButtonState({ ...ready, canSchedule: true, canTrigger: true, hasText: false, hasMessage: false }).items[3]).toMatchObject({ action: 'trigger', disabled: true });
+    expect(startButtonState({ ...ready, canTrigger: true, question: true }).items.some((i) => i.action === 'trigger')).toBe(false);
+    expect(startButtonState({ ...ready, canSchedule: true, canTrigger: true, editingSchedule: true }).items.some((i) => i.action === 'trigger')).toBe(false);
+  });
+
   it('asks for a quick question', () => {
     const state = startButtonState({ ...ready, canWorktree: false, question: true });
     expect(state.label).toBe('Ask');

@@ -26,6 +26,11 @@ export interface SchedulerDeps {
   changed(): void;
   /** Runs happened, in one batch (several missed runs give one notification). */
   ran(runs: ScheduleRunEvent[]): void;
+  /**
+   * Called after every look at the schedules: each tick, on wake, after a clock jump and after a change. Event triggers
+   * check what is due here, so they share this timer rather than keep one of their own.
+   */
+  tick?(): void;
   log(level: 'info' | 'warn', message: string): void;
   now?(): number;
   /** Lets the process see a time zone change (Node keeps the zone it started with until told). */
@@ -130,6 +135,7 @@ export class Scheduler {
       } finally {
         this.running = null;
         this.arm();
+        if (!this.closed) this.deps.tick?.();
       }
     })();
     return this.running;

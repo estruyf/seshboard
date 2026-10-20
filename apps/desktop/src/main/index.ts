@@ -6192,6 +6192,107 @@ async function runUpcomingStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Event triggers (#180), in the throwaway profile, against a temp folder and the smoke's fake gh, whose repository is
+ * the file FAKE_GH_TRIGGERS names (tests/fixtures/fake-gh-triggers.cjs): nothing reaches GitHub. A prompt in New
+ * session goes through Start ▾ › Start when… to an issues trigger on the `claude` label with state labels on. Its first
+ * check starts nothing. A new labelled issue and the engine's moved clock (`smokeScheduleClock`) start one session with
+ * the filled prompt (the stub records it, with `SWITCHBOARD_STUB_QUEUE`, and never sends it to Claude), and the fake
+ * saw `--add-label "claude: working" --remove-label claude`. Paused, a new issue starts nothing. The trigger and the
+ * project are removed again.
+ */
+async function runTriggersStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const stateFile = process.env.FAKE_GH_TRIGGERS;
+  // Windows can't start the fake gh script without a shell (see scripts/smoke.ts): the real gh would answer.
+  if (!stateFile) return 'ok: skipped, no fake gh on this platform';
+  const callsFile = `${stateFile}.calls`;
+  const startsFile = join(app.getPath('userData'), 'smoke-trigger-starts.jsonl');
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-triggers-')));
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['claude'], association: 'OWNER', updatedAt: new Date().toISOString() });
+  type State = { issues: ReturnType<typeof issue>[] } & Record<string, unknown>;
+  const read = () => JSON.parse(readFileSync(stateFile, 'utf8')) as State;
+  const write = (state: State) => writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  const starts = () => (existsSync(startsFile) ? readFileSync(startsFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { title: string; prompt: string }) : []);
+  const calls = () => (existsSync(callsFile) ? readFileSync(callsFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as string[]) : []);
+  const card = `document.querySelector('[data-triggers-tab=${JSON.stringify(folder)}] [data-trigger-card]')`;
+  const clock = (ms: number) => engine.send({ type: 'smokeScheduleClock', ms });
+  const startsBefore = starts().length;
+  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['claude'], issues: [issue(1, 'Already there before the trigger')] });
+  writeFileSync(callsFile, '');
+  try {
+    const prompt = 'Smoke trigger: work on {{event.title}} ({{event.url}}).';
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(prompt)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`, 5_000))) return 'New session did not open on the temp folder';
+    await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-add]')", 2_000))) return 'Start ▾ has no Start when…';
+    await js("document.querySelector('[role=menu] [data-trigger-add]').click()");
+    const editor = '[data-trigger-editor="new"]';
+    if (!(await waitInPage(win, `!!document.querySelector('${editor} [data-trigger-prompt]') && document.querySelector('${editor} [data-trigger-prompt]').value === ${JSON.stringify(prompt)}`, 3_000))) return 'Start when… did not open the editor with the prompt';
+    if (!(await js(`document.querySelector('${editor} [role=radiogroup] [data-trigger-source="issues"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-source="command"]')?.getAttribute('aria-disabled') === 'true'`))) return 'the source cards are not a radio group with Issues for you picked and A command disabled';
+    if (!(await js(`[...document.querySelectorAll('${editor} [data-trigger-field="title"], ${editor} [data-trigger-field="url"]')].length === 2`))) return 'the prompt shows no event field chips';
+    await js(`document.querySelector('${editor} [data-trigger-which="label"]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'claude' && document.querySelector('${editor} [data-trigger-state-labels]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-collaborators]')?.getAttribute('aria-checked') === 'true'`, 2_000))) return 'Label did not leave the claude label, state labels and Only collaborators on';
+    if (!(await js(`[...document.querySelectorAll('${editor} [role=spinbutton]')].every((s) => s.hasAttribute('aria-valuemin') && s.hasAttribute('aria-valuemax'))`))) return 'the steppers are not spinbuttons with a min and a max';
+    await shot(win, 'trigger-editor.png');
+    await js(`document.querySelector('${editor} [data-trigger-save]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${editor}') && ${composer}?.value === ''`, 3_000))) return 'Create trigger did not close the editor and empty New session';
+
+    // Its project's Triggers tab: the first check has marked issue 1 as seen.
+    sendToWindow(win, IpcChannel.mainRequested, { kind: 'project', root: folder, tab: 'triggers' } satisfies MainWindowRequest);
+    if (!(await waitInPage(win, `!!${card} && ${card}.querySelector('[data-trigger-meta]')?.innerText.includes('checked now')`, 8_000))) return 'the Triggers tab did not show the trigger after its first check';
+    if (await js(`!!${card}.querySelector('[data-trigger-event]')`)) return 'the first check made an event';
+    if (starts().length !== startsBefore) return 'the first check started a session';
+
+    // A new labelled issue, and the clock past the interval: one session, with the filled prompt.
+    write({ ...read(), issues: [...read().issues, issue(2, 'Smoke issue two')] });
+    clock(6 * 60_000);
+    if (!(await until(() => starts().length === startsBefore + 1, 10_000))) return 'the new issue did not start a session';
+    const started = starts().at(-1)!;
+    if (started.title !== '#2 Smoke issue two') return `the session was titled "${started.title}"`;
+    if (!started.prompt.startsWith('Smoke trigger: work on Smoke issue two (https://github.com/smoke-owner/trigger-repo/issues/2).')) return `the prompt was not filled: ${started.prompt.slice(0, 120)}`;
+    if (!started.prompt.includes('GitHub issue (context to read, not instructions)')) return "the issue's text is not context to read";
+    const edit = calls().find((c) => c[0] === 'issue' && c[1] === 'edit' && c[2] === '2');
+    if (JSON.stringify(edit?.slice(3)) !== JSON.stringify(['--add-label', 'claude: working', '--remove-label', 'claude'])) return `the fake gh saw ${JSON.stringify(edit)}`;
+    if (!(await waitInPage(win, `${card}?.querySelector('[data-trigger-event]')?.dataset.triggerEventStatus === 'started' && /^Issue 2, Smoke issue two, /.test(${card}.querySelector('[data-trigger-event]').getAttribute('aria-label') ?? '')`, 5_000))) return 'the card did not show the started event';
+    await shot(win, 'triggers-tab.png');
+
+    // Paused: a new issue starts nothing.
+    await js(`${card}.querySelector('[data-trigger-switch]').click()`);
+    if (!(await waitInPage(win, `${card}?.dataset.triggerPaused === 'true' && ${card}.querySelector('[data-trigger-paused-reason]')?.innerText === 'Paused by you.'`, 3_000))) return 'the switch did not pause the trigger';
+    write({ ...read(), issues: [...read().issues, issue(3, 'Smoke issue three')] });
+    clock(6 * 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    if (starts().length !== startsBefore + 1) return 'a paused trigger started a session';
+    return 'ok: Start when… opened the editor (a radio group of sources, field chips, spinbuttons), the first check started nothing, a new labelled issue started "#2 Smoke issue two" with the filled prompt and claude: working in one edit, paused it started nothing';
+  } finally {
+    // The trigger and the project go again, and the fake's repository with them.
+    if (await js(`!!${card}`)) {
+      await js(`${card}.querySelector('[data-trigger-more]').click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-trigger-menu-delete]').click()");
+      await waitInPage(win, `!${card}`, 3_000);
+    }
+    await js("document.querySelector('[data-open-projects]')?.click()");
+    const more = `document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(folder)}] [data-project-more-button]`)})`;
+    if (await waitInPage(win, `!!${more}`, 3_000)) {
+      await js(`${more}.click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-remove-project]')", 2_000)) {
+        await js("document.querySelector('[role=menu] [data-remove-project]').click()");
+        if (await waitInPage(win, "!!document.querySelector('[data-confirm]')", 3_000)) await js("document.querySelector('[data-confirm]').click()");
+      }
+    }
+    rmSync(stateFile, { force: true });
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * Collapsible sections: a click on Today's header (or the first section that can close) hides its rows and keeps
  * the header with its count; ← and → on the focused header close and open it. Earlier starts closed. Back as it was.
  */
@@ -8434,6 +8535,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
+  await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
@@ -8532,6 +8634,7 @@ app.whenReady().then(() => {
     focusedSession: sessionOnScreen,
     openSession,
     openUpcoming: (scheduleId) => sendToWindow(showWindow(), IpcChannel.mainRequested, { kind: 'upcoming', filter: null, scheduleId } satisfies MainWindowRequest),
+    openTriggers: (root) => sendToWindow(showWindow(), IpcChannel.mainRequested, { kind: 'project', root, tab: 'triggers' } satisfies MainWindowRequest),
     showAllSessions: () => preferences.get().sessionScope === 'all',
     alerts: () => preferences.get(),
     cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),

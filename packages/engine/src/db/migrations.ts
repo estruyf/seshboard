@@ -617,4 +617,65 @@ export const migrations: readonly string[] = [
   ALTER TABLE schedules ADD COLUMN runs_json TEXT;
   ALTER TABLE schedules ADD COLUMN skipped_runs_json TEXT;
   `,
+
+  // v36: Event triggers (#180). A trigger is a user choice like a schedule: keep it. `seen_json` is what its last check
+  // saw, so only what is new starts. `trigger_events` are its events, one per key (a run's workflow and commit, an
+  // issue's number); the unique index is the dedupe. `trigger_sessions` remembers which sessions a trigger started
+  // (the bolt on their rows, the line in their header); it can't be read back from a transcript, so keep all three.
+  `
+  CREATE TABLE triggers (
+    id              TEXT PRIMARY KEY,
+    project_root    TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    source_json     TEXT NOT NULL,
+    prompt          TEXT NOT NULL,
+    draft_json      TEXT NOT NULL,
+    max_at_once     INTEGER NOT NULL DEFAULT 3,
+    max_waiting     INTEGER NOT NULL DEFAULT 10,
+    interval_min    INTEGER NOT NULL DEFAULT 5,
+    state_labels_json TEXT NOT NULL,
+    assign_on_pickup INTEGER NOT NULL DEFAULT 0,
+    paused          INTEGER NOT NULL DEFAULT 0,
+    paused_reason   TEXT,
+    failures        INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    blocked_until   INTEGER,
+    last_checked_at INTEGER,
+    seeded_at       INTEGER,
+    seen_json       TEXT,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+  );
+  CREATE INDEX triggers_project ON triggers (project_root);
+  CREATE TABLE trigger_events (
+    id            TEXT PRIMARY KEY,
+    trigger_id    TEXT NOT NULL,
+    key           TEXT NOT NULL,
+    kind          TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    url           TEXT NOT NULL,
+    fields_json   TEXT NOT NULL,
+    context       TEXT,
+    status        TEXT NOT NULL,
+    reason        TEXT,
+    session_id    TEXT,
+    item_id       TEXT,
+    label         TEXT,
+    reassigned_to TEXT,
+    created_at    INTEGER NOT NULL,
+    started_at    INTEGER
+  );
+  CREATE UNIQUE INDEX trigger_events_key ON trigger_events (trigger_id, key);
+  CREATE INDEX trigger_events_session ON trigger_events (session_id);
+  CREATE TABLE trigger_sessions (
+    session_id   TEXT PRIMARY KEY,
+    trigger_id   TEXT NOT NULL,
+    event_id     TEXT NOT NULL,
+    trigger_name TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    ref          TEXT NOT NULL,
+    url          TEXT NOT NULL,
+    at           INTEGER NOT NULL
+  );
+  `,
 ];

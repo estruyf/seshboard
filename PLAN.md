@@ -277,6 +277,14 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - A schedule keeps its last 20 runs (`runs`) and the single runs you skipped (`skippedRuns`, ISO times), both on its row (migration v35). `schedules.skipRun` / `unskipRun`; the timer records a skipped time as `skipped`, "Skipped by you", without a notification.
 - Reached from Home and Upcoming rows under the sidebar's search, the rail's Upcoming button (in place of the queue button), ⌘⇧Y, *Go to Upcoming*, *Queue…* and *Schedules…*, Home's See all in Upcoming, and notifications of runs that didn't start.
 
+### 5.8.4 Event triggers, phase 1 ✅ ([#180](https://github.com/estruyf/switchboard/issues/180))
+
+- CI fails on a branch and issues for you (a label, an assignee, or both), set up on a project's Triggers tab. The design and what changed while building it are in [docs/event-triggers.md](docs/event-triggers.md).
+- Rules in `packages/protocol/src/triggers.ts` (`issueQuery`, `eventKey`, `newEvents`, `slots`, `nextStateLabel`, `fillTriggerPrompt`), zod in `triggerSchema.ts`; `triggers`, `trigger_events` and `trigger_sessions` (migration v36) are user data.
+- `TriggerWatcher` (`packages/engine/src/triggers/watcher.ts`) runs on the Scheduler's tick, polls through `gh` (one file per source), starts through the schedule run's path (focus and usage limits hold it in the queue), keeps state labels and Assign to me, and pauses after five failed checks.
+- UI: the Triggers tab and editor (`components/triggers/`), Start ▾ › Start when…, Triggers… in the project menu, *New trigger…* and *Triggers: pick one…*, Upcoming's Triggers filter, the bolt and the header line on triggered sessions, notifications from main.
+- Not yet: Changes requested and A command (phase 2), pipelines (phase 3), suggested triggers in `.switchboard.json` (phase 4).
+
 ### 5.9 VS Code companion and context tray ([#42](https://github.com/estruyf/switchboard/issues/42))
 
 - **Context tray** ✅: chips above the message box, kept in the drafts store with the draft (`context`), from drops, the `@` list, the Add context picker (⌘⇧A) and the companion. Sending turns them into `@path#L12-40` mentions and fenced text (`promptWithContext`).

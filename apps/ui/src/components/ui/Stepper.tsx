@@ -39,6 +39,10 @@ export function Stepper({ value, min, max, onChange, label, less, more, disabled
         ref={ref}
         type="text"
         inputMode="numeric"
+        role="spinbutton"
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
         aria-label={label}
         value={text}
         disabled={disabled}

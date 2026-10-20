@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, statSync, unwatchFile, watchFile, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
@@ -62,6 +62,10 @@ import {
   limitAhead,
   Schedule,
   runsBetween,
+  triggerProblem,
+  Trigger,
+  TriggerEvent,
+  TriggerSession,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -87,6 +91,11 @@ import { LaterStore } from './later/laterStore.ts';
 import { QueueAutoStarter } from './later/autoStart.ts';
 import { ScheduleStore } from './schedules/scheduleStore.ts';
 import { Scheduler, type RunHold } from './schedules/scheduler.ts';
+import { readWorkflows } from './triggers/sources/ci.ts';
+import { readLogin, readRepo } from './triggers/sources/gh.ts';
+import { readCollaborators } from './triggers/sources/issues.ts';
+import { TriggerStore } from './triggers/triggerStore.ts';
+import { TriggerWatcher } from './triggers/watcher.ts';
 import { summarise, UpNextStore } from './host/upNextStore.ts';
 import { Asker, AskStore } from './host/sideQuestions.ts';
 import { MemoryService, type MemoryTrashScope } from './memory/memoryService.ts';
@@ -253,6 +262,12 @@ export interface DemoUsage {
    * `stubQueueStarts` only, which keeps a run from starting Claude Code.
    */
   schedulesFile?: string;
+  /**
+   * A file the screenshot tour writes to show triggers with their events, only for their pictures:
+   * `{ triggers, events, sessions }` puts them in as they are (checked at their `lastCheckedAt`), anything else (or no
+   * file) takes them out again. With `stubQueueStarts` only, which keeps a start from reaching Claude Code.
+   */
+  triggersFile?: string;
 }
 
 /** What one run of the clean-up of archived sessions did. */
@@ -443,6 +458,8 @@ export function createEngine(options: EngineOptions): Engine {
   });
   /** Starts queued items by themselves (set up with the queue, below); sessions and the registry poke it from here on. */
   let autoStarter: QueueAutoStarter | undefined;
+  /** Event triggers (#180), set up with the schedules, below. */
+  let triggerWatcher: TriggerWatcher | undefined;
   /** Titles scheduled runs once their transcript is there (set up with the schedules, below). */
   let titleRuns: ((ids: readonly string[]) => void) | undefined;
   const sessions = new SessionIndex({
@@ -473,8 +490,9 @@ export function createEngine(options: EngineOptions): Engine {
     (id, messages) => links.transcriptRead(id, messages),
   );
   // --- Session linking (docs/session-linking.md) ---------------------------------------------------------------------
+  const linkStore = new LinkStore(cache.db);
   const links = new LinkService({
-    store: new LinkStore(cache.db),
+    store: linkStore,
     session: (id) => sessions.get(id),
     status: (id) => {
       const state = hosts.list().hosts.find((h) => h.sessionId === id)?.state ?? liveList().find((l) => l.sessionId === id)?.status;
@@ -760,6 +778,7 @@ export function createEngine(options: EngineOptions): Engine {
       catchUpOnInfo(info);
       // After the broadcast, so main's "Claude finished" still sees the item it says starts next.
       autoStarter?.onHost(info);
+      triggerWatcher?.nudge();
     },
     onStream: (delta) => broadcast('session.stream', delta),
     onMessages: (id, messages, held) => {
@@ -777,6 +796,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     onTurnEnd: (sessionId, outcome) => {
       autoStarter?.turnEnded(sessionId, outcome);
+      triggerWatcher?.turnEnded(sessionId, outcome);
       quietly(catchUp.turnEnded(sessionId, outcome));
     },
     onCreated: (id) => {
@@ -1044,6 +1064,7 @@ export function createEngine(options: EngineOptions): Engine {
     });
     later.started(item.id, sessionId);
     laterChanged();
+    triggerWatcher?.queuedStarted(item.id, sessionId);
     return sessionId;
   };
   /** Queued items that start by themselves (#172): the engine decides, so they start once, with or without a window. */
@@ -1053,6 +1074,7 @@ export function createEngine(options: EngineOptions): Engine {
         const sessionId = `smoke-started-${randomUUID()}`;
         later.started(item.id, sessionId);
         laterChanged();
+        triggerWatcher?.queuedStarted(item.id, sessionId);
         return sessionId;
       }
     : startQueued;
@@ -1189,6 +1211,107 @@ export function createEngine(options: EngineOptions): Engine {
     applyTitles([sessionId]);
     return sessionId;
   };
+  /** At a limit, a run or a triggered session goes to the queue as an item that starts by itself (#172). */
+  const queueHeld = (draft: LaterDraft) => {
+    const item = later.add({ ...draft, autoStart: true }, { waitFor: { kind: 'project' } });
+    laterBroadcast();
+    autoStarter?.armForLimit(item.id);
+    return item.id;
+  };
+
+  // --- Event triggers (#180) -----------------------------------------------------------------------------------------
+  const triggers = new TriggerStore(cache.db, scheduleNow);
+  const triggersState = () => ({ triggers: triggers.list(), events: triggers.events(), sessions: triggers.sessions() });
+  const triggersBroadcast = () => broadcast('triggers.changed', triggersState());
+  /**
+   * What the smoke test's stand-in starts got (`stubQueueStarts` only), a JSON line each in the data folder, since it
+   * never sends a prompt to Claude: the step reads the filled prompt there.
+   */
+  const smokeTriggerStarts = join(options.dataDir, 'smoke-trigger-starts.jsonl');
+  const ghIn = async (args: string[], cwd: string, timeout?: number) => runGh(defaultGh(), args, { cwd, env: (await shell.ready).env, ...(timeout ? { timeout } : {}) });
+  triggerWatcher = new TriggerWatcher({
+    store: triggers,
+    gh: ghIn,
+    folderExists: (cwd) => !!statSafe(cwd)?.isDirectory(),
+    sessionState: scheduledState,
+    // A pull request the session opened, or one on its branch that is still open or merged.
+    sessionPr: (id) => linkStore.prsOf(id).find((pr) => pr.state !== 'closed') ?? null,
+    queued: (itemId) => !!later.get(itemId),
+    hold: scheduleHold,
+    start: async (draft, title) => {
+      if (!options.stubQueueStarts) return startScheduled(draft, title);
+      const sessionId = `smoke-triggered-${randomUUID()}`;
+      appendFileSync(smokeTriggerStarts, `${JSON.stringify({ sessionId, title, prompt: draft.prompt })}\n`);
+      return sessionId;
+    },
+    queue: queueHeld,
+    projectName: (root) => listProjects().find((p) => p.root === root)?.name ?? basename(root),
+    changed: triggersBroadcast,
+    notify: (notices) => broadcast('triggers.notice', { notices }),
+    log,
+    now: scheduleNow,
+  });
+  const demoTriggersFile = options.stubQueueStarts ? options.demoUsage?.triggersFile : undefined;
+  /** The demo triggers the screenshot tour put in, to take out again. */
+  let demoTriggerIds: string[] = [];
+  if (demoTriggersFile) {
+    watchFile(demoTriggersFile, { interval: 200 }, () => {
+      const wanted = ((): { triggers?: unknown; events?: unknown; sessions?: unknown } | null => {
+        try {
+          return JSON.parse(readFileSync(demoTriggersFile, 'utf8')) as { triggers?: unknown };
+        } catch {
+          return null;
+        }
+      })();
+      for (const id of demoTriggerIds) {
+        triggers.remove(id);
+        triggers.forgetSessions(id);
+      }
+      demoTriggerIds = [];
+      const events = (Array.isArray(wanted?.events) ? wanted.events : []).flatMap((raw) => {
+        const parsed = TriggerEvent.safeParse(raw);
+        return parsed.success ? [{ event: parsed.data, context: null }] : [];
+      });
+      for (const raw of Array.isArray(wanted?.triggers) ? wanted.triggers : []) {
+        const parsed = Trigger.safeParse(raw);
+        if (!parsed.success) continue;
+        triggers.restore(parsed.data, events);
+        // As the tour wrote it: already looked, at its last check, so nothing starts or is marked as seen meanwhile.
+        if (parsed.data.lastCheckedAt !== null) triggers.checked(parsed.data.id, { at: parsed.data.lastCheckedAt, seen: {}, seeded: true });
+        demoTriggerIds.push(parsed.data.id);
+      }
+      for (const raw of Array.isArray(wanted?.sessions) ? wanted.sessions : []) {
+        const parsed = TriggerSession.safeParse(raw);
+        if (parsed.success) triggers.addSession(parsed.data);
+      }
+      triggersBroadcast();
+    });
+  }
+  /** Pauses the triggers of a project removed from Switchboard, with the reason the card shows. */
+  const pauseTriggersIn = (root: string, reason: string) => {
+    let changed = false;
+    for (const trigger of triggers.inProject(root)) {
+      if (trigger.paused) continue;
+      triggers.setPaused(trigger.id, true, reason);
+      changed = true;
+    }
+    if (changed) triggersBroadcast();
+  };
+  /** What the trigger editor shows about a project's repository; each part that gh can't answer is left empty. */
+  const triggerRepoInfo = async (root: string) => {
+    const repo = await readRepo(ghIn, root);
+    if (!repo.ok) return { repo: null, login: null, defaultBranch: null, workflows: [], collaborators: null, problem: repo.message };
+    const [login, workflows, collaborators] = await Promise.all([readLogin(ghIn, root), readWorkflows(ghIn, root), readCollaborators(ghIn, root)]);
+    return {
+      repo: repo.value.repo,
+      login: login.ok ? login.value : null,
+      defaultBranch: repo.value.defaultBranch,
+      workflows: workflows.ok ? workflows.value : [],
+      collaborators,
+      problem: login.ok ? null : login.message,
+    };
+  };
+
   const scheduler = new Scheduler({
     store: schedules,
     folderExists: (cwd) => !!statSafe(cwd)?.isDirectory(),
@@ -1197,15 +1320,13 @@ export function createEngine(options: EngineOptions): Engine {
     hold: scheduleHold,
     start: startScheduled,
     // At a limit it goes to the queue as an item that starts by itself (#172), once the slot frees or the limit resets.
-    queue: (draft) => {
-      const item = later.add({ ...draft, autoStart: true }, { waitFor: { kind: 'project' } });
-      laterBroadcast();
-      autoStarter?.armForLimit(item.id);
-      return item.id;
-    },
+    queue: queueHeld,
     projectName: (root) => listProjects().find((p) => p.root === root)?.name ?? basename(root),
     changed: schedulesBroadcast,
     ran: (runs) => broadcast('schedules.ran', { runs }),
+    // Triggers share the schedules' timer: every tick (at least once a minute, on wake, after a clock jump) checks
+    // the triggers that are due.
+    tick: () => void triggerWatcher?.check(),
     log,
     now: scheduleNow,
     // Node keeps the time zone it started with: writing TZ makes it look again, so a change is seen within a tick.
@@ -1491,7 +1612,7 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   const defaultEditorKey = 'editor.default';
-  const settingsStores: SettingsStores = { db: cache.db, appState, projects, profiles, actions, schedules };
+  const settingsStores: SettingsStores = { db: cache.db, appState, projects, profiles, actions, schedules, triggers };
   const editorEnv = () => shell.forLookup();
 
   /** Session count and latest activity per project folder, for the project list. */
@@ -2003,6 +2124,7 @@ export function createEngine(options: EngineOptions): Engine {
     'projects.remove': ({ root }) => {
       projects.remove(root);
       pauseSchedulesIn(root, 'Project removed');
+      pauseTriggersIn(root, 'Project removed');
       return {};
     },
     'projects.setIcon': ({ root, icon }) => {
@@ -2429,6 +2551,52 @@ export function createEngine(options: EngineOptions): Engine {
       if (!run) throw new RpcError('NOT_FOUND', 'That schedule was deleted');
       return { run };
     },
+    'triggers.list': () => triggersState(),
+    'triggers.save': ({ trigger: input }) => {
+      if (input.id && !triggers.get(input.id)) throw new RpcError('NOT_FOUND', 'That trigger was deleted');
+      const problem = triggerProblem({ ...input, draft: input.draft ?? {} });
+      if (problem) throw new RpcError('INVALID', problem);
+      // A trigger belongs to a project, and lives on its Triggers tab: a folder that isn't one yet (Start when… in
+      // New session on any folder) becomes one.
+      if (!input.id && !projects.addedRoots().includes(input.projectRoot) && !questions.contains(input.projectRoot)) projects.add(input.projectRoot);
+      const trigger = triggers.save(input);
+      triggersBroadcast();
+      // Its first look marks what is there as seen: at once, so new events count from now.
+      if (!trigger.paused) void triggerWatcher?.checkNow(trigger.id);
+      return { trigger };
+    },
+    'triggers.delete': ({ id }) => {
+      const trigger = triggers.get(id);
+      const events = triggers.eventsOf(id).map((s) => s.event);
+      triggers.remove(id);
+      triggersBroadcast();
+      return { trigger, events };
+    },
+    'triggers.restore': ({ trigger: input, events }) => {
+      const trigger = triggers.restore(input, events.map((event) => ({ event, context: null })));
+      triggersBroadcast();
+      if (!trigger.paused) void triggerWatcher?.checkNow(trigger.id);
+      return { trigger };
+    },
+    'triggers.setPaused': ({ id, paused }) => {
+      const trigger = triggers.setPaused(id, paused);
+      if (!trigger) throw new RpcError('NOT_FOUND', 'That trigger was deleted');
+      triggersBroadcast();
+      if (!paused) void triggerWatcher?.checkNow(id);
+      return { trigger };
+    },
+    'triggers.checkNow': async ({ id }) => {
+      const before = triggers.get(id);
+      if (!before) throw new RpcError('NOT_FOUND', 'That trigger was deleted');
+      if (before.paused) throw new RpcError('INVALID', 'Resume the trigger first');
+      await triggerWatcher?.checkNow(id);
+      return { trigger: triggers.get(id) ?? before };
+    },
+    'triggers.startEvent': async ({ eventId }) => {
+      if (!triggers.event(eventId)) throw new RpcError('NOT_FOUND', 'That event is gone');
+      return { event: (await triggerWatcher?.startEvent(eventId)) ?? null };
+    },
+    'triggers.repoInfo': ({ root }) => triggerRepoInfo(root),
     'search.query': async ({ query, limit, scope, only, memoryTypes, memoryScope }) => {
       if (only !== 'conversations') syncMemorySearch(1_000);
       return {
@@ -3030,6 +3198,7 @@ export function createEngine(options: EngineOptions): Engine {
       sessions.reloadFlags();
       schedulesBroadcast();
       scheduler.rearm();
+      triggersBroadcast();
       broadcast('settings.imported', {});
       log('info', `Imported settings from ${path} (${mode}); backup at ${backupPath}`);
       return { preview: plan.preview, backupPath, preferences: result.preferences, themes: result.themes };
@@ -3144,8 +3313,10 @@ export function createEngine(options: EngineOptions): Engine {
       limits.close();
       autoStarter?.close();
       scheduler.close();
+      triggerWatcher?.close();
       if (demoLimitFile) unwatchFile(demoLimitFile);
       if (demoQueueFile) unwatchFile(demoQueueFile);
+      if (demoTriggersFile) unwatchFile(demoTriggersFile);
       hosts.closeAll();
       for (const monitor of usageMonitors.values()) monitor.stop();
       insights.close();

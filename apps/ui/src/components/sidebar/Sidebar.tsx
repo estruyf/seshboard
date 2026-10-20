@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert } from 'lucide-react';
+import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { CatchUp } from '@switchboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -22,6 +22,7 @@ import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
+import { useTriggers } from '../../state/triggersStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useLimits } from '../../state/limitsStore.ts';
 import { rowLimitLabel, stoppedBy } from '../../lib/usageLimit.ts';
@@ -285,6 +286,8 @@ export const SessionRow = memo(function SessionRow({
   const status = rowStatus(data);
   /** A schedule started it (#173): the repeat icon before its second line. */
   const scheduled = useSchedules((s) => !remote && s.bySession.has(data.id));
+  /** A trigger started it (#180): the bolt, in the trigger colour, before its status. */
+  const triggered = useTriggers((s) => (remote ? null : (s.bySession.get(data.id)?.triggerName ?? null)));
   // A usage limit stopped it: it waits for the limit (or for you to resume), which its second line and tooltip say.
   const limit = useLimits((s) => stoppedBy(s.state, data.id, data.profileId));
   const limitText = limit && status !== 'running' && status !== 'needs-you' ? rowLimitLabel(limit, now) : null;
@@ -351,7 +354,7 @@ export const SessionRow = memo(function SessionRow({
     'data-archived': archived || undefined,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -435,6 +438,7 @@ export const SessionRow = memo(function SessionRow({
         </span>
       </span>
       <span className="flex h-4 min-w-0 items-center gap-1.5 text-meta text-faint">
+        {triggered !== null && <Zap size={11} className="shrink-0 text-trigger" aria-label={`Started by ${triggered || 'a trigger'}`} role="img" data-row-triggered />}
         {scheduled && <Repeat size={11} className="shrink-0" aria-label="From a schedule" role="img" data-row-scheduled />}
         {reviewText ? (
           <span className="min-w-0 flex-1 truncate" data-row-review={review}>

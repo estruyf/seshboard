@@ -6,7 +6,7 @@ const change = (section: ImportChange['section'], change: ImportChange['change']
 
 describe('backup helpers', () => {
   it('leaves sessions out of an export by default', () => {
-    expect(DEFAULT_EXPORT_SECTIONS).toEqual(['preferences', 'themes', 'profiles', 'projects', 'actions', 'schedules', 'choices']);
+    expect(DEFAULT_EXPORT_SECTIONS).toEqual(['preferences', 'themes', 'profiles', 'projects', 'actions', 'schedules', 'triggers', 'choices']);
   });
 
   it('groups changes by section with adds first', () => {
