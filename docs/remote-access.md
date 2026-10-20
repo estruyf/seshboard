@@ -146,6 +146,7 @@ The remote contract is not the app's contract: remote handlers call engine funct
 | `session.setModel`, `session.setEffort`, `session.setPermissionMode` | A running session's model, effort and mode; modes are `default`, `acceptEdits`, `plan` and `auto` only |
 | `options.get` | New session's choices: the models, efforts, modes, each project's defaults, and whether Auto model is on with the models it may pick (`model: 'auto'` then goes to `session.create` and `later.add` as is) |
 | `session.ask`, `session.askThreads` | Ask about this session, through the engine's `Asker` (read-only tools, nothing in the transcript), and the threads it keeps |
+| `limits.get`, `limits.resume`, `limits.arm` | How a session stands with its profile's plan usage limit (`RemoteLimitStanding`: whether it stopped the session, the limit's kind and reset, when an armed resume sends; never the profile's id), Resume now, and Resume when it resets on or off (`hello` says `limits`). Only for sessions the list shows; `limits.changed` follows each change for the watched session |
 | `usage.get` | Every profile's plan usage (its name and colour, never its account), the default first; from the engine's `UsageMonitor`, checked again when older than a minute or with `refresh` |
 | `usage.tokens` | Where an account's tokens went in a period, as `usage.breakdown` (`hello` says `usage.tokens`). The caller sends the account's `accountKey` (SHA-256 of its email and organization, `packages/protocol/src/accountKey.ts`), so only someone who knows the account can ask and the answer never names it; the engine answers for the profile signed in to it (the default first), or `null`. Projects come as an id and a name (`remoteUsage`), never a folder; session titles are included |
 | `usage.sessionCost` | A session's estimated API cost since it started, in US dollars (`hello` says `costs`): numbers only, and only for a session the list shows (`checkSession`, as `catchup.get`) |
@@ -155,7 +156,7 @@ The remote contract is not the app's contract: remote handlers call engine funct
 | `push.key`, `push.subscribe`, `push.unsubscribe` | The engine's VAPID public key, and this device's subscription with its switches (Needs you, Finished). With `push.vapid` in `hello`, `push.subscribe` also takes the device's own VAPID key pair (`vapid`, checked to be a pair) and `label` (see More than one computer) |
 | `device.visibility` | Whether the app is on the device's screen: no push while it is |
 
-Events: `sessions.changed`, `usage.changed` (a profile's new check), `session.ask` (to phones watching the session and to the phone that asked, until the answer ends), `projects.cloneProgress` (to the connection that started the clone), and for the watched session `transcript.updated`, `session.stream`, `upNext.changed` and `catchup.changed`.
+Events: `sessions.changed`, `usage.changed` (a profile's new check), `session.ask` (to phones watching the session and to the phone that asked, until the answer ends), `projects.cloneProgress` (to the connection that started the clone), and for the watched session `transcript.updated`, `session.stream`, `upNext.changed`, `limits.changed` and `catchup.changed`.
 
 ### Push notifications
 

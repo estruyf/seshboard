@@ -90,6 +90,21 @@ export function clockTime(at: number, now = Date.now(), locale?: string): string
 }
 
 /** Whether a usage limit still holds by the clock (it has no reset time, or that is still ahead). */
+/** Claude Code's limit kinds in plain words. */
+const KIND_NAME: Record<string, string> = {
+  five_hour: '5-hour limit',
+  seven_day: 'Weekly limit',
+  seven_day_opus: 'Weekly Opus limit',
+  seven_day_sonnet: 'Weekly Sonnet limit',
+  seven_day_overage_included: 'Weekly limit',
+  overage: 'Extra usage limit',
+};
+
+/** "5-hour limit", "Weekly Opus limit"; "Usage limit" when Claude Code didn't say which. */
+export function limitKindName(kind: string | null): string {
+  return (kind && KIND_NAME[kind]) || 'Usage limit';
+}
+
 export const limitAhead = (limit: UsageLimitHit, now = Date.now()) => limit.resetsAt === null || limit.resetsAt > now;
 
 const quoted = (text: string) => `“${text}”`;

@@ -14,6 +14,9 @@ describe('the remote contracts', () => {
       'device.visibility',
       'hello',
       'later.add',
+      'limits.arm',
+      'limits.get',
+      'limits.resume',
       'options.get',
       'projects.branches',
       'projects.cancelClone',
@@ -46,7 +49,7 @@ describe('the remote contracts', () => {
       'usage.tokens',
       'usage.windowCosts',
     ]);
-    expect(Object.keys(remoteContract.events).sort()).toEqual(['app.icon', 'catchup.changed', 'projects.cloneProgress', 'session.ask', 'session.stream', 'sessions.changed', 'transcript.updated', 'upNext.changed', 'usage.changed']);
+    expect(Object.keys(remoteContract.events).sort()).toEqual(['app.icon', 'catchup.changed', 'limits.changed', 'projects.cloneProgress', 'session.ask', 'session.stream', 'sessions.changed', 'transcript.updated', 'upNext.changed', 'usage.changed']);
     expect(Object.keys(remotePairContract.requests)).toEqual(['pair.request']);
   });
 

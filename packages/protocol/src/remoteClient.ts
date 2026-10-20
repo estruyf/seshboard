@@ -9,6 +9,8 @@ export type * from './remote.ts';
 export type { CompanionStatus } from './companion.ts';
 export type { BackgroundTask, Effort, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
 export type { UsageLimit, UsageSnapshot } from './usage.ts';
+export type { RemoteLimitStanding } from './usageLimit.ts';
+export { clockTime, limitKindName } from './queueStates.ts';
 export type { AskEvent, AskItem, AskThread, AskThreadList } from './sideQuestions.ts';
 export { MAX_SIDE_QUESTION_LENGTH, threadTitle } from './sideQuestionConstants.ts';
 export { AUTO_MODEL, AUTO_TIERS, tierLabel, type AutoTier } from './autoModel.ts';

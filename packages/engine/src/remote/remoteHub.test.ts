@@ -24,6 +24,7 @@ import {
   type TranscriptMessage,
   writeStub,
 } from '@switchboard/protocol';
+import type { RemoteLimitStanding } from '@switchboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
@@ -107,6 +108,8 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[] }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
   const calls: string[] = [];
+  /** How each session stands with its usage limit. */
+  const limitOf: Record<string, RemoteLimitStanding> = {};
   // The session's checkout: a real repository with one change.
   const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-remote-repo-')));
   await git(repo, ['init', '-q', '-b', 'main']);
@@ -162,6 +165,9 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     watchTranscript: () => () => {},
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
+    limit: (sessionId) => limitOf[sessionId] ?? null,
+    resumeLimit: async (sessionId) => void calls.push(`resume ${sessionId}`),
+    armLimit: (sessionId, armed) => void calls.push(`arm ${sessionId} ${armed}`),
     upNext: (sessionId) => (sessionId === SESSION ? [{ id: 'q1', text: 'Then the tests', attachments: [], createdAt: 1 }] : []),
     interrupt: async () => {},
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
@@ -239,7 +245,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, port, on, sent, sentImages, answered, created, queued, calls, repo, appState, pushes, pushBodies, permissions, fromDevice };
+  return { hub, port, on, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -611,6 +617,35 @@ describe('Remote hub', () => {
     await until(() => heard.length >= 2);
     expect(heard).toEqual([`${SESSION}:Then the tests`, `${SESSION}:Then the tests`]);
     expect(calls).toContain(`dequeue ${SESSION} gone`);
+  });
+
+  it('gives a phone how a session stands with its usage limit, and lets it resume or arm only a session in the list', async () => {
+    const { hub, port, on, calls, limitOf } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    expect(await remote.call('limits.get', { sessionId: SESSION })).toEqual({ limit: null });
+    const standing: RemoteLimitStanding = { stopped: true, kind: 'five_hour', resetsAt: 5000, resumeAt: null, gaveUp: false };
+    limitOf[SESSION] = standing;
+    expect(await remote.call('limits.get', { sessionId: SESSION })).toEqual({ limit: standing });
+    await remote.call('limits.resume', { sessionId: SESSION });
+    await remote.call('limits.arm', { sessionId: SESSION, armed: true });
+    expect(calls).toEqual(expect.arrayContaining([`resume ${SESSION}`, `arm ${SESSION} true`]));
+    await expect(remote.call('limits.resume', { sessionId: HIDDEN })).rejects.toBeDefined();
+    await expect(remote.call('limits.arm', { sessionId: HIDDEN, armed: true })).rejects.toBeDefined();
+    expect(calls).not.toContain(`resume ${HIDDEN}`);
+  });
+
+  it('tells a phone watching a session how its limit stands: when it starts watching and on each change', async () => {
+    const { hub, port, on, limitOf } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const heard: Array<string | null> = [];
+    remote.on('limits.changed', (event) => heard.push(`${event.sessionId}:${event.limit?.resetsAt ?? null}`));
+    await remote.call('transcript.watch', { sessionId: SESSION });
+    limitOf[SESSION] = { stopped: true, kind: null, resetsAt: 7000, resumeAt: null, gaveUp: false };
+    hub.limitsChanged();
+    await until(() => heard.length >= 2);
+    expect(heard).toEqual([`${SESSION}:null`, `${SESSION}:7000`]);
   });
 
   it('tells a phone watching a session that its catch-up changed', async () => {

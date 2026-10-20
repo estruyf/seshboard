@@ -19,6 +19,7 @@ import {
   type RemoteBranches,
   type ClonePlan,
   type CloneProgress,
+  type RemoteLimitStanding,
   type RemoteSessionOptions,
   type RemoteSession,
   type RemoteSessions,
@@ -147,6 +148,11 @@ export interface RemoteHubOptions {
   dequeue(sessionId: string, id: string): void;
   /** A session's Up next as it is now, for a phone that starts watching it (it may have missed changes while away). */
   upNext(sessionId: string): QueuedMessage[];
+  /** How a session stands with its profile's usage limit; null when its profile isn't at one. */
+  limit(sessionId: string): RemoteLimitStanding | null;
+  /** Resume now, and Resume when it resets on or off, as on the computer. */
+  resumeLimit(sessionId: string): Promise<void>;
+  armLimit(sessionId: string, armed: boolean): void;
   /** Stops Claude's turn and lets Up next move on after it: the phone has no Send next. */
   interrupt(sessionId: string): Promise<void>;
   /** Stops one of a running session's background tasks. */
@@ -392,6 +398,11 @@ export class RemoteHub {
     if (key === this.appIcon) return;
     this.appIcon = key;
     if (this.server.listening) this.server.each((rpc) => rpc.emit('app.icon', { key }));
+  }
+
+  /** A usage limit was hit, cleared or armed: phones watching a session hear how it stands now. */
+  limitsChanged(): void {
+    for (const [phone, watch] of this.watches) phone.emit('limits.changed', { sessionId: watch.sessionId, limit: this.options.limit(watch.sessionId) });
   }
 
   /** A profile's plan usage changed: every phone hears it, for its Home. */
@@ -685,6 +696,7 @@ export class RemoteHub {
         });
         this.watches.set(phone, { sessionId, stop });
         phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });
+        phone.emit('limits.changed', { sessionId, limit: this.options.limit(sessionId) });
         return {};
       },
       'transcript.unwatch': ({ sessionId }, phone) => {
@@ -819,6 +831,20 @@ export class RemoteHub {
       'usage.tokens': ({ account, ...params }) => {
         const breakdown = this.options.tokens(account, params);
         return { breakdown: breakdown && remoteUsage(breakdown, new Map(this.options.projects().map((p) => [p.root, p.name]))) };
+      },
+      'limits.get': ({ sessionId }) => {
+        this.checkSession(sessionId);
+        return { limit: this.options.limit(sessionId) };
+      },
+      'limits.resume': async ({ sessionId }) => {
+        this.checkSession(sessionId);
+        await this.options.resumeLimit(sessionId);
+        return {};
+      },
+      'limits.arm': ({ sessionId, armed }) => {
+        this.checkSession(sessionId);
+        this.options.armLimit(sessionId, armed);
+        return {};
       },
       'usage.sessionCost': ({ sessionId }) => {
         this.checkSession(sessionId);
