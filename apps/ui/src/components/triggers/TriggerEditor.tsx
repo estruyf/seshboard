@@ -134,9 +134,8 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
 
   return (
     <Dialog
-      title={request.trigger ? 'Edit trigger' : 'New trigger'}
+      title={`${request.trigger ? 'Edit trigger' : 'New trigger'} for ${project?.name ?? basename(request.root)}`}
       icon={<Zap size={16} className="text-trigger" aria-hidden />}
-      headerActions={<span className="text-ui text-muted">{project?.name ?? basename(request.root)}</span>}
       width="lg"
       onClose={onClose}
       onSubmit={() => void save()}
