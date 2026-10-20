@@ -3935,6 +3935,11 @@
       "id": "terminal-context-menu",
       "name": "Terminal right-click menu: Copy, Paste, Explain or Fix with Claude",
       "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:open-at-login",
+      "name": "Settings: General, Open at login",
+      "page": "settings"
     }
   ]
 }

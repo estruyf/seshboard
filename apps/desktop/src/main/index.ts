@@ -6,7 +6,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
 import type { ScheduleRunEvent } from '@switchboard/protocol/client';
@@ -25,6 +25,7 @@ import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
 import { SoundPlayer } from './sounds.ts';
+import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
@@ -346,6 +347,31 @@ ipcMain.on(IpcChannel.openNotificationSettings, () => {
   });
 });
 ipcMain.on(IpcChannel.testNotification, () => notifier?.test());
+
+/** Open at login for scripted runs, which never add Switchboard to the real login items. */
+let scriptedOpenAtLogin: OpenAtLogin = 'off';
+/** How Open at login stands. A development build would add Electron itself, and Electron has no login items on Linux. */
+function readOpenAtLogin(): OpenAtLogin {
+  if (scripted) return scriptedOpenAtLogin;
+  if (!app.isPackaged || !loginItemsSettingsUrl(process.platform)) return 'unavailable';
+  return openAtLoginFrom(app.getLoginItemSettings(), process.platform);
+}
+ipcMain.handle(IpcChannel.getOpenAtLogin, () => readOpenAtLogin());
+ipcMain.handle(IpcChannel.setOpenAtLogin, (_event, on: unknown) => {
+  if (typeof on !== 'boolean' || readOpenAtLogin() === 'unavailable') return readOpenAtLogin();
+  if (scripted) return (scriptedOpenAtLogin = on ? 'on' : 'off');
+  try {
+    // On Windows `enabled` also turns it back on when Task Manager or Startup apps turned it off.
+    app.setLoginItemSettings({ openAtLogin: on, enabled: on });
+  } catch {
+    // The answer below says how it really stands.
+  }
+  return readOpenAtLogin();
+});
+ipcMain.on(IpcChannel.openLoginItemsSettings, () => {
+  const url = loginItemsSettingsUrl(process.platform);
+  if (url && !scripted) void shell.openExternal(url);
+});
 
 /**
  * Where the traffic lights sit: the default, or inside the 80px minimal sidebar. They are 54px wide, and
@@ -2143,6 +2169,13 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   await section('projects');
   await click('[data-project-order="yours"]');
   await section('general');
+  // Open at login goes to the faked login item (scripted runs never touch the real one), and back off.
+  const loginSwitch = "document.querySelector('[data-open-at-login]')";
+  const loginReady = await waitInPage(win, `${loginSwitch} && !${loginSwitch}.disabled && ${loginSwitch}.getAttribute('aria-checked') === 'false'`, 3_000);
+  await click('[data-open-at-login]');
+  const loginOn = loginReady && (await until(() => scriptedOpenAtLogin === 'on', 2_000)) && (await waitInPage(win, `${loginSwitch}.getAttribute('aria-checked') === 'true'`, 2_000));
+  await click('[data-open-at-login]');
+  const loginOff = await until(() => scriptedOpenAtLogin === 'off', 2_000);
   await click('[data-startup-view="new"]');
   await click('[data-confirm-quit]');
   await until(() => !preferences.get().confirmQuit);
@@ -2165,6 +2198,8 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   await click('[data-tool-activity="summary"]');
   await until(() => preferences.get().toolActivity === 'summary');
   const restored = preferences.get();
+  if (!loginOn) return 'Open at login did not turn on';
+  if (!loginOff) return 'Open at login did not turn off again';
   if (!scoped) return 'other apps\' sessions stayed in the sidebar with the setting off';
   if (!quitWithoutAsking) return '⌘Q still asked with the prompt turned off';
   if (saved.colorScheme !== 'dark' || saved.sidebarStyle !== 'compact' || saved.toolActivity !== 'steps' || saved.confirmQuit !== false || saved.sessionScope !== 'switchboard' || saved.startupView !== 'new' || saved.projectOrder !== 'yours') return `not saved: ${JSON.stringify(saved)}`;
@@ -8450,7 +8485,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
   await step('settings › usage: Show estimated cost and Currency are saved, Open usage opens the view with its cost', () => runUsageSettingsStep(win));
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
-  await step('settings: theme, sidebar style, session scope, tool activity, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
+  await step('settings: theme, sidebar style, session scope, tool activity, open at login, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('settings search: ⌘F, results per page, Enter and Escape, and every setting opens at its row', () => runSettingsSearchStep(win), { timeoutMs: 90_000 });
   await step('focus limit', () => runFocusStep(win));
   await step('settings › sessions: archive days, deleting asks first, overview picks a month (nothing deleted)', () => runSessionsSettingsStep(win));
