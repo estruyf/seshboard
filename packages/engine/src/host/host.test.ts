@@ -732,6 +732,17 @@ describe('HostManager', () => {
       t.manager.closeAll();
     });
 
+    it('sends Up next once the turn has ended when Stop lets it continue (from a phone)', async () => {
+      const t = setup();
+      const id = await busy(t);
+      await send(t, id, 'later');
+      await t.manager.interrupt(id, 'continue');
+      await until(() => t.queries[0]!.received.some((r) => r.text === 'later'));
+      expect(t.infos.filter((i) => i.sessionId === id).every((i) => i.queueHold !== 'stopped' && i.queueHold !== 'error')).toBe(true);
+      expect(queue(t, id)).toHaveLength(0);
+      t.manager.closeAll();
+    });
+
     it('keeps the queue when a turn fails, and a message you send yourself ends the hold', async () => {
       const t = setup();
       const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:go' });

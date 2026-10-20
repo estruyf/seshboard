@@ -510,11 +510,18 @@ export class SessionHost {
     };
   }
 
-  async interrupt(): Promise<void> {
-    // Stopping Claude is not a reason to fire off what is queued, so it waits for you.
+  /**
+   * Stops Claude's turn. `hold`: stopping Claude is not a reason to fire off what is queued, so it waits for you.
+   * `continue`: Up next moves on once the turn has ended (Stop on a phone, where Send next is out of reach).
+   */
+  async interrupt(upNext: 'hold' | 'continue' = 'hold'): Promise<void> {
     if (this.busy) {
       this.stopRequested = true;
-      this.holdQueue('stopped');
+      if (upNext === 'hold') this.holdQueue('stopped');
+      else if (this.queueHold) {
+        this.queueHold = null;
+        this.publishQueue();
+      }
     }
     await (await this.query)?.interrupt();
   }
@@ -667,9 +674,9 @@ export class SessionHost {
           : limitStop({ error: outcome.error ?? this.assistantError, rejected: this.rejected, last: this.lastRateLimit, prefixes: this.config.limitPrefixes ?? [] });
         this.rejected = null;
         this.assistantError = null;
-        // A failed turn leaves the queue for you to decide, unless you stopped it yourself (already held) or sent a
-        // message now. A usage limit holds it instead, until the limit is cleared.
-        if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold) this.holdQueue('error');
+        // A failed turn leaves the queue for you to decide, unless you stopped it yourself (held already, or let go on
+        // purpose) or sent a message now. A usage limit holds it instead, until the limit is cleared.
+        if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold && !this.stopRequested) this.holdQueue('error');
         if (stop) this.events.limitHit?.(this.sessionId, stop);
         else if (outcome.ok) this.events.turnOk?.(this.sessionId);
         this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache() });

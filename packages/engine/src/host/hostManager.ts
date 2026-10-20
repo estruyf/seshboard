@@ -404,9 +404,10 @@ export class HostManager {
     }
   }
 
-  async interrupt(sessionId: string): Promise<void> {
+  /** Stops Claude's turn; `upNext` says whether the queue waits for you after it (see `SessionHost.interrupt`). */
+  async interrupt(sessionId: string, upNext: 'hold' | 'continue' = 'hold'): Promise<void> {
     this.denyPending(sessionId, 'Interrupted by the user.');
-    await this.require(sessionId).interrupt();
+    await this.require(sessionId).interrupt(upNext);
   }
 
   /**

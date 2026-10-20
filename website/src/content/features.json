@@ -1372,6 +1372,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-stop-steer",
+      "name": "Remote: Stop next to the send button, and Queue, Steer or Send now while Claude works",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-tell-instead",
       "name": "Remote: Or tell Claude what to do instead",
       "page": "remote-access"

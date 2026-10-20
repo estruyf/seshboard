@@ -18,7 +18,7 @@ On your phone you can:
 - switch between sessions from a drawer, with one tap;
 - read a session's conversation as it happens, with Claude's answers formatted and its tool runs folded into one line;
 - allow or deny what Claude asks, answer its questions, and start or keep working on a plan;
-- send a prompt, or add one to Up next while Claude works, and remove it again;
+- send a prompt, or add one to Up next while Claude works, and remove it again, steer Claude or stop it;
 - see what a finished session did, look at its changes and commit them;
 - stop Claude's turn, mark a session as read or archive it, with a swipe;
 - start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of Claude profile, model, effort, mode, worktree and branch;
@@ -223,7 +223,9 @@ When a session finished, and nothing it started still runs in the background, it
 
 In a session that runs in Switchboard, the chips under the message box show its model, effort and permission mode. Tap one to change it. The effort chip only shows for a model that takes an effort; **Default** is the model's own. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
 
-While Claude works, a message you send waits under **Up next** above the message box, with **×** to remove it. It shows what you queued for the session on your computer too. A message you type and don't send stays in that session's message box, also when you open another session or reload the page, until you send it.
+While Claude works, **Stop** is next to the send button. A message you send waits under **Up next** above the message box, with **×** to remove it. It shows what you queued for the session on your computer too. When you stop Claude from your phone, Up next carries on: its first message goes as soon as the turn has stopped.
+
+To send a message another way while Claude works, tap the arrow next to the send button: **Queue** holds it in Up next until Claude finishes, **Steer** gives it to Claude now, and Claude reads it at its next step, and **Send now** stops Claude first. With a keyboard, <Kbd keys="alt+enter" /> steers and <Kbd keys="mod+shift+enter" /> sends now. A message you type and don't send stays in that session's message box, also when you open another session or reload the page, until you send it.
 
 To send images or files with a message, tap the paperclip button next to the message box: your phone offers its camera and its photos, and a computer offers its files. In a browser on a computer, you can also paste a screenshot or drop files on the message box. Each shows above the box, with a button to remove it. A message takes up to four images and four files, and about 2.7 MB in all. Your phone makes big photos smaller before it sends them. New session takes them too, and starts the session with them. Sending files, and images with a new session, needs this version of Switchboard on your computer. Queue for later doesn't take attachments.
 
@@ -293,7 +295,7 @@ Microsoft Edge keeps <Kbd keys="mod+shift+u" /> for Read aloud: use <Kbd keys="u
 
 ### A session and its Changes
 
-The conversation keeps a comfortable reading width in the middle. The header shows the model and the permission mode (such as **Opus · Auto**), **Ask**, **Changes** with the number of files, and **Stop** while Claude works. The buttons of a prompt show their keys.
+The conversation keeps a comfortable reading width in the middle. The header shows the model and the permission mode (such as **Opus · Auto**), **Ask**, and **Changes** with the number of files. The buttons of a prompt show their keys.
 
 In a window at least 1280 pixels wide, **Changes** opens on the right instead of over the conversation: the files, the diff of the one you pick, a commit message that starts with what you asked, **Ask Claude to fix…** and **Commit**. The browser remembers whether you had it open. **Ask** opens in the same place; close it and Changes comes back. Esc closes either.
 

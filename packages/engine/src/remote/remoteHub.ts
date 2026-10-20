@@ -147,6 +147,7 @@ export interface RemoteHubOptions {
   dequeue(sessionId: string, id: string): void;
   /** A session's Up next as it is now, for a phone that starts watching it (it may have missed changes while away). */
   upNext(sessionId: string): QueuedMessage[];
+  /** Stops Claude's turn and lets Up next move on after it: the phone has no Send next. */
   interrupt(sessionId: string): Promise<void>;
   /** Stops one of a running session's background tasks. */
   stopTask(sessionId: string, taskId: string): Promise<void>;

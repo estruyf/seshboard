@@ -1626,13 +1626,18 @@ export function createEngine(options: EngineOptions): Engine {
       readTranscript: (sessionId) => transcripts.readWithHeld(sessionId),
       watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
       send: async (sessionId, text, mode, images) => {
+        // Send now stops the turn first: its end is yours, not news (as on this computer).
+        if (mode === 'now') catchUp.interrupt(sessionId);
         const sent = await hosts.send({ sessionId, text, attachments: images, fork: false, mode });
         if (sent.sessionId === sessionId) sessions.wake(sessionId);
         return { messageUuid: sent.messageUuid, queued: sent.queued };
       },
       dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
       upNext: (sessionId) => upNext.list(sessionId).map(summarise),
-      interrupt: (sessionId) => hosts.interrupt(sessionId),
+      interrupt: (sessionId) => {
+        catchUp.interrupt(sessionId);
+        return hosts.interrupt(sessionId, 'continue');
+      },
       stopTask: (sessionId, taskId) => hosts.stopTask(sessionId, taskId),
       respond: (requestId, decision) => hosts.respond(requestId, decision),
       create: (root, prompt, choice, images) =>

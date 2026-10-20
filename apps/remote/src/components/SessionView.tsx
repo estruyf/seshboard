@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
-import type { CatchUp, QueuedMessage, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions } from '@switchboard/protocol/remote-client';
+import type { CatchUp, QueuedMessage, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions, SendMode } from '@switchboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
@@ -15,7 +15,7 @@ import { answer } from './answer.ts';
 import { CatchUpCard } from './CatchUpCard.tsx';
 import { ChangesSheet, CommitSheet, type ChangesState } from './ChangesSheet.tsx';
 import { useNow } from './SessionList.tsx';
-import { MenuButton, type MenuItem } from './Menu.tsx';
+import { AnchoredMenu, MenuButton, type MenuItem } from './Menu.tsx';
 import { EffortChip, ModeChip, ModelChip } from './OptionChips.tsx';
 import { DockedPrompt } from './PermissionCard.tsx';
 import { toast } from './Toasts.tsx';
@@ -28,6 +28,8 @@ import { AskPanel, AskSheet } from './AskPanel.tsx';
 import { BackgroundTasks } from './BackgroundTasks.tsx';
 import { closeAsk, openAsk, useSessionAsk } from './askStore.ts';
 import { withQuote } from '../lib/ask.ts';
+import { SEND_MODES, SEND_MODES_NOTE, sendKey } from '../lib/sendMode.ts';
+import { keys, MAC } from '../lib/platform.ts';
 import { Button, ComputerTag, STATUS_LABEL, StatusDot } from './ui.tsx';
 
 const PAGE = 50;
@@ -203,7 +205,7 @@ export function SessionView({
   const open = prompts[0];
   const card = showsCatchUp(catchUp, working || background, Boolean(open)) ? catchUp : null;
   const files = changes?.files.length ?? 0;
-  const send = (text: string, images: RemoteImage[] = [], files: RemoteFile[] = []) => client!.call('session.send', { sessionId, text, mode: 'queue', images, ...(files.length ? { files } : {}) }).then(() => setUnfolded(true));
+  const send = (text: string, images: RemoteImage[] = [], files: RemoteFile[] = [], mode: SendMode = 'queue') => client!.call('session.send', { sessionId, text, mode, images, ...(files.length ? { files } : {}) }).then(() => setUnfolded(true));
   const askToFix = (path: string | null) => {
     setSheet(null);
     setFill({ text: path ? `In ${path}, ` : '', id: Date.now() });
@@ -301,12 +303,6 @@ export function SessionView({
               <span className="tabular-nums">{files}</span>
             </Button>
           )}
-          {wide && working && (
-            <Button size="md" onClick={stop} disabled={!client} data-remote-stop>
-              <Square className="size-3 fill-current" aria-hidden />
-              Stop
-            </Button>
-          )}
           <MenuButton label="Session actions" items={menu} />
         </header>
         {banner}
@@ -354,7 +350,8 @@ export function SessionView({
           disabled={!client}
           working={working}
           answering={Boolean(open)}
-          onSend={async (text, images, files) => {
+          onStop={stop}
+          onSend={async (text, images, files, mode) => {
             // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
             if (open) {
               if (images.length || files.length) throw new Error("Attachments can't go with an answer. Remove them, or answer the prompt first.");
@@ -363,7 +360,7 @@ export function SessionView({
               if (result === 'failed') throw new Error("The answer didn't reach your computer.");
               return;
             }
-            await send(text, images, files);
+            await send(text, images, files, mode);
           }}
           onError={setError}
           onFocusChange={setTyping}
@@ -616,8 +613,9 @@ function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: st
 }
 
 /**
- * The message box. While Claude works, a message waits in Up next for the turn to end, as on the computer. While a
- * prompt is open, what you send answers it instead. Images and files come from the attach button, a paste or a drop
+ * The message box. While Claude works, Stop sits next to Send, and a message waits in Up next for the turn to end, as
+ * on the computer; the menu next to Send can steer it or send it now instead (`lib/sendMode.ts`). While a prompt is
+ * open, what you send answers it instead. Images and files come from the attach button, a paste or a drop
  * (`Attachments.tsx`), and show above the box with a remove button.
  */
 function Composer({
@@ -628,6 +626,7 @@ function Composer({
   disabled,
   working,
   answering,
+  onStop,
   onSend,
   onError,
   onFocusChange,
@@ -642,7 +641,8 @@ function Composer({
   disabled: boolean;
   working: boolean;
   answering: boolean;
-  onSend: (text: string, images: RemoteImage[], files: RemoteFile[]) => Promise<void>;
+  onStop: () => void;
+  onSend: (text: string, images: RemoteImage[], files: RemoteFile[], mode: SendMode) => Promise<void>;
   onError: (message: string) => void;
   /** The box got or lost focus: on a touch screen, the keyboard came up or went. */
   onFocusChange: (focused: boolean) => void;
@@ -675,12 +675,15 @@ function Composer({
       if (el) el.scrollTop = el.scrollHeight;
     });
   }, [fill]);
-  const send = async () => {
+  const cantSend = disabled || busy || reading || !text.trim();
+  /** While Claude works, Send queues; its menu can steer or send now instead. An answer to a prompt has one way. */
+  const modes = working && !answering;
+  const send = async (mode: SendMode = 'queue') => {
     const message = text.trim();
     if (!message || busy || reading) return;
     setBusy(true);
     try {
-      await onSend(message, attachments.images, attachments.files);
+      await onSend(message, attachments.images, attachments.files, mode);
       // Also when you went to another view while it was sending.
       clearDraft(draft);
       setText('');
@@ -715,10 +718,11 @@ function Composer({
           onFocus={() => onFocusChange(true)}
           onBlur={() => onFocusChange(false)}
           onKeyDown={(event) => {
-            // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer.
-            if (fine && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer; ⌥↵ steers, ⌘⇧↵ sends now.
+            const mode = fine ? sendKey({ key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing }, MAC) : null;
+            if (mode) {
               event.preventDefault();
-              void send();
+              void send(mode);
             }
           }}
           rows={1}
@@ -727,9 +731,34 @@ function Composer({
           data-remote-message
           className="max-h-48 min-h-9 flex-1 resize-none bg-transparent py-2 text-body text-text outline-none [field-sizing:content] placeholder:text-faint pointer-fine:min-h-7 pointer-fine:py-1"
         />
-        <Button type="submit" variant="primary" size="md" disabled={disabled || busy || reading || !text.trim()} aria-label={answering ? 'Send instead' : working ? 'Add to Up next' : 'Send'} className="px-3!">
-          <Send className="size-4" aria-hidden />
-        </Button>
+        {working && (
+          <Button size="md" onClick={onStop} disabled={disabled} aria-label="Stop" title="Stop Claude" className="px-3!" data-remote-stop>
+            <Square className="size-3 fill-current" aria-hidden />
+            <span className="hidden sm:inline">Stop</span>
+          </Button>
+        )}
+        <div className="flex shrink-0">
+          <Button type="submit" variant="primary" size="md" disabled={cantSend} aria-label={answering ? 'Send instead' : working ? 'Add to Up next' : 'Send'} className={`px-3! ${modes ? 'rounded-r-none' : ''}`}>
+            <Send className="size-4" aria-hidden />
+          </Button>
+          {modes && (
+            <AnchoredMenu
+              label="More ways to send"
+              side="above"
+              items={[
+                ...SEND_MODES.map(({ mode, label, shortcut }) => ({ label, hint: fine ? keys(shortcut) : undefined, onSelect: () => void send(mode) })),
+                { kind: 'separator' as const },
+                { kind: 'note' as const, label: SEND_MODES_NOTE },
+              ]}
+            >
+              {(trigger) => (
+                <Button {...trigger} variant="primary" size="md" disabled={cantSend} aria-label="More ways to send" className="rounded-l-none border-l border-on-accent/20 px-1.5!" data-remote-send-menu>
+                  <ChevronDown className="size-4" aria-hidden />
+                </Button>
+              )}
+            </AnchoredMenu>
+          )}
+        </div>
       </div>
       {/* Wraps on a narrow phone rather than scrolling: a scrolling row would clip the lists that open above the chips. */}
       {chips && <div className="mx-auto flex w-full max-w-3xl flex-wrap gap-1.5 pt-1.5">{chips}</div>}
