@@ -26,6 +26,8 @@ const TOKEN_HELP: Partial<Record<(typeof THEME_TOKENS)[number], string>> = {
   border: 'Lines between areas.',
   'overlay-border': 'Borders on menus and dialogs, and on fields and chips inside them.',
   'overlay-shadow': 'The shadow colour under menus and dialogs (the app builds the layers).',
+  paper: 'Reading mode: the page behind the text. Dark themes usually keep bg; light ones a slightly warm lift of it.',
+  'paper-text': 'Reading mode: the text on the paper. Readable on paper.',
   selected: 'The selected row. Usually translucent; generated from text when missing.',
   'focus-ring': 'The outline around the focused control while you move with Tab.',
   scrim: 'The backdrop behind dialogs.',

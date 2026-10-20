@@ -4670,6 +4670,211 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Reading mode, from the Read button to leaving it. A session with two replies that have a Read button (the demo home
+ * has one: npm run smoke:demo) opens a reply full window, checks the outline, the position and the buttons, then
+ * closes with Esc and with the back button: at the same reply the conversation is exactly where it was and the reply's
+ * Read button has the focus; at another reply the conversation scrolls to that one and focus goes to its button.
+ * Read-only: it only clicks, scrolls and presses Esc, never types or sends, and a session found among the others is
+ * never one that is running in Claude Code.
+ */
+async function runReadModeStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const transcript = `document.querySelector('${view} [data-transcript]')`;
+  const buttons = `[...document.querySelectorAll('${view} [data-read-button]')]`;
+  const back = smokeSessionId;
+  let borrowed: string | null = null;
+  let keysTried = '';
+  // Scrolls up from the end until two Read buttons (of two replies) have been on screen (the list is virtualised).
+  const twoReads = async (): Promise<boolean> => {
+    await js(`(() => { const el = ${transcript}; if (el) el.scrollTop = el.scrollHeight; })()`);
+    const seen = new Set<string>();
+    for (let page = 0; page < 25 && seen.size < 2; page++) {
+      await waitInPage(win, `${buttons}.length > 0`, page === 0 ? 1_500 : 300);
+      for (const key of (await js(`${buttons}.map((b) => b.dataset.turnKey ?? '')`)) as string[]) if (key) seen.add(key);
+      if (seen.size >= 2) break;
+      const top = (await js(`(() => { const el = ${transcript}; if (!el || el.scrollTop === 0) return true; el.scrollTop -= el.clientHeight * 0.8; return false; })()`)) as boolean;
+      if (top) break;
+    }
+    return seen.size >= 2;
+  };
+  const state = `(() => ({
+    open: Boolean(document.querySelector('[data-read-mode]')),
+    position: document.querySelector('[data-read-position]')?.textContent?.trim() ?? '',
+    focus: document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-read-button]') ? document.activeElement.dataset.turnKey : null,
+    scroll: ${transcript}?.scrollTop ?? -1,
+  }))()`;
+  type ReadState = { open: boolean; position: string; focus: string | null; scroll: number };
+  try {
+    // The demo home has a session with two long replies and headings: that is the one to read.
+    const demoRow = process.env.SWITCHBOARD_SMOKE_DEMO
+      ? ((await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Speed up the checkout page'))?.dataset.sessionId ?? null`)) as string | null)
+      : null;
+    if (demoRow) {
+      await js(`document.querySelector('[data-session-id="${demoRow}"]')?.click()`);
+      await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(demoRow)} && document.querySelector('${view} [data-transcript-item]')`, 5_000);
+      borrowed = demoRow;
+      if (!(await twoReads())) return 'failed: the demo session with two long replies shows fewer than two Read buttons';
+    } else if (!(await twoReads())) {
+      const running = await runningSessions();
+      if (!running) return 'failed: could not ask the engine which sessions are running, so none is safe to open';
+      const rows = (await js("[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId)")) as string[];
+      for (const id of [...new Set(rows)].filter((id) => id !== back && !running.ids.has(id)).slice(0, 12)) {
+        await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+        if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000))) continue;
+        if (await twoReads()) {
+          borrowed = id;
+          break;
+        }
+      }
+      if (!borrowed) return 'ok: no session with two replies to read among the newest (the demo home has one: npm run smoke:demo)';
+    }
+    // A wheel up, as you would: the view stops following the end, so rows being measured don't move it between looks.
+    await js(`${transcript}?.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }))`);
+    await settle(win);
+
+    // Hidden until hover or focus, except for a long reply: the button of a reply of 450 words or more always shows.
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
+    await js('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
+    const visibility = (await js(`${buttons}.map((b) => ({ words: (b.closest('[data-message-key]')?.innerText ?? '').split(/\\s+/).filter(Boolean).length, opacity: getComputedStyle(b).opacity }))`)) as Array<{ words: number; opacity: string }>;
+    const longHidden = visibility.find((v) => v.words >= 450 && v.opacity !== '1');
+    if (longHidden) return `the Read button of a reply of ${longHidden.words} words is hidden (opacity ${longHidden.opacity}) without hover or focus`;
+    const shortShown = visibility.find((v) => v.words <= 300 && v.opacity !== '0');
+    if (shortShown) return `the Read button of a reply of ${shortShown.words} words shows (opacity ${shortShown.opacity}) without hover or focus`;
+    const longOnes = visibility.filter((v) => v.words >= 450).length;
+    if (demoRow && longOnes === 0) return 'failed: the demo session has no reply of 450 words or more with a Read button';
+
+    // Opens the first reply in view; the conversation's scroll is noted first.
+    const open = async (): Promise<{ key: string; scroll: number } | string> => {
+      const target = (await js(`(() => { const b = ${buttons}[0]; if (!b) return null; const el = ${transcript}; const r = { key: b.dataset.turnKey, scroll: el.scrollTop }; b.click(); return r; })()`)) as { key: string; scroll: number } | null;
+      if (!target) return 'the Read button went out of view before it was clicked';
+      if (!(await waitInPage(win, "document.querySelector('[data-read-mode]') && document.querySelector('[data-read-text]')", 4_000))) return 'clicking Read did not open reading mode';
+      return target;
+    };
+    const first = await open();
+    if (typeof first === 'string') return first;
+    const label = (await js("document.querySelector('[data-read-mode]').getAttribute('aria-label')")) as string;
+    if (!/^Reading: .+, reply \d+ of \d+$/.test(label)) return `reading mode is labelled "${label}"`;
+    const opened = (await js(state)) as ReadState;
+    if (!/^Reply \d+ of \d+$/.test(opened.position)) return `the position reads "${opened.position}"`;
+    const outline = (await js(`(() => { const nav = document.querySelector('[data-read-outline]'); return nav ? nav.querySelectorAll('a, button').length : 0; })()`)) as number;
+    const headings = (await js("document.querySelectorAll('[data-read-text] > .markdown > :is(h1, h2, h3)').length")) as number;
+    if (demoRow && headings === 0) return 'failed: the demo session\'s reply has no headings to outline';
+    if (headings > 0 && outline === 0) return `the reply has ${headings} headings and no outline`;
+    if (headings > 0 && !(await waitInPage(win, "document.querySelector('[data-read-outline]')", 1_000))) return 'the outline is missing';
+    await shot(win, 'reading-mode.png');
+
+    // Aa: the settings popover changes the size at once; Esc closes the popover first.
+    const sizeNow = () => js("getComputedStyle(document.querySelector('[data-read-column]')).fontSize") as Promise<string>;
+    const sizeBefore = await sizeNow();
+    await js("document.querySelector('[data-read-settings-button]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-read-settings]')", 2_000))) return 'the Aa button did not open the settings';
+    const sizes = (await js("[...document.querySelectorAll('[data-read-settings] [data-read-size] button')].length")) as number;
+    if (sizes !== 4) return `the settings show ${sizes} sizes, not 4`;
+    await js(`document.querySelectorAll('[data-read-settings] [data-read-size] button')[${sizeBefore === '21.5px' ? 0 : 3}].click()`);
+    if (!(await waitInPage(win, `getComputedStyle(document.querySelector('[data-read-column]')).fontSize !== ${JSON.stringify(sizeBefore)}`, 2_000))) return 'picking a size in the settings did not change the text';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-settings]')", 2_000))) return 'Esc did not close the settings';
+    if (!(await js("Boolean(document.querySelector('[data-read-mode]'))"))) return 'Esc with the settings open also closed reading mode';
+    // The keys: = makes the text bigger, - smaller.
+    pressKey(win, '-');
+    pressKey(win, '-');
+    pressKey(win, '-');
+    if (!(await waitInPage(win, `getComputedStyle(document.querySelector('[data-read-column]')).fontSize === '15.5px'`, 2_000))) return `the - key did not make the text smallest (${await sizeNow()})`;
+    pressKey(win, '=');
+    if (!(await waitInPage(win, `getComputedStyle(document.querySelector('[data-read-column]')).fontSize === '17.5px'`, 2_000))) return `the = key did not make the text bigger (${await sizeNow()})`;
+    // The session list over the page (the sidebar key), outside the inert parts; Esc hides it before reading mode.
+    pressKey(win, 'B', ['meta']);
+    if (!(await waitInPage(win, "document.querySelector('[data-read-sidebar] [data-session-list]')", 2_000))) return 'the sidebar key did not show the session list over reading mode';
+    const reachable = (await js("(() => { const panel = document.querySelector('[data-read-sidebar]'); return !panel.closest('[inert]') && Boolean(document.querySelector('[data-read-scrim]')); })()")) as boolean;
+    if (!reachable) return 'the session list over reading mode is inert or has no scrim';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-sidebar]')", 2_000))) return 'Esc did not hide the session list';
+    if (!(await js("Boolean(document.querySelector('[data-read-mode]'))"))) return 'Esc closed reading mode with the session list open';
+    await js("document.querySelector('[data-read-scroll]').focus()");
+
+    // Esc at the same reply: the conversation is where it was, and the reply's Read button has the focus.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'Esc did not close reading mode';
+    if (!(await waitInPage(win, `(${state}).focus === ${JSON.stringify(first.key)}`, 3_000))) return `after Esc the focus is not on the Read button of the reply (${JSON.stringify(await js(state))})`;
+    const same = (await js(state)) as ReadState;
+    if (Math.abs(same.scroll - first.scroll) > 2) return `Esc at the same reply moved the conversation from ${Math.round(first.scroll)} to ${Math.round(same.scroll)}`;
+
+    // Another reply, then the back button: the conversation scrolls to that reply and its button has the focus.
+    const second = await open();
+    if (typeof second === 'string') return second;
+    // The arrow keys go to the next reply (or the previous, at the last one), as the buttons do.
+    const before = (await js("document.querySelector('[data-read-position]').textContent")) as string;
+    const canNext = (await js("!document.querySelector('[data-read-next]').disabled")) as boolean;
+    if (!canNext && (await js("document.querySelector('[data-read-previous]').disabled"))) return 'reading mode has no other reply to go to';
+    pressKey(win, canNext ? 'Right' : 'Left');
+    if (!(await waitInPage(win, `document.querySelector('[data-read-position]')?.textContent !== ${JSON.stringify(before)}`, 3_000))) return `the ${canNext ? '→' : '←'} key did not move to another reply`;
+    // The buttons do the same: one step back from there.
+    const moved = (await js("document.querySelector('[data-read-position]').textContent")) as string;
+    await js(`document.querySelector('[data-read-${canNext ? 'previous' : 'next'}]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-read-position]')?.textContent === ${JSON.stringify(before)}`, 3_000))) return 'the arrow buttons did not move back to the first reply';
+    pressKey(win, canNext ? 'Right' : 'Left');
+    if (!(await waitInPage(win, `document.querySelector('[data-read-position]')?.textContent === ${JSON.stringify(moved)}`, 3_000))) return 'the arrow key did not return to the other reply';
+    await js("document.querySelector('[data-read-back]').click()");
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'the back button did not close reading mode';
+    const landed = await waitInPage(win, `(() => { const s = ${state}; return s.focus !== null && s.focus !== ${JSON.stringify(second.key)}; })()`, 4_000);
+    if (!landed) return `after leaving at another reply the focus is not on that reply's Read button (${JSON.stringify(await js(state))})`;
+    const where = `(() => { const b = document.activeElement; const box = ${transcript}.getBoundingClientRect(); const r = b.getBoundingClientRect(); return b.matches('[data-read-button]') && r.bottom > box.top && r.top < box.bottom; })()`;
+    if (!(await waitInPage(win, where, 4_000))) {
+      return `after leaving at another reply its Read button is not in the conversation's view (${JSON.stringify(await js(`(() => { const b = document.activeElement; const r = b.getBoundingClientRect(); const box = ${transcript}.getBoundingClientRect(); return { tag: b.tagName, button: b.matches('[data-read-button]'), top: Math.round(r.top), bottom: Math.round(r.bottom), view: [Math.round(box.top), Math.round(box.bottom)], scroll: Math.round(${transcript}.scrollTop) }; })()`))})`;
+    }
+
+    // Reply with quote: select text in the column, the popover offers it, and it closes reading mode with the quote in
+    // the message box. The box is put back exactly as it was; nothing is sent.
+    const box = `${view} [data-composer]`;
+    const draft = (await js(`document.querySelector('${box}')?.value ?? null`)) as string | null;
+    if (draft === null) return 'failed: the session has no message box to quote into';
+    try {
+      const third = await open();
+      if (typeof third === 'string') return third;
+      const picked = (await js(`(() => {
+        const p = [...document.querySelectorAll('[data-read-text] p')].find((el) => el.textContent.trim().length > 20 && el.getClientRects().length > 0);
+        if (!p) return '';
+        p.scrollIntoView({ block: 'center' });
+        const range = document.createRange();
+        range.selectNodeContents(p);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        return selection.toString().trim();
+      })()`)) as string;
+      if (!picked) return 'failed: reading mode shows no paragraph to select';
+      const toolbar = "document.querySelector('[data-read-selection][data-side]')";
+      if (!(await waitInPage(win, toolbar, 3_000))) return 'no popover over the selection in reading mode';
+      const labels = (await js(`[...${toolbar}.querySelectorAll('button')].map((b) => b.textContent.trim())`)) as string[];
+      if (labels.join(',') !== 'Reply with quote,CopyCopied,Ask about this') return `the reading popover holds ${JSON.stringify(labels)}`;
+      if (!(await js(`!!${toolbar}.querySelector('[data-read-quote]') && !!${toolbar}.querySelector('[data-read-ask]')`))) return 'the reading popover lacks its data-read-quote or data-read-ask hook';
+      await js(`${toolbar}.querySelector('[data-read-quote]').click()`);
+      if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'Reply with quote did not close reading mode';
+      if (!(await waitInPage(win, `document.querySelector('${box}').value.includes('> ')`, 3_000))) return `Reply with quote left the message box without a quote (${JSON.stringify(await js(`document.querySelector('${box}').value.slice(0, 60)`))})`;
+      const value = (await js(`document.querySelector('${box}').value`)) as string;
+      const firstLine = picked.split('\n')[0]!.trim();
+      if (!value.includes(`> ${firstLine}`)) return `the message box does not hold the selection as a quote ("${value.slice(0, 40)}")`;
+      keysTried = 'Reply with quote put the selection in the message box';
+    } finally {
+      await js('window.getSelection().removeAllRanges()');
+      if ((await js("Boolean(document.querySelector('[data-read-mode]'))")) as boolean) pressKey(win, 'Escape');
+      await setFieldValue(win, box, draft).catch(() => {});
+    }
+    const restored = (await js(`document.querySelector('${box}')?.value ?? null`)) as string | null;
+    if (restored !== draft) return `the message box was not put back as it was (${JSON.stringify(restored?.slice(0, 40))})`;
+    return `ok: Read opens "${opened.position}"${headings ? ` with an outline of ${outline}` : ''}, Esc at the same reply leaves the scroll and focuses its button, leaving at another reply scrolls to it, ← → move between replies, ${keysTried} (and the box is put back)${longOnes ? `, ${longOnes} long reply buttons always show` : ''}`;
+  } finally {
+    if ((await js("Boolean(document.querySelector('[data-read-mode]'))")) as boolean) pressKey(win, 'Escape');
+    await js('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
+    await js(`(() => { const el = ${transcript}; if (el) el.scrollTop = el.scrollHeight; })()`);
+    await settle(win);
+    if (borrowed && back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+  }
+}
+
+/**
  * Shell code blocks in the conversation have a Run button and other blocks don't. Read-only: Run is
  * never clicked, since it would run the command in a real project.
  */
@@ -8543,6 +8748,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
+  await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));

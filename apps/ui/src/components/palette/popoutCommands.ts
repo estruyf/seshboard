@@ -122,6 +122,7 @@ const PLANS: Record<string, Plan> = {
   'prompt-next': 'here',
   'remember-this': 'here',
   'quote-in-reply': 'here',
+  'read-last-reply': 'here',
   'copy-last-reply': 'here',
   'copy-session-id': 'here',
   'check-transcript': 'here',

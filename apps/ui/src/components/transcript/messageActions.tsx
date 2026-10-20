@@ -1,5 +1,6 @@
-import { BookmarkPlus, Brain, Check, ClipboardType, Copy, GitFork, Pencil, Undo2 } from 'lucide-react';
+import { BookmarkPlus, BookOpen, Brain, Check, ClipboardType, Copy, GitFork, Pencil, Undo2 } from 'lucide-react';
 import { createContext, useContext, type ReactNode } from 'react';
+import { ariaKeysFor, keysFor, shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { Button } from '../ui/Button.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 
@@ -21,7 +22,21 @@ export interface MessageActions {
   remember(text: string, from: 'user' | 'claude'): void;
   /** Save as prompt…: a message you sent, in the saved prompt editor, its links, branches and paths offered as blanks. */
   savePrompt?(text: string): void;
+  /** Reading mode for the turn's reply. */
+  read?(turnKey: string): void;
+  /** The replies that can be read, by the key of the turn's last reply: the turn they belong to and a word count. */
+  readable?: ReadonlyMap<string, ReadableReply>;
 }
+
+/** A turn's last reply, as the Read button needs it. */
+export interface ReadableReply {
+  turnKey: string;
+  /** Roughly, over the turn's text: enough to tell a long reply from a short one. */
+  words: number;
+}
+
+/** From this many words a reply shows its Read button all the time, not only with the row. */
+export const LONG_REPLY_WORDS = 400;
 
 export const MessageActionsContext = createContext<MessageActions | null>(null);
 
@@ -124,5 +139,31 @@ export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { item
       {text && <CopyAction text={text} label={kind === 'text' ? 'Copy as Markdown' : 'Copy message'} />}
       {text && kind === 'text' && <RichCopyAction text={text} />}
     </div>
+  );
+}
+
+/**
+ * Read: opens the turn's last reply in reading mode. Only the last reply of a turn that can be read has it (the
+ * session view says which, `readable`). A long reply shows it all the time, since that is when it is wanted; a short
+ * one shows with the row.
+ */
+export function ReadButton({ itemKey }: { itemKey: string }) {
+  const actions = useContext(MessageActionsContext);
+  const reply = actions?.readable?.get(itemKey);
+  if (!actions?.read || !reply) return null;
+  return (
+    <Button
+      variant="quiet"
+      size="sm"
+      icon={<BookOpen size={13} />}
+      aria-keyshortcuts={ariaKeysFor('read.toggle')}
+      data-tooltip={`Read this reply (${shortcutGlyphs(keysFor('read.toggle'))})`}
+      className={`h-6 shrink-0 ${reply.words >= LONG_REPLY_WORDS ? '' : REVEAL_IN_REPLY_ROW}`}
+      onClick={() => actions.read!(reply.turnKey)}
+      data-read-button
+      data-turn-key={reply.turnKey}
+    >
+      Read
+    </Button>
   );
 }

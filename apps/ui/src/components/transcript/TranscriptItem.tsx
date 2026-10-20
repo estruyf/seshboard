@@ -14,7 +14,7 @@ import { ActivityGroupView } from './ActivityGroup.tsx';
 import { ClampedPrompt } from './ClampedPrompt.tsx';
 import type { DisplayItem, RenderItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
-import { MessageToolbar, messageUuid, REVEAL_IN_REPLY_ROW } from './messageActions.tsx';
+import { MessageToolbar, messageUuid, ReadButton, REVEAL_IN_REPLY_ROW } from './messageActions.tsx';
 import { sentLine } from './turnFormat.ts';
 import { TurnMetaLine, type LiveTurnInfo } from './TurnMeta.tsx';
 import { useRemote } from '../../state/remoteStore.ts';
@@ -353,6 +353,7 @@ function BuiltInItem({
               hidden until the reply is hovered or the row has focus, with their space kept. */}
           <div className="group/reply-row -ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
             <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly={item.subagent} />
+            {!item.subagent && <ReadButton itemKey={item.key} />}
             {!item.subagent && <TurnMetaLine itemKey={item.key} className={REVEAL_IN_REPLY_ROW} />}
           </div>
         </div>

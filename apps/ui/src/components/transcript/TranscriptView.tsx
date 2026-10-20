@@ -87,6 +87,10 @@ import { durationWords, liveParts, tokenWords } from './turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, type LiveTurnInfo, type TurnMetaValue } from './TurnMeta.tsx';
 import { claudeMs, liveTurn, type Turn } from './turns.ts';
 import { useAgentTokens, useTurns } from './useTurns.ts';
+import { createPortal } from 'react-dom';
+import { ReadMode } from '../readMode/ReadMode.tsx';
+import { useReadMode } from '../../state/readModeStore.ts';
+import { readableTurns, readReply } from './readReply.ts';
 import { memoryWriteOf } from './memoryWrites.ts';
 import { useKnownMemoryFolders, useMemoryFoldersSync } from '../memory/useMemoryFolders.ts';
 import { MessageMenuContext, useRememberLayer } from '../memory/RememberLayer.tsx';
@@ -106,7 +110,7 @@ import { closeCommands, openCommands, pickCommand, toggleCommandsPanel, useSessi
 import { closeChanges, toggleChangesPanel, useSessionChanges } from '../../state/changesPanelStore.ts';
 import { toggleTerminalPanel, useRightPanel, useRightTab } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
-import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
+import { MessageActionsContext, messageUuid, type MessageActions, type ReadableReply } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { TranscriptItem } from './TranscriptItem.tsx';
 import { useTranscript } from './useTranscript.ts';
@@ -624,6 +628,38 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const agentTokens = useAgentTokens(client, sessionId, items, working);
   const turns = useTurns(sessionId, items, agentTokens);
   const turnDetails = usePreferences((s) => s.prefs.turnDetails);
+  // Reading mode: a portal from here, so it has this view's providers; the conversation stays mounted under it.
+  const reading = useReadMode((s) => (active && s.open?.sessionId === sessionId ? s.open : null));
+  const readingText = useHosts((s) => {
+    const block = s.streaming.get(sessionId);
+    return block?.kind === 'text' ? block.text : null;
+  });
+  const readReplyNow = useMemo(() => {
+    if (!reading) return null;
+    const last = readingText ? turns.at(-1) : readableTurns(items, turns).at(-1);
+    const key = reading.turnKey === 'last' ? last?.key : reading.turnKey;
+    return key ? readReply(items, turns, key, readingText) : null;
+  }, [reading, readingText, items, turns]);
+  useEffect(() => {
+    if (!reading) return;
+    // The reply it was opened at is gone (or there was none to open at): leave rather than sit invisible over the app.
+    if (!readReplyNow) useReadMode.getState().close();
+    else if (reading.turnKey === 'last') useReadMode.getState().resolve(readReplyNow.turnKey);
+  }, [reading, readReplyNow]);
+  // The replies with a Read button: each turn's last reply, with the turn it belongs to and about how long it is.
+  const readable = useMemo(() => {
+    const map = new Map<string, ReadableReply>();
+    for (const turn of turns) {
+      if (!turn.replyKey) continue;
+      let words = 0;
+      for (let i = turn.start + 1; i <= turn.end; i++) {
+        const item = items[i]!;
+        if (item.kind === 'text' && !item.subagent) words += item.text.split(/\s+/).filter(Boolean).length;
+      }
+      map.set(turn.replyKey, { turnKey: turn.key, words });
+    }
+    return map;
+  }, [items, turns]);
   const openTurn = working ? (turns.at(-1) ?? null) : null;
   const finishedByReply = useMemo(() => {
     const map = new Map<string, Turn>();
@@ -874,6 +910,39 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     setHighlightKey(renderItems[index]!.key);
     useOverlay.getState().focus(null);
   }, [focusMessage, renderItems, virtualizer]);
+  // Leaving reading mode: at the reply it was opened at, the conversation is as it was; at another one, it scrolls to
+  // that reply. Focus goes to that reply's Read button, else the message box.
+  const readingBefore = useRef<{ turnKey: string; openedFrom: string } | null>(null);
+  if (reading) readingBefore.current = { turnKey: reading.turnKey, openedFrom: reading.openedFrom };
+  useEffect(() => {
+    if (reading) return;
+    const left = readingBefore.current;
+    readingBefore.current = null;
+    if (!left) return;
+    // Reply with quote and Ask about this put the caret elsewhere themselves.
+    const focusElsewhere = useReadMode.getState().leaveTo === 'elsewhere';
+    // A click on another session or a jump elsewhere ended it: this view isn't where the reader is.
+    const { selectedId, view } = useSessions.getState();
+    if (selectedId !== sessionId || view !== 'session') return;
+    const replyKey = turns.find((t) => t.key === left.turnKey)?.replyKey;
+    const index = replyKey ? renderItems.findIndex((item) => (item.kind === 'activity' ? item.items.some((i) => i.key === replyKey) : item.key === replyKey)) : -1;
+    const moved = left.openedFrom !== '' && left.turnKey !== left.openedFrom && index !== -1;
+    if (moved) {
+      follow(false);
+      // Its end is where the Read button is, and a long reply is taller than the view.
+      virtualizer.scrollToIndex(index, { align: 'end' });
+      requestAnimationFrame(() => virtualizer.scrollToIndex(index, { align: 'end' }));
+    }
+    const focusBack = () => {
+      const button = scrollRef.current?.querySelector<HTMLElement>(`[data-read-button][data-turn-key="${CSS.escape(left.turnKey)}"]`);
+      if (button) button.focus({ preventScroll: true });
+      else useDrafts.getState().requestFocus(sessionId);
+    };
+    // The reply's row is measured as it renders after a scroll: look for its button a couple of frames later.
+    if (focusElsewhere) return;
+    if (moved) requestAnimationFrame(() => requestAnimationFrame(focusBack));
+    else requestAnimationFrame(focusBack);
+  }, [reading]);
   // The highlight fades on its own timer: clearing focusMessage above re-runs that effect, which must not cancel it.
   useEffect(() => {
     if (!highlightKey) return;
@@ -1043,8 +1112,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       runAndSend: cwd ? (command) => void runAndSendOutput(client, sessionId, cwd, command).catch(fail) : null,
       remember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
       savePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
+      read: (turnKey) => useReadMode.getState().openReply(sessionId, turnKey),
+      readable,
     };
-  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions]);
+  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions, readable]);
 
   // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
@@ -1607,6 +1678,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               <PromptOutline prompts={prompts} starts={outlineMeasure.starts} total={outlineMeasure.total} current={currentMark} right={outlineMeasure.gutter} onJump={onOutlineJump} />
             )}
             </div>
+            {readReplyNow && createPortal(<ReadMode sessionId={sessionId} title={title} live={live} cwd={cwd} reply={readReplyNow} />, document.body)}
           </TurnMetaContext.Provider>
           </FileLinksProvider>
           </MessageMenuContext.Provider>

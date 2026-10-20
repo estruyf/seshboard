@@ -261,6 +261,14 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ↩ | Edit a message in Up next (on a message in Up next, above the message box; ↑ in an empty message box edits the last one) |
 | ⌥↑ or ⌥↓ | Move a message in Up next up or down (on a message in Up next, above the message box) |
 | ⌫ | Remove a message from Up next (on a message in Up next, above the message box; Undo puts it back) |
+| ⌘⌥R | Read the last reply, or close reading mode (in a session) |
+| ← | Go to the previous reply (in reading mode) |
+| → | Go to the next reply (in reading mode) |
+| K | Go to the previous heading (in reading mode) |
+| J | Go to the next heading (in reading mode) |
+| = or + | Make the text bigger (in reading mode) |
+| - | Make the text smaller (in reading mode) |
+| R | Reply with the selected text quoted (in reading mode) |
 | ⌘F | Find in the conversation |
 | ↩ or ⌘G | Next match (in Find) |
 | ⇧↩ or ⌘⇧G | Previous match (in Find) |

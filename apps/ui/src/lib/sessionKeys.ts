@@ -1,9 +1,9 @@
 import { matches, type ShortcutId } from './shortcuts.ts';
 
 /** The shortcuts of the window itself that act on a session or its terminal, rather than on the app. */
-export type SessionKey = Extract<ShortcutId, 'terminal.maximize' | 'terminal.toggle' | 'editor.open' | 'session.new-window'>;
+export type SessionKey = Extract<ShortcutId, 'terminal.maximize' | 'terminal.toggle' | 'editor.open' | 'session.new-window' | 'read.toggle'>;
 
-const SESSION_KEYS: readonly SessionKey[] = ['terminal.maximize', 'terminal.toggle', 'editor.open', 'session.new-window'];
+const SESSION_KEYS: readonly SessionKey[] = ['terminal.maximize', 'terminal.toggle', 'editor.open', 'session.new-window', 'read.toggle'];
 
 /**
  * Which of those a key press is, or null. In a pop-out the session is already in a window of its own, so

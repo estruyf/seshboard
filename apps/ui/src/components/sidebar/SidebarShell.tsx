@@ -78,7 +78,7 @@ function SidebarResizeHandle({ fitted, onDragging }: { fitted: SidebarSnap; onDr
  * 80px rail) or closed (nothing, the session view takes the window). Changing state eases the width
  * over 150ms (none with reduced motion), except while dragging the open edge, which follows the pointer.
  */
-export function SidebarShell() {
+export function SidebarShell({ inert = false }: { inert?: boolean }) {
   const saved = useSidebar((s) => s.state);
   // In a small window (or zoomed in) the sidebar narrows, or shows as the rail, so the session view
   // keeps its room; the saved state and width come back as the window grows.
@@ -91,6 +91,7 @@ export function SidebarShell() {
       className={`relative h-full shrink-0 ${animate ? 'transition-[width] duration-150 ease-out motion-reduce:transition-none' : ''}`}
       style={{ width: fitted.width }}
       data-sidebar
+      inert={inert}
       data-sidebar-state={state}
       data-sidebar-fitted={state !== saved || undefined}
       data-sidebar-dragging={dragging || undefined}

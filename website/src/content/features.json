@@ -127,6 +127,11 @@
       "page": "vscode-companion"
     },
     {
+      "id": "palette:read-last-reply",
+      "name": "Read the last reply",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "palette:copy-last-reply",
       "name": "Copy last reply",
       "page": "sessions/conversation"
@@ -1007,6 +1012,46 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "shortcut:read.toggle",
+      "name": "read.toggle",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.previous",
+      "name": "read.previous",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.next",
+      "name": "read.next",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.previous-heading",
+      "name": "read.previous-heading",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.next-heading",
+      "name": "read.next-heading",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.bigger",
+      "name": "read.bigger",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.smaller",
+      "name": "read.smaller",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.reply",
+      "name": "read.reply",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "shortcut:session.new-window",
       "name": "session.new-window",
       "page": "sessions/own-window"
@@ -1285,6 +1330,11 @@
       "id": "settings:theme",
       "name": "Settings: Theme",
       "page": "settings"
+    },
+    {
+      "id": "feature:reading-mode",
+      "name": "Reading mode: Read in a reply's actions, In this reply outline, Aa text settings, Reply with quote, Copy and Ask about this on a selection",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:app-icon",

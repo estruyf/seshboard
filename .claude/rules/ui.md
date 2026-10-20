@@ -18,6 +18,7 @@ The rules for the Switchboard UI (`apps/ui`). Claude Code loads this file when y
   - `profile-<colour>` (yellow, blue, green, purple, red, orange, gray) tells Claude profiles apart; use it through `PROFILE_DOT` / `PROFILE_TEXT` in `components/profiles/ProfileBadge.tsx`.
   - `remote` (violet, `#b197fc` dark, `#7048e8` light; 4.5:1 on `bg`, `sidebar` and `card`) is only for things on another computer: `ComputerChip`, the badge on `ProjectIcon`, the line over a remote session. No state uses violet, so it never reads as needs you, working or unread.
   - `code` (`code-bg`) is the background of code blocks, tool output and diffs; `diff-added` / `diff-removed` are the line tints in diffs. `focus-ring` is the keyboard focus outline.
+  - `paper` and `paper-text` are reading mode's background and text (a warm off-white in light, the same as `bg` and `text` in dark).
 - **Themes** (`docs/themes.md`) replace every token: a theme is a JSON file validated in `packages/protocol/src/theme.ts`, resolved in `apps/ui/src/lib/themeResolve.ts` (generating what it leaves out, `themeGenerate.ts`) and applied as one generated `<style>` (`themeCss.ts`). So never hard-code a colour or assume Demo Time's: a new colour need is a new token, added to `THEME_TOKENS`, `styles.css`, `demo-time.json`, the generator and docs/themes.md in the same change. Built-in themes are in `apps/ui/src/themes/`; imported ones live in main (`apps/desktop/src/main/themes.ts`).
 - **Both light and dark mode** must work; the Settings smoke step switches between them.
 - **Narrow panes:** the session view is an `@container`; use `@max-[860px]:` variants to compact headers and bars (sessions side by side in split view).
@@ -80,6 +81,7 @@ With more than one Claude profile, the rail on a session row shows the profile's
 - [A message back in the box](../../docs/ui-patterns.md#a-message-back-in-the-box): Edit in Up next, Undo after Remove: restoring a message as it was written.
 - [Ask about this session](../../docs/ui-patterns.md#ask-about-this-session): the Ask panel and `/btw`, never part of the conversation.
 - [Catch-up](../../docs/ui-patterns.md#catch-up): the briefing banner and strip on a finished turn.
+- [Reading mode](../../docs/ui-patterns.md#reading-mode): one reply full window, with its outline; the one place outside the type scale.
 - [Sidebar states](../../docs/ui-patterns.md#sidebar-states): open, minimal and closed sidebar, its widths and keys.
 - [Split view](../../docs/ui-patterns.md#split-view): the tiling pane tree, drag and drop, dividers, pane keys.
 - [Collapsible sections and the queue](../../docs/ui-patterns.md#collapsible-sections-and-the-queue): sidebar section headers, Up next.

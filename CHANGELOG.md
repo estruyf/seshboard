@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Added
 
+- **Reading mode.** Reading mode: open any reply on its own, full window, with an outline of its headings and tool calls folded away. Use **Read** in the reply's actions.
 - **Triggers** ([#180](https://github.com/estruyf/switchboard/issues/180)). Triggers: start a session when CI fails on a branch or an issue is labelled or assigned to you. Set them up on a project's Triggers tab. Switchboard checks through gh, keeps a state label on the issue if you want, and never bypasses permissions.
 - **Upcoming.** Upcoming: one view in the sidebar for everything queued and scheduled, across all projects, with the next 7 days of scheduled runs. Skip a single run without pausing its schedule. Open it from **Upcoming** under the search field, with ⌘⇧Y (Ctrl+Shift+Y on Windows), or from the command palette. **History** shows the runs of the last 7 days and how they went, and Home's Queue and Schedules cards now show three rows with **See all in Upcoming**.
 - **Switchboard on Linux.** Switchboard now runs on Linux, on x64 and Arm64. Each release has an AppImage, a `.deb` for Debian and Ubuntu, and an `.rpm` for Fedora, RHEL and openSUSE, and each one updates itself: the AppImage in place, the `.deb` and `.rpm` through your package manager. Open in offers your file manager and the terminals it finds (Ghostty, GNOME Terminal, Konsole, kitty, Alacritty and WezTerm), and notification sounds come from your desktop's sound theme.
