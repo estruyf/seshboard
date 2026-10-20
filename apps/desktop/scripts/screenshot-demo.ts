@@ -22,6 +22,8 @@ export interface DemoWorld {
   sessions: { hero: string; working: string; needsYou: string };
   /** The older sessions by title, with the config folder each was written to (the website's Auto model pictures). */
   history: Record<string, { id: string; configDir: string }>;
+  /** The pipeline run in acme-store: its parent session, the three sub-sessions and the run's worktree (see `demoPipelines`). */
+  pipeline: { root: string; cwd: string; parent: string; plan: string; execute: string; validate: string };
   /** Processes that stand in for Claude Code running in a terminal; stop them when done. */
   stop(): void;
 }
@@ -474,6 +476,41 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     written[title] = { id: t.id, configDir: cwd === payments ? workConfigDir : configDir };
   }
 
+  // A pipeline run (#179): a session that started "Plan, execute, validate, push", three sub-sessions in the run's
+  // worktree (Plan, Execute, Validate with "Verdict: pass") and the run waiting at Push. The run itself is put in
+  // by the engine from `demoPipelines`.
+  const run = join(acme, '.claude', 'worktrees', 'wishlist');
+  git(acme, 'worktree', 'add', '-q', '-b', 'worktree-wishlist', run);
+  // The run's folder is inside the project; keep it out of the project's own changes.
+  write(acme, { '.git/info/exclude': '.claude/\n' });
+  write(run, {
+    'src/pages/Wishlist.tsx': "export function Wishlist(props: { items: string[] }) {\n  if (props.items.length === 0) return <p>Nothing saved yet.</p>;\n  return <ul>{props.items.map((item) => <li key={item}>{item}</li>)}</ul>;\n}\n",
+    'src/lib/wishlist.ts': "const KEY = 'acme.wishlist';\n\nexport function savedItems(): string[] {\n  return JSON.parse(localStorage.getItem(KEY) ?? '[]');\n}\n\nexport function toggleItem(id: string): void {\n  const items = savedItems();\n  const next = items.includes(id) ? items.filter((i) => i !== id) : [...items, id];\n  localStorage.setItem(KEY, JSON.stringify(next));\n}\n",
+  });
+  const wishlistTask = 'Add a wishlist to the account page';
+  const parent = new Transcript(acme, 'main', now - 3 * HOUR)
+    .user('Customers want to save products for later. Add a wishlist to the account page.')
+    .tool('Read', { file_path: `${acme}/src/pages/Settings.tsx` }, numbered(settingsBefore), 'Let me look at how the account pages are built.')
+    .say('This touches the page, a small store and tests, so it fits a pipeline: plan it, build it, check it, then push.');
+  parent.write(configDir, wishlistTask);
+  const plan = new Transcript(run, 'worktree-wishlist', now - 2 * HOUR - 50 * MINUTE, { scale: 0.8 })
+    .user(`${wishlistTask}\n\nPlan this. Don't edit files.`)
+    .tool('Read', { file_path: `${run}/src/pages/Settings.tsx` }, numbered(settingsBefore))
+    .say('Plan:\n\n1. Add `src/lib/wishlist.ts` with `savedItems` and `toggleItem`, stored in localStorage.\n2. Add `src/pages/Wishlist.tsx` that lists the saved items, with an empty state.\n3. Link it from the account page and cover both with tests.');
+  plan.write(configDir, 'Plan');
+  const execute = new Transcript(run, 'worktree-wishlist', now - 2 * HOUR - 30 * MINUTE, { model: 'claude-sonnet-5-5' })
+    .user('Build the plan you just made. Run the tests.')
+    .tool('Write', { file_path: `${run}/src/lib/wishlist.ts`, content: '…' }, `The file ${run}/src/lib/wishlist.ts has been created.`)
+    .tool('Write', { file_path: `${run}/src/pages/Wishlist.tsx`, content: '…' }, `The file ${run}/src/pages/Wishlist.tsx has been created.`)
+    .tool('Bash', { command: 'npx vitest run', description: 'Run the tests' }, 'Tests  14 passed (14)')
+    .say('The wishlist is in: a small store, the page with an empty state, and tests for both. All 14 tests pass.');
+  execute.write(configDir, 'Execute');
+  const validate = new Transcript(run, 'worktree-wishlist', now - 2 * HOUR, { scale: 0.9 })
+    .user('Check the diff against main and the results above. End with "Verdict: pass" or "Verdict: changes needed", and the list of what to change.')
+    .tool('Bash', { command: 'git diff main --stat', description: 'Look at the diff' }, ' src/lib/wishlist.ts    | 11 +++++++++++\n src/pages/Wishlist.tsx |  5 +++++\n 2 files changed, 16 insertions(+)')
+    .say('The diff matches the plan and the tests pass. Nothing to change.\n\nVerdict: pass');
+  validate.write(configDir, 'Validate');
+
   // Claude Code's live registry: one entry per running process. A sleeping process stands in for each
   // (Node rather than `sleep`, which Windows doesn't have).
   const sleepers: ChildProcess[] = [];
@@ -490,6 +527,7 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     home,
     sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id },
     history: written,
+    pipeline: { root: acme, cwd: run, parent: parent.id, plan: plan.id, execute: execute.id, validate: validate.id },
     stop: () => sleepers.forEach((child) => child.kill()),
   };
 }
@@ -512,4 +550,62 @@ export function linkClaude(home: string): void {
     symlinkSync(claude, join(home, '.local', 'bin', 'claude'));
     return;
   }
+}
+
+/**
+ * The pipeline run and the pipeline of your own the engine puts in (`DemoPipelines`, from the file named by
+ * SWITCHBOARD_DEMO_PIPELINES, only with the smoke test's stand-ins): the run of "Plan, execute, validate, push" the
+ * world's sessions belong to, stopped at Push, and a pipeline saved for the project.
+ */
+export function demoPipelines(world: DemoWorld, now = Date.now()) {
+  const { root, cwd, parent, plan, execute, validate } = world.pipeline;
+  const done = (stepIndex: number, stepName: string, sessionId: string, startedAgo: number, endedAgo: number, rest: Record<string, unknown> = {}) => ({
+    stepIndex,
+    stepName,
+    sessionId,
+    state: 'done',
+    startedAt: now - startedAgo * MINUTE,
+    endedAt: now - endedAgo * MINUTE,
+    ...rest,
+  });
+  return {
+    pipelines: [
+      {
+        name: 'Fix, check, push',
+        workspace: 'worktree',
+        scope: { kind: 'project', root },
+        confirmBefore: [],
+        steps: [
+          { kind: 'claude', name: 'Fix', prompt: '{{task}}\n\nRun the tests when you are done.', start: { kind: 'fresh' }, model: 'sonnet', permissionMode: 'acceptEdits' },
+          {
+            kind: 'claude',
+            name: 'Check',
+            prompt: 'Look at the diff against main. End with "Verdict: pass" or "Verdict: changes needed", and the list of what to change.',
+            start: { kind: 'fresh', briefOf: ['Fix'] },
+            model: 'opus',
+            readOnly: true,
+            verdict: { sendTo: 'Fix', rounds: 2 },
+          },
+          { kind: 'push', name: 'Push', commit: true, pullRequest: { base: null, draft: false } },
+        ],
+      },
+    ],
+    runs: [
+      {
+        pipelineId: 'plan-execute-validate-push',
+        parentSessionId: parent,
+        root,
+        cwd,
+        task: 'Add a wishlist to the account page',
+        state: 'needs-you',
+        heldBy: 'push',
+        stepIndex: 3,
+        steps: [
+          done(0, 'Plan', plan, 170, 160, { reply: 'Plan:\n\n1. Add a small wishlist store.\n2. Add the Wishlist page with an empty state.\n3. Link it from the account page and add tests.' }),
+          done(1, 'Execute', execute, 158, 128, { reply: 'The wishlist is in: a small store, the page with an empty state, and tests for both. All 14 tests pass.' }),
+          done(2, 'Validate', validate, 125, 118, { verdict: 'pass', verdictText: '', reply: 'The diff matches the plan and the tests pass. Nothing to change.\n\nVerdict: pass' }),
+        ],
+      },
+    ],
+  };
 }

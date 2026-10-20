@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GitBranch, GitPullRequest, LoaderCircle, Play, SkipForward, Square, ShieldCheck, RotateCcw } from 'lucide-react';
 import type { PipelineRun, PipelineRunState, PipelinePushDraft } from '@switchboard/protocol/client';
 import { MODE_LABEL } from '../../lib/modes.ts';
@@ -11,6 +11,11 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+
+/** What the rest of a view needs (header, message box, footer), so the panel only takes what is left. */
+const VIEW_RESERVE = 360;
+/** Under this the panel hides. */
+const MIN_ROOM = 90;
 
 const FIELD = 'rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink';
 
@@ -36,8 +41,26 @@ function RunPanel({ state }: { state: PipelineRunState }) {
   const busy = usePipelines((s) => s.busy);
   const needsYou = run.state === 'needs-you';
   const total = run.pipeline.steps.length;
+  // What the panel and the conversation below it share (a pane can be short, or have a terminal under it): the panel
+  // only takes what is left above the message box, which keeps its size. The sum doesn't change when the panel does.
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [shared, setShared] = useState<number | null>(null);
+  useEffect(() => {
+    const section = sectionRef.current;
+    const body = section?.nextElementSibling as HTMLElement | null;
+    if (!section || !body) return;
+    const measure = () => setShared(body.clientHeight + (section.style.display === 'none' ? 0 : section.offsetHeight));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
+  const room = shared === null ? null : shared - VIEW_RESERVE;
+  const tooShort = room !== null && room < MIN_ROOM;
   const at = views.find((v) => v.current);
   const summary = run.state === 'done' ? 'Done' : run.state === 'stopped' ? 'Stopped' : at ? `${at.name} · ${Math.min(at.index + 1, total)} of ${total}` : '';
+  const atPush = run.heldBy === 'push' && needsYou;
   const stepName = run.pipeline.steps[Math.min(run.stepIndex, total - 1)]?.name ?? '';
 
   const act = (what: string, label: string, busyLabel: string, run_: () => Promise<boolean>, icon: React.ReactNode, primary = false) => {
@@ -57,13 +80,15 @@ function RunPanel({ state }: { state: PipelineRunState }) {
 
   return (
     <section
+      ref={sectionRef}
       aria-label={`Pipeline: ${run.pipeline.name}`}
-      className={`shrink-0 border-b border-border px-6 py-2 @max-[860px]:px-4`}
+      style={room === null ? undefined : tooShort ? { display: 'none' } : { maxHeight: Math.min(room, shared! * (atPush ? 0.8 : 0.55)) }}
+      className="flex min-h-0 shrink-0 flex-col border-b border-border px-6 py-2 @max-[860px]:px-4"
       data-pipeline-panel={run.id}
       data-pipeline-state={run.state}
     >
-      <div className={`rounded-xl border bg-card ${needsYou ? 'border-warn/60' : 'border-border'}`}>
-        <div className="flex min-h-9 items-center gap-2 px-3">
+      <div className={`flex min-h-0 flex-col overflow-hidden rounded-xl border bg-card ${needsYou ? 'border-warn/60' : 'border-border'}`}>
+        <div className="flex min-h-9 shrink-0 items-center gap-2 px-3">
           <SectionHeader
             as="h2"
             className="min-w-0 flex-1"
@@ -76,13 +101,13 @@ function RunPanel({ state }: { state: PipelineRunState }) {
           </span>
         </div>
         {open && (
-          <div className="grid max-h-[38vh] gap-2 overflow-y-auto px-3 pb-3">
+          <div className="grid min-h-0 gap-2 overflow-y-auto px-3 pb-3">
             <ol className="grid gap-px" aria-label="Steps">
               {views.map((view) => (
                 <StepRow key={view.index} view={view} />
               ))}
             </ol>
-            {held && (
+            {held && !atPush && (
               <p className={`text-ui ${needsYou ? 'text-warn' : 'text-muted'}`} data-pipeline-held={run.heldBy ?? undefined}>
                 {held.label}
                 {held.note && <span className="text-muted">{`. ${held.note}`}</span>}

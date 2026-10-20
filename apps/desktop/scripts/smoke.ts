@@ -13,7 +13,7 @@ import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createDemoWorld, linkClaude, type DemoWorld } from './screenshot-demo.ts';
+import { createDemoWorld, demoPipelines, linkClaude, type DemoWorld } from './screenshot-demo.ts';
 
 interface StepResult {
   label: string;
@@ -48,6 +48,10 @@ if (process.argv.includes('--demo')) {
   // The home folder is HOME on macOS and USERPROFILE on Windows; with CLAUDE_CONFIG_DIR, neither the app nor
   // Claude Code sees the real one.
   Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), SWITCHBOARD_SMOKE_DEMO: '1' });
+  // A pipeline run stopped at Push over the world's made-up sessions, for the Pipelines step.
+  const pipelinesFile = join(world.home, '.switchboard-demo-pipelines.json');
+  writeFileSync(pipelinesFile, JSON.stringify(demoPipelines(world)));
+  childEnv.SWITCHBOARD_DEMO_PIPELINES = pipelinesFile;
   console.log(`demo home: ${world.home}`);
 }
 

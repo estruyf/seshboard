@@ -67,6 +67,9 @@ import {
   TriggerEvent,
   TriggerSession,
   pipelineProblem,
+  PipelineSave,
+  runRowId,
+  BUILTIN_PIPELINES,
   prBodyFrom,
   prTitleFrom,
   type PipelinePushDraft,
@@ -243,6 +246,12 @@ export interface EngineOptions {
    * wait on. Never set in normal use.
    */
   stubQueueStarts?: boolean;
+  /**
+   * The smoke test and the screenshots: a JSON file with `{ pipelines, runs }` the engine puts in as they are (a
+   * pipeline run stopped at Push over made-up sessions, and a pipeline of your own), and takes out again when it
+   * changes. With `stubQueueStarts` only, so a run never starts Claude Code.
+   */
+  demoPipelinesFile?: string;
   /** Run scheduled sessions (#173). Off in tests that don't look at them, so no timer outlives them. */
   schedules?: boolean;
 }
@@ -1855,6 +1864,49 @@ export function createEngine(options: EngineOptions): Engine {
   });
   // Runs that were working when the app quit wait for you; runs that waited for a slot look again.
   pipelineRunner.resume();
+  const demoPipelinesFile = options.stubQueueStarts ? options.demoPipelinesFile : undefined;
+  if (demoPipelinesFile) {
+    /** What the demo file put in, to take out again. */
+    let demo: { pipelines: Array<{ id: string; scope: PipelineSave['scope'] }>; runs: string[] } = { pipelines: [], runs: [] };
+    const applyDemoPipelines = () => {
+      for (const { id, scope } of demo.pipelines) pipelineStore.remove(id, scope);
+      for (const id of demo.runs) pipelineRuns.remove(id);
+      demo = { pipelines: [], runs: [] };
+      const wanted = ((): { pipelines?: unknown; runs?: unknown } | null => {
+        try {
+          return JSON.parse(readFileSync(demoPipelinesFile, 'utf8')) as { pipelines?: unknown; runs?: unknown };
+        } catch {
+          return null;
+        }
+      })();
+      for (const raw of Array.isArray(wanted?.pipelines) ? wanted.pipelines : []) {
+        const parsed = PipelineSave.safeParse(raw);
+        if (!parsed.success) continue;
+        const saved = pipelineStore.save(parsed.data);
+        demo.pipelines.push({ id: saved.id, scope: parsed.data.scope });
+      }
+      for (const raw of (Array.isArray(wanted?.runs) ? wanted.runs : []) as Array<Record<string, any>>) {
+        const pipeline = BUILTIN_PIPELINES.find((p) => p.id === raw.pipelineId) ?? pipelineStore.list(raw.root).pipelines.find((p) => p.id === raw.pipelineId);
+        if (!pipeline) continue;
+        const run = pipelineRuns.create({ pipeline, parentSessionId: raw.parentSessionId ?? null, root: raw.root, cwd: raw.cwd, task: raw.task, blanks: {}, profileId: null, state: raw.state, heldBy: raw.heldBy ?? null });
+        pipelineRuns.update(run.id, { stepIndex: raw.stepIndex ?? 0 });
+        for (const step of raw.steps ?? []) {
+          const row = pipelineRuns.addStep({ runId: run.id, stepIndex: step.stepIndex, stepName: step.stepName, round: step.round ?? 1, sessionId: step.sessionId ?? null, state: step.state, startedAt: step.startedAt ?? null });
+          pipelineRuns.updateStep(row.id, { verdict: step.verdict ?? null, verdictText: step.verdictText ?? null, reply: step.reply ?? null, plan: step.plan ?? null, endedAt: step.endedAt ?? null });
+          if (step.sessionId) {
+            pipelineRuns.link(step.sessionId, run.parentSessionId ?? runRowId(run.id), run.id);
+            sessions.republish(step.sessionId);
+          }
+        }
+        demo.runs.push(run.id);
+        const state = pipelineRunner!.get(run.id);
+        if (state) broadcast('pipelines.runChanged', state);
+      }
+      broadcast('pipelines.changed', { root: null });
+    };
+    watchFile(demoPipelinesFile, { interval: 200 }, applyDemoPipelines);
+    if (existsSync(demoPipelinesFile)) applyDemoPipelines();
+  }
 
   if (options.companion) {
     companion = new CompanionHub({
@@ -3541,6 +3593,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (demoLimitFile) unwatchFile(demoLimitFile);
       if (demoQueueFile) unwatchFile(demoQueueFile);
       if (demoTriggersFile) unwatchFile(demoTriggersFile);
+      if (demoPipelinesFile) unwatchFile(demoPipelinesFile);
       hosts.closeAll();
       for (const monitor of usageMonitors.values()) monitor.stop();
       insights.close();

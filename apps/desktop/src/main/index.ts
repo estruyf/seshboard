@@ -6227,6 +6227,66 @@ async function runUpcomingStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Pipelines (#179), read only. With the demo world's pipeline run (`SWITCHBOARD_DEMO_PIPELINES`: a parent session with
+ * Plan, Execute and Validate, stopped at Push) the parent's row has a closed chevron; opening it shows the three
+ * sub-sessions nested under it; opening the parent shows the run panel with its steps and the Push card (nothing is
+ * pushed); Settings › Pipelines lists the pipelines and the editor opens on one and closes again. Without the demo
+ * run (your own sessions) it has nothing to look at and passes.
+ */
+async function runPipelinesStep(win: BrowserWindow): Promise<string> {
+  const file = process.env.SWITCHBOARD_DEMO_PIPELINES;
+  if (!file || !existsSync(file)) return 'ok: skipped, no pipeline run in this profile (the demo world has one)';
+  const js = (code: string) =>
+    win.webContents.executeJavaScript(code).catch((error: Error) => {
+      throw new Error(`${error.message} in: ${code.slice(0, 160)}`);
+    });
+  const parentId = (JSON.parse(readFileSync(file, 'utf8')) as { runs: Array<{ parentSessionId: string }> }).runs[0]!.parentSessionId;
+  const row = `document.querySelector('[data-session-id="${parentId}"]')`;
+  const toggle = `${row}?.parentElement?.querySelector('[data-pipeline-toggle]')`;
+  try {
+    // The tree: closed at first, three nested rows once opened.
+    if (!(await waitInPage(win, `${toggle}?.dataset.pipelineToggle === 'closed' && ${row}.hasAttribute('data-pipeline-parent') && ${row}.getAttribute('aria-expanded') === 'false'`, 10_000))) return "the parent's row has no closed chevron";
+    if (await js("document.querySelectorAll('[data-pipeline-child]').length > 0")) return 'sub-sessions show while the parent is closed';
+    await js(`${toggle}.click()`);
+    if (!(await waitInPage(win, `${toggle}?.dataset.pipelineToggle === 'open' && document.querySelectorAll('[data-pipeline-child]').length === 3`, 5_000))) return 'opening the chevron did not show three sub-sessions';
+    const children = (await js("[...document.querySelectorAll('[data-pipeline-child]')].map((r) => r.innerText.split('\\n')[0].trim())")) as string[];
+    if (children.join() !== 'Plan,Execute,Validate') return `the nested rows were ${children.join(', ')}`;
+    if (!(await js("[...document.querySelectorAll('[data-pipeline-child]')].every((r) => r.closest('[data-session-list]') && r.getBoundingClientRect().left > document.querySelector('[data-pipeline-parent]').getBoundingClientRect().left)"))) return 'a sub-session is not indented under its parent';
+    await shot(win, 'pipelines-tree.png');
+
+    // The parent: the run panel above the conversation, with each step and the Push card.
+    await js(`${row}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${parentId}"] [data-pipeline-panel]')`, 5_000))) return 'the parent shows no run panel';
+    const panel = `document.querySelector('[data-current-session="${parentId}"] [data-pipeline-panel]')`;
+    if (!(await waitInPage(win, `${panel}.querySelectorAll('[data-pipeline-step]').length >= 3 && ${panel}.querySelectorAll('[data-pipeline-step][data-step-state="done"]').length === 3`, 3_000))) return 'the panel does not list three finished steps';
+    if (!(await waitInPage(win, `!!${panel}.querySelector('[data-pipeline-push] [data-pipeline-push-button]')`, 8_000))) return 'the panel has no Push card with its button';
+    if (!(await js(`${panel}.getBoundingClientRect().bottom < innerHeight * 0.7 && !!document.querySelector('[data-current-session="${parentId}"] [data-composer]')`))) return 'the panel pushes the message box off screen';
+    await shot(win, 'pipelines-panel.png');
+    // A sub-session says which run it belongs to.
+    await js("document.querySelector('[data-pipeline-child]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[data-pipeline-origin]')", 5_000))) return 'a sub-session shows no bar with its run';
+
+    // Settings › Pipelines: the list, then the editor.
+    await js("document.querySelector('[data-open-settings]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[data-settings-section=\"pipelines\"]')", 3_000))) return 'Settings has no Pipelines page';
+    await js("document.querySelector('[data-settings-section=\"pipelines\"]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[data-pipelines-settings] [data-pipeline-row][data-pipeline-scope=\"builtin\"]')", 5_000))) return 'Settings › Pipelines lists no built-in pipelines';
+    await shot(win, 'pipelines-settings.png');
+    await js("document.querySelector('[data-pipelines-new]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[data-pipeline-editor]') && document.querySelectorAll('[data-pipeline-step-card]').length >= 1", 3_000))) return 'New pipeline did not open the editor';
+    await shot(win, 'pipelines-editor.png');
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    if (!(await waitInPage(win, "!document.querySelector('[data-pipeline-editor]')", 3_000))) return 'Esc did not close the editor';
+    return 'ok: the parent had a chevron, three nested rows (Plan, Execute, Validate), the run panel with three finished steps and the Push card, a sub-session its run bar, Settings › Pipelines its list, and the editor opened and closed';
+  } finally {
+    await js('document.querySelector("[data-close-settings]")?.click()');
+    if (await js(`${toggle}?.dataset.pipelineToggle === 'open'`)) await js(`${toggle}.click()`);
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+  }
+}
+
+/**
  * Event triggers (#180), in the throwaway profile, against a temp folder and the smoke's fake gh, whose repository is
  * the file FAKE_GH_TRIGGERS names (tests/fixtures/fake-gh-triggers.cjs): nothing reaches GitHub. A prompt in New
  * session goes through Start ▾ › Start when… to an issues trigger on the `switchboard` label with state labels on. Its first
@@ -7298,14 +7358,14 @@ function splitTools(win: BrowserWindow) {
   const stickingOut = () =>
     js(`[...document.querySelectorAll('[data-pane-slot]:not([data-pane-hidden]) [data-current-session]')].flatMap((view) => {
       const pane = view.getBoundingClientRect(), header = view.querySelector('header').getBoundingClientRect(), found = [];
-      const inside = (name, el) => { const b = el.getBoundingClientRect(); if (b.right > pane.right + 1 || b.bottom > pane.bottom + 1 || b.left < pane.left - 1 || b.top < pane.top - 1) found.push(name); return b; };
+      const inside = (name, el) => { const b = el.getBoundingClientRect(); if (b.right > pane.right + 1 || b.bottom > pane.bottom + 1 || b.left < pane.left - 1 || b.top < pane.top - 1) found.push(name + ' ' + [b.left, b.top, b.right, b.bottom].map(Math.round).join('/') + ' in ' + [pane.left, pane.top, pane.right, pane.bottom].map(Math.round).join('/')); return b; };
       for (const [name, selector] of [['header', 'header'], ['message box', '[data-composer]'], ['chips', '[data-composer-chips]'], ['Send', '[data-composer-submit]'], ['more menu', '[data-more-menu]']]) {
         const el = view.querySelector(selector);
         if (!el) continue;
         const b = inside(name, el);
         if (name !== 'header' && name !== 'more menu' && b.top < header.bottom - 1) found.push(name + ' under the header');
       }
-      return found.map((what) => view.dataset.currentSession.slice(0, 8) + ': ' + what);
+      return found.map((what) => view.dataset.currentSession.slice(0, 8) + ' (' + header.height + 'px header, ' + Math.round(pane.height) + 'px pane, ' + (view.querySelector('header')?.innerText.split('\\n')[0] ?? '') + '): ' + what);
     })`) as Promise<string[]>;
   /** The panes tile the area: none overlaps another, none is under its minimum size, and together they cover it. */
   const tiles = async (): Promise<string | null> => {
@@ -8571,6 +8631,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
   await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });
+  await step('pipelines: a parent with its sub-sessions nested, the run panel and Push card, Settings › Pipelines and its editor (read only)', () => runPipelinesStep(win), { timeoutMs: 60_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));

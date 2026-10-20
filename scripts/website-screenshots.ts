@@ -22,7 +22,7 @@ import { homedir, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { _electron, chromium, type ElectronApplication, type Locator, type Page } from 'playwright-core';
 import sharp from 'sharp';
-import { createDemoWorld, type DemoWorld } from '../apps/desktop/scripts/screenshot-demo.ts';
+import { createDemoWorld, demoPipelines, type DemoWorld } from '../apps/desktop/scripts/screenshot-demo.ts';
 import { x25519 } from '@noble/curves/ed25519.js';
 
 const root = join(import.meta.dirname, '..');
@@ -613,6 +613,8 @@ const HERO = 'Add dark mode toggle';
 const CATCH_UP = 'Refactor auth middleware';
 const WORKING = 'Fix rounding';
 const NEEDS_YOU = 'Upgrade Stripe';
+/** The session the demo's pipeline run belongs to; its sub-sessions are Plan, Execute and Validate. */
+const PIPELINE_PARENT = 'Add a wishlist to the account page';
 
 /** The questions for the Ask panel's picture have been asked (in the first colour scheme). */
 let sideAsked = false;
@@ -631,6 +633,49 @@ const screens: Screen[] = [
     async take(t) {
       await t.home();
       await t.shot('sidebar', { clip: '[data-sidebar-state]' });
+    },
+  },
+  {
+    name: 'pipelines-tree',
+    async take(t) {
+      // The run of "Plan, execute, validate, push" the demo world has: its parent with the three sub-sessions under it.
+      await t.home();
+      const id = await t.sessionId(PIPELINE_PARENT);
+      const toggle = `[data-sidebar-state] [data-session-id="${id}"] + [data-pipeline-toggle]`;
+      await t.click(toggle, 'the parent has no chevron');
+      await t.until("document.querySelectorAll('[data-sidebar-state] [data-pipeline-child]').length === 3", 'the parent did not show its three sub-sessions');
+      await t.shot('pipelines-tree', { clip: '[data-sidebar-state]' });
+      await t.click(toggle);
+      await t.until("document.querySelectorAll('[data-pipeline-child]').length === 0", 'the parent did not close');
+    },
+  },
+  {
+    name: 'pipelines-run',
+    async take(t) {
+      // The parent's view: the steps above the conversation, and the Push card. Its sub-sessions stay closed.
+      const id = await t.openSession(PIPELINE_PARENT);
+      await t.need(`[data-current-session="${id}"] [data-pipeline-panel] [data-pipeline-push] [data-pipeline-push-button]`, 'the parent shows no Push card');
+      await t.shot('pipelines-run');
+    },
+  },
+  {
+    name: 'pipelines-editor',
+    async take(t) {
+      // Settings › Pipelines, and the editor on the pipeline of your own the demo has for acme-store (Settings lists the open session's project).
+      await t.openSession(PIPELINE_PARENT);
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="pipelines"]');
+      await t.need('[data-pipelines-settings] [data-pipeline-row]', 'Settings › Pipelines lists no pipelines');
+      await t.shot('pipelines-settings');
+      await t.click('[data-pipelines-settings] [data-pipeline-row][data-pipeline-scope="project"] [data-pipeline-menu]', 'the own pipeline has no menu');
+      await t.click('[role=menu] [data-pipeline-edit]', 'the menu has no Edit…');
+      await t.need('[data-pipeline-editor]', 'the editor did not open');
+      // The steps are what the picture is about: scroll the dialog down to them.
+      await t.page.evaluate(() => document.querySelector('[data-pipeline-editor-steps]')?.scrollIntoView({ block: 'start' }));
+      await t.shot('pipelines-editor');
+      await t.escape();
+      await t.gone('[data-pipeline-editor]', 'Esc did not close the editor');
+      await t.click('[data-close-settings]');
     },
   },
   {
@@ -1952,6 +1997,13 @@ const demoQueueHostFile = (world: DemoWorld) => join(world.home, '.switchboard-d
 /** Where the tour puts the demo schedules for their picture (see `DemoUsage.schedulesFile`). */
 const demoSchedulesFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-schedules.json');
 
+/** The pipeline run and the pipeline of your own the tour's engine puts in at the start (see `DemoPipelines`). */
+function demoPipelinesFile(world: DemoWorld) {
+  const file = join(world.home, '.switchboard-demo-pipelines.json');
+  writeFileSync(file, JSON.stringify(demoPipelines(world)));
+  return file;
+}
+
 /** Where the tour puts the demo triggers for their picture (see `DemoUsage.triggersFile`). */
 const demoTriggersFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-triggers.json');
 
@@ -2308,6 +2360,7 @@ const app = await _electron.launch({
     SWITCHBOARD_SMOKE_MODS: JSON.stringify(modsSpec),
     SWITCHBOARD_GH: fakeGh(world.home),
     SWITCHBOARD_DEMO_USAGE: demoUsage(world),
+    SWITCHBOARD_DEMO_PIPELINES: demoPipelinesFile(world),
     // No "Claude Code vX is available" in the pictures: the registry offers nothing newer.
     SWITCHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: claudeVersion, stable: claudeVersion }))}`,
     USER: 'you',

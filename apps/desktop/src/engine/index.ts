@@ -72,6 +72,8 @@ const engine = createEngine({
   stubCatchUp: process.env.SWITCHBOARD_STUB_CATCHUP === '1',
   // The smoke test: queued items that start by themselves leave the queue without starting Claude Code.
   stubQueueStarts: process.env.SWITCHBOARD_STUB_QUEUE === '1',
+  // The smoke test and the screenshots: a made-up pipeline run and pipeline (a JSON file).
+  ...(process.env.SWITCHBOARD_DEMO_PIPELINES ? { demoPipelinesFile: process.env.SWITCHBOARD_DEMO_PIPELINES } : {}),
   // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
   ...(process.env.SWITCHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SWITCHBOARD_CLONE_SOURCE } : {}),
 });
