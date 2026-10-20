@@ -2,6 +2,12 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### Changed
+
+- **The catch-up says what Claude did in words, not in commands.** When Haiku didn't write the catch-up, its lines could be a line of a `sed` command, a Python script or a heading of Claude's reply, such as "What's in it". Now a command shows as what Claude said it does, such as **Built the website**, or what it was, such as **Ran the tests** or **Ran a Python script**, and a heading of the reply is left out. **Skipped or not finished** says **Couldn't rewrite the imports** instead of the command that failed, and leaves out a command that failed and worked when Claude ran it again. A command that failed is no longer under **What it did** too. Haiku now gets what each command does, and is told never to copy a command into the card.
+
 ## [1.0.0] - 2026-10-19
 
 ### Added

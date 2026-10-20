@@ -14,13 +14,13 @@ import { oneLine, type Turn } from './turn.ts';
  */
 export const SUMMARY_SYSTEM_PROMPT = `You write the catch-up card for a coding session that just finished a turn. The person is coming back to it and must decide what to do next in under 30 seconds.
 
-You get JSON with: "ask" (what they asked for), "finalReply" (the assistant's last message), "toolCalls" (tool, file or command, exit code), "signals" (tests, diff, files outside the scope, whether there was a plan) and "plan" (the plan text, or null).
+You get JSON with: "ask" (what they asked for), "finalReply" (the assistant's last message), "toolCalls" (tool, file or command with what it does, exit code), "signals" (tests, diff, files outside the scope, whether there was a plan) and "plan" (the plan text, or null).
 
 Answer with one JSON object and nothing else:
 {"did": ["..."], "skipped": ["..."], "need": {"kind": "...", "title": "...", "text": "..."}, "planDeviated": false}
 
-- "did": 1 to 5 short lines, past tense, plain words, no markdown, no file paths unless one is essential. What was done, not how.
-- "skipped": 0 to 3 short lines about what was skipped, failed or left unfinished. An empty list when nothing was.
+- "did": 1 to 5 short lines, past tense, plain words, no markdown, no file paths unless one is essential. What was done, not how. Never copy a command, a script or a heading from the reply: say in words what it achieved.
+- "skipped": 0 to 3 short lines about what was skipped, failed or left unfinished, in words, never as the command itself. A command that failed and worked when it ran again is not unfinished. An empty list when nothing was.
 - "need": the one next step for the person.
   - "kind": "reply" when tests fail or the reply ends with a question for them; "review" when files changed outside the scope; "commit" when it finished cleanly with changes; "none" when it finished cleanly without changes.
   - "title": a few words, starting with a verb ("Commit the changes", "Answer Claude's question").
@@ -36,7 +36,7 @@ export function summaryInput(turn: Turn, signals: Signals): string {
     finalReply: oneLine(turn.finalText, 4_000),
     toolCalls: turn.tools.slice(-60).map((t) => ({
       tool: t.name,
-      ...(t.command ? { command: oneLine(t.command, 200) } : t.file ? { file: t.file } : {}),
+      ...(t.command ? { command: oneLine(t.command, 200), ...(t.description ? { does: oneLine(t.description, 200) } : {}) } : t.file ? { file: t.file } : {}),
       exitCode: t.declined ? 'declined' : t.exitCode,
     })),
     signals: {
@@ -136,7 +136,7 @@ export function whyInput(turn: Turn, request: WhyRequest): string {
     toolCalls: turn.tools
       .filter((t) => t.id !== request.toolUseId)
       .slice(-40)
-      .map((t) => ({ tool: t.name, ...(t.command ? { command: oneLine(t.command, 200) } : t.file ? { file: t.file } : {}), exitCode: t.declined ? 'declined' : t.exitCode })),
+      .map((t) => ({ tool: t.name, ...(t.command ? { command: oneLine(t.command, 200), ...(t.description ? { does: oneLine(t.description, 200) } : {}) } : t.file ? { file: t.file } : {}), exitCode: t.declined ? 'declined' : t.exitCode })),
     request: requestPart(request),
   });
 }
