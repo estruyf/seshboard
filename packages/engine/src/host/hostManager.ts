@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CanUseTool, HookCallback, Options, PermissionResult, PermissionUpdate, Query, SDKUserMessage, WarmQuery } from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, Options, PermissionResult, PermissionUpdate, Query, SDKUserMessage, WarmQuery } from '@anthropic-ai/claude-agent-sdk';
 import {
   RpcError,
   type Capabilities,
@@ -32,7 +32,7 @@ import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './
 import { readCapabilities } from './capabilities.ts';
 import type { ModsEvents, ModsSurface } from './modsSurface.ts';
 import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
-import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
+import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readOnlyGuard, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 import { limitPrefixes, type LimitStop } from '../usageLimit/usageLimit.ts';
@@ -149,6 +149,17 @@ interface Warm {
   timer: ReturnType<typeof setTimeout>;
 }
 
+/**
+ * What a fork starts on instead of what the session it forks ran with (a pipeline's step: its own model, effort,
+ * permission mode and read-only choice). A field left out follows the original; `null` for model or effort is the default.
+ */
+export interface ForkOverrides {
+  model?: string | null;
+  effort?: Effort | null;
+  permissionMode?: PermissionMode;
+  readOnly?: boolean;
+}
+
 export interface CreateParams {
   cwd: string;
   /** The Claude profile (login) to run with. */
@@ -159,6 +170,8 @@ export interface CreateParams {
   permissionMode: PermissionMode;
   effort: Effort | null;
   worktree: ClaudeWorktreeRequest | null;
+  /** Only tools that read (a pipeline's validating step): kept with the session, so a resume stays read only. */
+  readOnly?: boolean;
   /**
    * Runs after Claude Code has started (and created the worktree) but before
    * the first message, e.g. setup actions. Failures are logged; the message still goes.
@@ -247,11 +260,12 @@ export class HostManager {
         permissionMode: params.permissionMode,
         effort: params.effort,
         worktree: params.worktree,
+        ...(params.readOnly ? { readOnly: true } : {}),
       },
       warm,
     );
     this.deps.onCreated(sessionId);
-    if (params.model || params.effort || params.autoPick) this.settings.set(sessionId, { model: params.model, effort: params.effort, autoPick: params.autoPick ?? null });
+    if (params.model || params.effort || params.autoPick || params.readOnly) this.settings.set(sessionId, { model: params.model, effort: params.effort, autoPick: params.autoPick ?? null, ...(params.readOnly ? { readOnly: true } : {}) });
     this.picks.set(sessionId, params.autoPick ?? null);
     if (warm) {
       // The warm process started with defaults; apply this session's choices before the first message.
@@ -277,8 +291,8 @@ export class HostManager {
   private readonly starting = new Map<string, Promise<SessionHost>>();
 
   /** The running host for a session, resuming it (or starting a fork) when it isn't running here. */
-  private ensureHost(sessionId: string, fork: boolean, busyMessage: string): Promise<SessionHost> {
-    if (fork) return this.startHost(sessionId, true, busyMessage);
+  private ensureHost(sessionId: string, fork: boolean, busyMessage: string, overrides?: ForkOverrides): Promise<SessionHost> {
+    if (fork) return this.startHost(sessionId, true, busyMessage, overrides);
     const running = this.hosts.get(sessionId);
     if (running?.active) return Promise.resolve(running);
     let pending = this.starting.get(sessionId);
@@ -289,7 +303,7 @@ export class HostManager {
     return pending;
   }
 
-  private async startHost(sessionId: string, fork: boolean, busyMessage: string): Promise<SessionHost> {
+  private async startHost(sessionId: string, fork: boolean, busyMessage: string, overrides: ForkOverrides = {}): Promise<SessionHost> {
     if (!fork && this.deps.isOpenElsewhere(sessionId) && this.recentlyClosed(sessionId)) {
       await this.waitForExit(sessionId);
     }
@@ -298,10 +312,13 @@ export class HostManager {
     if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');
     const profileId = this.deps.sessionProfile(sessionId);
     const saved = this.settings.get(sessionId);
-    const permissionMode = this.lastMode.get(sessionId) ?? saved?.permissionMode ?? 'default';
-    const model = saved?.model ?? null;
-    const effort = saved?.effort ?? null;
-    const common = { cwd, profileId, model, permissionMode, effort, worktree: null };
+    // A fork can start on other choices than the session it forks (a pipeline's step): they win over the original's.
+    const permissionMode = overrides.permissionMode ?? this.lastMode.get(sessionId) ?? saved?.permissionMode ?? 'default';
+    const model = overrides.model !== undefined ? overrides.model : (saved?.model ?? null);
+    const effort = overrides.effort !== undefined ? overrides.effort : (saved?.effort ?? null);
+    // A read-only session stays read only when resumed or forked, unless the fork says otherwise.
+    const readOnly = overrides.readOnly ?? saved?.readOnly ?? false;
+    const common = { cwd, profileId, model, permissionMode, effort, worktree: null, ...(readOnly ? { readOnly } : {}) };
     // A fork gets its own id up front, so it is never stored or reported under the original's id
     // (which would show the original as starting, or replace it in the map while it runs here).
     if (fork) return this.spawn({ ...common, sessionId: randomUUID(), forkFrom: sessionId, mode: 'fork' });
@@ -313,8 +330,8 @@ export class HostManager {
    * Claude to read at its next step, `now` stops the turn first (and any message waiting in the queue stays queued).
    * A fork, or an idle session, just sends.
    */
-  async send(params: { sessionId: string; text: string; attachments: ImageAttachment[]; fork: boolean; mode?: SendMode }): Promise<{ sessionId: string; messageUuid: string; queued: boolean }> {
-    const [host] = await Promise.all([this.ensureHost(params.sessionId, params.fork, 'This session is open in another Claude Code window. Fork it to continue here.'), this.deps.links?.warm(params.text)]);
+  async send(params: { sessionId: string; text: string; attachments: ImageAttachment[]; fork: boolean; mode?: SendMode; overrides?: ForkOverrides }): Promise<{ sessionId: string; messageUuid: string; queued: boolean }> {
+    const [host] = await Promise.all([this.ensureHost(params.sessionId, params.fork, 'This session is open in another Claude Code window. Fork it to continue here.', params.overrides), this.deps.links?.warm(params.text)]);
     const mode = params.mode ?? 'queue';
     let messageUuid: string;
     let queued = false;
@@ -329,9 +346,13 @@ export class HostManager {
     const sessionId = params.fork ? await host.initialized : host.sessionId;
     if (params.fork) {
       this.deps.onCreated(sessionId);
-      // A fork carries on with the model and effort picked for the original.
+      // A fork carries on with the model and effort picked for the original, or with the ones it was started on.
       const saved = this.settings.get(params.sessionId);
-      if (saved?.model || saved?.effort) this.settings.set(sessionId, { model: saved.model, effort: saved.effort });
+      const overrides = params.overrides ?? {};
+      const model = overrides.model !== undefined ? overrides.model : (saved?.model ?? null);
+      const effort = overrides.effort !== undefined ? overrides.effort : (saved?.effort ?? null);
+      const readOnly = overrides.readOnly ?? saved?.readOnly ?? false;
+      if (model || effort || readOnly) this.settings.set(sessionId, { model, effort, ...(readOnly ? { readOnly } : {}) });
     } else this.deps.onContinued?.(sessionId);
     return { sessionId, messageUuid, queued };
   }
@@ -693,11 +714,6 @@ export class HostManager {
     const input: AsyncIterable<SDKUserMessage> = (async function* () {
       yield message;
     })();
-    const guard: HookCallback = async (hook) => {
-      const tool = hook as { tool_name?: string; tool_input?: unknown };
-      const allowed = isReadOnlyTool(tool.tool_name ?? '', (tool.tool_input ?? {}) as Record<string, unknown>);
-      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: allowed ? 'allow' : 'deny', ...(allowed ? {} : { permissionDecisionReason: READ_ONLY_REASON }) } };
-    };
     const query = sdk.query({
       prompt: input,
       options: {
@@ -714,7 +730,7 @@ export class HostManager {
         includePartialMessages: true,
         maxTurns: ASK_MAX_TURNS,
         permissionMode: 'default',
-        hooks: { PreToolUse: [{ hooks: [guard] }] },
+        hooks: { PreToolUse: [{ hooks: [readOnlyGuard()] }] },
         // The hook already allowed or denied; this only answers what it let through that would otherwise prompt.
         canUseTool: async (name, toolInput) => (isReadOnlyTool(name, toolInput) ? { behavior: 'allow', updatedInput: toolInput } : { behavior: 'deny', message: READ_ONLY_REASON }),
         ...(model ? { model } : {}),
@@ -947,7 +963,8 @@ export class HostManager {
   /** A warm process is only usable for a plain new session in the same folder (effort and worktree are fixed at startup). */
   private takeWarm(params: CreateParams): Warm | undefined {
     const warm = this.warm;
-    if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || params.effort) return undefined;
+    // A read-only session needs its hook from the start, which a warm process was not given.
+    if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || params.effort || params.readOnly) return undefined;
     clearTimeout(warm.timer);
     this.warm = undefined;
     this.deps.ephemeral?.delete(warm.sessionId);

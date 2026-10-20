@@ -59,6 +59,8 @@ export interface SessionIndexOptions {
   isOwned?: (sessionId: string) => boolean;
   /** Sessions started elsewhere that the user continued in this app. */
   isContinued?: (sessionId: string) => boolean;
+  /** The session or run row a session is a sub-session of (a pipeline's step), if any (`session_parents`). */
+  parentOf?: (sessionId: string) => string | undefined;
   /** Safety-net full rescan, in case file events were missed. */
   refreshIntervalMs?: number;
 }
@@ -159,7 +161,8 @@ export class SessionIndex {
     const flags = this.flags.get(raw.id) ?? NO_FLAGS;
     const seen = flags.viewedAt ?? this.options.baseline;
     const inApp = raw.origin === 'app' || (this.options.isContinued?.(raw.id) ?? false);
-    return { ...raw, ...flags, unread: raw.updatedAt > seen + UNREAD_SLACK_MS, inApp };
+    const parentId = this.options.parentOf?.(raw.id);
+    return { ...raw, ...flags, unread: raw.updatedAt > seen + UNREAD_SLACK_MS, inApp, ...(parentId ? { parentId } : {}) };
   }
 
   /** The transcript file behind a session, when known. */

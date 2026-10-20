@@ -50,6 +50,7 @@ import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from '.
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
 import { Schedule, ScheduleRunEvent, ScheduleSave, ScheduleSession } from './scheduleSchema.ts';
 import { Trigger, TriggerEvent, TriggerNotice, TriggerRepoInfo, TriggerSave, TriggersState } from './triggerSchema.ts';
+import { Pipeline, PipelineNeedsYou, PipelinePushDraft, PipelinePushProgress, PipelineRun, PipelineRunState, PipelineSave, PipelineSaveScope, PipelineScope } from './pipelineSchema.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { CatchUp, RequestWhy } from './catchUp.ts';
@@ -998,6 +999,70 @@ export const contract = {
     /** The editor's facts about a project's repository: gh's account, the default branch, the workflows, the collaborators. */
     'triggers.repoInfo': { params: z.object({ root: AbsolutePath }), result: TriggerRepoInfo },
 
+    // --- Pipelines (#179) ------------------------------------------------------------------------
+    /**
+     * The built-in pipelines, yours for every project and, with `root`, that project's own and the ones shared in its
+     * .switchboard.json. `issues` on a pipeline is what a shared one was changed for or is wrong with; `errors` are
+     * entries of the file that didn't read.
+     */
+    'pipelines.list': { params: z.object({ root: AbsolutePath.optional() }), result: z.object({ pipelines: z.array(Pipeline), errors: z.array(z.string()) }) },
+    /** Creates a pipeline (no `id`) or changes it where it is. A pipeline that can't run is refused, and so is bypass permissions in a shared one. */
+    'pipelines.save': { params: z.object({ pipeline: PipelineSave }), result: z.object({ pipeline: Pipeline }) },
+    /** Deletes one of yours or a shared one; the built-in ones can't be deleted. */
+    'pipelines.remove': { params: z.object({ id: z.string().min(1).max(100), scope: PipelineScope }), result: z.object({}) },
+    /** A copy in another place (or the same one): how a built-in pipeline is changed, and how one moves (copy, then delete). */
+    'pipelines.duplicate': {
+      params: z.object({ id: z.string().min(1).max(100), scope: PipelineScope, to: PipelineSaveScope, name: z.string().trim().min(1).max(60).optional() }),
+      result: z.object({ pipeline: Pipeline }),
+    },
+    /** Every run that is not long over, with its steps. */
+    'pipelines.runs': { params: z.object({}), result: z.object({ runs: z.array(PipelineRunState) }) },
+    /**
+     * Starts a run: from a session (`parentSessionId`, which becomes the parent; `cwd` is its folder) or from New session
+     * (`parentSessionId` null: a run row `run:<runId>` is the parent; `cwd` is the folder picked). `task` fills
+     * `{{task}}`, `blanks` the pipeline's other blanks. A pipeline with `worktree` workspace gets its worktree first. A
+     * shared pipeline you haven't started before stops at `heldBy: 'trust'` until `pipelines.trust`.
+     */
+    'pipelines.run': {
+      params: z.object({
+        pipelineId: z.string().min(1).max(100),
+        scope: PipelineScope,
+        parentSessionId: SessionId.nullable(),
+        cwd: AbsolutePath,
+        task: z.string().trim().min(1).max(MAX_PROMPT_LENGTH),
+        blanks: z.record(z.string(), z.string()).default({}),
+      }),
+      result: z.object({ run: PipelineRun }),
+    },
+    /** Start the step that waits for you, go on past a step that stopped for you, or look at a step that stopped on an error again. */
+    'pipelines.continue': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ run: PipelineRun }) },
+    /** Run the step the run is at again, as a new sub-session. */
+    'pipelines.retryStep': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ run: PipelineRun }) },
+    /** Skip the step the run is at: the run goes on without it. */
+    'pipelines.skipStep': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ run: PipelineRun }) },
+    /** Stop the run: its working step is stopped and nothing starts after it. */
+    'pipelines.stop': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ run: PipelineRun }) },
+    /** Start a shared pipeline after looking at its steps; it starts without asking until the file changes it. */
+    'pipelines.trust': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ run: PipelineRun }) },
+    /** The Push card's text for a run waiting to push: the commit message (written from the diff by Haiku, which takes a moment), the pull request's title and body. */
+    'pipelines.pushDraft': { params: z.object({ runId: z.string().min(1).max(100) }), result: PipelinePushDraft },
+    /**
+     * Commits, pushes and opens the pull request with the text of the card. It returns at once; `pipelines.pushProgress`
+     * tells each step and the end. A failure leaves the run waiting to push.
+     */
+    'pipelines.push': {
+      params: z.object({ runId: z.string().min(1).max(100), commitMessage: z.string().max(10_000).nullable(), prTitle: z.string().max(500).nullable(), prBody: z.string().max(65_536).nullable() }),
+      result: z.object({}),
+    },
+    /**
+     * Writes in a run row (a run started from New session): a normal session starts in the run's folder with a brief of the
+     * run before your text, and becomes the run's parent; its sub-sessions move under it.
+     */
+    'pipelines.writeToRun': {
+      params: z.object({ runId: z.string().min(1).max(100), text: Prompt, attachments: z.array(ImageAttachment).max(20).default([]) }),
+      result: z.object({ sessionId: z.string() }),
+    },
+
     // --- Settings backup -----------------------------------------------------------------------
     /** Writes the chosen kinds of user choices (never the cache) to a settings file. */
     'settings.export': {
@@ -1379,6 +1444,14 @@ export const contract = {
     'triggers.changed': TriggersState,
     /** A triggered session started, an issue was picked up, or a trigger paused: main's notifier says so. */
     'triggers.notice': z.object({ notices: z.array(TriggerNotice) }),
+    /** Pipelines were added, changed or deleted: `root` is the project whose shared file changed, null for yours. */
+    'pipelines.changed': z.object({ root: z.string().nullable() }),
+    /** A run or its steps changed (a step started or ended, the run waits or ended). */
+    'pipelines.runChanged': PipelineRunState,
+    /** A run needs you: main's notifier says so, and a click opens `parentId` (a session, or the run row `run:<id>`). */
+    'pipelines.needsYou': PipelineNeedsYou,
+    /** How a push goes: each step as it starts, then `done` with the pull request, or `failed` with the reason. */
+    'pipelines.pushProgress': PipelinePushProgress,
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
     /** A profile hit or left a usage limit, or a resume was armed, fired or gave up. */

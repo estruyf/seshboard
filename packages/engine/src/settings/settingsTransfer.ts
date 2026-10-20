@@ -6,6 +6,9 @@ import {
   DEFAULT_PREFERENCES,
   Schedule,
   Trigger,
+  Pipeline,
+  PipelineBody,
+  pipelineProblem,
   BUILTIN_PROFILE_ID,
   ExportedProfile,
   ExportedProject,
@@ -36,6 +39,7 @@ import { parseThemeFile } from '@switchboard/protocol/theme';
 import type { ActionStore } from '../actions/actionStore.ts';
 import type { ScheduleStore } from '../schedules/scheduleStore.ts';
 import type { TriggerStore } from '../triggers/triggerStore.ts';
+import type { PipelineStore } from '../pipelines/pipelineStore.ts';
 import type { AppStateStore, JsonValue } from '../db/appState.ts';
 import { readProfileDefaults, type ProfileStore } from '../profiles/profileStore.ts';
 import { parseDefaults, type ProjectRegistry, type StoredIcon } from '../projects/projectRegistry.ts';
@@ -112,6 +116,8 @@ export interface SettingsStores {
   schedules?: ScheduleStore;
   /** Event triggers; a file's triggers are skipped without it. */
   triggers?: TriggerStore;
+  /** Your own pipelines (#179); a file's pipelines are skipped without it. */
+  pipelines?: PipelineStore;
 }
 
 export interface ExportOptions {
@@ -221,6 +227,10 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
   if (want.has('triggers') && stores.triggers) {
     // What its checks found stays here: it points at issues and sessions on this computer.
     file.triggers = stores.triggers.list().map(exportedTrigger);
+  }
+  if (want.has('pipelines') && stores.pipelines) {
+    // Yours only: the shared ones are in their projects' files.
+    file.pipelines = stores.pipelines.ownAll().map(({ pipeline, root }) => exportedPipeline(pipeline, root));
   }
   if (want.has('choices')) {
     const choices: Record<string, JsonValue> = {};
@@ -699,6 +709,50 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
     }
   }
 
+  // --- Pipelines ----------------------------------------------------------------------------
+  // Yours, by id, like triggers. A pipeline of a project whose folder isn't on this Mac is skipped; one that can't run is too.
+  if (has('pipelines') && stores.pipelines) {
+    const pipelineStore = stores.pipelines;
+    const current = new Map(pipelineStore.ownAll().map(({ pipeline, root }) => [pipeline.id, { pipeline, root }]));
+    const seen = new Set<string>();
+    for (const [index, raw] of file.pipelines!.entries()) {
+      const entry = (typeof raw === 'object' && raw !== null ? raw : {}) as { id?: unknown; path?: unknown; name?: unknown };
+      const from = typeof entry.path === 'string' ? entry.path : null;
+      const root = from === null ? null : locate(from);
+      const body = PipelineBody.safeParse(raw);
+      const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim().slice(0, 100) : null;
+      const label = body.success ? body.data.name : typeof entry.name === 'string' ? entry.name : `Pipeline ${index + 1}`;
+      if (!body.success || id === null || pipelineProblem(body.data)) {
+        note('pipelines', label, 'skip', 'not readable');
+        continue;
+      }
+      if (from !== null && root === null) {
+        note('pipelines', label, 'skip', `folder not found on ${THIS_COMPUTER}`);
+        continue;
+      }
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const at = Date.now();
+      const incoming = Pipeline.parse({ ...body.data, id, scope: root === null ? { kind: 'global' } : { kind: 'project', root }, createdAt: at, updatedAt: at });
+      const existing = current.get(id);
+      if (!existing) {
+        note('pipelines', label, 'add');
+        writes.push(() => pipelineStore.restore(incoming));
+      } else if (same(exportedPipeline(existing.pipeline, existing.root), exportedPipeline(incoming, root))) unchanged++;
+      else if (replace) {
+        note('pipelines', label, 'change');
+        writes.push(() => pipelineStore.restore({ ...incoming, createdAt: existing.pipeline.createdAt }));
+      } else note('pipelines', label, 'keep', 'yours differs');
+    }
+    if (replace) {
+      for (const [id, { pipeline }] of current) {
+        if (seen.has(id)) continue;
+        note('pipelines', pipeline.name, 'remove');
+        writes.push(() => pipelineStore.removeOwn(id));
+      }
+    }
+  }
+
   // --- App choices --------------------------------------------------------------------------
   if (has('choices')) {
     for (const [choice, label] of Object.entries(CHOICE_KEYS)) {
@@ -780,6 +834,12 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
 
 /** Why an imported trigger is paused. */
 export const IMPORTED_TRIGGER = 'Imported. Check it, then resume.';
+
+/** A pipeline as the settings file has it: its choices and the folder of its project (null: every project), not when it was made. */
+function exportedPipeline(pipeline: Pipeline, root: string | null) {
+  const { scope: _scope, createdAt: _c, updatedAt: _u, issues: _i, ...rest } = pipeline;
+  return { ...rest, path: root };
+}
 
 /** A trigger as the settings file has it: its choices, without what its checks found or whether it runs here. */
 function exportedTrigger({ pausedReason: _r, failures: _f, lastError: _e, blockedUntil: _b, lastCheckedAt: _l, seededAt: _s, paused: _p, createdAt: _c, updatedAt: _u, ...trigger }: Trigger) {

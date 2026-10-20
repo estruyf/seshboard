@@ -10,6 +10,11 @@ export const SESSION_FENCE = 'switchboard-session';
 /** The fence's info string of an attached issue or pull request. */
 export const GITHUB_FENCE = 'switchboard-github';
 
+/** The fence's info string of the brief a pipeline's parent gets of its run (pipelines.ts). */
+export const RUN_FENCE = 'switchboard-run';
+/** The line right before that brief's fence. */
+export const RUN_LABEL = 'Pipeline run: ';
+
 /** A code fence longer than any run of backticks in the text, so the text can't close it early. */
 export function fenceFor(text: string): string {
   const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
@@ -80,4 +85,14 @@ export function defuseFences(text: string, infos: readonly string[]): string {
   // From the end, so earlier positions stay right.
   for (const block of found.reverse()) out = `${out.slice(0, block.infoAt)}text${out.slice(block.infoAt + block.info.length)}`;
   return out;
+}
+
+/** What you typed, without a pipeline run's brief (and one cut short at the end): for titles, search and the catch-up's ask. */
+export function withoutRunBrief(text: string): string {
+  const found = fencedBlocks(text, RUN_LABEL).filter((b) => b.info === RUN_FENCE);
+  let out = text;
+  for (const block of [...found].reverse()) out = out.slice(0, block.start) + out.slice(block.end);
+  const partial = new RegExp(`(^|\\n)${RUN_LABEL}[^\\n]*\\n\`{3,}${RUN_FENCE}[\\s\\S]*$`).exec(out);
+  if (partial) out = out.slice(0, partial.index);
+  return out.replace(/\n{3,}/g, '\n\n').trim();
 }

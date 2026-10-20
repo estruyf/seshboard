@@ -10,6 +10,7 @@ import { ProfileStore } from '../profiles/profileStore.ts';
 import { ProjectRegistry } from '../projects/projectRegistry.ts';
 import { ScheduleStore } from '../schedules/scheduleStore.ts';
 import { TriggerStore } from '../triggers/triggerStore.ts';
+import { PipelineStore } from '../pipelines/pipelineStore.ts';
 import { exportSettings, planImport, readSettingsFile, writeBackup, writeSettingsFile, type SettingsStores } from './settingsTransfer.ts';
 
 const dirs: string[] = [];
@@ -38,6 +39,7 @@ function mac() {
     actions: new ActionStore(cache.db),
     schedules: new ScheduleStore(cache.db),
     triggers: new TriggerStore(cache.db),
+    pipelines: new PipelineStore(cache.db),
   };
   return { data, stores };
 }
@@ -104,6 +106,71 @@ describe('settings export and import', () => {
     expect(after.stores.triggers!.events()).toEqual([]);
     // The same file again changes nothing.
     expect(planImport(after.stores, file, ALL).preview.changes.filter((c) => c.section === 'triggers')).toEqual([]);
+  });
+
+  it('carries your own pipelines, by id, and leaves the shared ones in their projects', () => {
+    const before = mac();
+    const web = tempDir();
+    const gone = join(tempDir(), 'gone');
+    mkdirSync(gone);
+    const steps = [
+      { kind: 'claude' as const, name: 'Work', prompt: '{{task}}', start: { kind: 'fresh' as const }, model: 'sonnet', effort: null, permissionMode: 'acceptEdits' as const },
+      { kind: 'push' as const, name: 'Push', commit: true, pullRequest: { base: null, draft: true } },
+    ];
+    const everywhere = before.stores.pipelines!.save({ name: 'Work and push', workspace: 'worktree', steps, confirmBefore: ['Push'], autoPush: true, scope: { kind: 'global' } });
+    const here = before.stores.pipelines!.save({ name: 'Only here', workspace: 'current', steps, confirmBefore: [], scope: { kind: 'project', root: web } });
+    before.stores.pipelines!.save({ name: 'Elsewhere', workspace: 'current', steps, confirmBefore: [], scope: { kind: 'project', root: gone } });
+    before.stores.pipelines!.save({ name: 'Shared', workspace: 'current', steps, confirmBefore: [], scope: { kind: 'shared', root: web } });
+    const file = roundTrip(before.stores);
+    rmSync(gone, { recursive: true });
+    expect(file.pipelines).toHaveLength(3);
+    expect(JSON.stringify(file.pipelines)).not.toContain('Shared');
+    expect(file.pipelines).toContainEqual(expect.objectContaining({ id: everywhere.id, path: null, autoPush: true, confirmBefore: ['Push'] }));
+
+    const after = mac();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'pipelines')).toEqual([
+      { section: 'pipelines', label: 'Work and push', change: 'add', detail: null },
+      { section: 'pipelines', label: 'Only here', change: 'add', detail: null },
+      { section: 'pipelines', label: 'Elsewhere', change: 'skip', detail: expect.stringMatching(/^folder not found/) },
+    ]);
+    plan.apply();
+    const imported = after.stores.pipelines!.ownAll();
+    expect(imported.map((x) => [x.pipeline.id, x.pipeline.name, x.root])).toEqual([
+      [everywhere.id, 'Work and push', null],
+      [here.id, 'Only here', web],
+    ]);
+    expect(imported[0]!.pipeline).toMatchObject({ workspace: 'worktree', autoPush: true, confirmBefore: ['Push'], steps });
+    // The same file again changes nothing.
+    expect(planImport(after.stores, file, ALL).preview.changes.filter((c) => c.section === 'pipelines' && c.change !== 'skip')).toEqual([]);
+
+    // A pipeline changed here is kept on a merge and taken from the file on a replace; one only here goes on a replace.
+    after.stores.pipelines!.save({ name: 'Renamed here', workspace: 'worktree', steps, confirmBefore: ['Push'], id: everywhere.id, scope: { kind: 'global' } });
+    after.stores.pipelines!.save({ name: 'Only on this Mac', workspace: 'current', steps, confirmBefore: [], scope: { kind: 'global' } });
+    expect(planImport(after.stores, file, ALL).preview.changes.filter((c) => c.section === 'pipelines' && c.change !== 'skip')).toEqual([{ section: 'pipelines', label: 'Work and push', change: 'keep', detail: 'yours differs' }]);
+    const replace = planImport(after.stores, file, { ...ALL, mode: 'replace' });
+    expect(replace.preview.changes.filter((c) => c.section === 'pipelines' && c.change !== 'skip')).toEqual([
+      { section: 'pipelines', label: 'Work and push', change: 'change', detail: null },
+      { section: 'pipelines', label: 'Only on this Mac', change: 'remove', detail: null },
+    ]);
+    replace.apply();
+    expect(after.stores.pipelines!.ownAll().map((x) => x.pipeline.name)).toEqual(['Work and push', 'Only here']);
+  });
+
+  it('skips a pipeline that does not read or can not run', () => {
+    const before = mac();
+    const file = roundTrip(before.stores);
+    file.pipelines = [
+      { id: 'a', name: 'No steps', workspace: 'worktree', steps: [], confirmBefore: [], path: null },
+      { name: 'No id', workspace: 'worktree', steps: [{ kind: 'push', name: 'Push', commit: true, pullRequest: null }], confirmBefore: [], path: null },
+      { id: 'b', name: 'Twice', workspace: 'worktree', steps: [{ kind: 'push', name: 'Push', commit: true, pullRequest: null }, { kind: 'push', name: 'Push', commit: true, pullRequest: null }], confirmBefore: [], path: null },
+      'nope',
+    ];
+    const after = mac();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'pipelines').map((c) => [c.change, c.detail])).toEqual([['skip', 'not readable'], ['skip', 'not readable'], ['skip', 'not readable'], ['skip', 'not readable']]);
+    plan.apply();
+    expect(after.stores.pipelines!.ownAll()).toEqual([]);
   });
 
   it('restores projects, icons, actions, choices, preferences and sessions on a clean Mac', () => {
@@ -197,7 +264,7 @@ describe('settings export and import', () => {
     const full = roundTrip(before.stores);
     const after = mac();
     const plan = planImport(after.stores, full, { ...ALL, sections: ['projects'] });
-    expect(plan.preview.sections).toEqual(['preferences', 'themes', 'profiles', 'projects', 'actions', 'schedules', 'triggers', 'choices', 'sessions']);
+    expect(plan.preview.sections).toEqual(['preferences', 'themes', 'profiles', 'projects', 'actions', 'schedules', 'triggers', 'pipelines', 'choices', 'sessions']);
     expect(new Set(plan.preview.changes.map((c) => c.section))).toEqual(new Set(['projects']));
     plan.apply();
     expect(after.stores.actions.all()).toEqual([]);

@@ -59,7 +59,7 @@ function fakeSource(initial: RawSessionInfo[]) {
   return { source, infos, messages };
 }
 
-function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), 'cache.sqlite'))) {
+function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), 'cache.sqlite')), extra: Partial<ConstructorParameters<typeof SessionIndex>[0]> = {}) {
   const projectsDir = join(tempDir(), 'projects');
   mkdirSync(join(projectsDir, '-repo'), { recursive: true });
   const fake = fakeSource(infos);
@@ -74,6 +74,7 @@ function setup(infos: RawSessionInfo[], db = openCacheDatabase(join(tempDir(), '
     log: () => {},
     onChange: (c) => changes.push(c),
     onTranscriptChanged: (id) => transcriptChanges.push(id),
+    ...extra,
   });
   cleanups.push(() => {
     if (db.db.isOpen) db.close();
@@ -102,6 +103,21 @@ describe('SessionIndex', () => {
     expect(sessions.map((s) => s.id)).toEqual([ID_B, ID_A]);
     expect(sessions[1]).toMatchObject({ title: 'Custom title', origin: 'cli', projectRoot: '/work/app' });
     expect(sessions[0]!.origin).toBe('unknown');
+  });
+
+  it('adds the parent of a sub-session to its summary, and sends it again when the link is written', async () => {
+    const parents = new Map<string, string>();
+    const { index, changes } = setup([info(ID_A), info(ID_B)], undefined, { parentOf: (id) => parents.get(id) });
+    await index.refresh();
+    expect(index.get(ID_B)).not.toHaveProperty('parentId');
+    parents.set(ID_B, ID_A);
+    index.republish(ID_B);
+    expect(changes.at(-1)!.upserted).toEqual([expect.objectContaining({ id: ID_B, parentId: ID_A })]);
+    expect(index.get(ID_B)!.parentId).toBe(ID_A);
+    // A run row that has no session yet is a parent too.
+    parents.set(ID_B, 'run:abc');
+    expect(index.snapshot().sessions.find((s) => s.id === ID_B)!.parentId).toBe('run:abc');
+    expect(index.get(ID_A)).not.toHaveProperty('parentId');
   });
 
   it('reads the folder from the transcript when the SDK reports none', async () => {

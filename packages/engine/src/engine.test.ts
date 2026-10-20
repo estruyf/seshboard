@@ -69,7 +69,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime } = {}) {
+function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; env?: Record<string, string> } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -81,7 +81,7 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
     dataDir,
     claudeConfigDir: join(dataDir, 'claude'),
     // No login shell and an empty PATH, so the test never depends on the machine.
-    shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '' }, resolved: false, durationMs: 0 }),
+    shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '', ...extra.env }, resolved: false, durationMs: 0 }),
     claudeBinary: '/nonexistent/claude',
     sessionSource: (typeof extra.source === 'function' ? extra.source(dataDir) : extra.source) ?? fakeSource,
     ...(extra.sdk ? { sdk: async () => extra.sdk! } : {}),
@@ -276,6 +276,75 @@ describe('engine over a MessagePort', () => {
     const { item: missing } = await client.call('later.add', { draft: { cwd: join(dataDir, 'gone'), prompt: 'Nowhere' } });
     await expect(client.call('later.start', { id: missing.id })).rejects.toThrow(/Folder not found/);
     expect((await client.call('later.list', {})).items.map((i) => i.id)).toEqual([next.id, missing.id]);
+  });
+
+  it('saves pipelines, starts a run in its own worktree under a parent, and nests the run’s sessions', async () => {
+    const created: Array<{ cwd?: string; model?: string; permissionMode?: string }> = [];
+    // The run's worktree is made with the PATH of the login shell, which the test gives it.
+    const { client } = connect({ sdk: fakeSdk(created), env: { PATH: process.env.PATH ?? '' } });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-pipeline-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    const run = (...args: string[]) => git(repo, args);
+    await run('init', '-q', '-b', 'main');
+    await run('config', 'user.email', 'test@example.com');
+    await run('config', 'user.name', 'Test');
+    writeFileSync(join(repo, 'a.txt'), 'one\n');
+    await run('add', '.');
+    await run('commit', '-qm', 'initial');
+    const changed: Array<string | null> = [];
+    const runs: string[] = [];
+    client.on('pipelines.changed', ({ root }) => changed.push(root));
+    client.on('pipelines.runChanged', ({ run: r, steps }) => runs.push(`${r.state}:${steps.length}`));
+
+    // The built-in pipelines are there, read only; yours are saved, copied and deleted.
+    const listed = await client.call('pipelines.list', { root: repo });
+    expect(listed.pipelines.map((p) => [p.id, p.scope.kind])).toEqual([
+      ['plan-execute-validate-push', 'builtin'],
+      ['execute-and-validate', 'builtin'],
+    ]);
+    await expect(client.call('pipelines.remove', { id: 'execute-and-validate', scope: { kind: 'builtin' } })).rejects.toThrow(/can’t be deleted/);
+    const step = { kind: 'claude' as const, name: 'Plan', prompt: '{{task}}', start: { kind: 'fresh' as const, briefOf: [] }, model: 'opus', effort: null, permissionMode: 'plan' as const };
+    const { pipeline } = await client.call('pipelines.save', { pipeline: { name: 'Just plan', workspace: 'worktree', steps: [step], confirmBefore: [], scope: { kind: 'project', root: repo } } });
+    expect(pipeline).toMatchObject({ name: 'Just plan', scope: { kind: 'project', root: repo } });
+    await expect(client.call('pipelines.save', { pipeline: { name: 'Broken', workspace: 'worktree', steps: [step, step], confirmBefore: [], scope: { kind: 'global' } } })).rejects.toThrow(/both called/);
+    const copy = (await client.call('pipelines.duplicate', { id: pipeline.id, scope: pipeline.scope, to: { kind: 'shared', root: repo }, name: 'Shared plan' })).pipeline;
+    expect(readFileSync(join(repo, '.switchboard.json'), 'utf8')).toContain('"Shared plan"');
+    expect((await client.call('pipelines.list', { root: repo })).pipelines.map((p) => p.scope.kind)).toEqual(['builtin', 'builtin', 'project', 'shared']);
+
+    // A worktree needs a repository.
+    await expect(client.call('pipelines.run', { pipelineId: pipeline.id, scope: pipeline.scope, parentSessionId: null, cwd: tmpdir(), task: 'x', blanks: {} })).rejects.toMatchObject({ code: 'NOT_A_REPO' });
+
+    // A run from New session: a run row is the parent, the run has a worktree of its own, and the step starts in it.
+    const started = await client.call('pipelines.run', { pipelineId: pipeline.id, scope: pipeline.scope, parentSessionId: null, cwd: repo, task: 'Add a toggle', blanks: {} });
+    expect(started.run).toMatchObject({ state: 'running', parentSessionId: null, root: repo, task: 'Add a toggle' });
+    expect(started.run.cwd).toBe(join(repo, '.claude', 'worktrees', started.run.cwd.split(/[\\/]/).at(-1)!));
+    expect(created).toEqual([expect.objectContaining({ cwd: started.run.cwd, model: 'opus', permissionMode: 'plan' })]);
+    const [state] = (await client.call('pipelines.runs', {})).runs;
+    expect(state!.steps).toMatchObject([{ stepName: 'Plan', state: 'running', sessionId: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
+
+    // A shared pipeline waits to be looked at the first time.
+    const shared = await client.call('pipelines.run', { pipelineId: copy.id, scope: copy.scope, parentSessionId: null, cwd: repo, task: 'x', blanks: {} });
+    expect(shared.run).toMatchObject({ state: 'needs-you', heldBy: 'trust', cwd: repo });
+    expect(created).toHaveLength(1);
+
+    // Writing in the run row starts a session in the run's folder with a brief of the run, which becomes the parent.
+    const written = await client.call('pipelines.writeToRun', { runId: started.run.id, text: 'What did the plan say?', attachments: [] });
+    expect(created).toHaveLength(2);
+    expect(created[1]!.cwd).toBe(started.run.cwd);
+    expect((await client.call('pipelines.runs', {})).runs.find((r) => r.run.id === started.run.id)!.run.parentSessionId).toBe(written.sessionId);
+    await expect(client.call('pipelines.writeToRun', { runId: started.run.id, text: 'again', attachments: [] })).rejects.toThrow(/has a session already/);
+
+    // Stopping ends it; the pipeline can then be deleted without touching the run's copy.
+    await expect(client.call('pipelines.stop', { runId: started.run.id })).resolves.toMatchObject({ run: { state: 'stopped' } });
+    await client.call('pipelines.remove', { id: pipeline.id, scope: pipeline.scope });
+    expect((await client.call('pipelines.runs', {})).runs.find((r) => r.run.id === started.run.id)!.run.pipeline.name).toBe('Just plan');
+    await expect(client.call('pipelines.continue', { runId: 'nope' })).rejects.toThrow(/gone/);
+    for (let tries = 0; runs.length < 3; tries++) {
+      if (tries > 100) throw new Error(`windows heard ${runs.join(', ')}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(changed).toContain(repo);
+    expect(runs[0]).toMatch(/^running:/);
   });
 
   it('takes a file as neither a project folder nor a session folder', async () => {

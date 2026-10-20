@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
+import type { HookCallback } from '@anthropic-ai/claude-agent-sdk';
 import { ASK_THREADS_KEPT, threadTitle, type AskEvent, type AskItem, type AskThread, type AskThreadList, type LogLevel, type TokenCounts } from '@switchboard/protocol';
 
 /*
@@ -38,6 +39,21 @@ export function isReadOnlyTool(name: string, input: Record<string, unknown>): bo
 
 /** What Claude is told when it tries anything else. */
 export const READ_ONLY_REASON = 'Questions about the session can only read: read files, search, and run git status, diff, log or show. Nothing else is allowed.';
+
+/** What Claude is told when a read-only pipeline step tries anything else. */
+export const STEP_READ_ONLY_REASON = 'This step can only read: read files, search, and run git status, diff, log or show. Nothing else is allowed.';
+
+/**
+ * The PreToolUse hook that lets only reading through (`isReadOnlyTool`) and tells Claude why it denied anything else.
+ * Ask about this session uses it on its fork, and so does a read-only session (a pipeline's validating step).
+ */
+export function readOnlyGuard(reason: string = READ_ONLY_REASON): HookCallback {
+  return async (hook) => {
+    const tool = hook as { tool_name?: string; tool_input?: unknown };
+    const allowed = isReadOnlyTool(tool.tool_name ?? '', (tool.tool_input ?? {}) as Record<string, unknown>);
+    return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: allowed ? 'allow' : 'deny', ...(allowed ? {} : { permissionDecisionReason: reason }) } };
+  };
+}
 
 /**
  * The prompt the fork gets: the session's conversation is already in it, so this frames the question as one asked

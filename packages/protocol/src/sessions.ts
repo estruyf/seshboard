@@ -46,6 +46,12 @@ export const SessionSummary = z.object({
   inApp: z.boolean(),
   /** The Claude profile whose config folder holds the transcript (resume and fork use it). */
   profileId: z.string(),
+  /**
+   * The session this one is a sub-session of: a pipeline's step (#179), with the parent's session id, or `run:<runId>`
+   * for a run that has no session of its own yet. Kept in the `session_parents` table, not in the transcript, so the
+   * sidebar can nest any session under another.
+   */
+  parentId: z.string().optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummary>;
 

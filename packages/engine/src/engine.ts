@@ -66,6 +66,12 @@ import {
   Trigger,
   TriggerEvent,
   TriggerSession,
+  pipelineProblem,
+  prBodyFrom,
+  prTitleFrom,
+  type PipelinePushDraft,
+  type PipelineRun,
+  type PipelineRunStep,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -96,6 +102,11 @@ import { readLogin, readRepo } from './triggers/sources/gh.ts';
 import { readCollaborators } from './triggers/sources/issues.ts';
 import { TriggerStore } from './triggers/triggerStore.ts';
 import { TriggerWatcher } from './triggers/watcher.ts';
+import { PipelineStore } from './pipelines/pipelineStore.ts';
+import { PipelineRunStore } from './pipelines/runStore.ts';
+import { PipelineRunner } from './pipelines/runner.ts';
+import { runPush } from './pipelines/push.ts';
+import { makeRunWorktree } from './pipelines/worktree.ts';
 import { summarise, UpNextStore } from './host/upNextStore.ts';
 import { Asker, AskStore } from './host/sideQuestions.ts';
 import { MemoryService, type MemoryTrashScope } from './memory/memoryService.ts';
@@ -112,6 +123,8 @@ import { LinkService } from './links/linkService.ts';
 import { expandMessage, GithubExpander } from './links/githubExpand.ts';
 import { LinkStore } from './links/linkStore.ts';
 import { lastTurn } from './catchUp/turn.ts';
+import { signalsOf } from './catchUp/signals.ts';
+import { asksBack, needKind } from './catchUp/fallback.ts';
 import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
 import { commandRunMessage, shellName } from './terminals/outputMessage.ts';
@@ -460,12 +473,17 @@ export function createEngine(options: EngineOptions): Engine {
   let autoStarter: QueueAutoStarter | undefined;
   /** Event triggers (#180), set up with the schedules, below. */
   let triggerWatcher: TriggerWatcher | undefined;
+  /** Pipelines (#179), set up after the sessions can be created, below; sessions and the hosts poke it from here on. */
+  let pipelineRunner: PipelineRunner | undefined;
+  /** Pipeline runs and the tree of sub-sessions under their parents; the session index joins the parent in. */
+  const pipelineRuns = new PipelineRunStore(cache.db);
   /** Titles scheduled runs once their transcript is there (set up with the schedules, below). */
   let titleRuns: ((ids: readonly string[]) => void) | undefined;
   const sessions = new SessionIndex({
     baseline,
     isOwned: (id) => owned.has(id),
     isContinued: (id) => continued.has(id),
+    parentOf: (id) => pipelineRuns.parentOf(id),
     db: cache.db,
     source,
     projectsDirs: () => profiles.runtimes().map((profile) => ({ profileId: profile.id, dir: join(profile.configDir, 'projects') })),
@@ -476,6 +494,8 @@ export function createEngine(options: EngineOptions): Engine {
       if (change.upserted.length) titleRuns?.(change.upserted.map((s) => s.id));
       // Reading a session frees a slot under the focus limit.
       void autoStarter?.check();
+      pipelineRunner?.poke();
+      if (change.removed.length) pipelineRunner?.sessionsRemoved(change.removed);
       scheduleSearchSync();
       if (change.complete) scanCompleteHook();
     },
@@ -755,6 +775,7 @@ export function createEngine(options: EngineOptions): Engine {
     onChange: (state) => {
       broadcast('limits.changed', state);
       void autoStarter?.check();
+      pipelineRunner?.poke();
     },
     onLimitChanged: (profileId) => hosts.limitChanged(profileId),
     onResumed: (sessionId) => broadcast('limits.resumed', { sessionId }),
@@ -779,6 +800,7 @@ export function createEngine(options: EngineOptions): Engine {
       // After the broadcast, so main's "Claude finished" still sees the item it says starts next.
       autoStarter?.onHost(info);
       triggerWatcher?.nudge();
+      pipelineRunner?.onHost(info);
     },
     onStream: (delta) => broadcast('session.stream', delta),
     onMessages: (id, messages, held) => {
@@ -798,6 +820,8 @@ export function createEngine(options: EngineOptions): Engine {
       autoStarter?.turnEnded(sessionId, outcome);
       triggerWatcher?.turnEnded(sessionId, outcome);
       quietly(catchUp.turnEnded(sessionId, outcome));
+      // After the catch-up has the turn's messages (they came live, before the result), so the runner reads the same turn.
+      pipelineRunner?.turnEnded(sessionId, outcome);
     },
     onCreated: (id) => {
       owned.add(id);
@@ -992,6 +1016,7 @@ export function createEngine(options: EngineOptions): Engine {
   const sharedFileWatcher = new SharedFileWatcher((root) => {
     broadcast('actions.changed', { root });
     broadcast('savedPrompts.changed', { root });
+    broadcast('pipelines.changed', { root });
   });
   const promptsChanged = (...scopes: PromptScope[]) => {
     for (const root of new Set(scopes.map((scope) => (scope.kind === 'global' ? null : scope.root)))) broadcast('savedPrompts.changed', { root });
@@ -1432,6 +1457,8 @@ export function createEngine(options: EngineOptions): Engine {
   const memoryWatcher = new MemoryWatcher((root) => broadcast('memory.changed', { root }));
   memoryWatcher.watch(null, [memory.personal().dir]);
 
+  /** What the last action terminals printed, by terminal id (`reportRun`). */
+  const actionOutputs = new Map<string, string>();
   /** Runs an action's command in a terminal tab of the session and returns the terminal id. */
   const runShellAction = async (sessionId: string, cwd: string, name: string, command: string) =>
     (await terminals.open({ sessionId, cwd, kind: 'action', command, title: name, cols: 100, rows: 20, fork: false, env: profileEnv(sessionProfile(sessionId)) })).id;
@@ -1444,6 +1471,11 @@ export function createEngine(options: EngineOptions): Engine {
    * in Up next while Claude works. A line under the output says where it went, or why it couldn't go.
    */
   const reportRun = (info: TerminalInfo, run: { output: string; stopped: boolean }) => {
+    if (info.kind === 'action') {
+      // A pipeline's `actionsFirst` reads the output of the action it ran from here, right after the exit.
+      actionOutputs.set(info.id, run.output);
+      for (const old of [...actionOutputs.keys()].slice(0, Math.max(0, actionOutputs.size - 30))) actionOutputs.delete(old);
+    }
     const report = runReports.get(info.id);
     if (!report) return;
     void terminals
@@ -1612,7 +1644,8 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   const defaultEditorKey = 'editor.default';
-  const settingsStores: SettingsStores = { db: cache.db, appState, projects, profiles, actions, schedules, triggers };
+  const pipelineStore = new PipelineStore(cache.db);
+  const settingsStores: SettingsStores = { db: cache.db, appState, projects, profiles, actions, schedules, triggers, pipelines: pipelineStore };
   const editorEnv = () => shell.forLookup();
 
   /** Session count and latest activity per project folder, for the project list. */
@@ -1629,7 +1662,7 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   /** Starts a new session: New session's `session.create`, and a queued item starting (`later.start`). */
-  const createSession = async (params: Parameters<Handlers<Contract>['session.create']>[0]) => {
+  const createSession = async (params: Parameters<Handlers<Contract>['session.create']>[0] & { readOnly?: boolean }) => {
     if (questions.contains(params.cwd)) {
       // A quick question has no checkout to branch from or switch.
       if (params.worktree || params.checkoutBranch || params.checkoutPullRequest) throw new RpcError('INVALID', 'Quick questions have no git options');
@@ -1698,6 +1731,130 @@ export function createEngine(options: EngineOptions): Engine {
     }
     return { sessionId };
   };
+
+  // --- Pipelines (#179) ---------------------------------------------------------------------------------------------
+  const pipelineScopeRoot = (scope: { kind: string; root?: string }) => (scope.kind === 'project' || scope.kind === 'shared' ? (scope.root ?? null) : null);
+  /** The Push card's text: the commit message (written from the diff, like Ask Claude to commit), the pull request's title and body. */
+  const pipelinePushDraft = async (run: PipelineRun, steps: readonly PipelineRunStep[]): Promise<PipelinePushDraft> => {
+    const step = run.pipeline.steps[run.stepIndex];
+    if (step?.kind !== 'push') throw new RpcError('INVALID', 'This run isn’t at a push step.');
+    const status = await worktreeStatus(run.cwd).catch(() => null);
+    const sessionId = [...steps].reverse().find((r) => r.sessionId)?.sessionId ?? run.parentSessionId ?? run.id;
+    // A pull request from a fork Switchboard can't push back to: nothing goes from here (push and Create pull request are off).
+    const refused = status && ((run.parentSessionId && githubOrigins.get(run.parentSessionId)?.readOnly) || githubOrigins.readOnlyAt(status.path, status.branch)) ? FORK_READ_ONLY : null;
+    let commitMessage: string | null = null;
+    if (step.commit && status && status.uncommitted > 0) {
+      const context = await commitContext(run.cwd).catch(() => null);
+      const profileId = run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.root);
+      if (context) commitMessage = parseCommitMessage(await commitWriter.ask(profileId, sessionId, commitMessageInput(context), COMMIT_SYSTEM_PROMPT).catch(() => null));
+      commitMessage ??= prTitleFrom(run.task);
+    }
+    const pr = step.pullRequest;
+    return {
+      commitMessage,
+      uncommitted: status?.uncommitted ?? 0,
+      branch: status?.branch ?? null,
+      prTitle: pr ? prTitleFrom(run.task) : null,
+      prBody: pr ? prBodyFrom({ task: run.task, steps }) : null,
+      base: pr ? (pr.base ?? status?.baseBranch ?? null) : null,
+      draft: pr?.draft ?? false,
+      refused,
+    };
+  };
+  pipelineRunner = new PipelineRunner({
+    store: pipelineRuns,
+    // Every step starts in the run's folder: the run made its worktree, so a sub-session never makes one of its own.
+    createSession: async (p) =>
+      (
+        await createSession({
+          cwd: p.cwd,
+          prompt: p.prompt,
+          attachments: [],
+          model: p.model,
+          permissionMode: p.permissionMode,
+          effort: p.effort,
+          worktree: null,
+          profileId: p.profileId,
+          checkoutBranch: null,
+          ...(p.readOnly ? { readOnly: true } : {}),
+        })
+      ).sessionId,
+    forkAndSend: async (p) => {
+      const sent = await hosts.send({
+        sessionId: p.sessionId,
+        text: p.text,
+        attachments: [],
+        fork: true,
+        overrides: { model: p.model, effort: p.effort, ...(p.permissionMode ? { permissionMode: p.permissionMode } : {}), readOnly: p.readOnly },
+      });
+      return sent.sessionId;
+    },
+    send: async (sessionId, text) => {
+      await hosts.send({ sessionId, text, attachments: [], fork: false, mode: 'queue' });
+      sessions.wake(sessionId);
+    },
+    interrupt: async (sessionId) => {
+      catchUp.interrupt(sessionId);
+      await hosts.interrupt(sessionId);
+    },
+    lastTurn: async (sessionId) => {
+      const turn = await catchUp.turnOf(sessionId);
+      return turn ? { reply: turn.finalText || null, plan: turn.plan } : null;
+    },
+    // The catch-up's rules without a model: a failure, failing tests or a question back need you; anything else is done.
+    needOf: async (sessionId) => {
+      const turn = await catchUp.turnOf(sessionId);
+      if (!turn) return 'none';
+      return needKind({ state: 'finished', signals: signalsOf(turn, null, sessionCwd(sessionId)), asksBack: asksBack(turn.finalText) !== null });
+    },
+    busy: (sessionId) => scheduledState(sessionId) !== null,
+    runAction: async ({ root, cwd, name, sessionId }) => {
+      const action = actions.list(root).actions.find((a) => a.name === name || a.id === name);
+      if (!action) return { status: 'missing' };
+      if (action.type !== 'shell') return { status: 'skipped', note: 'it is a prompt action, and a pipeline only runs shell actions' };
+      if (!action.trusted) return { status: 'skipped', note: 'it comes from a shared file and hasn’t been approved yet. Run it once from the actions menu to approve it' };
+      const command = expandCommand(action.command, actionVars(sessionId ?? '', root, cwd), await terminals.shell());
+      const info = await terminals.open({
+        sessionId,
+        cwd: action.cwd === 'project-root' ? root : cwd,
+        kind: 'action',
+        command,
+        title: action.name,
+        cols: 100,
+        rows: 20,
+        fork: false,
+        env: profileEnv(sessionId ? sessionProfile(sessionId) : folderProfile(root)),
+      });
+      const exitCode = await terminals.waitForExit(info.id);
+      const output = actionOutputs.get(info.id) ?? '';
+      actionOutputs.delete(info.id);
+      return { status: 'ran', exitCode, output };
+    },
+    makeWorktree: async (p) => makeRunWorktree({ ...p, env: (await shell.ready).env }),
+    focus: () => ({ limit: queueFocus.limit, count: queueFocus.limit === null ? 0 : focusCount() }),
+    limitHeld: (profileId, cwd) => {
+      const hit = limits.of(profileId && profiles.has(profileId) ? profileId : folderProfile(cwd));
+      return hit && limitAhead(hit) ? { resetsAt: hit.resetsAt } : null;
+    },
+    sessionExists: (sessionId) => sessions.get(sessionId) !== null || hosts.has(sessionId),
+    folderExists: (path) => !!statSafe(path)?.isDirectory(),
+    linked: (sessionId) => sessions.republish(sessionId),
+    changed: (state) => broadcast('pipelines.runChanged', state),
+    notify: (event) => broadcast('pipelines.needsYou', event),
+    pushDraft: pipelinePushDraft,
+    push: async (run, plan, onStep) => {
+      const status = await worktreeStatus(run.cwd);
+      if ((run.parentSessionId && githubOrigins.get(run.parentSessionId)?.readOnly) || githubOrigins.readOnlyAt(status.path, status.branch)) throw new Error(FORK_READ_ONLY);
+      const result = await runPush(run.cwd, plan, { env: (await shell.ready).env, gh: defaultGh(), onStep });
+      // The button and the overviews show the pull request from now on.
+      if (result.pr) void pullRequestsFor(status.root, true);
+      return result;
+    },
+    pushProgress: (progress) => broadcast('pipelines.pushProgress', progress),
+    log,
+  });
+  // Runs that were working when the app quit wait for you; runs that waited for a slot look again.
+  pipelineRunner.resume();
 
   if (options.companion) {
     companion = new CompanionHub({
@@ -2235,7 +2392,9 @@ export function createEngine(options: EngineOptions): Engine {
     'session.send': async (params) => {
       // Send now stops the turn first: its end is yours, not news.
       if (params.mode === 'now') catchUp.interrupt(params.sessionId);
-      const sent = await hosts.send(params);
+      // The parent of a pipeline run gets a brief of the steps that ended since it last had one, before what you wrote.
+      const brief = params.fork ? null : (pipelineRunner?.briefFor(params.sessionId) ?? null);
+      const sent = await hosts.send(brief ? { ...params, text: `${brief}\n\n${params.text}` } : params);
       if (sent.sessionId === params.sessionId) sessions.wake(params.sessionId);
       return sent;
     },
@@ -2599,6 +2758,66 @@ export function createEngine(options: EngineOptions): Engine {
       return { event: (await triggerWatcher?.startEvent(eventId)) ?? null };
     },
     'triggers.repoInfo': ({ root }) => triggerRepoInfo(root),
+    'pipelines.list': ({ root }) => {
+      if (root) sharedFileWatcher.watch(root);
+      return pipelineStore.list(root);
+    },
+    'pipelines.save': ({ pipeline: input }) => {
+      const pipeline = pipelineStore.save(input);
+      broadcast('pipelines.changed', { root: pipelineScopeRoot(pipeline.scope) });
+      return { pipeline };
+    },
+    'pipelines.remove': ({ id, scope }) => {
+      pipelineStore.remove(id, scope);
+      broadcast('pipelines.changed', { root: pipelineScopeRoot(scope) });
+      return {};
+    },
+    'pipelines.duplicate': ({ id, scope, to, name }) => {
+      const pipeline = pipelineStore.duplicate(id, scope, to, name);
+      broadcast('pipelines.changed', { root: pipelineScopeRoot(pipeline.scope) });
+      return { pipeline };
+    },
+    'pipelines.runs': () => ({ runs: pipelineRunner!.runs() }),
+    'pipelines.run': async ({ pipelineId, scope, parentSessionId, cwd, task, blanks }) => {
+      const pipeline = pipelineStore.get(pipelineId, scope);
+      const problem = pipelineProblem(pipeline);
+      if (problem) throw new RpcError('INVALID', problem);
+      if (!statSafe(cwd)?.isDirectory()) throw new RpcError('NOT_FOUND', `Folder not found: ${cwd}`);
+      const location = resolver.resolve(cwd);
+      if (pipeline.workspace === 'worktree' && !location.gitDir) throw new RpcError('NOT_A_REPO', 'Worktrees need a git repository');
+      const profileId = requireProfile(parentSessionId ? sessionProfile(parentSessionId) : folderProfile(cwd));
+      const run = await pipelineRunner!.start({ pipeline, parentSessionId, root: location.root, cwd, task, blanks, profileId });
+      return { run };
+    },
+    'pipelines.continue': async ({ runId }) => ({ run: await pipelineRunner!.continue(runId) }),
+    'pipelines.retryStep': async ({ runId }) => ({ run: await pipelineRunner!.retry(runId) }),
+    'pipelines.skipStep': async ({ runId }) => ({ run: await pipelineRunner!.skip(runId) }),
+    'pipelines.stop': async ({ runId }) => ({ run: await pipelineRunner!.stop(runId) }),
+    'pipelines.trust': async ({ runId }) => ({ run: await pipelineRunner!.trust(runId) }),
+    'pipelines.pushDraft': ({ runId }) => pipelineRunner!.pushDraft(runId),
+    'pipelines.push': async ({ runId, commitMessage, prTitle, prBody }) => {
+      await pipelineRunner!.push(runId, { commitMessage, prTitle, prBody });
+      return {};
+    },
+    'pipelines.writeToRun': async ({ runId, text, attachments }) => {
+      const state = pipelineRunner!.get(runId);
+      if (!state) throw new RpcError('NOT_FOUND', 'That run is gone.');
+      if (state.run.parentSessionId) throw new RpcError('INVALID', 'This run has a session already. Write there.');
+      const brief = pipelineRunner!.briefOfRun(runId);
+      const { sessionId } = await createSession({
+        cwd: state.run.cwd,
+        prompt: `${brief}\n\n${text}`,
+        attachments,
+        model: null,
+        permissionMode: 'default',
+        effort: null,
+        worktree: null,
+        profileId: state.run.profileId,
+        checkoutBranch: null,
+      });
+      pipelineRunner!.adoptParent(runId, sessionId);
+      return { sessionId };
+    },
     'search.query': async ({ query, limit, scope, only, memoryTypes, memoryScope }) => {
       if (only !== 'conversations') syncMemorySearch(1_000);
       return {
@@ -3201,6 +3420,7 @@ export function createEngine(options: EngineOptions): Engine {
       schedulesBroadcast();
       scheduler.rearm();
       triggersBroadcast();
+      broadcast('pipelines.changed', { root: null });
       broadcast('settings.imported', {});
       log('info', `Imported settings from ${path} (${mode}); backup at ${backupPath}`);
       return { preview: plan.preview, backupPath, preferences: result.preferences, themes: result.themes };
@@ -3268,6 +3488,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setQueueFocus: (focus) => {
       queueFocus = focus;
+      pipelineRunner?.poke();
       void autoStarter?.check();
     },
     setShowMods: (enabled) => hosts.setShowMods(enabled),
@@ -3316,6 +3537,7 @@ export function createEngine(options: EngineOptions): Engine {
       autoStarter?.close();
       scheduler.close();
       triggerWatcher?.close();
+      pipelineRunner?.close();
       if (demoLimitFile) unwatchFile(demoLimitFile);
       if (demoQueueFile) unwatchFile(demoQueueFile);
       if (demoTriggersFile) unwatchFile(demoTriggersFile);

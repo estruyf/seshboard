@@ -877,6 +877,100 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  describe('pipeline steps (#179)', () => {
+    /** What the PreToolUse hook of a process decides for a tool call. */
+    const decide = async (query: FakeQuery, tool: string, input: Record<string, unknown>) => {
+      const hook = query.options.hooks?.PreToolUse?.[0]?.hooks[0];
+      const out = (await hook?.({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input } as never, undefined, { signal: new AbortController().signal })) as { hookSpecificOutput?: { permissionDecision?: string } } | undefined;
+      return out?.hookSpecificOutput?.permissionDecision ?? 'none';
+    };
+
+    it('starts a read-only session behind a hook that lets only reading through, without a warm process', async () => {
+      const t = setup();
+      await t.manager.prewarm('/w', 'default');
+      expect(t.warmups).toHaveLength(1);
+      const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Review it', readOnly: true });
+      // The warm process had no hook: this session got a process of its own.
+      expect(t.warmups.every((w) => !t.queries.some((q) => q.options === w.options))).toBe(true);
+      const q = t.queries.find((query) => query.options.sessionId === id)!;
+      expect(await decide(q, 'Read', { file_path: '/w/a.ts' })).toBe('allow');
+      expect(await decide(q, 'Bash', { command: 'git diff main...' })).toBe('allow');
+      expect(await decide(q, 'Write', { file_path: '/w/a.ts' })).toBe('deny');
+      expect(await decide(q, 'Bash', { command: 'npm test' })).toBe('deny');
+      t.manager.closeAll();
+    });
+
+    it('gives an ordinary session no hook', async () => {
+      const t = setup();
+      await t.manager.create({ ...base, cwd: '/w', prompt: 'Build it' });
+      expect(t.queries[0]!.options.hooks).toBeUndefined();
+      t.manager.closeAll();
+    });
+
+    it('keeps a session read only when it is resumed after the process stopped', async () => {
+      const cache = openCacheDatabase(join(mkdtempSync(join(tmpdir(), 'sb-ro-')), 'cache.db'));
+      try {
+        const settings = createSessionSettingsStore(cache.db);
+        const t = setup({ settings, cwds: {} });
+        const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Review it', readOnly: true });
+        await until(() => lastState(t.infos, id) === 'idle');
+        expect(settings.get(id)?.readOnly).toBe(true);
+        t.manager.close(id);
+        await until(() => t.queries[0]!.closed);
+        // A new engine (the app restarted) resumes it from what the database kept.
+        const again = setup({ settings, cwds: { [id]: '/w' } });
+        await again.manager.send({ sessionId: id, text: 'and now?', attachments: [], fork: false });
+        expect(again.queries[0]!.options.resume).toBe(id);
+        expect(await decide(again.queries[0]!, 'Edit', { file_path: '/w/a.ts' })).toBe('deny');
+        again.manager.closeAll();
+        t.manager.closeAll();
+      } finally {
+        cache.close();
+      }
+    });
+
+    it('forks on the model, effort, mode and read-only choice of the step, not the original’s', async () => {
+      const settings = createMemorySessionSettings();
+      settings.set('plan', { model: 'opus', effort: 'high', permissionMode: 'plan' });
+      const t = setup({ settings, cwds: { plan: '/repo' } });
+      const forked = await t.manager.send({
+        sessionId: 'plan',
+        text: 'Build the plan',
+        attachments: [],
+        fork: true,
+        overrides: { model: 'sonnet', effort: null, permissionMode: 'acceptEdits', readOnly: false },
+      });
+      const options = t.queries[0]!.options;
+      expect(options).toMatchObject({ resume: 'plan', forkSession: true, sessionId: forked.sessionId, model: 'sonnet', permissionMode: 'acceptEdits' });
+      expect(options.effort).toBeUndefined();
+      expect(options.hooks).toBeUndefined();
+      // The fork keeps what it was started on, for its next resume.
+      expect(settings.get(forked.sessionId)).toMatchObject({ model: 'sonnet', effort: null });
+      // The original is untouched.
+      expect(settings.get('plan')).toMatchObject({ model: 'opus', effort: 'high', permissionMode: 'plan' });
+      t.manager.closeAll();
+    });
+
+    it('forks read only when asked, and keeps it', async () => {
+      const settings = createMemorySessionSettings();
+      const t = setup({ settings, cwds: { src: '/repo' } });
+      const forked = await t.manager.send({ sessionId: 'src', text: 'Check it', attachments: [], fork: true, overrides: { readOnly: true } });
+      expect(await decide(t.queries[0]!, 'Write', { file_path: 'x' })).toBe('deny');
+      expect(settings.get(forked.sessionId)?.readOnly).toBe(true);
+      t.manager.closeAll();
+    });
+
+    it('lets a fork without overrides carry on with the original’s model, as before', async () => {
+      const settings = createMemorySessionSettings();
+      settings.set('src', { model: 'opus', effort: 'low' });
+      const t = setup({ settings, cwds: { src: '/repo' } });
+      const forked = await t.manager.send({ sessionId: 'src', text: 'again', attachments: [], fork: true });
+      expect(t.queries[0]!.options).toMatchObject({ model: 'opus', effort: 'low' });
+      expect(settings.get(forked.sessionId)).toMatchObject({ model: 'opus', effort: 'low', readOnly: false });
+      t.manager.closeAll();
+    });
+  });
+
   it('starts one process when two messages arrive for a stopped session at once', async () => {
     const t = setup({ cwds: { old: '/repo' } });
     const [a, b] = await Promise.all([

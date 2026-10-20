@@ -82,6 +82,14 @@ export class CatchUpService {
     }
   }
 
+  /**
+   * The session's last turn, from what came live and the transcript: the facts a pipeline reads when a step ends
+   * (Claude's last reply, the plan, the tool calls). No model and no card. Null before Claude answered a prompt.
+   */
+  async turnOf(sessionId: string): Promise<Turn | null> {
+    return lastTurn(await this.messagesOf(sessionId));
+  }
+
   /** A new message or turn started: the card goes (working sessions have none). */
   started(sessionId: string): void {
     this.bump(sessionId);

@@ -678,4 +678,73 @@ export const migrations: readonly string[] = [
     at           INTEGER NOT NULL
   );
   `,
+
+  // v37: Pipelines (#179). Your pipelines are a user choice like saved prompts (`scope_root` null: every project); the
+  // shared ones live in a project's .switchboard.json, and `shared_pipeline_trust` remembers which version of each you
+  // started. A run keeps a snapshot of its pipeline (`pipeline_json`), so editing the pipeline never changes it, and a
+  // row per step (and round). `session_parents` is the tree: the sessions table is a cache that can be dropped, so a
+  // sub-session's parent (a session id, or `run:<runId>`) is kept apart and joined in when sessions are sent. A
+  // read-only session (a validating step) stays read only when it is resumed.
+  `
+  CREATE TABLE pipelines (
+    id         TEXT PRIMARY KEY,
+    scope_root TEXT,
+    name       TEXT NOT NULL,
+    json       TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX pipelines_scope ON pipelines (scope_root);
+  CREATE TABLE pipeline_runs (
+    id                TEXT PRIMARY KEY,
+    pipeline_id       TEXT NOT NULL,
+    pipeline_json     TEXT NOT NULL,
+    parent_session_id TEXT,
+    root              TEXT NOT NULL,
+    cwd               TEXT NOT NULL,
+    task              TEXT NOT NULL,
+    blanks_json       TEXT NOT NULL DEFAULT '{}',
+    profile_id        TEXT,
+    state             TEXT NOT NULL,
+    held_by           TEXT,
+    step_index        INTEGER NOT NULL DEFAULT 0,
+    loop_to           INTEGER,
+    note              TEXT,
+    brief_sent_at     INTEGER,
+    created_at        INTEGER NOT NULL,
+    updated_at        INTEGER NOT NULL
+  );
+  CREATE INDEX pipeline_runs_state ON pipeline_runs (state);
+  CREATE TABLE pipeline_run_steps (
+    id           TEXT PRIMARY KEY,
+    run_id       TEXT NOT NULL,
+    step_index   INTEGER NOT NULL,
+    step_name    TEXT NOT NULL,
+    round        INTEGER NOT NULL DEFAULT 1,
+    session_id   TEXT,
+    state        TEXT NOT NULL,
+    verdict      TEXT,
+    verdict_text TEXT,
+    reply        TEXT,
+    plan         TEXT,
+    started_at   INTEGER,
+    ended_at     INTEGER,
+    note         TEXT
+  );
+  CREATE INDEX pipeline_run_steps_run ON pipeline_run_steps (run_id);
+  CREATE INDEX pipeline_run_steps_session ON pipeline_run_steps (session_id);
+  CREATE TABLE session_parents (
+    session_id TEXT PRIMARY KEY,
+    parent_id  TEXT NOT NULL,
+    run_id     TEXT NOT NULL
+  );
+  CREATE INDEX session_parents_run ON session_parents (run_id);
+  CREATE TABLE shared_pipeline_trust (
+    root TEXT NOT NULL,
+    name TEXT NOT NULL,
+    hash TEXT NOT NULL,
+    PRIMARY KEY (root, name)
+  );
+  ALTER TABLE session_settings ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0;
+  `,
 ];

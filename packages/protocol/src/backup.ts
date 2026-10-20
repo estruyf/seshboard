@@ -85,6 +85,11 @@ export const SettingsFile = z.object({
    * skipped. Every trigger is imported paused, to be checked before it starts sessions here.
    */
   triggers: z.array(z.unknown()).max(1000).optional(),
+  /**
+   * Your own pipelines (#179), each with the folder of its project (`path`, null for every project); a list of unknowns so
+   * one bad entry is skipped. Pipelines shared in a project's .switchboard.json travel with the project, not here.
+   */
+  pipelines: z.array(z.unknown()).max(1000).optional(),
   /** App choices by key (default editor, New session defaults, …); only known keys are imported. */
   choices: z.record(z.string(), z.json()).optional(),
   /** Session ids are only meaningful where the same transcripts are (the same Mac, or a copied ~/.claude). */

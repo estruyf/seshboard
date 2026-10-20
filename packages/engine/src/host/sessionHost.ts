@@ -22,6 +22,7 @@ import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
 import { InputQueue } from './inputQueue.ts';
 import { sessionFolder } from './sessionFolder.ts';
+import { readOnlyGuard, STEP_READ_ONLY_REASON } from './sideQuestions.ts';
 import { modsBridge } from './modsBridge.ts';
 import { ModsSurface, type ModsEvents } from './modsSurface.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
@@ -94,6 +95,8 @@ export interface HostConfig {
   showMods?: boolean;
   /** Use Claude in Chrome (Settings › General): start Claude Code with `--chrome`. Off unless said otherwise. */
   chrome?: boolean;
+  /** Only tools that read get through (a PreToolUse hook, `readOnlyGuard`): a pipeline's validating step. Off unless said otherwise. */
+  readOnly?: boolean;
 }
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
@@ -175,6 +178,8 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   // Claude Code's "Enabled by default" for Claude in Chrome only applies in a terminal; an SDK host turns it on itself.
   // The SDK passes a null value as a bare flag: `--chrome`.
   if (config.chrome) extraArgs.chrome = null;
+  // The hook decides before any permission prompt, so a read-only session never asks about what it may not do.
+  if (config.readOnly) options.hooks = { PreToolUse: [{ hooks: [readOnlyGuard(STEP_READ_ONLY_REASON)] }] };
   if (Object.keys(extraArgs).length > 0) options.extraArgs = extraArgs;
   return options;
 }

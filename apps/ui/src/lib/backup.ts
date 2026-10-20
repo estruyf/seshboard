@@ -9,6 +9,7 @@ export const SECTION_INFO: Record<BackupSection, { label: string; detail: string
   actions: { label: 'Project actions', detail: 'Global and per-project actions, with their shortcuts and worktree setup.' },
   schedules: { label: 'Schedules', detail: 'Scheduled sessions with their prompts and choices. One for a folder that isn’t on this computer comes in paused.' },
   triggers: { label: 'Triggers', detail: 'Triggers with their sources, prompts and choices. They come in paused: check each one, then resume it.' },
+  pipelines: { label: 'Pipelines', detail: 'Your own pipelines, for every project or one. Pipelines shared with a project are in its .switchboard.json.' },
   choices: { label: 'App choices', detail: 'Default editor, New session defaults, Claude Code update checks.' },
   sessions: { label: 'Pinned and archived sessions', detail: 'Only useful on this Mac, or when ~/.claude is copied too.' },
 };

@@ -3,7 +3,7 @@
  * `pr:` and the title), and the engine expands it right before Claude reads it into a block that says it is context to
  * read, not instructions. Plain TypeScript, no zod: the renderer, the engine and the remote app all read it.
  */
-import { fencedBlocks, fenceFor, GITHUB_FENCE } from './contextBlocks.ts';
+import { fencedBlocks, fenceFor, GITHUB_FENCE, withoutRunBrief } from './contextBlocks.ts';
 import type { GithubIssueDetail, GithubItemType, GithubPrDetail } from './github.ts';
 import { BRIEFS_BUDGET, withoutBriefs } from './sessionLinks.ts';
 
@@ -206,4 +206,4 @@ export function withoutGithub(text: string): string {
 }
 
 /** What you typed, without linked sessions' briefs and attached issues: for titles, search and the catch-up's ask. */
-export const withoutContext = (text: string): string => withoutGithub(withoutBriefs(text));
+export const withoutContext = (text: string): string => withoutRunBrief(withoutGithub(withoutBriefs(text)));
