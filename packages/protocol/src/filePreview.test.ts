@@ -15,8 +15,15 @@ describe('previewKind', () => {
     expect(previewKind('C:\\docs.md\\a')).toBeNull();
   });
 
+  it('knows code files', () => {
+    expect(previewKind('/a/main.ts')).toBe('code');
+    expect(previewKind('/a/Config.JSON')).toBe('code');
+    expect(previewKind('C:\\a\\run.ps1')).toBe('code');
+  });
+
   it('refuses everything else', () => {
-    expect(previewKind('/a/main.ts')).toBeNull();
+    expect(previewKind('/a/photo.png')).toBeNull();
+    expect(previewKind('/a/.env')).toBeNull();
     expect(previewKind('/a/md')).toBeNull();
     expect(previewKind('/a/.md.bak')).toBeNull();
     expect(previewKind('/a/x.constructor')).toBeNull();

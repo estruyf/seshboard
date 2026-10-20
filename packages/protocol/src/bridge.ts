@@ -141,7 +141,7 @@ export type ToolActivity = "summary" | "steps";
 /** Settings › Conversation, "Under each reply": what a finished turn's line shows after the reply's actions. */
 export type TurnDetails = "none" | "time" | "duration" | "tokens";
 /**
- * What a click on a file link in the conversation does: open it in Switchboard (Markdown and HTML preview there,
+ * What a click on a file link in the conversation does: open it in Switchboard (Markdown, HTML and code preview there,
  * other files show in the file manager), always show it in the file manager, or open it in the editor.
  */
 export type FileLinkClick = "switchboard" | "file-manager" | "editor";

@@ -4,7 +4,7 @@ import { expandHome, isAbsolutePath, joinPath, previewKind } from '@switchboard/
 const WRITES = new Set(['Write', 'Edit', 'MultiEdit']);
 
 /**
- * The Markdown or HTML file the newest Write, Edit or MultiEdit in a conversation touched, as an absolute path, or null.
+ * The previewable file the newest Write, Edit or MultiEdit in a conversation touched, as an absolute path, or null.
  * A relative path is read from the session's folder, `~/` from the home folder.
  */
 export function lastPreviewableWrite(items: ReadonlyArray<{ kind: string; name?: string; input?: unknown }>, cwd: string | null, home: string | null): string | null {

@@ -4,9 +4,10 @@ import { lastPreviewableWrite } from './lastWrittenStore.ts';
 const tool = (name: string, file_path: unknown) => ({ kind: 'tool', name, input: { file_path } });
 
 describe('lastPreviewableWrite', () => {
-  it('takes the newest write of a Markdown or HTML file', () => {
-    const items = [tool('Write', '/p/old.md'), { kind: 'text' }, tool('Edit', '/p/PLAN.md'), tool('Write', '/p/a.ts')];
+  it('takes the newest write of a previewable file', () => {
+    const items = [tool('Write', '/p/old.md'), { kind: 'text' }, tool('Edit', '/p/PLAN.md'), tool('Write', '/p/a.png')];
     expect(lastPreviewableWrite(items, '/p', null)).toBe('/p/PLAN.md');
+    expect(lastPreviewableWrite([tool('Edit', '/p/PLAN.md'), tool('Write', '/p/a.ts')], '/p', null)).toBe('/p/a.ts');
     expect(lastPreviewableWrite([tool('MultiEdit', '/p/page.HTML')], '/p', null)).toBe('/p/page.HTML');
   });
   it('ignores reads and other tools', () => {

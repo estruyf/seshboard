@@ -578,14 +578,14 @@ export const contract = {
       result: z.object({ paths: z.array(z.string().nullable()) }),
     },
     /**
-     * Reads a Markdown or HTML file (see `previewKind`) to preview it. `content` is null when the file is over
+     * Reads a Markdown, HTML or code file (see `previewKind`) to preview it. `content` is null when the file is over
      * `MAX_PREVIEW_BYTES` (`size` still says how big it is). HTML comes with a Content-Security-Policy meta added and its
      * local images inlined as data URIs. `modified` is the mtime in ms. NOT_FOUND when it is missing; UNSUPPORTED for a
      * folder or any other extension: only previewable files are read.
      */
     'files.read': {
       params: z.object({ path: AbsolutePath }),
-      result: z.object({ kind: z.enum(['markdown', 'html']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+      result: z.object({ kind: z.enum(['markdown', 'html', 'code']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
     },
     /**
      * Reads an image a previewed file shows, as base64 (the shape of `transcript.image`). Only png, jpeg, gif, webp and

@@ -1074,7 +1074,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     usePaletteBus.setState({ digest: { sessionId, prompts, lastUuid: before, lastReply } });
   }, [active, items, sessionId]);
   useEffect(() => () => usePaletteBus.setState((s) => (s.digest?.sessionId === sessionId ? { digest: null } : {})), [sessionId]);
-  // The palette's Preview last written file: the Markdown or HTML file Claude wrote last in this session.
+  // The palette's Preview last written file: the previewable file Claude wrote last in this session.
   useEffect(() => useLastWritten.getState().set(sessionId, lastPreviewableWrite(items, cwd, home)), [items, sessionId, cwd, home]);
   useEffect(() => () => useLastWritten.getState().set(sessionId, null), [sessionId]);
   // Ask about this session: its threads are read once per session, so the panel opens on them at once.

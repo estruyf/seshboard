@@ -4,7 +4,7 @@
  */
 
 /** What a previewable file is, which decides how it is shown. */
-export type PreviewKind = 'markdown' | 'html';
+export type PreviewKind = 'markdown' | 'html' | 'code';
 
 /** Lower-case extensions (with the dot) that can be previewed, and what each is. */
 export const PREVIEW_EXTENSIONS: Readonly<Record<string, PreviewKind>> = {
@@ -13,6 +13,14 @@ export const PREVIEW_EXTENSIONS: Readonly<Record<string, PreviewKind>> = {
   '.html': 'html',
   '.htm': 'html',
 };
+
+/** Extensions of source and text files, shown as their text with syntax colours. */
+const CODE_EXTENSIONS = [
+  'ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs', 'json', 'jsonc', 'css', 'scss', 'less', 'vue', 'svelte', 'astro',
+  'py', 'rb', 'go', 'rs', 'swift', 'java', 'kt', 'kts', 'cs', 'c', 'h', 'cpp', 'cc', 'hpp', 'php', 'sql', 'graphql', 'gql',
+  'sh', 'bash', 'zsh', 'ps1', 'bat', 'yml', 'yaml', 'toml', 'ini', 'xml', 'svg', 'diff', 'patch', 'csv', 'txt', 'log',
+];
+for (const ext of CODE_EXTENSIONS) (PREVIEW_EXTENSIONS as Record<string, PreviewKind>)[`.${ext}`] = 'code';
 
 /** The most text of a file a preview reads (2 MB). A bigger file is reported with its size and no content. */
 export const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;

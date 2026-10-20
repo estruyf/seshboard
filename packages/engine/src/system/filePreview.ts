@@ -72,13 +72,13 @@ async function statFile(path: string) {
 }
 
 /**
- * Reads a Markdown or HTML file for the preview. Only previewable extensions are read (this request must not become
+ * Reads a Markdown, HTML or code file for the preview. Only previewable extensions are read (this request must not become
  * a way to read any file). A file over `MAX_PREVIEW_BYTES` comes back without content, so the UI can say why.
  */
 export async function readPreview(path: string): Promise<FilePreview> {
   const info = await statFile(path);
   const kind = previewKind(path);
-  if (!kind) throw new RpcError('UNSUPPORTED', `Only Markdown and HTML files can be previewed: ${path}`);
+  if (!kind) throw new RpcError('UNSUPPORTED', `Only Markdown, HTML and code files can be previewed: ${path}`);
   const base = { kind, size: info.size, modified: Math.floor(info.mtimeMs) };
   if (info.size > MAX_PREVIEW_BYTES) return { ...base, content: null };
   let text: string;
@@ -88,7 +88,7 @@ export async function readPreview(path: string): Promise<FilePreview> {
   } catch (error) {
     throw fsError(error, path);
   }
-  if (kind === 'markdown') return { ...base, content: text };
+  if (kind !== 'html') return { ...base, content: text };
   return { ...base, content: withPreviewCsp(await inlineHtmlImages(text, dirname(path))) };
 }
 

@@ -2173,7 +2173,7 @@
     },
     {
       "id": "feature:file-preview",
-      "name": "Preview Markdown and HTML files",
+      "name": "Preview Markdown, HTML and code files",
       "page": "sessions/file-preview"
     },
     {

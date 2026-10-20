@@ -4240,6 +4240,7 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
   const md = join(dir, 'notes.md');
   const html = join(dir, 'page.html');
   const big = join(dir, 'big.md');
+  const code = join(dir, 'main.ts');
   const open = (path: string) => js(`window.dispatchEvent(new CustomEvent('switchboard:preview-file', { detail: ${JSON.stringify(path)} }))`);
   const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
   const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
@@ -4248,6 +4249,7 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     writeFileSync(join(dir, 'logo.png'), SMOKE_PNG);
     writeFileSync(md, '# Smoke heading\n\n> [!NOTE]\n> Smoke alert text.\n\n<details><summary>More</summary>\n\nHidden body\n\n</details>\n\n<script>document.title = "pwned"</script>\n\n![the logo](logo.png)\n\n[next](other.md)\n');
     writeFileSync(html, '<!doctype html><html><head><title>Page</title></head><body><h1>Smoke page</h1><img src="logo.png"><script>document.title = "pwned"</script></body></html>');
+    writeFileSync(code, `const smoke = '${'long '.repeat(80)}';\n`);
     writeFileSync(big, `# Big\n\n${'x'.repeat(3 * 1024 * 1024)}\n`);
 
     await open(md);
@@ -4275,7 +4277,10 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
 
     // Opening another file replaces this one.
     await open(html);
-    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'html' && document.querySelector('iframe[data-file-preview-frame]')`, 5_000))) return 'the HTML file did not open in the preview';
+    // HTML opens on its source, which always shows; the page itself is one click away.
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'html' && document.querySelector('[data-file-preview-source]')?.innerText.includes('<title>') && !document.querySelector('iframe[data-file-preview-frame]')`, 5_000))) return 'the HTML file did not open on its source';
+    await js("document.querySelector('[data-file-preview-view=\"preview\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('iframe[data-file-preview-frame]')", 3_000))) return 'the HTML page did not render from Preview';
     const frame = (await js(
       "(() => { const f = document.querySelector('iframe[data-file-preview-frame]'); return { sandbox: f.getAttribute('sandbox'), srcdoc: f.getAttribute('srcdoc') }; })()",
     )) as { sandbox: string | null; srcdoc: string };
@@ -4286,13 +4291,22 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 500));
     await shot(win, 'file-preview-html.png');
 
+    // A code file is its source only, with its long lines wrapped until the toggle says otherwise.
+    await open(code);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'code' && document.querySelector('[data-file-preview-source]')?.innerText.includes('const smoke') && !document.querySelector('[data-file-preview-view]')`, 5_000))) return 'the code file did not open as its source';
+    const wrapped = (path: string) => `getComputedStyle(document.querySelector('[data-file-preview-source] ${path}')).whiteSpace`;
+    if (!(await waitInPage(win, `${wrapped('pre')}.startsWith('pre-wrap')`, 3_000))) return 'long lines did not wrap by default';
+    await js("document.querySelector('[data-file-preview-wrap]').click()");
+    if (!(await waitInPage(win, `!${wrapped('pre')}.startsWith('pre-wrap')`, 3_000))) return 'the wrap toggle did not turn wrapping off';
+    await js("document.querySelector('[data-file-preview-wrap]').click()");
+
     await open(big);
     if (!(await waitInPage(win, "document.querySelector('[data-file-preview-too-large]')?.innerText.includes('Switchboard previews files up to 2 MB')", 5_000))) return 'a file over 2 MB did not say so';
 
     pressKey(win, 'Escape');
     if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
     if (session && !(await waitInPage(win, `document.querySelector('[data-current-session="${session}"]')`, 2_000))) return 'the session went away when the preview closed';
-    return 'ok: Markdown renders its heading, alert, details and picture without its script, Source shows the text, Reload picks up a change, HTML opens in an empty sandbox with the CSP and its picture inlined, a 3 MB file says it is over the limit, and Escape closes it';
+    return 'ok: Markdown renders its heading, alert, details and picture without its script, Source shows the text, Reload picks up a change, HTML opens on its source and renders in an empty sandbox with the CSP and its picture inlined, a code file shows its source with wrapping you can toggle, a 3 MB file says it is over the limit, and Escape closes it';
   } finally {
     if (await js(`!!${DIALOG}`)) pressKey(win, 'Escape');
     rmSync(dir, { recursive: true, force: true });

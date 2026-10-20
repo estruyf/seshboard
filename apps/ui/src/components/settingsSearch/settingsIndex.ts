@@ -174,7 +174,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'file-link-click',
       page: 'conversation',
       label: 'Clicking a file link',
-      detail: `What a click does on a file in Claude’s replies. Markdown and HTML files open in Switchboard, other files in ${fileManagerName()}. ${formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.`,
+      detail: `What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Switchboard, other files in ${fileManagerName()}. ${formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.`,
       keywords: `file link path click open show reveal preview markdown html switchboard editor ${fileManagerName()} finder explorer shift context menu`,
       target: '[data-file-link-click]',
     },

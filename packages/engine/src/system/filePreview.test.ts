@@ -103,10 +103,20 @@ describe('readPreview', () => {
   it('refuses a missing file, a folder and other extensions', async () => {
     const dir = temp();
     mkdirSync(join(dir, 'folder.md'));
-    writeFileSync(join(dir, 'a.ts'), 'x');
+    writeFileSync(join(dir, 'a.png'), 'x');
     expect(await code(readPreview(join(dir, 'missing.md')))).toBe('NOT_FOUND');
     expect(await code(readPreview(join(dir, 'folder.md')))).toBe('UNSUPPORTED');
-    expect(await code(readPreview(join(dir, 'a.ts')))).toBe('UNSUPPORTED');
+    expect(await code(readPreview(join(dir, 'a.png')))).toBe('UNSUPPORTED');
+  });
+});
+
+describe('readPreview of code', () => {
+  it('returns the text of a code file as it is', async () => {
+    const dir = temp();
+    writeFileSync(join(dir, 'a.ts'), 'export const a = 1;\n');
+    const file = await readPreview(join(dir, 'a.ts'));
+    expect(file.kind).toBe('code');
+    expect(file.content).toBe('export const a = 1;\n');
   });
 });
 

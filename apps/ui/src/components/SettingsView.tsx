@@ -303,7 +303,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               <span>
                 <span className="block text-ui">Clicking a file link</span>
                 <span className="block text-meta text-muted">
-                  What a click does on a file in Claude’s replies. Markdown and HTML files open in Switchboard, other files in {fileManagerName()}. {formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.
+                  What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Switchboard, other files in {fileManagerName()}. {formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.
                 </span>
               </span>
               <Select<FileLinkClick>

@@ -1,19 +1,21 @@
 ---
 title: Preview files
-description: Read a Markdown or HTML file Claude wrote without leaving Switchboard.
+description: Read a Markdown, HTML or code file Claude wrote without leaving Switchboard.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import Related from '../../../components/Related.astro';
 
-Claude often writes a plan, a README or a small web page. Click the file in its reply and it opens in a window on top of the session, rendered the way you would read it. No editor, no browser.
+Claude often writes a plan, a README, a small web page or a piece of code. Click the file in its reply and it opens in a window on top of the session, rendered the way you would read it. No editor, no browser.
 
 ## What opens
 
-Markdown files (`.md` and `.markdown`) and HTML files (`.html` and `.htm`) preview in Switchboard. Any other file shows in <Os mac="Finder" windows="File Explorer" />, as before.
+Markdown files (`.md` and `.markdown`), HTML files (`.html` and `.htm`) and code and text files preview in Switchboard. Code and text files are the usual ones: TypeScript, JavaScript, JSON, YAML, TOML, CSS, shell, Python, Go, Rust, SQL, XML, CSV, `.txt` and `.log`, among others. Any other file shows in <Os mac="Finder" windows="File Explorer" />, as before.
 
-The window has a **Preview** and a **Source** switch. **Source** shows the file's text with syntax colours. Switchboard remembers your choice for each kind of file in that window.
+The window has a **Preview** and a **Source** switch. **Source** shows the file's text with syntax colours. Markdown opens on **Preview**. HTML opens on **Source**, because a page can fail to render and its text always shows. Code and text files have no preview, so they are always their source. Switchboard remembers your choice for each kind of file in that window.
+
+Long lines wrap by default. **Wrap lines** in the header turns that off, so a line scrolls sideways instead. The choice holds for every file in that window.
 
 ## Markdown
 
@@ -28,7 +30,7 @@ Mermaid diagrams and maths are not drawn yet.
 
 ## HTML
 
-An HTML page shows in a frame, with its own styles on a plain background, as a browser would show it. For your safety the page cannot run scripts or load anything from the network. Pictures next to the file, such as `<img src="logo.png">`, are included, up to 10 MB each. Links inside the page don't go anywhere.
+Choose **Preview** to see an HTML page. It shows in a frame, with its own styles on a plain background, as a browser would show it. For your safety the page cannot run scripts or load anything from the network. Pictures next to the file, such as `<img src="logo.png">`, are included, up to 10 MB each. Links inside the page don't go anywhere.
 
 ## Big files
 
@@ -42,9 +44,9 @@ The header also has **Open in editor**, **Show in <Os mac="Finder" windows="File
 
 ## Open it
 
-- Click a Markdown or HTML file in a reply, or the **Preview** chip beside a tool run that wrote it. <Kbd shortcut="transcript.file-link-other" /> opens it in your editor instead.
+- Click a Markdown, HTML or code file in a reply, or the **Preview** chip beside a tool run that wrote it. <Kbd shortcut="transcript.file-link-other" /> opens it in your editor instead.
 - Right-click the file link (or press <Kbd shortcut="context-menu" />) and choose **Open in Switchboard**.
-- In the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />), choose **Preview last written file** to open the last Markdown or HTML file Claude wrote or edited in the open session.
+- In the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />), choose **Preview last written file** to open the last previewable file Claude wrote or edited in the open session.
 
 ## Settings
 
