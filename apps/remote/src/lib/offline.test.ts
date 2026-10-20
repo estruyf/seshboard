@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isQuickTunnel, offlineHelp, offlineLine, offlineReason, reconnectingLine } from './offline.ts';
+import { isQuickTunnel, offlineHelp, offlineLine, offlineReason } from './offline.ts';
 
 const QUICK = 'https://quiet-river.trycloudflare.com';
 const NAMED = 'https://remote.example.com';
@@ -26,15 +26,9 @@ describe('offlineReason', () => {
 
 describe('offline wording', () => {
   it('names the computer', () => {
-    expect(offlineLine('address', "Elio's iMac")).toBe("Can't reach Elio's iMac. Its tunnel address changed.");
-    expect(offlineLine('asleep', "Elio's iMac")).toBe("Can't reach Elio's iMac. Is it asleep or offline?");
-    expect(offlineLine('unknown', "Elio's iMac")).toBeNull();
-  });
-
-  it('counts attempts only after the third', () => {
-    expect(reconnectingLine(1)).toBe('Reconnecting…');
-    expect(reconnectingLine(3)).toBe('Reconnecting…');
-    expect(reconnectingLine(4)).toBe('Reconnecting… (try 4)');
+    expect(offlineLine('address', "Elio's iMac")).toBe("Can't reach Elio's iMac");
+    expect(offlineLine('unknown', "Elio's iMac")).toBe("Can't reach Elio's iMac");
+    expect(offlineLine('no-network', "Elio's iMac")).toBe('This phone is offline');
   });
 
   it('explains quick tunnels', () => {
