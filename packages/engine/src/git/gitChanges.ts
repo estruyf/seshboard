@@ -143,7 +143,7 @@ export async function checkoutRoot(cwd: string): Promise<string | null> {
  * The top folder of the checkout, in this platform's form: git prints `C:/…` on Windows, where every other
  * path (and every comparison with one) uses `C:\…`. Throws outside git.
  */
-async function topLevel(cwd: string): Promise<string> {
+export async function topLevel(cwd: string): Promise<string> {
   return resolve((await git(cwd, ['rev-parse', '--show-toplevel'])).trim());
 }
 

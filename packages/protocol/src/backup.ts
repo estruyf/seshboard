@@ -75,6 +75,16 @@ export const SettingsFile = z.object({
       projects: z.array(z.object({ path: AnyAbsolutePath, actions: z.array(z.unknown()).max(1000) })).max(5000).default([]),
     })
     .optional(),
+  /**
+   * Scheduled sessions (#173), each a schedule without its last run; a list of unknowns so one bad entry is skipped.
+   * A schedule whose folder isn't on this computer is imported paused.
+   */
+  schedules: z.array(z.unknown()).max(1000).optional(),
+  /**
+   * Event triggers (#180), each a trigger without what its checks found; a list of unknowns so one bad entry is
+   * skipped. Every trigger is imported paused, to be checked before it starts sessions here.
+   */
+  triggers: z.array(z.unknown()).max(1000).optional(),
   /** App choices by key (default editor, New session defaults, …); only known keys are imported. */
   choices: z.record(z.string(), z.json()).optional(),
   /** Session ids are only meaningful where the same transcripts are (the same Mac, or a copied ~/.claude). */

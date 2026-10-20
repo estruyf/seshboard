@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import type { ContextItem, WorktreePullRequest } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
-import { chipLabel, LINKED_SESSION_HINT, pastePreview, type ContextChip } from './contextItems.ts';
+import { chipLabel, GITHUB_CHIP_HINT, LINKED_SESSION_HINT, pastePreview, type ContextChip } from './contextItems.ts';
+import { chipDetail, isReadOnlyFork, typeWord } from '../github/githubText.ts';
+import { ForkFlag, GithubStateIcon, useGithubDetail } from '../github/GithubParts.tsx';
 import { linkDetail } from './sessionLinks.ts';
 import { PastedTextDialog } from './PastedTextDialog.tsx';
 
@@ -16,7 +18,7 @@ const TEXT_ICON: Record<Extract<ContextItem, { kind: 'text' }>['source'], Lucide
   checks: CircleX,
 };
 
-const iconFor = (item: Exclude<ContextItem, { kind: 'session' }>): LucideIcon => (item.kind === 'text' ? TEXT_ICON[item.source] : item.directory ? Folder : item.range ? TextSelect : FileText);
+const iconFor = (item: Extract<ContextItem, { kind: 'file' | 'text' }>): LucideIcon => (item.kind === 'text' ? TEXT_ICON[item.source] : item.directory ? Folder : item.range ? TextSelect : FileText);
 
 
 /**
@@ -46,6 +48,7 @@ export function ContextTray({ chips, cwd, onRemove, onEditText, className = '' }
         const { label, detail } = chipLabel(chip, cwd);
         if (chip.kind === 'text' && chip.source === 'paste') return <PastedCard key={chip.id} label={label} detail={detail} text={chip.text} onOpen={() => setEditing(chip.id)} onRemove={() => onRemove(chip.id)} />;
         if (chip.kind === 'session') return <LinkedSessionChip key={chip.id} sessionId={chip.sessionId} label={chip.label} onRemove={() => onRemove(chip.id)} />;
+        if (chip.kind === 'github') return <GithubChip key={chip.id} item={chip} root={cwd} onRemove={() => onRemove(chip.id)} />;
         const Icon = iconFor(chip);
         return (
           <li
@@ -118,6 +121,46 @@ function LinkedSessionChip({ sessionId, label, onRemove }: { sessionId: string; 
         onClick={onRemove}
         className="flex size-5 shrink-0 items-center justify-center rounded text-muted hover:bg-border/50 hover:text-text"
         aria-label={`Remove ${label}`}
+        data-tooltip="Remove"
+        data-context-chip-remove
+      >
+        <X size={11} aria-hidden />
+      </button>
+    </li>
+  );
+}
+
+/**
+ * An attached issue or pull request: its state, number and title, then its labels or branch and comments. A pull
+ * request from a fork you can't push to says so. A click opens it on GitHub; closed ones are muted.
+ */
+function GithubChip({ item, root, onRemove }: { item: Extract<ContextChip, { kind: 'github' }>; root: string | null; onRemove(): void }) {
+  const detail = useGithubDetail(item, root);
+  const detailText = chipDetail(detail);
+  const state = detail?.state ?? 'open';
+  const closed = state !== 'open';
+  const word = typeWord(item.type);
+  return (
+    <li
+      className={`flex h-6 max-w-[36rem] min-w-0 items-center gap-1 rounded-md border border-border bg-border/30 pl-1.5 text-ui ${closed ? 'text-muted' : 'text-text'}`}
+      data-context-chip="github"
+      data-github-chip={`${item.type}:${item.number}`}
+      data-tooltip={GITHUB_CHIP_HINT}
+    >
+      <button type="button" onClick={() => void window.open(item.url, '_blank')} className="flex min-w-0 items-center gap-1 rounded-sm" aria-label={`${word} ${item.number} attached, open on GitHub`}>
+        <GithubStateIcon type={item.type} state={state} draft={detail?.type === 'pr' && 'isDraft' in detail && detail.isDraft} size={12} />
+        <span className="shrink-0 font-mono text-meta text-muted">#{item.number}</span>
+        <span className={`min-w-0 truncate ${closed ? '' : 'font-semibold'}`}>{item.title}</span>
+        {/* The title gives way first: the labels and comments are short and say what it is. */}
+        {detailText && <span className="max-w-60 shrink-0 truncate text-meta text-muted">{detailText}</span>}
+        {closed && <span className="shrink-0 text-meta text-faint">{state}</span>}
+      </button>
+      {detail?.type === 'pr' && 'canPush' in detail && detail.isCrossRepository && <ForkFlag readOnly={isReadOnlyFork(detail)} />}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="flex size-5 shrink-0 items-center justify-center rounded text-muted hover:bg-border/50 hover:text-text"
+        aria-label={`Remove ${word.toLowerCase()} ${item.number}`}
         data-tooltip="Remove"
         data-context-chip-remove
       >

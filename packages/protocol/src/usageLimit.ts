@@ -38,3 +38,19 @@ export const LimitsState = z.object({
   gaveUp: z.array(z.string()),
 });
 export type LimitsState = z.infer<typeof LimitsState>;
+
+/**
+ * How one session stands with its profile's usage limit, as a phone or another computer sees it (never the profile's
+ * id): `stopped` means the limit stopped its turn, so it offers Resume now and Resume when it resets; otherwise the
+ * limit only holds for it.
+ */
+export const RemoteLimitStanding = z.object({
+  stopped: z.boolean(),
+  kind: z.string().nullable(),
+  resetsAt: z.number().nullable(),
+  /** When the armed resume sends its message (ms), or null while Resume when it resets is off. */
+  resumeAt: z.number().nullable(),
+  /** The resume tried too often and gave up. */
+  gaveUp: z.boolean(),
+});
+export type RemoteLimitStanding = z.infer<typeof RemoteLimitStanding>;

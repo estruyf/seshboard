@@ -34,20 +34,39 @@ export function mergeSessions(computers: ReadonlyArray<{ id: string; sessions: R
   return { sessions, prompts };
 }
 
+/** A profile's usage on Home, with the computers that sign in to its account when more than one does. */
+export type ListedUsage = RemoteProfileUsage & { computers?: string[] };
+
 /**
  * Every computer's plan usage as one list. With one computer, its own. With more, each profile is named after its
- * computer ("mystic"), and after its profile too when that computer has more than one ("mystic · Work"). Null until a
- * computer answered.
+ * computer ("mystic"), and after its profile too when that computer has more than one ("mystic · Work"). Profiles of
+ * the same account on more than one computer are one entry: the first one's name and colour, the newest numbers, and
+ * the computers in `computers`. Null until a computer answered.
  */
-export function mergeUsage(computers: ReadonlyArray<{ id: string; name: string; usage: RemoteProfileUsage[] | null }>): RemoteProfileUsage[] | null {
+export function mergeUsage(computers: ReadonlyArray<{ id: string; name: string; usage: RemoteProfileUsage[] | null }>): ListedUsage[] | null {
   if (computers.length === 1) return computers[0]!.usage;
   if (computers.every((c) => c.usage === null)) return null;
-  return computers.flatMap(({ id, name, usage }) =>
+  const listed = computers.flatMap(({ id, name, usage }) =>
     (usage ?? []).map((entry) => {
       const computer = name || 'Your computer';
-      return { ...entry, profile: { ...entry.profile, id: listKey(id, entry.profile.id), name: usage!.length === 1 ? computer : `${computer} · ${entry.profile.name}` } };
+      return { entry, computer, profile: { ...entry.profile, id: listKey(id, entry.profile.id), name: usage!.length === 1 ? computer : `${computer} · ${entry.profile.name}` } };
     }),
   );
+  const shared = new Map<string, typeof listed>();
+  for (const item of listed) if (item.entry.account) shared.set(item.entry.account, [...(shared.get(item.entry.account) ?? []), item]);
+  const merged: ListedUsage[] = [];
+  for (const item of listed) {
+    const same = item.entry.account ? shared.get(item.entry.account)! : [item];
+    const names = [...new Set(same.map((s) => s.computer))];
+    if (names.length < 2) {
+      merged.push({ ...item.entry, profile: item.profile });
+      continue;
+    }
+    if (same[0] !== item) continue;
+    const newest = same.map((s) => s.entry).reduce((a, b) => ((b.usage?.fetchedAt ?? -1) > (a.usage?.fetchedAt ?? -1) ? b : a));
+    merged.push({ ...newest, profile: { ...item.entry.profile, id: item.profile.id }, computers: names });
+  }
+  return merged;
 }
 
 /**

@@ -17,7 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { costOf, sharesOf, weightOf, type AskThread, type CatchUp, type GitChanges, type PermissionRequest, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
+import { accountTag, costOf, sharesOf, weightOf, type AskThread, type CatchUp, type GitChanges, type PermissionRequest, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub } from '../packages/engine/src/remote/remoteHub.ts';
@@ -33,9 +33,10 @@ const PROJECTS = [
   { root: '/demo/lighthouse', name: 'lighthouse', profileId: null },
 ];
 const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null };
+/** The same accounts on every demo computer, so two of them show each profile once. */
 const PROFILES = [
-  { id: 'default', name: 'Personal', color: 'yellow' as const, defaults: NO_DEFAULTS },
-  { id: 'work', name: 'Work', color: 'blue' as const, defaults: { ...NO_DEFAULTS, workspace: 'worktree' as const } },
+  { id: 'default', name: 'Personal', color: 'yellow' as const, defaults: NO_DEFAULTS, account: accountTag({ email: 'demo@example.com', organization: null }) },
+  { id: 'work', name: 'Work', color: 'blue' as const, defaults: { ...NO_DEFAULTS, workspace: 'worktree' as const }, account: accountTag({ email: 'demo@example.com', organization: 'Acme' }) },
 ];
 /** The profile a demo session runs with: its project's. */
 const profileOf = (root: string) => PROJECTS.find((p) => p.root === root)?.profileId ?? 'default';

@@ -18,7 +18,7 @@ On your phone you can:
 - switch between sessions from a drawer, with one tap;
 - read a session's conversation as it happens, with Claude's answers formatted and its tool runs folded into one line;
 - allow or deny what Claude asks, answer its questions, and start or keep working on a plan;
-- send a prompt, or add one to Up next while Claude works, and remove it again;
+- send a prompt, or add one to Up next while Claude works, and remove it again, steer Claude or stop it;
 - see what a finished session did, look at its changes and commit them;
 - stop Claude's turn, mark a session as read or archive it, with a swipe;
 - start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of Claude profile, model, effort, mode, worktree and branch;
@@ -199,11 +199,11 @@ The app stays connected to all of them, and shows the sessions of every computer
 
 The title at the top says **Sessions**. Under it, a chip for each computer has its status dot and, in pink, how many of its sessions need you. Tap a chip for that computer's menu: how it's connected, **Disconnect** or **Connect**, and **Forget this computer…**. **Pair another computer…** is in the **⋯** menu. In the drawer, and in a wide window, the chips are under **Sessions**.
 
-When a computer is offline or disconnected, a line under the title says so, with **Connect** or **Help**, and its sessions stay in the list, greyed out, until it is back. The other computers work as before. A computer that no longer knows your phone says **Pair again with** its name, with **Forget**.
+When a computer is offline or disconnected, a line under the title says so: tap it for help, or tap **Connect** after you disconnected, and its sessions stay in the list, greyed out, until it is back. The other computers work as before. A computer that no longer knows your phone says **Pair again with** its name, with **Forget**.
 
 In **New session**, **Run on** picks the computer the session starts on. Its projects become the tiles, and what you typed stays when you switch. A computer that isn't connected stays in the switch, greyed out, with why, such as **Offline**. The app picks the computer you last started a session on, while it is connected.
 
-The count on the drawer button, on each chip and in the browser tab adds up what needs you on every connected computer. The usage card has a row for each computer, such as **mystic**, or **mystic · Work** when that computer has more than one Claude profile. Each computer keeps its own pairing: **Disconnect** and **Forget this computer…** only affect the computer whose chip you tapped.
+The count on the drawer button, on each chip and in the browser tab adds up what needs you on every connected computer. The usage card has a row for each computer, such as **mystic**, or **mystic · Work** when that computer has more than one Claude profile. A profile signed in to the same account on more than one computer has one row, with the profile's name, and its full card says which computers it is on, such as **On mystic and studio**. Each computer keeps its own pairing: **Disconnect** and **Forget this computer…** only affect the computer whose chip you tapped.
 
 ## A session
 
@@ -223,7 +223,9 @@ When a session finished, and nothing it started still runs in the background, it
 
 In a session that runs in Switchboard, the chips under the message box show its model, effort and permission mode. Tap one to change it. The effort chip only shows for a model that takes an effort; **Default** is the model's own. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
 
-While Claude works, a message you send waits under **Up next** above the message box, with **×** to remove it. It shows what you queued for the session on your computer too. A message you type and don't send stays in that session's message box, also when you open another session or reload the page, until you send it.
+While Claude works, **Stop** is next to the send button. A message you send waits under **Up next** above the message box, with **×** to remove it. It shows what you queued for the session on your computer too. When you stop Claude from your phone, Up next carries on: its first message goes as soon as the turn has stopped.
+
+To send a message another way while Claude works, tap the arrow next to the send button: **Queue** holds it in Up next until Claude finishes, **Steer** gives it to Claude now, and Claude reads it at its next step, and **Send now** stops Claude first. With a keyboard, <Kbd keys="alt+enter" /> steers and <Kbd keys="mod+shift+enter" /> sends now. A message you type and don't send stays in that session's message box, also when you open another session or reload the page, until you send it.
 
 To send images or files with a message, tap the paperclip button next to the message box: your phone offers its camera and its photos, and a computer offers its files. In a browser on a computer, you can also paste a screenshot or drop files on the message box. Each shows above the box, with a button to remove it. A message takes up to four images and four files, and about 2.7 MB in all. Your phone makes big photos smaller before it sends them. New session takes them too, and starts the session with them. Sending files, and images with a new session, needs this version of Switchboard on your computer. Queue for later doesn't take attachments.
 
@@ -293,13 +295,15 @@ Microsoft Edge keeps <Kbd keys="mod+shift+u" /> for Read aloud: use <Kbd keys="u
 
 ### A session and its Changes
 
-The conversation keeps a comfortable reading width in the middle. The header shows the model and the permission mode (such as **Opus · Auto**), **Ask**, **Changes** with the number of files, and **Stop** while Claude works. The buttons of a prompt show their keys.
+The conversation keeps a comfortable reading width in the middle. The header shows the model and the permission mode (such as **Opus · Auto**), **Ask**, and **Changes** with the number of files. The buttons of a prompt show their keys.
 
 In a window at least 1280 pixels wide, **Changes** opens on the right instead of over the conversation: the files, the diff of the one you pick, a commit message that starts with what you asked, **Ask Claude to fix…** and **Commit**. The browser remembers whether you had it open. **Ask** opens in the same place; close it and Changes comes back. Esc closes either.
 
 ### The browser tab
 
 The tab's title starts with the number of sessions that need you, such as **(2) Switchboard Remote**, and its icon gets a pink dot. In a session the title is the session's, so you can find the tab among others.
+
+The tab's icon is your computer's [app icon](/settings/#app-icon), with **Use it on your phone too** on there. It changes as soon as you pick another one.
 
 ## Notifications
 
@@ -317,15 +321,15 @@ Tap a notification to open its session. In Chrome, Edge and Firefox on a compute
 
 ## When your phone can't connect
 
-A line under the header says why, when your phone can tell:
+A short line under the header says your phone can't reach your computer and is reconnecting: "Can't reach Elio's iMac · Reconnecting…". Tap it for **Help**, which says why, when your phone can tell:
 
-- **Its tunnel address changed**: a Cloudflare quick tunnel got a new address. Click **Reconnect a paired device** in Settings → Remote and scan that code, or use a tunnel whose address stays the same.
-- **Is it asleep or offline?**: nothing answers. Wake your computer, or check its network.
-- **Is Switchboard running, with Remote on?**: the address answers, but Switchboard doesn't.
+- **The tunnel address changed**: a Cloudflare quick tunnel got a new address. Click **Reconnect a paired device** in Settings → Remote and scan that code, or use a tunnel whose address stays the same.
+- **Nothing answers**: your computer is asleep or offline. Wake it, or check its network.
+- **The address answers, but Switchboard doesn't**: check that Switchboard is open, and that Settings → Remote shows the tunnel as running.
 
 You chose **Disconnect**? Then nothing connects until you tap **Connect** (see [Your computer's menu](#your-computers-menu)).
 
-**Help** explains what to do, with a link to this page. While it's offline, your phone keeps showing the last list, greyed out, and the buttons that need your computer are off. It tries again by itself, and at once when you come back to the page.
+**Help** also links to this page. When your phone stopped trying, the line says **Stopped trying**, with **Try again**. While it's offline, your phone keeps showing the last list, greyed out, and the buttons that need your computer are off. It tries again by itself, and at once when you come back to the page.
 
 ## Updates
 

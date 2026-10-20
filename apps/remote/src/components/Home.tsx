@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
-import type { CatchUp, PermissionDecision, RemoteProfileUsage, RemoteSession } from '@switchboard/protocol/remote-client';
-import type { ListedPrompt, ListedSession, ListedSessions } from '../lib/everywhere.ts';
+import type { CatchUp, PermissionDecision, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { ListedPrompt, ListedSession, ListedSessions, ListedUsage } from '../lib/everywhere.ts';
 import { catchUpChips, reviewLabel } from '../lib/catchUp.ts';
 import { age, homeHeadline, toReview } from '../lib/groups.ts';
 import { promptTag } from '../lib/prompts.ts';
@@ -36,7 +36,7 @@ export function Home({
   lead,
 }: {
   sessions: ListedSessions;
-  usage: RemoteProfileUsage[] | null;
+  usage: ListedUsage[] | null;
   /** No computer is connected. */
   offline: boolean;
   computerOf: (computer: string) => ListComputer;

@@ -418,7 +418,7 @@ Where the code differs from the sketches above:
 
 ### Phase 2: start from its branch, and the header
 
-- `WorktreeRequest.baseRef` with a branch, `git/worktreeFrom.ts`, the Where option in New session.
+- `WorktreeRequest.baseRef` with a branch, `git/worktreeFrom.ts`, the Where option in New session. `worktreeFrom.ts` and the `{ branch }` base landed with New session from a pull request (issue #32), which uses them with `pullRequest`; the Where option for a linked session's branch is still to come.
 - **Builds on …** in the session header, `sessions.links`.
 - The Create pull request dialog picks the linked branch as base, "Stacked on #148".
 - A `session` blank type in saved prompts ("Stack on {{parent:session}}"), and the palette's **Link a session…**.

@@ -35,6 +35,9 @@ import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
+import { useSchedulesSync } from './state/schedulesStore.ts';
+import { useTriggersSync } from './state/triggersStore.ts';
+import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
@@ -70,6 +73,9 @@ import { usePopoutsSync } from './state/usePopoutsSync.ts';
 import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
+import { UpcomingView } from './components/upcoming/UpcomingView.tsx';
+import { SelectionMenu } from './components/SelectionMenu.tsx';
+import { openUpcoming } from './state/upcomingStore.ts';
 
 /** What the main area shows, as the terminal sees it: Home is the session view without a session. */
 function terminalView(view: MainView, sessionId: string | null): TerminalView {
@@ -119,6 +125,9 @@ function useShortcuts() {
       } else if (matches(event, 'home')) {
         event.preventDefault();
         useSessions.getState().goHome();
+      } else if (matches(event, 'upcoming')) {
+        event.preventDefault();
+        openUpcoming();
       } else if (matches(event, 'search')) {
         if (otherModalOpen()) return;
         event.preventDefault();
@@ -204,6 +213,8 @@ export function App() {
   usePreferencesSync();
   useThemesSync();
   useLaterSync();
+  useSchedulesSync();
+  useTriggersSync();
   useCatchUpSync();
   useUpNextSync();
   useModsSync();
@@ -249,6 +260,8 @@ export function App() {
           <ProjectPage />
         ) : behind === 'new' ? (
           <NewSessionView />
+        ) : behind === 'upcoming' ? (
+          <UpcomingView />
         ) : hasPanes ? (
           <SplitPanes />
         ) : (
@@ -263,7 +276,9 @@ export function App() {
       {overlay === 'search' && <SearchDialog />}
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'shortcuts' && <ShortcutsSheet />}
+      <SelectionMenu />
       <PaletteDialogs />
+      <TriggerEditorHost />
       <AddContextDialogHost />
       <UnsentList />
       <ArchiveDraftDialog />

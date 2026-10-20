@@ -1,4 +1,4 @@
-import { Bot, Code, Ellipsis, Pencil, ScrollText, Sparkles, Square, Stethoscope } from 'lucide-react';
+import { Bot, Code, Ellipsis, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -6,6 +6,7 @@ import { usePaletteBus } from '../../state/paletteBus.ts';
 import { toast } from '../../state/toastStore.ts';
 import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { startAfter } from '../../state/startAfterStore.ts';
 import { openTerminal } from '../../state/terminalsStore.ts';
 import type { ActionsMenu } from '../actions/useActionsMenu.tsx';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
@@ -55,6 +56,8 @@ export function MoreMenu({
 }) {
   const menu = useMenu();
   const buttonRef = useRef<HTMLButtonElement>(null);
+  // Start after this one… opens New session on the session's project.
+  const projectRoot = useSessions((s) => s.sessions.get(sessionId)?.projectRoot) ?? cwd;
   const { total, running } = agents;
   const [renaming, setRenaming] = useState(false);
   const multipleProfiles = useMultipleProfiles();
@@ -144,6 +147,13 @@ export function MoreMenu({
           },
         ]
       : []),
+    {
+      label: 'Start after this one…',
+      icon: <Play size={12} />,
+      disabled: !projectRoot,
+      onSelect: () => projectRoot && startAfter({ id: sessionId, projectRoot }),
+      data: { 'data-start-after': true, 'data-tooltip': 'Queue a prompt that starts by itself once this session finishes' },
+    },
     {
       label: 'Check transcript…',
       icon: <Stethoscope size={13} />,

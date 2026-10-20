@@ -1,7 +1,7 @@
 import { ChevronDown, CircleHelp, PlugZap, RotateCw, Unplug } from 'lucide-react';
 import { otherLine, stateLine } from '../lib/computer.ts';
 import type { ConnectionState } from '../lib/connection.ts';
-import { offlineHelp, offlineLine, reconnectingLine, type OfflineReason } from '../lib/offline.ts';
+import { offlineHelp, offlineLine, type OfflineReason } from '../lib/offline.ts';
 import { AnchoredMenu, type MenuItem } from './Menu.tsx';
 import { Sheet } from './Sheet.tsx';
 import { useNow } from './SessionList.tsx';
@@ -135,8 +135,9 @@ export function ConnectionLine({ state, detail }: { state: ConnectionState; deta
 export const reasonOf = (state: ConnectionState): OfflineReason => (state.kind === 'offline' ? state.reason : 'unknown');
 
 /**
- * Under the header while the connection is down: why, when the phone can tell, and what to do (Help, Try again). The
- * `caution` tone: something outside Switchboard stops it.
+ * Under the header while the connection is down: one short line ("Can't reach Elio's iMac · Reconnecting…") that opens
+ * the Help sheet with the why, and Try again once it stopped trying. One line, so a computer that is away doesn't take
+ * the sidebar. The `caution` tone: something outside Switchboard stops it.
  */
 export function ConnectionBanner({ state, computer, onHelp, onRetry, onConnect }: { state: ConnectionState; computer: string; onHelp: () => void; onRetry: () => void; onConnect: () => void }) {
   if (state.kind === 'connected' || state.kind === 'unpaired') return null;
@@ -153,25 +154,28 @@ export function ConnectionBanner({ state, computer, onHelp, onRetry, onConnect }
     );
   }
   if (state.kind === 'connecting' && state.attempt === 0) return null;
-  const line = state.kind === 'offline' ? offlineLine(state.reason, computer || 'your computer') : null;
+  const line = offlineLine(reasonOf(state), computer || 'your computer');
   const gaveUp = state.kind === 'offline' && state.retryAt === null;
-  const status = gaveUp ? 'Stopped trying.' : reconnectingLine(state.attempt);
+  const status = gaveUp ? 'Stopped trying' : 'Reconnecting…';
   return (
-    <div role="status" className="flex items-center gap-2 border-b border-caution/30 bg-caution/10 px-4 py-2" data-remote-banner>
-      <div className="min-w-0 flex-1">
-        {line && <p className="text-ui font-semibold text-text">{line}</p>}
-        <p className={`text-meta ${line ? 'text-muted' : 'text-ui text-text'}`}>{status}</p>
-      </div>
+    <div role="status" className="flex items-center gap-2 border-b border-caution/30 bg-caution/10 px-4" data-remote-banner>
+      <button
+        type="button"
+        onClick={onHelp}
+        aria-label={`${line}. ${status}. Help`}
+        className="flex min-h-9 min-w-0 flex-1 items-center gap-1.5 text-left text-meta pointer-fine:min-h-7"
+        data-remote-help
+      >
+        <span className="truncate text-text">{line}</span>
+        <span className="shrink-0 text-muted">· {status}</span>
+        <CircleHelp className="ml-auto size-3.5 shrink-0 text-caution" aria-hidden />
+      </button>
       {gaveUp && (
-        <Button variant="quiet" size="md" onClick={onRetry} className="text-caution!">
-          <RotateCw className="size-4" aria-hidden />
+        <Button variant="quiet" size="md" onClick={onRetry} className="-mr-2.5 min-h-9! text-meta text-caution! pointer-fine:min-h-7!">
+          <RotateCw className="size-3.5" aria-hidden />
           Try again
         </Button>
       )}
-      <Button variant="quiet" size="md" onClick={onHelp} className="text-caution!" data-remote-help>
-        <CircleHelp className="size-4" aria-hidden />
-        Help
-      </Button>
     </div>
   );
 }

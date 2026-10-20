@@ -1,11 +1,16 @@
 import { Check, Minus } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 
 interface CheckboxProps {
   /** `mixed`: some of what it stands for is checked (a group's box); a click checks all. */
   checked: boolean | 'mixed';
   onChange(checked: boolean): void;
   disabled?: boolean;
+  /**
+   * Why it can't be changed now: the box is disabled but stays focusable (`aria-disabled`), and the reason is its
+   * description and tooltip.
+   */
+  disabledReason?: string | null;
   /** Visible label; the whole row is clickable. Without one, pass `label` for the accessible name. */
   children?: ReactNode;
   /** Accessible name (and tooltip) when there are no children. */
@@ -28,21 +33,31 @@ export function CheckMark({ checked, className = '' }: { checked: boolean | 'mix
 }
 
 /** A themed checkbox (`role="checkbox"`); Space toggles it, like a native one. */
-export function Checkbox({ checked, onChange, disabled, children, label, tooltip, className = '', dataAttrs }: CheckboxProps) {
+export function Checkbox({ checked, onChange, disabled, disabledReason, children, label, tooltip, className = '', dataAttrs }: CheckboxProps) {
+  const reasonId = useId();
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
       aria-label={children ? undefined : label}
-      data-tooltip={tooltip ?? (children ? undefined : label)}
-      disabled={disabled}
-      onClick={() => onChange(checked !== true)}
-      className={`group inline-flex items-start gap-2 text-left disabled:opacity-50 ${className}`}
+      aria-disabled={disabledReason ? true : undefined}
+      aria-describedby={disabledReason ? reasonId : undefined}
+      data-tooltip={disabledReason ?? tooltip ?? (children ? undefined : label)}
+      disabled={disabled && !disabledReason}
+      onClick={() => {
+        if (!disabledReason) onChange(checked !== true);
+      }}
+      className={`group inline-flex items-start gap-2 text-left disabled:opacity-50 aria-disabled:opacity-50 ${className}`}
       {...dataAttrs}
     >
       <CheckMark checked={checked} className={children ? 'mt-px' : ''} />
       {children && <span className="min-w-0">{children}</span>}
+      {disabledReason && (
+        <span id={reasonId} className="sr-only">
+          {disabledReason}
+        </span>
+      )}
     </button>
   );
 }

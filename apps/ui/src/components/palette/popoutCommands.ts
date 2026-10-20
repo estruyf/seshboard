@@ -28,7 +28,12 @@ const PLANS: Record<string, Plan> = {
   'quick-question': newSession((ctx) => ctx.questionsDir),
   'new-session-clone': 'hide',
   'new-session-worktree': 'hide',
+  // The picker is a dialog of the main window.
+  'new-session-from-issue': 'hide',
+  'new-session-from-pr': 'hide',
   'queue-add': newSession(() => null),
+  // Schedules: New session (and its dialog) are the main window's.
+  'schedule-add': newSession(() => null),
   'go-to-session': () => ({ kind: 'go-to' }),
   'next-session': navigate('next'),
   'previous-session': navigate('previous'),
@@ -56,15 +61,24 @@ const PLANS: Record<string, Plan> = {
   unsent: 'hide',
   'queue-start-next': 'hide',
   'queue-pick': 'hide',
+  schedules: 'hide',
+  // Triggers: the editor is a dialog of the main window.
+  'trigger-new': 'hide',
+  triggers: 'hide',
   'open-in-new-window': 'hide',
 
-  // Settings, Usage and project pages: their stores send them to the main window.
+  // Settings, Usage, Upcoming and project pages: their stores send them to the main window.
   settings: 'main',
   'open-usage': 'main',
+  upcoming: 'main',
+  'queue-view': 'main',
+  'schedules-view': 'main',
   'worktrees-here': 'main',
   worktrees: 'main',
   'branches-here': 'main',
   branches: 'main',
+  'triggers-here': 'main',
+  'triggers-page': 'main',
   memory: 'main',
   'memory-settings': 'main',
   'connect-computer': 'main',
@@ -94,6 +108,7 @@ const PLANS: Record<string, Plan> = {
   'rename-session': 'here',
   // New session lives in the main window, and its box is the one the link goes in.
   'new-session-linked': 'hide',
+  'start-after-session': 'hide',
   pin: 'here',
   archive: 'here',
   fork: 'here',

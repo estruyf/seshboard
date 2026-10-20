@@ -6,19 +6,21 @@ description: Keep prompts to start later, in the order you want them, and see wh
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import OnlyOn from '../../../components/OnlyOn.astro';
 import Related from '../../../components/Related.astro';
 
-When an idea comes up while a project is busy, or you are at your focus limit, queue it instead of starting it now or forgetting it. The queue holds prompts you want to start later, with their project and choices. It never starts anything by itself: it tells you when an item is ready, and you start it.
+When an idea comes up while a project is busy, or you are at your focus limit, queue it instead of starting it now or forgetting it. The queue holds prompts you want to start later, with their project and choices. It tells you when an item is ready, and you start it. An item with [Start by itself](#start-by-itself) on starts as soon as what it waits for has finished.
 
 <Screenshot name="queue" alt="Queued prompts: one ready item with a light green tint and a Start button, and others that show what they wait for" eager />
 
 ## Where to find it
 
 - The **Queue** section in the [sidebar](/sessions/sidebar/), right under Working. While it is closed, its header keeps the count and how many are ready ("1 ready", in green).
-- The **Queue** card on [Home](/sessions/home/), with every item.
+- The **Queue** card on [Home](/sessions/home/), with the first three items.
+- [Upcoming](/sessions/upcoming/), with every item across your projects, next to your scheduled runs. *Queue…* in the command palette opens it on the queue.
 - **Queued in &lt;project&gt;** in New session, under the message box, for the project you picked.
 - A project's [Sessions tab](/projects/sessions/) and its Overview.
-- In the command palette: *Start next in queue*, *Queue: pick one to start…* and *Add to queue*.
+- In the command palette: *Start next in queue*, *Queue: pick one to start…*, *Add to queue* and *Start after this session…*.
 
 ## Add a prompt
 
@@ -49,13 +51,66 @@ Each item waits for something. Choose it with **Wait for…**:
 
 When the project you picked in New session has a session working, a line under the message box says what the prompt would wait for, such as "acme-store has a session working. Queued, this waits for “Fix login” to finish." Its **Wait for…** changes it before you queue. For an item already in the queue, **Wait for…** is in its menu.
 
-A ready item has a light green tint and a **Start** button. The others show a clock and what they wait for ("after “Fix login”"), with **Start** on hover.
+A ready item has a light green tint and a **Start** button. The others show a clock and what they wait for ("after “Fix login”"), with **Start** on hover. An item that starts by itself shows a small play mark instead of the clock.
 
 An item whose [Claude profile](/settings/claude-profiles/) is at its usage limit waits for the limit too, whatever else it waits for: it says "usage limit until 15:16", and turns ready once the limit resets. A session started before then would stop on the limit straight away. See [When you hit a limit](/usage/#when-you-hit-a-limit).
 
 ### When something finishes
 
 When an item turns ready because a session finished, a message in the bottom right corner says so, such as "acme-store is free", with what finished and what's next. **Start it** starts the item; **Review first** opens the session that finished. With several items ready at once, one message names them all, with **Show queue**. The "Claude finished" notification also names what's next in the queue for that project.
+
+## Start by itself
+
+An item can start by itself once what it waits for is done. For example: "once this session is finished, run the tests and write the changelog entry".
+
+Turn it on in one of these places:
+
+| Where | How |
+|---|---|
+| A session's menu | **Start after this one…** in the session's right-click menu in the sidebar, or in the conversation's **⋯** menu |
+| The command palette | *Start after this session…*, for the session you have open |
+| New session | **Start by itself**, next to **Wait for…** on the line under the message box |
+| A queued item | **Start by itself** in its menu, under **Wait for…** |
+
+**Start after this one…** opens New session on the session's project, with **Wait for** set to that session and **Start by itself** on. Write the prompt and choose **Add to queue** (<Kbd shortcut="new-session.queue" />).
+
+**Start by itself** is off for every new item. It can't be picked while **Wait for** is **Nothing (start it myself)**.
+
+<Aside type="tip">
+In the queued prompt, link the session it waits for with @ (see [Linking sessions](/sessions/linking/)). The follow-up then gets that session's branch, pull request and last reply.
+</Aside>
+
+### On its row
+
+The row says "starts after “Fix login”" instead of "after “Fix login”", or "starts after the item above" for an item that waits for the one above it. Two items that each wait for the one above make a chain: each starts when the one before it finishes.
+
+The session it waits for shows a band above its message box: "Starts after this one: Run the tests and fix what fails", with "+1 after it" for a chain. Its **⋯** opens the item's menu.
+
+### When it starts
+
+It starts when it turns ready, by the rules in [When an item is ready](#when-an-item-is-ready), the same way **Start** does. A notification says "Started:" with the first line of the prompt and the project. A click opens the session. The "Claude finished" notification of the session it waited for says "Starting next:" with the item's prompt.
+
+It only starts after a clean finish:
+
+- When the session it waits for ends with an error, or you stopped Claude, it doesn't start. It stays in the queue, ready, and says why: "“Fix login” ended with an error, so it didn't start". A notification says so too.
+- A session waiting for you (a permission or a question) isn't finished.
+- At the [focus limit](/focus-limit/), it doesn't ask, since nobody may be there to answer. Its row says "waits for a free slot (focus limit)", and it starts when a slot frees.
+- At a usage limit, it waits until the limit resets ("usage limit until 15:16"), then starts.
+- When Switchboard quit while that session was working, nothing starts at the next launch. The item is ready, and you start it.
+
+Switchboard starts it with or without a window open.
+
+<OnlyOn os="mac">
+Closing the windows leaves Switchboard running, so an item still starts after you close them. Quitting stops it.
+</OnlyOn>
+
+<Aside>
+Switchboard can only tell how a turn ended for sessions it runs. When the session runs in the terminal or in another app, **Start by itself** is off, with the reason in its tooltip: "“Deploy check” runs in the terminal, so Switchboard can't tell when it finishes. Start this one yourself."
+</Aside>
+
+## Runs from a schedule
+
+A [scheduled](/new-session/schedules/) run that comes at the focus limit, or while its profile is at its usage limit, waits in the queue as an item that starts by itself. It starts when a slot frees or the limit resets. Its schedule's row says "Queued" with the reason.
 
 ## Start an item
 
@@ -76,7 +131,7 @@ Starting an item takes it off the queue. Items that waited for it follow the ses
 
 Removing doesn't ask: the message "Removed from the queue" has **Undo**, which puts the item back in its place.
 
-The item's menu holds **Start now**, **Edit in New session…**, **Wait for…**, **Move to top**, **Move up**, **Move down** and **Remove**. The keys work on a focused item in the sidebar and on Home.
+The item's menu holds **Start now**, **Edit in New session…**, **Wait for…**, **Start by itself**, **Move to top**, **Move up**, **Move down** and **Remove**. The keys work on a focused item in the sidebar and on Home.
 
 ## Settings
 
@@ -84,4 +139,4 @@ The queue has no settings of its own. Starting an item goes through the [focus l
 
 ## Related
 
-<Related pages={['focus-limit', 'sessions/home', 'new-session/form', 'usage']} />
+<Related pages={['focus-limit', 'new-session/schedules', 'sessions/home', 'new-session/form', 'sessions/linking', 'usage']} />

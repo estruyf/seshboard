@@ -1,5 +1,7 @@
 import { clickKeysFor, formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { fileManagerName, trashName } from '../../lib/platform.ts';
+import { openAtLoginDetail } from '../general/openAtLogin.ts';
+import { appIconDetail } from '../theme/appIconCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -13,6 +15,7 @@ export function settingsIndex(): SettingEntry[] {
   const trash = trashName();
   return [
     // General
+    { id: 'open-at-login', page: 'general', label: 'Open at login', detail: openAtLoginDetail(), keywords: 'launch start startup boot restart login item sign in automatically virtual machine vm', target: '[data-open-at-login]' },
     { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
     {
       id: 'new-session-mode',
@@ -37,6 +40,17 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'theme', page: 'theme', label: 'Theme', detail: 'Colours for the app, the code blocks and the terminal. Themes are JSON files you can share.', keywords: 'color colors palette syntax', target: '[data-theme-picker]' },
     { id: 'theme-import', page: 'theme', label: 'Import…', detail: 'Add a theme from a .json file.', keywords: 'theme file json drop', target: '[data-theme-import]' },
     { id: 'theme-folder', page: 'theme', label: 'Open themes folder', detail: 'Where imported themes are kept.', keywords: 'theme files', target: '[data-theme-folder]' },
+    { id: 'app-icon', page: 'theme', label: 'App icon', detail: appIconDetail(), keywords: 'icon dock taskbar logo app switcher colourway colorway', target: '[data-app-icon-picker]' },
+    {
+      id: 'app-icon-remote',
+      page: 'theme',
+      label: 'Use it on your phone too',
+      detail: "The remote app's icon and the browser tab. On a phone, add it to the Home Screen again to see the change.",
+      keywords: 'app icon logo remote phone home screen favicon tab',
+      target: '[data-app-icon-remote]',
+      // Only with Remote set up.
+      fallback: '[data-app-icon-picker]',
+    },
 
     // Sidebar
     { id: 'sidebar-style', page: 'sidebar', label: 'Sidebar style', detail: 'Large icons, Standard or Compact. Large icons makes each session’s project easy to spot.', keywords: 'density rows size', target: '[data-sidebar-style]' },

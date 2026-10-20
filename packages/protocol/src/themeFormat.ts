@@ -31,6 +31,7 @@ export const THEME_TOKENS = [
   'unread',
   'memory',
   'remote',
+  'trigger',
   'accent',
   'accent-ink',
   'on-accent',

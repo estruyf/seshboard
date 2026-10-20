@@ -46,3 +46,6 @@ export const REMOTE_FEATURE_PUSH_KEY = 'push.vapid';
  * `cost`, so a session there and the plan windows show their estimated API cost here.
  */
 export const REMOTE_FEATURE_COSTS = 'costs';
+
+/** In `hello`'s `features`: `limits.get`, `limits.resume` and `limits.arm` answer, and `limits.changed` follows a watched session. */
+export const REMOTE_FEATURE_LIMITS = 'limits';

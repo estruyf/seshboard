@@ -13,9 +13,11 @@ import {
 
 import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./autoModel.ts";
 import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
+import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
+export * from "./appIcons.ts";
 
 /**
  * The small API the preload script exposes on `window.switchboard`.
@@ -33,6 +35,7 @@ export const IpcChannel = {
   rendererReady: "switchboard:renderer-ready",
   pickFolder: "switchboard:pick-folder",
   pickImage: "switchboard:pick-image",
+  pasteClipboard: "switchboard:paste-clipboard",
   pickContextFiles: "switchboard:pick-context-files",
   chooseExportFile: "switchboard:choose-export-file",
   chooseImportFile: "switchboard:choose-import-file",
@@ -64,6 +67,9 @@ export const IpcChannel = {
   notificationPermission: "switchboard:notification-permission",
   openNotificationSettings: "switchboard:open-notification-settings",
   testNotification: "switchboard:test-notification",
+  getOpenAtLogin: "switchboard:get-open-at-login",
+  setOpenAtLogin: "switchboard:set-open-at-login",
+  openLoginItemsSettings: "switchboard:open-login-items-settings",
   getPopouts: "switchboard:get-popouts",
   popOut: "switchboard:pop-out",
   popIn: "switchboard:pop-in",
@@ -111,7 +117,7 @@ export interface ForwardedKeys {
 /**
  * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the
  * Usage view, a project's page, New session (on a folder, in a new worktree), Go to, Search, or a step to another
- * session in the sidebar's order. `section` and `tab` are the names the main window's views use; it ignores one it
+ * session in the sidebar's order, or Upcoming (on a filter, with a schedule's run in view). `section` and `tab` are the names the main window's views use; it ignores one it
  * doesn't know.
  */
 export type MainWindowRequest =
@@ -121,7 +127,8 @@ export type MainWindowRequest =
   | { kind: "new-session"; cwd: string | null; worktree: boolean }
   | { kind: "go-to" }
   | { kind: "search"; memory: boolean }
-  | { kind: "navigate"; to: "next" | "previous" | "needs-you" };
+  | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
+  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | null; scheduleId: string | null };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -289,6 +296,13 @@ export interface Preferences {
   focusCountRemote: boolean;
   /** The colour theme: a built-in's id (`demo-time`, `github`…) or an imported theme's file name. */
   themeId: string;
+  /**
+   * Settings › Theme › App icon: the colourway of the icon in the Dock and the app switcher (macOS), or on the windows
+   * and the taskbar. Main applies it at launch, before the first window. The bundle's own icon stays Graphite.
+   */
+  appIcon: AppIconKey;
+  /** Settings › Theme › App icon: "Use it on your phone too", the remote app's icon and its browser tab. Off is Graphite there. */
+  appIconOnRemote: boolean;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
@@ -328,6 +342,11 @@ export interface Preferences {
   showMods: boolean;
   /** Mods whose UI is hidden here, as `modKey(profileId, name)`; kept while Show mods is off. */
   hiddenMods: string[];
+  /**
+   * Projects (their roots) where the `#` list already showed its one hint about the GitHub CLI: there `#` stays plain
+   * text until gh works.
+   */
+  githubHintSeen: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
   githubStar: GithubStar;
@@ -365,6 +384,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   focusCountExternal: false,
   focusCountRemote: true,
   themeId: DEFAULT_THEME_ID,
+  appIcon: DEFAULT_APP_ICON,
+  appIconOnRemote: true,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   whileWorking: "queue",
@@ -377,6 +398,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   contextWarning: DEFAULT_CONTEXT_WARNING,
   showMods: true,
   hiddenMods: [],
+  githubHintSeen: [],
   sidebarSort: "recent",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
@@ -532,6 +554,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.focusCountRemote === "boolean")
     out.focusCountRemote = raw.focusCountRemote;
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
+  if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
+  if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
   // Both fields or neither: half a setting would turn deleting on or off by accident.
@@ -554,6 +578,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.showMods === "boolean") out.showMods = raw.showMods;
   if (Array.isArray(raw.hiddenMods))
     out.hiddenMods = [...new Set(raw.hiddenMods.filter((m): m is string => typeof m === "string" && m.length > 0 && m.length <= 400))].slice(0, 500);
+  if (Array.isArray(raw.githubHintSeen))
+    out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
@@ -659,6 +685,12 @@ export type DeepLink =
       autostart: boolean;
       /** A quick question: no project, in the scratch folder the engine keeps (`cwd`, `project` and `repo` are null). */
       question: boolean;
+      /**
+       * New session from this issue or pull request of the project (a number, or a link to it on GitHub): the worktree,
+       * chip and prompt are filled in. Such a link never starts a session, whatever `autostart` says.
+       */
+      issue?: string | null;
+      pr?: string | null;
     }
   | { action: "session"; sessionId: string };
 
@@ -725,6 +757,8 @@ export interface SwitchboardBridge {
   onSelectSession(listener: (sessionId: string) => void): () => void;
   /** Native image picker (for project icons). Resolves to null when cancelled. */
   pickImage(defaultPath?: string): Promise<string | null>;
+  /** Pastes the clipboard into the focused field as Cmd/Ctrl+V does, so images and files reach the field's paste handler too. */
+  pasteClipboard(): Promise<void>;
   /** Native open dialog for files (and folders, on macOS) to add as context, starting in `defaultPath`. Empty when cancelled. */
   pickContextFiles(defaultPath?: string): Promise<PickedPath[]>;
   /** Native save dialog for a settings export, suggesting `defaultName`. Resolves to null when cancelled. */
@@ -804,6 +838,12 @@ export interface SwitchboardBridge {
   openNotificationSettings(): void;
   /** Shows one notification like a Needs you one, with its sound when sounds are on. */
   testNotification(): void;
+  /** Whether Switchboard opens when you log in to this computer, as the system has it. */
+  openAtLogin(): Promise<OpenAtLogin>;
+  /** Adds Switchboard to the system's login items, or takes it off; answers how it stands afterwards. */
+  setOpenAtLogin(on: boolean): Promise<OpenAtLogin>;
+  /** Opens the system's list of apps that open at login (Login Items, or Startup apps on Windows). */
+  openLoginItemsSettings(): void;
   /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
   readonly popout: string | null;
   /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
@@ -842,6 +882,13 @@ export interface SwitchboardBridge {
   /** In the main window: a pop-out asked for every unsent message. */
   onDraftsRequested(listener: () => void): () => void;
 }
+
+/**
+ * Whether Switchboard opens at login. The system holds it (System Settings › General › Login Items, or Startup apps
+ * on Windows), not the preferences, so a change made there shows here. `needs-approval`: macOS added it but waits for
+ * you to allow it there. `unavailable`: a development build, which would add Electron itself, or Linux.
+ */
+export type OpenAtLogin = "on" | "off" | "needs-approval" | "unavailable";
 
 /** `blocked`: notifications are turned off for Switchboard (or for every app) in the system's settings. `unknown` when it can't be told. */
 export type NotificationPermission = "allowed" | "blocked" | "unknown";

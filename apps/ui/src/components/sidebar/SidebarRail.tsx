@@ -1,5 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { EyeOff, House, ListEnd, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
+import { CalendarClock, EyeOff, House, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
+import { openUpcoming } from '../../state/upcomingStore.ts';
+import { useUpcomingSummary } from '../../state/useUpcomingSummary.ts';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
@@ -15,7 +17,6 @@ import { sidebarGroups, statusLine, waitingDetail, type WaitingRequest } from '.
 import { GROUP_LABEL, inScope, rowStatus, type RowStatus, type SessionGroup } from '../../state/sidebarRows.ts';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
 import { isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
-import { useQueue } from '../../state/useQueue.ts';
 import { FocusCounter } from '../focus/FocusCounter.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { RAIL_TONE, railShape } from './rail.ts';
@@ -34,19 +35,17 @@ import { localizeKeys, matches, modKey } from '../../lib/shortcuts.ts';
 
 /**
  * One row of the rail: a session, the thin line between two groups, a closed section as one chip (its count, and a
- * dot when something in it is unread), or the queue's button (its ready count in green).
+ * dot when something in it is unread). The queue is behind Upcoming, at the top.
  */
 type RailItem =
   | { kind: 'session'; data: SessionRowData }
   | { kind: 'divider'; key: string }
-  | { kind: 'chip'; section: SectionKey; group: SessionGroup; count: number; unread: number }
-  | { kind: 'queue'; count: number; ready: number };
+  | { kind: 'chip'; section: SectionKey; group: SessionGroup; count: number; unread: number };
 
 const ROW_HEIGHT = 44;
 const DIVIDER_HEIGHT = 13;
 const CHIP_HEIGHT = 32;
-const QUEUE_HEIGHT = 58;
-const itemHeight = (item: RailItem) => (item.kind === 'session' ? ROW_HEIGHT : item.kind === 'chip' ? CHIP_HEIGHT : item.kind === 'queue' ? QUEUE_HEIGHT : DIVIDER_HEIGHT);
+const itemHeight = (item: RailItem) => (item.kind === 'session' ? ROW_HEIGHT : item.kind === 'chip' ? CHIP_HEIGHT : DIVIDER_HEIGHT);
 
 /** A closed section in the rail: its first letter (a pin for Pinned) and count. A click opens the sidebar there. */
 function SectionChip({ item }: { item: Extract<RailItem, { kind: 'chip' }> }) {
@@ -74,34 +73,44 @@ function SectionChip({ item }: { item: Extract<RailItem, { kind: 'chip' }> }) {
   );
 }
 
-/** The queue in the rail: one button with how many are ready, and how many are queued under it. */
-function QueueButton({ item }: { item: Extract<RailItem, { kind: 'queue' }> }) {
-  const what = `Queue, ${item.count} queued${item.ready ? `, ${item.ready} ready` : ''}`;
+/**
+ * Upcoming in the rail: its icon with the count (queued items plus active schedules), green while an item is ready.
+ * The tooltip says what the sidebar row's hint says.
+ */
+function UpcomingButton({ now, selected }: { now: number; selected: boolean }) {
+  const summary = useUpcomingSummary(now);
   return (
-    <button
-      type="button"
-      onClick={() => useSidebarSections.getState().showSection('queue')}
-      aria-label={`${what}. Open the sidebar on the queue`}
-      data-tooltip={what}
+    <Button
+      variant="quiet"
+      size="lg"
+      iconOnly
+      icon={
+        <span className="relative flex">
+          <CalendarClock size={15} aria-hidden />
+          {summary.count > 0 && (
+            <span
+              aria-hidden
+              className={`absolute -top-2 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums ring-2 ring-sidebar ${summary.ready > 0 ? 'bg-ok text-bg' : 'bg-border text-text'}`}
+              data-rail-upcoming-count={summary.count}
+            >
+              {summary.count}
+            </span>
+          )}
+        </span>
+      }
+      aria-label={summary.label}
+      shortcut="upcoming"
+      selected={selected}
+      aria-current={selected ? 'page' : undefined}
       data-tooltip-placement="right"
-      data-tooltip-title="Queue"
-      data-tooltip-meta={`${item.count} queued`}
-      data-tooltip-status={item.ready ? `${item.ready} ready to start` : undefined}
-      data-tooltip-tone={item.ready ? 'ok' : 'faint'}
-      data-tooltip-hint="Click to open the sidebar on the queue"
-      data-rail-queue
-      className="mx-auto flex flex-col items-center gap-0.5 rounded-lg px-1.5 pt-1 text-muted hover:text-text"
-    >
-      <span className={`relative flex size-9 items-center justify-center rounded-lg ${item.ready ? 'bg-ok/15 text-ok' : 'bg-border/50'}`}>
-        <ListEnd size={16} aria-hidden />
-        {item.ready > 0 && (
-          <span aria-hidden className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-ok px-1 text-[10px] leading-none font-semibold text-bg tabular-nums ring-2 ring-sidebar" data-rail-queue-ready={item.ready}>
-            {item.ready}
-          </span>
-        )}
-      </span>
-      <span className="text-meta tabular-nums">{item.count} queued</span>
-    </button>
+      data-tooltip-title="Upcoming"
+      data-tooltip-meta={summary.count > 0 ? `${summary.count} planned` : undefined}
+      data-tooltip-status={summary.hint?.text}
+      data-tooltip-tone={summary.ready > 0 ? 'ok' : 'faint'}
+      data-upcoming-nav
+      onClick={() => openUpcoming()}
+      className="no-drag w-9! rounded-lg!"
+    />
   );
 }
 
@@ -234,6 +243,7 @@ export function SidebarRail() {
   const view = useSessions((s) => s.view);
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
   const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
+  const atUpcoming = useSessions((s) => s.view === 'upcoming' || (s.view === 'settings' && s.settingsFrom === 'upcoming'));
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const now = useNow();
@@ -252,32 +262,19 @@ export function SidebarRail() {
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick }), [listed, now, archiveAfterDays, sort, quick]);
   const sectionsOpen = useSidebarSections((s) => s.open);
-  const queue = useQueue(all);
   const items = useMemo<RailItem[]>(() => {
-    // Blocks in the open sidebar's order (the queue under Working), a thin line between them.
+    // Blocks in the open sidebar's order, a thin line between them.
     const blocks: { key: string; items: RailItem[] }[] = [];
-    // The queue only shows in Recent, as in the sidebar.
-    const queueBlock = queue.entries.length && sort === 'recent' ? [{ key: 'queue', items: [{ kind: 'queue' as const, count: queue.entries.length, ready: queue.readyCount }] }] : [];
-    let queued = false;
     for (const { group, rows } of groups) {
-      if (!queued && group !== 'needs-you' && group !== 'working') {
-        blocks.push(...queueBlock);
-        queued = true;
-      }
       if (isSectionKey(group) && !sectionsOpen[group]) {
         // A closed section is one chip; the open session stays beside it, as in the sidebar.
         const unread = rows.filter((row) => rowStatus(row) === 'unread').length;
         const kept = rows.filter((row) => row.id === shownId).map((data) => ({ kind: 'session' as const, data }));
         blocks.push({ key: group, items: [{ kind: 'chip', section: group, group, count: rows.length, unread }, ...kept] });
       } else blocks.push({ key: group, items: rows.map((data) => ({ kind: 'session' as const, data })) });
-      if (group === 'working') {
-        blocks.push(...queueBlock);
-        queued = true;
-      }
     }
-    if (!queued) blocks.push(...queueBlock);
     return blocks.flatMap((block, i) => [...(i > 0 ? [{ kind: 'divider' as const, key: `divider-${block.key}` }] : []), ...block.items]);
-  }, [groups, sectionsOpen, queue.entries.length, queue.readyCount, shownId, sort]);
+  }, [groups, sectionsOpen, shownId]);
   const order = useMemo(() => items.flatMap((item) => (item.kind === 'session' ? [item.data.id] : [])), [items]);
   // The oldest open request of each waiting session: what its tooltip says it waits for.
   const requests = useMemo(() => {
@@ -297,7 +294,7 @@ export function SidebarRail() {
     estimateSize: (i) => itemHeight(items[i]!),
     getItemKey: useCallback((i: number) => {
       const item = items[i]!;
-      return item.kind === 'session' ? item.data.id : item.kind === 'chip' ? `chip-${item.section}` : item.kind === 'queue' ? 'queue' : item.key;
+      return item.kind === 'session' ? item.data.id : item.kind === 'chip' ? `chip-${item.section}` : item.key;
     }, [items]),
     overscan: 10,
   });
@@ -387,6 +384,7 @@ export function SidebarRail() {
           onClick={() => useSessions.getState().goHome()}
           className="no-drag w-9! rounded-lg!"
         />
+        <UpcomingButton now={now} selected={atUpcoming} />
       </div>
       <div aria-hidden className="mx-3 h-px shrink-0 bg-border" />
 
@@ -405,8 +403,6 @@ export function SidebarRail() {
                   <span aria-hidden className="h-px w-full bg-border" data-rail-divider />
                 ) : item.kind === 'chip' ? (
                   <SectionChip item={item} />
-                ) : item.kind === 'queue' ? (
-                  <QueueButton item={item} />
                 ) : (
                   <RailRow
                     data={item.data}

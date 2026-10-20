@@ -1,6 +1,6 @@
 ---
 title: Sessions
-description: A project's Sessions tab lists its sessions the way the sidebar does, with its queued prompts and archived sessions.
+description: A project's Sessions tab lists its sessions the way the sidebar does, with its queued prompts, schedules and archived sessions.
 sidebar:
   label: Sessions tab
 ---
@@ -28,6 +28,10 @@ See [Open a project's page](/projects/projects-view/#open-a-projects-page) for t
 
 When prompts are [queued](/new-session/queue/) for this project, they are listed first, under **Queued in &lt;project&gt;**. Each shows its prompt and the choices it starts with ("Opus · worktree · queued 25m ago"). Click **Edit** to open it in New session, or **×** to remove it from the queue.
 
+### Schedules
+
+The project's [schedules](/new-session/schedules/) come next, under **Schedules**, with the same rows as on Home: the name, the rule, the last and next run, **Run now** and ⋯. **All projects in Upcoming** opens [Upcoming](/sessions/upcoming/) on the schedules of every project. A schedule that is paused says so, with the reason when Switchboard paused it, such as **Folder not found**.
+
 ### Sessions
 
 The project's sessions are in the same groups as the sidebar: <Pill tone="needs-you">Needs you</Pill> first, then <Pill tone="working">Working</Pill>, **Pinned**, and **Today**, **Yesterday** and **Earlier**. Each row looks and works like a sidebar row:
@@ -53,4 +57,4 @@ The groups follow the sidebar. **Settings → Sidebar** changes how rows look. S
 
 ## Related
 
-<Related pages={['sessions/sidebar', 'new-session/queue', 'sessions/archived', 'sessions/split-view']} />
+<Related pages={['sessions/sidebar', 'new-session/queue', 'new-session/schedules', 'sessions/archived', 'sessions/split-view']} />

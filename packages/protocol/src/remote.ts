@@ -10,6 +10,7 @@ import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { REMOTE_ATTACHMENT_BYTES, REMOTE_DEVICE_NAME_MAX, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
+import { RemoteLimitStanding } from './usageLimit.ts';
 import { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow, UsageSnapshot, WindowCost } from './usage.ts';
 
 /**
@@ -225,6 +226,12 @@ export const RemoteProfileUsage = z.object({
   /** Null without a claude.ai plan, or before the first check. */
   usage: UsageSnapshot.nullable(),
   error: z.string().nullable(),
+  /**
+   * The account it signs in to as `accountTag` (never the account, nor the key `usage.tokens` takes): the same on
+   * every computer, so Home shows a profile once when several computers sign in to it. Null without an account; left
+   * out by a Switchboard from before.
+   */
+  account: z.string().nullable().optional(),
 });
 export type RemoteProfileUsage = z.infer<typeof RemoteProfileUsage>;
 
@@ -263,6 +270,11 @@ export const remoteContract = {
         computer: z.object({ name: z.string() }),
         /** What it takes beyond what every version does (`REMOTE_FEATURE_ATTACHMENTS`); missing from an older one. */
         features: z.array(z.string().max(50)).max(50).default([]),
+        /**
+         * The app icon colourway the remote app shows (`AppIconKey`; Settings › Theme › App icon there), Graphite
+         * while "Use it on your phone too" is off. Missing from an older one, and a key the phone doesn't know, is Graphite.
+         */
+        appIcon: z.string().max(50).optional(),
       }),
     },
     'sessions.list': { params: z.object({}), result: RemoteSessions },
@@ -427,6 +439,15 @@ export const remoteContract = {
       result: z.object({}),
     },
     'push.unsubscribe': { params: z.object({}), result: z.object({}) },
+    /**
+     * How a session stands with its profile's usage limit (null: not at one). With `REMOTE_FEATURE_LIMITS`;
+     * `limits.changed` follows each change for the session the phone watches.
+     */
+    'limits.get': { params: z.object({ sessionId: SessionId }), result: z.object({ limit: RemoteLimitStanding.nullable() }) },
+    /** Resume now: sends the session its resume message at once, as on the computer. */
+    'limits.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Resume when it resets, on or off. */
+    'limits.arm': { params: z.object({ sessionId: SessionId, armed: z.boolean() }), result: z.object({}) },
     /** Whether the app is on this device's screen now: no push while it is. Sent after hello and on each change. */
     'device.visibility': { params: z.object({ visible: z.boolean() }), result: z.object({}) },
   },
@@ -439,10 +460,14 @@ export const remoteContract = {
     'session.ask': AskEvent,
     /** A profile's plan usage changed (a new check on the computer). */
     'usage.changed': z.object({ profileId: z.string(), usage: UsageSnapshot.nullable() }),
+    /** The usage limit standing of the session the phone watches changed. */
+    'limits.changed': z.object({ sessionId: z.string(), limit: RemoteLimitStanding.nullable() }),
     /** The catch-up of the session the phone watches changed. */
     'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
     /** A clone this connection started moved on (`projects.clone`). */
     'projects.cloneProgress': RemoteCloneProgress,
+    /** The app icon colourway changed on the computer (as `appIcon` in hello): the open tab swaps its icons. */
+    'app.icon': z.object({ key: z.string().max(50) }),
   },
 } as const satisfies ContractShape;
 export type RemoteContract = typeof remoteContract;

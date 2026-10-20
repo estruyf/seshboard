@@ -1,5 +1,5 @@
 /** The kinds of data a settings file can hold, in the order the export and import dialogs list them. */
-export const BACKUP_SECTIONS = ['preferences', 'themes', 'profiles', 'projects', 'actions', 'choices', 'sessions'] as const;
+export const BACKUP_SECTIONS = ['preferences', 'themes', 'profiles', 'projects', 'actions', 'schedules', 'triggers', 'choices', 'sessions'] as const;
 export type BackupSection = (typeof BACKUP_SECTIONS)[number];
 
 /** The newest settings file format this build reads and the one it writes (2 added themes). */

@@ -94,7 +94,7 @@ Every project has its own page with its sessions, worktrees, branches, memory, a
 - running *Project: &lt;name&gt;* in the command palette;
 - pressing <Kbd shortcut="palette.goto" /> and picking the project.
 
-<Screenshot name="project-overview" alt="A project page for acme-store: the breadcrumb, the project's icon and name, its folder, branch and upstream, Open in editor and New session buttons, and the tabs Overview, Sessions, Worktrees, Branches, Memory, Actions and Settings" />
+<Screenshot name="project-overview" alt="A project page for acme-store: the breadcrumb, the project's icon and name, its folder, branch and upstream, Open in editor and New session buttons, and the tabs Overview, Sessions, Triggers, Worktrees, Branches, Memory, Actions and Settings" />
 
 ### The header
 
@@ -111,13 +111,14 @@ On the right:
 |---|---|
 | [Overview](/projects/overview/) | A card per area: sessions, worktrees, branches, memory, the queue and git. |
 | [Sessions](/projects/sessions/) | The project's sessions, grouped as in the sidebar, and its queued prompts. |
+| [Triggers](/projects/triggers/) | What starts a session when CI fails or an issue is for you, with their events. |
 | [Worktrees](/projects/worktrees/) | Every worktree of the repository, and which ones can go. |
 | [Branches](/projects/branches/) | Every branch, here and on the remote, and which ones can go. |
 | [Memory](/projects/memory/) | What Claude Code remembers about the project, its instructions, and your personal memory. |
 | [Actions](/projects/actions/) | The project's actions. |
 | [Settings](/projects/settings/) | The Claude profile, defaults for new sessions, and the name and icon. |
 
-Sessions, Worktrees, Branches, Memory and Actions show a count. With a tab focused, use <Kbd keys="arrowleft|arrowright" /> to move between tabs.
+Sessions, Triggers, Worktrees, Branches, Memory and Actions show a count. With a tab focused, use <Kbd keys="arrowleft|arrowright" /> to move between tabs.
 
 A project opens on the tab you left it on, for as long as the app runs. The first time, it opens on Overview.
 

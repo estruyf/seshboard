@@ -235,7 +235,7 @@ function AddressField({ address }: { address: string }) {
   const [copied, flash] = useFlash(1500);
   return (
     <div className="mt-1.5 flex max-w-xl items-center gap-1 rounded-md border border-border bg-bg py-0.5 pr-0.5 pl-2">
-      <code className="min-w-0 flex-1 truncate font-mono text-meta" data-remote-address>
+      <code className="min-w-0 flex-1 truncate select-text font-mono text-meta" data-remote-address>
         {address}
       </code>
       <Button size="sm" variant="quiet" icon={copied ? <Check size={12} aria-hidden /> : <Copy size={12} aria-hidden />} onClick={() => void navigator.clipboard.writeText(address).then(() => flash('Copied'), () => {})}>
@@ -358,7 +358,7 @@ function Connection({ status, open, onOpen, configure }: { status: RemoteStatus;
           <Globe size={16} aria-hidden className="shrink-0 text-muted" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-ui">{line.name}</span>
-            <span className="block truncate font-mono text-meta text-muted">{line.address}</span>
+            <span className="block truncate select-text font-mono text-meta text-muted">{line.address}</span>
           </span>
           {!open && (
             <Button size="sm" aria-expanded={false} aria-controls={panelId} onClick={() => onOpen(true)} data-remote-change-connection>
@@ -501,7 +501,7 @@ function Advanced({
               <input ref={portInput} value={port} inputMode="numeric" spellCheck={false} onChange={(event) => setPort(event.target.value)} onBlur={savePort} onKeyDown={(event) => event.key === 'Enter' && savePort()} className={`${field} max-w-24 flex-none`} data-remote-port-input />
             </label>
             <p className="text-meta text-muted">
-              Remote listens on <code className="font-mono text-text">127.0.0.1:{settings.port}</code>. Point your tunnel there. Changing it restarts Remote.
+              Remote listens on <code className="select-text font-mono text-text">127.0.0.1:{settings.port}</code>. Point your tunnel there. Changing it restarts Remote.
             </p>
           </div>
           <SecurityNote />

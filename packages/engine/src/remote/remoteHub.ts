@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  DEFAULT_APP_ICON,
   defuseStubs,
   keyPairFromSecret,
   REMOTE_APP_URL,
@@ -18,6 +19,7 @@ import {
   type RemoteBranches,
   type ClonePlan,
   type CloneProgress,
+  type RemoteLimitStanding,
   type RemoteSessionOptions,
   type RemoteSession,
   type RemoteSessions,
@@ -101,6 +103,8 @@ export interface RemoteHubProfile {
   name: string;
   color: ProfileColor;
   defaults: ProfileDefaults;
+  /** Its account's `accountTag`, for `usage.get`; null without an account. */
+  account?: string | null;
 }
 
 /** What `remote.fromDevice` tells the app's windows. */
@@ -144,6 +148,12 @@ export interface RemoteHubOptions {
   dequeue(sessionId: string, id: string): void;
   /** A session's Up next as it is now, for a phone that starts watching it (it may have missed changes while away). */
   upNext(sessionId: string): QueuedMessage[];
+  /** How a session stands with its profile's usage limit; null when its profile isn't at one. */
+  limit(sessionId: string): RemoteLimitStanding | null;
+  /** Resume now, and Resume when it resets on or off, as on the computer. */
+  resumeLimit(sessionId: string): Promise<void>;
+  armLimit(sessionId: string, armed: boolean): void;
+  /** Stops Claude's turn and lets Up next move on after it: the phone has no Send next. */
   interrupt(sessionId: string): Promise<void>;
   /** Stops one of a running session's background tasks. */
   stopTask(sessionId: string, taskId: string): Promise<void>;
@@ -249,6 +259,8 @@ export class RemoteHub {
    */
   private readonly archivedFromPhone = new Map<string, number>();
   private applying: Promise<void> = Promise.resolve();
+  /** Settings › Theme › App icon's colourway for phones, from main (`setAppIcon`). */
+  private appIcon: string = DEFAULT_APP_ICON;
 
   constructor(private readonly options: RemoteHubOptions) {
     this.devices = new DeviceStore(options.db);
@@ -263,6 +275,7 @@ export class RemoteHub {
       pairing: this.pairing,
       appVersion: options.appVersion,
       ...(options.computerName ? { computerName: options.computerName } : {}),
+      appIcon: () => this.appIcon,
       // Switchboard on another computer pairs and connects as a phone does (docs/remote-access.md, Other computers).
       origins: [new URL(this.appUrl).origin, REMOTE_DESKTOP_ORIGIN],
       address: () => this.address,
@@ -378,6 +391,18 @@ export class RemoteHub {
     for (const [phone, watch] of this.watches) if (watch.sessionId === event.sessionId) phones.add(phone);
     for (const phone of phones) phone.emit('session.ask', event);
     if (event.done) this.askedBy.delete(event.id);
+  }
+
+  /** Settings › Theme › App icon changed (Graphite with "Use it on your phone too" off): connected phones swap their icons. */
+  setAppIcon(key: string): void {
+    if (key === this.appIcon) return;
+    this.appIcon = key;
+    if (this.server.listening) this.server.each((rpc) => rpc.emit('app.icon', { key }));
+  }
+
+  /** A usage limit was hit, cleared or armed: phones watching a session hear how it stands now. */
+  limitsChanged(): void {
+    for (const [phone, watch] of this.watches) phone.emit('limits.changed', { sessionId: watch.sessionId, limit: this.options.limit(watch.sessionId) });
   }
 
   /** A profile's plan usage changed: every phone hears it, for its Home. */
@@ -671,6 +696,7 @@ export class RemoteHub {
         });
         this.watches.set(phone, { sessionId, stop });
         phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });
+        phone.emit('limits.changed', { sessionId, limit: this.options.limit(sessionId) });
         return {};
       },
       'transcript.unwatch': ({ sessionId }, phone) => {
@@ -797,7 +823,7 @@ export class RemoteHub {
           profiles: await Promise.all(
             ordered.map(async (p) => {
               const result = await this.options.usage(p.id, refresh).catch((error: Error) => ({ usage: null, error: error.message }));
-              return { profile: { id: p.id, name: p.name, color: p.color }, ...result };
+              return { profile: { id: p.id, name: p.name, color: p.color }, ...result, account: p.account ?? null };
             }),
           ),
         };
@@ -805,6 +831,20 @@ export class RemoteHub {
       'usage.tokens': ({ account, ...params }) => {
         const breakdown = this.options.tokens(account, params);
         return { breakdown: breakdown && remoteUsage(breakdown, new Map(this.options.projects().map((p) => [p.root, p.name]))) };
+      },
+      'limits.get': ({ sessionId }) => {
+        this.checkSession(sessionId);
+        return { limit: this.options.limit(sessionId) };
+      },
+      'limits.resume': async ({ sessionId }) => {
+        this.checkSession(sessionId);
+        await this.options.resumeLimit(sessionId);
+        return {};
+      },
+      'limits.arm': ({ sessionId, armed }) => {
+        this.checkSession(sessionId);
+        this.options.armLimit(sessionId, armed);
+        return {};
       },
       'usage.sessionCost': ({ sessionId }) => {
         this.checkSession(sessionId);

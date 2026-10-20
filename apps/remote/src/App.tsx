@@ -7,6 +7,7 @@ import { PairScreen } from './components/PairScreen.tsx';
 import { Computers, keepDisconnected, pushComputers, pushTarget } from './lib/computers.ts';
 import { computerId, currentComputer, startFrom, type Paired } from './lib/link.ts';
 import { STANDALONE } from './lib/platform.ts';
+import { showAppIcon } from './lib/favicon.ts';
 import { forgetPush, resync } from './lib/push.ts';
 import { forgetComputer, lastComputer, loadComputers, rememberComputer, saveComputer } from './lib/storage.ts';
 
@@ -57,6 +58,12 @@ export function App() {
       }),
   );
   const list = useSyncExternalStore(computers.subscribe, computers.list);
+  // The icons follow the computer on screen (its Settings › Theme › App icon); offline, the last one stays.
+  const onScreen = list.find((computer) => computer.id === currentId);
+  const appIcon = onScreen?.state.kind === 'connected' ? onScreen.state.appIcon : null;
+  useEffect(() => {
+    if (appIcon) showAppIcon(appIcon);
+  }, [appIcon]);
 
   const choose = useCallback((id: string) => {
     rememberComputer(id);

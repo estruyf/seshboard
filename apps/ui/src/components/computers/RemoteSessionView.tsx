@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareCode, SquareTerminal } from 'lucide-react';
-import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt } from '@switchboard/protocol/client';
+import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
+import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { remoteRowId } from '../../state/remoteSelection.ts';
@@ -26,6 +26,8 @@ import { engineClient, useSavedPrompts } from '../savedPrompts/savedPromptsStore
 import { PromptIcon, ScopeTag } from '../savedPrompts/ScopeTag.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
+import { RemoteLimitNotice } from './RemoteLimitNotice.tsx';
+import { RemoteUpNext } from './RemoteUpNext.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
@@ -75,6 +77,9 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [streaming, setStreaming] = useState<Streaming>(NOT_STREAMING);
+  /** Its Up next and how it stands with its usage limit, kept up to date by the watch below. */
+  const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  const [limit, setLimit] = useState<RemoteLimitStanding | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -97,8 +102,12 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
     let current = true;
     setError(null);
     setStreaming(NOT_STREAMING);
+    setQueue([]);
+    setLimit(null);
     const offs = [
       onComputerEvent(client, id, 'transcript.updated', (update) => update.sessionId === session.id && setMessages((m) => applyUpdate(m, update))),
+      onComputerEvent(client, id, 'upNext.changed', (event) => event.sessionId === session.id && setQueue(event.queue)),
+      onComputerEvent(client, id, 'limits.changed', (event) => event.sessionId === session.id && setLimit(event.limit)),
       onComputerEvent(client, id, 'session.stream', (delta) => delta.sessionId === session.id && setStreaming((s) => applyStream(s, delta))),
     ];
     void callComputer(client, id, 'transcript.get', { sessionId: session.id, limit: PAGE }).then(
@@ -227,9 +236,6 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
             <Button variant="quiet" size="sm" iconOnly disabled icon={<SquareTerminal size={14} aria-hidden />} aria-label={onlyThereLine('Terminal', name)} data-remote-terminal />
           </OnlyThere>
         </div>
-        <OnlyThere feature="The editor" name={name}>
-          <Button variant="quiet" iconOnly disabled icon={<SquareCode size={15} aria-hidden />} aria-label={onlyThereLine('The editor', name)} className="@max-[420px]:hidden" data-remote-open-in />
-        </OnlyThere>
         <Button
           variant="quiet"
           iconOnly
@@ -366,6 +372,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
             ))}
           </div>
         )}
+        {connected && <RemoteLimitNotice client={client} computer={computer} sessionId={session.id} limit={limit} held={queue.length} busy={working || prompts.length > 0} />}
+        {connected && <RemoteUpNext client={client} computer={computer} sessionId={session.id} queue={queue} limited={limit?.stopped === true} />}
         <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />
         {/* What the session would cost at API prices, as that computer counts it; the quiet line under a local session's box. */}
         <div className="-mt-1 flex min-h-6 items-center justify-end px-1 text-meta text-muted empty:hidden" data-remote-session-footer>

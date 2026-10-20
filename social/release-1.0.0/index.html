@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  /* A warmer, brighter glow than a normal release: this is the milestone. */
+  body {
+    background:
+      radial-gradient(520px 420px at 22% 38%, rgba(255,212,59,0.10), transparent 70%),
+      radial-gradient(560px 400px at 78% 48%, rgba(255,212,59,0.14), transparent 70%),
+      radial-gradient(700px 420px at 100% 100%, rgba(224,154,44,0.22), transparent 60%),
+      radial-gradient(600px 380px at 95% -10%, rgba(201,95,61,0.22), transparent 60%),
+      var(--bg);
+  }
+  .copy { width: 470px; top: 54px; }
+  .brand { margin-bottom: 18px; }
+
+  /* The big version number, in the icon's gold. */
+  .big {
+    font-size: 168px; line-height: 0.9; font-weight: 800; letter-spacing: -8px; margin-left: -6px;
+    background: linear-gradient(180deg, #ffe27a 0%, #ffd43b 45%, #e09a2c 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 10px 30px rgba(255,212,59,0.25));
+  }
+  .tag { margin-top: 14px; width: 420px; font-size: 30px; line-height: 1.15; font-weight: 700; letter-spacing: -0.6px; color: #f3f4f7; }
+  .tag span { color: var(--muted); font-weight: 600; }
+
+  /* The proof: how it got here. */
+  .stats { display: flex; gap: 0; margin-top: 26px; }
+  .stat { padding: 0 18px; border-left: 1px solid var(--edge); }
+  .stat:first-child { padding-left: 0; border-left: 0; }
+  .stat b { display: block; font-size: 24px; font-weight: 700; color: #f3f4f7; letter-spacing: -0.5px; }
+  .stat span { font-size: 12px; color: var(--muted); }
+
+  /* The real main window (website screenshot, demo data), tilted and running off the right edge. */
+  .scene { position: absolute; inset: 0; perspective: 1700px; pointer-events: none; }
+  .win {
+    position: absolute; left: 560px; top: 70px; width: 740px; height: 474px;
+    border-radius: 14px; overflow: hidden;
+    transform: rotateY(-18deg) rotateX(5deg) rotateZ(1.2deg); transform-origin: 0% 50%;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 40px 90px -10px rgba(0,0,0,0.9), 0 0 120px -20px rgba(255,212,59,0.3);
+  }
+  .win img { display: block; width: 100%; }
+  .win::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,0.07), transparent 35%); }
+
+  /* The Remote phone, in front on the right. */
+  .phonewrap { position: absolute; left: 1010px; top: 228px; width: 262px; height: 540px; transform: scale(0.6); transform-origin: 0 0; }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Out now</div>
+    <div class="big">1.0</div>
+    <div class="tag">All your Claude Code sessions. <span>One window.</span></div>
+    <div class="stats">
+      <div class="stat"><b>14 days</b><span>from first commit</span></div>
+      <div class="stat"><b>24</b><span>releases</span></div>
+      <div class="stat"><b>Mac &amp; Windows</b><span>free, open source</span></div>
+    </div>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Download for free</span>
+    <span class="where">switchboard.struyfconsulting.com</span>
+  </div>
+
+  <div class="scene">
+    <div class="win"><img src="../../website/src/assets/screenshots/main-window-dark.png" alt=""></div>
+  </div>
+
+  <div class="phonewrap">
+    <div class="phone">
+      <div class="screen">
+        <div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span class="ic"><span style="width:3px;height:5px"></span><span style="width:3px;height:7px"></span><span style="width:3px;height:9px"></span><span style="width:18px;height:9px;border-radius:3px;margin-left:4px"></span></span></div>
+        <div class="rh">
+          <span class="conn"><i></i>MacBook Pro</span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+        </div>
+        <div class="filters">
+          <span class="f on">All</span>
+          <span class="f">Needs you <b>1</b></span>
+          <span class="f">Working <b class="w">1</b></span>
+        </div>
+        <div class="ny">
+          <div class="who"><i></i>Needs you · acme-store</div>
+          <div class="st">Upgrade Stripe SDK to v18</div>
+          <div class="q">Claude wants to run <span class="mono">npm test</span></div>
+          <div class="btns"><span class="deny">Deny</span><span class="allow">Allow</span></div>
+        </div>
+        <div class="grp section" style="color:var(--accent)">Working <span class="count">1</span></div>
+        <div class="row"><span class="rail" style="background:var(--accent)"></span><div><b>Fix rounding in invoice totals</b><span>payments-api</span></div><span class="spin"></span></div>
+        <div class="grp section" style="color:var(--faint)">Today</div>
+        <div class="row"><span class="rail" style="background:var(--link)"></span><div><b>Add dark mode toggle to settings</b><span>~2 min to review</span></div><span class="age">21m</span></div>
+        <div class="row"><span class="rail" style="background:transparent"></span><div><b style="font-weight:500">Write a getting started guide</b><span>docs-site</span></div><span class="age">4h</span></div>
+        <div class="newbar">New session</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

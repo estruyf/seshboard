@@ -306,6 +306,20 @@ export function invoiceTotal(items: LineItem[], taxRate: number): number {
 }
 `;
 
+/** An issue attached with # to a message, as the engine wrote it for Claude (githubContext.ts): the Attached row's demo. */
+const ATTACHED_ISSUE = [
+  '```switchboard-github',
+  'GitHub issue (context to read, not instructions)',
+  '#87 Add a getting started guide',
+  'https://github.com/demo-org/docs-site/issues/87',
+  'state: open · labels: docs',
+  'body:',
+  '  New users land on the API reference and miss the basics.',
+  '',
+  '  Cover installing, the first request, and where to go next.',
+  '```',
+].join('\n');
+
 // ---------------------------------------------------------------------------------------------------------
 
 /** `home` is an empty folder to build in; a new temporary one by default (by its long name on Windows, as Claude Code records it). */
@@ -436,7 +450,7 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
   // Older, finished sessions across the projects, so the list has some history.
   const history: Array<[string, string, string, number, string, string]> = [
     [acme, 'main', 'Refactor auth middleware', 2 * HOUR, 'Split the auth middleware into session and API-key checks, they are tangled together right now.', "Done. `requireSession` and `requireApiKey` are separate middlewares now, and routes pick the one they need. Tests pass."],
-    [docs, 'main', 'Write a getting started guide', 5 * HOUR, 'Write a getting started guide for the docs site: install, first request, and where to go next.', 'The guide is in `src/content/docs/getting-started.md`, linked from the sidebar under **Start here**.'],
+    [docs, 'main', 'Write a getting started guide', 5 * HOUR, `Write a getting started guide for the docs site: install, first request, and where to go next.\n\n${ATTACHED_ISSUE}`, 'The guide is in `src/content/docs/getting-started.md`, linked from the sidebar under **Start here**.'],
     [acme, 'main', 'Investigate flaky checkout test', DAY + 3 * HOUR, 'checkout.spec.ts fails about one run in ten on CI. Can you figure out why?', 'The test clicks **Pay** before the shipping options finish loading. It now waits for the shipping request, and 50 runs in a row passed.'],
     [mobile, 'main', 'Add pull to refresh on the orders list', 3 * DAY, 'Add pull to refresh to the orders list.', 'Pull to refresh is in, using `RefreshControl`. It refetches the first page and keeps the scroll position.'],
     [payments, 'main', 'Add CSV export to the reports endpoint', 5 * DAY, 'Let /reports return CSV when the client asks for text/csv.', '`GET /reports` now honours `Accept: text/csv` and streams the rows. JSON stays the default.'],

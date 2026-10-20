@@ -12,7 +12,7 @@ export const sidebar = [
   {
     label: 'Get started',
     collapsed: true,
-    items: ['getting-started/install', 'getting-started/first-launch', 'getting-started/first-session', 'getting-started/next-steps', 'getting-started/windows'],
+    items: ['getting-started/install', 'getting-started/first-launch', 'getting-started/first-session', 'getting-started/next-steps', 'getting-started/windows', 'getting-started/linux'],
   },
   {
     label: 'Guides',
@@ -29,6 +29,7 @@ export const sidebar = [
       'new-session/worktrees',
       'new-session/quick-questions',
       'new-session/queue',
+      'new-session/schedules',
       'sessions/saved-prompts',
       'links',
     ],
@@ -36,7 +37,7 @@ export const sidebar = [
   {
     label: 'Stay on top',
     collapsed: true,
-    items: ['sessions/sidebar', 'sessions/states', 'sessions/home', 'sessions/catch-up', 'sessions/search', 'settings/notifications', 'focus-limit'],
+    items: ['sessions/sidebar', 'sessions/states', 'sessions/home', 'sessions/upcoming', 'sessions/catch-up', 'sessions/search', 'settings/notifications', 'focus-limit'],
   },
   {
     label: 'Inside a session',
@@ -46,6 +47,7 @@ export const sidebar = [
       'permissions',
       'sessions/ask',
       'sessions/linking',
+      'sessions/github-issues',
       'sessions/agents',
       'sessions/commands',
       'sessions/mods',
@@ -62,7 +64,7 @@ export const sidebar = [
   {
     label: 'Projects',
     collapsed: true,
-    items: ['projects/projects-view', 'projects/clone-from-github', 'projects/overview', 'projects/sessions', 'projects/worktrees', 'projects/branches', 'projects/memory', 'projects/actions', 'projects/settings'],
+    items: ['projects/projects-view', 'projects/clone-from-github', 'projects/overview', 'projects/sessions', 'projects/triggers', 'projects/worktrees', 'projects/branches', 'projects/memory', 'projects/actions', 'projects/settings'],
   },
   {
     label: 'Memory and knowledge',

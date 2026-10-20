@@ -462,6 +462,31 @@
       "page": "sessions/linking"
     },
     {
+      "id": "palette:start-after-session",
+      "name": "Start after this session…",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "palette:schedule-add",
+      "name": "Schedule a session…",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "palette:schedules",
+      "name": "Schedules: pick one… (Run now, Edit…, Pause or Resume, Delete)",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "palette:new-session-from-issue",
+      "name": "New session from issue…",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "palette:new-session-from-pr",
+      "name": "New session from pull request…",
+      "page": "sessions/github-issues"
+    },
+    {
       "id": "palette:rename-session",
       "name": "Rename session…",
       "page": "sessions/sidebar"
@@ -800,6 +825,16 @@
       "id": "shortcut:composer.commands",
       "name": "composer.commands",
       "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.github",
+      "name": "composer.github",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "shortcut:composer.github-new-session",
+      "name": "composer.github-new-session",
+      "page": "sessions/github-issues"
     },
     {
       "id": "shortcut:composer.history",
@@ -1252,6 +1287,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:app-icon",
+      "name": "Settings: Theme: App icon (nine colourways, Use it on your phone too)",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"
@@ -1329,6 +1369,11 @@
     {
       "id": "feature:remote-docked-prompt",
       "name": "Remote: Claude needs you, docked above the message box",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-stop-steer",
+      "name": "Remote: Stop next to the send button, and Queue, Steer or Send now while Claude works",
       "page": "remote-access"
     },
     {
@@ -2767,6 +2812,51 @@
       "page": "new-session/queue"
     },
     {
+      "id": "feature:queue-start-by-itself",
+      "name": "Start by itself (queue item menu and New session)",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:schedule-start-menu",
+      "name": "Schedule… in New session's Start menu, and Save schedule after Edit…",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedule-dialog",
+      "name": "Schedule a session dialog: Name, Repeat, At, If missed, Next runs, Runs with",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedules-home-card",
+      "name": "Schedules card on Home",
+      "page": "sessions/home"
+    },
+    {
+      "id": "feature:schedules-project-tab",
+      "name": "Schedules section in a project's Sessions tab",
+      "page": "projects/sessions"
+    },
+    {
+      "id": "feature:schedule-row-menu",
+      "name": "Schedule row menu: Run now, Edit…, Pause or Resume, Delete with Undo",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedule-runs",
+      "name": "Scheduled runs: skipped while the last run works, queued at a limit, missed runs, notifications",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedule-session-icon",
+      "name": "Repeat icon on sessions a schedule started",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedules-backup",
+      "name": "Schedules in settings export and import",
+      "page": "settings/backup"
+    },
+    {
       "id": "feature:queue-messages",
       "name": "Queue messages while Claude works",
       "page": "sessions/conversation"
@@ -2872,6 +2962,21 @@
       "page": "sessions/linking"
     },
     {
+      "id": "feature:github-list",
+      "name": "Attach a GitHub issue or pull request with # in the message box",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "feature:new-session-from-github",
+      "name": "New session from a GitHub issue or pull request, with the worktree and prompt filled in",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "feature:link-issue-pr",
+      "name": "issue and pr parameters in switchboard://new-session links",
+      "page": "links"
+    },
+    {
       "id": "feature:rename-session",
       "name": "Rename a session",
       "page": "sessions/sidebar"
@@ -2945,6 +3050,11 @@
       "id": "feature:session-context-menu",
       "name": "Session context menu",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:session-menu-start-after",
+      "name": "Start after this one… (session menu and the conversation's ⋯ menu)",
+      "page": "new-session/queue"
     },
     {
       "id": "feature:session-menu-project",
@@ -3725,6 +3835,196 @@
       "id": "feature:clone-other-computer",
       "name": "Clone from GitHub on another computer (Run on)",
       "page": "other-computers"
+    },
+    {
+      "id": "palette:upcoming",
+      "name": "Go to Upcoming",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "palette:queue-view",
+      "name": "Queue…: Upcoming on the queue",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "palette:schedules-view",
+      "name": "Schedules…: Upcoming on the schedules",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "shortcut:upcoming",
+      "name": "Upcoming: queued and scheduled",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming",
+      "name": "Upcoming: the queue, the scheduled runs of the next 7 days and every schedule, across projects",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-filters",
+      "name": "Upcoming: All, Queue and Schedules, and the project filter, kept per window",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-sidebar",
+      "name": "Sidebar: Home and Upcoming rows, with the count and what comes next",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-rail",
+      "name": "Minimal sidebar: the Upcoming button with its count, green when an item is ready",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-history",
+      "name": "Upcoming: History, the runs of the last 7 days and how they went (Finished, Skipped, Missed, In the queue)",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-fold",
+      "name": "Upcoming: days in a row with the same runs fold into one line",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:skip-run",
+      "name": "Skip this run: skip one scheduled run, with Undo",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:skip-next-run",
+      "name": "Skip next run in a schedule's menu",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:see-all-upcoming",
+      "name": "See all in Upcoming on Home's Queue and Schedules cards (three rows each)",
+      "page": "sessions/home"
+    },
+    {
+      "id": "feature:schedule-once",
+      "name": "Schedules: Once, a single run at a date and time",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:linux-support",
+      "name": "Switchboard on Linux (x64 and Arm64)",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "feature:linux-packages",
+      "name": "AppImage, .deb and .rpm for Linux",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:linux-updates",
+      "name": "Updates on Linux through the AppImage or the package manager",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "feature:linux-open-in",
+      "name": "Open in Files and Linux terminals",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "feature:linux-sounds",
+      "name": "Freedesktop system sounds on Linux",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "project-tab:triggers",
+      "name": "Triggers tab",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:trigger-new",
+      "name": "New trigger…",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers",
+      "name": "Triggers: pick one… (Check now, Edit…, Pause or Resume, Delete)",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers-page",
+      "name": "Triggers… (a project's Triggers tab)",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers-here",
+      "name": "Triggers in <current project>",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-editor",
+      "name": "Trigger editor: When, which issues or the branch and workflows, On GitHub, prompt with event fields, Runs with, At once, Waiting",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-start-when",
+      "name": "Start when… in New session's Start menu",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-ci",
+      "name": "CI fails on a branch: a session for each new failed workflow run, with its log",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-issues",
+      "name": "Issues for you: a label, assigned to you, or both, from collaborators only",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-state-labels",
+      "name": "State labels on the issue, and Assign to me when picked up",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-limits",
+      "name": "At once and waiting limits, with Start now and Start anyway",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-guardrails",
+      "name": "Trigger guardrails: never bypass permissions, pause after 5 failed checks, the first check marks what is there as seen",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-session-bolt",
+      "name": "Bolt on sessions a trigger started, and the Started by line in their header",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-notifications",
+      "name": "Trigger notifications: a CI failure started a session, an issue picked up, a trigger paused",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-project-menu",
+      "name": "Triggers… in a project's menu",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:upcoming-triggers",
+      "name": "Upcoming's Triggers filter: every trigger across projects, with what waits",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:triggers-backup",
+      "name": "Triggers in settings export and import, imported paused",
+      "page": "settings/backup"
+    },
+    {
+      "id": "terminal-context-menu",
+      "name": "Terminal right-click menu: Copy, Paste, Explain or Fix with Claude",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:open-at-login",
+      "name": "Settings: General, Open at login",
+      "page": "settings"
     }
   ]
 }

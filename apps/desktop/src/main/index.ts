@@ -1,15 +1,18 @@
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, sep } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, screen, shell, type MenuItemConstructorOptions } from 'electron';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
+import type { ScheduleRunEvent } from '@switchboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
+import { AppIcon } from './appIcon.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
@@ -22,6 +25,7 @@ import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
 import { SoundPlayer } from './sounds.ts';
+import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
@@ -70,6 +74,8 @@ if (scripted) {
   process.env.SWITCHBOARD_STUB_BTW = '1';
   // Catch-up cards are written from the tool calls, never by a model.
   process.env.SWITCHBOARD_STUB_CATCHUP = '1';
+  // Queued items that start by themselves leave the queue without sending their prompt to Claude.
+  process.env.SWITCHBOARD_STUB_QUEUE = '1';
   // Clone from GitHub clones from local bare repositories in the throwaway profile, never from the network.
   process.env.SWITCHBOARD_CLONE_SOURCE ??= join(app.getPath('userData'), 'clone-source');
 }
@@ -97,6 +103,13 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 // Electron's own path in development, where no Start menu entry carries one.
 const appUserModelId = app.isPackaged ? 'dev.switchboard.app' : process.execPath;
 if (process.platform === 'win32') app.setAppUserModelId(appUserModelId);
+
+// On Linux, Chromium picks the keychain from the desktop's name: one it doesn't know (Hyprland, Sway, i3) gets no
+// keychain at all, even with gnome-keyring or KeePassXC running, and Remote can't keep its keys. Ask for the Secret
+// Service there; KDE keeps KWallet, and a --password-store the user passes wins.
+if (process.platform === 'linux' && !app.commandLine.hasSwitch('password-store') && !/KDE/i.test(process.env.XDG_CURRENT_DESKTOP ?? '')) {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+}
 
 // SWITCHBOARD_COLOR_SCHEME=light|dark forces a scheme without saving it (to check both in the smoke test).
 const forcedScheme = process.env.SWITCHBOARD_COLOR_SCHEME;
@@ -129,6 +142,9 @@ const updater = new Updater({
     devServer: Boolean(process.env.ELECTRON_RENDERER_URL),
     hasFeed: app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml')),
     mockFeed: Boolean(mockFeedUrl),
+    // On Linux electron-updater replaces the AppImage it runs from, or installs the .deb or .rpm the build marked
+    // in package-type; the unpacked folder is neither.
+    installer: process.platform !== 'linux' || Boolean(process.env.APPIMAGE) || (app.isPackaged && existsSync(join(process.resourcesPath, 'package-type'))),
   }),
   markerFile: join(app.getPath('userData'), 'update-marker.json'),
   ...(mockFeedUrl ? { mockFeedUrl } : {}),
@@ -147,9 +163,28 @@ ipcMain.on(IpcChannel.updateCommand, (_event, command: unknown) => {
   if (command === 'check' || command === 'download' || command === 'install' || command === 'retry' || command === 'dismiss') updater.run(command satisfies UpdateCommand);
 });
 
+/**
+ * Settings › Theme › App icon, in the Dock or on the windows; applied on `ready`, before the first window, and on every
+ * change. The colourways ship with the app (extraResources), from resources/app-icons in development.
+ */
+const appIcon = new AppIcon({
+  platform: process.platform,
+  dir: app.isPackaged ? join(process.resourcesPath, 'app-icons') : join(here, '../../resources/app-icons'),
+  bundled: app.isPackaged,
+  dock: app.dock,
+  windows: () => BrowserWindow.getAllWindows(),
+  exists: existsSync,
+});
+/** A new window's icon option: the colourway's, where the bundle's isn't the one chosen. */
+const windowIcon = (): Electron.BrowserWindowConstructorOptions => {
+  const icon = appIcon.windowIcon();
+  return icon ? { icon } : {};
+};
+
 /** Applies a change from any window or the menu bar, and tells every window. */
 function updatePreferences(patch: unknown): void {
   const next = preferences.update(patch);
+  if (next.appIcon !== appIcon.key) appIcon.apply(next.appIcon);
   updater.setAutoCheck(next.autoUpdate);
   updater.setChannel(next.updateChannel);
   const item = Menu.getApplicationMenu()?.getMenuItemById(`scheme-${next.colorScheme}`);
@@ -173,6 +208,10 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
   engine?.sendStanding({ type: 'chrome', enabled: prefs.chrome });
+  // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
+  engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
+  // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
+  engine?.sendStanding({ type: 'appIcon', key: prefs.appIconOnRemote ? prefs.appIcon : DEFAULT_PREFERENCES.appIcon });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -286,6 +325,8 @@ function sessionOnScreen(): string | null {
   return win ? (focusedSessions.get(win.webContents.id) ?? null) : null;
 }
 const recordedNotifications: RecordedAlert[] = [];
+/** Scheduled runs the engine reported (the smoke run's schedules step reads their titles). */
+const recordedScheduleRuns: ScheduleRunEvent[] = [];
 /** Sounds the smoke run would have played (it never makes a sound). */
 const recordedSounds: Array<{ id: string; volume: number }> = [];
 const sounds = new SoundPlayer(smokeOutDir ? { record: (sound) => void recordedSounds.push(sound) } : {});
@@ -306,6 +347,31 @@ ipcMain.on(IpcChannel.openNotificationSettings, () => {
   });
 });
 ipcMain.on(IpcChannel.testNotification, () => notifier?.test());
+
+/** Open at login for scripted runs, which never add Switchboard to the real login items. */
+let scriptedOpenAtLogin: OpenAtLogin = 'off';
+/** How Open at login stands. A development build would add Electron itself, and Electron has no login items on Linux. */
+function readOpenAtLogin(): OpenAtLogin {
+  if (scripted) return scriptedOpenAtLogin;
+  if (!app.isPackaged || !loginItemsSettingsUrl(process.platform)) return 'unavailable';
+  return openAtLoginFrom(app.getLoginItemSettings(), process.platform);
+}
+ipcMain.handle(IpcChannel.getOpenAtLogin, () => readOpenAtLogin());
+ipcMain.handle(IpcChannel.setOpenAtLogin, (_event, on: unknown) => {
+  if (typeof on !== 'boolean' || readOpenAtLogin() === 'unavailable') return readOpenAtLogin();
+  if (scripted) return (scriptedOpenAtLogin = on ? 'on' : 'off');
+  try {
+    // On Windows `enabled` also turns it back on when Task Manager or Startup apps turned it off.
+    app.setLoginItemSettings({ openAtLogin: on, enabled: on });
+  } catch {
+    // The answer below says how it really stands.
+  }
+  return readOpenAtLogin();
+});
+ipcMain.on(IpcChannel.openLoginItemsSettings, () => {
+  const url = loginItemsSettingsUrl(process.platform);
+  if (url && !scripted) void shell.openExternal(url);
+});
 
 /**
  * Where the traffic lights sit: the default, or inside the 80px minimal sidebar. They are 54px wide, and
@@ -612,6 +678,7 @@ function createWindow(): BrowserWindow {
     enableLargerThanScreen: scripted,
     show: false,
     ...titleBar(),
+    ...windowIcon(),
     backgroundColor: windowBackground(),
     webPreferences: webPreferences(),
   });
@@ -720,6 +787,7 @@ function popOut(sessionId: string, view: unknown = null): void {
     minHeight: POPOUT_MIN.height,
     show: false,
     ...titleBar(),
+    ...windowIcon(),
     backgroundColor: windowBackground(),
     webPreferences: webPreferences(),
   });
@@ -795,7 +863,7 @@ ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
   sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
 });
 // A view a pop-out doesn't have (Settings, Usage, a project, New session, Go to, Search) opens in the main window, which comes to the front.
-const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate']);
+const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming']);
 ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
   if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
   sendToWindow(showWindow(), IpcChannel.mainRequested, request);
@@ -846,6 +914,10 @@ ipcMain.handle(IpcChannel.pickFolder, async (event, defaultPath: unknown) => {
   };
   const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
   return result.canceled ? null : (result.filePaths[0] ?? null);
+});
+
+ipcMain.handle(IpcChannel.pasteClipboard, (event) => {
+  event.sender.paste();
 });
 
 ipcMain.handle(IpcChannel.pickImage, async (event, defaultPath: unknown) => {
@@ -2100,6 +2172,13 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   await section('projects');
   await click('[data-project-order="yours"]');
   await section('general');
+  // Open at login goes to the faked login item (scripted runs never touch the real one), and back off.
+  const loginSwitch = "document.querySelector('[data-open-at-login]')";
+  const loginReady = await waitInPage(win, `${loginSwitch} && !${loginSwitch}.disabled && ${loginSwitch}.getAttribute('aria-checked') === 'false'`, 3_000);
+  await click('[data-open-at-login]');
+  const loginOn = loginReady && (await until(() => scriptedOpenAtLogin === 'on', 2_000)) && (await waitInPage(win, `${loginSwitch}.getAttribute('aria-checked') === 'true'`, 2_000));
+  await click('[data-open-at-login]');
+  const loginOff = await until(() => scriptedOpenAtLogin === 'off', 2_000);
   await click('[data-startup-view="new"]');
   await click('[data-confirm-quit]');
   await until(() => !preferences.get().confirmQuit);
@@ -2122,6 +2201,8 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   await click('[data-tool-activity="summary"]');
   await until(() => preferences.get().toolActivity === 'summary');
   const restored = preferences.get();
+  if (!loginOn) return 'Open at login did not turn on';
+  if (!loginOff) return 'Open at login did not turn off again';
   if (!scoped) return 'other apps\' sessions stayed in the sidebar with the setting off';
   if (!quitWithoutAsking) return '⌘Q still asked with the prompt turned off';
   if (saved.colorScheme !== 'dark' || saved.sidebarStyle !== 'compact' || saved.toolActivity !== 'steps' || saved.confirmQuit !== false || saved.sessionScope !== 'switchboard' || saved.startupView !== 'new' || saved.projectOrder !== 'yours') return `not saved: ${JSON.stringify(saved)}`;
@@ -2871,7 +2952,7 @@ async function runProjectMemoryStep(win: BrowserWindow, root: string): Promise<s
     if (!(await waitInPage(win, `${legend}.includes('MEMORY.md') && ${legend}.includes('CLAUDE.md')`, 5_000))) return `What loads here did not list the sandbox profile's files (${String(await js(legend))})`;
     await shot(win, 'memory-load-order.png');
     // Search finds the sandbox memory in its own Memory group above the conversations. Nothing is opened.
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: ['meta', 'shift'] });
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: [MOD_MODIFIER, 'shift'] });
     if (!(await waitInPage(win, "document.querySelector('[data-search] input[role=combobox]')", 3_000))) return 'search did not open';
     await setFieldValue(win, '[data-search] input[role=combobox]', 'smoke share');
     if (!(await waitInPage(win, "document.querySelector('[data-search-memory-group] [data-search-memory-hit]')", 5_000))) return 'search did not find the sandbox memory';
@@ -3652,6 +3733,56 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
   await click('[data-close-settings]');
   smokeThemeFile = null;
   return `ok (${cards.length} themes, 2 imported and removed)`;
+}
+
+/**
+ * Settings › Theme › App icon: pick Signal yellow (checked, saved, applied in main), the keys, both modes, the saved
+ * file as the next launch reads it, then Reset to Graphite.
+ */
+async function runAppIconStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const checked = (key: string) => waitInPage(win, `document.querySelector('[data-app-icon="${key}"][aria-checked="true"][data-app-icon-selected]') && document.querySelectorAll('[data-app-icon-picker] [aria-checked="true"]').length === 1`, 2_000);
+  const key = (name: string) => js(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(name)}, bubbles: true }))`);
+  const saved = () => sanitizePreferences(JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8'))).appIcon ?? 'graphite';
+
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  await click('[data-settings-section="theme"]');
+  if (!(await waitInPage(win, "document.querySelectorAll('[data-app-icon-picker] [data-app-icon]').length === 9", 3_000))) return 'failed: the picker has no nine tiles';
+  if (!(await js("document.querySelector('[data-app-icon-picker]').closest('[role=radiogroup]')?.getAttribute('aria-label') === 'App icon'"))) return 'failed: the tiles are not a radio group named App icon';
+  if (!(await checked('graphite')) || (await js("Boolean(document.querySelector('[data-app-icon-reset]'))"))) return 'failed: Graphite is not the one checked, or Reset shows for it';
+  const broken = (await js("[...document.querySelectorAll('[data-app-icon] img')].filter((img) => !img.complete || img.naturalWidth === 0).length")) as number;
+  if (broken) return `failed: ${broken} tiles have no image`;
+
+  await click('[data-app-icon="signal"]');
+  if (!(await checked('signal'))) return 'failed: Signal yellow is not checked after a click';
+  if (!(await until(() => preferences.get().appIcon === 'signal' && appIcon.key === 'signal' && saved() === 'signal', 2_000))) return `failed: not saved and applied (preferences ${preferences.get().appIcon}, main ${appIcon.key}, file ${saved()})`;
+  if (process.platform !== 'darwin' && !appIcon.windowIcon()?.includes('signal')) return `failed: new windows would get ${appIcon.windowIcon()}`;
+  if (!(await waitInPage(win, "document.querySelector('[data-app-icon-reset]')", 2_000))) return 'failed: no Reset to Graphite';
+
+  // Arrow keys move and pick, as in any radio group.
+  await js("document.querySelector('[data-app-icon=\"signal\"]').focus()");
+  await key('ArrowRight');
+  if (!(await checked('forest')) || !(await until(() => preferences.get().appIcon === 'forest', 2_000))) return 'failed: → did not pick Forest';
+  await key('ArrowLeft');
+  if (!(await checked('signal'))) return 'failed: ← did not go back to Signal yellow';
+
+  for (const mode of ['light', 'dark'] as const) {
+    await click(`[data-color-scheme="${mode}"]`);
+    if (!(await waitInPage(win, `matchMedia('(prefers-color-scheme: ${mode})').matches`, 2_000))) return `failed: ${mode} did not apply`;
+    const frame = (await js("getComputedStyle(document.querySelector('[data-app-icon=\"signal\"]')).borderTopColor")) as string;
+    if (!frame || frame === 'rgba(0, 0, 0, 0)') return `failed: the chosen tile has no frame in ${mode} mode`;
+    await shot(win, `app-icon-${mode}.png`);
+  }
+  await click('[data-color-scheme="system"]');
+
+  // A restart: launch reads the saved file before the first window.
+  const atLaunch = saved();
+  await click('[data-app-icon-reset]');
+  if (!(await checked('graphite')) || !(await until(() => preferences.get().appIcon === 'graphite' && appIcon.key === 'graphite' && saved() === 'graphite', 2_000))) return 'failed: Reset to Graphite did not apply';
+  if (!(await waitInPage(win, "!document.querySelector('[data-app-icon-reset]')", 2_000))) return 'failed: Reset still shows for Graphite';
+  await click('[data-close-settings]');
+  return atLaunch === 'signal' ? 'ok (Signal yellow saved for the next launch, keys, light and dark, reset)' : `failed: the next launch would read ${atLaunch}`;
 }
 
 /** Tool calls are summarised by default: open the last finished group and count its steps. */
@@ -5173,6 +5304,212 @@ async function runQuickQuestionStep(win: BrowserWindow): Promise<string> {
  * but sends nothing; a bad link shows why and changes nothing; a repo with no checkout leaves the folder
  * empty; a session link opens the session under test again.
  */
+/** The made-up repository the smoke's fake gh answers for (tests/fixtures/fake-gh.cjs). */
+const SMOKE_GITHUB_REPO = 'smoke-owner/smoke-repo';
+let smokeGithubFolder: string | null = null;
+/**
+ * A throwaway git repository whose remote is on GitHub (the made-up smoke-owner/smoke-repo), for the # list steps: one
+ * commit on main, nothing pushed or fetched. Made once per run, in the temporary folder.
+ */
+function smokeGithubCheckout(): string {
+  if (smokeGithubFolder) return smokeGithubFolder;
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-gh-')));
+  const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  writeFileSync(join(dir, 'README.md'), '# Smoke repo\n');
+  git('add', '-A');
+  git('commit', '-q', '-m', 'Initial commit');
+  git('remote', 'add', 'origin', `https://github.com/${SMOKE_GITHUB_REPO}.git`);
+  smokeGithubFolder = dir;
+  return dir;
+}
+
+/** Opens New session on the smoke's GitHub checkout with an empty box; false when it didn't get there. */
+async function newSessionOnSmokeGithub(win: BrowserWindow): Promise<string | null> {
+  const root = smokeGithubCheckout();
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}`);
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  if (!(await waitInPage(win, `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(root)} && ${composer} && !${composer}.disabled`, 8_000))) return null;
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  return root;
+}
+
+/**
+ * The # list, read-only, with the smoke's fake gh (never GitHub) on a throwaway repository whose remote is on GitHub:
+ * `#` lists Issues, then Pull requests, with the repository in the header; typing narrows it; ↩ adds the chip and
+ * takes `#…` out of the text; Esc keeps what was typed as text; `C#` opens nothing. Then, where the demo world has
+ * one, a message that attached an issue shows its Attached row, and What Claude got shows the block as Claude read
+ * it, marked as context. Nothing is sent.
+ */
+async function runGithubListStep(win: BrowserWindow): Promise<string> {
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where the smoke test has no fake gh';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const box = '[data-new-session-view] [data-composer]';
+  const composer = `document.querySelector(${JSON.stringify(box)})`;
+  const list = "document.querySelector('[data-new-session-view] [data-github-list]')";
+  const chip = "document.querySelector('[data-new-session-view] [data-github-chip=\"issue:32\"]')";
+  const root = await newSessionOnSmokeGithub(win);
+  if (!root) return 'New session did not open on the throwaway GitHub checkout';
+  const clear = async () => {
+    if (await js(`!!${list}`)) pressKey(win, 'Escape');
+    if (await js(`!!${chip}`)) await js(`${chip}.querySelector('[data-context-chip-remove]').click()`);
+    await setFieldValue(win, box, '');
+  };
+  await js(`${composer}.focus()`);
+  await win.webContents.insertText('can you look at #');
+  if (!(await waitInPage(win, `${list}?.querySelector('[data-github-option]')`, 8_000))) return (await clear(), `# opened no list (${String(await js(`${list}?.innerText ?? 'no list'`))})`);
+  const headings = (await js(`[...${list}.querySelectorAll('[role=group]')].map((g) => document.getElementById(g.getAttribute('aria-labelledby'))?.innerText.trim().toLowerCase())`)) as string[];
+  if (headings.join(',') !== 'issues,pull requests') return (await clear(), `the groups are ${JSON.stringify(headings)}`);
+  const repo = (await js(`${list}.querySelector('[data-github-list-repo]')?.innerText ?? ''`)) as string;
+  if (!repo.includes(SMOKE_GITHUB_REPO)) return (await clear(), `the header says ${JSON.stringify(repo)}`);
+  if (!(await js(`!!${list}.querySelector('[data-github-option="pr:149"] [data-github-fork]')`))) return (await clear(), 'the fork pull request has no fork flag');
+  await shot(win, 'github-list.png');
+  await win.webContents.insertText('start');
+  if (!(await waitInPage(win, `${list}?.querySelector('[role=option][aria-selected=true]')?.dataset.githubOption === 'issue:32' && !${list}.querySelector('[data-github-option="issue:118"]')`, 5_000))) {
+    return (await clear(), 'typing did not narrow the list to #32 first');
+  }
+  const label = (await js(`${list}.querySelector('[role=option][aria-selected=true]').getAttribute('aria-label')`)) as string;
+  if (!label.startsWith('Issue 32, Start a session from a GitHub issue or pull request, open, enhancement')) return (await clear(), `the row reads ${JSON.stringify(label)}`);
+  pressKey(win, 'Return');
+  if (!(await waitInPage(win, `${chip} && ${composer}.value === 'can you look at ' && !${list}`, 3_000))) return (await clear(), `↩ did not add the chip and take #start out (${JSON.stringify(await js(`${composer}.value`))})`);
+  const chipLabel = (await js(`${chip}.querySelector('button').getAttribute('aria-label')`)) as string;
+  if (chipLabel !== 'Issue 32 attached, open on GitHub') return (await clear(), `the chip is labelled ${JSON.stringify(chipLabel)}`);
+  // The chip's detail comes from gh: its label and comments.
+  if (!(await waitInPage(win, `${chip}.innerText.includes('enhancement · 4 comments')`, 5_000))) return (await clear(), `the chip shows ${JSON.stringify(await js(`${chip}.innerText`))}`);
+  await shot(win, 'github-chip.png');
+  // Esc keeps typing: the list stays closed for that word.
+  await win.webContents.insertText('#');
+  if (!(await waitInPage(win, list, 5_000))) return (await clear(), 'a second # opened no list');
+  pressKey(win, 'Escape');
+  await win.webContents.insertText('11');
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  if (await js(`!!${list}`)) return (await clear(), 'the list came back after Esc while typing the same word');
+  if (!(await js(`${composer}.value === 'can you look at #11' && !!${chip}`))) return (await clear(), 'Esc changed the text or the chip');
+  // # in the middle of a word is text.
+  await setFieldValue(win, box, 'written in C');
+  await js(`${composer}.focus(); ${composer}.setSelectionRange(12, 12)`);
+  await win.webContents.insertText('#');
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  if (await js(`!!${list}`)) return (await clear(), 'C# opened the list');
+  await clear();
+  if (!(await waitInPage(win, `!${chip} && ${composer}.value === ''`, 3_000))) return 'could not take the chip and the text out again';
+  const attached = await attachedRowInDemo(win);
+  if (attached.startsWith('failed')) return attached;
+  return `ok: # listed Issues then Pull requests for ${SMOKE_GITHUB_REPO} (fork flagged), typing narrowed it, ↩ added #32 as a chip with its labels and comments, Esc kept typing, C# stayed text; ${attached}`;
+}
+
+/** Takes New session's box back to empty after a GitHub step: the chips out, no text. */
+async function emptyNewSessionBox(win: BrowserWindow): Promise<void> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (await js("!!document.querySelector('[role=menu], [data-menu]')")) pressKey(win, 'Escape');
+  await js("[...document.querySelectorAll('[data-new-session-view] [data-context-chip] [data-context-chip-remove]')].forEach((b) => b.click())");
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+}
+
+/**
+ * New session from an issue and from a pull request, read-only (fake gh, the throwaway GitHub checkout): ⌥↩ on #32 in
+ * the # list fills in a New worktree named issue-32-<slug>, the chip and "Fix #32: …", with the note under the box;
+ * the palette's "New session from pull request…" picks the fork's #149, whose Where menu says "Work on #149 in" with
+ * the caution line. Nothing is started.
+ */
+async function runGithubNewSessionStep(win: BrowserWindow): Promise<string> {
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where the smoke test has no fake gh';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const list = "document.querySelector('[data-new-session-view] [data-github-list]')";
+  const root = await newSessionOnSmokeGithub(win);
+  if (!root) return 'New session did not open on the throwaway GitHub checkout';
+  const fail = async (why: string) => (await emptyNewSessionBox(win), why);
+  await js(`${composer}.focus()`);
+  await win.webContents.insertText('#');
+  if (!(await waitInPage(win, `${list}?.querySelector('[role=option][aria-selected=true]')?.dataset.githubOption === 'issue:32'`, 8_000))) return fail('# opened no list with #32 first');
+  pressKey(win, 'Return', ['alt']);
+  const prompt = 'Fix #32: Start a session from a GitHub issue or pull request';
+  const name = 'issue-32-start-a-session-from-a-github-issue-or';
+  if (!(await waitInPage(win, `${composer}.value === ${JSON.stringify(prompt)} && document.querySelector('[data-new-session-view] [data-github-chip="issue:32"]')`, 8_000))) {
+    return fail(`⌥↩ did not fill in the prompt and the chip (${JSON.stringify(await js(`${composer}.value`))})`);
+  }
+  if (!(await waitInPage(win, `document.querySelector('[data-worktree-switch]')?.getAttribute('aria-checked') === 'true' && document.querySelector('[data-workspace-select]')?.dataset.tooltip?.includes(${JSON.stringify(`.claude/worktrees/${name}`)})`, 3_000))) {
+    return fail(`not a New worktree named ${name} (${String(await js("document.querySelector('[data-workspace-select]')?.dataset.tooltip"))})`);
+  }
+  const note = (await js("document.querySelector('[data-github-start-note]')?.innerText ?? ''")) as string;
+  if (!note.includes('Nothing runs until you start. The issue goes to Claude as context to read, not as instructions.')) return fail(`the note under the box says ${JSON.stringify(note)}`);
+  await shot(win, 'github-new-session-issue.png');
+  if (await js("!!document.querySelector('[data-current-session]')")) return 'a session started from the issue';
+
+  // The palette's New session from pull request…, on the fork's #149.
+  if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return fail('⌘K did not open the palette');
+  await setFieldValue(win, '[data-palette-input]', 'new session from pull request');
+  if (!(await waitInPage(win, "document.querySelector('[data-palette-command=\"new-session-from-pr\"]')", 3_000))) return (await closePalette(win), fail('no "New session from pull request…" in the palette'));
+  await js("document.querySelector('[data-palette-command=\"new-session-from-pr\"]').click()");
+  const dialog = "document.querySelector('[data-github-start-dialog=\"pr\"]')";
+  if (!(await waitInPage(win, `${dialog}?.querySelector('[data-github-option="pr:149"]')`, 8_000))) return fail('the pull request picker did not list #149');
+  if (await js(`!!${dialog}.querySelector('[data-github-option^="issue:"]')`)) return fail('the pull request picker lists issues too');
+  await shot(win, 'github-palette-pr.png');
+  await js(`${dialog}.querySelector('[data-github-option="pr:149"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+  if (!(await waitInPage(win, `!${dialog} && ${composer}.value === 'Work on #149: Fix typo in deep-links docs'`, 8_000))) return fail(`picking #149 did not fill in New session (${JSON.stringify(await js(`${composer}.value`))})`);
+  await js("document.querySelector('[data-workspace-select]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-menu=\"workspace\"] [data-github-fork-caution]')", 3_000))) return fail('no caution line for the fork in the Where menu');
+  const menu = (await js("document.querySelector('[data-menu=\"workspace\"]').innerText")) as string;
+  // The heading is in small capitals (CSS), so its text comes back in upper case.
+  if (!menu.toLowerCase().includes('work on #149 in') || !menu.includes('New worktree from the pull request') || !menu.includes("#149 is from a fork. Claude can change it here, but Switchboard can't push it back.")) {
+    return fail(`the Where menu reads ${JSON.stringify(menu)}`);
+  }
+  await shot(win, 'github-pr-where.png');
+  pressKey(win, 'Escape');
+  await waitInPage(win, "!document.querySelector('[data-menu=\"workspace\"]')", 2_000);
+  if (await js("!!document.querySelector('[data-current-session]')")) return 'a session started from the pull request';
+  await emptyNewSessionBox(win);
+  return `ok: ⌥↩ on #32 filled in worktree-${name}, its chip, "${prompt}" and the note; the palette picked the fork's #149 with "Work on #149 in" and the caution line; nothing started`;
+}
+
+/**
+ * A link with an issue, read-only: `issue=32&autostart=1` fills in New session the same way, with the banner and the
+ * line that such links never start on their own; nothing starts. An issue of another repository is refused.
+ */
+async function runGithubLinkStep(win: BrowserWindow): Promise<string> {
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where the smoke test has no fake gh';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const root = smokeGithubCheckout();
+  const fail = async (why: string) => (await emptyNewSessionBox(win), why);
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}&issue=32&autostart=1`);
+  const prompt = 'Fix #32: Start a session from a GitHub issue or pull request';
+  if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-from-link-banner]')`, 10_000))) {
+    return fail(`the link did not fill in New session (${JSON.stringify(await js(`${composer}?.value`))})`);
+  }
+  const banner = (await js("document.querySelector('[data-from-link-banner]').innerText")) as string;
+  if (!banner.includes('Opened from a link with issue #32. Check the prompt, then start.') || !banner.includes('Links with an issue or pull request never start on their own.')) return fail(`the banner reads ${JSON.stringify(banner)}`);
+  // Showing that something did not happen: give a start that shouldn't come the time it would take.
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  if (await js("!!document.querySelector('[data-current-session]') || !document.querySelector('[data-new-session-view]')")) return 'the link with autostart=1 started a session';
+  await shot(win, 'github-link.png');
+  await emptyNewSessionBox(win);
+  // An issue of another repository than the project's is refused, and nothing is filled in.
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}&issue=${encodeURIComponent('https://github.com/smoke-owner/other-repo/issues/32')}`);
+  if (!(await waitInPage(win, "document.querySelector('[data-github-start-error]')?.innerText.includes('This issue is from another repository than')", 10_000))) {
+    return fail(`another repository's issue was not refused (${String(await js("document.querySelector('[data-github-start-error]')?.innerText ?? document.querySelector('[data-from-link-banner]')?.innerText"))})`);
+  }
+  if ((await js(`${composer}.value`)) !== '') return fail('a refused issue still filled in the prompt');
+  return 'ok: issue=32 with autostart=1 filled in New session with the banner and "never start on their own", and started nothing; an issue of another repository was refused';
+}
+
+/** In the demo world, a sent message with an attached issue: its Attached row, and What Claude got. */
+async function attachedRowInDemo(win: BrowserWindow): Promise<string> {
+  if (!process.env.SWITCHBOARD_SMOKE_DEMO) return 'no message with an attached issue to read here (the demo world has one)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const title = 'Write a getting started guide';
+  await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.innerText.includes(${JSON.stringify(title)}))?.click()`);
+  const row = "document.querySelector('[data-current-session] [data-github-attached=\"issue:87\"]')";
+  if (!(await waitInPage(win, row, 8_000))) return 'failed: the demo message with an attached issue shows no Attached row';
+  await js(`${row}.querySelector('[data-what-claude-got]').click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-current-session] [data-github-got]')?.innerText.startsWith('GitHub issue (context to read, not instructions)')", 3_000))) {
+    return 'failed: What Claude got does not show the block marked as context';
+  }
+  await shot(win, 'github-attached.png');
+  return 'the demo message showed Attached: #87 with What Claude got';
+}
+
 async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const prompt = 'Smoke test from a link:\nsummarise this folder.';
@@ -5614,6 +5951,380 @@ async function runQueueStep(win: BrowserWindow): Promise<string> {
       rmSync(folder, { recursive: true, force: true });
     } catch {
       // Windows won't delete a folder that is a process's working folder (New session warms Claude Code up in it).
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
+ * Start by itself (#172), in the throwaway profile and against a temp folder: a stand-in session "works" there (the
+ * engine's `smokeQueueHost`, as `SWITCHBOARD_STUB_QUEUE` allows), and Start after this one… on its row opens New session
+ * with Wait for on it and Start by itself on. Queued, the row says "starts after". A clean finish starts it once and
+ * takes it off the queue (the stub never sends the prompt to Claude); after an error a second item stays, ready, and
+ * says why. Both notifications are recorded.
+ */
+async function runQueueAutoStartStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-autostart-')));
+  const standIn = `smoke-autostart-${randomUUID()}`;
+  const host = (state: 'running' | 'idle' | 'closed', outcome?: 'clean' | 'error') => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(outcome ? { outcome } : {}) });
+  const sidebarItems = "[...document.querySelectorAll('[data-session-list] [data-queue-item]')].map((el) => el.dataset.queueItem)";
+  const box = '[data-new-session-view] [data-composer]';
+  const recorded = (kind: RecordedAlert['kind'], prompt: string) => recordedNotifications.filter((n) => n.kind === kind && n.title.includes(prompt)).length;
+  /** Start after this one… on the stand-in's row, then Add to queue (the main part of Start, opened this way). */
+  const queueAfter = async (prompt: string): Promise<string | null> => {
+    const opened = await js(
+      `(() => { const row = document.querySelector('[data-session-list] [data-session-id="${standIn}"]'); if (!row) return false; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 20 })); return true; })()`,
+    );
+    if (!opened) return 'the stand-in session has no row';
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-start-after]')", 2_000))) return 'the session menu has no Start after this one…';
+    await js("document.querySelector('[role=menu] [data-start-after]').click()");
+    const ready = `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && document.querySelector('[data-queue-autostart-box]')?.getAttribute('aria-checked') === 'true' && !!document.querySelector('[data-queue-busy-line]')`;
+    if (!(await waitInPage(win, ready, 5_000))) return 'Start after this one… did not open New session on the project with Start by itself on';
+    if (!(await js("document.querySelector('[data-new-session-view] [data-composer-submit]')?.innerText.includes('Add to queue')"))) return 'Add to queue did not lead in New session';
+    await setFieldValue(win, box, prompt);
+    if (!(await waitInPage(win, `!document.querySelector('[data-new-session-view] [data-composer-submit]')?.disabled`, 2_000))) return 'Add to queue stayed disabled';
+    await js("document.querySelector('[data-new-session-view] [data-composer-submit]').click()");
+    const row = `[...document.querySelectorAll('[data-session-list] [data-queue-item]')].find((el) => el.getAttribute('aria-label')?.includes(${JSON.stringify(prompt)}))`;
+    if (!(await waitInPage(win, `${row}?.closest('[data-queue-autostart]')?.dataset.queueState === 'waiting'`, 3_000))) return 'the queued item did not wait to start by itself';
+    const label = (await js(`${row}.getAttribute('aria-label')`)) as string;
+    if (!label.includes('Starts by itself')) return `its row did not say it starts by itself (${label})`;
+    return null;
+  };
+  try {
+    if (!(await js("!!document.querySelector('[data-sidebar-open]')"))) return 'the sidebar is not open';
+    if ((await js(`${sidebarItems}.length`)) !== 0) return 'the throwaway profile already had a queue';
+    host('running');
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+
+    // A clean finish: it starts once and leaves the queue.
+    const first = 'Smoke autostart: run the tests';
+    const failed = await queueAfter(first);
+    if (failed) return failed;
+    await shot(win, 'queue-autostart.png');
+    host('idle', 'clean');
+    if (!(await waitInPage(win, `${sidebarItems}.length === 0`, 5_000))) return 'the item did not start after a clean finish';
+    if (!(await until(() => recorded('queue-started', first) === 1, 3_000))) return 'no "Started" notification';
+    // Long enough for a second start to show: there must be none.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    if (recorded('queue-started', first) !== 1) return `it started ${recorded('queue-started', first)} times`;
+
+    // An error: it doesn't start, stays in the queue, ready, and says why.
+    host('running');
+    const second = 'Smoke autostart: write the changelog';
+    const failedAgain = await queueAfter(second);
+    if (failedAgain) return failedAgain;
+    host('idle', 'error');
+    const row = `[...document.querySelectorAll('[data-session-list] [data-queue-item]')].find((el) => el.getAttribute('aria-label')?.includes(${JSON.stringify(second)}))`;
+    if (!(await waitInPage(win, `${row}?.closest('[data-queue-state]')?.dataset.queueState === 'ready' && ${row}.closest('[data-queue-state]').innerText.includes('ended with an error')`, 5_000))) return 'after an error the item did not turn ready and say why';
+    if (!(await until(() => recorded('queue-skipped', second) === 1, 3_000))) return 'no "didn\'t start" notification';
+    if (recorded('queue-started', second) !== 0) return 'it started after an error';
+    return 'ok: Start after this one… opened New session (Wait for set, Start by itself on, Add to queue first), the row said it starts by itself, a clean finish started it once and took it off the queue, an error left the next one ready with the reason, both notified';
+  } finally {
+    if (await js("!!document.querySelector('[data-new-session-view] [data-composer]')?.value")) await setFieldValue(win, box, '');
+    for (let i = 0; i < 4 && (await js(`${sidebarItems}.length`)) > 0; i++) {
+      await js("document.querySelector('[data-session-list] [data-queue-item]').focus()");
+      pressKey(win, 'Backspace');
+      await waitInPage(win, `${sidebarItems}.length < ${(await js(`${sidebarItems}.length`)) as number}`, 2_000);
+    }
+    host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
+ * Scheduled sessions (#173), in the throwaway profile: a demo prompt in New session goes through Start ▾ › Schedule…
+ * (every day, a minute from now), and shows on Home. The engine's schedule clock (`smokeScheduleClock`, with
+ * `SWITCHBOARD_STUB_QUEUE`, which also keeps the run from sending anything to Claude) moves on: the run is titled
+ * "<name> · <day>", notified, and the row shows Last. Paused, a day later nothing runs. Delete, then Undo, puts it back;
+ * it is deleted for good at the end.
+ */
+async function runSchedulesStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const name = 'Smoke schedule: review open pull requests';
+  const prompt = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const rowOf = `[...document.querySelectorAll('[data-schedules-card] [data-schedule-row]')].find((el) => el.innerText.includes(${JSON.stringify(name)}))`;
+  const started = () => recordedNotifications.filter((n) => n.kind === 'schedule-started' && n.title === `Scheduled: ${name} started`).length;
+  const menu = async (item: string) => {
+    await js(`${rowOf}?.querySelector('[data-schedule-more]')?.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[role=menu] ${item}')`, 2_000))) return false;
+    await js(`document.querySelector('[role=menu] ${item}').click()`);
+    return true;
+  };
+  const clock = (ms: number) => engine.send({ type: 'smokeScheduleClock', ms });
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-schedules-')));
+  const goHome = async () => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
+    await waitInPage(win, "!!document.querySelector('[data-home], [data-onboarding]')", 3_000);
+  };
+  try {
+    // A folder of its own, opened with a link, so the run finds it (and nothing real is touched).
+    const text = `${name}\nList yesterday's open pull requests.`;
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${prompt}?.value === ${JSON.stringify(text)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)}`, 5_000))) return 'New session did not open on the schedule\'s folder';
+    await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-schedule-add]')", 2_000))) return 'Start ▾ has no Schedule…';
+    await js("document.querySelector('[role=menu] [data-schedule-add]').click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-schedule-dialog] [data-schedule-name]')?.value === ${JSON.stringify(name)}`, 3_000))) return 'Schedule… did not open the dialog with the name from the first line';
+    await js("document.querySelector('[data-schedule-dialog] [data-schedule-repeat=\"daily\"]').click()");
+    // Two minutes from now on the clock, so the real clock can't reach it during the step: the run is due once the
+    // engine's clock has moved 150 seconds on, and still on time.
+    const at = new Date(Date.now() + 120_000);
+    const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+    await setFieldValue(win, '[data-schedule-dialog] [data-schedule-time]', time);
+    if (!(await waitInPage(win, `document.querySelector('[data-schedule-dialog] [data-schedule-describe]')?.innerText === 'Every day at ${time}' && document.querySelectorAll('[data-schedule-dialog] [data-schedule-next-runs] li').length === 3`, 2_000))) {
+      return `the dialog did not say "Every day at ${time}" with three next runs`;
+    }
+    await shot(win, 'schedule-dialog.png');
+    await js("document.querySelector('[data-schedule-dialog] [data-schedule-save]').click()");
+    if (!(await waitInPage(win, `!document.querySelector('[data-schedule-dialog]') && ${prompt}?.value === '' && !!document.querySelector('[data-schedule-saved-toast]')`, 3_000))) return 'saving did not close the dialog, clear New session and say it is scheduled';
+
+    await goHome();
+    if (!(await waitInPage(win, `!!${rowOf}`, 5_000))) return 'the schedule did not show in the Schedules card on Home';
+    const label = (await js(`${rowOf}.getAttribute('aria-label')`)) as string;
+    if (!label.startsWith(`${name}, every day at ${time}, next `)) return `its row's label is "${label}"`;
+    if (!(await js("!!document.querySelector('[data-schedules-platform]')"))) return 'no line under the card says when schedules run';
+
+    clock(150_000);
+    if (!(await until(() => started() === 1, 5_000))) return 'the run did not start after the clock moved on';
+    const run = recordedScheduleRuns.find((r) => r.name === name && r.result === 'started');
+    if (!run?.title || !/^Smoke schedule: review open pull requests · \w{3} \d{1,2} \w{3}$/.test(run.title)) return `the run was titled "${run?.title}"`;
+    if (!(await waitInPage(win, `${rowOf}?.querySelector('[data-schedule-last]')?.innerText.startsWith('Last: ')`, 3_000))) return 'the row did not show Last';
+    await shot(win, 'schedules-card.png');
+
+    // Paused: a day later, nothing starts.
+    if (!(await menu('[data-schedule-menu-pause="pause"]'))) return 'the row menu has no Pause';
+    if (!(await waitInPage(win, `${rowOf}?.dataset.schedulePaused === 'true' && ${rowOf}.innerText.includes('Paused')`, 3_000))) return 'Pause did not dim the row and say Paused';
+    clock(24 * 60 * 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    if (started() !== 1) return 'a paused schedule ran';
+
+    // Delete, then Undo.
+    if (!(await menu('[data-schedule-menu-delete]'))) return 'the row menu has no Delete';
+    if (!(await waitInPage(win, `!${rowOf} && !!document.querySelector('[data-schedule-deleted-toast] [data-toast-undo]')`, 3_000))) return 'Delete did not remove the row with an Undo';
+    await js("document.querySelector('[data-schedule-deleted-toast] [data-toast-undo]').click()");
+    if (!(await waitInPage(win, `${rowOf}?.dataset.schedulePaused === 'true'`, 3_000))) return 'Undo did not put the schedule back as it was';
+    return `ok: Schedule… opened the dialog (name from the first line, "Every day at ${time}", three next runs), the card listed it, the moved clock ran it once as "${run.title}" and the row showed Last; paused, nothing ran a day later; Delete and Undo put it back`;
+  } finally {
+    // Deleted for good (whatever the step got to), and New session left empty.
+    await goHome();
+    for (let i = 0; i < 2 && (await js(`!!${rowOf}`)); i++) {
+      await menu('[data-schedule-menu-delete]');
+      await waitInPage(win, `!${rowOf}`, 2_000);
+    }
+    if (await js(`!!${prompt}?.value`)) await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
+ * Upcoming, in the throwaway profile against a temp folder: a queued prompt and a daily schedule made in New session,
+ * then Upcoming from the sidebar with its three cards. The project filter keeps them; Skip this run dims the run and
+ * says so, and Undo brings it back; Start now on the Queue card takes the item off the queue (the stub never sends
+ * the prompt to Claude). The schedule is deleted again.
+ */
+async function runUpcomingStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-upcoming-')));
+  const name = 'Smoke upcoming: standup summary';
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const view = '[data-upcoming]';
+  const queued = `[...document.querySelectorAll('${view} [data-upcoming-queue] [data-queue-item]')]`;
+  const scheduleRow = `[...document.querySelectorAll('${view} [data-upcoming-schedule]')].find((el) => el.innerText.includes(${JSON.stringify(name)}))`;
+  /**
+   * The last run on screen of the smoke schedule that is still to come. Not the first: the schedules step moved the
+   * engine's clock a day on, so to the engine today's run has already passed.
+   */
+  const laterRun = `[...document.querySelectorAll('${view} [data-upcoming-run]')].filter((el) => el.innerText.includes(${JSON.stringify(name)}) && el.dataset.upcomingRunState === 'next').pop()`;
+  const fill = async (text: string) => {
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(text)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`, 5_000))) return false;
+    await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
+    return waitInPage(win, "!!document.querySelector('[role=menu] [data-queue-add]')", 2_000);
+  };
+  try {
+    // A queued prompt and a schedule, in New session.
+    if (!(await fill('Smoke upcoming: queued prompt'))) return 'New session did not open on the temp folder';
+    await js("document.querySelector('[role=menu] [data-queue-add]').click()");
+    if (!(await waitInPage(win, `${composer}?.value === ''`, 3_000))) return 'Add to queue did not take the prompt';
+    if (!(await fill(`${name}\nWrite the standup summary.`))) return 'New session did not open again';
+    await js("document.querySelector('[role=menu] [data-schedule-add]').click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-schedule-dialog] [data-schedule-name]')?.value === ${JSON.stringify(name)}`, 3_000))) return 'Schedule… did not open the dialog';
+    await js(`document.querySelector('[data-schedule-dialog] [data-schedule-repeat="daily"]').click()`);
+    // An hour ahead (or the next morning), so a run is still to come today or tomorrow.
+    const at = new Date(Date.now() + 60 * 60_000);
+    await setFieldValue(win, '[data-schedule-dialog] [data-schedule-time]', `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`);
+    await js("document.querySelector('[data-schedule-dialog] [data-schedule-save]').click()");
+    if (!(await waitInPage(win, "!document.querySelector('[data-schedule-dialog]')", 3_000))) return 'saving the schedule did not close the dialog';
+
+    // Upcoming from the sidebar (or the rail): its three cards.
+    if (!(await js("!!document.querySelector('[data-upcoming-nav]')"))) return 'the sidebar has no Upcoming';
+    await js("document.querySelector('[data-upcoming-nav]').click()");
+    if (!(await waitInPage(win, `!!document.querySelector('${view}')`, 3_000))) return 'Upcoming did not open';
+    if (!(await js("document.querySelector('[data-upcoming-nav]')?.getAttribute('aria-current') === 'page'"))) return 'the Upcoming row was not selected';
+    if (!(await js(`document.querySelector('[data-upcoming-kind="all"]')?.getAttribute('aria-checked') === 'true'`))) await js(`document.querySelector('[data-upcoming-kind="all"]')?.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${view} [data-upcoming-queue]') && !!document.querySelector('${view} [data-upcoming-runs]') && !!document.querySelector('${view} [data-upcoming-schedules]')`, 3_000))) return 'Upcoming did not show the Queue, Scheduled runs and Schedules cards';
+    if (!(await waitInPage(win, `${queued}.length === 1 && !!${scheduleRow} && !!${laterRun}`, 5_000))) return 'Upcoming did not list the queued prompt, the schedule and its next run';
+    await shot(win, 'upcoming.png');
+
+    // The project filter: the temp folder's project keeps both.
+    // The attribute's value in double quotes, inside the single-quoted selector.
+    const pick = `document.querySelector('[role=menu] [data-upcoming-project=${JSON.stringify(folder)}]')`;
+    await js("document.querySelector('[data-upcoming-project-chip]').click()");
+    if (!(await waitInPage(win, `!!${pick}`, 2_000))) return 'the project filter did not offer the temp folder';
+    await js(`${pick}.click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-upcoming-project-chip]')?.innerText.includes(${JSON.stringify(basename(folder))}) && ${queued}.length === 1 && !!${scheduleRow}`, 3_000))) return 'filtering by the project lost its items';
+
+    // Skip this run, then Undo: the run comes back.
+    const runId = (await js(`${laterRun}.dataset.upcomingRun`)) as string;
+    const run = `document.querySelector('[data-upcoming-run=${JSON.stringify(runId)}]')`;
+    await js(`${run}.querySelector('[data-upcoming-skip]').click()`);
+    if (!(await waitInPage(win, `${run}?.dataset.upcomingRunState === 'skipped-by-you' && ${run}.innerText.includes('Skipped by you') && !!document.querySelector('[data-run-skipped-toast] [data-toast-undo]')`, 3_000))) return 'Skip this run did not mark the run Skipped by you with an Undo';
+    await js("document.querySelector('[data-run-skipped-toast] [data-toast-undo]').click()");
+    if (!(await waitInPage(win, `${run}?.dataset.upcomingRunState === 'next'`, 3_000))) return 'Undo did not bring the run back';
+
+    // Start now on the Queue card: the item leaves the queue.
+    const itemId = (await js(`${queued}[0].dataset.queueItem`)) as string;
+    await js(`document.querySelector('${view} [data-queue-start="${itemId}"]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('[data-queue-item="${itemId}"]')`, 5_000))) return 'Start now did not take the item off the queue';
+    return 'ok: Upcoming from the sidebar showed the queue, the scheduled runs and the schedules; the project filter kept them; Skip this run and Undo; Start now took the item off the queue';
+  } finally {
+    // Back to all projects, the schedule and any queued item gone, New session empty, the session later steps use.
+    if (!(await js("!!document.querySelector('[data-upcoming]')"))) await js("document.querySelector('[data-upcoming-nav]')?.click()");
+    await waitInPage(win, "!!document.querySelector('[data-upcoming]')", 2_000);
+    if (await js("!!document.querySelector('[data-upcoming-project-chip]')")) {
+      await js("document.querySelector('[data-upcoming-project-chip]').click()");
+      if (await waitInPage(win, `!!document.querySelector('[role=menu] [data-upcoming-project="all"]')`, 2_000)) await js(`document.querySelector('[role=menu] [data-upcoming-project="all"]').click()`);
+    }
+    for (let i = 0; i < 2 && (await js(`!!${scheduleRow}`)); i++) {
+      await js(`${scheduleRow}.querySelector('[data-schedule-more]').click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-schedule-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-schedule-menu-delete]').click()");
+      await waitInPage(win, `!${scheduleRow}`, 2_000);
+    }
+    for (let i = 0; i < 3 && (await js(`${queued}.filter((el) => el.innerText.includes('Smoke upcoming')).length`)) > 0; i++) {
+      await js(`${queued}.find((el) => el.innerText.includes('Smoke upcoming')).focus()`);
+      pressKey(win, 'Backspace');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    if (await js(`!!${composer}?.value`)) await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
+ * Event triggers (#180), in the throwaway profile, against a temp folder and the smoke's fake gh, whose repository is
+ * the file FAKE_GH_TRIGGERS names (tests/fixtures/fake-gh-triggers.cjs): nothing reaches GitHub. A prompt in New
+ * session goes through Start ▾ › Start when… to an issues trigger on the `switchboard` label with state labels on. Its first
+ * check starts nothing. A new labelled issue and the engine's moved clock (`smokeScheduleClock`) start one session with
+ * the filled prompt (the stub records it, with `SWITCHBOARD_STUB_QUEUE`, and never sends it to Claude), and the fake
+ * saw `--add-label "switchboard: working" --remove-label switchboard`. Paused, a new issue starts nothing. The trigger and the
+ * project are removed again.
+ */
+async function runTriggersStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const stateFile = process.env.FAKE_GH_TRIGGERS;
+  // Windows can't start the fake gh script without a shell (see scripts/smoke.ts): the real gh would answer.
+  if (!stateFile) return 'ok: skipped, no fake gh on this platform';
+  const callsFile = `${stateFile}.calls`;
+  const startsFile = join(app.getPath('userData'), 'smoke-trigger-starts.jsonl');
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-triggers-')));
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['switchboard'], association: 'OWNER', updatedAt: new Date().toISOString() });
+  type State = { issues: ReturnType<typeof issue>[] } & Record<string, unknown>;
+  const read = () => JSON.parse(readFileSync(stateFile, 'utf8')) as State;
+  const write = (state: State) => writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  const starts = () => (existsSync(startsFile) ? readFileSync(startsFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { title: string; prompt: string }) : []);
+  const calls = () => (existsSync(callsFile) ? readFileSync(callsFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as string[]) : []);
+  const card = `document.querySelector('[data-triggers-tab=${JSON.stringify(folder)}] [data-trigger-card]')`;
+  const clock = (ms: number) => engine.send({ type: 'smokeScheduleClock', ms });
+  const startsBefore = starts().length;
+  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['switchboard'], issues: [issue(1, 'Already there before the trigger')] });
+  writeFileSync(callsFile, '');
+  try {
+    const prompt = 'Smoke trigger: work on {{event.title}} ({{event.url}}).';
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(prompt)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`, 5_000))) return 'New session did not open on the temp folder';
+    await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-add]')", 2_000))) return 'Start ▾ has no Start when…';
+    await js("document.querySelector('[role=menu] [data-trigger-add]').click()");
+    const editor = '[data-trigger-editor="new"]';
+    if (!(await waitInPage(win, `!!document.querySelector('${editor} [data-trigger-prompt]') && document.querySelector('${editor} [data-trigger-prompt]').value === ${JSON.stringify(prompt)}`, 3_000))) return 'Start when… did not open the editor with the prompt';
+    if (!(await js(`document.querySelector('${editor} [role=radiogroup] [data-trigger-source="issues"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-source="command"]')?.getAttribute('aria-disabled') === 'true'`))) return 'the source cards are not a radio group with Issues for you picked and A command disabled';
+    if (!(await js(`[...document.querySelectorAll('${editor} [data-trigger-field="title"], ${editor} [data-trigger-field="url"]')].length === 2`))) return 'the prompt shows no event field chips';
+    await js(`document.querySelector('${editor} [data-trigger-which="label"]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'switchboard' && document.querySelector('${editor} [data-trigger-state-labels]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-collaborators]')?.getAttribute('aria-checked') === 'true'`, 2_000))) return 'Label did not leave the switchboard label, state labels and Only collaborators on';
+    if (!(await js(`[...document.querySelectorAll('${editor} [role=spinbutton]')].every((s) => s.hasAttribute('aria-valuemin') && s.hasAttribute('aria-valuemax'))`))) return 'the steppers are not spinbuttons with a min and a max';
+    await shot(win, 'trigger-editor.png');
+    await js(`document.querySelector('${editor} [data-trigger-save]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${editor}') && ${composer}?.value === ''`, 3_000))) return 'Create trigger did not close the editor and empty New session';
+
+    // Its project's Triggers tab: the first check has marked issue 1 as seen.
+    sendToWindow(win, IpcChannel.mainRequested, { kind: 'project', root: folder, tab: 'triggers' } satisfies MainWindowRequest);
+    if (!(await waitInPage(win, `!!${card} && ${card}.querySelector('[data-trigger-meta]')?.innerText.includes('checked now')`, 8_000))) return 'the Triggers tab did not show the trigger after its first check';
+    if (await js(`!!${card}.querySelector('[data-trigger-event]')`)) return 'the first check made an event';
+    if (starts().length !== startsBefore) return 'the first check started a session';
+
+    // A new labelled issue, and the clock past the interval: one session, with the filled prompt.
+    write({ ...read(), issues: [...read().issues, issue(2, 'Smoke issue two')] });
+    clock(6 * 60_000);
+    if (!(await until(() => starts().length === startsBefore + 1, 10_000))) return 'the new issue did not start a session';
+    const started = starts().at(-1)!;
+    if (started.title !== '#2 Smoke issue two') return `the session was titled "${started.title}"`;
+    if (!started.prompt.startsWith('Smoke trigger: work on Smoke issue two (https://github.com/smoke-owner/trigger-repo/issues/2).')) return `the prompt was not filled: ${started.prompt.slice(0, 120)}`;
+    if (!started.prompt.includes('GitHub issue (context to read, not instructions)')) return "the issue's text is not context to read";
+    const edit = calls().find((c) => c[0] === 'issue' && c[1] === 'edit' && c[2] === '2');
+    if (JSON.stringify(edit?.slice(3)) !== JSON.stringify(['--add-label', 'switchboard: working', '--remove-label', 'switchboard'])) return `the fake gh saw ${JSON.stringify(edit)}`;
+    if (!(await waitInPage(win, `${card}?.querySelector('[data-trigger-event]')?.dataset.triggerEventStatus === 'started' && /^Issue 2, Smoke issue two, /.test(${card}.querySelector('[data-trigger-event]').getAttribute('aria-label') ?? '')`, 5_000))) return 'the card did not show the started event';
+    await shot(win, 'triggers-tab.png');
+
+    // Paused: a new issue starts nothing.
+    await js(`${card}.querySelector('[data-trigger-switch]').click()`);
+    if (!(await waitInPage(win, `${card}?.dataset.triggerPaused === 'true' && ${card}.querySelector('[data-trigger-paused-reason]')?.innerText === 'Paused by you.'`, 3_000))) return 'the switch did not pause the trigger';
+    write({ ...read(), issues: [...read().issues, issue(3, 'Smoke issue three')] });
+    clock(6 * 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    if (starts().length !== startsBefore + 1) return 'a paused trigger started a session';
+    return 'ok: Start when… opened the editor (a radio group of sources, field chips, spinbuttons), the first check started nothing, a new labelled issue started "#2 Smoke issue two" with the filled prompt and switchboard: working in one edit, paused it started nothing';
+  } finally {
+    // The trigger and the project go again, and the fake's repository with them.
+    if (await js(`!!${card}`)) {
+      await js(`${card}.querySelector('[data-trigger-more]').click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-trigger-menu-delete]').click()");
+      await waitInPage(win, `!${card}`, 3_000);
+    }
+    await js("document.querySelector('[data-open-projects]')?.click()");
+    const more = `document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(folder)}] [data-project-more-button]`)})`;
+    if (await waitInPage(win, `!!${more}`, 3_000)) {
+      await js(`${more}.click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-remove-project]')", 2_000)) {
+        await js("document.querySelector('[role=menu] [data-remove-project]').click()");
+        if (await waitInPage(win, "!!document.querySelector('[data-confirm]')", 3_000)) await js("document.querySelector('[data-confirm]').click()");
+      }
+    }
+    rmSync(stateFile, { force: true });
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
       // A temp folder left behind is harmless.
     }
   }
@@ -7857,8 +8568,15 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('new session view', () => runNewSessionStep(win));
   // Finding a checkout of an unknown repository walks the folders on disk.
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
+  await step('# lists issues and pull requests (fake gh), ↩ adds a chip, Esc keeps typing, an Attached row (nothing sent)', () => runGithubListStep(win), { timeoutMs: 45_000 });
+  await step('new session from an issue (⌥↩) and a pull request (palette), fork caution, not started', () => runGithubNewSessionStep(win), { timeoutMs: 45_000 });
+  await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
+  await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
+  await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
+  await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
+  await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
@@ -7875,7 +8593,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
   await step('settings › usage: Show estimated cost and Currency are saved, Open usage opens the view with its cost', () => runUsageSettingsStep(win));
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
-  await step('settings: theme, sidebar style, session scope, tool activity, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
+  await step('settings: theme, sidebar style, session scope, tool activity, open at login, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('settings search: ⌘F, results per page, Enter and Escape, and every setting opens at its row', () => runSettingsSearchStep(win), { timeoutMs: 90_000 });
   await step('focus limit', () => runFocusStep(win));
   await step('settings › sessions: archive days, deleting asks first, overview picks a month (nothing deleted)', () => runSessionsSettingsStep(win));
@@ -7900,6 +8618,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));
+  await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });
   rendering = (await js(
@@ -7926,8 +8645,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 }
 
 app.whenReady().then(() => {
-  // Packaged builds take the icon from the bundle's icon.icns; in development, set it on the Dock.
-  if (!app.isPackaged) app.dock?.setIcon(join(here, '../../build/icon.png'));
+  // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
+  // Dock gets Graphite's, which is build/icon.png.
+  appIcon.apply(preferences.get().appIcon);
   // The commit shows in brackets after the version, handy when someone reports a bug from a build.
   app.setAboutPanelOptions({
     applicationName: 'Switchboard',
@@ -7960,11 +8680,14 @@ app.whenReady().then(() => {
     },
     focusedSession: sessionOnScreen,
     openSession,
+    openUpcoming: (scheduleId) => sendToWindow(showWindow(), IpcChannel.mainRequested, { kind: 'upcoming', filter: null, scheduleId } satisfies MainWindowRequest),
+    openTriggers: (root) => sendToWindow(showWindow(), IpcChannel.mainRequested, { kind: 'project', root, tab: 'triggers' } satisfies MainWindowRequest),
     showAllSessions: () => preferences.get().sessionScope === 'all',
     alerts: () => preferences.get(),
     cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),
     sounds,
-    ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event) } : {}),
+    notificationIcon: () => appIcon.windowIcon(),
+    ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event), recordRuns: (runs: ScheduleRunEvent[]) => void recordedScheduleRuns.push(...runs) } : {}),
   });
   notifier.connect();
   // Running pull request checks are read every 30 seconds while a window has focus, else every 5 minutes. A blur
@@ -7972,6 +8695,9 @@ app.whenReady().then(() => {
   const sendForeground = () => engine.sendStanding({ type: 'foreground', foreground: BrowserWindow.getFocusedWindow() !== null });
   app.on('browser-window-focus', sendForeground);
   app.on('browser-window-blur', () => setTimeout(sendForeground, 100));
+  // Scheduled sessions (#173): runs due while the computer slept are dealt with when it wakes. The engine's own timer
+  // sees a clock or time zone change within a minute.
+  powerMonitor.on('resume', () => engine.send({ type: 'wake' }));
   createWindow();
   updater.start();
   // The packaged app declares the scheme in Info.plist; this also takes it back if another app claimed it.

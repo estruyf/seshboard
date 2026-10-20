@@ -27,6 +27,7 @@ phone browser ── https ──▶ switchboard.struyfconsulting.com/remote/   
   - the app's code comes from the site, not from the tunnel provider, who terminates TLS and could otherwise change it;
   - it is a secure context (installable, WebCrypto, service workers and push notifications).
 - **The engine only accepts sockets whose `Origin` is the remote app's.** Browsers always send `Origin` on a WebSocket and a page can't fake it, so another site open on the phone or the computer can't reach the engine.
+- **The app icon colourway** (Settings › Theme › App icon, `packages/protocol/src/appIcons.ts`) can't be served by the engine, which only speaks the socket. So every colourway's icons ship with the remote app (`public/app-icons/<key>/`, Graphite's where they always were), with a manifest each made from the app's own at build time (`appIconManifest`, in `vite.config.ts`). The engine says which one in `hello` (`appIcon`, Graphite while Use it on your phone too is off) and in `app.icon` when it changes; the app points its manifest, apple-touch-icon and favicon links there, with `?v=<key>`, and keeps the key for its next load (`src/lib/favicon.ts`). A Home Screen app keeps the icon it was added with.
 
 ### Why tunnels and not the local network
 
@@ -145,6 +146,7 @@ The remote contract is not the app's contract: remote handlers call engine funct
 | `session.setModel`, `session.setEffort`, `session.setPermissionMode` | A running session's model, effort and mode; modes are `default`, `acceptEdits`, `plan` and `auto` only |
 | `options.get` | New session's choices: the models, efforts, modes, each project's defaults, and whether Auto model is on with the models it may pick (`model: 'auto'` then goes to `session.create` and `later.add` as is) |
 | `session.ask`, `session.askThreads` | Ask about this session, through the engine's `Asker` (read-only tools, nothing in the transcript), and the threads it keeps |
+| `limits.get`, `limits.resume`, `limits.arm` | How a session stands with its profile's plan usage limit (`RemoteLimitStanding`: whether it stopped the session, the limit's kind and reset, when an armed resume sends; never the profile's id), Resume now, and Resume when it resets on or off (`hello` says `limits`). Only for sessions the list shows; `limits.changed` follows each change for the watched session |
 | `usage.get` | Every profile's plan usage (its name and colour, never its account), the default first; from the engine's `UsageMonitor`, checked again when older than a minute or with `refresh` |
 | `usage.tokens` | Where an account's tokens went in a period, as `usage.breakdown` (`hello` says `usage.tokens`). The caller sends the account's `accountKey` (SHA-256 of its email and organization, `packages/protocol/src/accountKey.ts`), so only someone who knows the account can ask and the answer never names it; the engine answers for the profile signed in to it (the default first), or `null`. Projects come as an id and a name (`remoteUsage`), never a folder; session titles are included |
 | `usage.sessionCost` | A session's estimated API cost since it started, in US dollars (`hello` says `costs`): numbers only, and only for a session the list shows (`checkSession`, as `catchup.get`) |
@@ -154,7 +156,7 @@ The remote contract is not the app's contract: remote handlers call engine funct
 | `push.key`, `push.subscribe`, `push.unsubscribe` | The engine's VAPID public key, and this device's subscription with its switches (Needs you, Finished). With `push.vapid` in `hello`, `push.subscribe` also takes the device's own VAPID key pair (`vapid`, checked to be a pair) and `label` (see More than one computer) |
 | `device.visibility` | Whether the app is on the device's screen: no push while it is |
 
-Events: `sessions.changed`, `usage.changed` (a profile's new check), `session.ask` (to phones watching the session and to the phone that asked, until the answer ends), `projects.cloneProgress` (to the connection that started the clone), and for the watched session `transcript.updated`, `session.stream`, `upNext.changed` and `catchup.changed`.
+Events: `sessions.changed`, `usage.changed` (a profile's new check), `session.ask` (to phones watching the session and to the phone that asked, until the answer ends), `projects.cloneProgress` (to the connection that started the clone), and for the watched session `transcript.updated`, `session.stream`, `upNext.changed`, `limits.changed` and `catchup.changed`.
 
 ### Push notifications
 

@@ -18,8 +18,9 @@ describe('isContextMenuKey', () => {
 describe('contextMenuPoint', () => {
   const rect = { left: 40, top: 700, bottom: 724 };
 
-  it('opens at the pointer, upwards in the lower half of the window', () => {
+  it('opens at the pointer, below it unless there is no room', () => {
     expect(contextMenuPoint({ x: 50, y: 710 }, rect, 800)).toEqual({ x: 50, y: 710, above: true });
+    expect(contextMenuPoint({ x: 50, y: 500 }, rect, 800)).toEqual({ x: 50, y: 500, above: false });
     expect(contextMenuPoint({ x: 50, y: 100 }, rect, 800)).toEqual({ x: 50, y: 100, above: false });
   });
 

@@ -6,7 +6,7 @@
 export const APP_TERMINAL = '@app';
 
 /** Where you are, as far as the terminal cares: the palette's views. */
-export type TerminalView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project' | 'usage' | 'remote';
+export type TerminalView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project' | 'usage' | 'remote' | 'upcoming';
 
 /**
  * Whose panel ⌘J shows: the session's in a session view, the window's on every other view. Settings is a

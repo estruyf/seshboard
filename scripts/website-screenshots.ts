@@ -57,7 +57,8 @@ function commitFile(cwd: string, path: string, content: string, message: string,
 /**
  * The tour's gh (SWITCHBOARD_GH): signed in, unless the file `.fake-gh-signed-out` is in the demo home, and nothing
  * else works, so pull request lists stay empty and nothing ever reaches GitHub. While `.fake-gh-checks` is there (the
- * checks it holds), feat/dark-mode has pull request #42 with those checks.
+ * checks it holds), feat/dark-mode has pull request #42 with those checks. The # list's issues and pull requests of
+ * acme/acme-store come from the smoke test's fake (tests/fixtures/fake-gh.cjs), which refuses anything else.
  */
 function fakeGh(home: string): string {
   const path = join(home, '.local', 'bin', 'fake-gh');
@@ -65,6 +66,9 @@ function fakeGh(home: string): string {
   const signedOut = join(home, '.fake-gh-signed-out');
   const checks = join(home, '.fake-gh-checks');
   const pr = JSON.stringify([{ number: 42, state: 'OPEN', headRefName: 'feat/dark-mode', url: 'https://github.com/acme/acme-store/pull/42', isDraft: false }]);
+  // Triggers' calls (the editor's account, branch, workflows and collaborators) come from a made-up repository.
+  const triggers = join(home, '.fake-gh-triggers.json');
+  writeFileSync(triggers, JSON.stringify({ repo: 'acme/acme-store', login: 'mara-k', defaultBranch: 'main', collaborators: 6, workflows: ['CI', 'Lint', 'E2E'], labels: ['switchboard'], issues: [], runs: [] }));
   writeFileSync(
     path,
     [
@@ -77,8 +81,7 @@ function fakeGh(home: string): string {
       `  if [ "$1 $2" = "pr list" ]; then echo '${pr}'; exit 0; fi`,
       `  if [ "$1 $2" = "pr checks" ]; then cat '${checks}'; exit 1; fi`,
       'fi',
-      `echo "the screenshot tour's gh never reaches GitHub" >&2`,
-      'exit 1',
+      `FAKE_GH_REPOS=acme/acme-store FAKE_GH_SIGNED_OUT='${signedOut}' FAKE_GH_TRIGGERS='${triggers}' exec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(import.meta.dirname, '..', 'tests', 'fixtures', 'fake-gh.cjs'))} "$@"`,
       '',
     ].join('\n'),
   );
@@ -982,6 +985,54 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'github-list',
+    async take(t) {
+      const restore = githubOrigin(t.world);
+      try {
+        await typeHashInHero(t);
+        await t.shot('github-list', { keepFocus: true });
+        await t.escape();
+        await t.page.locator('[data-current-session] [data-composer]').first().fill('');
+      } finally {
+        restore();
+      }
+    },
+  },
+  {
+    name: 'github-new-session',
+    async take(t) {
+      const restore = githubOrigin(t.world);
+      try {
+        await typeHashInHero(t);
+        // ⌥↩ on the first issue: New session, filled in from it. Nothing is started.
+        await t.press('Alt+Enter');
+        await t.need('[data-new-session-view] [data-github-chip="issue:57"]', 'New session was not filled in from #57', 15_000);
+        await t.need('[data-new-session-view] [data-github-chip="issue:57"] [data-github-label], [data-github-start-note]', 'no note under the box');
+        await t.until(`document.querySelector('[data-new-session-view] [data-github-chip="issue:57"]')?.innerText.includes('comments')`, 'the chip did not read its comments');
+        await t.shot('github-new-session');
+        await t.page.evaluate(() => document.querySelectorAll<HTMLElement>('[data-new-session-view] [data-context-chip-remove]').forEach((b) => b.click()));
+        await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+        // ⌥↩ left "can you look at " in the hero's box: empty it, or it shows as an unsent draft in later pictures.
+        await t.openSession(HERO);
+        await t.page.locator('[data-current-session] [data-composer]').first().fill('');
+      } finally {
+        restore();
+      }
+    },
+  },
+  {
+    name: 'github-attached',
+    async take(t) {
+      const id = await t.openSession('Write a getting started guide');
+      const row = `[data-current-session="${id}"] [data-github-attached="issue:87"]`;
+      await t.need(row, 'the message with an attached issue has no Attached row');
+      await t.click(`${row} [data-what-claude-got]`);
+      await t.need(`[data-current-session="${id}"] [data-github-got]`, 'What Claude got did not open');
+      await t.shot('github-attached');
+      await t.click(`${row} [data-what-claude-got]`);
+    },
+  },
+  {
     name: 'new-session-options',
     async take(t) {
       await openNewSession(t, 'acme-store');
@@ -1114,10 +1165,85 @@ const screens: Screen[] = [
   {
     name: 'queue',
     async take(t) {
+      // The payments-api item starts by itself after the session working there, shown as one Switchboard runs (its
+      // terminal stand-in would keep Start by itself off). The engine's stub never starts it.
+      const working = await t.sessionId(WORKING);
+      writeFileSync(demoQueueHostFile(t.world), JSON.stringify({ sessionId: working, cwd: join(t.world.home, 'Developer', 'payments-api') }));
       await t.home();
       await t.need('[data-home-queue] [data-queue-item]', 'Home shows no queue');
+      const item = `[...document.querySelectorAll('[data-home-queue] [data-queue-item]')].find((el) => el.innerText.includes('idempotency'))`;
+      await t.until(`!!${item}`, 'Home shows no payments-api item');
+      const more = `[data-home-queue] [data-queue-more="${await t.page.evaluate(`${item}.dataset.queueItem`)}"]`;
+      await t.click(more);
+      await t.click('[role=menu] [data-queue-menu-wait]');
+      await t.click(`[role=menu] [data-queue-wait="session:${working}"]`, 'Wait for… does not offer the working session');
+      // The menu is made when it opens: open it again until the engine's stand-in has reached the window.
+      for (let tries = 0; ; tries++) {
+        await t.click(more);
+        await t.need('[role=menu] [data-queue-menu-autostart]', 'the item menu has no Start by itself');
+        if (!(await t.q('[role=menu] [data-queue-menu-autostart]').getAttribute('aria-disabled'))) break;
+        if (tries === 20) throw new Error('Start by itself stayed off in the menu');
+        await t.escape();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      // The second scheme's run finds it on already.
+      if ((await t.q('[role=menu] [data-queue-menu-autostart]').getAttribute('aria-checked')) === 'true') await t.escape();
+      else await t.click('[role=menu] [data-queue-menu-autostart]');
+      await t.until(`${item}?.closest('[data-queue-autostart]') && ${item}.innerText.includes('Starts after')`, 'the item does not say it starts by itself');
       await hideUsageStatus(t);
       await t.shot('queue');
+      writeFileSync(demoQueueHostFile(t.world), 'null');
+    },
+  },
+  {
+    name: 'schedule-dialog',
+    async take(t) {
+      // A prompt in New session, through Start ▾ › Schedule…: Monday to Friday at 08:00 (the dialog's own start).
+      await openNewSession(t, 'acme-store');
+      const box = t.page.locator('[data-new-session-view] [data-composer]').first();
+      await box.fill('Review open pull requests\nGo through yesterday’s open pull requests and say what each one still needs.');
+      await t.click('[data-new-session-view] [data-start-menu]');
+      await t.click('[role=menu] [data-schedule-add]', 'Start ▾ has no Schedule…');
+      await t.need('[data-schedule-dialog] [data-schedule-next-runs]', 'the schedule dialog did not open');
+      await t.shot('schedule-dialog');
+      await t.escape();
+      await t.gone('[data-schedule-dialog]', 'the schedule dialog did not close');
+      await box.fill('');
+    },
+  },
+  {
+    name: 'schedules',
+    async take(t) {
+      // Four schedules with past runs (one fine, one skipped, one missed, one paused), from the demo file the engine
+      // watches; taken out again after the picture.
+      writeFileSync(demoSchedulesFile(t.world), JSON.stringify(demoSchedules(t.world, Date.now())));
+      await t.home();
+      // Home lists the first three; Upcoming has the rest.
+      await t.until("document.querySelectorAll('[data-schedules-card] [data-schedule-row]').length === 3", 'Home shows no schedules');
+      await hideUsageStatus(t);
+      // The card sits under the queue: bring all of it on screen first.
+      await t.page.evaluate(() => document.querySelector('[data-schedules-card]')?.scrollIntoView({ block: 'center' }));
+      await t.shot('schedules', { clip: '[data-schedules-home]', pad: 12 });
+      writeFileSync(demoSchedulesFile(t.world), 'null');
+      await t.until("!document.querySelector('[data-schedules-card]')", 'the demo schedules stayed');
+    },
+  },
+  {
+    name: 'upcoming',
+    async take(t) {
+      // The demo queue (two items) and the four demo schedules, in Upcoming from the sidebar: the queue, the runs of
+      // the next 7 days by day, and the schedules on the right.
+      writeFileSync(demoSchedulesFile(t.world), JSON.stringify(demoSchedules(t.world, Date.now())));
+      await t.home();
+      await t.click('[data-sidebar-open] [data-upcoming-nav]', 'the sidebar has no Upcoming');
+      await t.need('[data-upcoming] [data-upcoming-queue] [data-queue-item]', 'Upcoming shows no queue');
+      await t.until("document.querySelectorAll('[data-upcoming] [data-upcoming-schedule]').length === 4", 'Upcoming shows no schedules');
+      await t.need('[data-upcoming] [data-upcoming-run]', 'Upcoming shows no scheduled runs');
+      await hideUsageStatus(t);
+      await t.shot('upcoming');
+      writeFileSync(demoSchedulesFile(t.world), 'null');
+      await t.until("!document.querySelector('[data-upcoming-schedule]')", 'the demo schedules stayed');
+      await t.home();
     },
   },
   {
@@ -1262,6 +1388,44 @@ const screens: Screen[] = [
       },
     }),
   ),
+  {
+    name: 'triggers-tab',
+    async take(t) {
+      // Three demo triggers with their events, from the file the engine watches; the hero session works in Switchboard,
+      // so the issues trigger's slot is busy and its next issue waits. Taken out again after the picture.
+      const hero = await t.sessionId(HERO);
+      writeFileSync(demoQueueHostFile(t.world), JSON.stringify({ sessionId: hero, cwd: join(t.world.home, 'Developer', 'acme-store') }));
+      writeFileSync(demoTriggersFile(t.world), JSON.stringify(demoTriggers(t.world, Date.now(), hero)));
+      try {
+        await openProjectPage(t, 'acme-store');
+        await t.click('[data-project-tab="triggers"]');
+        await t.until("document.querySelectorAll('[data-triggers-tab] [data-trigger-card]').length === 3", 'the Triggers tab showed no demo triggers', 30_000);
+        await t.until("document.querySelector('[data-trigger-filter-assignee]')?.innerText === '@mara-k'", "the card didn't show gh's account");
+        await t.until("document.querySelector('[data-trigger-status]')?.innerText === '1 of 1 busy'", "the hero session didn't show as working");
+        await t.shot('triggers-tab');
+      } finally {
+        writeFileSync(demoTriggersFile(t.world), 'null');
+        writeFileSync(demoQueueHostFile(t.world), 'null');
+      }
+      await t.until("!document.querySelector('[data-trigger-card]')", 'the demo triggers stayed');
+      await t.home();
+    },
+  },
+  {
+    name: 'trigger-editor',
+    async take(t) {
+      // New trigger on acme-store's Triggers tab: issues with the switchboard label assigned to gh's account, state labels on.
+      await openProjectPage(t, 'acme-store');
+      await t.click('[data-project-tab="triggers"]');
+      await t.click('[data-triggers-tab] [data-trigger-new]', 'the Triggers tab has no New trigger');
+      await t.need('[data-trigger-editor="new"] [data-trigger-prompt]', 'the trigger editor did not open');
+      await t.until("document.querySelector('[data-trigger-editor] [data-trigger-assignee]')?.innerText.includes('@mara-k')", "the editor didn't show gh's account");
+      await t.shot('trigger-editor');
+      await t.escape();
+      await t.gone('[data-trigger-editor]', 'the trigger editor did not close');
+      await t.home();
+    },
+  },
   {
     name: 'memory-load-order',
     async take(t) {
@@ -1595,6 +1759,21 @@ const screens: Screen[] = [
       await t.page.keyboard.press('Escape');
     },
   },
+  {
+    // Settings › Theme › App icon with another colourway picked, so the chosen tile and Reset to Graphite show; put back after.
+    name: 'settings-app-icon',
+    async take(t) {
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="theme"]');
+      await t.click('[data-app-icon="signal"]');
+      await t.need('[data-app-icon="signal"][aria-checked="true"]', 'picking Signal yellow did not check its tile');
+      await t.need('[data-app-icon-reset]', 'no Reset to Graphite');
+      await t.shot('settings-app-icon', { clip: '[data-app-icon-settings]', pad: 16 });
+      await t.click('[data-app-icon-reset]');
+      await t.need('[data-app-icon="graphite"][aria-checked="true"]', 'Reset to Graphite did not apply');
+      await t.click('[data-close-settings]');
+    },
+  },
   ...(['general', 'theme', 'sidebar', 'projects', 'conversation', 'mods', 'focus', 'profiles', 'usage', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
     (section): Screen => ({
       name: `settings-${section}`,
@@ -1623,6 +1802,17 @@ async function openChanges(t: Tour): Promise<void> {
     await t.click('[data-changed-file="src/lib/theme.ts"] [data-file-toggle]');
   }
   await t.need('[data-file-diff] div', 'the diff did not open');
+}
+
+/** The hero session's message box with "can you look at #" typed, and the # list open on acme-store's issues and pull requests. */
+async function typeHashInHero(t: Tour): Promise<void> {
+  await t.openSession(HERO);
+  const box = t.page.locator('[data-current-session] [data-composer]').first();
+  await box.fill('');
+  await box.focus();
+  await t.page.keyboard.type('can you look at #');
+  await t.need('[data-current-session] [data-github-list] [data-github-option="pr:61"]', 'the # list did not list acme-store\'s pull requests', 15_000);
+  await t.settle();
 }
 
 async function openNewSession(t: Tour, project: string): Promise<void> {
@@ -1745,6 +1935,9 @@ function demoUsage(world: DemoWorld): string {
       autoPicks: demoAutoPicks(world, now),
       catchUps: demoCatchUps(world, now),
       limitFile: demoLimitFile(world),
+      queueHostFile: demoQueueHostFile(world),
+      schedulesFile: demoSchedulesFile(world),
+      triggersFile: demoTriggersFile(world),
     }),
   );
   return file;
@@ -1752,6 +1945,169 @@ function demoUsage(world: DemoWorld): string {
 
 /** Where the tour writes the made-up usage limit for its picture; the demo engine watches it (see `DemoUsage.limitFile`). */
 const demoLimitFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-limit.json');
+
+/** Where the tour names the demo session shown as working in Switchboard for the queue's picture (see `DemoUsage.queueHostFile`). */
+const demoQueueHostFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-queue-host.json');
+
+/** Where the tour puts the demo schedules for their picture (see `DemoUsage.schedulesFile`). */
+const demoSchedulesFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-schedules.json');
+
+/** Where the tour puts the demo triggers for their picture (see `DemoUsage.triggersFile`). */
+const demoTriggersFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-triggers.json');
+
+/**
+ * Three triggers on acme-store as its Triggers tab shows them after a day: CI fails on main with three sessions, Issues
+ * for you with an issue whose pull request is open, one waiting for the busy slot and one from outside the
+ * collaborators, and a paused one. Their times are made relative to now.
+ */
+function demoTriggers(world: DemoWorld, now: number, hero: string) {
+  const root = join(world.home, 'Developer', 'acme-store');
+  const minutes = (n: number) => now - n * 60_000;
+  const trigger = (id: string, name: string, rest: Record<string, unknown>) => ({
+    id: `demo-trigger-${id}`,
+    projectRoot: root,
+    name,
+    prompt: 'Fix it.',
+    draft: { profileId: null, model: 'opus', effort: null, permissionMode: 'auto', workspace: 'worktree', baseRef: 'fresh' },
+    maxAtOnce: 3,
+    maxWaiting: 10,
+    intervalMinutes: 5,
+    stateLabels: { on: false, working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' },
+    assignOnPickUp: false,
+    paused: false,
+    pausedReason: null,
+    failures: 0,
+    lastError: null,
+    blockedUntil: null,
+    seededAt: minutes(3 * 24 * 60),
+    createdAt: minutes(3 * 24 * 60),
+    updatedAt: minutes(3 * 24 * 60),
+    ...rest,
+  });
+  const ci = (id: string, workflow: string, run: number, sha: string, at: number, sessionId: string | null) => ({
+    id: `demo-event-${id}`,
+    triggerId: 'demo-trigger-ci',
+    key: `${workflow}@${sha}`,
+    kind: 'ci',
+    title: 'Merge pull request #61 from acme/fix/pay-after-decline',
+    url: `https://github.com/acme/acme-store/actions/runs/${run}`,
+    fields: { workflow, branch: 'main', commit: sha.slice(0, 7), sha, run: String(run), number: String(run) },
+    status: 'started',
+    reason: null,
+    sessionId,
+    itemId: null,
+    label: null,
+    reassignedTo: null,
+    createdAt: at,
+    startedAt: at,
+  });
+  const issue = (id: string, number: number, title: string, at: number, rest: Record<string, unknown>) => ({
+    id: `demo-event-${id}`,
+    triggerId: 'demo-trigger-issues',
+    key: `#${number}`,
+    kind: 'issue',
+    title,
+    url: `https://github.com/acme/acme-store/issues/${number}`,
+    fields: { number: String(number), title, author: 'jules-d', labels: 'switchboard', assignees: 'mara-k' },
+    status: 'started',
+    reason: null,
+    sessionId: null,
+    itemId: null,
+    label: null,
+    reassignedTo: null,
+    createdAt: at,
+    startedAt: null,
+    ...rest,
+  });
+  const events = [
+    ci('test', 'test', 4512, '9f3c2e1a7d', minutes(12), world.history[WORKING]?.id ?? null),
+    ci('lint', 'lint', 4509, '1a7b0d4c2e', minutes(52), world.history[NEEDS_YOU]?.id ?? null),
+    ci('e2e', 'e2e', 4497, '5c0e9b3f1a', minutes(26 * 60), world.history[CATCH_UP]?.id ?? null),
+    issue('212', 212, 'Pinned sessions lose their order after restart', minutes(40), { sessionId: hero, startedAt: minutes(40), label: 'switchboard: pr open' }),
+    issue('214', 214, 'Archive keeps the scroll position', minutes(9), { status: 'waiting', label: 'switchboard: working' }),
+    issue('215', 215, 'Add a Polish translation', minutes(6), { status: 'skipped', reason: "opened by someone outside the repository's collaborators", fields: { number: '215', title: 'Add a Polish translation', author: 'someone', labels: 'switchboard', assignees: 'mara-k' } }),
+  ];
+  const session = (event: (typeof events)[number], triggerName: string, ref: string) =>
+    event.sessionId ? [{ sessionId: event.sessionId, triggerId: event.triggerId, eventId: event.id, triggerName, kind: event.kind, ref, url: event.url, at: event.startedAt ?? event.createdAt }] : [];
+  return {
+    triggers: [
+      trigger('ci', 'CI fails on main', { source: { kind: 'ci', branch: 'main', workflows: [] }, lastCheckedAt: minutes(2) }),
+      trigger('issues', 'Issues for you', {
+        source: { kind: 'issues', label: 'switchboard', assignee: '@me', collaboratorsOnly: true },
+        draft: { profileId: null, model: 'sonnet', effort: null, permissionMode: 'acceptEdits', workspace: 'worktree', baseRef: 'fresh' },
+        maxAtOnce: 1,
+        stateLabels: { on: true, working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' },
+        lastCheckedAt: minutes(1),
+      }),
+      trigger('release', 'CI fails on release', { source: { kind: 'ci', branch: 'release', workflows: ['CI'] }, paused: true, pausedReason: 'gh is signed out', failures: 5, lastError: 'gh is signed out', lastCheckedAt: minutes(3 * 60) }),
+    ],
+    events,
+    sessions: [...session(events[0]!, 'CI fails on main', 'CI #4512'), ...session(events[1]!, 'CI fails on main', 'CI #4509'), ...session(events[2]!, 'CI fails on main', 'CI #4497'), ...session(events[3]!, 'Issues for you', '#212')],
+  };
+}
+
+/**
+ * Four schedules as the Schedules card shows them after a few days: one whose last run started (linked to a demo
+ * session), one skipped while its last run worked, one that missed a run while the computer slept (Skip it), and one
+ * paused. Their runs are made relative to now.
+ */
+function demoSchedules(world: DemoWorld, now: number) {
+  const project = (name: string) => join(world.home, 'Developer', name);
+  /** The most recent weekday at this time, before now. */
+  const lastWeekday = (hours: number, minutes: number) => {
+    const day = new Date(now);
+    day.setHours(hours, minutes, 0, 0);
+    while (day.getTime() >= now || day.getDay() === 0 || day.getDay() === 6) day.setDate(day.getDate() - 1);
+    return day.getTime();
+  };
+  const lastMonday = (() => {
+    const day = new Date(lastWeekday(9, 30));
+    while (day.getDay() !== 1) day.setDate(day.getDate() - 1);
+    return day.getTime();
+  })();
+  const firstOfMonth = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), 1, 10, 0).getTime();
+  const draft = (name: string, prompt: string, permissionMode: string) => ({
+    cwd: project(name),
+    prompt,
+    attachments: [],
+    typed: null,
+    context: [],
+    model: 'opus',
+    effort: null,
+    permissionMode,
+    workspace: 'worktree',
+    baseRef: 'fresh',
+    branch: null,
+    profileId: null,
+    autoStart: false,
+  });
+  // The last run is the run history too, so Upcoming shows today's past runs with how they went.
+  const schedule = (id: string, name: string, rest: Record<string, unknown> & { lastRun: unknown }) => ({ id: `demo-schedule-${id}`, name, missed: 'run', paused: false, pausedReason: null, createdAt: now - 30 * 86_400_000, updatedAt: now - 30 * 86_400_000, runs: [rest.lastRun], ...rest });
+  return [
+    schedule('prs', 'Review open pull requests', {
+      draft: draft('acme-store', 'Review open pull requests\nGo through yesterday’s open pull requests and say what each one still needs.', 'acceptEdits'),
+      rule: { kind: 'weekdays', time: '08:00' },
+      lastRun: { at: lastWeekday(8, 0), result: 'started', sessionId: world.history[CATCH_UP]?.id ?? null, itemId: null, reason: null },
+    }),
+    schedule('deps', 'Check dependency updates', {
+      draft: draft('payments-api', 'Check for dependency updates and open a pull request for the safe ones.', 'auto'),
+      rule: { kind: 'weekly', days: [1], time: '09:30' },
+      lastRun: { at: lastMonday, result: 'skipped', sessionId: world.history[WORKING]?.id ?? null, itemId: null, reason: 'the last run was still working' },
+    }),
+    schedule('standup', 'Standup summary', {
+      draft: draft('docs-site', 'Write the standup summary from yesterday’s commits.', 'acceptEdits'),
+      rule: { kind: 'weekdays', time: '08:45' },
+      missed: 'skip',
+      lastRun: { at: lastWeekday(8, 45), result: 'missed', sessionId: null, itemId: null, reason: null },
+    }),
+    schedule('invoices', 'Monthly invoice check', {
+      draft: draft('payments-api', 'Check this month’s invoices for rounding errors.', 'acceptEdits'),
+      rule: { kind: 'monthly', day: 1, time: '10:00' },
+      paused: true,
+      lastRun: { at: firstOfMonth, result: 'started', sessionId: world.history['Add CSV export to the reports endpoint']?.id ?? null, itemId: null, reason: null },
+    }),
+  ];
+}
 
 /**
  * What Auto model picked for some of the demo sessions, and a few more routing calls, so a session shows its pick

@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
+// By path, so the config's bundler takes the source in (the package's own entry is TypeScript for the app's build).
+import { APP_ICON_KEYS, appIconManifest, DEFAULT_APP_ICON, remoteManifestUrl, type WebManifest } from '../../packages/protocol/src/appIcons.ts';
 
 /*
  * The remote app (docs/remote-access.md): built into the website, which serves it at /remote/ from Switchboard's own
@@ -56,9 +59,34 @@ const versionPlugin: Plugin = {
   },
 };
 
+/**
+ * A manifest per app icon colourway (Settings › Theme › App icon on the computer), made from public/manifest.webmanifest
+ * with that colourway's icons, in its folder next to them (`remoteManifestUrl`). Served by the dev server too.
+ */
+const manifests = () => {
+  const base = JSON.parse(readFileSync(resolve(here, 'public/manifest.webmanifest'), 'utf8')) as WebManifest;
+  return APP_ICON_KEYS.filter((key) => key !== DEFAULT_APP_ICON).map((key) => ({ fileName: remoteManifestUrl(key), source: `${JSON.stringify(appIconManifest(base, key), null, 2)}\n` }));
+};
+
+const appIconPlugin: Plugin = {
+  name: 'remote-app-icons',
+  generateBundle() {
+    for (const manifest of manifests()) this.emitFile({ type: 'asset', ...manifest });
+  },
+  configureServer(server) {
+    server.middlewares.use((request, response, next) => {
+      const path = request.url?.split('?')[0]?.replace(/^\/remote\//, '');
+      const manifest = manifests().find((m) => m.fileName === path);
+      if (!manifest) return next();
+      response.setHeader('Content-Type', 'application/manifest+json');
+      response.end(manifest.source);
+    });
+  },
+};
+
 export default defineConfig(({ command }) => ({
   base: '/remote/',
-  plugins: [react(), tailwindcss(), cspPlugin, versionPlugin],
+  plugins: [react(), tailwindcss(), cspPlugin, versionPlugin, appIconPlugin],
   // Empty while developing: there is no version.json to compare with, so nothing offers Reload.
   define: { 'import.meta.env.VITE_APP_BUILD': JSON.stringify(command === 'build' ? build : '') },
   server: { port: 5199, strictPort: true },

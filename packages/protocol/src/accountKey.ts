@@ -12,3 +12,12 @@ export function accountKey(account: { email: string | null; organization: string
   if (!email) return null;
   return bytesToHex(sha256(utf8ToBytes(`switchboard-account\n${email}\n${account?.organization?.trim() ?? ''}`)));
 }
+
+/**
+ * What tells an account apart on a phone: SHA-256 of its `accountKey`, so a phone sees that two computers' profiles
+ * share an account (Home shows them once) without learning the key `usage.tokens` asks with. Null without an account.
+ */
+export function accountTag(account: { email: string | null; organization: string | null } | null): string | null {
+  const key = accountKey(account);
+  return key && bytesToHex(sha256(utf8ToBytes(`switchboard-account-tag\n${key}`)));
+}

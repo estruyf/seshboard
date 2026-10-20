@@ -15,6 +15,7 @@
     "screenshots": "electron-vite build && node scripts/screenshots.ts",
     "typecheck": "tsc -p tsconfig.json",
     "icon": "node scripts/icon/build.mjs",
+    "icon:variants": "node scripts/icon/app-icons.mjs",
     "dist": "electron-vite build && node scripts/dist.mjs --publish never",
     "dist:preview": "electron-vite build && node scripts/dist.mjs --config electron-builder.preview.yml --publish never",
     "mock-updates": "node scripts/mock-update-server.ts",
@@ -35,5 +36,7 @@
     "electron-vite": "^5.0.0"
   },
   "description": "A fast desktop app for managing Claude Code sessions",
+  "homepage": "https://switchboard.struyfconsulting.com/",
+  "desktopName": "switchboard.desktop",
   "author": "Elio Struyf"
 }

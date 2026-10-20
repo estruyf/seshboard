@@ -10,6 +10,8 @@ interface SplitButtonProps {
   variant?: ButtonVariant;
   size?: ButtonSize;
   children: ReactNode;
+  /** An icon before the main part's label. */
+  icon?: ReactNode;
   onClick(): void;
   /** The main part's shortcut, shown after its label. */
   kbd?: string;
@@ -34,13 +36,13 @@ interface SplitButtonProps {
  * the halves (New session's Start: start, add to queue, start in a new worktree). The menu opens above,
  * lined up with the button's right edge, since the message box sits low in the window.
  */
-export function SplitButton({ variant = 'primary', size = 'lg', children, onClick, kbd, shortcut, disabled = false, reason, entries, menuDisabled = false, menuLabel, menuWidth = 240, data, menuData }: SplitButtonProps) {
+export function SplitButton({ variant = 'primary', size = 'lg', children, icon, onClick, kbd, shortcut, disabled = false, reason, entries, menuDisabled = false, menuLabel, menuWidth = 240, data, menuData }: SplitButtonProps) {
   const menu = useMenu();
   const toggle = useRef<HTMLButtonElement>(null);
   return (
     // A disabled button gets no hover, so the reason sits on the wrapper; an enabled ▾ keeps its own tooltip.
     <span className="flex" data-tooltip={reason ?? undefined} data-split-button>
-      <Button variant={variant} size={size} segment="main" kbd={kbd} shortcut={shortcut} onClick={onClick} disabled={disabled} className="disabled:pointer-events-none" {...data}>
+      <Button variant={variant} size={size} segment="main" icon={icon} kbd={kbd} shortcut={shortcut} onClick={onClick} disabled={disabled} className="disabled:pointer-events-none" {...data}>
         {children}
       </Button>
       <Button

@@ -31,6 +31,8 @@ Backup saves your Switchboard setup to one `.json` file: preferences, themes, Cl
    - **Claude profiles**: your profiles with their folders, colours and defaults for new sessions, the default profile and which projects use which. Logins are never in the file, so sign in again on the new computer.
    - **Projects**: your projects in order, with their names, icons and defaults for new sessions.
    - **Project actions**: global and per-project actions, with their shortcuts and worktree setup.
+   - **Schedules**: your [scheduled sessions](/new-session/schedules/), with their prompts and choices.
+   - **Triggers**: your [triggers](/projects/triggers/), with their sources, prompts and choices. What their checks found stays on this computer.
    - **App choices**: default editor, New session defaults, Claude Code update checks.
    - **Pinned and archived sessions**: off at first. Only useful on this computer, or when you copy `~/.claude` too.
 3. Click **Export…** and choose where to save the file. It is named like `switchboard-settings-2026-10-11.json`.
@@ -56,6 +58,10 @@ Nothing changes until you click that button.
 ### Folders that aren't on this computer
 
 A project folder from the file that doesn't exist here (because your user name is different, say) is listed under **Folders** as *not found*. Click **Choose folder…** to point it at the right folder on this computer; the preview updates. Leave it to skip that project and its actions. The undo button next to a new folder takes the choice back.
+
+A schedule for a folder that isn't here is imported paused, with "Folder not found", so it doesn't run until you resume it.
+
+Triggers always come in paused, with "Imported. Check it, then resume.", so none starts a session on this computer before you have looked at it. A trigger for a folder that isn't here is skipped. Resumed, a trigger's first check marks what is there as seen.
 
 ### Move between a Mac and a Windows PC
 

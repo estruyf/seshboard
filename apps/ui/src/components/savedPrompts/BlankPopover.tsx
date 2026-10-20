@@ -1,7 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Check } from 'lucide-react';
-import type { GithubIssue, GithubPullRequest, PromptBlank } from '@switchboard/protocol/client';
+import type { GithubListItem, PromptBlank } from '@switchboard/protocol/client';
+import { reasonLine } from '../github/githubText.ts';
 import { fuzzyScore } from '../../lib/fuzzy.ts';
 import { Kbd } from '../ui/Kbd.tsx';
 import { engineClient } from './savedPromptsStore.ts';
@@ -57,12 +58,11 @@ export function readRef(text: string, kind: 'issues' | 'pull'): { number: number
   return number ? { number: Number(number[1]), url: null } : null;
 }
 
-/** The tag on a pull request's row: "draft", "changes requested", "2 reviews"; null with nothing to say. */
-export function prDetail(pr: Pick<GithubPullRequest, 'draft' | 'reviews' | 'review'>): string | null {
-  if (pr.draft) return 'draft';
-  if (pr.review === 'changes requested') return pr.review;
-  if (pr.reviews > 0) return pr.reviews === 1 ? '1 review' : `${pr.reviews} reviews`;
-  return pr.review;
+/** The tag on a pull request's row: "draft", "2 unresolved comments"; null with nothing to say. */
+export function prDetail(pr: Pick<GithubListItem, 'isDraft' | 'unresolved'>): string | null {
+  if (pr.isDraft) return 'draft';
+  if (pr.unresolved) return pr.unresolved === 1 ? '1 unresolved comment' : `${pr.unresolved} unresolved comments`;
+  return null;
 }
 
 /** Keeps the options that match what was typed, best first; all of them in their own order for an empty search. */
@@ -134,12 +134,13 @@ export function BlankPopover(props: BlankPopoverProps) {
     if (blank.type === 'pr') {
       if (!props.root) done([], 'Open a project to list its pull requests.');
       else
-        client.call('github.pullRequests', { root: props.root }).then(
-          ({ pullRequests, repo, reason }) => {
+        // The same list (and cache) as the # list in the message box.
+        client.call('github.search', { root: props.root, query: '' }).then(
+          ({ pullRequests, repo, reason, message }) => {
             setRepo(repo);
             done(
-              pullRequests.map((pr) => ({ value: pr.url, display: `#${pr.number} ${pr.title}`, number: `#${pr.number}`, label: pr.title, tag: prDetail(pr) ?? undefined, draft: pr.draft, current: pr.url === props.value })),
-              pullRequests.length ? null : (reason ?? 'No open pull requests.'),
+              pullRequests.map((pr) => ({ value: pr.url, display: `#${pr.number} ${pr.title}`, number: `#${pr.number}`, label: pr.title, tag: prDetail(pr) ?? undefined, draft: pr.isDraft, current: pr.url === props.value })),
+              pullRequests.length ? null : (reasonLine(reason, message) ?? 'No open pull requests.'),
             );
           },
           () => done([], "Couldn't list the pull requests."),
@@ -179,13 +180,15 @@ export function BlankPopover(props: BlankPopoverProps) {
           );
           return;
         }
-        const ref = readRef(query, 'issues');
-        if (!ref) return done([], query.trim() ? 'Paste a link to an issue, or type its number.' : 'Paste a link, or type # and a number.');
         if (!props.root) return done([], 'Open a project to look up its issues.');
         setFound((f) => ({ ...f, loading: true }));
-        client.call('github.issue', { root: props.root, ref: query.trim() }).then(
-          ({ issue, reason }) => done(issue ? [issueOption(issue)] : [], reason),
-          () => done([], "Couldn't look up the issue."),
+        // Words search the open issues, a number or a link finds that one: the same search as the # list.
+        client.call('github.search', { root: props.root, query: query.trim() }).then(
+          ({ issues, repo, reason, message }) => {
+            setRepo(repo);
+            done(issues.map(issueOption), issues.length ? null : (reasonLine(reason, message) ?? (query.trim() ? 'No open issue matches.' : 'No open issues.')));
+          },
+          () => done([], "Couldn't look up the issues."),
         );
       },
       blank.type === 'issue' ? 300 : 120,
@@ -342,4 +345,4 @@ export function BlankPopover(props: BlankPopoverProps) {
   );
 }
 
-const issueOption = (issue: GithubIssue): BlankOption => ({ value: issue.url, display: `#${issue.number} ${issue.title}`, number: `#${issue.number}`, label: issue.title });
+const issueOption = (issue: GithubListItem): BlankOption => ({ value: issue.url, display: `#${issue.number} ${issue.title}`, number: `#${issue.number}`, label: issue.title });

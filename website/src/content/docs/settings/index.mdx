@@ -5,6 +5,7 @@ description: Every section of Settings and what each control does.
 
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
@@ -30,9 +31,11 @@ Click a result, or pick one with <Kbd keys="arrowup|arrowdown" /> and press <Kbd
 
 ## General
 
-<Screenshot name="settings-general" alt="Settings on General: On startup with Home, The last session and New session, the permission mode for new sessions, and the Ask before quitting switch" />
+<Screenshot name="settings-general" alt="Settings on General: On startup with the Open at login switch, Home, The last session and New session, the permission mode for new sessions, and the Ask before quitting switch" />
 
 ### On startup
+
+**Open at login** (off by default): Switchboard opens when you <Os mac="log in to your Mac" windows="sign in to Windows" />. Turn it on for a computer that restarts without you, such as a virtual machine, so Switchboard is running again after a restart. The setting is the system's own: you can also change it in <Os mac="System Settings › General › Login Items" windows="Settings › Apps › Startup" />, and Settings shows what you set there. When macOS asks you to allow Switchboard first, Settings says so: click **Open System Settings** and turn it on under Login Items. On Linux the switch is greyed out: add Switchboard to your desktop's startup applications instead.
 
 What Switchboard shows when it opens:
 
@@ -64,6 +67,28 @@ A project's own default mode comes first (its [Settings tab](/projects/settings/
 - **Open themes folder** shows where imported themes are kept, and **Import…** (or the **Drop a theme .json here** card) adds a theme file.
 
 See [Built-in themes](/themes/built-in/), [Custom themes](/themes/custom/) and [Code and terminal colours](/themes/syntax-colours/).
+
+### App icon
+
+<Screenshot name="settings-app-icon" alt="The App icon section: nine icon tiles with Signal yellow chosen, Reset to Graphite, and a note on where the original icon stays" />
+
+Pick one of nine colourways of the Switchboard icon: **Graphite** (the default), **Midnight**, **Paper**, **Signal yellow**, **Forest**, **Plum**, **Aluminium**, **Ocean** or **Neon**. The shape stays the same, only the colours change. Click a tile, or move between them with the arrow keys, and the icon changes right away. There is no restart. **Reset to Graphite** goes back to the original.
+
+<OnlyOn os="mac">
+
+The icon shows in the Dock and the app switcher. macOS shows it while Switchboard runs, so Finder and Launchpad keep the original icon, and so do notifications.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+The icon shows on Switchboard's windows, in the taskbar and on notifications. Pinned shortcuts and the Start menu keep the original icon.
+
+</OnlyOn>
+
+Switchboard doesn't change the app's own files or your shortcuts for this, so it applies the icon again each time it opens.
+
+**Use it on your phone too** (on by default) shows once [Remote](/remote-access/) is set up. The remote app then takes the same icon, for its browser tab and for **Add to Home Screen**. A phone keeps the icon an app had when you added it to the Home Screen: to see the new one there, remove Switchboard Remote from the Home Screen and add it again. Off, the remote app keeps Graphite.
 
 ## Sidebar
 

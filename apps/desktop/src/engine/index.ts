@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createEngine, type DemoUsage, type TrashScope } from '@switchboard/engine';
-import { ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@switchboard/protocol/bridge';
+import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@switchboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
 function argValue(name: string): string | undefined {
@@ -70,6 +70,8 @@ const engine = createEngine({
   stubRouter: process.env.SWITCHBOARD_STUB_ROUTER === '1',
   stubSideQuestions: process.env.SWITCHBOARD_STUB_BTW === '1',
   stubCatchUp: process.env.SWITCHBOARD_STUB_CATCHUP === '1',
+  // The smoke test: queued items that start by themselves leave the queue without starting Claude Code.
+  stubQueueStarts: process.env.SWITCHBOARD_STUB_QUEUE === '1',
   // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
   ...(process.env.SWITCHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SWITCHBOARD_CLONE_SOURCE } : {}),
 });
@@ -92,6 +94,25 @@ process.parentPort.on('message', (event) => {
     engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
     return;
   }
+  // The smoke run's queue step: a stand-in session for queued items to start after.
+  if (data?.type === 'smokeQueueHost') {
+    const { sessionId, cwd, state, outcome } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown };
+    if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'idle' || state === 'closed')) {
+      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}) });
+    }
+    return;
+  }
+  // The computer woke (powerMonitor's resume): scheduled runs due while it slept are dealt with now.
+  if (data?.type === 'wake') {
+    engine.wake();
+    return;
+  }
+  // The smoke run's schedules step: moves the schedules' clock on (with SWITCHBOARD_STUB_QUEUE only).
+  if (data?.type === 'smokeScheduleClock') {
+    const { ms } = data as { ms?: unknown };
+    if (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) engine.advanceScheduleClock(ms);
+    return;
+  }
   // The smoke run's mods step.
   if (data?.type === 'smokeMods') {
     void engine.startModsSmoke();
@@ -107,6 +128,11 @@ process.parentPort.on('message', (event) => {
     engine.setShowMods((data as { show?: unknown }).show !== false);
     return;
   }
+  // Settings › Theme › App icon, for paired phones.
+  if (data?.type === 'appIcon') {
+    engine.setAppIcon(appIconKey((data as { key?: unknown }).key));
+    return;
+  }
   // Settings › General › Use Claude in Chrome.
   if (data?.type === 'chrome') {
     engine.setChrome((data as { enabled?: unknown }).enabled === true);
@@ -115,6 +141,12 @@ process.parentPort.on('message', (event) => {
   // Settings › Conversation › Resume after a usage limit resets.
   if (data?.type === 'limits') {
     engine.setResumeAtLimit((data as { resume?: unknown }).resume === 'always' ? 'always' : 'ask');
+    return;
+  }
+  // Settings › Focus: a queued item that starts by itself waits for a free slot at the limit.
+  if (data?.type === 'focus') {
+    const { limit, countExternal } = data as { limit?: unknown; countExternal?: unknown };
+    engine.setQueueFocus({ limit: typeof limit === 'number' && Number.isFinite(limit) && limit >= 1 ? Math.round(limit) : null, countExternal: countExternal === true });
     return;
   }
   // Settings › Sessions, from main's preferences (sent at start and after each change).

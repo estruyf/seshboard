@@ -223,7 +223,11 @@ export class ActionStore {
   }
 }
 
-/** Starter actions: package.json scripts (with the project's package manager), plus git and Claude basics. */
+/**
+ * Starter actions: package.json scripts (with the project's package manager), plus git basics. No "ask Claude to
+ * commit" prompt: sent to the session, it has the model read the whole conversation again for a commit message, and
+ * the git button's commit writes one from the diff for a few thousand tokens.
+ */
 export function suggestActions(projectRoot: string): ActionSuggestion[] {
   const suggestions: ActionSuggestion[] = [];
   let scripts: Record<string, unknown> = {};
@@ -248,7 +252,6 @@ export function suggestActions(projectRoot: string): ActionSuggestion[] {
     suggestions.push({ name: 'Install', command: runner === 'npm run' ? 'npm install' : `${runner.split(' ')[0]} install`, type: 'shell', icon: 'package' });
   }
   suggestions.push(
-    { name: 'Commit', command: 'Commit the current changes with a clear, conventional commit message.', type: 'prompt', icon: 'git-commit' },
     { name: 'Push', command: 'git push', type: 'shell', icon: 'upload' },
     { name: 'Create PR', command: 'gh pr create --web', type: 'shell', icon: 'git-pull-request' },
   );

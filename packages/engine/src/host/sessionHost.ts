@@ -15,7 +15,7 @@ import type {
   SessionHostInfo,
   SlashCommand,
   StreamDelta,
-  WorktreeRequest,
+  ClaudeWorktreeRequest,
 } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
@@ -49,8 +49,11 @@ export interface HostEvents {
   commandsChanged?(): void;
   /** Up next changed: the whole list with its images, to keep it when the app quits or the session stops. */
   queue?(sessionId: string, messages: StoredUpNext[]): void;
-  /** Claude's turn ended (its `result`): finished, or stopped with an error, with Claude Code's message. */
-  turnEnded?(sessionId: string, outcome: { ok: boolean; error: string | null }): void;
+  /**
+   * Claude's turn ended (its `result`): finished, or stopped with an error, with Claude Code's message. `stopped`: you
+   * stopped it (Stop); `superseded`: Send now stopped it to send a message, so another turn follows at once.
+   */
+  turnEnded?(sessionId: string, outcome: TurnOutcome): void;
   /** A usage limit stopped Claude's turn (called before the session goes idle, so the queue already waits). */
   limitHit?(sessionId: string, stop: LimitStop): void;
   /** A turn finished without an error: whatever limit the profile was at no longer holds. */
@@ -81,7 +84,7 @@ export interface HostConfig {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Effort | null;
-  worktree: WorktreeRequest | null;
+  worktree: ClaudeWorktreeRequest | null;
   env: Record<string, string>;
   claudePath: string | undefined;
   canUseTool: CanUseTool;
@@ -119,6 +122,14 @@ const NO_MODS: ModsEvents = {
 };
 
 const STATE_FROM_SDK: Record<string, HostState> = { running: 'running', requires_action: 'needs-you', idle: 'idle' };
+
+/** How a turn ended, as `turnEnded` reports it. */
+export interface TurnOutcome {
+  ok: boolean;
+  error: string | null;
+  stopped?: boolean;
+  superseded?: boolean;
+}
 
 /** How a turn ended, from its `result`: Claude Code's first error, or its text when it flagged the result as one. */
 export function resultOutcome(message: Extract<SDKMessage, { type: 'result' }>): { ok: boolean; error: string | null } {
@@ -220,6 +231,11 @@ export class SessionHost {
   terminalOnly: string[] = [];
   models: ModelOption[] = [];
   lastActivity = Date.now();
+  /**
+   * Tool calls Claude has made that haven't returned yet, subagents' too. Claude Code may have checked their
+   * permission already (Auto mode does as they arrive), so a mode change can come too late for them.
+   */
+  readonly openToolCalls = new Set<string>();
   /** The prompt cache of this turn's last response: reported with the turn's end, so the window hears it once a turn. */
   private cacheSeen: { at: number; ttl: CacheTtl | null } | null = null;
   /** When the process ended (closed or crashed), for telling our own exiting process apart from another window. */
@@ -364,6 +380,8 @@ export class SessionHost {
     }
   }
 
+  /** You stopped Claude in this turn: its end is a stop, whatever the result says. */
+  private stopRequested = false;
   /** Why the queue isn't sending by itself (see `SessionHostInfo.queueHold`). */
   private queueHold: SessionHostInfo['queueHold'] = null;
   /**
@@ -492,9 +510,19 @@ export class SessionHost {
     };
   }
 
-  async interrupt(): Promise<void> {
-    // Stopping Claude is not a reason to fire off what is queued, so it waits for you.
-    if (this.busy) this.holdQueue('stopped');
+  /**
+   * Stops Claude's turn. `hold`: stopping Claude is not a reason to fire off what is queued, so it waits for you.
+   * `continue`: Up next moves on once the turn has ended (Stop on a phone, where Send next is out of reach).
+   */
+  async interrupt(upNext: 'hold' | 'continue' = 'hold'): Promise<void> {
+    if (this.busy) {
+      this.stopRequested = true;
+      if (upNext === 'hold') this.holdQueue('stopped');
+      else if (this.queueHold) {
+        this.queueHold = null;
+        this.publishQueue();
+      }
+    }
     await (await this.query)?.interrupt();
   }
 
@@ -615,6 +643,7 @@ export class SessionHost {
 
   private handle(message: SDKMessage): void {
     this.lastActivity = Date.now();
+    this.trackToolCalls(message);
     switch (message.type) {
       case 'system':
         return this.handleSystem(message);
@@ -645,15 +674,17 @@ export class SessionHost {
           : limitStop({ error: outcome.error ?? this.assistantError, rejected: this.rejected, last: this.lastRateLimit, prefixes: this.config.limitPrefixes ?? [] });
         this.rejected = null;
         this.assistantError = null;
-        // A failed turn leaves the queue for you to decide, unless you stopped it yourself (already held) or sent a
-        // message now. A usage limit holds it instead, until the limit is cleared.
-        if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold) this.holdQueue('error');
+        // A failed turn leaves the queue for you to decide, unless you stopped it yourself (held already, or let go on
+        // purpose) or sent a message now. A usage limit holds it instead, until the limit is cleared.
+        if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold && !this.stopRequested) this.holdQueue('error');
         if (stop) this.events.limitHit?.(this.sessionId, stop);
         else if (outcome.ok) this.events.turnOk?.(this.sessionId);
         this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache() });
         void this.refreshContext();
         this.events.usageHint?.();
-        this.events.turnEnded?.(this.sessionId, outcome);
+        const stopped = this.stopRequested;
+        this.stopRequested = false;
+        this.events.turnEnded?.(this.sessionId, { ...outcome, stopped, superseded: this.nowPhase !== null });
         return;
       }
       case 'rate_limit_event':
@@ -664,6 +695,17 @@ export class SessionHost {
         return;
       default:
         return;
+    }
+  }
+
+  private trackToolCalls(message: SDKMessage): void {
+    if (message.type === 'result') return this.openToolCalls.clear();
+    if (message.type !== 'assistant' && message.type !== 'user') return;
+    const content = (message.message as { content?: unknown }).content;
+    if (!Array.isArray(content)) return;
+    for (const block of content as Array<{ type?: string; id?: unknown; tool_use_id?: unknown }>) {
+      if (block.type === 'tool_use' && typeof block.id === 'string') this.openToolCalls.add(block.id);
+      else if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') this.openToolCalls.delete(block.tool_use_id);
     }
   }
 

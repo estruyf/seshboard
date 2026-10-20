@@ -165,3 +165,31 @@ describe('isShowLink', () => {
     for (const link of ['switchboard://show?cwd=/x', 'switchboard://show/more', 'switchboard://new-session', 'https://show', 'show', 'switchboard://showx']) expect(isShowLink(link)).toBe(false);
   });
 });
+
+describe('parseDeepLink: an issue or pull request', () => {
+  it('takes a number, #123 or its link on GitHub, in a project the link names', () => {
+    expect(link('switchboard://new-session?project=switchboard&issue=32')).toMatchObject({ project: 'switchboard', issue: '32' });
+    expect(link('switchboard://new-session?project=switchboard&issue=%2332')).toMatchObject({ issue: '32' });
+    expect(link('switchboard://new-session?repo=estruyf/switchboard&pr=151')).toMatchObject({ repo: 'estruyf/switchboard', pr: '151' });
+    expect(link(`switchboard://new-session?cwd=/Users/me/dev/app&pr=${encodeURIComponent('https://github.com/estruyf/switchboard/pull/151')}`)).toMatchObject({ pr: 'https://github.com/estruyf/switchboard/pull/151' });
+    expect(link(`switchboard://new-session?project=app&issue=${encodeURIComponent('https://github.com/o/r/issues/7/')}`)).toMatchObject({ issue: 'https://github.com/o/r/issues/7' });
+    // Without one, nothing about it is passed on.
+    expect(link('switchboard://new-session?project=app')).not.toHaveProperty('issue');
+  });
+
+  it('keeps autostart as asked, for New session to refuse it with a reason', () => {
+    expect(link('switchboard://new-session?project=switchboard&issue=32&autostart=1')).toMatchObject({ issue: '32', autostart: true });
+  });
+
+  it('refuses bad numbers, other sites, both at once, and a link without a project', () => {
+    expect(error('switchboard://new-session?project=a&issue=0')).toBe('The issue in the link must be a number, #123, or its link on GitHub.');
+    expect(error('switchboard://new-session?project=a&issue=-3')).toBe('The issue in the link must be a number, #123, or its link on GitHub.');
+    expect(error('switchboard://new-session?project=a&issue=12abc')).toBe('The issue in the link must be a number, #123, or its link on GitHub.');
+    expect(error('switchboard://new-session?project=a&pr=1234567890')).toBe('The pull request in the link must be a number, #123, or its link on GitHub.');
+    expect(error(`switchboard://new-session?project=a&issue=${encodeURIComponent('https://example.com/o/r/issues/1')}`)).toBe('The issue in the link must be a number, #123, or its link on GitHub.');
+    expect(error(`switchboard://new-session?project=a&issue=${encodeURIComponent('http://github.com/o/r/issues/1')}`)).toBe('The issue in the link must be a number, #123, or its link on GitHub.');
+    expect(error('switchboard://new-session?project=a&issue=1&pr=2')).toBe('A link can have an issue or a pull request, not both.');
+    expect(error('switchboard://new-session?issue=32')).toBe('A link with an issue or pull request needs project, repo or cwd.');
+    expect(error('switchboard://new-session?question=1&issue=32')).toBe('A quick question has no issue or pull request.');
+  });
+});

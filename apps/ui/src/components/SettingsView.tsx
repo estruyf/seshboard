@@ -20,6 +20,7 @@ import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
 import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
+import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
 import { LargeContextSettings, UsageSettings } from './usage/UsageSettings.tsx';
@@ -420,7 +421,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
     case 'general':
       return (
         <>
-          <Section title="On startup" description="What Switchboard shows when it opens.">
+          <Section title="On startup" description="Whether Switchboard opens at login, and what it shows when it opens.">
+            <OpenAtLoginSetting />
             <RadioGroup label="On startup" className="grid gap-2.5">
               {STARTUP.map(({ value, label, detail }) => (
                 <Radio key={value} checked={prefs.startupView === value} onSelect={() => update({ startupView: value })} dataAttrs={{ 'data-startup-view': value }}>

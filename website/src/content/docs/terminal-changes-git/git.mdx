@@ -74,8 +74,10 @@ When the branch is behind its upstream, the menu says to pull before you push. A
 
 There are two ways to commit:
 
-- **Ask Claude to commit** (also the button's face, **Commit N**) sends Claude a message to commit the current changes with a clear, conventional commit message.
-- **Commit…** opens a dialog for your own message. Click **Commit** or press <Kbd keys="mod+enter" />. It commits what is staged, or every change when nothing is staged. Git runs in a terminal tab, so you see the output of your commit hooks.
+- **Ask Claude to commit** (also the button's face, **Commit N**) has Haiku write the message, then commits. Haiku reads only the changes: the files, the diff stat and the diff (lock files left out, about 10,000 tokens at most), and your recent commit messages for the style. It doesn't read the conversation, so a commit costs a few thousand tokens however long the session is. The tokens count on the session's profile, in Usage.
+- **Commit…** opens a dialog for your own message. Click **Commit** or press <Kbd keys="mod+enter" />.
+
+Both commit what is staged, or every change when nothing is staged. Git runs in a terminal tab, so you see the output of your commit hooks.
 
 Stage files in the [Changes panel](/terminal-changes-git/changes/#stage-and-unstage). *Commit…* in the command palette opens the same dialog.
 

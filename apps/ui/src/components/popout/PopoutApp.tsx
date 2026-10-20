@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { SelectionMenu } from '../SelectionMenu.tsx';
 import { useReadyReport } from '../../engine/useReadyReport.ts';
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { useAskSync } from '../../state/askStore.ts';
@@ -95,6 +96,7 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">{shown && <TranscriptView sessionId={sessionId} leading={false} />}</main>
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'shortcuts' && <ShortcutsSheet />}
+      <SelectionMenu />
       <PaletteDialogs />
       <AddContextDialogHost />
       {/* Starting, resuming or forking from here can hit the focus limit; archiving can hold an unsent message. */}

@@ -4,8 +4,10 @@
  * reads it. Plain TypeScript, no zod: the renderer, the engine and the remote app all parse briefs with it.
  */
 
-/** The fence's info string: a code block with any other one is never a brief. */
-export const SESSION_FENCE = 'switchboard-session';
+import { defuseFences, fencedBlocks, fenceFor, GITHUB_FENCE, SESSION_FENCE } from './contextBlocks.ts';
+
+/** The fence's info string (a code block with any other one is never a brief), and the fence for a text. */
+export { fenceFor, SESSION_FENCE };
 /** At most this many linked sessions in one message. */
 export const MAX_LINKS_PER_MESSAGE = 5;
 /** The most characters one brief takes, and all briefs of one message together. */
@@ -41,12 +43,6 @@ export interface Brief {
 
 /** A brief with only its session: what the message box writes. */
 export const stubBrief = (label: string, sessionId: string): Brief => ({ label, sessionId, stub: true, fields: {}, commits: [], did: [], skipped: [], next: null, lastReply: null, shortened: null });
-
-/** A code fence longer than any run of backticks in the text, so the text can't close it early. */
-export function fenceFor(text: string): string {
-  const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
-  return '`'.repeat(Math.max(3, longest + 1));
-}
 
 const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
 
@@ -125,64 +121,20 @@ export function writeBrief(brief: Brief, budget = BRIEF_BUDGET): string {
   return text(current);
 }
 
-/** Briefs for one message, fitting `BRIEFS_BUDGET` together: each gets an equal share of it, at most `BRIEF_BUDGET`. */
-export function writeBriefs(briefs: readonly Brief[]): string[] {
-  const share = Math.min(BRIEF_BUDGET, Math.floor(BRIEFS_BUDGET / Math.max(1, briefs.length)));
+/**
+ * Briefs for one message, fitting `BRIEFS_BUDGET` together: each gets an equal share of it, at most `BRIEF_BUDGET`.
+ * `slots` counts the other blocks that share the budget too (attached issues and pull requests).
+ */
+export function writeBriefs(briefs: readonly Brief[], slots = briefs.length): string[] {
+  const share = Math.min(BRIEF_BUDGET, Math.floor(BRIEFS_BUDGET / Math.max(1, slots, briefs.length)));
   return briefs.map((brief) => writeBrief(brief, share));
 }
 
 /** The stub the message box writes for a linked session. */
 export const writeStub = (label: string, sessionId: string): string => render(stubBrief(label, sessionId));
 
-const FENCE_OPEN = /^(`{3,})(.*)$/;
-
-interface Block {
-  /** Where the label line starts (or the fence, without one), and where the block ends, in the text. */
-  start: number;
-  end: number;
-  label: string | null;
-  info: string;
-  inner: string;
-  /** Where the info string starts, in the text (for `defuseStubs`). */
-  infoAt: number;
-}
-
-/** The top-level fenced blocks of a text: a fence inside another one (a text chip's own block) is skipped. */
-function blocks(text: string): Block[] {
-  const out: Block[] = [];
-  const lines = text.split('\n');
-  const starts: number[] = [];
-  let at = 0;
-  for (const line of lines) {
-    starts.push(at);
-    at += line.length + 1;
-  }
-  for (let i = 0; i < lines.length; i++) {
-    const open = FENCE_OPEN.exec(lines[i]!);
-    if (!open) continue;
-    const fence = open[1]!;
-    let close = -1;
-    for (let j = i + 1; j < lines.length; j++) {
-      if (lines[j]!.trimEnd() === fence) {
-        close = j;
-        break;
-      }
-    }
-    if (close < 0) break;
-    const prev = i > 0 ? lines[i - 1]! : '';
-    const label = prev.startsWith(LABEL_PREFIX) ? prev.slice(LABEL_PREFIX.length).trim() : null;
-    out.push({
-      start: label !== null ? starts[i - 1]! : starts[i]!,
-      end: starts[close]! + lines[close]!.length,
-      label,
-      info: open[2]!.trim(),
-      inner: lines.slice(i + 1, close).join('\n'),
-      infoAt: starts[i]! + lines[i]!.indexOf(open[2]!.trim(), fence.length),
-    });
-    i = close;
-  }
-  return out;
-}
+/** The top-level fenced blocks of a text, with a brief's label line. */
+const blocks = (text: string) => fencedBlocks(text, LABEL_PREFIX);
 
 const LIST_KEYS = new Set(['commits', 'did', 'skipped']);
 
@@ -277,13 +229,8 @@ export function replaceBriefs(text: string, replace: (brief: Brief, block: strin
 }
 
 /**
- * Turns every brief's fence into a plain `text` code block, so it reads the same and never expands: for text from
- * places that may not link sessions (a paired phone), which could otherwise name a session hidden from them.
+ * Turns every brief's fence, and every attached issue's or pull request's, into a plain `text` code block, so it reads
+ * the same and never expands: for text from places that may not link sessions or attach issues (a paired phone), which
+ * could otherwise name a session hidden from them.
  */
-export function defuseStubs(text: string): string {
-  const found = blocks(text).filter((b) => b.info === SESSION_FENCE);
-  let out = text;
-  // From the end, so earlier positions stay right.
-  for (const block of found.reverse()) out = `${out.slice(0, block.infoAt)}text${out.slice(block.infoAt + SESSION_FENCE.length)}`;
-  return out;
-}
+export const defuseStubs = (text: string): string => defuseFences(text, [SESSION_FENCE, GITHUB_FENCE]);

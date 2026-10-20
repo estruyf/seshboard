@@ -12,6 +12,12 @@ import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued } from '../../state/laterStore.ts';
 import { useQueue } from '../../state/useQueue.ts';
+import { describe as describeRule } from '@switchboard/protocol/client';
+import { nextRunLine } from '../../state/schedules.ts';
+import { deleteSchedule, runScheduleNow, setSchedulePaused, useSchedules } from '../../state/schedulesStore.ts';
+import { checkTriggerNow, deleteTrigger, openTriggerEditor, setTriggerPaused, useTriggers } from '../../state/triggersStore.ts';
+import { checkedLine, pausedLine } from '../../state/triggers.ts';
+import { listedSchedules } from '../../state/upcoming.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { formatKeys, keysFor, localizeKeys, modKey, shortcutById } from '../../lib/shortcuts.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
@@ -97,6 +103,10 @@ const PICK_PLACEHOLDER: Record<PickList, string> = {
   queue: 'Pick a queued prompt to start',
   memory: 'Pick a memory to share',
   prompt: 'Pick a saved prompt',
+  schedules: 'Pick a schedule',
+  'schedule-action': 'What to do with it',
+  triggers: 'Pick a trigger',
+  'trigger-action': 'What to do with it',
 };
 /** What a command that asks for more shows next, on its row while it's highlighted. */
 const NEXT_HINT: Record<PaletteStep['kind'], string> = { projects: 'picks a project next', prompt: 'write the prompt next', pick: 'pick one next', clone: 'paste the URL next' };
@@ -160,6 +170,10 @@ export function CommandPalette() {
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
   const focusLimit = usePreferences((s) => s.prefs.focusLimit);
   const queue = useQueue();
+  const allSchedules = useSchedules((s) => s.schedules);
+  // One-time schedules that have run aren't offered: only Upcoming's History shows them.
+  const schedules = useMemo(() => listedSchedules(allSchedules, Date.now()), [allSchedules]);
+  const triggers = useTriggers((s) => s.triggers);
   // The current project's memories, read when the Share memory step shows.
   const memoryRoot = step?.kind === 'pick' && step.list === 'memory' ? (ctx.currentProject?.root ?? null) : null;
   const { list: memoryList } = useMemoryList(memoryRoot);
@@ -269,7 +283,7 @@ export function CommandPalette() {
       return rows.length ? [{ id: list, label: PICK_PLACEHOLDER[list].replace(/^Pick (a |an )?/, ''), rows }] : [];
     }
     // The pick lists and project rows read these; the functions above are only called from here.
-  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList]);
+  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers]);
 
   /** The choices of a pick step, the current one marked. */
   function pickOptions(list: PickList): Option[] {
@@ -315,6 +329,42 @@ export function CommandPalette() {
         return (memoryList?.memories ?? []).map((m) => ({ value: m.path, title: m.name, detail: [m.type, m.description].filter(Boolean).join(' · ') || undefined }));
       case 'prompt':
         return ctx.prompts.map((p, i) => ({ value: String(i), title: p.name, detail: p.scope.kind === 'global' ? 'Every project' : p.scope.kind === 'personal' ? 'This project, just for you' : 'Shared with the project' }));
+      case 'schedules':
+        // Each with its project, its rule and its next run, or Paused.
+        return schedules.map((schedule) => ({
+          value: schedule.id,
+          title: schedule.name,
+          detail: [nameOf(schedule.draft.cwd), describeRule(schedule.rule), nextRunLine(schedule, Date.now())?.text].filter(Boolean).join(' · '),
+          dot: schedule.paused ? 'bg-caution' : undefined,
+        }));
+      case 'triggers':
+        // Each with its project and its last check, or why it is paused.
+        return triggers.map((trigger) => ({
+          value: trigger.id,
+          title: trigger.name,
+          detail: [nameOf(trigger.projectRoot), pausedLine(trigger) ?? checkedLine(trigger.lastCheckedAt, Date.now())].filter(Boolean).join(' · '),
+          dot: trigger.paused ? 'bg-caution' : undefined,
+        }));
+      case 'trigger-action': {
+        const trigger = triggers.find((t) => t.id === (step?.kind === 'pick' ? step.target : undefined));
+        if (!trigger) return [];
+        return [
+          ...(trigger.paused ? [] : [{ value: 'check', title: 'Check now', detail: 'Looks for new events now' }]),
+          { value: 'edit', title: 'Edit…', detail: 'Opens the trigger editor' },
+          trigger.paused ? { value: 'resume', title: 'Resume', detail: 'What is there then is marked as seen' } : { value: 'pause', title: 'Pause' },
+          { value: 'delete', title: 'Delete', detail: 'Shows Undo' },
+        ];
+      }
+      case 'schedule-action': {
+        const schedule = schedules.find((s) => s.id === (step?.kind === 'pick' ? step.target : undefined));
+        if (!schedule) return [];
+        return [
+          { value: 'run', title: 'Run now', detail: 'Starts it now; the next run stays as it is' },
+          { value: 'edit', title: 'Edit…', detail: 'Opens New session filled in' },
+          schedule.paused ? { value: 'resume', title: 'Resume' } : { value: 'pause', title: 'Pause' },
+          { value: 'delete', title: 'Delete', detail: 'Shows Undo' },
+        ];
+      }
     }
   }
 
@@ -335,6 +385,17 @@ export function CommandPalette() {
 
   const pick = (list: PickList, value: string) => {
     const sessionId = ctx.session?.id;
+    // A schedule: what to do with it is the next step, in the palette.
+    if (list === 'schedules') {
+      const schedule = schedules.find((s) => s.id === value);
+      if (schedule) setState((s) => pushStep(s, { kind: 'pick', list: 'schedule-action', chip: schedule.name, target: schedule.id }));
+      return;
+    }
+    if (list === 'triggers') {
+      const trigger = triggers.find((t) => t.id === value);
+      if (trigger) setState((s) => pushStep(s, { kind: 'pick', list: 'trigger-action', chip: trigger.name, target: trigger.id }));
+      return;
+    }
     // The palette has closed by then, so a failure is said in a toast.
     const run = (what: string, call: () => Promise<unknown>) => void call().catch((e: Error) => toast(`Couldn't ${what}: ${e.message}`));
     close();
@@ -361,6 +422,24 @@ export function CommandPalette() {
       case 'queue': {
         const entry = queue.entries.find((e) => e.item.id === value);
         if (entry) void startQueued(entry.item);
+        return;
+      }
+      case 'schedule-action': {
+        const schedule = schedules.find((s) => s.id === (step?.kind === 'pick' ? step.target : undefined));
+        if (!schedule) return;
+        if (value === 'run') void runScheduleNow(schedule);
+        else if (value === 'edit') useSchedules.getState().edit(schedule);
+        else if (value === 'pause' || value === 'resume') run(value === 'pause' ? 'pause it' : 'resume it', () => setSchedulePaused(schedule, value === 'pause'));
+        else if (value === 'delete') run('delete it', () => deleteSchedule(schedule));
+        return;
+      }
+      case 'trigger-action': {
+        const trigger = triggers.find((t) => t.id === (step?.kind === 'pick' ? step.target : undefined));
+        if (!trigger) return;
+        if (value === 'check') void checkTriggerNow(trigger);
+        else if (value === 'edit') openTriggerEditor({ root: trigger.projectRoot, trigger });
+        else if (value === 'pause' || value === 'resume') run(value === 'pause' ? 'pause it' : 'resume it', () => setTriggerPaused(trigger, value === 'pause'));
+        else if (value === 'delete') run('delete it', () => deleteTrigger(trigger));
         return;
       }
       case 'prompt': {
@@ -412,9 +491,14 @@ export function CommandPalette() {
           usePaletteBus.getState().showDialog({ kind: 'rename-project', root: row.root });
           return;
         }
-        if (step?.kind === 'projects' && (step.purpose === 'worktrees' || step.purpose === 'branches')) {
+        if (step?.kind === 'projects' && (step.purpose === 'triggers' || step.purpose === 'worktrees' || step.purpose === 'branches')) {
           close();
           openProject(row.root, step.purpose);
+          return;
+        }
+        if (step?.kind === 'projects' && step.purpose === 'trigger') {
+          close();
+          openTriggerEditor({ root: row.root, trigger: null });
           return;
         }
         const worktree = alt || (step?.kind === 'projects' && step.worktree);

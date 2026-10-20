@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type SoundList, type SwitchboardBridge, type ThemeCommand, type UpdateState } from '@switchboard/protocol/bridge';
+import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type SoundList, type SwitchboardBridge, type ThemeCommand, type UpdateState } from '@switchboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@switchboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -19,6 +19,7 @@ const bridge: SwitchboardBridge = {
   },
   reportReady: (report: RendererReadyReport) => ipcRenderer.send(IpcChannel.rendererReady, report),
   pickFolder: (defaultPath?: string) => ipcRenderer.invoke(IpcChannel.pickFolder, defaultPath) as Promise<string | null>,
+  pasteClipboard: () => ipcRenderer.invoke(IpcChannel.pasteClipboard) as Promise<void>,
   pickImage: (defaultPath?: string) => ipcRenderer.invoke(IpcChannel.pickImage, defaultPath) as Promise<string | null>,
   pickContextFiles: (defaultPath?: string) => ipcRenderer.invoke(IpcChannel.pickContextFiles, defaultPath) as Promise<PickedPath[]>,
   chooseExportFile: (defaultName: string) => ipcRenderer.invoke(IpcChannel.chooseExportFile, defaultName) as Promise<string | null>,
@@ -96,6 +97,9 @@ const bridge: SwitchboardBridge = {
   notificationPermission: () => ipcRenderer.invoke(IpcChannel.notificationPermission) as Promise<NotificationPermission>,
   openNotificationSettings: () => ipcRenderer.send(IpcChannel.openNotificationSettings),
   testNotification: () => ipcRenderer.send(IpcChannel.testNotification),
+  openAtLogin: () => ipcRenderer.invoke(IpcChannel.getOpenAtLogin) as Promise<OpenAtLogin>,
+  setOpenAtLogin: (on) => ipcRenderer.invoke(IpcChannel.setOpenAtLogin, on) as Promise<OpenAtLogin>,
+  openLoginItemsSettings: () => ipcRenderer.send(IpcChannel.openLoginItemsSettings),
   popout: new URLSearchParams(window.location.search).get(POPOUT_QUERY),
   popouts: ipcRenderer.sendSync(IpcChannel.getPopouts) as string[],
   onPopoutsChanged(listener) {

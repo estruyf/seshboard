@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, House, ListEnd, PencilLine, Pin, PinOff, Plus, Search, Settings, Trash2, TriangleAlert } from 'lucide-react';
+import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { CatchUp } from '@switchboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -15,11 +15,14 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
+import { SidebarNav } from './SidebarNav.tsx';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
 import { closedSections, isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { useSchedules } from '../../state/schedulesStore.ts';
+import { useTriggers } from '../../state/triggersStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useLimits } from '../../state/limitsStore.ts';
 import { rowLimitLabel, stoppedBy } from '../../lib/usageLimit.ts';
@@ -281,6 +284,10 @@ export const SessionRow = memo(function SessionRow({
   // With a project filter on, every row is in that project: the name would only repeat.
   const filtered = useProjects((s) => s.filter !== null);
   const status = rowStatus(data);
+  /** A schedule started it (#173): the repeat icon before its second line. */
+  const scheduled = useSchedules((s) => !remote && s.bySession.has(data.id));
+  /** A trigger started it (#180): the bolt, in the trigger colour, before its status. */
+  const triggered = useTriggers((s) => (remote ? null : (s.bySession.get(data.id)?.triggerName ?? null)));
   // A usage limit stopped it: it waits for the limit (or for you to resume), which its second line and tooltip say.
   const limit = useLimits((s) => stoppedBy(s.state, data.id, data.profileId));
   const limitText = limit && status !== 'running' && status !== 'needs-you' ? rowLimitLabel(limit, now) : null;
@@ -292,7 +299,7 @@ export const SessionRow = memo(function SessionRow({
   const ageTone = (status && AGE_TONE[status]) ?? 'text-faint';
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const titleTone = emphasised || selected ? 'font-semibold text-text' : archived ? 'text-muted' : 'text-text/85';
-  const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone}`}>{shortAge(data.updatedAt, now)}</span>;
+  const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone}`}>{shortAge(status === 'running' && data.workingSince != null ? data.workingSince : data.updatedAt, now)}</span>;
   // The line at the row's left edge. With more than one Claude profile it is the profile's colour, on
   // every row, so you see whose account a session uses at a glance; the status then shows in the age's
   // colour, the bold title and the group. With one profile it is the status (needs you, working, unread).
@@ -347,7 +354,7 @@ export const SessionRow = memo(function SessionRow({
     'data-archived': archived || undefined,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, updatedAt: data.updatedAt, now }), limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -414,7 +421,8 @@ export const SessionRow = memo(function SessionRow({
     );
   }
 
-  // Two lines: the title with its age, then what it waits for (needs you) or where it runs.
+  // Two lines: the title with its age, then what it waits for (needs you) or where it runs. A session a schedule
+  // started has the repeat icon first.
   const place = [branch, filtered ? null : projectName].filter(Boolean);
   const lines = (
     <span className="grid min-w-0 flex-1 gap-px">
@@ -430,6 +438,8 @@ export const SessionRow = memo(function SessionRow({
         </span>
       </span>
       <span className="flex h-4 min-w-0 items-center gap-1.5 text-meta text-faint">
+        {triggered !== null && <Zap size={11} className="shrink-0 text-trigger" aria-label={`Started by ${triggered || 'a trigger'}`} role="img" data-row-triggered />}
+        {scheduled && <Repeat size={11} className="shrink-0" aria-label="From a schedule" role="img" data-row-scheduled />}
         {reviewText ? (
           <span className="min-w-0 flex-1 truncate" data-row-review={review}>
             {!filtered && `${projectName} · `}
@@ -510,8 +520,6 @@ export function Sidebar() {
   const complete = useSessions((s) => s.complete);
   const loaded = useSessions((s) => s.loaded);
   const view = useSessions((s) => s.view);
-  // Home is the main area with no session open (also behind Settings when it was opened from there).
-  const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
   // Settings is a sheet over the session, which stays selected in the list behind it.
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
   const { setFilter: setSearch, select, setView } = useSessions.getState();
@@ -960,19 +968,6 @@ export function Sidebar() {
             className="h-full min-w-0 flex-1 bg-transparent text-ui text-text outline-none placeholder:text-muted"
           />
         </label>
-        <Button
-          variant="quiet"
-          size="lg"
-          iconOnly
-          icon={<House size={15} aria-hidden />}
-          aria-label="Home"
-          shortcut="home"
-          selected={atHome}
-          data-go-home
-          onClick={() => useSessions.getState().goHome()}
-          aria-current={atHome ? 'page' : undefined}
-          className="no-drag shrink-0 rounded-lg!"
-        />
         {/* The sidebar's one primary action: a yellow fill, like every primary button. With an unsent New session
             prompt it carries a pen, and opens New session on that prompt's project. */}
         <span className="no-drag relative flex shrink-0">
@@ -990,6 +985,8 @@ export function Sidebar() {
           {newDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />}
         </span>
       </div>
+
+      <SidebarNav now={now} />
 
       {/* The order: by time and state, or what takes least to unblock first. */}
       <div className="px-3 pb-1.5">

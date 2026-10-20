@@ -217,7 +217,7 @@ export const sameShortcut = (a: string, b: string) =>
 
 /** Where you are, for `when()`. Built from the stores (and where focus was) when the shortcuts sheet opens. */
 export interface ShortcutContext {
-  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage";
+  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage" | "upcoming";
   /** A session is open in the session view. */
   session: boolean;
   /** Claude is working, or waiting for you, in that session. */
@@ -336,6 +336,12 @@ export const SHORTCUTS = [
     section: "general",
   },
   { id: "home", keys: ["mod+shift+h"], action: "Home", section: "general" },
+  {
+    id: "upcoming",
+    keys: ["mod+shift+y"],
+    action: "Upcoming: queued and scheduled",
+    section: "general",
+  },
   {
     id: "usage.open",
     keys: [],
@@ -863,6 +869,24 @@ export const SHORTCUTS = [
     keys: ["@"],
     action: "Mention a file",
     section: "composer",
+    when: inMessageBox,
+    where: "composer",
+  },
+  {
+    id: "composer.github",
+    keys: ["#"],
+    action: "Attach an issue or pull request",
+    section: "composer",
+    context: "At the start of a word, in a project on GitHub",
+    when: inMessageBox,
+    where: "composer",
+  },
+  {
+    id: "composer.github-new-session",
+    keys: ["alt+enter"],
+    action: "New session from it",
+    section: "composer",
+    context: "On an issue or pull request in the # list",
     when: inMessageBox,
     where: "composer",
   },

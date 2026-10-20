@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
+  DEFAULT_APP_ICON,
   encryptedStream,
   lineTransport,
   pairingCode,
@@ -22,6 +23,7 @@ import {
   REMOTE_FEATURE_BRANCHES,
   REMOTE_FEATURE_CLONE,
   REMOTE_FEATURE_COSTS,
+  REMOTE_FEATURE_LIMITS,
   REMOTE_FEATURE_MARK_UNREAD,
   REMOTE_FEATURE_PUSH_KEY,
   REMOTE_FEATURE_USAGE_TOKENS,
@@ -49,6 +51,8 @@ export interface RemoteServerOptions {
   appVersion: string;
   /** What the phone calls this computer ("Elio's iMac"); asked once, at the first connection. */
   computerName?: () => string;
+  /** The app icon colourway the phone shows (Settings › Theme › App icon), for hello; Graphite without it. */
+  appIcon?: () => string;
   /**
    * The remote app's origins: a socket from a page anywhere else is refused. Browsers always send `Origin` on a
    * WebSocket and a page can't fake it, so another site open on the phone or this computer can't reach the engine.
@@ -249,7 +253,7 @@ export class RemoteServer {
       transport,
       {
         ...this.options.handlers(known),
-        hello: () => ({ app: { version: this.options.appVersion }, device: { id: known.id, name: known.name }, computer: { name: this.computerName() }, features: [REMOTE_FEATURE_ATTACHMENTS, REMOTE_FEATURE_USAGE_TOKENS, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_MARK_UNREAD, REMOTE_FEATURE_PUSH_KEY, REMOTE_FEATURE_CLONE, REMOTE_FEATURE_COSTS] }),
+        hello: () => ({ app: { version: this.options.appVersion }, device: { id: known.id, name: known.name }, computer: { name: this.computerName() }, features: [REMOTE_FEATURE_ATTACHMENTS, REMOTE_FEATURE_USAGE_TOKENS, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_MARK_UNREAD, REMOTE_FEATURE_PUSH_KEY, REMOTE_FEATURE_CLONE, REMOTE_FEATURE_COSTS, REMOTE_FEATURE_LIMITS], appIcon: this.options.appIcon?.() ?? DEFAULT_APP_ICON }),
       },
       { onUnexpectedError: (method, error) => this.options.log('error', `Remote ${method} failed: ${error instanceof Error ? error.message : String(error)}`) },
     );

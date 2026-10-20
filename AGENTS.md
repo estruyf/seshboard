@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working on Switchboard, a macOS desktop app (that runs on Windows too, see [docs/windows-support.md](docs/windows-support.md)) for managing Claude Code sessions. People should start with [README.md](README.md); the design and roadmap are in [PLAN.md](PLAN.md).
+Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working on Switchboard, a macOS desktop app (that runs on Windows and Linux too, see [docs/windows-support.md](docs/windows-support.md) and [Building: Linux](docs/building-and-signing.md#linux)) for managing Claude Code sessions. People should start with [README.md](README.md); the design and roadmap are in [PLAN.md](PLAN.md).
 
 ## Architecture
 
@@ -41,7 +41,7 @@ npm run website:dev  # the website and docs with hot reload
 npm run website:build          # build the website; fails on a broken internal link
 npm run website:screenshots    # retake the website's screenshots in a made-up demo home folder
 npm run chaos -- --phase repro # chaos testing in a sandbox (macOS; docs/chaos-testing.md)
-npm run dist         # package the app for this OS: Switchboard.app and a .dmg, or the Windows installer
+npm run dist         # package the app for this OS: Switchboard.app and a .dmg, the Windows installer, or the Linux AppImage, .deb and .rpm
 ```
 
 `npm run check` and, after UI or engine changes, the full `npm run smoke` must pass before you report work as done. While you build, run the cheap checks instead (see Working on a feature).
@@ -66,12 +66,14 @@ Most of the time in a feature goes into rerunning slow checks and re-reading the
 - **Comments** explain why, in plain sentences, at the density of the surrounding code. JSDoc on exported functions and on non-obvious fields.
 - **Testable logic lives in pure modules.** Unit tests must not import modules that touch `window` or `localStorage` at load time; put pure helpers in their own file (see `toolSummary.ts`, `agentRuns.ts`, `lib/fuzzy.ts`, `lib/unifiedDiff.ts`). Tests sit next to the code (`*.test.ts`).
 - **Engine tests** use real temporary directories, real git repositories and a real SQLite file, not mocks. The SDK is injected (`SdkRuntime`), so host tests fake Claude Code.
-- **macOS and Windows.** Code that differs per platform goes through one helper for each question, never a path or key written for macOS:
+- **macOS, Windows and Linux.** Code that differs per platform goes through one helper for each question, never a path or key written for macOS:
   - paths: `isAbsolutePath`, `isSameOrInside`, `pathInside`, `joinPath` (`packages/protocol/src/paths.ts`) and `basename` (`apps/ui/src/lib/format.ts`), never `split('/')` or `startsWith('/')`; the zod `AbsolutePath` takes only this platform's form;
   - the shell: `userShell()` (`packages/engine/src/system/shell.ts`), for the file, its arguments, `quote` and `sequence`;
   - starting a `.cmd`: `viaCmd()` (`system/windowsCommand.ts`);
   - keys: `mod` in the registry, `modKey(event)` in handlers;
   - wording: `fileManagerName()` and `trashName()` (`apps/ui/src/lib/platform.ts`).
+
+  Linux takes the POSIX side of each (paths, `$SHELL`, the Ctrl keys of Windows); where macOS calls an app by its bundle (`open -a`), Linux uses a command on `PATH` or `xdg-open`.
 
   Pure helpers take the platform as a parameter, so the macOS tests run on Windows and the other way round.
 - **Schema changes** go through a new migration appended to `packages/engine/src/db/migrations.ts`. The cache is derived from `~/.claude` and may be dropped and rebuilt; `owned_sessions`, `session_flags`, `project_settings` and `project_actions` hold user choices and must survive.

@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -43,11 +43,13 @@ function setup(spawn?: SpawnPty, env: Record<string, string> = { PATH: process.e
   return { manager, output, changes };
 }
 
-// The same steps in the shell each platform runs: /bin/sh, or PowerShell on Windows (which reads Enter as \r).
+// The same steps in the shell each platform runs: bash (or /bin/sh), or PowerShell on Windows (which reads Enter as \r).
+// Not /bin/sh where that is dash (Ubuntu): an interactive dash ignores Ctrl+C and SIGTERM, so Stop could only kill it.
 const windows = process.platform === 'win32';
+const posixShell = existsSync('/bin/bash') ? '/bin/bash' : '/bin/sh';
 const real = windows
   ? { env: withUpperCasePath(process.env as Record<string, string>), input: 'pwd; echo "TERM=$env:TERM"\r', exit: 'exit 7\r', long: 'echo started; Start-Sleep 30', silent: '$null = 1' }
-  : { env: { PATH: process.env.PATH ?? '', SHELL: '/bin/sh' }, input: 'pwd; echo "TERM=$TERM"\n', exit: 'exit 7\n', long: 'echo started; sleep 30', silent: 'true' };
+  : { env: { PATH: process.env.PATH ?? '', SHELL: posixShell }, input: 'pwd; echo "TERM=$TERM"\n', exit: 'exit 7\n', long: 'echo started; sleep 30', silent: 'true' };
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 describe('TerminalManager with a real pty', () => {

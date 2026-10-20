@@ -1,9 +1,10 @@
 ---
 title: Home
-description: One view of what needs you, what is working, your queue and your projects.
+description: One view of what needs you, what is working, your queue, your schedules and your projects.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import Related from '../../../components/Related.astro';
@@ -15,7 +16,7 @@ Home is what the window shows when no session is open. It tells you in one sente
 ## Open it
 
 - Press <Kbd shortcut="home" />.
-- Click the house button at the top of the sidebar.
+- Click **Home** under the search field in the sidebar (the house button in the minimal sidebar).
 - Choose *Home* in the command palette.
 - Close the session you have open with the **×** in its header, or *Close session* in the command palette.
 
@@ -29,7 +30,8 @@ From top to bottom:
 - <Pill tone="needs-you">Needs you</Pill> **Needs you:** a card per session that waits for you, with its project and branch, what it asks for ("Permission: Bash", "Question", "Plan to review") and **Open**.
 - <Pill tone="working">Working</Pill> **Working:** a card per session Claude is working on, with what it is doing. Click one to open it.
 - **Unsent:** the messages you typed and didn't send, each with **Open**. See [Unsent messages](/sessions/unsent-drafts/).
-- **Queue:** your queued prompts, with **Start** on the ones that are ready and ⋯ for the rest. See [Queue](/new-session/queue/).
+- **Queue:** your first three queued prompts, with **Start** on the ones that are ready and ⋯ for the rest. **See all in Upcoming** opens [Upcoming](/sessions/upcoming/) on the whole queue. See [Queue](/new-session/queue/).
+- **Schedules:** your first three scheduled sessions, each with its rule, its last and next run, **Run now** and ⋯. **See all in Upcoming** opens [Upcoming](/sessions/upcoming/) on every schedule. **Schedule a session** opens New session, with Start set to **Schedule…**. A line under the card says when schedules run: <Os mac="while Switchboard is running, also with its windows closed" windows="while a Switchboard window is open" />. See [Schedules](/new-session/schedules/).
 - **Start in a project:** tiles for four of your projects, with the branch checked out and how many sessions are open there. Click one to open New session on that project.
 - **Profiles** (or **Usage** with one profile): each Claude profile's plan usage and what its sessions are doing. Click the usage to see what used it in the [Usage view](/usage/).
 
@@ -46,4 +48,4 @@ Without projects, Home says *Add your first project* with an **Add a project** b
 
 ## Related
 
-<Related pages={['new-session/queue', 'sessions/unsent-drafts', 'usage', 'settings/claude-profiles']} />
+<Related pages={['sessions/upcoming', 'new-session/queue', 'new-session/schedules', 'sessions/unsent-drafts', 'usage', 'settings/claude-profiles']} />

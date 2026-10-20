@@ -34,12 +34,14 @@ import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
 import { ModBands } from '../mods/ModBands.tsx';
+import { StartsAfterBand } from '../queue/StartsAfterBand.tsx';
 import { ModPanePanel } from '../mods/ModPanePanel.tsx';
 import { ModFooterChips } from '../mods/ModFooterChips.tsx';
 import { ModsChip } from '../mods/ModsChip.tsx';
 import { shownMods } from '../mods/modVisibility.ts';
 import { useMods, useSessionMods } from '../../state/modsStore.ts';
 import { ModReplaced } from '../mods/ModReplaced.tsx';
+import { TriggerOriginBar } from '../triggers/TriggerOriginBar.tsx';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
 import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
@@ -67,7 +69,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
-import { SessionControls } from '../session/StatusBar.tsx';
+import { SavedSessionControls, SessionControls } from '../session/StatusBar.tsx';
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { SessionCost } from '../usage/SessionCost.tsx';
@@ -1390,7 +1392,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             activity={gitActivity}
             isWorktree={isWorktree}
             projectBase={project?.defaults.branch ?? null}
-            onCommit={() => void send('Commit the current changes with a clear, conventional commit message.', [], openElsewhere, true).catch((e: Error) => setActionError(e.message))}
             onBranchMenu={() => setBranchMenuRequest((n) => n + 1)}
             onNewWorktree={() => {
               // New session is the main window's view: from a pop-out it opens there.
@@ -1474,6 +1475,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           />
         )}
       </header>
+      <TriggerOriginBar sessionId={sessionId} />
 
       {/* In a narrow pop-out a panel on the right fills the view (the rule in styles.css), as an expanded Changes does. */}
       <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
@@ -1565,7 +1567,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       data-item-kind={renderItems[row.index]!.kind}
                       ref={virtualizer.measureElement}
                       className={`absolute inset-x-6 pt-3 ${row.key === highlightKey ? 'search-highlight' : ''} ${row.key === landingKey ? 'prompt-landing' : ''}`}
-                      style={{ transform: `translateY(${row.start}px)` }}
+                      style={{ top: row.start }}
                     >
                       {autoPick && row.index === firstAnswer && <AutoPickLine sessionId={sessionId} pick={autoPick} />}
                       <TranscriptItem
@@ -1757,12 +1759,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 />
               )}
               {profileId && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
+              {/* A queued item that starts by itself once this session finishes: next to Up next, under mods' bands. */}
+              <StartsAfterBand sessionId={sessionId} />
               <UpNext queue={upNext} hold={upNextHold} limited={limitHeld} actions={upNextActions} />
               <div className="relative">
                 <Composer
                   draftKey={sessionId}
                   savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
                   links={{ sessionId, root: projectRoot }}
+                  github={{ root: options.projectActions ? projectRoot : null }}
                   status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}
@@ -1815,6 +1820,19 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   controls={
                     activeHost ? (
                       <SessionControls host={activeHost} />
+                    ) : !restart && !registryLive ? (
+                      // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
+                      <SavedSessionControls
+                        sessionId={sessionId}
+                        profileId={profileId}
+                        note={
+                          host?.state === 'error' && (
+                            <span className="min-w-0 shrink truncate px-1.5 text-meta text-error" data-tooltip={host.error ?? undefined} data-session-elsewhere>
+                              Last run failed: {host.error}
+                            </span>
+                          )
+                        }
+                      />
                     ) : (
                       <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-tooltip={host?.state === 'error' ? (host.error ?? undefined) : undefined} data-session-elsewhere>
                         {host?.state === 'error' ? (
