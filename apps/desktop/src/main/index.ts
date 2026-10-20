@@ -1335,7 +1335,10 @@ let crashedAt = 0;
 let smokeSessionId: string | null = null;
 /** What was on screen when the steps finished, for the report (not checked). */
 let rendering: Record<string, number> = {};
-const smokeRun = new SmokeRun({ log: (line) => console.log(line), cleanup: () => closeOverlays(mainWindow ?? undefined) });
+// npm run smoke -- --only "<pattern>": only the steps whose label matches (case-insensitive), to check one while building.
+const smokeOnly = process.env.SWITCHBOARD_SMOKE_ONLY ? new RegExp(process.env.SWITCHBOARD_SMOKE_ONLY, 'i') : null;
+const RESTART_STEP = 'engine restarted and renderer reconnected';
+const smokeRun = new SmokeRun({ log: (line) => console.log(line), cleanup: () => closeOverlays(mainWindow ?? undefined), only: smokeOnly });
 
 /**
  * Adds a project action through the editor (saving closes it, says "Action saved" and adds its pill),
@@ -7754,6 +7757,7 @@ function writeSmokeResult(): void {
         sessionCount: readyReports[0]?.sessionCount ?? 0,
         steps: smokeRun.steps,
         stoppedBy: smokeRun.stoppedBy,
+        only: smokeOnly ? { pattern: smokeOnly.source, matched: smokeRun.matched } : null,
         slowest: smokeRun.slowest(8),
         notifications: recordedNotifications,
         rendering,
@@ -7775,7 +7779,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   if (!smokeOutDir || !win) return;
   mkdirSync(smokeOutDir, { recursive: true });
   if (readyReports.length > 1) {
-    await smokeRun.step('engine restarted and renderer reconnected', async () => `ok: in ${Math.round(performance.now() - crashedAt)}ms`, { cleanup: false });
+    await smokeRun.step(RESTART_STEP, async () => `ok: in ${Math.round(performance.now() - crashedAt)}ms`, { cleanup: false });
     writeSmokeResult();
     exitApp(0);
     return;
@@ -7789,6 +7793,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const step = smokeRun.step.bind(smokeRun);
 
+  // The first two always run: the steps after them work in the session they open.
   await step('sessions listed after the initial scan', async () => {
     if (!(await waitInPage(win, "document.querySelector('[data-session-id]')", 5_000))) return 'failed: no session rows';
     await shot(win, 'window.png');
@@ -7798,8 +7803,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     pressKey(win, 'Escape');
     await waitInPage(win, "!document.querySelector('[role=menu]')", 1_000);
     return `ok: ${await js("document.querySelectorAll('[data-session-id]').length")} rows (${readyReports[0]!.sessionCount} in the first snapshot)`;
-  });
-  await step('newest session with messages rendered', () => openSmokeSession(win));
+  }, { always: true });
+  await step('newest session with messages rendered', () => openSmokeSession(win), { always: true });
   await step('transcript opens at the end', () => checkTranscriptEnd(win));
   await step('permission mode for new sessions: a fixed mode starts New session in it, the last one picked comes back', () => runNewSessionModeStep(win));
   await step('tool calls summarised', async () => {
@@ -7896,12 +7901,18 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   )) as Record<string, number>;
   const liveCwd = process.env.SWITCHBOARD_SMOKE_LIVE_CWD;
   if (liveCwd) await step('live session through the UI', () => runLiveSessionStep(win, liveCwd), { timeoutMs: 180_000 });
+  // With --only, the engine restart runs only when it is picked.
+  if (smokeOnly && !smokeOnly.test(RESTART_STEP)) {
+    writeSmokeResult();
+    exitApp(0);
+    return;
+  }
   crashedAt = performance.now();
   engine.crash();
   // The second ready finishes the run; if it never comes, say so instead of waiting for the watchdog.
   setTimeout(() => {
     if (smokeFinished) return;
-    void smokeRun.step('engine restarted and renderer reconnected', async () => 'failed: the renderer did not reconnect within 15s', { cleanup: false }).then(() => {
+    void smokeRun.step(RESTART_STEP, async () => 'failed: the renderer did not reconnect within 15s', { cleanup: false }).then(() => {
       writeSmokeResult();
       exitApp(0);
     });
