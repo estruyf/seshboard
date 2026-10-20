@@ -3,7 +3,7 @@ import { BUILTIN_PIPELINES, type LiveSession, type PipelineRun, type PipelineRun
 import { withPipelines } from './pipelineRows.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import { buildListRows, buildSessionList, isActive, rowStatus, withOpenChildren } from './sidebarRows.ts';
-import { sidebarGroups, sidebarOrder } from './sidebarOrder.ts';
+import { needsYouPill, sidebarGroups, sidebarOrder } from './sidebarOrder.ts';
 
 const NOW = Date.UTC(2026, 9, 5, 12);
 const HOUR = 3_600_000;
@@ -203,5 +203,29 @@ describe('the sidebar with a tree', () => {
     expect(withOpenChildren(nested, new Set()).map((r) => r.id)).toEqual(['parent', 'other']);
     expect(withOpenChildren(nested, new Set(['parent'])).map((r) => r.id)).toEqual(['parent', 'plan', 'exec', 'other']);
     expect(withOpenChildren(nested, 'all').map((r) => r.id)).toEqual(['parent', 'plan', 'exec', 'other']);
+  });
+});
+
+describe('the header pill with pipelines', () => {
+  it('counts a parent once when its steps need you, and opens the parent', () => {
+    const { rows, runs } = parentWithSteps();
+    const waiting = rows.map((r) => (r.id === 'exec' || r.id === 'plan' ? { ...r, live: live('needs-you') } : r));
+    const pill = needsYouPill(withPipelines(waiting, runs), [
+      { sessionId: 'plan', toolName: 'Bash', input: {}, createdAt: NOW - 5 * 60_000 },
+      { sessionId: 'exec', toolName: 'Bash', input: {}, createdAt: NOW - 9 * 60_000 },
+    ]);
+    expect(pill).toEqual({ count: 1, label: '1 needs you', targetId: 'parent' });
+  });
+
+  it('counts a run that waits for you (a push) and a run row', () => {
+    const waitingRun = state(run({ state: 'needs-you', heldBy: 'push', stepIndex: 3 }), [step(0, 1, { sessionId: 'plan' })]);
+    expect(needsYouPill(withPipelines([row('parent'), row('plan', { parentId: 'parent' }), row('other')], [waitingRun]), [])).toMatchObject({ count: 1, targetId: 'parent' });
+    const rowRun = state(run({ id: 'run2', parentSessionId: null, state: 'needs-you', heldBy: 'verdict' }), []);
+    expect(needsYouPill(withPipelines([row('other')], [rowRun]), [])).toMatchObject({ count: 1, targetId: 'run:run2' });
+  });
+
+  it('says nothing for a run that works', () => {
+    const { rows, runs } = parentWithSteps();
+    expect(needsYouPill(withPipelines(rows, runs), [])).toBeNull();
   });
 });

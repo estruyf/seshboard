@@ -1,11 +1,12 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, Workflow, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
+import { NewPipelineButton, PipelinesSettings } from './pipelines/PipelinesSettings.tsx';
 import { NewPromptButton, SavedPromptsSettings } from './savedPrompts/SavedPromptsSettings.tsx';
 import { NotificationsSettings } from './notifications/NotificationsSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
@@ -186,6 +187,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'prompts', label: 'Prompts', icon: Bookmark },
+  { id: 'pipelines', label: 'Pipelines', icon: Workflow },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'remote', label: 'Remote', icon: Smartphone },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
@@ -393,6 +395,12 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return (
         <Section title="Saved prompts" description="Prompts with blanks you fill in when you use them. Type / in any message box." action={<NewPromptButton />}>
           <SavedPromptsSettings />
+        </Section>
+      );
+    case 'pipelines':
+      return (
+        <Section title="Pipelines" description="Steps that run one after another, each in its own session: plan, build, check, push. Start one from the ⋯ menu of a session, from New session or from the command palette." action={<NewPipelineButton />}>
+          <PipelinesSettings />
         </Section>
       );
     case 'usage':

@@ -87,6 +87,11 @@
       "page": "sessions/saved-prompts"
     },
     {
+      "id": "palette:settings-pipelines",
+      "name": "Settings: Pipelines",
+      "page": "settings"
+    },
+    {
       "id": "palette:settings-prompts",
       "name": "Settings: Prompts",
       "page": "settings"
@@ -1255,6 +1260,11 @@
       "id": "settings:profiles",
       "name": "Settings: Claude profiles (project's profile)",
       "page": "projects/settings"
+    },
+    {
+      "id": "settings:pipelines",
+      "name": "Settings: Pipelines",
+      "page": "sessions/sidebar"
     },
     {
       "id": "settings:prompts",

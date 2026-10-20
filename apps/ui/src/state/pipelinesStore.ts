@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import type { Pipeline, PipelinePushDraft, PipelinePushProgress, PipelineRun, PipelineRunState, PipelineSaveScope, PipelineScope } from '@switchboard/protocol/client';
+import type { Pipeline, PipelinePushDraft, PipelinePushProgress, PipelineRun, PipelineRunState, PipelineSave, PipelineSaveScope, PipelineScope } from '@switchboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -29,6 +29,21 @@ export interface RunRequest {
 export const openRunPipeline = (request: RunRequest) => usePipelines.setState({ runRequest: request });
 export const closeRunPipeline = () => usePipelines.setState({ runRequest: null });
 
+/** What the pipeline editor opens on: a pipeline to change (null for a new one) and the project it was opened in. */
+export interface PipelineEditorRequest {
+  pipeline: Pipeline | null;
+  /** The project the editor was opened for (the Settings page's pick, the open session's): where a new one is kept, and whose actions it offers. */
+  root: string | null;
+  onSaved?(pipeline: Pipeline): void;
+}
+
+/** Opens the pipeline editor (Settings › Pipelines, the palette's Edit). */
+export const openPipelineEditor = (request: PipelineEditorRequest) => usePipelines.setState({ editor: request });
+export const closePipelineEditor = () => usePipelines.setState({ editor: null });
+/** Asks whether to delete a pipeline of yours: a dialog answers. */
+export const requestDeletePipeline = (pipeline: Pipeline) => usePipelines.setState({ deleting: pipeline });
+export const closeDeletePipeline = () => usePipelines.setState({ deleting: null });
+
 export interface PipelineList {
   pipelines: Pipeline[];
   errors: string[];
@@ -45,6 +60,12 @@ interface PipelinesState {
   busy: ReadonlySet<string>;
   /** The Run pipeline dialog, open on this. */
   runRequest: RunRequest | null;
+  /** The pipeline editor, open on this. */
+  editor: PipelineEditorRequest | null;
+  /** The pipeline the Delete dialog asks about. */
+  deleting: Pipeline | null;
+  /** The project Settings › Pipelines lists (its own pipelines and the shared ones); null until picked. */
+  settingsRoot: string | null;
   loaded: boolean;
   replaceRuns(runs: readonly PipelineRunState[]): void;
   upsertRun(state: PipelineRunState): void;
@@ -56,6 +77,9 @@ export const usePipelines = create<PipelinesState>()((set) => ({
   push: new Map(),
   busy: new Set(),
   runRequest: null,
+  editor: null,
+  deleting: null,
+  settingsRoot: null,
   loaded: false,
   replaceRuns: (runs) => set({ runs: new Map(runs.map((r) => [r.run.id, r])), loaded: true }),
   upsertRun: (state) => set((s) => ({ runs: new Map(s.runs).set(state.run.id, state) })),
@@ -230,20 +254,29 @@ export async function duplicatePipeline(pipeline: Pick<Pipeline, 'id' | 'name' |
   }
 }
 
-/** Deletes without asking, with Undo: it saves the pipeline again (under a new id). */
-export async function deletePipeline(pipeline: Pipeline): Promise<boolean> {
-  if (pipeline.scope.kind === 'builtin') return false;
+/** Deletes one of your pipelines (the Delete dialog confirms first). Throws, so the dialog can say why it failed. */
+export async function removePipeline(pipeline: Pipeline): Promise<void> {
+  if (pipeline.scope.kind === 'builtin') throw new Error('The built-in pipelines can’t be deleted.');
+  await clientNow().call('pipelines.remove', { id: pipeline.id, scope: pipeline.scope });
+  toast(`Deleted ${pipeline.name}`, { data: { 'data-pipeline-deleted-toast': true } });
+}
+
+/** Saves from the editor. Throws with the engine's reason so the editor can show it. */
+export async function savePipeline(pipeline: PipelineSave): Promise<Pipeline> {
+  return (await clientNow().call('pipelines.save', { pipeline })).pipeline;
+}
+
+/** Moves a pipeline to another scope: a copy there under the same name, then the old one goes. Returns the copy, or null after a toast. */
+export async function movePipeline(pipeline: Pipeline, to: PipelineSaveScope, where: string): Promise<Pipeline | null> {
+  if (pipeline.scope.kind === 'builtin') return null;
   const client = clientNow();
   try {
+    const { pipeline: copy } = await client.call('pipelines.duplicate', { id: pipeline.id, scope: pipeline.scope, to, name: pipeline.name });
     await client.call('pipelines.remove', { id: pipeline.id, scope: pipeline.scope });
-    const { id: _id, scope, createdAt: _c, updatedAt: _u, issues: _i, ...body } = pipeline;
-    toast(`Deleted ${pipeline.name}`, {
-      undo: () => void client.call('pipelines.save', { pipeline: { ...body, scope: scope as PipelineSaveScope } }).catch(() => {}),
-      data: { 'data-pipeline-deleted-toast': true },
-    });
-    return true;
+    toast(`Moved ${pipeline.name} to ${where}`, { data: { 'data-pipeline-moved-toast': true } });
+    return copy;
   } catch (error) {
-    fail('delete the pipeline', error);
-    return false;
+    fail('move the pipeline', error);
+    return null;
   }
 }

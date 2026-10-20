@@ -1,6 +1,6 @@
 import { usePipelineRows } from '../../state/usePipelineRows.ts';
 import { scopeLabel } from '../../state/pipelines.ts';
-import { deletePipeline, duplicatePipeline, openRunPipeline, usePipelineList } from '../../state/pipelinesStore.ts';
+import { duplicatePipeline, openPipelineEditor, openRunPipeline, requestDeletePipeline, usePipelineList } from '../../state/pipelinesStore.ts';
 import { FolderDown, GitBranchPlus, PencilLine, Search, SquarePen } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN } from '@switchboard/protocol/bridge';
@@ -365,8 +365,10 @@ export function CommandPalette() {
         if (!target) return [];
         return [
           { value: 'run', title: 'Run…', detail: 'Asks for the task' },
+          ...(target.scope.kind === 'builtin' ? [] : [{ value: 'edit', title: 'Edit…', detail: 'Name, steps, models and where it is kept' }]),
           { value: 'duplicate', title: 'Duplicate', detail: target.scope.kind === 'builtin' ? 'A copy you can change, in All projects' : 'A copy next to it' },
-          ...(target.scope.kind === 'builtin' ? [] : [{ value: 'delete', title: 'Delete', detail: 'Shows Undo' }]),
+          ...(target.scope.kind === 'builtin' ? [] : [{ value: 'delete', title: 'Delete…', detail: 'Asks first' }]),
+          { value: 'settings', title: 'All pipelines in Settings', detail: 'Settings › Pipelines' },
         ];
       }
       case 'trigger-action': {
@@ -476,9 +478,11 @@ export function CommandPalette() {
         const chosen = list === 'pipelines-run' ? pipelineList?.pipelines[Number(value)] : pipelineList?.pipelines.find((p) => `${p.scope.kind}:${p.id}` === (step?.kind === 'pick' ? step.target : undefined));
         const root = pipelineRoot(ctx);
         if (!chosen || !root) return;
+        if (list === 'pipeline-action' && value === 'settings') return api.openSettings('pipelines');
         if (list === 'pipelines-run' || value === 'run') openRunPipeline({ root, cwd: ctx.session?.cwd ?? root, parentSessionId: ctx.session?.id ?? null, task: ctx.session?.title ?? '', pipeline: chosen });
         else if (value === 'duplicate') void duplicatePipeline(chosen);
-        else if (value === 'delete') void deletePipeline(chosen);
+        else if (value === 'edit') openPipelineEditor({ pipeline: chosen, root });
+        else if (value === 'delete') requestDeletePipeline(chosen);
         return;
       }
       case 'prompt': {

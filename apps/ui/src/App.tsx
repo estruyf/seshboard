@@ -40,6 +40,7 @@ import { useTriggersSync } from './state/triggersStore.ts';
 import { usePipelinesSync } from './state/pipelinesStore.ts';
 import { usePipelineTreeSync } from './state/pipelineTreeStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
+import { PipelineDialogs } from './components/pipelines/PipelineDialogs.tsx';
 import { RunPipelineHost } from './components/pipelines/RunPipelineDialog.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
@@ -287,6 +288,7 @@ export function App() {
       <PaletteDialogs />
       <TriggerEditorHost />
       <RunPipelineHost />
+      <PipelineDialogs />
       <AddContextDialogHost />
       <UnsentList />
       <ArchiveDraftDialog />

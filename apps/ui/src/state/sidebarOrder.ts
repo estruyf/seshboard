@@ -65,13 +65,16 @@ export function nextNeedsYou(rows: readonly SessionRowData[], currentId: string 
 /** When each waiting session started waiting: its oldest open request, else when it last changed. */
 function waitingSince(row: SessionRowData, requests: Iterable<WaitingRequest>): number {
   let since = Infinity;
-  for (const request of requests) if (request.sessionId === row.id && request.createdAt < since) since = request.createdAt;
+  // A pipeline's parent waits since its own or any step's request.
+  const ids = new Set([row.id, ...(row.children ?? []).map((c) => c.id)]);
+  for (const request of requests) if (ids.has(request.sessionId) && request.createdAt < since) since = request.createdAt;
   return since === Infinity ? row.updatedAt : since;
 }
 
 /**
  * The header's pill while the sidebar is closed: how many sessions need you ("1 needs you", "2 need you")
- * and the one waiting longest, which a click opens. Null when nothing waits.
+ * and the one waiting longest, which a click opens. Null when nothing waits. A pipeline's parent counts once, whether it or
+ * one of its steps asks (rows come through `withPipelines`); so does a run that waits for you (a push, a verdict).
  */
 export function needsYouPill(rows: readonly SessionRowData[], requests: Iterable<WaitingRequest>): { count: number; label: string; targetId: string } | null {
   const list = [...requests];

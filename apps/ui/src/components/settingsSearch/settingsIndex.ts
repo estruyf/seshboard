@@ -370,6 +370,35 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'prompts-new', page: 'prompts', label: 'New prompt', detail: 'Prompts with blanks you fill in when you use them. Type / in any message box.', keywords: 'prompts templates snippets saved blanks create add', target: '[data-saved-prompts-new]' },
     { id: 'prompts-list', page: 'prompts', label: 'Saved prompts', detail: 'Every project, just for you, or shared with the project.', keywords: 'prompts templates snippets saved blanks share move delete edit', target: '[data-saved-prompts-settings]', fallback: '[data-settings-page="prompts"] section' },
 
+    // Pipelines
+    {
+      id: 'pipelines-new',
+      page: 'pipelines',
+      label: 'New pipeline',
+      detail: 'Steps that run one after another, each in its own session: plan, build, check, push.',
+      keywords: 'pipelines steps workflow chain plan execute validate push sub-sessions create add editor',
+      target: '[data-pipelines-new]',
+    },
+    {
+      id: 'pipelines-project',
+      page: 'pipelines',
+      label: 'Project',
+      detail: 'Whose pipelines are listed under This project and Shared with the project.',
+      keywords: 'pipelines folder choose pick',
+      target: '[data-pipelines-project]',
+      // Only with a project added.
+      fallback: '[data-pipelines-settings]',
+    },
+    {
+      id: 'pipelines-list',
+      page: 'pipelines',
+      label: 'Pipelines',
+      detail: 'Built in, for all projects, for one project, or shared with the project.',
+      keywords: 'pipelines steps workflow shared duplicate move delete edit built-in verdict rounds read only actions first confirm autopush worktree',
+      target: '[data-pipelines-settings]',
+      fallback: '[data-settings-page="pipelines"] section',
+    },
+
     // VS Code
     {
       id: 'companion',

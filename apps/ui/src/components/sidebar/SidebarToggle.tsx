@@ -4,6 +4,8 @@ import { useMemo } from 'react';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
+import { useRuns } from '../../state/pipelinesStore.ts';
+import { withPipelines } from '../../state/pipelineRows.ts';
 import { useShownSidebar, useSidebar } from '../../state/sidebarStore.ts';
 import { needsYouPill } from '../../state/sidebarOrder.ts';
 import { inScope } from '../../state/sidebarRows.ts';
@@ -56,10 +58,11 @@ function NeedsYouPill() {
   // Sessions on other computers that need you count too, with their open prompts.
   const remoteRows = useRemoteRows();
   const lists = useComputers((s) => s.lists);
+  const runs = useRuns();
   const pill = useMemo(() => {
     const remoteRequests = [...lists].flatMap(([computerId, list]) => list.prompts.map((p) => ({ ...p, sessionId: remoteRowId({ computerId, sessionId: p.sessionId }) })));
-    return needsYouPill([...toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), ...remoteRows], [...permissions.values(), ...remoteRequests]);
-  }, [sessions, live, hosts, permissions, scope, remoteRows, lists]);
+    return needsYouPill([...withPipelines(toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), runs), ...remoteRows], [...permissions.values(), ...remoteRequests]);
+  }, [sessions, live, hosts, permissions, scope, remoteRows, lists, runs]);
   if (!pill) return null;
   return (
     <Pill
