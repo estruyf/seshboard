@@ -299,7 +299,7 @@ export const SessionRow = memo(function SessionRow({
   const ageTone = (status && AGE_TONE[status]) ?? 'text-faint';
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const titleTone = emphasised || selected ? 'font-semibold text-text' : archived ? 'text-muted' : 'text-text/85';
-  const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone}`}>{shortAge(data.updatedAt, now)}</span>;
+  const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone}`}>{shortAge(status === 'running' && data.workingSince != null ? data.workingSince : data.updatedAt, now)}</span>;
   // The line at the row's left edge. With more than one Claude profile it is the profile's colour, on
   // every row, so you see whose account a session uses at a glance; the status then shows in the age's
   // colour, the bold title and the group. With one profile it is the status (needs you, working, unread).

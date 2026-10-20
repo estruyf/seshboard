@@ -200,6 +200,8 @@ export interface SessionRowData {
   title: string;
   projectRoot: string;
   updatedAt: number;
+  /** When the turn it is working on started (your last message): the row shows how long it has worked. */
+  workingSince?: number | null;
   branch: string | null;
   isWorktree: boolean;
   live: LiveSession | null;
@@ -241,6 +243,7 @@ export function toRows(
       projectRoot: s.projectRoot,
       // An idle process says nothing new happened (Claude Code reopening a session marks it idle "now").
       updatedAt: Math.max(s.updatedAt, l && l.status !== 'idle' ? (l.updatedAt ?? 0) : 0),
+      workingSince: l?.status === 'running' ? (hosts.get(s.id)?.promptedAt ?? null) : null,
       branch: s.worktree?.branch ?? realBranch(s.gitBranch),
       isWorktree: s.worktree !== null,
       live: l,
@@ -271,6 +274,7 @@ export function toRows(
       title: l.name ?? 'New session',
       projectRoot: l.projectRoot ?? l.cwd ?? 'Unknown folder',
       updatedAt: l.updatedAt ?? l.startedAt ?? Date.now(),
+      workingSince: l.status === 'running' ? (hosts.get(l.sessionId)?.promptedAt ?? null) : null,
       branch: null,
       isWorktree: false,
       live: l,
