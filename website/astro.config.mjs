@@ -11,7 +11,10 @@ import { sidebar } from './src/sidebar.mjs';
  * other as `/sessions/sidebar/`, and `withBase` puts the base in front at build time, so moving the site under a
  * path only needs `site` and `base` changed here.
  */
-const site = 'https://switchboard.struyfconsulting.com';
+const production = 'https://switchboard.struyfconsulting.com';
+/** Cloudflare Pages builds the preview of `dev` and of pull requests (switch-dev.struyfconsulting.com) and sets CF_PAGES. */
+const preview = Boolean(process.env.CF_PAGES);
+const site = preview ? (process.env.CF_PAGES_URL ?? production) : production;
 const base = '/';
 const prefix = base.replace(/\/$/, '');
 /** Pages built from the app's code (src/pages), which the links validator can't see into. */
@@ -34,6 +37,8 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/estruyf/switchboard' }],
       customCss: ['./src/styles/switchboard.css'],
       head: [
+        // A preview must not compete with the real site in search results.
+        ...(preview ? [{ tag: 'meta', attrs: { name: 'robots', content: 'noindex, nofollow' } }] : []),
         { tag: 'meta', attrs: { property: 'og:image', content: `${site}${prefix}/og.png` } },
         { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
         { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
