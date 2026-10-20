@@ -225,6 +225,12 @@ export const RemoteProfileUsage = z.object({
   /** Null without a claude.ai plan, or before the first check. */
   usage: UsageSnapshot.nullable(),
   error: z.string().nullable(),
+  /**
+   * The account it signs in to as `accountTag` (never the account, nor the key `usage.tokens` takes): the same on
+   * every computer, so Home shows a profile once when several computers sign in to it. Null without an account; left
+   * out by a Switchboard from before.
+   */
+  account: z.string().nullable().optional(),
 });
 export type RemoteProfileUsage = z.infer<typeof RemoteProfileUsage>;
 

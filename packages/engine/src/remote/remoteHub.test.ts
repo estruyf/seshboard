@@ -153,7 +153,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     ],
     profiles: () => ({
       profiles: [
-        { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } },
+        { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null }, account: 'a'.repeat(64) },
         { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, workspace: 'worktree', baseRef: null } },
       ],
       defaultId: 'default',
@@ -495,9 +495,9 @@ describe('Remote hub', () => {
     await on();
     const { remote } = await pair(hub, port);
     const { profiles } = await remote.call('usage.get', { refresh: true });
-    expect(profiles.map((p) => [p.profile, p.usage?.limits[0]?.percent ?? null, p.error])).toEqual([
-      [{ id: 'default', name: 'Personal', color: 'yellow' }, 44, null],
-      [{ id: 'work', name: 'Work', color: 'blue' }, null, 'Not logged in'],
+    expect(profiles.map((p) => [p.profile, p.usage?.limits[0]?.percent ?? null, p.error, p.account])).toEqual([
+      [{ id: 'default', name: 'Personal', color: 'yellow' }, 44, null, 'a'.repeat(64)],
+      [{ id: 'work', name: 'Work', color: 'blue' }, null, 'Not logged in', null],
     ]);
     expect(calls).toEqual(['usage default refresh', 'usage work refresh']);
     const heard: string[] = [];

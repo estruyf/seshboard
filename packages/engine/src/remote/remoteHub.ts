@@ -102,6 +102,8 @@ export interface RemoteHubProfile {
   name: string;
   color: ProfileColor;
   defaults: ProfileDefaults;
+  /** Its account's `accountTag`, for `usage.get`; null without an account. */
+  account?: string | null;
 }
 
 /** What `remote.fromDevice` tells the app's windows. */
@@ -808,7 +810,7 @@ export class RemoteHub {
           profiles: await Promise.all(
             ordered.map(async (p) => {
               const result = await this.options.usage(p.id, refresh).catch((error: Error) => ({ usage: null, error: error.message }));
-              return { profile: { id: p.id, name: p.name, color: p.color }, ...result };
+              return { profile: { id: p.id, name: p.name, color: p.color }, ...result, account: p.account ?? null };
             }),
           ),
         };

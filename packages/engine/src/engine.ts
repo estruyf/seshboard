@@ -50,6 +50,7 @@ import {
   type PermissionRequest,
   type PromptScope,
   accountKey,
+  accountTag,
   type ClaudeWorktreeRequest,
   focusSessions,
   projectOf,
@@ -1618,7 +1619,10 @@ export function createEngine(options: EngineOptions): Engine {
       archiveAfterDays: () => retention.archiveAfterDays,
       scope: () => sidebarScope,
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),
-      profiles: () => ({ profiles: profiles.exportEntries(), defaultId: profiles.defaultId() }),
+      profiles: () => {
+        const tags = new Map(profiles.accounts().map((p) => [p.id, accountTag(p.account)]));
+        return { profiles: profiles.exportEntries().map((p) => ({ ...p, account: tags.get(p.id) ?? null })), defaultId: profiles.defaultId() };
+      },
       readTranscript: (sessionId) => transcripts.readWithHeld(sessionId),
       watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
       send: async (sessionId, text, mode, images) => {
