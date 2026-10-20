@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-Read [AGENTS.md](AGENTS.md) first: it has the architecture, commands, conventions and design system for Switchboard, and how to keep a feature's runs short (Working on a feature). Open the detail it points to (`docs/ui-patterns.md`, the subsystem docs) only for the area you change.
+@AGENTS.md
+
+AGENTS.md (imported above, so there is no need to read it again) has the architecture, commands, conventions and how to keep a feature's runs short (Working on a feature). The UI rules in `.claude/rules/ui.md` load by themselves when you work in `apps/ui`. Open the detail they point to (`docs/ui-patterns.md`, the subsystem docs) only for the area you change.
 
 ## While building a feature
 

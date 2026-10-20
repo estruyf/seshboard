@@ -33,4 +33,4 @@ The website (`website/`, published at https://switchboard.struyfconsulting.com/)
 
 Docs cover macOS and Windows. Shortcuts go through `<Kbd shortcut="…">` (or `keys="mod+…"`), which shows each reader the keys of their platform; words that differ use `<Os mac="Finder" windows="File Explorer" />`, and whole passages for one platform `<OnlyOn os="windows">`. Never type ⌘ or Ctrl in the text for a shortcut.
 
-The keyboard shortcuts page and the changelog page are generated at build time from `apps/ui/src/lib/shortcuts.ts` and `CHANGELOG.md`, so they need no edits. Writing rules for the docs are the same as for the app ([AGENTS.md](../AGENTS.md#design-system), Copy): plain short sentences, no em dashes, the exact labels from the UI.
+The keyboard shortcuts page and the changelog page are generated at build time from `apps/ui/src/lib/shortcuts.ts` and `CHANGELOG.md`, so they need no edits. Writing rules for the docs are the same as for the app ([AGENTS.md](../AGENTS.md#ui), Copy): plain short sentences, no em dashes, the exact labels from the UI.

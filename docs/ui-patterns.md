@@ -1,6 +1,6 @@
 # UI patterns
 
-The detailed design rules for each part of the Switchboard UI. [AGENTS.md](../AGENTS.md#design-system) has the rules every change follows (tokens, type scale, status colours, buttons, copy) and an index of this page. Read the section for the area you change; when a new view needs a pattern that is not here, add it in the same change.
+The detailed design rules for each part of the Switchboard UI. [.claude/rules/ui.md](../.claude/rules/ui.md) has the rules every UI change follows (tokens, type scale, status colours, buttons, components) and an index of this page. Read the section for the area you change; when a new view needs a pattern that is not here, add it in the same change.
 
 ## Components
 
