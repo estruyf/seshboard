@@ -78,9 +78,10 @@ describe('the sidebar entry', () => {
 
 describe('the filters', () => {
   it('shows the cards of each kind', () => {
-    expect(visibleCards('all')).toEqual({ queue: true, runs: true, schedules: true });
-    expect(visibleCards('queue')).toEqual({ queue: true, runs: false, schedules: false });
-    expect(visibleCards('schedules')).toEqual({ queue: false, runs: true, schedules: true });
+    expect(visibleCards('all')).toEqual({ queue: true, runs: true, schedules: true, triggers: true });
+    expect(visibleCards('queue')).toEqual({ queue: true, runs: false, schedules: false, triggers: false });
+    expect(visibleCards('schedules')).toEqual({ queue: false, runs: true, schedules: true, triggers: false });
+    expect(visibleCards('triggers')).toEqual({ queue: false, runs: false, schedules: false, triggers: true });
   });
 
   it('filters by project, a worktree of it included, and counts queued and scheduled per project', () => {

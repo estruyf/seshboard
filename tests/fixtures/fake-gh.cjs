@@ -17,6 +17,24 @@ const flag = (name) => {
   const i = argv.indexOf(name);
   return i < 0 ? null : argv[i + 1];
 };
+// Event triggers' calls, while the triggers step has written its repository (FAKE_GH_TRIGGERS): they run in the
+// project's folder without --repo, and the trigger fake answers them from that file (fake-gh-triggers.cjs).
+if (process.env.FAKE_GH_TRIGGERS && existsSync(process.env.FAKE_GH_TRIGGERS) && !argv.includes('--repo')) {
+  const [a, b, c] = argv;
+  const named = (argv.find((x) => x.startsWith('name=')) || '').slice(5).toLowerCase();
+  const triggers =
+    (a === 'repo' && b === 'view') ||
+    (a === 'api' && (b === 'user' || /collaborators/.test(b || ''))) ||
+    (a === 'api' && b === 'graphql' && /i\d+: issue/.test(argv.join(' ')) && !repos.some((r) => r.endsWith(`/${named}`))) ||
+    (a === 'issue' && (b === 'list' || b === 'edit' || (b === 'view' && /^\d+$/.test(c || '')))) ||
+    a === 'label' ||
+    a === 'run' ||
+    (a === 'workflow' && b === 'list');
+  if (triggers) {
+    require('./fake-gh-triggers.cjs');
+    return;
+  }
+}
 const fromUrl = /github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/(\d+)/.exec(argv[2] || '');
 const repo = (flag('--repo') || (fromUrl && fromUrl[1]) || '').toLowerCase();
 const graphqlRepo = argv[0] === 'api' ? `${(argv.find((a) => a.startsWith('owner=')) || '').slice(6)}/${(argv.find((a) => a.startsWith('name=')) || '').slice(5)}`.toLowerCase() : '';

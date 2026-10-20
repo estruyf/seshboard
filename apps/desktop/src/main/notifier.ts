@@ -8,6 +8,7 @@ import { CacheReminder, REMIND_BEFORE_MS, type CacheReminderPrefs } from './cach
 import type { EngineProcess } from './engineProcess.ts';
 import { queueHint } from './queueHint.ts';
 import { scheduleAlerts } from './scheduleAlerts.ts';
+import { triggerAlerts } from './triggerAlerts.ts';
 import type { SoundPlayer } from './sounds.ts';
 import { badgeDescription, badgeDotBitmap } from './taskbarBadge.ts';
 
@@ -25,6 +26,8 @@ export interface NotifierOptions {
   openSession: (sessionId: string) => void;
   /** Upcoming, with a schedule's run in view (a scheduled run that went to the queue, was skipped or didn't start). */
   openUpcoming?: (scheduleId: string) => void;
+  /** A trigger's project on its Triggers tab (an issue picked up, a trigger that paused). */
+  openTriggers?: (projectRoot: string) => void;
   /** Settings → Show sessions from other apps. */
   showAllSessions: () => boolean;
   /** Settings › Notifications: notifications on or off, and the sounds. */
@@ -125,6 +128,8 @@ export class Notifier {
       this.options.recordRuns?.(runs);
       this.handle(scheduleAlerts(runs));
     });
+    // Event triggers (#180): a session started, an issue picked up, a trigger paused.
+    client.on('triggers.notice', ({ notices }) => this.handle(triggerAlerts(notices)));
     void client.call('later.list', {}).then((queue) => void (this.queue = queue), () => {});
 
     // Seed state silently: only changes from here on deserve a notification.
@@ -197,6 +202,7 @@ export class Notifier {
         // bring the window forward.
         notification.on('click', () => {
           if (!test && event.scheduleId && this.options.openUpcoming) this.options.openUpcoming(event.scheduleId);
+          else if (!test && event.triggerRoot && this.options.openTriggers) this.options.openTriggers(event.triggerRoot);
           else if (test || !event.sessionId) this.options.window()?.show();
           else this.options.openSession(event.sessionId);
         });

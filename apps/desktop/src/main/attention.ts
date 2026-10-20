@@ -1,7 +1,7 @@
 import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
 
 export interface AttentionEvent {
-  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring' | 'queue-started' | 'queue-skipped' | 'schedule-started' | 'schedule-queued' | 'schedule-skipped';
+  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring' | 'queue-started' | 'queue-skipped' | 'schedule-started' | 'schedule-queued' | 'schedule-skipped' | 'trigger-started' | 'trigger-paused';
   sessionId: string;
   title: string;
   body: string;
@@ -9,6 +9,8 @@ export interface AttentionEvent {
   cwd?: string | null;
   /** A scheduled run that didn't start (queued, skipped, failed): a click opens Upcoming with that schedule's run in view. */
   scheduleId?: string;
+  /** A trigger's news without a session (an issue picked up, a pause): a click opens this project on its Triggers tab. */
+  triggerRoot?: string;
 }
 
 /** A folder's name, from a `/` or a Windows `\` path. */

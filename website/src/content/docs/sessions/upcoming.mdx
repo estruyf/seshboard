@@ -1,6 +1,6 @@
 ---
 title: Upcoming
-description: One view for everything queued and scheduled, across all your projects, with the scheduled runs of the next 7 days.
+description: One view for everything queued, scheduled and triggered, across all your projects, with the scheduled runs of the next 7 days.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -8,7 +8,7 @@ import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import Related from '../../../components/Related.astro';
 
-Upcoming shows what is going to run, across all your projects: everything in the [queue](/new-session/queue/), the scheduled runs of the next 7 days, and every [schedule](/new-session/schedules/). **History** shows what ran in the last 7 days. Use it to see your day and week at a glance, to reorder the queue, or to skip a single run without pausing its schedule.
+Upcoming shows what is going to run, across all your projects: everything in the [queue](/new-session/queue/), the scheduled runs of the next 7 days, every [schedule](/new-session/schedules/), and every [trigger](/projects/triggers/). **History** shows what ran in the last 7 days. Use it to see your day and week at a glance, to reorder the queue, or to skip a single run without pausing its schedule.
 
 <Screenshot name="upcoming" alt="Upcoming: the queue with three items, the scheduled runs of the next 7 days grouped by day, and four schedules on the right, one of them paused" eager />
 
@@ -30,8 +30,8 @@ The **Upcoming** row in the sidebar shows a count: your queued items plus your a
 
 At the top:
 
-- **All**, **Queue** and **Schedules** pick what shows. **Queue** shows only the queue, across the full width. **Schedules** shows the scheduled runs and the schedules side by side.
-- **All projects** filters by project. Its menu lists each project that has something queued or scheduled, with the counts as "queued · schedules".
+- **All**, **Queue**, **Schedules** and **Triggers** pick what shows. **Queue** shows only the queue, across the full width. **Schedules** shows the scheduled runs and the schedules side by side. **Triggers** shows only the triggers.
+- **All projects** filters by project. Its menu lists each project that has something queued or scheduled, or a trigger, with the counts as "queued · schedules".
 
 Each window remembers its own filters.
 
@@ -71,6 +71,14 @@ The **Schedules** card lists every schedule, with its rule and project. The swit
 
 Under the card, a line says when schedules run: <Os mac="while Switchboard is running, also with its windows closed" windows="while a Switchboard window is open" />.
 
+## Triggers
+
+The **Triggers** card lists every [trigger](/projects/triggers/) across your projects, with its project, its last check, how many of its sessions are busy, how many events wait and how many were skipped, and its number of events: "checked 2m ago · 2 of 3 busy · 0 waiting". A click opens the project's Triggers tab.
+
+A paused trigger says why, such as "Paused after 5 failed checks: gh is signed out.", with **Resume**.
+
+Under the triggers, **Waiting for a slot** lists the events that wait, oldest first, each with **Start now**.
+
 ## History
 
 The **History** card, under the schedules, lists the runs of the last 7 days, newest first: each with when it ran ("Today 13:58", "Yesterday 08:00"), the schedule and project, and how it went.
@@ -92,4 +100,4 @@ With nothing queued and no schedules, Upcoming says *Nothing planned*, with **Ad
 
 ## Related
 
-<Related pages={['new-session/queue', 'new-session/schedules', 'sessions/home', 'projects/sessions', 'focus-limit']} />
+<Related pages={['new-session/queue', 'new-session/schedules', 'projects/triggers', 'sessions/home', 'projects/sessions', 'focus-limit']} />

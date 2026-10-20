@@ -3,8 +3,8 @@ import { showInMain } from './popoutsStore.ts';
 import { useSessions } from './sessionsStore.ts';
 
 /** The tabs of a project's page, in order. */
-export type ProjectTab = 'overview' | 'sessions' | 'worktrees' | 'branches' | 'memory' | 'actions' | 'settings';
-export const PROJECT_TABS: readonly ProjectTab[] = ['overview', 'sessions', 'worktrees', 'branches', 'memory', 'actions', 'settings'];
+export type ProjectTab = 'overview' | 'sessions' | 'triggers' | 'worktrees' | 'branches' | 'memory' | 'actions' | 'settings';
+export const PROJECT_TABS: readonly ProjectTab[] = ['overview', 'sessions', 'triggers', 'worktrees', 'branches', 'memory', 'actions', 'settings'];
 
 interface ProjectPageState {
   /** The project the page shows (the view is `project` while it's on screen). */

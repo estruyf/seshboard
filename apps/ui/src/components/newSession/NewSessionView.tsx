@@ -1,6 +1,6 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, bringsAnything, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -15,6 +15,7 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { ScheduleDialog } from '../schedules/ScheduleDialog.tsx';
+import { openTriggerEditor } from '../../state/triggersStore.ts';
 import { useStartAfter } from '../../state/startAfterStore.ts';
 import { autoStartBlock, busyInProject, promptLabel, queueSession, sameDraft } from '../../state/queue.ts';
 import { useLinks } from '../../state/linksStore.ts';
@@ -876,6 +877,23 @@ function LocalNewSession() {
     const draft = laterDraft(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext });
     if (draft && draft.prompt.trim()) setScheduling(draft);
   };
+  /**
+   * Start when…: the prompt in the box with these choices, in a new trigger for this project (#180). Saved, the box is
+   * emptied, as after Schedule….
+   */
+  const openTrigger = () => {
+    const draft = laterDraft(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext });
+    if (!draft || !draft.prompt.trim()) return;
+    openTriggerEditor({
+      root: projectOf(draft.cwd),
+      trigger: null,
+      from: { prompt: draft.prompt, model: draft.model ?? null, effort: draft.effort ?? null, permissionMode: draft.permissionMode, workspace: draft.workspace, baseRef: draft.baseRef, profileId: draft.profileId ?? null },
+      onSaved: () => {
+        useDrafts.getState().removeDraft(newDraftKey(cwd));
+        clearPrompt();
+      },
+    });
+  };
   /** Saved: the box is emptied (or, for a schedule that was open, back to New session's own prompt). */
   const onScheduled = () => {
     setScheduling(null);
@@ -1492,6 +1510,7 @@ function LocalNewSession() {
                     // Opened with Start after this one…: queueing is what it is for.
                     queueFirst: startAfterId !== null && wait.kind === 'session' && wait.sessionId === startAfterId,
                     canSchedule: true,
+                    canTrigger: !fromLater,
                     scheduleFirst: scheduleFirst && !fromLater,
                     editingSchedule: fromSchedule !== null,
                   })}
@@ -1500,6 +1519,8 @@ function LocalNewSession() {
                       ? box.submitSecondary()
                       : action === 'schedule'
                         ? openSchedule()
+                        : action === 'trigger'
+                          ? openTrigger()
                         : action === 'start-worktree'
                           ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true }))
                           : box.submit()

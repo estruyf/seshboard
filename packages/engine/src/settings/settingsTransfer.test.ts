@@ -9,6 +9,7 @@ import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { ProfileStore } from '../profiles/profileStore.ts';
 import { ProjectRegistry } from '../projects/projectRegistry.ts';
 import { ScheduleStore } from '../schedules/scheduleStore.ts';
+import { TriggerStore } from '../triggers/triggerStore.ts';
 import { exportSettings, planImport, readSettingsFile, writeBackup, writeSettingsFile, type SettingsStores } from './settingsTransfer.ts';
 
 const dirs: string[] = [];
@@ -36,6 +37,7 @@ function mac() {
     projects: new ProjectRegistry(cache.db, join(data, 'icons')),
     actions: new ActionStore(cache.db),
     schedules: new ScheduleStore(cache.db),
+    triggers: new TriggerStore(cache.db),
   };
   return { data, stores };
 }
@@ -81,6 +83,27 @@ describe('settings export and import', () => {
     expect(planImport(after.stores, file, ALL).preview.changes.filter((c) => c.section === 'schedules' && c.change !== 'keep')).toEqual([]);
     after.stores.schedules!.save({ name: 'Extra', draft: { cwd: web, prompt: 'Extra' }, rule: { kind: 'daily', time: '07:00' }, missed: 'run', paused: false });
     expect(planImport(after.stores, file, { ...ALL, mode: 'replace' }).preview.changes).toContainEqual({ section: 'schedules', label: 'Extra', change: 'remove', detail: null });
+  });
+
+  it('carries triggers without what their checks found, and imports them paused', () => {
+    const before = mac();
+    const web = tempDir();
+    const saved = before.stores.triggers!.save({ projectRoot: web, name: 'Issues for you', source: { kind: 'issues', label: 'switchboard', assignee: '@me' }, prompt: 'Work on {{event.title}}', stateLabels: { on: true }, paused: false });
+    before.stores.triggers!.checked(saved.id, { at: 5, seen: { '#12': 'match' }, seeded: true });
+    before.stores.triggers!.addEvent(saved.id, { key: '#13', kind: 'issue', title: 'An issue', url: 'https://github.com/o/r/issues/13', fields: {}, at: 1, context: null }, 'waiting');
+    const file = roundTrip(before.stores);
+    expect(file.triggers).toHaveLength(1);
+    expect(JSON.stringify(file.triggers)).not.toMatch(/#12|seededAt|lastCheckedAt|An issue/);
+
+    const after = mac();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'triggers')).toEqual([{ section: 'triggers', label: 'Issues for you', change: 'add', detail: 'comes in paused' }]);
+    plan.apply();
+    const [imported] = after.stores.triggers!.list();
+    expect(imported).toMatchObject({ id: saved.id, projectRoot: web, source: { kind: 'issues', label: 'switchboard', assignee: '@me' }, stateLabels: { on: true }, paused: true, pausedReason: 'Imported. Check it, then resume.', seededAt: null });
+    expect(after.stores.triggers!.events()).toEqual([]);
+    // The same file again changes nothing.
+    expect(planImport(after.stores, file, ALL).preview.changes.filter((c) => c.section === 'triggers')).toEqual([]);
   });
 
   it('restores projects, icons, actions, choices, preferences and sessions on a clean Mac', () => {
@@ -174,7 +197,7 @@ describe('settings export and import', () => {
     const full = roundTrip(before.stores);
     const after = mac();
     const plan = planImport(after.stores, full, { ...ALL, sections: ['projects'] });
-    expect(plan.preview.sections).toEqual(['preferences', 'themes', 'profiles', 'projects', 'actions', 'schedules', 'choices', 'sessions']);
+    expect(plan.preview.sections).toEqual(['preferences', 'themes', 'profiles', 'projects', 'actions', 'schedules', 'triggers', 'choices', 'sessions']);
     expect(new Set(plan.preview.changes.map((c) => c.section))).toEqual(new Set(['projects']));
     plan.apply();
     expect(after.stores.actions.all()).toEqual([]);

@@ -36,6 +36,8 @@ import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useSchedulesSync } from './state/schedulesStore.ts';
+import { useTriggersSync } from './state/triggersStore.ts';
+import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
@@ -212,6 +214,7 @@ export function App() {
   useThemesSync();
   useLaterSync();
   useSchedulesSync();
+  useTriggersSync();
   useCatchUpSync();
   useUpNextSync();
   useModsSync();
@@ -275,6 +278,7 @@ export function App() {
       {overlay === 'shortcuts' && <ShortcutsSheet />}
       <SelectionMenu />
       <PaletteDialogs />
+      <TriggerEditorHost />
       <AddContextDialogHost />
       <UnsentList />
       <ArchiveDraftDialog />

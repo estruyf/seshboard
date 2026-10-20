@@ -5,6 +5,7 @@ import {
   BACKUP_SECTIONS,
   DEFAULT_PREFERENCES,
   Schedule,
+  Trigger,
   BUILTIN_PROFILE_ID,
   ExportedProfile,
   ExportedProject,
@@ -34,6 +35,7 @@ import {
 import { parseThemeFile } from '@switchboard/protocol/theme';
 import type { ActionStore } from '../actions/actionStore.ts';
 import type { ScheduleStore } from '../schedules/scheduleStore.ts';
+import type { TriggerStore } from '../triggers/triggerStore.ts';
 import type { AppStateStore, JsonValue } from '../db/appState.ts';
 import { readProfileDefaults, type ProfileStore } from '../profiles/profileStore.ts';
 import { parseDefaults, type ProjectRegistry, type StoredIcon } from '../projects/projectRegistry.ts';
@@ -108,6 +110,8 @@ export interface SettingsStores {
   actions: ActionStore;
   /** Scheduled sessions; a file's schedules are skipped without it. */
   schedules?: ScheduleStore;
+  /** Event triggers; a file's triggers are skipped without it. */
+  triggers?: TriggerStore;
 }
 
 export interface ExportOptions {
@@ -213,6 +217,10 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
   if (want.has('schedules') && stores.schedules) {
     // The last run stays here: it points at sessions on this computer.
     file.schedules = stores.schedules.list().map(({ lastRun: _lastRun, runs: _runs, skippedRuns: _skipped, ...schedule }) => schedule);
+  }
+  if (want.has('triggers') && stores.triggers) {
+    // What its checks found stays here: it points at issues and sessions on this computer.
+    file.triggers = stores.triggers.list().map(exportedTrigger);
   }
   if (want.has('choices')) {
     const choices: Record<string, JsonValue> = {};
@@ -651,6 +659,46 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
     }
   }
 
+  // --- Event triggers -----------------------------------------------------------------------
+  // By id, like schedules. Every trigger comes in paused, so it starts nothing on this computer until you have looked
+  // at it and resumed it; resumed, its first check marks what is there as seen.
+  if (has('triggers') && stores.triggers) {
+    const triggerStore = stores.triggers;
+    const current = new Map(triggerStore.list().map((t) => [t.id, t]));
+    const seen = new Set<string>();
+    for (const [index, raw] of file.triggers!.entries()) {
+      const from = typeof (raw as { projectRoot?: unknown } | null)?.projectRoot === 'string' ? (raw as { projectRoot: string }).projectRoot : null;
+      const root = from === null ? null : locate(from);
+      const at = Date.now();
+      const parsed = Trigger.safeParse({ createdAt: at, updatedAt: at, ...(raw as object), projectRoot: root ?? from, paused: true, pausedReason: IMPORTED_TRIGGER, failures: 0, lastError: null, blockedUntil: null, lastCheckedAt: null, seededAt: null });
+      const name = (raw as { name?: unknown })?.name;
+      const label = parsed.success ? parsed.data.name : typeof name === 'string' ? name : `Trigger ${index + 1}`;
+      if (!parsed.success || root === null) {
+        note('triggers', label, 'skip', from !== null && root === null ? `folder not found on ${THIS_COMPUTER}` : 'not readable');
+        continue;
+      }
+      const incoming = parsed.data;
+      if (seen.has(incoming.id)) continue;
+      seen.add(incoming.id);
+      const existing = current.get(incoming.id);
+      if (!existing) {
+        note('triggers', label, 'add', 'comes in paused');
+        writes.push(() => triggerStore.restore(incoming));
+      } else if (same(exportedTrigger(existing), exportedTrigger(incoming))) unchanged++;
+      else if (replace) {
+        note('triggers', label, 'change', 'comes in paused');
+        writes.push(() => triggerStore.restore({ ...incoming, createdAt: existing.createdAt }, triggerStore.eventsOf(existing.id)));
+      } else note('triggers', label, 'keep', 'yours differs');
+    }
+    if (replace) {
+      for (const [id, trigger] of current) {
+        if (seen.has(id)) continue;
+        note('triggers', trigger.name, 'remove');
+        writes.push(() => triggerStore.remove(id));
+      }
+    }
+  }
+
   // --- App choices --------------------------------------------------------------------------
   if (has('choices')) {
     for (const [choice, label] of Object.entries(CHOICE_KEYS)) {
@@ -728,4 +776,12 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       return { preferences, themes };
     },
   };
+}
+
+/** Why an imported trigger is paused. */
+export const IMPORTED_TRIGGER = 'Imported. Check it, then resume.';
+
+/** A trigger as the settings file has it: its choices, without what its checks found or whether it runs here. */
+function exportedTrigger({ pausedReason: _r, failures: _f, lastError: _e, blockedUntil: _b, lastCheckedAt: _l, seededAt: _s, paused: _p, createdAt: _c, updatedAt: _u, ...trigger }: Trigger) {
+  return trigger;
 }

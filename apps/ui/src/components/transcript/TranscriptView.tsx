@@ -41,6 +41,7 @@ import { ModsChip } from '../mods/ModsChip.tsx';
 import { shownMods } from '../mods/modVisibility.ts';
 import { useMods, useSessionMods } from '../../state/modsStore.ts';
 import { ModReplaced } from '../mods/ModReplaced.tsx';
+import { TriggerOriginBar } from '../triggers/TriggerOriginBar.tsx';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
 import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
@@ -1474,6 +1475,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           />
         )}
       </header>
+      <TriggerOriginBar sessionId={sessionId} />
 
       {/* In a narrow pop-out a panel on the right fills the view (the rule in styles.css), as an expanded Changes does. */}
       <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>

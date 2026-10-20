@@ -28,6 +28,10 @@ A message in the corner says when it runs next, such as "Review open pull reques
 
 In the command palette, *Schedule a session…* does the same with the prompt you are writing in New session. Anywhere else it opens New session to write one.
 
+### Start when…
+
+After **Schedule…**, Start's ▾ menu has **Start when…**. It starts the prompt when there is work instead of at a set time: when CI fails on a branch, or when an issue is labelled or assigned to you. It opens the [trigger](/projects/triggers/) editor for the project, with the prompt and New session's choices. Once you create the trigger, New session empties.
+
 ### The dialog
 
 | Field | What it does |
@@ -127,4 +131,4 @@ Schedules travel in the **Schedules** section of a [settings file](/settings/bac
 
 ## Related
 
-<Related pages={['sessions/upcoming', 'new-session/queue', 'sessions/home', 'projects/sessions', 'focus-limit', 'settings/notifications']} />
+<Related pages={['sessions/upcoming', 'projects/triggers', 'new-session/queue', 'sessions/home', 'projects/sessions', 'focus-limit', 'settings/notifications']} />

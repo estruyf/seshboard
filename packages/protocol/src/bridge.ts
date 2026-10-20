@@ -128,7 +128,7 @@ export type MainWindowRequest =
   | { kind: "go-to" }
   | { kind: "search"; memory: boolean }
   | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
-  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | null; scheduleId: string | null };
+  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | null; scheduleId: string | null };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";

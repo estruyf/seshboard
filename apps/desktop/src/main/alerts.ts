@@ -28,6 +28,8 @@ const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = {
   'schedule-started': 'finished',
   'schedule-queued': 'finished',
   'schedule-skipped': 'error',
+  'trigger-started': 'finished',
+  'trigger-paused': 'error',
 };
 
 /** Each kind of event has its own moment, and so its own sound. */

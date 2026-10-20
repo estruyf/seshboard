@@ -1,4 +1,4 @@
-import { Brain, ChevronRight, FolderGit2, FolderOpen, GitBranch, Plus } from 'lucide-react';
+import { Brain, ChevronRight, FolderGit2, FolderOpen, GitBranch, Plus, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -19,6 +19,8 @@ import { Button } from '../ui/Button.tsx';
 import { BranchesTab } from '../branches/BranchesTab.tsx';
 import { CountBadge } from '../ui/Pill.tsx';
 import { WorktreesTab } from '../worktrees/WorktreesTab.tsx';
+import { TriggersTab } from '../triggers/TriggersTab.tsx';
+import { useTriggers } from '../../state/triggersStore.ts';
 import { MemoryTab } from '../memory/MemoryTab.tsx';
 import { useMemoryList } from '../memory/useMemoryList.ts';
 import { guardMemoryEdits } from '../../state/memoryStore.ts';
@@ -28,7 +30,7 @@ import { settingsSectionLabel } from '../SettingsView.tsx';
 import { menuPoint } from './ProjectManagerView.tsx';
 import { ProjectActionsTab, ProjectSettingsTab, ProjectOverview, ProjectSessions, useProjectSessionRows } from './ProjectTabs.tsx';
 
-const TAB_LABEL: Record<ProjectTab, string> = { overview: 'Overview', sessions: 'Sessions', worktrees: 'Worktrees', branches: 'Branches', memory: 'Memory', actions: 'Actions', settings: 'Settings' };
+const TAB_LABEL: Record<ProjectTab, string> = { overview: 'Overview', sessions: 'Sessions', triggers: 'Triggers', worktrees: 'Worktrees', branches: 'Branches', memory: 'Memory', actions: 'Actions', settings: 'Settings' };
 
 /** Where the project's own checkout stands (branch, upstream, changes); null outside git or until read. */
 function useCheckoutStatus(root: string, isGitRepo: boolean): WorktreeStatus | null {
@@ -89,11 +91,13 @@ export function ProjectPage() {
   const branches = useBranchesOf(isGitRepo ? root : null);
   const { actions } = useProjectActionList(root);
   const memory = useMemoryList(project?.exists ? root : null);
+  const triggerCount = useTriggers((s) => s.triggers.filter((t) => t.projectRoot === root).length);
   // Claude Code writes memory on its own: the count is read again whenever another tab is picked.
   const reloadMemory = memory.reload;
   useEffect(() => reloadMemory(), [tab, reloadMemory]);
   const counts: Partial<Record<ProjectTab, number>> = {
     sessions: sessions.length,
+    triggers: triggerCount,
     worktrees: worktrees.list ? worktrees.list.worktrees.filter((w) => !w.isMain).length : undefined,
     branches: branches.list ? branches.list.branches.filter((b) => b.local).length : undefined,
     memory: memory.list?.memories.length,
@@ -235,6 +239,7 @@ export function ProjectPage() {
                 {id === 'worktrees' && <FolderGit2 size={13} aria-hidden />}
                 {id === 'branches' && <GitBranch size={13} aria-hidden />}
                 {id === 'memory' && <Brain size={13} aria-hidden />}
+                {id === 'triggers' && <Zap size={13} aria-hidden />}
                 {TAB_LABEL[id]}
                 {count !== undefined && <CountBadge count={count} />}
               </button>
@@ -243,11 +248,13 @@ export function ProjectPage() {
         </div>
       </header>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-        <div role="tabpanel" id="project-tab-panel" aria-labelledby={`project-tab-${tab}`} className={`mx-auto px-6 py-5 ${tab === 'worktrees' || tab === 'branches' || tab === 'memory' ? 'max-w-6xl' : 'max-w-3xl'}`}>
+        <div role="tabpanel" id="project-tab-panel" aria-labelledby={`project-tab-${tab}`} className={`mx-auto px-6 py-5 ${tab === 'worktrees' || tab === 'branches' || tab === 'memory' ? 'max-w-6xl' : tab === 'triggers' ? 'max-w-5xl' : 'max-w-3xl'}`}>
           {tab === 'overview' ? (
             <ProjectOverview root={root} status={status} />
           ) : tab === 'sessions' ? (
             <ProjectSessions root={root} name={project.name} />
+          ) : tab === 'triggers' ? (
+            <TriggersTab root={root} />
           ) : tab === 'worktrees' ? (
             // Keyed by project: its picks start from that project's suggestions.
             <WorktreesTab key={root} root={root} name={project.name} scrollRef={scrollRef} />

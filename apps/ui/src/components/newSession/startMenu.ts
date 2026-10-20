@@ -1,7 +1,7 @@
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 
 /** What New session's Start button (and the palette's prompt step) can do with the prompt. */
-export type StartAction = 'start' | 'queue' | 'schedule' | 'start-worktree';
+export type StartAction = 'start' | 'queue' | 'schedule' | 'trigger' | 'start-worktree';
 
 export interface StartButtonInput {
   /** Why nothing can go anywhere: connecting, no folder yet. */
@@ -33,6 +33,8 @@ export interface StartButtonInput {
   canSchedule?: boolean;
   /** A schedule is open (Edit…): Schedule… becomes Save schedule. */
   editingSchedule?: boolean;
+  /** Offer Start when… (New session, with a project): the prompt and its choices in a new trigger. */
+  canTrigger?: boolean;
 }
 
 export interface StartMenuItem {
@@ -77,6 +79,8 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
   ];
   // A schedule keeps the prompt with its choices, like a queued item, and runs it at set times (#173).
   if (input.canSchedule && !input.question) items.push({ action: 'schedule', label: input.editingSchedule ? 'Save schedule' : 'Schedule…', disabled: !canQueue });
+  // A trigger starts it when there is work: a CI failure, an issue for you (#180).
+  if (input.canTrigger && !input.question && !input.editingSchedule) items.push({ action: 'trigger', label: 'Start when…', disabled: !canQueue });
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
   if (input.scheduleFirst && input.canSchedule && !input.question) {
     const schedule = items.find((item) => item.action === 'schedule')!;

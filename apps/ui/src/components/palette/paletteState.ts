@@ -26,14 +26,14 @@ export function modeForPrefix(char: string | undefined): Exclude<PaletteMode, 'g
 }
 
 /** Lists a `pick` step chooses from. */
-export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory' | 'prompt' | 'schedules' | 'schedule-action';
+export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory' | 'prompt' | 'schedules' | 'schedule-action' | 'triggers' | 'trigger-action';
 
 /**
  * One step of a command that needs more input. `chip` is how it shows in the input; `from` is the
  * project a prompt was written for before its project was changed, so the prompt moves along.
  */
 export type PaletteStep =
-  | { kind: 'projects'; purpose: 'new-session' | 'rename-project' | 'worktrees' | 'branches'; worktree: boolean; chip: string; from?: string }
+  | { kind: 'projects'; purpose: 'new-session' | 'rename-project' | 'triggers' | 'worktrees' | 'branches' | 'trigger'; worktree: boolean; chip: string; from?: string }
   | { kind: 'prompt'; root: string; worktree: boolean; chip: string; from?: string }
   /** `target`: what the list is about (the schedule `schedule-action` offers actions for). */
   | { kind: 'pick'; list: PickList; chip: string; target?: string }

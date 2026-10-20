@@ -49,6 +49,7 @@ import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
 import { Schedule, ScheduleRunEvent, ScheduleSave, ScheduleSession } from './scheduleSchema.ts';
+import { Trigger, TriggerEvent, TriggerNotice, TriggerRepoInfo, TriggerSave, TriggersState } from './triggerSchema.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { CatchUp, RequestWhy } from './catchUp.ts';
@@ -976,6 +977,27 @@ export const contract = {
     'schedules.unskipRun': { params: z.object({ id: z.string().min(1).max(100), at: z.iso.datetime() }), result: z.object({ schedule: Schedule }) },
     'schedules.runNow': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ run: ScheduleRunEvent }) },
 
+    // --- Event triggers (#180) -------------------------------------------------------------------
+    /** Every trigger, oldest first, with its events and the sessions triggers started (the bolt on their rows). */
+    'triggers.list': { params: z.object({}), result: TriggersState },
+    /**
+     * Creates a trigger (no `id`) or changes one. Never with bypass permissions. A new one, or one whose source changed,
+     * looks at once and marks what is there as seen; only what comes after starts a session.
+     */
+    'triggers.save': { params: z.object({ trigger: TriggerSave }), result: z.object({ trigger: Trigger }) },
+    /** Deletes a trigger and its events; what it was is returned for Undo. The sessions it started keep their bolt. */
+    'triggers.delete': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ trigger: Trigger.nullable(), events: z.array(TriggerEvent) }) },
+    /** Puts a deleted trigger back (Undo), with its events. It looks again before it starts anything. */
+    'triggers.restore': { params: z.object({ trigger: Trigger, events: z.array(TriggerEvent).max(1000) }), result: z.object({ trigger: Trigger }) },
+    /** Pauses or resumes. Resumed, it looks again first: what came while it was paused is marked as seen. */
+    'triggers.setPaused': { params: z.object({ id: z.string().min(1).max(100), paused: z.boolean() }), result: z.object({ trigger: Trigger }) },
+    /** Checks a trigger now, whether due or not: the trigger after it, and how many new events the check found. */
+    'triggers.checkNow': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ trigger: Trigger, found: z.number().int().min(0) }) },
+    /** Start now (a waiting event) or Start anyway (a skipped one), past `maxAtOnce`; the focus and usage limits still hold it. */
+    'triggers.startEvent': { params: z.object({ eventId: z.string().min(1).max(100) }), result: z.object({ event: TriggerEvent.nullable() }) },
+    /** The editor's facts about a project's repository: gh's account, the default branch, the workflows, the collaborators. */
+    'triggers.repoInfo': { params: z.object({ root: AbsolutePath }), result: TriggerRepoInfo },
+
     // --- Settings backup -----------------------------------------------------------------------
     /** Writes the chosen kinds of user choices (never the cache) to a settings file. */
     'settings.export': {
@@ -1353,6 +1375,10 @@ export const contract = {
      * notification for several missed runs.
      */
     'schedules.ran': z.object({ runs: z.array(ScheduleRunEvent) }),
+    /** Every trigger with its events, after any change and after a check that found something. */
+    'triggers.changed': TriggersState,
+    /** A triggered session started, an issue was picked up, or a trigger paused: main's notifier says so. */
+    'triggers.notice': z.object({ notices: z.array(TriggerNotice) }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
     /** A profile hit or left a usage limit, or a resume was armed, fired or gave up. */

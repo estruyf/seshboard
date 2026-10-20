@@ -66,6 +66,9 @@ function fakeGh(home: string): string {
   const signedOut = join(home, '.fake-gh-signed-out');
   const checks = join(home, '.fake-gh-checks');
   const pr = JSON.stringify([{ number: 42, state: 'OPEN', headRefName: 'feat/dark-mode', url: 'https://github.com/acme/acme-store/pull/42', isDraft: false }]);
+  // Triggers' calls (the editor's account, branch, workflows and collaborators) come from a made-up repository.
+  const triggers = join(home, '.fake-gh-triggers.json');
+  writeFileSync(triggers, JSON.stringify({ repo: 'acme/acme-store', login: 'mara-k', defaultBranch: 'main', collaborators: 6, workflows: ['CI', 'Lint', 'E2E'], labels: ['switchboard'], issues: [], runs: [] }));
   writeFileSync(
     path,
     [
@@ -78,7 +81,7 @@ function fakeGh(home: string): string {
       `  if [ "$1 $2" = "pr list" ]; then echo '${pr}'; exit 0; fi`,
       `  if [ "$1 $2" = "pr checks" ]; then cat '${checks}'; exit 1; fi`,
       'fi',
-      `FAKE_GH_REPOS=acme/acme-store FAKE_GH_SIGNED_OUT='${signedOut}' exec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(import.meta.dirname, '..', 'tests', 'fixtures', 'fake-gh.cjs'))} "$@"`,
+      `FAKE_GH_REPOS=acme/acme-store FAKE_GH_SIGNED_OUT='${signedOut}' FAKE_GH_TRIGGERS='${triggers}' exec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(import.meta.dirname, '..', 'tests', 'fixtures', 'fake-gh.cjs'))} "$@"`,
       '',
     ].join('\n'),
   );
@@ -1386,6 +1389,44 @@ const screens: Screen[] = [
     }),
   ),
   {
+    name: 'triggers-tab',
+    async take(t) {
+      // Three demo triggers with their events, from the file the engine watches; the hero session works in Switchboard,
+      // so the issues trigger's slot is busy and its next issue waits. Taken out again after the picture.
+      const hero = await t.sessionId(HERO);
+      writeFileSync(demoQueueHostFile(t.world), JSON.stringify({ sessionId: hero, cwd: join(t.world.home, 'Developer', 'acme-store') }));
+      writeFileSync(demoTriggersFile(t.world), JSON.stringify(demoTriggers(t.world, Date.now(), hero)));
+      try {
+        await openProjectPage(t, 'acme-store');
+        await t.click('[data-project-tab="triggers"]');
+        await t.until("document.querySelectorAll('[data-triggers-tab] [data-trigger-card]').length === 3", 'the Triggers tab showed no demo triggers', 30_000);
+        await t.until("document.querySelector('[data-trigger-filter-assignee]')?.innerText === '@mara-k'", "the card didn't show gh's account");
+        await t.until("document.querySelector('[data-trigger-status]')?.innerText === '1 of 1 busy'", "the hero session didn't show as working");
+        await t.shot('triggers-tab');
+      } finally {
+        writeFileSync(demoTriggersFile(t.world), 'null');
+        writeFileSync(demoQueueHostFile(t.world), 'null');
+      }
+      await t.until("!document.querySelector('[data-trigger-card]')", 'the demo triggers stayed');
+      await t.home();
+    },
+  },
+  {
+    name: 'trigger-editor',
+    async take(t) {
+      // New trigger on acme-store's Triggers tab: issues with the switchboard label assigned to gh's account, state labels on.
+      await openProjectPage(t, 'acme-store');
+      await t.click('[data-project-tab="triggers"]');
+      await t.click('[data-triggers-tab] [data-trigger-new]', 'the Triggers tab has no New trigger');
+      await t.need('[data-trigger-editor="new"] [data-trigger-prompt]', 'the trigger editor did not open');
+      await t.until("document.querySelector('[data-trigger-editor] [data-trigger-assignee]')?.innerText.includes('@mara-k')", "the editor didn't show gh's account");
+      await t.shot('trigger-editor');
+      await t.escape();
+      await t.gone('[data-trigger-editor]', 'the trigger editor did not close');
+      await t.home();
+    },
+  },
+  {
     name: 'memory-load-order',
     async take(t) {
       await openMemoryTab(t);
@@ -1896,6 +1937,7 @@ function demoUsage(world: DemoWorld): string {
       limitFile: demoLimitFile(world),
       queueHostFile: demoQueueHostFile(world),
       schedulesFile: demoSchedulesFile(world),
+      triggersFile: demoTriggersFile(world),
     }),
   );
   return file;
@@ -1909,6 +1951,100 @@ const demoQueueHostFile = (world: DemoWorld) => join(world.home, '.switchboard-d
 
 /** Where the tour puts the demo schedules for their picture (see `DemoUsage.schedulesFile`). */
 const demoSchedulesFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-schedules.json');
+
+/** Where the tour puts the demo triggers for their picture (see `DemoUsage.triggersFile`). */
+const demoTriggersFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-triggers.json');
+
+/**
+ * Three triggers on acme-store as its Triggers tab shows them after a day: CI fails on main with three sessions, Issues
+ * for you with an issue whose pull request is open, one waiting for the busy slot and one from outside the
+ * collaborators, and a paused one. Their times are made relative to now.
+ */
+function demoTriggers(world: DemoWorld, now: number, hero: string) {
+  const root = join(world.home, 'Developer', 'acme-store');
+  const minutes = (n: number) => now - n * 60_000;
+  const trigger = (id: string, name: string, rest: Record<string, unknown>) => ({
+    id: `demo-trigger-${id}`,
+    projectRoot: root,
+    name,
+    prompt: 'Fix it.',
+    draft: { profileId: null, model: 'opus', effort: null, permissionMode: 'auto', workspace: 'worktree', baseRef: 'fresh' },
+    maxAtOnce: 3,
+    maxWaiting: 10,
+    intervalMinutes: 5,
+    stateLabels: { on: false, working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' },
+    assignOnPickUp: false,
+    paused: false,
+    pausedReason: null,
+    failures: 0,
+    lastError: null,
+    blockedUntil: null,
+    seededAt: minutes(3 * 24 * 60),
+    createdAt: minutes(3 * 24 * 60),
+    updatedAt: minutes(3 * 24 * 60),
+    ...rest,
+  });
+  const ci = (id: string, workflow: string, run: number, sha: string, at: number, sessionId: string | null) => ({
+    id: `demo-event-${id}`,
+    triggerId: 'demo-trigger-ci',
+    key: `${workflow}@${sha}`,
+    kind: 'ci',
+    title: 'Merge pull request #61 from acme/fix/pay-after-decline',
+    url: `https://github.com/acme/acme-store/actions/runs/${run}`,
+    fields: { workflow, branch: 'main', commit: sha.slice(0, 7), sha, run: String(run), number: String(run) },
+    status: 'started',
+    reason: null,
+    sessionId,
+    itemId: null,
+    label: null,
+    reassignedTo: null,
+    createdAt: at,
+    startedAt: at,
+  });
+  const issue = (id: string, number: number, title: string, at: number, rest: Record<string, unknown>) => ({
+    id: `demo-event-${id}`,
+    triggerId: 'demo-trigger-issues',
+    key: `#${number}`,
+    kind: 'issue',
+    title,
+    url: `https://github.com/acme/acme-store/issues/${number}`,
+    fields: { number: String(number), title, author: 'jules-d', labels: 'switchboard', assignees: 'mara-k' },
+    status: 'started',
+    reason: null,
+    sessionId: null,
+    itemId: null,
+    label: null,
+    reassignedTo: null,
+    createdAt: at,
+    startedAt: null,
+    ...rest,
+  });
+  const events = [
+    ci('test', 'test', 4512, '9f3c2e1a7d', minutes(12), world.history[WORKING]?.id ?? null),
+    ci('lint', 'lint', 4509, '1a7b0d4c2e', minutes(52), world.history[NEEDS_YOU]?.id ?? null),
+    ci('e2e', 'e2e', 4497, '5c0e9b3f1a', minutes(26 * 60), world.history[CATCH_UP]?.id ?? null),
+    issue('212', 212, 'Pinned sessions lose their order after restart', minutes(40), { sessionId: hero, startedAt: minutes(40), label: 'switchboard: pr open' }),
+    issue('214', 214, 'Archive keeps the scroll position', minutes(9), { status: 'waiting', label: 'switchboard: working' }),
+    issue('215', 215, 'Add a Polish translation', minutes(6), { status: 'skipped', reason: "opened by someone outside the repository's collaborators", fields: { number: '215', title: 'Add a Polish translation', author: 'someone', labels: 'switchboard', assignees: 'mara-k' } }),
+  ];
+  const session = (event: (typeof events)[number], triggerName: string, ref: string) =>
+    event.sessionId ? [{ sessionId: event.sessionId, triggerId: event.triggerId, eventId: event.id, triggerName, kind: event.kind, ref, url: event.url, at: event.startedAt ?? event.createdAt }] : [];
+  return {
+    triggers: [
+      trigger('ci', 'CI fails on main', { source: { kind: 'ci', branch: 'main', workflows: [] }, lastCheckedAt: minutes(2) }),
+      trigger('issues', 'Issues for you', {
+        source: { kind: 'issues', label: 'switchboard', assignee: '@me', collaboratorsOnly: true },
+        draft: { profileId: null, model: 'sonnet', effort: null, permissionMode: 'acceptEdits', workspace: 'worktree', baseRef: 'fresh' },
+        maxAtOnce: 1,
+        stateLabels: { on: true, working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' },
+        lastCheckedAt: minutes(1),
+      }),
+      trigger('release', 'CI fails on release', { source: { kind: 'ci', branch: 'release', workflows: ['CI'] }, paused: true, pausedReason: 'gh is signed out', failures: 5, lastError: 'gh is signed out', lastCheckedAt: minutes(3 * 60) }),
+    ],
+    events,
+    sessions: [...session(events[0]!, 'CI fails on main', 'CI #4512'), ...session(events[1]!, 'CI fails on main', 'CI #4509'), ...session(events[2]!, 'CI fails on main', 'CI #4497'), ...session(events[3]!, 'Issues for you', '#212')],
+  };
+}
 
 /**
  * Four schedules as the Schedules card shows them after a few days: one whose last run started (linked to a demo

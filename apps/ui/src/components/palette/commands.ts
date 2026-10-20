@@ -104,6 +104,7 @@ import {
   VolumeX,
   Wrench,
   X,
+  Zap,
   type LucideIcon,
   CalendarClock,
 } from 'lucide-react';
@@ -152,7 +153,7 @@ export interface PaletteApi {
   goToNextNeedsYou(): void;
   manageProjects(): void;
   /** A project's page, on a tab or the one it was last left on. */
-  openProject(root: string, tab?: 'worktrees' | 'branches' | 'memory'): void;
+  openProject(root: string, tab?: 'triggers' | 'worktrees' | 'branches' | 'memory'): void;
   /** A project's Worktrees tab with the clean-up confirmation for what it suggests. */
   cleanUpWorktrees(root: string): void;
   /** Memory in and out of the Claude app: Import from Claude export…, Paste from Claude app…, Copy for Claude app…. */
@@ -628,6 +629,44 @@ export const COMMANDS: PaletteCommand[] = [
     hint: (ctx) => (ctx.schedules > 0 ? String(ctx.schedules) : ''),
     when: always,
     run: (api) => api.openUpcoming('schedules'),
+  },
+  {
+    id: 'trigger-new',
+    title: 'New trigger…',
+    group: 'general',
+    icon: Zap,
+    keywords: 'trigger event start when ci failed failing workflow issue label assigned automation watch',
+    when: (ctx) => ctx.projects.length > 0 && ctx.connected,
+    next: () => ({ kind: 'projects', purpose: 'trigger', worktree: false, chip: 'New trigger' }),
+  },
+  {
+    id: 'triggers-here',
+    title: (ctx) => `Triggers in ${ctx.currentProject?.name ?? 'this project'}`,
+    group: 'general',
+    hint: 'current project',
+    icon: Zap,
+    keywords: 'trigger event ci failed issue label assigned automation watch tab',
+    when: (ctx) => ctx.currentProject !== null && ctx.projects.some((p) => p.root === ctx.currentProject!.root),
+    run: (api, ctx) => api.openProject(ctx.currentProject!.root, 'triggers'),
+  },
+  {
+    id: 'triggers-page',
+    title: 'Triggers…',
+    group: 'general',
+    icon: Zap,
+    keywords: 'trigger event ci failed issue label assigned automation watch tab project',
+    when: (ctx) => ctx.projects.length > 0 && ctx.connected,
+    next: () => ({ kind: 'projects', purpose: 'triggers', worktree: false, chip: 'Triggers' }),
+  },
+  {
+    id: 'triggers',
+    title: 'Triggers: pick one…',
+    group: 'general',
+    icon: Zap,
+    keywords: 'trigger event check now pause resume delete edit ci issues',
+    hint: (ctx) => String(ctx.triggers),
+    when: (ctx) => ctx.triggers > 0 && ctx.connected,
+    next: () => ({ kind: 'pick', list: 'triggers', chip: 'Triggers' }),
   },
   {
     id: 'schedules',

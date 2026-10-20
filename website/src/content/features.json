@@ -3932,6 +3932,91 @@
       "page": "getting-started/linux"
     },
     {
+      "id": "project-tab:triggers",
+      "name": "Triggers tab",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:trigger-new",
+      "name": "New trigger…",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers",
+      "name": "Triggers: pick one… (Check now, Edit…, Pause or Resume, Delete)",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers-page",
+      "name": "Triggers… (a project's Triggers tab)",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers-here",
+      "name": "Triggers in <current project>",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-editor",
+      "name": "Trigger editor: When, which issues or the branch and workflows, On GitHub, prompt with event fields, Runs with, At once, Waiting",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-start-when",
+      "name": "Start when… in New session's Start menu",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-ci",
+      "name": "CI fails on a branch: a session for each new failed workflow run, with its log",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-issues",
+      "name": "Issues for you: a label, assigned to you, or both, from collaborators only",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-state-labels",
+      "name": "State labels on the issue, and Assign to me when picked up",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-limits",
+      "name": "At once and waiting limits, with Start now and Start anyway",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-guardrails",
+      "name": "Trigger guardrails: never bypass permissions, pause after 5 failed checks, the first check marks what is there as seen",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-session-bolt",
+      "name": "Bolt on sessions a trigger started, and the Started by line in their header",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-notifications",
+      "name": "Trigger notifications: a CI failure started a session, an issue picked up, a trigger paused",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-project-menu",
+      "name": "Triggers… in a project's menu",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:upcoming-triggers",
+      "name": "Upcoming's Triggers filter: every trigger across projects, with what waits",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:triggers-backup",
+      "name": "Triggers in settings export and import, imported paused",
+      "page": "settings/backup"
+    },
+    {
       "id": "terminal-context-menu",
       "name": "Terminal right-click menu: Copy, Paste, Explain or Fix with Claude",
       "page": "terminal-changes-git/terminal"
