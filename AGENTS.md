@@ -33,7 +33,7 @@ npm install
 npm run dev          # Electron + Vite with hot reload
 npm run check        # typecheck every package + unit tests (Vitest)
 npm run smoke        # build, launch the real app with a throwaway profile, drive the UI
-npm run smoke -- --only "pop-out"   # the same, but only the steps whose label matches (repeat --only for more)
+npm run smoke:demo   # the same in a made-up home folder (what CI and agents run); add -- --only "pop-out" for some steps
 npm run screenshots  # retake the README screenshots in a made-up demo home folder
 npm run dev:vscode   # rebuild the VS Code companion on every change (F5 in VS Code runs it in a dev host)
 npm run dev:remote   # the remote app at http://localhost:5199/remote/ (start the app with SWITCHBOARD_REMOTE_APP_URL set to it)
@@ -50,8 +50,9 @@ npm run dist         # package the app for this OS: Switchboard.app and a .dmg, 
 
 Most of the time in a feature goes into rerunning slow checks and re-reading the same code. Keep each run small:
 
-- **Check only what you touched while you build.** After a change, run the tests next to it (`npx vitest run <files>`) and `npm run typecheck` (or one workspace's: `npm run typecheck -w @switchboard/ui`). Run the smoke steps for your area with `npm run smoke -- --only "<part of the step label>"` (the labels are the `step(...)` lines in `runSmokeStep`; repeat `--only` for more, and steps inside "projects" run with it). Leave the full `npm run check` and the full `npm run smoke` for the end of the feature, once each.
-- **The full smoke belongs in a terminal with no Claude session in this repository.** Started from Claude Code, some steps fail by design: the agent's own session and its folder are off limits to them (see Smoke test), and the script says so. Don't look into those failures; rerun from a plain terminal, or with `--only` for the steps you changed.
+- **Check only what you touched while you build.** After a change, run the tests next to it (`npx vitest run <files>`) and `npm run typecheck` (or one workspace's: `npm run typecheck -w @switchboard/ui`). Run the smoke steps for your area with `npm run smoke:demo -- --only "<part of the step label>"` (the labels are the `step(...)` lines in `runSmokeStep`; repeat `--only` for more, and steps inside "projects" run with it). Leave the full `npm run check` and the full `npm run smoke:demo` for the end of the feature, once each.
+- **Agents run the demo smoke** (`smoke:demo`, what CI runs): a made-up home folder with the same projects and sessions on every run, so a step always works on the same session and a failure can be reproduced. It is also faster, and the agent's own session is not in it. The plain `npm run smoke` runs against your real `~/.claude`, so its results depend on your recent sessions; started from Claude Code, some of its steps fail by design (the agent's session and folder are off limits, see Smoke test). Leave it to a person in a terminal with no Claude session in this repository.
+- **A step that fails every time is not flaky.** Check whether a recent change altered what the step expects (`git log -p` on the component) before rerunning: a rerun of a step that is out of date costs a full run and tells you nothing.
 - **One agent per feature.** An agent that already read this file and the code it needs keeps that: continue it (SendMessage) for the next step instead of starting a fresh one, which reads everything again.
 - **Small specs.** Split a spec that is several features (a view, its actions, its sidebar entry) into a core that ships first and follow-ups. Each run stays short and is less likely to hit a rate limit.
 - **Features side by side** go in their own git worktree (the Agent tool's `isolation: "worktree"`). A new worktree has no `node_modules` of its own and would resolve packages from the main checkout, on another branch: run `npm install` in it first (if npm skips install scripts, run `node node_modules/electron/install.js` for Electron). Full smoke runs take turns; use `--only` in each worktree.

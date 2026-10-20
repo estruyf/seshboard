@@ -6,7 +6,7 @@ AGENTS.md (imported above, so there is no need to read it again) has the archite
 
 ## While building a feature
 
-- Run the related tests (`npx vitest run <files>`), the typecheck and `npm run smoke -- --only "<step label>"` after each step. The full `npm run check` and `npm run smoke` run once, at the end; the full smoke from a terminal with no Claude session in this repository.
+- Run the related tests (`npx vitest run <files>`), the typecheck and `npm run smoke:demo -- --only "<step label>"` after each step. The full `npm run check` and `npm run smoke:demo` run once, at the end.
 - Per feature, the docs need only its `CHANGELOG.md` line and its entry in `website/src/content/features.json` (the coverage test in `npm run check` requires it). Pages and screenshots wait for the release.
 
 ## Releases
