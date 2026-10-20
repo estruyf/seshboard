@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  changedDrafts,
   DRAFT_SETTLE_MS,
   draftList,
   draftPreview,
@@ -9,12 +10,18 @@ import {
   newSessionDraftBanner,
   nextDraft,
   parseDrafts,
+  parseFirstPrompts,
   quitSummary,
   serializeDrafts,
   sessionDraftBanner,
   sessionsWithDrafts,
+  settleFirstPrompts,
   type Draft,
+  type FirstPrompt,
+  type SessionsSeen,
+  draftMessage,
 } from './drafts.ts';
+import type { HostState } from '@switchboard/protocol/client';
 
 const draft = (text: string, over: Partial<Draft<string>> = {}): Draft<string> => ({ text, attachments: [], updatedAt: 1_000, counted: true, lostImages: 0, ...over });
 
@@ -142,5 +149,109 @@ describe('sessionsWithDrafts', () => {
   it('finds the sessions archiving would ask about', () => {
     const drafts = { a: draft('unsent'), b: draft('typing', { counted: false }), c: draft('  ') };
     expect(sessionsWithDrafts(['a', 'b', 'c', 'd'], drafts)).toEqual(['a', 'b']);
+  });
+});
+
+describe('first prompts', () => {
+  const form = { choices: { model: 'opus', permissionMode: 'plan' as const, effort: 'high' as const, workspace: 'current' as const, baseRef: 'fresh' as const, branch: '' }, profileId: 'work' };
+  const first = (text: string, restored = false): FirstPrompt<string> => ({ draft: { ...draft(text, { form }), startIn: '/work/app' }, restored });
+  const seen = (over: { ready?: boolean; transcripts?: string[]; hosts?: Record<string, HostState> } = {}): SessionsSeen => ({
+    ready: over.ready ?? true,
+    hasTranscript: (id) => (over.transcripts ?? []).includes(id),
+    hostState: (id) => over.hosts?.[id],
+  });
+
+  it('stays out of sight while the session runs, and is forgotten once it has a transcript', () => {
+    const firstPrompts = { 's-1': first('Fix the login redirect') };
+    expect(settleFirstPrompts({}, firstPrompts, seen({ hosts: { 's-1': 'running' } }))).toBeNull();
+    // Just created: the host isn't listed yet, which isn't a reason to give up on it.
+    expect(settleFirstPrompts({}, firstPrompts, seen())).toBeNull();
+    expect(settleFirstPrompts({}, firstPrompts, seen({ hosts: { 's-1': 'idle' }, transcripts: ['s-1'] }))).toEqual({ drafts: {}, firstPrompts: {} });
+  });
+
+  it('becomes the session’s unsent message when Claude Code fails first', () => {
+    const settled = settleFirstPrompts({}, { 's-1': first('Fix the login redirect') }, seen({ hosts: { 's-1': 'error' } }));
+    expect(settled?.firstPrompts).toEqual({});
+    expect(settled?.drafts['s-1']).toMatchObject({ text: 'Fix the login redirect', counted: true, startIn: '/work/app', form });
+    expect(draftList(settled!.drafts).map((item) => item.key)).toEqual(['s-1']);
+    // Something typed in the session's box since wins.
+    expect(settleFirstPrompts({ 's-1': draft('typed since') }, { 's-1': first('Fix the login redirect') }, seen({ hosts: { 's-1': 'closed' } }))?.drafts['s-1']!.text).toBe('typed since');
+  });
+
+  it('goes back to New session in its folder after a restart, with its choices', () => {
+    const settled = settleFirstPrompts({}, { 's-1': first('Fix the login redirect', true) }, seen());
+    expect(settled?.firstPrompts).toEqual({});
+    expect(settled?.drafts).toEqual({ [newDraftKey('/work/app')]: { text: 'Fix the login redirect', attachments: [], updatedAt: 1_000, counted: true, lostImages: 0, form } });
+    // Not before the engine's lists are in: it may have started after all.
+    expect(settleFirstPrompts({}, { 's-1': first('Fix the login redirect', true) }, seen({ ready: false }))).toBeNull();
+  });
+
+  it('takes a failed session’s message back to New session once the session is gone, next to a prompt written there', () => {
+    const failed = draft('Fix the login redirect', { form, startIn: '/work/app', updatedAt: 500 });
+    const there = draft('Add dark mode', { updatedAt: 2_000, form: { ...form, profileId: null } });
+    const settled = settleFirstPrompts({ 's-1': failed, [newDraftKey('/work/app')]: there }, {}, seen());
+    expect(settled?.drafts).toEqual({ [newDraftKey('/work/app')]: { ...there, text: 'Add dark mode\n\nFix the login redirect', updatedAt: 2_000 } });
+    // While the failed session is still here, it stays in its box.
+    expect(settleFirstPrompts({ 's-1': failed }, {}, seen({ hosts: { 's-1': 'error' } }))).toBeNull();
+  });
+
+  it('keeps a message that did start after all as an ordinary one', () => {
+    const settled = settleFirstPrompts({ 's-1': draft('more', { form, startIn: '/work/app' }) }, {}, seen({ transcripts: ['s-1'] }));
+    expect(settled?.drafts['s-1']).toEqual(draft('more'));
+  });
+
+  it('keeps editing a failed session’s message from losing its folder', () => {
+    const next = nextDraft(draft('Fix it', { form, startIn: '/work/app' }), { text: 'Fix it now', attachments: [] }, 2_000);
+    expect(next).toMatchObject({ startIn: '/work/app', form });
+  });
+
+  it('is saved apart from the drafts and read back as restored', () => {
+    const saved = JSON.parse(JSON.stringify(serializeDrafts({}, { 's-1': first('Fix the login redirect') })));
+    expect(saved.drafts).toEqual({});
+    expect(parseDrafts(saved)).toEqual({});
+    expect(parseFirstPrompts(saved)).toEqual({ 's-1': { draft: draft('Fix the login redirect', { form, startIn: '/work/app' }), restored: true } });
+    // No first prompts saved: nothing to read; one without its choices can't go back to New session.
+    expect(serializeDrafts({})).toEqual({ version: 1, drafts: {} });
+    expect(parseFirstPrompts({ version: 1, drafts: {}, firstPrompts: { 's-1': { text: 'x', updatedAt: 1, images: 0, startIn: '/work/app' } } })).toEqual({});
+  });
+});
+
+describe('changedDrafts', () => {
+  it('lists the drafts that changed, came or went', () => {
+    const kept = draft('same');
+    const before = { a: kept, b: draft('old'), c: draft('gone') };
+    const edited = draft('new');
+    const added = draft('added');
+    expect(changedDrafts(before, { a: kept, b: edited, d: added })).toEqual({ b: edited, c: null, d: added });
+  });
+
+  it('is empty when nothing changed', () => {
+    const kept = draft('same');
+    expect(changedDrafts({ a: kept }, { a: kept })).toEqual({});
+  });
+});
+
+describe('a saved prompt in a draft', () => {
+  const fill = { prompt: { id: 'fix-pr', name: 'Fix PR', scope: { kind: 'global' as const } }, text: 'Fix {{pr:pr}} on {{branch:branch}}', values: { pr: '#142' }, displays: {} };
+
+  it('counts as something unsent, even with nothing typed under it', () => {
+    const draft = nextDraft(undefined, { text: '', attachments: [], fill }, 1);
+    expect(draft?.fill).toBe(fill);
+    // Only the chips changed: the prompt stays; the box without one says null.
+    expect(nextDraft(draft!, { text: '', attachments: [], context: [] }, 2)?.fill).toBe(fill);
+    expect(nextDraft(draft!, { text: '', attachments: [], fill: null }, 3)).toBeNull();
+  });
+
+  it('is kept across a restart, with its values', () => {
+    const draft = { ...nextDraft(undefined, { text: 'Keep the tests.', attachments: [], fill }, 1)!, counted: true };
+    const back = parseDrafts(JSON.parse(JSON.stringify(serializeDrafts({ s1: draft }))));
+    expect(back.s1?.fill).toEqual(fill);
+    expect(back.s1?.text).toBe('Keep the tests.');
+  });
+
+  it('shows as filled so far in the lists, and sends the filled prompt then the text', () => {
+    const draft = nextDraft(undefined, { text: 'Keep the tests.', attachments: [], fill }, 1)!;
+    expect(draftList({ s1: { ...draft, counted: true } })[0]?.preview).toBe('Fix #142 on [Branch]');
+    expect(draftMessage(draft)).toBe('Fix #142 on\n\nKeep the tests.');
   });
 });

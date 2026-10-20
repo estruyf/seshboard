@@ -1,4 +1,4 @@
-import type { UsageLimit, UsageSnapshot } from '@switchboard/protocol/client';
+import { formatCost, type CurrencyCode, type UsageLimit, type UsageSnapshot, type WindowCost } from '@switchboard/protocol/client';
 
 /** "5h", "7d", "7d · Fable" for the server's meter kinds. */
 export function limitLabel(limit: UsageLimit): string {
@@ -37,21 +37,56 @@ export function visibleLimits(limits: UsageLimit[]): UsageLimit[] {
   return limits.filter((l) => l.kind === 'session' || l.kind === 'weekly_all' || l.percent >= 1);
 }
 
-/** "5-hour limit: 6% used, resets in 4h3m": a meter's pill in words, for VoiceOver (the ring and "5h" don't read well). */
-export function spokenLimit(limit: UsageLimit, now = Date.now()): string {
+/** The estimated cost of a limit's window: the one with its kind and scope, if the engine priced it. */
+export function windowCostOf(limit: UsageLimit, costs: readonly WindowCost[]): WindowCost | undefined {
+  return costs.find((c) => c.kind === limit.kind && c.scope === limit.scope);
+}
+
+/** "≈$3.20": an estimated cost as the app shows it everywhere. `locale` is for tests; the app uses the system's. */
+export const costText = (usd: number, currency: CurrencyCode, locale?: string) => `≈${formatCost(usd, currency, locale)}`;
+
+/**
+ * Each limit's cost as the bars show it ("≈$3.20"), or null where there is none: the estimate turned off
+ * (`currency` null), or the window not priced (yet). `locale` is for tests; the app uses the system's.
+ */
+export function limitCosts(limits: readonly UsageLimit[], costs: readonly WindowCost[], currency: CurrencyCode | null, locale?: string): Array<string | null> {
+  return limits.map((limit) => {
+    const cost = currency ? windowCostOf(limit, costs) : undefined;
+    return cost && currency ? costText(cost.usd, currency, locale) : null;
+  });
+}
+
+/**
+ * "5-hour limit: 6% used, resets in 4h3m": a meter's pill in words, for VoiceOver (the ring and "5h" don't read well).
+ * `cost` is its estimate as the bar shows it (`limitCosts`).
+ */
+export function spokenLimit(limit: UsageLimit, now = Date.now(), cost: string | null = null): string {
   const name = limit.kind === 'session' ? '5-hour limit' : limitLabel(limit).startsWith('7d') ? 'Weekly limit' : `${limit.kind.replace(/_/g, ' ')} limit`;
   const scoped = limit.scope ? `${name} (${limit.scope})` : name;
   const severity = limit.severity === 'critical' ? ', nearly used up' : limit.severity === 'warning' ? ', getting close' : '';
   const reset = limit.resetsAt ? `, resets in ${countdown(limit.resetsAt, now)}` : '';
-  return `${scoped}: ${Math.round(limit.percent)}% used${severity}${reset}`;
+  const priced = cost ? `, about ${cost.replace('≈', '')} at API prices` : '';
+  return `${scoped}: ${Math.round(limit.percent)}% used${severity}${reset}${priced}`;
 }
 
 /**
- * A usage bar's tooltip: every window on a line ("5h: 38% used, resets in 2h14m"), then what a click does.
+ * A usage bar's tooltip: every window on a line ("5h: 38% used, resets in 2h14m · ≈$3.20"), a note on what the costs
+ * are when it shows some (with `costNotes`: which computers they count), then what a click does. `costs` lines up
+ * with `limits` (`limitCosts`).
  */
-export function usageSummary(limits: UsageLimit[], now = Date.now()): string {
-  const lines = limits.map((l) => `${limitLabel(l)}: ${Math.round(l.percent)}% used${l.resetsAt ? `, resets in ${countdown(l.resetsAt, now)}` : ''}`);
-  return [...lines, 'Click to see what used it'].join('\n');
+export function usageSummary(limits: UsageLimit[], now = Date.now(), costs: ReadonlyArray<string | null> = [], costNotes: readonly string[] = []): string {
+  const lines = limits.map((l, i) => `${limitLabel(l)}: ${Math.round(l.percent)}% used${l.resetsAt ? `, resets in ${countdown(l.resetsAt, now)}` : ''}${costs[i] ? ` · ${costs[i]}` : ''}`);
+  const note = costs.some(Boolean) ? ['Costs are estimates at API prices, not charges', ...costNotes] : [];
+  return [...lines, ...note, 'Click to see what used it'].join('\n');
+}
+
+/**
+ * Which computers a plan window's cost counts, once other computers are paired: "Counts This PC and mystic" and
+ * "Not counted: studio is offline." (`reasons` are `Uncounted` sentences). Nothing while no other computer is paired.
+ */
+export function costComputersNotes(thisComputer: string, counted: ReadonlyArray<{ name: string }>, reasons: readonly string[]): string[] {
+  const notes = counted.length > 0 ? [`Counts ${[thisComputer, ...counted.map((c) => c.name)].join(' and ')}`] : [];
+  return reasons.length > 0 ? [...notes, `Not counted: ${reasons.join(' ')}`] : notes;
 }
 
 /** A profile's usage once it has been asked for: the numbers (null when there are none) and why the last fetch failed. */

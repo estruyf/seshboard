@@ -29,6 +29,11 @@ export interface TerminalManagerOptions {
   claudePath: () => Promise<string | undefined>;
   onData: (id: string, data: string) => void;
   onChange: (terminals: TerminalInfo[]) => void;
+  /**
+   * A process ended in a terminal that is still open (not when its tab was closed): what that run printed, without the
+   * command shown above it or the line saying it ended, and whether you pressed Stop.
+   */
+  onExit?: (info: TerminalInfo, run: { output: string; stopped: boolean }) => void;
   log: (level: LogLevel, message: string) => void;
 }
 
@@ -55,13 +60,26 @@ interface Terminal {
   stopTimers: Array<ReturnType<typeof setTimeout>>;
   replay: string[];
   replayLength: number;
+  /** Everything ever flushed, in characters, and where the current run's own output starts in that count. */
+  flushed: number;
+  runFrom: number;
+  /** Stop was pressed during the current run. */
+  stopped: boolean;
   pending: string;
   timer: ReturnType<typeof setTimeout> | undefined;
   exited: Promise<number>;
   /** When the current process was spawned, and when it last printed anything (for `whenReady`). */
   spawnedAt: number;
   lastOutputAt: number | undefined;
+  /** A restart that is still spawning: another Restart in the meantime (quick clicks) gets this one. */
+  restarting?: Promise<TerminalInfo>;
 }
+
+/**
+ * node-pty throws EBADF (or EIO) when its file descriptor closed before the exit event came: the process is ending,
+ * and a resize or keystroke for it has nowhere to go.
+ */
+const isClosedPty = (error: unknown) => /\b(EBADF|EIO)\b/.test(`${(error as NodeJS.ErrnoException)?.code ?? ''} ${(error as Error)?.message ?? ''}`);
 
 /**
  * node-pty's prebuilt `spawn-helper` can lose its executable bit when npm
@@ -171,6 +189,9 @@ export class TerminalManager {
       stopTimers: [],
       replay: [],
       replayLength: 0,
+      flushed: 0,
+      runFrom: 0,
+      stopped: false,
       pending: '',
       timer: undefined,
     } as Partial<Terminal> as Terminal;
@@ -187,12 +208,28 @@ export class TerminalManager {
    */
   async restart(id: string, change: { command?: string; cwd?: string } = {}): Promise<TerminalInfo> {
     const terminal = this.require(id);
+    // The exit code stays set until the new process is up, so a second Restart meanwhile (quick clicks on the pill and
+    // the tab) would start a second process: it gets the first one's instead.
+    terminal.restarting ??= this.restartNow(terminal, change).finally(() => (terminal.restarting = undefined));
+    return terminal.restarting;
+  }
+
+  private async restartNow(terminal: Terminal, change: { command?: string; cwd?: string }): Promise<TerminalInfo> {
     if (terminal.info.exitCode === null) throw new Error('This terminal is still running');
     if (change.command !== undefined && terminal.info.kind === 'action') terminal.spawn = { ...terminal.spawn, args: userShell(terminal.spawn.env).run(change.command), command: change.command };
     if (change.cwd !== undefined) terminal.spawn = { ...terminal.spawn, cwd: change.cwd };
     if (!existsSync(terminal.spawn.cwd)) throw new Error(`Folder not found: ${terminal.spawn.cwd}`);
     this.buffer(terminal, '\r\n\x1b[2m── Restarted ──\x1b[0m\r\n\r\n');
     await this.start(terminal);
+    // Closed while it was starting: nothing would ever stop the new process.
+    if (this.terminals.get(terminal.info.id) !== terminal) {
+      try {
+        terminal.pty.kill();
+      } catch {
+        // Already gone.
+      }
+      throw new Error('This terminal is gone');
+    }
     terminal.info = { ...terminal.info, cwd: terminal.spawn.cwd, exitCode: null };
     this.options.log('info', `Restarted ${terminal.info.kind} terminal in ${terminal.spawn.cwd} (pid ${terminal.pty.pid})`);
     this.changed();
@@ -231,6 +268,7 @@ export class TerminalManager {
         // Already gone.
       }
     };
+    terminal.stopped = true;
     pty.write('\x03');
     terminal.stopTimers.push(
       setTimeout(() => signal('SIGTERM'), STOP_GRACE_MS),
@@ -245,6 +283,10 @@ export class TerminalManager {
     const action = terminal.info.kind === 'action';
     // Show what runs: a quiet command like `git fetch` with nothing new prints nothing, and the tab would look like it never ran.
     if (action) this.buffer(terminal, `\x1b[2m$ ${terminal.spawn.command!.replace(/\r?\n/g, '\r\n')}\x1b[0m\r\n`);
+    // What this run prints starts here: after the command shown above it, and after an earlier run's output.
+    this.flush(terminal);
+    terminal.runFrom = terminal.flushed;
+    terminal.stopped = false;
     const pty = (await this.spawnPty)(file, args, { name: 'xterm-256color', cols: terminal.info.cols, rows: terminal.info.rows, cwd, env });
     let resolveExit!: (code: number) => void;
     terminal.exited = new Promise<number>((resolve) => (resolveExit = resolve));
@@ -262,6 +304,8 @@ export class TerminalManager {
       terminal.stopTimers.splice(0).forEach(clearTimeout);
       // Killed by a signal: report it the way shells do (Ctrl+C is 130), not as a clean 0.
       const code = signal ? 128 + signal : exitCode;
+      this.flush(terminal);
+      const output = this.runOutput(terminal);
       if (action) {
         const last = (terminal.pending || terminal.replay.at(-1) || '\n').at(-1);
         this.buffer(terminal, `${last === '\n' ? '' : '\r\n'}\x1b[2m── ${code === 0 ? 'Done' : `Exited with code ${code}`} ──\x1b[0m\r\n`);
@@ -270,7 +314,21 @@ export class TerminalManager {
       terminal.info = { ...terminal.info, exitCode: code };
       resolveExit(code);
       this.changed();
+      if (this.terminals.get(terminal.info.id) === terminal) this.options.onExit?.(terminal.info, { output, stopped: terminal.stopped });
     });
+  }
+
+  /** What the current run printed so far, as far as the replay buffer still holds it. */
+  private runOutput(terminal: Terminal): string {
+    const dropped = terminal.flushed - terminal.replayLength;
+    return terminal.replay.join('').slice(Math.max(0, terminal.runFrom - dropped));
+  }
+
+  /** Adds a dim line of Switchboard's own under a terminal's output, such as where that output went. */
+  note(id: string, text: string): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal) return;
+    this.buffer(terminal, `\x1b[2m${text}\x1b[0m\r\n`);
   }
 
   /** Resolves with the exit code (or -1 when the terminal is closed first). */
@@ -312,13 +370,24 @@ export class TerminalManager {
   /** Keystrokes for a terminal that just closed are dropped, not errors (a closing tab can still send one). */
   write(id: string, data: string): void {
     const terminal = this.terminals.get(id);
-    if (terminal && terminal.info.exitCode === null) terminal.pty.write(data);
+    if (!terminal || terminal.info.exitCode !== null) return;
+    try {
+      terminal.pty.write(data);
+    } catch (error) {
+      if (!isClosedPty(error)) throw error;
+    }
   }
 
+  /** A resize for a process that just ended is dropped: `exitCode` is still null between the pty closing and its exit event. */
   resize(id: string, cols: number, rows: number): void {
     const terminal = this.terminals.get(id);
     if (!terminal || terminal.info.exitCode !== null || (terminal.info.cols === cols && terminal.info.rows === rows)) return;
-    terminal.pty.resize(cols, rows);
+    try {
+      terminal.pty.resize(cols, rows);
+    } catch (error) {
+      if (isClosedPty(error)) return;
+      throw error;
+    }
     terminal.info = { ...terminal.info, cols, rows };
   }
 
@@ -364,6 +433,7 @@ export class TerminalManager {
     terminal.pending = '';
     terminal.replay.push(data);
     terminal.replayLength += data.length;
+    terminal.flushed += data.length;
     while (terminal.replayLength > REPLAY_LIMIT && terminal.replay.length > 1) {
       terminal.replayLength -= terminal.replay.shift()!.length;
     }

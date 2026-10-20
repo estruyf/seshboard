@@ -8,8 +8,9 @@ import Pill from '../../../components/Pill.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-The **Changes** panel shows what changed in the session's folder: what isn't committed yet, or everything on the branch compared with its base branch. Open any file's diff inline, stage or unstage files, or revert them.
+Open the **Changes** panel to review what Claude changed before you commit it. It shows what changed in the session's folder: what isn't committed yet, or everything on the branch compared with its base branch. Open any file's diff inline, stage or unstage files, or revert them.
 
 <Screenshot name="main-window" alt="A finished session with the Changes panel open on the right: a list of changed files with their status letters and line counts, and one file's diff opened inline" eager />
 
@@ -18,6 +19,8 @@ The **Changes** panel shows what changed in the session's folder: what isn't com
 - Press <Kbd shortcut="changes.toggle" /> to show or hide it.
 - Click **Changes** in the session header, next to **Terminal**. Its badge shows how many files have changed.
 - Run *Toggle changes* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />).
+
+With [Ask about this session](/sessions/ask/) open too, the two share the right side as tabs, **Changes** and **Ask**. Opening Changes brings it to the front and leaves Ask open behind it.
 
 The panel is there for sessions whose folder is in a git repository. On Windows it needs [Git for Windows](https://gitforwindows.org), and it lists files with paths over 260 characters too.
 
@@ -77,8 +80,12 @@ Staging and reverting are only offered in **Uncommitted**. In **vs &lt;base&gt;*
 - The wrap button wraps long lines, or lets them scroll sideways.
 - The refresh button checks git for changes again. The panel also follows along while Claude works.
 
-The Changes panel lives on the right. While it is open, the [terminal](/terminal-changes-git/terminal/#dock-below-or-on-the-right) docks below.
+The Changes panel lives on the right. With the [terminal](/terminal-changes-git/terminal/#dock-below-or-on-the-right) docked on the right too, they are tabs there.
 
 ## Settings
 
 The Changes panel has no settings. Diff colours come from the theme: see [Themes](/themes/built-in/).
+
+## Related
+
+<Related pages={['terminal-changes-git/git', 'sessions/catch-up', 'projects/worktrees', 'themes/syntax-colours']} />

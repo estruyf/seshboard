@@ -1,14 +1,16 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, type ContextItem, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, type ContextItem, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
+import { AddProjectDialog } from '../projects/AddProjectDialog.tsx';
 import { routeHint } from './route.ts';
 import { filterBranches } from '../worktree/branchMenu.ts';
-import { basename, guessHome, shortAge } from '../../lib/format.ts';
+import { basename, shortAge } from '../../lib/format.ts';
 import { nextMode, randomWorktreeName } from '../../lib/modes.ts';
 import { passFocusGate, useFocus } from '../../state/focusGate.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { addToQueue, removeFromQueue, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
 import { busyInProject, promptLabel, sameDraft } from '../../state/queue.ts';
@@ -20,13 +22,25 @@ import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { inScope, rowStatus } from '../../state/sidebarRows.ts';
+import { PromptChips } from '../savedPrompts/PromptChips.tsx';
+import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
 import { Composer, type SentParts } from '../composer/Composer.tsx';
 import { promptWithContext } from '../composer/contextItems.ts';
 import { StartButton } from './StartButton.tsx';
+import { RunOnSwitch } from './RunOnSwitch.tsx';
+import { RemoteNewSession } from '../computers/RemoteNewSession.tsx';
+import { ClonePanel } from '../clone/ClonePanel.tsx';
+import { useTrustQuestion } from '../clone/CloneTrustDialog.tsx';
+import { CloneCancelled, useCloneJob, type CloneResult } from '../clone/useCloneJob.ts';
+import { canClone, planLine } from '../clone/cloneModel.ts';
+import { useClone, useCloneEnabled } from '../../state/cloneStore.ts';
+import { useComputers } from '../../state/computersStore.ts';
+import { THIS_COMPUTER } from '../../state/remoteRows.ts';
+import { useRunOn } from '../../state/runOnStore.ts';
 import { AutoWand } from '../composer/ComposerChips.tsx';
 import { AUTO_OFF_NOTE, effectiveModel, modelChoices, modelLabel } from '../../lib/autoModel.ts';
 import { focusStartBlock, startButtonState } from './startMenu.ts';
-import { newDraftKey, newSessionDraftBanner } from '../../state/drafts.ts';
+import { newDraftKey, newSessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 import { FocusNote } from '../focus/FocusNote.tsx';
@@ -49,8 +63,9 @@ import { CatchUpButton } from '../git/CatchUpButton.tsx';
 import { UsageBand } from '../UsageBand.tsx';
 import { linkNoticeText } from './linkNotice.ts';
 import { activityByProject, latestBranches, orderProjects, pickUpRows, tileStatus } from './projectTiles.ts';
+import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote, freshBase } from './trayLabels.ts';
-import { checkoutBranchFor, shouldPrewarm, startNewSession } from './startSession.ts';
+import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
 import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices, type GlobalChoices } from './choices.ts';
 import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
@@ -63,7 +78,19 @@ const keysOf = (id: 'new-session.pick') => shortcutById(id).keys[0]!;
  * branch or a worktree). Options start from the project's defaults; fields it leaves unset use the
  * choices last made here.
  */
+/**
+ * New session: on this computer (`LocalNewSession`), or, with another computer picked in Run on, on that one
+ * (`RemoteNewSession`, docs/remote-access.md). A computer that goes away falls back to this one.
+ */
 export function NewSessionView() {
+  const target = useRunOn((s) => s.target);
+  const computer = useComputers((s) => (target === THIS_COMPUTER ? null : (s.status?.computers.find((c) => c.id === target && c.state === 'connected') ?? null)));
+  const connection = useEngineConnection();
+  if (computer) return <RemoteNewSession client={connection.status === 'connected' ? connection.client : null} computer={computer} />;
+  return <LocalNewSession />;
+}
+
+function LocalNewSession() {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const sessions = useSessions((s) => s.sessions);
@@ -87,7 +114,7 @@ export function NewSessionView() {
   const [d, setD] = useState<Choices>(() => ({ ...withNewSessionMode(INITIAL_CHOICES, newSessionMode), branch: '' }));
   const [loaded, setLoaded] = useState(false);
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
-  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[] }>({ current: null, branches: [] });
+  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[] }>({ current: null, branches: [] });
   /** Where the checkout stands: the remote a fresh worktree branches from, its default branch, and how far the upstream is ahead. */
   const [gitStatus, setGitStatus] = useState<WorktreeStatus | null>(null);
   const [worktreeName, setWorktreeName] = useState('');
@@ -111,7 +138,7 @@ export function NewSessionView() {
   /** The folder the user changed options for: until the folder changes, late-arriving defaults never override their choices. */
   const touchedFor = useRef<string | null>(null);
   /** A `switchboard://` link chose the folder (or chose to leave it empty): the remembered or preferred folder must not fill it. */
-  const folderFromLink = useRef(false);
+  const folderFromLink = useRef(useClone.getState().form !== null);
   const linkRequest = useLinks((s) => s.newSession);
   /** Replaces the prompt: a link's prompt, or clearing it. */
   const [preset, setPreset] = useState<{ text: string; attachments?: ImageAttachment[]; context?: ContextItem[]; seq: number } | undefined>(undefined);
@@ -123,6 +150,8 @@ export function NewSessionView() {
   /** The link named no folder: rather than guess, the folder is left empty and the picker opens. */
   const [linkNoFolder, setLinkNoFolder] = useState(false);
   const [pickerRequest, setPickerRequest] = useState(0);
+  /** Add project…: the dialog onboarding uses, here picking what it adds. */
+  const [addingProject, setAddingProject] = useState(false);
   /** An `autostart` link's prompt, sent as soon as its folder and the project's defaults are in place. */
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   /** An `autostart` link is waiting: its choices never take the permission mode you last picked (see `linkStartingChoices`). */
@@ -142,6 +171,16 @@ export function NewSessionView() {
   const waitMenu = useMenu();
   /** Start anyway in the focus note sends what is in the box, without asking again. */
   const [submitRequest, setSubmitRequest] = useState(0);
+  // Clone from GitHub: the form (kept in the store, so Run on can move it to another computer) and its clone here.
+  const cloneEnabled = useCloneEnabled();
+  const cloneForm = useClone((s) => s.form);
+  const cloneRequest = useClone((s) => s.request);
+  const cloneJob = useCloneJob(client, cloneForm?.url ?? '', cloneForm?.name ?? '');
+  /** A request that said which repository (the palette, a link, the folder field): clone as soon as the plan is in. */
+  const [cloneSoon, setCloneSoon] = useState(false);
+  /** The folder picked before the clone form opened, to go back to when it closes without a clone. */
+  const beforeClone = useRef<string | null>(null);
+  const trust = useTrustQuestion();
   const focus = useFocus();
   const atLimit = focus.limit !== null && focus.count >= focus.limit;
   /** Strict at the limit: Start waits (⌘↵ still asks, with the queue offered), Add to queue stays in Start's menu. */
@@ -155,7 +194,7 @@ export function NewSessionView() {
   const reloadProjects = useProjects((s) => s.reload);
   const yours = useMemo(() => addedProjects(projects), [projects]);
   const folders = useMemo(() => yours.filter((p) => p.exists).map((p) => p.root), [yours]);
-  const home = useMemo(() => guessHome(projects.keys()), [projects]);
+  const home = useHomeFolder();
   const project = cwd ? projects.get(cwd) : undefined;
   const questionsDir = useProjects((s) => s.questionsDir);
   /** Quick question picked: the scratch folder, with no git and no project to add or keep defaults for. */
@@ -329,6 +368,47 @@ export function NewSessionView() {
     setPreset({ text: item.prompt, attachments: item.attachments, seq: ++presets.current });
     setDraftPrompt(item.prompt);
   }, [handoff]);
+  // Clone from GitHub asked for here (the palette's step, a link's Clone, a URL in the folder field).
+  useEffect(() => {
+    if (!cloneRequest) return;
+    const request = useClone.getState().take();
+    if (!request) return;
+    if (fromLater) leaveQueued();
+    setLinkRepo(null);
+    setLinkNoFolder(false);
+    // A clone never starts a session on its own: Start does, after asking about what the repository brings.
+    setPendingStart(null);
+    setCloneSoon(request.start);
+    // Until the clone is there, no folder is picked: the strip and the lists under the box are about the clone.
+    if (cwd) beforeClone.current = cwd;
+    folderFromLink.current = true;
+    setCwd(null);
+  }, [cloneRequest]);
+  /** The clone finished: its folder (a project now) is the one New session starts in. */
+  const onCloned = (result: CloneResult) => {
+    if (!result.root || result.root === cwd) return;
+    reloadProjects();
+    changeFolder(result.root);
+  };
+  const startClone = () => void cloneJob.wait().then(onCloned, () => {});
+  useEffect(() => {
+    if (!cloneSoon || !cloneForm || cloneJob.stage !== 'idle' || (!cloneJob.plan && !cloneJob.problem)) return;
+    setCloneSoon(false);
+    if (canClone(cloneJob.plan) && !cloneJob.problem) startClone();
+  }, [cloneSoon, cloneForm, cloneJob.plan, cloneJob.problem, cloneJob.stage]);
+  const closeClone = () => {
+    setCloneSoon(false);
+    useClone.getState().closeForm();
+    // Closed without a clone: back to the project picked before.
+    if (!cwd && beforeClone.current) setCwd(beforeClone.current);
+    beforeClone.current = null;
+  };
+  /** The clone's folder, once it is there: a fresh one is worked in as it is (no worktree). */
+  const clonedRoot = cloneForm && cloneJob.stage === 'done' ? cloneJob.result?.root ?? null : null;
+  const freshClone = clonedRoot !== null && clonedRoot === cwd && !cloneJob.result?.reused;
+  /** The form is open and Start would clone first: the box works without a folder. */
+  const cloning = !!cloneForm && clonedRoot === null;
+
   // Find a checkout of the link's repository among your projects and folders with sessions.
   const lookingFor = linkRepo?.state === 'looking' ? linkRepo.repo : null;
   useEffect(() => {
@@ -384,7 +464,7 @@ export function NewSessionView() {
   };
   const onPromptChange = useCallback((text: string) => {
     setDraftPrompt(text);
-    setRestored((current) => (current && current.text !== text ? null : current));
+    setRestored((current) => (current && draftMessage(current) !== text ? null : current));
   }, []);
   useEffect(() => {
     if (hasDraft && draftKey !== undefined) useDrafts.getState().setForm(draftKey, { choices: d, profileId: profileOverride });
@@ -487,17 +567,28 @@ export function NewSessionView() {
     if (!isQuestionsFolder(folder, questionsDir)) persist(globals, folder);
   };
 
+  /** Adds a folder as a project and selects it; a folder that is already a project is only selected. */
+  const addFolder = async (folder: string) => {
+    if (client && addOrSelect(folder, projects) === 'add' && !isQuestionsFolder(folder, questionsDir)) {
+      // A folder that can't be added (gone since) is still selected: New session says what is wrong with it.
+      await client.call('projects.add', { path: folder }).then(reloadProjects, () => {});
+    }
+    changeFolder(folder);
+  };
+  /** The system folder dialog, and the folder chosen there is added and selected. Cancelling changes nothing. */
   const chooseFolder = async () => {
     const picked = await window.switchboard?.pickFolder(cwd ?? undefined);
-    if (picked) changeFolder(picked);
+    if (picked) await addFolder(picked);
   };
 
-  const canWorktree = options.git && (inspection?.isGitRepo ?? false);
+  const canWorktree = options.git && (inspection?.isGitRepo ?? false) && !freshClone;
   const useWorktree = d.workspace === 'worktree' && canWorktree;
   const effectiveName = nameTouched ? worktreeName : suggestedName;
   const branch = inspection?.branch ?? (cwd ? (lastBranches.get(cwd) ?? null) : null);
   const folderBranches = useMemo(() => (cwd && inspection?.branch ? new Map(lastBranches).set(cwd, inspection.branch) : lastBranches), [lastBranches, cwd, inspection]);
   const checkoutBranch = checkoutBranchFor(d, useWorktree, gitBranches.current);
+  /** A branch kept from before (a draft, the project's default) can since be checked out in another worktree. */
+  const branchTaken = branchBlocked(checkoutBranch, gitBranches.checkedOutElsewhere);
   const branchOptions = d.branch && !gitBranches.branches.includes(d.branch) ? [d.branch, ...gitBranches.branches] : gitBranches.branches;
   const asDefaults = toProjectDefaults({ ...d, workspace: useWorktree ? 'worktree' : d.workspace });
   const unsaved = isProject && !sameDefaults(asDefaults, project!.defaults);
@@ -536,6 +627,7 @@ export function NewSessionView() {
     else if (paletteRequest.kind === 'save-defaults' && unsaved) void saveAsProjectDefault();
     else if (paletteRequest.kind === 'add-to-queue' && canQueue) void parkInQueue(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext }).catch(() => {});
     else if (paletteRequest.kind === 'catch-up' && canCatchUp) setCatchUpRequest((n) => n + 1);
+    else if (paletteRequest.kind === 'add-project') setAddingProject(true);
   }, [paletteRequest]);
 
   const pickUp = useMemo(() => (cwd ? pickUpRows(rows, cwd, Date.now(), archiveAfterDays) : []), [rows, cwd, archiveAfterDays]);
@@ -607,21 +699,38 @@ export function NewSessionView() {
    * Returns false when nothing started and the prompt should stay.
    */
   const create = async (text: string, attachments: ImageAttachment[], parts: SentParts | undefined, { fromLink = false, skipGate = false, worktree = useWorktree } = {}): Promise<void | false> => {
-    if (!client || !cwd) throw new Error('Choose a folder first');
+    // With the clone form open, Start waits for the clone, then asks once about what the repository brings.
+    let cloned: CloneResult | null = null;
+    if (cloneForm && !fromLink) {
+      try {
+        cloned = await cloneJob.wait();
+      } catch (error) {
+        if (error instanceof CloneCancelled) return false;
+        throw error;
+      }
+      if (!cloned.root) throw new Error('The clone has no folder here');
+      onCloned(cloned);
+      if (bringsAnything(cloned.brings) && !(await trust.ask(cloned.root, cloned.brings))) return false;
+    }
+    const folder = cloned?.root ?? cwd;
+    if (!client || !folder) throw new Error('Choose a folder first');
+    // A fresh clone runs in the clone, on the branch it checked out; a clone that was there already as it is.
+    const fresh = cloned !== null && (folder !== cwd || !cloned.reused);
     // The same path as the palette's New session: the focus limit's gate, worktree naming, then the session.
     const outcome = await startNewSession(
       {
-        cwd,
+        cwd: folder,
         prompt: text,
         attachments,
-        choices: d,
-        worktree,
+        choices: fresh ? { ...d, branch: '', workspace: 'current' } : d,
+        worktree: fresh ? false : worktree,
         worktreeName: effectiveName,
         currentBranch: gitBranches.current,
+        checkedOutElsewhere: gitBranches.checkedOutElsewhere,
         profileId,
         fromLink,
         skipGate,
-        addProject: options.addAsProject && !isProject && addAsProject && !!inspection?.exists,
+        addProject: !cloned && options.addAsProject && !isProject && addAsProject && !!inspection?.exists,
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
       },
@@ -629,17 +738,23 @@ export function NewSessionView() {
         createSession: (params) => client.call('session.create', params),
         gate: passFocusGate,
         addProject: (path) => client.call('projects.add', { path }).then(reloadProjects),
+        keep: useDrafts.getState().keepFirstPrompt,
         open: (sessionId) => {
           // Edited from the queue and started here: it leaves the queue, and items waiting on it follow this session.
           // New session's own prompt for the project stays.
+          if (cloned) closeClone();
           if (fromLater) {
             forgetUnsavedQueued();
             void removeFromQueue(fromLater, true, sessionId).catch(() => {});
             leaveQueued();
           }
-          // The view goes away before the composer empties itself, so forget the prompt and its images here.
-          else useDrafts.getState().removeDraft(newDraftKey(cwd));
-          if (worktree && !nameTouched) setSuggestedName(randomWorktreeName());
+          // The view goes away before the composer empties itself, so forget the prompt and its images here (and where
+          // it moved to when the clone was picked while Start waited).
+          else {
+            useDrafts.getState().removeDraft(newDraftKey(cwd));
+            if (cloned?.root) useDrafts.getState().removeDraft(newDraftKey(cloned.root));
+          }
+          if (!fresh && worktree && !nameTouched) setSuggestedName(randomWorktreeName());
           select(sessionId);
         },
       },
@@ -684,7 +799,11 @@ export function NewSessionView() {
   );
 
   const folderProblem = !cwd
-    ? linkNoFolder
+    ? cloning
+      ? cloneJob.plan
+        ? `Claude works in the clone of ${cloneJob.plan.repo.owner}/${cloneJob.plan.repo.name}.`
+        : 'Paste a GitHub repository to clone.'
+      : linkNoFolder
       ? "The link doesn't say which project. Pick where Claude should work."
       : linkRepo
       ? linkRepo.state === 'looking'
@@ -698,10 +817,11 @@ export function NewSessionView() {
         ? `Couldn't check this folder: ${inspectError}`
         : 'Checking folder…'
       : !inspection.exists
-        ? 'This folder no longer exists.'
+        ? inspection.isFile ? 'That is a file, not a folder.' : 'This folder no longer exists.'
         : null;
 
   const projectName = cwd ? (project?.name ?? basename(cwd)) : null;
+  const savedPromptCount = useSavedPrompts(cwd && !question ? cwd : null).prompts.length;
   const clearButton = (attr: 'data-clear-link-prompt' | 'data-clear-draft') => (
     <Button variant="quiet" size="sm" onClick={clearPrompt} className="-my-1 shrink-0" {...{ [attr]: true }}>
       Clear
@@ -817,8 +937,24 @@ export function NewSessionView() {
             <p className="mt-1 text-ui text-muted">
               <Kbd keys={comboPresses(keysOf('new-session.pick'))[0]!} /> to <Kbd keys={comboPresses(keysOf('new-session.pick')).at(-1)!} /> picks a project, or start typing its name
             </p>
+            {/* With a paired computer: where Claude runs. */}
+            <div className="mt-3">
+              <RunOnSwitch />
+            </div>
           </div>
 
+          {cloneForm ? (
+            <ClonePanel
+              url={cloneForm.url}
+              name={cloneForm.name}
+              job={cloneJob}
+              onUrl={(url) => useClone.getState().editForm({ url })}
+              onName={(name) => useClone.getState().editForm({ name })}
+              onStart={startClone}
+              onClose={closeClone}
+              closeLabel={clonedRoot ? 'Done' : 'Pick a project instead'}
+            />
+          ) : (
           <FolderPicker
             value={question ? null : cwd}
             question={questionsDir ? { selected: question, onSelect: () => changeFolder(questionsDir) } : null}
@@ -827,10 +963,17 @@ export function NewSessionView() {
             branches={folderBranches}
             statusOf={statusOf}
             onChange={changeFolder}
+            onAdd={(folder) => void addFolder(folder)}
+            onAddProject={() => setAddingProject(true)}
             onChooseOther={() => void chooseFolder()}
             shortcuts={view === 'new'}
             openRequest={pickerRequest}
+            onClone={cloneEnabled ? (url, start) => useClone.getState().cloneInNewSession(url ?? '', { start }) : undefined}
           />
+          )}
+          {trust.dialog}
+
+          {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onDone={(root) => root && changeFolder(root)} />}
 
           {/* At the focus limit: what is going, with Open, and a way to park this idea. Start asks first (Nudge) or waits (Strict). */}
           {atLimit && (
@@ -854,6 +997,8 @@ export function NewSessionView() {
             />
           )}
 
+          {!fromLater && <PromptChips root={cwd && !question ? cwd : null} draftKey={draftKey} />}
+
           {/* The message box with its route strip on top: the strip's bottom edge is the card's top border.
               With a folder picked, the whole card takes its project's colour, with a faint ring around it. */}
           <div
@@ -868,9 +1013,17 @@ export function NewSessionView() {
             >
               {/* Where and branch depend on the folder: until there is one, say why instead of showing empty controls. */}
               {!cwd ? (
-                <span className="min-w-0 flex-1 px-1.5 py-0.5 text-ui text-muted" data-route-placeholder data-route-hint>
-                  {folderProblem}
-                </span>
+                <>
+                  <span className="min-w-0 flex-1 px-1.5 py-0.5 text-ui text-muted" data-route-placeholder data-route-hint>
+                    {folderProblem}
+                  </span>
+                  {/* No checkout of the link's repository: clone it, with the link's prompt kept for Start. */}
+                  {linkRepo?.state === 'missing' && cloneEnabled && !cloneForm && (
+                    <Button size="sm" onClick={() => useClone.getState().cloneInNewSession(`https://github.com/${linkRepo.repo}`, { start: true })} className="shrink-0" data-link-clone>
+                      Clone {linkRepo.repo}
+                    </Button>
+                  )}
+                </>
               ) : question ? (
                 // No project and no git: nothing to choose about where Claude works.
                 <>
@@ -987,7 +1140,7 @@ export function NewSessionView() {
                       width={300}
                       choices={[
                         ...(gitBranches.current ? [] : [{ value: '', label: 'Stay on the current checkout' }]),
-                        ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null) })),
+                        ...filterBranches(branchOptions, gitBranches.current, '').map((b) => ({ value: b, label: b, note: branchNote(b, gitBranches.current, gitStatus?.behindUpstream ?? null), ...(gitBranches.checkedOutElsewhere?.includes(b) ? { disabled: true, description: ELSEWHERE_NOTE } : {}) })),
                       ]}
                     >
                       <GitBranch size={14} className="shrink-0" aria-hidden />
@@ -1022,6 +1175,8 @@ export function NewSessionView() {
               key={fromLater ? `queued:${fromLater.id}` : 'new'}
               draftKey={draftKey}
               carryOver
+              savedPrompts={{ root: cwd && !question ? cwd : null, projectName: projectName ?? 'This project' }}
+              links={{ sessionId: null, root: cwd }}
               onDraftLoaded={onDraftLoaded}
               restored={restored !== null}
               history={promptHistory}
@@ -1029,7 +1184,7 @@ export function NewSessionView() {
               onAttachmentsChange={setDraftAttachments}
               cwd={cwd}
               commands={commands}
-              placeholder={question ? 'Ask Claude anything' : 'What should Claude work on?'}
+              placeholder={question ? 'Ask Claude anything' : savedPromptCount > 0 ? 'What should Claude work on? Type / for saved prompts.' : 'What should Claude work on?'}
               large
               frameColor={projectColor}
               autoFocus
@@ -1040,12 +1195,12 @@ export function NewSessionView() {
               onContextChange={setDraftContext}
               controls={controls}
               onCycleMode={() => update({ permissionMode: nextMode(d.permissionMode) })}
-              disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? 'That folder no longer exists' : null}
+              disabledReason={!client ? 'Connecting to the engine…' : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
               onSubmit={(text, attachments, requested, parts) => create(text, attachments, parts, { skipGate: requested === true })}
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <StartButton
-                  state={startButtonState({ ...box, startBlocked, canWorktree, worktree: useWorktree, question })}
+                  state={startButtonState({ ...box, startBlocked, branchBlocked: branchTaken, canWorktree, worktree: useWorktree, question })}
                   onAction={(action) =>
                     action === 'queue' ? box.submitSecondary() : action === 'start-worktree' ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true })) : box.submit()
                   }

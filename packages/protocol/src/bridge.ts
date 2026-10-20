@@ -12,6 +12,7 @@ import {
 } from "./retention.ts";
 
 import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./autoModel.ts";
+import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
@@ -42,6 +43,7 @@ export const IpcChannel = {
   selectSession: "switchboard:select-session",
   quitRequested: "switchboard:quit-requested",
   quitAnswer: "switchboard:quit-answer",
+  quitContext: "switchboard:quit-context",
   getPreferences: "switchboard:get-preferences",
   setPreferences: "switchboard:set-preferences",
   preferencesChanged: "switchboard:preferences-changed",
@@ -62,7 +64,64 @@ export const IpcChannel = {
   notificationPermission: "switchboard:notification-permission",
   openNotificationSettings: "switchboard:open-notification-settings",
   testNotification: "switchboard:test-notification",
+  getPopouts: "switchboard:get-popouts",
+  popOut: "switchboard:pop-out",
+  popIn: "switchboard:pop-in",
+  showSession: "switchboard:show-session",
+  forwardKeys: "switchboard:forward-keys",
+  keysForwarded: "switchboard:keys-forwarded",
+  showInMain: "switchboard:show-in-main",
+  mainRequested: "switchboard:main-requested",
+  popoutsChanged: "switchboard:popouts-changed",
+  relayDrafts: "switchboard:relay-drafts",
+  draftsRelayed: "switchboard:drafts-relayed",
+  requestDrafts: "switchboard:request-drafts",
+  draftsRequested: "switchboard:drafts-requested",
+  getPopoutView: "switchboard:get-popout-view",
+  reportView: "switchboard:report-view",
+  viewReturned: "switchboard:view-returned",
 } as const;
+
+/** The query parameter that makes a window a pop-out: the id of the one session it shows. */
+export const POPOUT_QUERY = "popout";
+
+/**
+ * Unsent messages that changed in one window, by draft key (`null`: the draft is gone). Main passes them on to
+ * the other windows, so a session's draft is the same wherever it is shown. Only the main window saves drafts.
+ */
+export type DraftsChange = Record<string, unknown>;
+
+/**
+ * Which panels a session has open and how (the tab in front, the agent picked, the Ask thread, the terminal), as the
+ * renderer collects it (`state/sessionViewState.ts`, which also checks one it receives). Main only carries it between
+ * the windows a session moves between, in memory, and never looks inside.
+ */
+export type SessionView = Record<string, unknown>;
+
+/** A key press a pop-out hands to the main window (an app-wide shortcut: the palette, search, New session…). */
+export interface ForwardedKeys {
+  key: string;
+  code: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}
+
+/**
+ * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the
+ * Usage view, a project's page, New session (on a folder, in a new worktree), Go to, Search, or a step to another
+ * session in the sidebar's order. `section` and `tab` are the names the main window's views use; it ignores one it
+ * doesn't know.
+ */
+export type MainWindowRequest =
+  | { kind: "settings"; section: string | null }
+  | { kind: "usage"; profileId: string | null }
+  | { kind: "project"; root: string; tab: string | null }
+  | { kind: "new-session"; cwd: string | null; worktree: boolean }
+  | { kind: "go-to" }
+  | { kind: "search"; memory: boolean }
+  | { kind: "navigate"; to: "next" | "previous" | "needs-you" };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -72,12 +131,16 @@ export type SidebarStyle = "large" | "standard" | "compact";
 export type SidebarCollapsed = "minimal" | "closed";
 /** Tool calls in a conversation: one summary line per run (click for the steps), or every step. */
 export type ToolActivity = "summary" | "steps";
+/** Settings › Conversation, "Under each reply": what a finished turn's line shows after the reply's actions. */
+export type TurnDetails = "none" | "time" | "duration" | "tokens";
+/** What a click on a file link in the conversation does: show the file in the file manager, or open it in the editor. */
+export type FileLinkClick = "file-manager" | "editor";
 /** Sessions in the sidebar: only those started or continued in Switchboard, or every Claude Code session. */
 export type SessionScope = "switchboard" | "all";
 /** What a new window shows: Home, the session open last time, or New session. */
 export type StartupView = "home" | "last" | "new";
-/** Which releases to update to: published releases, or the nightly pre-releases too. */
-export type UpdateChannel = "stable" | "nightly";
+/** Which releases to update to: published releases, or the beta pre-releases too. */
+export type UpdateChannel = "stable" | "beta";
 /** How New session, Home and the palette list your projects: most recently used first, or in the order you set. */
 export type ProjectOrder = "recent" | "yours";
 /**
@@ -88,6 +151,10 @@ export type NewSessionMode = "last" | "default" | "acceptEdits" | "plan" | "auto
 export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["last", "default", "acceptEdits", "plan", "auto"];
 /** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
 export type WhileWorking = "queue" | "steer";
+/** After a usage limit stops a session: offer to resume when it resets (`ask`), or arm that straight away (`always`). */
+export type ResumeAtLimit = "ask" | "always";
+/** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
+export type SidebarSort = "recent" | "quickest";
 
 /** At the focus limit: ask first and allow going over (`nudge`), or wait until a session is finished (`strict`). */
 export type FocusMode = "nudge" | "strict";
@@ -131,6 +198,35 @@ export interface SoundPrefs {
 }
 
 export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { enabled: true };
+
+/**
+ * Settings › Usage › Large context. A session whose context is at least `percent` full is "large": its ring turns
+ * orange there, and the session says when its prompt cache lapses (after which the next message writes all of that
+ * context again, `contextCache.ts`).
+ */
+export interface ContextWarningPrefs {
+  enabled: boolean;
+  /** 40–95, in steps of 5. */
+  percent: number;
+  /** A notification a few minutes before a large session's hour-long cache lapses. */
+  notifyExpiry: boolean;
+  /** Quitting with a large session open asks first, and says what it costs to pick up later. Off by default. */
+  onQuit: boolean;
+  /** The quit prompt has said once that it can warn about this. Not shown in Settings. */
+  quitTipShown: boolean;
+}
+
+export const CONTEXT_WARNING_PERCENTS = [40, 50, 60, 70, 80, 90, 95] as const;
+export const DEFAULT_CONTEXT_WARNING: ContextWarningPrefs = { enabled: true, percent: 60, notifyExpiry: true, onQuit: false, quitTipShown: false };
+
+function sanitizeContextWarning(raw: unknown): ContextWarningPrefs | null {
+  const r = raw as Partial<Record<keyof ContextWarningPrefs, unknown>> | null | undefined;
+  if (!r || typeof r !== "object") return null;
+  const flag = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fallback);
+  const d = DEFAULT_CONTEXT_WARNING;
+  const percent = typeof r.percent === "number" && Number.isFinite(r.percent) ? Math.min(95, Math.max(40, Math.round(r.percent / 5) * 5)) : d.percent;
+  return { enabled: flag(r.enabled, d.enabled), percent, notifyExpiry: flag(r.notifyExpiry, d.notifyExpiry), onQuit: flag(r.onQuit, d.onQuit), quitTipShown: flag(r.quitTipShown, d.quitTipShown) };
+}
 /** Bumped when the default sounds change, so sounds nobody picked move to the new defaults once (`sanitizeSounds`). */
 export const SOUNDS_REVISION = 2;
 export const DEFAULT_SOUNDS: SoundPrefs = {
@@ -158,13 +254,29 @@ export interface Preferences {
   sidebarStyle: SidebarStyle;
   sidebarCollapsed: SidebarCollapsed;
   toolActivity: ToolActivity;
+  /** What a click on a file link in the conversation does (Settings › Conversation); Shift-click does the other. */
+  fileLinkClick: FileLinkClick;
+  /** Settings › Conversation: "Show prompt outline", the rail beside the conversation with a mark for each of your prompts. */
+  promptOutline: boolean;
+  /** Settings › Conversation: "Under each reply", when a turn ended, how long it took and its tokens. */
+  turnDetails: TurnDetails;
+  /** Settings › Conversation: "Fade inactive panes". Off, the panes other than the active one look the same as it; the active one keeps its line. */
+  fadeInactivePanes: boolean;
   /** ⌘Q asks first (a second ⌘Q quits). */
   confirmQuit: boolean;
+  /** Settings › Remote: "Show in the sidebar when nobody is connected", the quiet "Remote on · nobody connected" line. */
+  remoteIdleLine: boolean;
   sessionScope: SessionScope;
   startupView: StartupView;
   projectOrder: ProjectOrder;
   /** What New session and the palette's prompt start in, unless the project has its own default. */
   newSessionMode: NewSessionMode;
+  /**
+   * Settings › General: "Use Claude in Chrome". On, sessions start with `--chrome`, so they get the Claude in Chrome
+   * extension's browser tools. Claude Code's own "Enabled by default" only applies in a terminal, so an SDK host has to
+   * ask for it. Off by default: not everyone has the extension.
+   */
+  chrome: boolean;
   /** Check GitHub for a newer release shortly after launch and every few hours. */
   autoUpdate: boolean;
   updateChannel: UpdateChannel;
@@ -173,6 +285,8 @@ export interface Preferences {
   focusMode: FocusMode;
   /** Also count live sessions started outside Switchboard (terminal, IDE). */
   focusCountExternal: boolean;
+  /** Also count the sessions working on other paired computers (Remote access). On by default. */
+  focusCountRemote: boolean;
   /** The colour theme: a built-in's id (`demo-time`, `github`…) or an imported theme's file name. */
   themeId: string;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
@@ -183,6 +297,39 @@ export interface Preferences {
   whileWorking: WhileWorking;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
   autoModel: AutoModelPrefs;
+  /**
+   * Settings › Conversation: "Write catch-up summaries with Haiku". On, a finished session shows the catch-up banner and
+   * Haiku writes its lines (and explains a permission when you ask why); off, there is no banner and no Haiku call.
+   */
+  catchUpSummaries: boolean;
+  /**
+   * Settings › Conversation: "Resume after a usage limit resets". `ask`: a session a usage limit stopped offers
+   * Resume when it resets; `always`: it is armed to continue by itself at once.
+   */
+  resumeAtLimit: ResumeAtLimit;
+  /**
+   * Settings › Usage: "Show estimated cost". On, the usage bars under the message box and in New session say what the
+   * tokens of each plan window would cost at API prices.
+   */
+  showCost: boolean;
+  /**
+   * Settings › Usage: "Show it on the usage bars". With "Show estimated cost" on, whether the bars under the message box
+   * and in New session carry the estimate too. Off keeps it in the Usage view and next to Context.
+   */
+  showBarCost: boolean;
+  /** Settings › Usage: the currency of the cost estimate. */
+  costCurrency: CurrencyCode;
+  /** Settings › Usage › Large context: when a session's context counts as large, and what that warns about. */
+  contextWarning: ContextWarningPrefs;
+  /**
+   * Settings › Mods: "Show mods". Off, sessions don't attach their Claude Code mods: no bands, panes, statuses, toasts
+   * or replaced views. Prompt screening still shows, since it happens in Claude Code.
+   */
+  showMods: boolean;
+  /** Mods whose UI is hidden here, as `modKey(profileId, name)`; kept while Show mods is off. */
+  hiddenMods: string[];
+  /** The sidebar's order (its Recent | Quickest to unblock control). */
+  sidebarSort: SidebarSort;
   githubStar: GithubStar;
   /** Settings › Notifications: system notifications, separate from the sounds. */
   notifications: NotificationPrefs;
@@ -190,26 +337,47 @@ export interface Preferences {
   sounds: SoundPrefs;
 }
 
+/** A mod in `hiddenMods`: its name per Claude profile (the same plugin can be in two profiles). */
+export function modKey(profileId: string, name: string): string {
+  return `${profileId}:${name}`;
+}
+
 export const DEFAULT_PREFERENCES: Preferences = {
   colorScheme: "system",
   sidebarStyle: "standard",
   sidebarCollapsed: "minimal",
   toolActivity: "summary",
+  fileLinkClick: "file-manager",
+  promptOutline: true,
+  turnDetails: "duration",
+  fadeInactivePanes: true,
   confirmQuit: true,
+  remoteIdleLine: true,
   sessionScope: "switchboard",
   startupView: "home",
   projectOrder: "recent",
   newSessionMode: "last",
+  chrome: false,
   autoUpdate: true,
   updateChannel: "stable",
   focusLimit: null,
   focusMode: "nudge",
   focusCountExternal: false,
+  focusCountRemote: true,
   themeId: DEFAULT_THEME_ID,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
+  catchUpSummaries: true,
+  resumeAtLimit: "ask",
+  showCost: true,
+  showBarCost: true,
+  costCurrency: DEFAULT_CURRENCY,
+  contextWarning: DEFAULT_CONTEXT_WARNING,
+  showMods: true,
+  hiddenMods: [],
+  sidebarSort: "recent",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
   sounds: DEFAULT_SOUNDS,
@@ -279,15 +447,16 @@ function sanitizeSounds(raw: Record<string, unknown>): SoundPrefs | undefined {
   };
 }
 
-/** A change to the preferences: like the preferences, but the notification and sound settings may name only some fields. */
-export type PreferencesPatch = Partial<Omit<Preferences, "notifications" | "sounds">> & {
+/** A change to the preferences: like the preferences, but the notification, sound and large context settings may name only some fields. */
+export type PreferencesPatch = Partial<Omit<Preferences, "notifications" | "sounds" | "contextWarning">> & {
   notifications?: Partial<NotificationPrefs>;
+  contextWarning?: Partial<ContextWarningPrefs>;
   sounds?: Partial<Omit<SoundPrefs, "byEvent" | "revision">> & { byEvent?: Partial<SoundPrefs["byEvent"]> };
 };
 
 /**
- * Applies a change to the preferences (unvalidated; sanitize the result). The notification and sound settings
- * merge field by field, so `{ sounds: { enabled: false } }` keeps every sound.
+ * Applies a change to the preferences (unvalidated; sanitize the result). The notification, sound and large context
+ * settings merge field by field, so `{ sounds: { enabled: false } }` keeps every sound.
  */
 export function mergePreferences(current: Preferences, patch: unknown): Record<string, unknown> {
   const raw = (patch ?? {}) as Record<string, unknown>;
@@ -295,6 +464,8 @@ export function mergePreferences(current: Preferences, patch: unknown): Record<s
   const merged: Record<string, unknown> = { ...current, ...raw };
   const notifications = object(raw.notifications);
   if (notifications) merged.notifications = { ...current.notifications, ...notifications };
+  const contextWarning = object(raw.contextWarning);
+  if (contextWarning) merged.contextWarning = { ...current.contextWarning, ...contextWarning };
   const sounds = object(raw.sounds);
   if (sounds) merged.sounds = { ...current.sounds, ...sounds, byEvent: { ...current.sounds.byEvent, ...object(sounds.byEvent) } };
   return merged;
@@ -321,7 +492,15 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.sidebarCollapsed = raw.sidebarCollapsed;
   if (oneOf(["summary", "steps"] as const, raw.toolActivity))
     out.toolActivity = raw.toolActivity;
+  // An unknown value (a newer version's choice) is left out, so the default or the last good one stays.
+  if (oneOf(["file-manager", "editor"] as const, raw.fileLinkClick))
+    out.fileLinkClick = raw.fileLinkClick;
+  if (typeof raw.promptOutline === "boolean") out.promptOutline = raw.promptOutline;
+  if (oneOf(["none", "time", "duration", "tokens"] as const, raw.turnDetails))
+    out.turnDetails = raw.turnDetails;
+  if (typeof raw.fadeInactivePanes === "boolean") out.fadeInactivePanes = raw.fadeInactivePanes;
   if (typeof raw.confirmQuit === "boolean") out.confirmQuit = raw.confirmQuit;
+  if (typeof raw.remoteIdleLine === "boolean") out.remoteIdleLine = raw.remoteIdleLine;
   if (oneOf(["switchboard", "all"] as const, raw.sessionScope))
     out.sessionScope = raw.sessionScope;
   if (oneOf(["home", "last", "new"] as const, raw.startupView))
@@ -330,9 +509,12 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.projectOrder = raw.projectOrder;
   if (oneOf(NEW_SESSION_MODES, raw.newSessionMode))
     out.newSessionMode = raw.newSessionMode;
+  if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
-  if (oneOf(["stable", "nightly"] as const, raw.updateChannel))
+  if (oneOf(["stable", "beta"] as const, raw.updateChannel))
     out.updateChannel = raw.updateChannel;
+  // Nightly was replaced by Beta: whoever chose it keeps getting pre-releases.
+  else if (raw.updateChannel === "nightly") out.updateChannel = "beta";
   if (raw.focusLimit === null) out.focusLimit = null;
   else if (
     typeof raw.focusLimit === "number" &&
@@ -347,6 +529,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.focusMode = raw.focusMode;
   if (typeof raw.focusCountExternal === "boolean")
     out.focusCountExternal = raw.focusCountExternal;
+  if (typeof raw.focusCountRemote === "boolean")
+    out.focusCountRemote = raw.focusCountRemote;
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
@@ -359,6 +543,19 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.whileWorking = raw.whileWorking;
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
+  if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
+  if (oneOf(["ask", "always"] as const, raw.resumeAtLimit))
+    out.resumeAtLimit = raw.resumeAtLimit;
+  if (typeof raw.showCost === "boolean") out.showCost = raw.showCost;
+  if (typeof raw.showBarCost === "boolean") out.showBarCost = raw.showBarCost;
+  if (isCurrencyCode(raw.costCurrency)) out.costCurrency = raw.costCurrency;
+  const contextWarning = sanitizeContextWarning(raw.contextWarning);
+  if (contextWarning) out.contextWarning = contextWarning;
+  if (typeof raw.showMods === "boolean") out.showMods = raw.showMods;
+  if (Array.isArray(raw.hiddenMods))
+    out.hiddenMods = [...new Set(raw.hiddenMods.filter((m): m is string => typeof m === "string" && m.length > 0 && m.length <= 400))].slice(0, 500);
+  if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
+    out.sidebarSort = raw.sidebarSort;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
     out.githubStar = raw.githubStar;
   // Before notifications and sounds had a card each, Show notifications was a plain switch.
@@ -545,6 +742,8 @@ export interface SwitchboardBridge {
   /** ⌘Q was pressed: show the quit prompt. Pressing ⌘Q again while it's open quits without it. */
   onQuitRequested(listener: () => void): () => void;
   answerQuit(answer: "quit" | "cancel"): void;
+  /** Whether quitting should ask because of a session with a large context (Settings › Usage), even with Ask before quitting off. */
+  setQuitContext(ask: boolean): void;
   /** Read once when the page loads, so the first paint already uses them. */
   readonly preferences: Preferences;
   /** Applies at once (the colour scheme flips prefers-color-scheme) and is remembered. */
@@ -605,6 +804,43 @@ export interface SwitchboardBridge {
   openNotificationSettings(): void;
   /** Shows one notification like a Needs you one, with its sound when sounds are on. */
   testNotification(): void;
+  /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
+  readonly popout: string | null;
+  /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
+  readonly popouts: readonly string[];
+  /** Fires in every window when a pop-out opens or closes. */
+  onPopoutsChanged(listener: (sessionIds: string[]) => void): () => void;
+  /**
+   * Shows a session in a window of its own, or brings its pop-out to the front when it has one. `view` is how the session's
+   * panels stand here: a new pop-out starts with them (one that exists keeps its own).
+   */
+  popOut(sessionId: string, view?: SessionView): void;
+  /** In a pop-out: the panels the session had open in the main window when it popped out, or null. Read once when the page loads. */
+  readonly popoutView: SessionView | null;
+  /** From a pop-out: tells main how its session's panels stand, so they go back to the main window with the session. */
+  reportView(view: SessionView): void;
+  /** In the main window: a session came back from its pop-out (moved back or closed) with its panels as they were left there. */
+  onViewReturned(listener: (sessionId: string, view: SessionView) => void): () => void;
+  /** From a pop-out: shows its session in the main window again and closes the pop-out. */
+  popIn(): void;
+  /** Shows a session where it is: its pop-out when it has one, otherwise the main window (both brought to the front). */
+  showSession(sessionId: string): void;
+  /** From a pop-out: brings the main window to the front and presses these keys there. */
+  forwardKeys(keys: ForwardedKeys): void;
+  /** In the main window: keys a pop-out handed over. */
+  onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
+  /** From a pop-out: brings the main window to the front and shows this view there (Settings, Usage, a project, New session). */
+  showInMain(request: MainWindowRequest): void;
+  /** In the main window: a view a pop-out asked it to show. */
+  onMainRequest(listener: (request: MainWindowRequest) => void): () => void;
+  /** Sends unsent messages that changed here to the other windows. */
+  relayDrafts(change: DraftsChange): void;
+  /** Unsent messages that changed in another window. */
+  onDraftsRelayed(listener: (change: DraftsChange) => void): () => void;
+  /** From a pop-out: asks the main window to relay all its unsent messages, images included (those are never saved). */
+  requestDrafts(): void;
+  /** In the main window: a pop-out asked for every unsent message. */
+  onDraftsRequested(listener: () => void): () => void;
 }
 
 /** `blocked`: notifications are turned off for Switchboard (or for every app) in the system's settings. `unknown` when it can't be told. */

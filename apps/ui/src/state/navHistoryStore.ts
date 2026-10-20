@@ -2,9 +2,12 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import { guardMemoryEdits } from './memoryStore.ts';
 import { emptyHistory, record, step, type NavHistory, type NavPlace } from './navHistory.ts';
+import { useComputers } from './computersStore.ts';
+import { parseRemoteRowId } from './remoteSelection.ts';
 import { useProjectPage } from './projectPageStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
+import { leafIds, removeLeaves } from './tiling.ts';
 import { openUsage, useUsageView } from './usageViewStore.ts';
 
 export const useNavHistory = create<{ history: NavHistory }>()(() => ({ history: emptyHistory }));
@@ -14,7 +17,7 @@ function currentPlace(): NavPlace {
   const s = useSessions.getState();
   switch (s.view) {
     case 'session':
-      return { view: 'session', mainId: s.mainId, splitId: s.splitId, activePane: s.activePane };
+      return { view: 'session', layout: s.layout, active: s.selectedId };
     case 'settings':
       return { view: 'settings', section: s.settingsSection, from: s.settingsFrom };
     case 'project': {
@@ -23,16 +26,28 @@ function currentPlace(): NavPlace {
     }
     case 'usage':
       return { view: 'usage', profileId: useUsageView.getState().profileId };
+    case 'remote': {
+      const { pageId } = useComputers.getState();
+      return pageId ? { view: 'remote', computerId: pageId } : { view: 'session', layout: s.layout, active: s.selectedId };
+    }
     default:
       return { view: s.view };
   }
 }
 
-const sessionExists = (id: string) => useSessions.getState().sessions.has(id) || useSessions.getState().live.has(id);
+/** A pane's session is still there: a local one this computer knows, or one its computer still lists. */
+function sessionExists(id: string): boolean {
+  const remote = parseRemoteRowId(id);
+  if (!remote) return useSessions.getState().sessions.has(id) || useSessions.getState().live.has(id);
+  const { status, lists } = useComputers.getState();
+  if (!status?.computers.some((c) => c.id === remote.computerId)) return false;
+  return lists.get(remote.computerId)?.sessions.some((session) => session.id === remote.sessionId) ?? false;
+}
 
 function usable(place: NavPlace): boolean {
-  if (place.view === 'session') return place.mainId === null || sessionExists(place.mainId);
+  if (place.view === 'session') return place.layout === null || leafIds(place.layout).some(sessionExists);
   if (place.view === 'project') return useProjects.getState().projects.has(place.root);
+  if (place.view === 'remote') return useComputers.getState().status?.computers.some((c) => c.id === place.computerId) ?? false;
   return true;
 }
 
@@ -42,10 +57,10 @@ let restoring = false;
 function show(place: NavPlace) {
   switch (place.view) {
     case 'session': {
-      // A split whose right session is gone comes back as the left one alone.
-      const splitId = place.splitId && sessionExists(place.splitId) ? place.splitId : null;
-      const activePane = splitId ? place.activePane : 'main';
-      useSessions.setState({ view: 'session', mainId: place.mainId, splitId, activePane, selectedId: activePane === 'split' ? splitId : place.mainId });
+      // Panes whose sessions are gone are left out; the others keep their places.
+      const layout = removeLeaves(place.layout, leafIds(place.layout).filter((id) => !sessionExists(id)));
+      const active = place.active && layout && leafIds(layout).includes(place.active) ? place.active : (leafIds(layout)[0] ?? null);
+      useSessions.setState({ view: 'session', layout, paneIds: leafIds(layout), selectedId: active });
       break;
     }
     case 'settings':
@@ -58,6 +73,9 @@ function show(place: NavPlace) {
       break;
     case 'usage':
       openUsage(place.profileId);
+      break;
+    case 'remote':
+      useComputers.getState().openPage(place.computerId);
       break;
     default:
       useSessions.getState().setView(place.view);
@@ -99,10 +117,13 @@ export function startRecording(): () => void {
   const stopProject = useProjectPage.subscribe(note);
   // The Usage view's profile is part of its place.
   const stopUsage = useUsageView.subscribe(note);
+  // So is the computer page on screen.
+  const stopComputers = useComputers.subscribe(note);
   return () => {
     stopSessions();
     stopProject();
     stopUsage();
+    stopComputers();
   };
 }
 

@@ -5,6 +5,8 @@ export interface ToastAction {
   label: string;
   /** The yellow fill; one per toast at most. */
   primary?: boolean;
+  /** In the error colour, for a destructive choice ("Revoke"). */
+  danger?: boolean;
   onSelect(): void;
   /** Test hooks. */
   data?: Record<`data-${string}`, string | boolean>;
@@ -18,12 +20,14 @@ export interface Toast {
   id: number;
   /** The line, or the card's title. */
   message: string;
-  /** A small icon before the message: added to the queue, a pull request created. */
-  icon?: 'queue' | 'pull-request';
+  /** A small icon before the message: added to the queue, a pull request created, a device connected (by its kind). */
+  icon?: 'queue' | 'pull-request' | 'phone' | 'browser' | 'computer' | 'shared';
   /** A coloured dot before the message instead (a theme's accent); a validated colour value. */
   dot?: string;
   /** A status dot in a theme colour: `ok` for something that became free. */
   tone?: 'ok';
+  /** Who it comes from, on a small line above the message with a puzzle icon: a Claude Code mod's name. */
+  source?: string;
   /** The card's sentence under the title. */
   body?: string;
   /** A one-click way back, for about five seconds. */

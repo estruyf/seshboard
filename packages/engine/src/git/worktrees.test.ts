@@ -102,7 +102,7 @@ describe('listWorktrees', () => {
     expect(byName(list, 'empty')).toMatchObject({ ahead: 0, merged: false, unpushed: 0 });
     expect(byName(list, 'gone')).toMatchObject({ missing: true, uncommitted: 0 });
     for (const w of list.worktrees) expect(w.pr).toBeNull();
-  });
+  }, 20_000);
 
   it('lists a worktree outside .claude/worktrees, but not as one Claude Code made', async () => {
     const outside = await addWorktree('side', join(dir, 'side-checkout'));

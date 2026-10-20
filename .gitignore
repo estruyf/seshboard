@@ -8,3 +8,7 @@ dist/
 .smoke/
 .screenshots/
 *.vsix
+
+tests/chaos-hunt*
+# The remote app, built into the website by `npm run website:build` (apps/remote).
+website/public/remote/

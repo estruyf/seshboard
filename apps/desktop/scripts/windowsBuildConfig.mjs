@@ -20,7 +20,7 @@ const AZURE_SIGNING = {
  * electron-builder.yml), and the arguments left for electron-builder. Given as `-c.` options instead, electron-builder
  * would load electron-builder.yml on top of `--config electron-builder.preview.yml`, and its update feed would win
  * over the preview's `publish: null`; and it reads `-c.` values as numbers or booleans when they look like one. So
- * every `-c.key=value` passed in (the release workflow's `-c.publish.channel=nightly`) goes into the config too, as
+ * every `-c.key=value` passed in (the release workflow's `-c.publish.channel=beta`) goes into the config too, as
  * written.
  *
  * - `extraMetadata.name`: the per-user installer names its folder after the package (%LOCALAPPDATA%\Programs\<name>),

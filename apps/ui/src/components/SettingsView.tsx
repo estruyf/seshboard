@@ -1,21 +1,28 @@
-import { currentPlatform } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Brain, Info, MessageSquare, Palette, PanelLeft, SlidersHorizontal, SquareCode, Target, Users, X, type LucideIcon } from 'lucide-react';
+import { currentPlatform, fileManagerName } from '../lib/platform.ts';
+import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, StartupView, ToolActivity, WhileWorking } from '@switchboard/protocol/bridge';
+import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
+import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
+import { NewPromptButton, SavedPromptsSettings } from './savedPrompts/SavedPromptsSettings.tsx';
 import { NotificationsSettings } from './notifications/NotificationsSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
 import { useSidebar } from '../state/sidebarStore.ts';
 import { BackupSettings } from './backup/BackupSettings.tsx';
 import { CompanionSettings } from './companion/CompanionSettings.tsx';
+import { RemoteSettings } from './remote/RemoteSettings.tsx';
+import { ModsSettings } from './mods/ModsSettings.tsx';
 import { EngineDiagnostics } from './EngineDiagnostics.tsx';
 import { AutoModelSettings } from './session/AutoModelSettings.tsx';
+import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
+import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
+import { LargeContextSettings, UsageSettings } from './usage/UsageSettings.tsx';
 import { AboutSettings, SettingsVersion } from './updates/AboutSettings.tsx';
 import { Button } from './ui/Button.tsx';
 import { Choice } from './ui/Choice.tsx';
@@ -23,7 +30,7 @@ import { Radio, RadioGroup } from './ui/Radio.tsx';
 import { SegmentedControl } from './ui/SegmentedControl.tsx';
 import { Select } from './ui/Select.tsx';
 import { Toggle } from './ui/Toggle.tsx';
-import { formatKeys, keysFor, matches } from '../lib/shortcuts.ts';
+import { clickKeysFor, formatKeys, keysFor, matches } from '../lib/shortcuts.ts';
 import { groupByPage, searchSettings, type SettingEntry } from './settingsSearch/searchSettings.ts';
 import { jumpToSetting, resultId, SettingsSearchField, SettingsSearchResults } from './settingsSearch/SettingsSearch.tsx';
 import { settingsIndex } from './settingsSearch/settingsIndex.ts';
@@ -93,16 +100,19 @@ function ActivityPreview({ mode }: { mode: ToolActivity }) {
   );
 }
 
-function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+function Section({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children: ReactNode }) {
   const id = useId();
   // minmax(0, 1fr): a long path or command inside wraps or truncates instead of widening the page.
   return (
     <section className="grid grid-cols-[minmax(0,1fr)] gap-3 py-6" aria-labelledby={id}>
-      <div>
-        <h2 id={id} className="text-body font-semibold">
-          {title}
-        </h2>
-        {description && <p className="mt-0.5 text-ui text-muted">{description}</p>}
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 id={id} className="text-body font-semibold">
+            {title}
+          </h2>
+          {description && <p className="mt-0.5 text-ui text-muted">{description}</p>}
+        </div>
+        {action}
       </div>
       {children}
     </section>
@@ -113,6 +123,38 @@ const ACTIVITY: Array<{ value: ToolActivity; label: string }> = [
   { value: 'summary', label: 'Summarised' },
   { value: 'steps', label: 'Every step' },
 ];
+
+/** "Under each reply": each choice with what the line looks like, at 14:32 today in the user's own time format. */
+const TURN_DETAILS: Array<{ value: TurnDetails; label: string; example: (time: string) => string }> = [
+  { value: 'none', label: 'Nothing', example: () => '' },
+  { value: 'time', label: 'Time', example: (time) => time },
+  { value: 'duration', label: 'Time and duration', example: (time) => `${time} · 2m 14s` },
+  { value: 'tokens', label: 'Time, duration and tokens', example: (time) => `${time} · 2m 14s · 18.4k tokens` },
+];
+
+function TurnDetailsSetting({ value, onChange }: { value: TurnDetails; onChange(value: TurnDetails): void }) {
+  const time = formatTurnTime(new Date().setHours(14, 32, 0, 0));
+  return (
+    <div className="grid gap-2" data-setting-row data-turn-details-setting>
+      <span>
+        <span className="block text-ui">Under each reply</span>
+        <span className="block text-meta text-muted">Shows next to the actions when you hover a reply.</span>
+      </span>
+      <RadioGroup label="Under each reply" className="grid gap-2">
+        {TURN_DETAILS.map((choice) => (
+          <Radio key={choice.value} checked={value === choice.value} onSelect={() => onChange(choice.value)} className="w-full" dataAttrs={{ 'data-turn-details': choice.value }}>
+            <span className="flex min-w-0 items-baseline justify-between gap-4">
+              <span className="text-ui text-text">{choice.label}</span>
+              <span className="truncate text-meta text-faint tabular-nums" aria-hidden>
+                {choice.example(time)}
+              </span>
+            </span>
+          </Radio>
+        ))}
+      </RadioGroup>
+    </div>
+  );
+}
 
 const STYLES: Array<{ value: SidebarStyle; label: string }> = [
   { value: 'large', label: 'Large icons' },
@@ -134,12 +176,17 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
   { id: 'sessions', label: 'Sessions', icon: Archive },
+  { id: 'projects', label: 'Projects', icon: FolderGit2 },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
+  { id: 'mods', label: 'Mods', icon: Puzzle },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
+  { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'prompts', label: 'Prompts', icon: Bookmark },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
+  { id: 'remote', label: 'Remote', icon: Smartphone },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
   { id: 'about', label: 'About', icon: Info },
@@ -161,7 +208,8 @@ function useEscapeToClose(sheet: RefObject<HTMLElement | null>) {
       // Search's results are a listbox too, but part of the page rather than a dropdown over it.
       const overlays = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')].filter((el) => !el.closest('[data-settings-results]'));
       if (overlays.some((el) => el !== sheet.current)) return;
-      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable=true]')) return;
+      // The window's terminal can sit next to Settings: Esc there belongs to the program in it, or restores the panel.
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable=true], [data-terminal-panel]')) return;
       // The session behind keeps its own Escape (deny a permission, stop Claude): this press is ours.
       event.preventDefault();
       close();
@@ -231,6 +279,45 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 </Choice>
               ))}
             </RadioGroup>
+            <Toggle
+              label="Show prompt outline"
+              detail="A thin rail beside the conversation with a mark for each of your prompts. Click a mark to go back to it."
+              checked={prefs.promptOutline}
+              attr="data-prompt-outline-setting"
+              onChange={(promptOutline) => update({ promptOutline })}
+            />
+            <TurnDetailsSetting value={prefs.turnDetails} onChange={(turnDetails) => update({ turnDetails })} />
+          </Section>
+          <Section title="Split view">
+            <Toggle
+              label="Fade inactive panes"
+              detail="With sessions side by side, the panes you aren't working in are faded until you point at one. Off, they look the same as the active pane, which keeps its line along the top."
+              checked={prefs.fadeInactivePanes}
+              attr="data-fade-panes-setting"
+              onChange={(fadeInactivePanes) => update({ fadeInactivePanes })}
+            />
+          </Section>
+          <Section title="File links">
+            <div className="flex items-center justify-between gap-4" data-setting-row>
+              <span>
+                <span className="block text-ui">Clicking a file link</span>
+                <span className="block text-meta text-muted">
+                  What a click does on a file in Claude’s replies. {formatKeys(clickKeysFor('transcript.file-link-other'))} does the other, and right-click lists both.
+                </span>
+              </span>
+              <Select<FileLinkClick>
+                label="What clicking a file link does"
+                value={prefs.fileLinkClick}
+                onChange={(fileLinkClick) => update({ fileLinkClick })}
+                options={[
+                  { value: 'file-manager', label: `Show in ${fileManagerName()}` },
+                  { value: 'editor', label: 'Open in editor' },
+                ]}
+                menuWidth={200}
+                className="h-7 shrink-0 rounded-md border border-edge bg-bg px-2.5 text-ui text-text outline-none focus:border-accent-ink/60"
+                dataAttrs={{ 'data-file-link-click': true }}
+              />
+            </div>
           </Section>
           <Section title="While Claude is working">
             <div className="flex items-center justify-between gap-4" data-setting-row>
@@ -252,6 +339,28 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 className="shrink-0"
               />
             </div>
+          </Section>
+          <Section title="Usage limits">
+            <div className="flex items-center justify-between gap-4" data-setting-row>
+              <span>
+                <span className="block text-ui">Resume after a usage limit resets</span>
+                <span className="block text-meta text-muted">Ask each time offers Resume when it resets on a session a usage limit stopped. Always resumes it by itself, shortly after the limit resets.</span>
+              </span>
+              <SegmentedControl<ResumeAtLimit>
+                mode="radio"
+                label="Resume after a usage limit resets"
+                value={prefs.resumeAtLimit}
+                onChange={(resumeAtLimit) => update({ resumeAtLimit })}
+                segments={[
+                  { value: 'ask', label: 'Ask each time', data: { 'data-resume-at-limit': 'ask' } },
+                  { value: 'always', label: 'Always', data: { 'data-resume-at-limit': 'always' } },
+                ]}
+                className="shrink-0"
+              />
+            </div>
+          </Section>
+          <Section title="Catch-up">
+            <CatchUpSettings />
           </Section>
           <Section title="Auto model" description="Haiku reads the first prompt of a new session and picks the model it starts on. Picked once; after that, Auto only suggests.">
             <AutoModelSettings />
@@ -278,6 +387,26 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
         >
           <ProfilesSettings />
         </Section>
+      );
+    case 'prompts':
+      return (
+        <Section title="Saved prompts" description="Prompts with blanks you fill in when you use them. Type / in any message box." action={<NewPromptButton />}>
+          <SavedPromptsSettings />
+        </Section>
+      );
+    case 'usage':
+      return (
+        <>
+          <Section title="Usage" description="How much of your plan's 5-hour and weekly limits you have used, shown under the message box, in New session and on Home.">
+            <UsageSettings />
+          </Section>
+          <Section
+            title="Large context"
+            description="Anthropic keeps a conversation's context in its prompt cache for up to an hour after the last message. Once that cache expires, the next message reads the whole context again, which costs far more than reading it from the cache."
+          >
+            <LargeContextSettings />
+          </Section>
+        </>
       );
     case 'memory':
       return (
@@ -317,8 +446,29 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 dataAttrs={{ 'data-new-session-mode': true }}
               />
             </div>
+            <Toggle
+              label="Use Claude in Chrome"
+              detail="Sessions get the browser tools of the Claude in Chrome extension, which needs to be installed in Chrome. Applies to sessions you start or resume after you change it."
+              checked={prefs.chrome}
+              attr="data-chrome-setting"
+              onChange={(chrome) => update({ chrome })}
+            />
           </Section>
-          <Section title="Projects">
+          <Section title="Quitting">
+            <Toggle
+              label="Ask before quitting"
+              detail={`${formatKeys(keysFor('quit'))} shows a prompt first; pressing ${formatKeys(keysFor('quit'))} again quits.`}
+              checked={prefs.confirmQuit}
+              attr="data-confirm-quit"
+              onChange={(confirmQuit) => update({ confirmQuit })}
+            />
+          </Section>
+        </>
+      );
+    case 'projects':
+      return (
+        <>
+          <Section title="Order">
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
                 <span className="block text-ui">Project order</span>
@@ -337,14 +487,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               />
             </div>
           </Section>
-          <Section title="Quitting">
-            <Toggle
-              label="Ask before quitting"
-              detail={`${formatKeys(keysFor('quit'))} shows a prompt first; pressing ${formatKeys(keysFor('quit'))} again quits.`}
-              checked={prefs.confirmQuit}
-              attr="data-confirm-quit"
-              onChange={(confirmQuit) => update({ confirmQuit })}
-            />
+          <Section title="Clone from GitHub" description="Paste a GitHub URL in New session, and Switchboard clones it, adds it as a project and starts the session there. Each computer has its own setting and folder.">
+            <CloneSettings />
           </Section>
         </>
       );
@@ -357,6 +501,9 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <CompanionSettings />
         </Section>
       );
+    case 'remote':
+      // Its own header: the switch sits on the title's row.
+      return <RemoteSettings />;
     case 'backup':
       return (
         <Section
@@ -364,6 +511,12 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           description="Move your setup to another Mac, restore it after a reset, or share your actions: preferences, projects with their icons, and project actions. Your sessions stay in ~/.claude."
         >
           <BackupSettings />
+        </Section>
+      );
+    case 'mods':
+      return (
+        <Section title="Mods" description="Plugins that add UI to your sessions. Claude Code loads them from your enabled plugins. Switchboard only draws what they return.">
+          <ModsSettings />
         </Section>
       );
     case 'diagnostics':
@@ -447,10 +600,20 @@ export function SettingsView() {
   const sheet = useRef<HTMLDivElement>(null);
   /** The page's scroll area: long pages (all sessions) virtualise their lists against it. */
   const scroller = useRef<HTMLDivElement>(null);
-  // Start keyboard focus in Settings (not a trap: the sidebar stays reachable with Tab).
+  // What had focus before Settings opened (its button, the message box), read before the effect below moves it.
+  const [opener] = useState(() => document.activeElement as HTMLElement | null);
+  // Start keyboard focus in Settings (not a trap: the sidebar stays reachable with Tab), and give it back
+  // on close. The sheet is a region, not a dialog, so `useModalFocus` doesn't do this; by the time this
+  // runs the sheet has left the page and its focus fell to `body`, unless something else took it.
   useEffect(() => {
-    if (!sheet.current?.contains(document.activeElement)) sheet.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
-  }, []);
+    const root = sheet.current;
+    if (!root?.contains(document.activeElement)) root?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
+    return () => {
+      const active = document.activeElement;
+      if (!opener?.isConnected || opener === document.body || root?.contains(opener)) return;
+      if (!active || active === document.body || root?.contains(active)) opener.focus({ preventScroll: true });
+    };
+  }, [opener]);
   useEscapeToClose(sheet);
 
   // Search: while there is a query, the page shows what it found in every page instead.

@@ -1,6 +1,7 @@
 import { Check, FolderOpen, Plus } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { guessHome, shortAge, tildify } from '../../lib/format.ts';
+import { shortAge, tildify } from '../../lib/format.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { knownFolders } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -11,9 +12,10 @@ import { manage, useProjectActions } from '../sidebar/ProjectMenu.tsx';
 /**
  * Add project: folders Claude Code has sessions for, most recent first and filterable by typing,
  * or any folder through the system dialog. Stays open so several can be added in one go; on closing,
- * the Projects view opens on the last one added so its profile and defaults can be set.
+ * the Projects view opens on the last one added so its profile and defaults can be set. New session opens it
+ * too, with `onDone`: there the last one added is picked instead, and you stay in New session.
  */
-export function AddProjectDialog({ onClose: close }: { onClose(): void }) {
+export function AddProjectDialog({ onClose: close, onDone }: { onClose(): void; onDone?(lastAdded: string | null): void }) {
   const projects = useProjects((s) => s.projects);
   const actions = useProjectActions();
   const [query, setQuery] = useState('');
@@ -24,9 +26,10 @@ export function AddProjectDialog({ onClose: close }: { onClose(): void }) {
   const lastAdded = useRef<string | null>(null);
   const onClose = useCallback(() => {
     close();
-    if (lastAdded.current) manage(lastAdded.current);
-  }, [close]);
-  const home = useMemo(() => guessHome(projects.keys()), [projects]);
+    if (onDone) onDone(lastAdded.current);
+    else if (lastAdded.current) manage(lastAdded.current);
+  }, [close, onDone]);
+  const home = useHomeFolder();
   const folders = useMemo(() => knownFolders(projects, query, home), [projects, query, home]);
   // The extra row at the end: the system folder dialog.
   const count = folders.length + 1;

@@ -8,8 +8,9 @@ sidebar:
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-Under the message box sits a row of quiet chips: the Claude profile, the model, the effort and the permission mode. They show only the value ("Personal", "Opus 4.5", "Medium", "Auto"); hover one for its full meaning, such as "Effort: Medium". The same row is in New session, in the command palette's New session step and in every session.
+Pick how a session runs: which account it uses, which model, how much Claude thinks, and when it stops to ask you. Under the message box sits a row of quiet chips: the Claude profile, the model, the effort and the permission mode. They show only the value ("Personal", "Opus 4.5", "Medium", "Auto"); hover one for its full meaning, such as "Effort: Medium". The same row is in New session, in the command palette's New session step and in every session.
 
 <Screenshot name="new-session-options" alt="New session with the model chip's menu open above the message box, listing Default model and the models Claude Code offers, each with a short description" eager />
 
@@ -75,9 +76,12 @@ Some starts never use a mode that skips prompts (Auto mode or bypassing permissi
 
 When the row runs out of room, it never cuts a chip off. It steps through fixed levels instead:
 
-1. Effort and mode show only their icon (the bars and the dot).
+1. The profile shows only its dot.
 2. The model drops its version ("Opus" instead of "Opus 4.5").
-3. The profile shows only its dot.
+3. Effort shows only its bars.
+4. The mode shows only its dot.
+
+The model, effort and mode shrink last, because they say the most about how a session runs.
 
 The label and tooltip keep the full value at every level. This happens in narrow windows and when two sessions are [side by side](/sessions/split-view/).
 
@@ -90,3 +94,7 @@ To keep your choices for the project, choose **Save as project default** in the 
 ## Settings
 
 The defaults live on each project's [Settings tab](/projects/settings/). Profiles are in [Settings → Claude profiles](/settings/#claude-profiles).
+
+## Related
+
+<Related pages={['new-session/auto-model', 'permissions', 'settings/claude-profiles', 'usage']} />

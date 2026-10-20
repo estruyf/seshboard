@@ -1,11 +1,17 @@
 import { fileManagerName } from '../../lib/platform.ts';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useBackup } from '../../state/backupStore.ts';
+import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { useClaudeUpdate } from '../../state/claudeUpdateStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued, useLater } from '../../state/laterStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
+import { isAskOpen } from '../../state/askStore.ts';
+import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
+import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
+import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
+import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { cleanUpWorktrees, openProject } from '../../state/projectPageStore.ts';
@@ -13,13 +19,20 @@ import { copyForClaudeApp, importFromClaudeExport, pasteFromClaudeApp } from '..
 import { useProjects } from '../../state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from '../../state/sessionNav.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
+import { popOut } from '../../state/popoutsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
+import { ownerSession } from '../terminal/appTerminal.ts';
 import { useThemes } from '../../state/themeStore.ts';
+import { useWhy } from '../../state/whyStore.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
+import { useSavedPromptsStore } from '../savedPrompts/savedPromptsStore.ts';
+import { sameScope } from '../savedPrompts/fillModel.ts';
+
 import { useDrafts } from '../../state/draftsStore.ts';
+import { startLinkedSession } from '../newSession/linkedSession.ts';
 import { toast } from '../../state/toastStore.ts';
 import { lastLimit } from '../focus/focusLimit.ts';
 import { syncStep } from '../git/gitPlan.ts';
@@ -28,6 +41,9 @@ import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
 import { basename } from '../../lib/format.ts';
 import type { PaletteApi } from './commands.ts';
+import { newSessionOn } from '../computers/remoteActions.ts';
+import { useComputers } from '../../state/computersStore.ts';
+import { onlySource, THIS_COMPUTER } from '../../state/remoteRows.ts';
 import type { PaletteContext } from './paletteContext.ts';
 
 /** Says why a command didn't work: the palette has closed by then, so it can't say it itself. */
@@ -59,9 +75,11 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
   const call = <T>(what: string, run: (client: EngineClient) => Promise<T>) => {
     if (client) void run(client).catch(failed(what));
   };
+  // ⌘J's panel: the session's, or outside a session the window's own. Terminal commands only run while there is one.
+  const owner = ctx.terminal.owner ?? '';
   const activeTerminal = () => {
     const { terminals, active } = useTerminals.getState();
-    return terminals.get(active.get(sessionId) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === sessionId).at(-1);
+    return terminals.get(active.get(owner) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === ownerSession(owner)).at(-1);
   };
 
   return {
@@ -98,6 +116,21 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     setFocusLimit: (on) => usePreferences.getState().update({ focusLimit: on ? lastLimit() : null }),
 
     renameSession: () => session && usePaletteBus.getState().showDialog({ kind: 'rename-session', sessionId, title: session.title }),
+    newLinkedSession: () => session?.projectRoot && startLinkedSession({ id: sessionId, title: session.title, projectRoot: session.projectRoot }),
+    showCatchUp: () => {
+      const card = useCatchUp.getState().cards.get(sessionId);
+      if (card) useCatchUp.getState().setCollapsed(card, false);
+    },
+    showWhy: () => {
+      const request = [...useHosts.getState().permissions.values()].filter((p) => p.sessionId === sessionId).sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (request && useWhy.getState().open?.requestId !== request.requestId) useWhy.getState().toggle(sessionId, request.requestId);
+    },
+    buildCatchUp: () =>
+      call('catch up on this session', async (c) => {
+        const { catchUp } = await c.call('catchup.build', { sessionId });
+        useCatchUp.getState().set(sessionId, catchUp);
+        useCatchUp.getState().setCollapsed(catchUp, false);
+      }),
     setFlags: (change) => {
       const apply = () => call('change the session', (c) => c.call('sessions.setFlags', { sessionId, ...change }));
       // Archiving a session with an unsent message asks first.
@@ -124,12 +157,31 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     },
     copySessionId: () => void navigator.clipboard.writeText(sessionId).catch(failed('copy the session id')),
     checkTranscript: () => usePaletteBus.getState().showDialog({ kind: 'transcript-diagnosis', sessionId, title: session?.title ?? null }),
-    toggleTerminal: () => useTerminals.getState().togglePanel(sessionId),
-    newTerminalTab: () => cwd && call('open a terminal', (c) => openTerminal(c, sessionId, cwd, 'shell')),
-    toggleChanges: () => useOverlay.getState().toggleChanges(),
+    toggleTerminal: () => owner && toggleTerminalPanel(owner),
+    newTerminalTab: () => owner && call('open a terminal', (c) => openTerminal(c, owner, ctx.terminal.cwd, 'shell')),
+    toggleChanges: () => {
+      const id = useSessions.getState().selectedId;
+      if (id) toggleChangesPanel(id, isAskOpen(id) || isAgentsOpen(id) || isCommandsOpen(id));
+    },
+    toggleAgents: () => {
+      const id = useSessions.getState().selectedId;
+      if (id) toggleAgentsPanel(id, isChangesOpen(id) || isAskOpen(id) || isCommandsOpen(id));
+    },
+    toggleCommands: () => {
+      const id = useSessions.getState().selectedId;
+      if (id) toggleCommandsPanel(id, isChangesOpen(id) || isAskOpen(id) || isAgentsOpen(id));
+    },
     // After the palette's own close, so the Tools dialog isn't closed along with it.
     showTools: () => setTimeout(() => useOverlay.getState().show('tools')),
     openInEditor: () => cwd && void openIn(cwd).catch(failed('open the folder')),
+    usePrompt: (scope, id) => {
+      const prompt = Object.values(useSavedPromptsStore.getState().lists)
+        .flatMap((list) => list.prompts)
+        .find((p) => p.id === id && sameScope(p.scope, scope));
+      // After the palette's own close, so the focus lands in the message box.
+      if (prompt && ctx.composer) setTimeout(() => useDrafts.getState().requestPrompt(ctx.composer!.key, prompt));
+    },
+    newPrompt: () => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, root: ctx.currentProject?.root ?? null }),
     addContext: () => {
       // After the palette's own close, so the picker isn't closed along with it.
       if (ctx.composer) setTimeout(() => useComposerTargets.getState().openPicker(ctx.composer!));
@@ -145,9 +197,9 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
         await c.call('editors.open', { path: cwd, editorId: finder.id });
       }),
     closeSession: () => {
-      const { splitId, activePane, closePane, closeSession } = useSessions.getState();
-      // With two panes, close this one (as its ×); otherwise go Home.
-      if (splitId) closePane(activePane);
+      const { paneIds, closePane, closeSession } = useSessions.getState();
+      // With several panes, close this one (as its ×); otherwise go Home.
+      if (paneIds.length > 1) closePane();
       else closeSession();
     },
     deleteSession: () => session && usePaletteBus.getState().showDialog({ kind: 'delete-session', sessionId, title: session.title }),
@@ -186,11 +238,11 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
         if (files.length) usePaletteBus.getState().showDialog({ kind: 'revert-all', cwd, paths: files.map((file) => file.path) });
       }),
     runAction: (id) => useOverlay.getState().requestAction(id),
-    hideTerminal: () => useTerminals.getState().togglePanel(sessionId, false),
-    toggleMaximizeTerminal: () => useTerminals.getState().setMaximized(sessionId),
+    hideTerminal: () => useTerminals.getState().togglePanel(owner, false),
+    toggleMaximizeTerminal: () => useTerminals.getState().setMaximized(owner),
     dockTerminal: (dock) => {
       useTerminals.getState().setDock(dock);
-      useTerminals.getState().setMaximized(sessionId, false);
+      useTerminals.getState().setMaximized(owner, false);
     },
     stopAction: () => {
       const terminal = activeTerminal();
@@ -200,16 +252,23 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       const terminal = activeTerminal();
       if (terminal) call('restart the action', (c) => restartTerminal(c, terminal));
     },
-    focusOtherPane: () => {
-      const { activePane, focusPane } = useSessions.getState();
-      focusPane(activePane === 'main' ? 'split' : 'main');
-    },
-    closePane: () => {
-      const { activePane, closePane } = useSessions.getState();
-      closePane(activePane);
+    focusNextPane: () => useSessions.getState().focusNext(),
+    focusPane: (way) => useSessions.getState().focusWay(way),
+    swapPanes: () => useSessions.getState().swapPanes(),
+    flipSplit: () => useSessions.getState().flipSplit(),
+    closePane: () => useSessions.getState().closePane(),
+    closeOtherPanes: () => useSessions.getState().closeOtherPanes(),
+    openInNewWindow: () => {
+      const { selectedId } = useSessions.getState();
+      if (selectedId) popOut(selectedId);
     },
     newSessionRequest: (kind) => usePaletteBus.getState().requestNewSession(kind),
     openNewSession: () => useSessions.getState().openNewSession(),
+    newSessionOn: (computerId) => newSessionOn(computerId),
+    showOnlyComputer: (computerId) => {
+      const computers = useComputers.getState().status?.computers ?? [];
+      useComputers.getState().setHidden(onlySource([THIS_COMPUTER, ...computers.map((c) => c.id)], computerId));
+    },
     startQueued: (id) => {
       const item = useLater.getState().items.find((i) => i.id === id);
       if (item) void startQueued(item);

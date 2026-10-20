@@ -6,8 +6,9 @@ description: Keep prompts to start later, in the order you want them, and see wh
 import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-The queue holds prompts you want to start later, with their project and choices. It never starts anything by itself: it tells you when an item is ready, and you start it.
+When an idea comes up while a project is busy, or you are at your focus limit, queue it instead of starting it now or forgetting it. The queue holds prompts you want to start later, with their project and choices. It never starts anything by itself: it tells you when an item is ready, and you start it.
 
 <Screenshot name="queue" alt="Queued prompts: one ready item with a light green tint and a Start button, and others that show what they wait for" eager />
 
@@ -50,6 +51,8 @@ When the project you picked in New session has a session working, a line under t
 
 A ready item has a light green tint and a **Start** button. The others show a clock and what they wait for ("after “Fix login”"), with **Start** on hover.
 
+An item whose [Claude profile](/settings/claude-profiles/) is at its usage limit waits for the limit too, whatever else it waits for: it says "usage limit until 15:16", and turns ready once the limit resets. A session started before then would stop on the limit straight away. See [When you hit a limit](/usage/#when-you-hit-a-limit).
+
 ### When something finishes
 
 When an item turns ready because a session finished, a message in the bottom right corner says so, such as "acme-store is free", with what finished and what's next. **Start it** starts the item; **Review first** opens the session that finished. With several items ready at once, one message names them all, with **Show queue**. The "Claude finished" notification also names what's next in the queue for that project.
@@ -78,3 +81,7 @@ The item's menu holds **Start now**, **Edit in New session…**, **Wait for…**
 ## Settings
 
 The queue has no settings of its own. Starting an item goes through the [focus limit](/settings/#focus) like any other start.
+
+## Related
+
+<Related pages={['focus-limit', 'sessions/home', 'new-session/form', 'usage']} />

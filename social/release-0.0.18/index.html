@@ -1,0 +1,118 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  .copy { width: 460px; }
+  .also { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 22px; font-size: 13px; color: var(--faint); }
+  .also .pill { height: 26px; padding: 0 11px; font-size: 12.5px; color: var(--text); background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px var(--edge); }
+
+  /* The Catch-up briefing from the desktop app, behind the phone. */
+  .catch {
+    position: absolute; left: 236px; top: 150px; width: 364px; padding: 13px 15px 14px 40px;
+    background: var(--card); border-radius: 14px;
+    box-shadow: 0 0 0 1px var(--edge), 0 28px 60px -14px rgba(0,0,0,0.8);
+  }
+  .catch .cap { margin-bottom: 10px; color: var(--faint); }
+  .catch .r1 { display: flex; align-items: center; gap: 8px; }
+  .state { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--link); white-space: nowrap; }
+  .state i { width: 7px; height: 7px; border-radius: 50%; background: var(--link); }
+  .catch .ask { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+  .catch .r2 { display: flex; align-items: baseline; gap: 8px; margin-top: 9px; }
+  .catch .need { font-size: 12.5px; font-weight: 600; color: var(--ok); white-space: nowrap; }
+  .catch .txt { font-size: 12px; color: var(--muted); }
+  .catch .rev { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--text); white-space: nowrap; }
+  .catch .chips2 { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .catch .pill i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; background: currentColor; }
+  .catch .acts { display: flex; gap: 6px; margin-top: 12px; }
+  .b { height: 28px; padding: 0 10px; border-radius: 7px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; }
+  .b.p { background: var(--accent); color: var(--on-accent); }
+  .b.s { color: var(--text); box-shadow: inset 0 0 0 1px var(--edge); }
+  .k { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(21,24,31,0.14); font-weight: 600; }
+  .b.s .k { background: rgba(255,255,255,0.08); color: var(--muted); }
+
+  .phone { left: 0; top: 0; }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard 0.0.18</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Out now</div>
+    <h1>Claude Code, <span class="hl">on your phone</span></h1>
+    <p class="sub"><b>Remote</b> lets you allow, deny and answer Claude from anywhere, encrypted end to end. And every finished session starts with a short <b>catch-up</b>.</p>
+    <div class="also">Also new:
+      <span class="pill">Ask about a session</span>
+      <span class="pill">Agents panel</span>
+      <span class="pill">Why is Claude asking?</span>
+    </div>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Download for free</span>
+    <span class="where">switchboard.struyfconsulting.com</span>
+  </div>
+
+  <div class="stage">
+    <div class="catch">
+      <div class="section cap">Catch-up</div>
+      <div class="r1">
+        <span class="state"><i></i>Finished</span>
+        <span class="ask">Add a dark mode toggle to the settings page</span>
+      </div>
+      <div class="r2">
+        <span class="need">Commit the changes</span>
+        <span class="rev">~2 min to review</span>
+      </div>
+      <div class="txt" style="margin-top:3px">The toggle follows the system and remembers the choice.</div>
+      <div class="chips2">
+        <span class="pill ok"><i></i>12 tests passed</span>
+        <span class="pill">+57 −2 · 3 files</span>
+        <span class="pill ok"><i></i>Followed the plan</span>
+      </div>
+      <div class="acts">
+        <span class="b p">Commit <span class="k">C</span></span>
+        <span class="b s">Review <span class="k">D</span></span>
+        <span class="b s">Details <span class="k">Space</span></span>
+      </div>
+    </div>
+
+    <div class="phone">
+      <div class="screen">
+        <div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span class="ic"><span style="width:3px;height:5px"></span><span style="width:3px;height:7px"></span><span style="width:3px;height:9px"></span><span style="width:18px;height:9px;border-radius:3px;margin-left:4px"></span></span></div>
+        <div class="rh">
+          <span class="conn"><i></i>MacBook Pro</span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+        </div>
+        <div class="filters">
+          <span class="f on">All</span>
+          <span class="f">Needs you <b>1</b></span>
+          <span class="f">Working <b class="w">2</b></span>
+        </div>
+
+        <div class="ny">
+          <div class="who"><i></i>Needs you · acme-store</div>
+          <div class="st">Upgrade Stripe SDK to v18</div>
+          <div class="q">Claude wants to run <span class="mono">npm test</span></div>
+          <div class="btns"><span class="deny">Deny</span><span class="allow">Allow</span></div>
+        </div>
+
+        <div class="grp section" style="color:var(--accent)">Working <span class="count">2</span></div>
+        <div class="row"><span class="rail" style="background:var(--accent)"></span><div><b>Fix rounding in invoice totals</b><span>payments-api</span></div><span class="spin"></span></div>
+        <div class="row"><span class="rail" style="background:var(--accent)"></span><div><b>Refactor auth middleware</b><span>acme-store</span></div><span class="spin"></span></div>
+        <div class="grp section" style="color:var(--faint)">Today</div>
+        <div class="row"><span class="rail" style="background:var(--link)"></span><div><b>Add dark mode toggle to settings</b><span>~2 min to review</span></div><span class="age">23m</span></div>
+        <div class="row"><span class="rail" style="background:transparent"></span><div><b style="font-weight:500">Write a getting started guide</b><span>docs-site</span></div><span class="age">4h</span></div>
+
+        <div class="newbar">New session</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

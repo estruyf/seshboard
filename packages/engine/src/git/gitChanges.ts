@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { ChangedFile, ChangesBase, GitChanges, GitSyncAction, WorktreeStatus } from '@switchboard/protocol';
 
@@ -26,18 +26,40 @@ export const GIT_SETTINGS: readonly string[] = process.platform === 'win32' ? ['
  * passed come from the file list, and `app/[id]/page.tsx` or `a*.txt` must not match other files.
  */
 export function git(cwd: string, args: string[], options: { env?: Record<string, string>; allowExitCodes?: number[]; timeout?: number } = {}): Promise<string> {
+  // Node reports a missing `cwd` as the command not being found ("spawn git ENOENT"), which reads as git not being
+  // installed, and a file as `cwd` as "spawn ENOTDIR" (thrown, not passed on). Neither is an allowed exit code.
+  const spawnFailed = (error: NodeJS.ErrnoException) => (error.code === 'ENOENT' || error.code === 'ENOTDIR' ? folderProblem(cwd) : null);
   return new Promise((resolvePromise, reject) => {
-    execFile(
-      'git',
-      [...GIT_SETTINGS, ...args],
-      { cwd, env: { ...process.env, ...options.env, GIT_OPTIONAL_LOCKS: '0', GIT_LITERAL_PATHSPECS: '1', LC_ALL: 'C' }, maxBuffer: 32 * 1024 * 1024, timeout: options.timeout ?? 20_000 },
-      (error, stdout, stderr) => {
-        const code = typeof error?.code === 'number' ? error.code : error ? 1 : 0;
-        if (error && !options.allowExitCodes?.includes(code)) reject(new GitError(stderr.trim() || error.message));
-        else resolvePromise(stdout);
-      },
-    );
+    try {
+      execFile(
+        'git',
+        [...GIT_SETTINGS, ...args],
+        { cwd, env: { ...process.env, ...options.env, GIT_OPTIONAL_LOCKS: '0', GIT_LITERAL_PATHSPECS: '1', LC_ALL: 'C' }, maxBuffer: 32 * 1024 * 1024, timeout: options.timeout ?? 20_000 },
+        (error, stdout, stderr) => {
+          const problem = error ? spawnFailed(error as NodeJS.ErrnoException) : null;
+          if (problem) return reject(new GitError(problem));
+          const code = typeof error?.code === 'number' ? error.code : error ? 1 : 0;
+          if (error && !options.allowExitCodes?.includes(code)) reject(new GitError(stderr.trim() || error.message));
+          else resolvePromise(stdout);
+        },
+      );
+    } catch (error) {
+      const problem = spawnFailed(error as NodeJS.ErrnoException);
+      reject(problem ? new GitError(problem) : error);
+    }
   });
+}
+
+/** Why `cwd` can't be worked in: it is gone, or it is a file (or under one). Null for a folder. */
+function folderProblem(cwd: string): string | null {
+  try {
+    const stat = statSync(cwd, { throwIfNoEntry: false });
+    if (!stat) return `Folder not found: ${cwd}`;
+    return stat.isDirectory() ? null : `Not a folder: ${cwd}`;
+  } catch {
+    // ENOTDIR: a folder on the way became a file.
+    return `Folder not found: ${cwd}`;
+  }
 }
 
 /** The branch a worktree or feature branch would merge into: origin's default branch, else main/master. */
@@ -51,13 +73,52 @@ export async function baseBranch(cwd: string): Promise<string | null> {
   return null;
 }
 
-/** Local branches, most recently committed first, and the one checked out (null when HEAD is detached). */
-export async function listBranches(cwd: string): Promise<{ current: string | null; branches: string[] }> {
+/**
+ * Local branches, most recently committed first, and the one checked out (null when HEAD is detached).
+ * `checkedOutElsewhere` lists the branches checked out in another worktree (Claude Code's `.claude/worktrees/*`,
+ * say): git refuses to switch to them here, so the branch menu shows them as not available.
+ * `run` is git itself, swapped in tests.
+ */
+export async function listBranches(cwd: string, run: typeof git = git): Promise<{ current: string | null; branches: string[]; checkedOutElsewhere: string[] }> {
   const [refs, head] = await Promise.all([
-    git(cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads']),
-    git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowExitCodes: [1, 128] }),
+    run(cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)%00%(worktreepath)', 'refs/heads']).catch((error: Error) => olderGitRefs(cwd, run, error)),
+    run(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowExitCodes: [1, 128] }),
   ]);
-  return { current: head.trim() || null, branches: refs.split('\n').filter(Boolean) };
+  const current = head.trim() || null;
+  const branches: string[] = [];
+  const checkedOutElsewhere: string[] = [];
+  for (const line of refs.split('\n')) {
+    const [name, worktree] = line.split('\0');
+    if (!name) continue;
+    branches.push(name);
+    // The branch checked out here has this worktree's path; any other with a path is checked out somewhere else.
+    if (worktree && name !== current) checkedOutElsewhere.push(name);
+  }
+  return { current, branches, checkedOutElsewhere };
+}
+
+/**
+ * The same lines as `listBranches` asks for, for a git older than 2.23, which has no `%(worktreepath)` and rejects
+ * the whole format. The branches come without it, and their worktrees from `git worktree list` (git 2.7); without
+ * that either, no branch is marked. Another failure (the folder is gone) is the first call's error.
+ */
+async function olderGitRefs(cwd: string, run: typeof git, error: Error): Promise<string> {
+  const names = await run(cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads']).catch(() => {
+    throw error;
+  });
+  const listed = await run(cwd, ['worktree', 'list', '--porcelain']).catch(() => '');
+  // A worktree's block holds `worktree <path>` and, unless it is detached, `branch refs/heads/<name>`.
+  const inWorktree = new Set(
+    listed
+      .split('\n')
+      .filter((line) => line.startsWith('branch refs/heads/'))
+      .map((line) => line.slice('branch refs/heads/'.length)),
+  );
+  return names
+    .split('\n')
+    .filter(Boolean)
+    .map((name) => (inWorktree.has(name) ? `${name}\0worktree` : name))
+    .join('\n');
 }
 
 /**
@@ -371,6 +432,34 @@ export async function stageForCommit(cwd: string): Promise<number> {
   if (already > 0) return already;
   await git(root, ['add', '-A']);
   return staged();
+}
+
+/** The last lines of a failed commit's output that come back to the phone: enough to read a hook's complaint. */
+const COMMIT_OUTPUT_LINES = 20;
+
+/**
+ * Commits every change in the checkout without a terminal (for the remote app, which can't see one): stages
+ * everything, runs `git commit` with the user's environment so hooks find their tools, and returns the new commit's
+ * hash, or the last lines of what git and its hooks printed when it failed. Never pushes.
+ */
+export async function commitAll(cwd: string, message: string, env: Record<string, string>): Promise<{ ok: true; sha: string; files: number } | { ok: false; output: string }> {
+  const root = await topLevel(cwd);
+  await git(root, ['add', '-A']);
+  const files = (await git(root, ['diff', '--cached', '--name-only', '-z'])).split('\0').filter(Boolean).length;
+  if (files === 0) return { ok: false, output: 'There is nothing to commit.' };
+  const output = await new Promise<{ code: number; text: string }>((resolvePromise) => {
+    execFile(
+      'git',
+      [...GIT_SETTINGS, 'commit', '-m', message],
+      { cwd: root, env: { ...process.env, ...env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' }, maxBuffer: 8 * 1024 * 1024, timeout: 300_000 },
+      (error, stdout, stderr) => resolvePromise({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, text: `${stdout}${stderr}` }),
+    );
+  });
+  if (output.code !== 0) {
+    const lines = output.text.replace(/\u001b\[[0-9;]*m/g, '').trimEnd().split('\n');
+    return { ok: false, output: lines.slice(-COMMIT_OUTPUT_LINES).join('\n') || 'git commit failed.' };
+  }
+  return { ok: true, sha: (await git(root, ['rev-parse', 'HEAD'])).trim(), files };
 }
 
 /** Removes a worktree (refuses with uncommitted changes) and optionally its branch. */

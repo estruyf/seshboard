@@ -3,7 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import * as vscode from 'vscode';
-import type { CompanionSessions, CompanionTarget, ContextItemInput } from '@switchboard/protocol/companion-client';
+import type { CompanionContextItemInput as ContextItemInput, CompanionSessions, CompanionTarget } from '@switchboard/protocol/companion-client';
 import { SwitchboardConnection, type CompanionClient } from './connection.ts';
 import { deniedByRead, excludedBy, readRules, type ClaudeSettingsFile } from './exclusions.ts';
 import { describeItems, itemPaths, problemsItem, resourceItems, selectionItem, terminalItem, type EditorSelection, type Problem } from './payload.ts';

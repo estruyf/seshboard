@@ -3,6 +3,7 @@ import type { PlanSeries, UsageRow } from '@switchboard/protocol/client';
 import {
   bucketLabel,
   cacheHitRate,
+  tableMinWidth,
   chartTypes,
   filterRows,
   foldRows,
@@ -107,6 +108,10 @@ describe('breakdown', () => {
     expect(rest!.share).toBeCloseTo(0.05);
     expect(rest!.tokens.cacheRead).toBe(83_200_000);
     expect(foldRows(rows.slice(0, 3), 5).rest).toBeNull();
+    // Costs add up; rows from a computer that sent none leave the folded line's cost unknown rather than zero.
+    expect(rest!.cost).toBeUndefined();
+    const priced = rows.map((r, i) => ({ ...r, cost: i }));
+    expect(foldRows(priced, 5).rest!.cost).toBe(5 + 6);
   });
 
   it('filters rows by title, project and model', () => {
@@ -115,6 +120,8 @@ describe('breakdown', () => {
     expect(filterRows(rows, 'demo', name).map((r) => r.label)).toEqual(['Scene presets']);
     expect(filterRows(rows, 'SONNET', name).map((r) => r.label)).toEqual(['Scene presets']);
     expect(filterRows(rows, ' ', name)).toHaveLength(2);
+    // Another computer's project and name, which the rows hold apart from `projectRoot`.
+    expect(filterRows(rows, 'studio', name, (r) => (r.label === 'Usage view' ? ['Studio', 'Api'] : [null])).map((r) => r.label)).toEqual(['Usage view']);
   });
 });
 
@@ -165,5 +172,11 @@ describe('charts', () => {
     // At the bottom edge they move up instead.
     expect(spreadLabels([300, 298], 14, 0, 300)).toEqual([300, 286]);
     expect(spreadLabels([], 14, 0, 300)).toEqual([]);
+  });
+});
+
+describe('tableMinWidth', () => {
+  it('adds every column at its smallest, the gaps and the padding', () => {
+    expect(tableMinWidth([{ width: 'minmax(160px,2fr)' }, { width: '72px' }, { width: '128px' }])).toBe(160 + 72 + 128 + 2 * 12 + 32);
   });
 });

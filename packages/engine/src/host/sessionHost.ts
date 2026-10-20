@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CanUseTool, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { cacheTtlOf, type CacheTtl } from '@switchboard/protocol';
 import type {
   Effort,
   HostState,
@@ -20,8 +21,11 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
 import { InputQueue } from './inputQueue.ts';
-import { askSideQuestion, type SideAnswer, type SideExchange } from './sideQuestions.ts';
+import { sessionFolder } from './sessionFolder.ts';
+import { modsBridge } from './modsBridge.ts';
+import { ModsSurface, type ModsEvents } from './modsSurface.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
+import { limitStop, type LimitStop, type RateLimitUpdate } from '../usageLimit/usageLimit.ts';
 
 /** Starts the Claude Code process for a host. Real hosts use the SDK's `query()` (or a pre-warmed one). */
 export type StartQuery = (args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query | Promise<Query>;
@@ -45,6 +49,21 @@ export interface HostEvents {
   commandsChanged?(): void;
   /** Up next changed: the whole list with its images, to keep it when the app quits or the session stops. */
   queue?(sessionId: string, messages: StoredUpNext[]): void;
+  /** Claude's turn ended (its `result`): finished, or stopped with an error, with Claude Code's message. */
+  turnEnded?(sessionId: string, outcome: { ok: boolean; error: string | null }): void;
+  /** A usage limit stopped Claude's turn (called before the session goes idle, so the queue already waits). */
+  limitHit?(sessionId: string, stop: LimitStop): void;
+  /** A turn finished without an error: whatever limit the profile was at no longer holds. */
+  turnOk?(sessionId: string): void;
+  /** The profile is at a usage limit: what is queued waits until it is cleared. */
+  limited?(): boolean;
+  /** What this session's mods tell the windows; without it, mods never attach. */
+  mods?: ModsEvents;
+  /**
+   * A message as Claude reads it: linked sessions' stubs turned into briefs (session linking). Called for every message
+   * right as it goes to Claude Code, so a queued one carries what is true then. Must not wait.
+   */
+  expand?(sessionId: string, text: string): string;
 }
 
 export interface HostConfig {
@@ -66,6 +85,12 @@ export interface HostConfig {
   env: Record<string, string>;
   claudePath: string | undefined;
   canUseTool: CanUseTool;
+  /** The SDK's messages for a usage limit that was reached (`limitPrefixes`); empty when this SDK has none. */
+  limitPrefixes?: readonly string[];
+  /** Show mods (Settings › Mods): attach when Claude Code can draw mods. On unless said otherwise. */
+  showMods?: boolean;
+  /** Use Claude in Chrome (Settings › General): start Claude Code with `--chrome`. Off unless said otherwise. */
+  chrome?: boolean;
 }
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
@@ -79,7 +104,30 @@ export function failureMessage(message: string, claudePath: string | undefined):
   return claudePath === undefined && /native cli binary .*not found/i.test(message) ? CLAUDE_MISSING_MESSAGE : message;
 }
 
+/** A host nobody listens to for mods (tests, helpers): it never attaches. */
+const NO_MODS: ModsEvents = {
+  state: () => {},
+  toast: () => {},
+  statuses: () => {},
+  log: () => {},
+  invalidate: () => {},
+  panes: () => {},
+  scroll: () => {},
+  focus: () => {},
+  ask: async () => null,
+  diagnostics: () => {},
+};
+
 const STATE_FROM_SDK: Record<string, HostState> = { running: 'running', requires_action: 'needs-you', idle: 'idle' };
+
+/** How a turn ended, from its `result`: Claude Code's first error, or its text when it flagged the result as one. */
+export function resultOutcome(message: Extract<SDKMessage, { type: 'result' }>): { ok: boolean; error: string | null } {
+  if (message.subtype === 'success' && !message.is_error) return { ok: true, error: null };
+  const errors = (message as { errors?: unknown }).errors;
+  const first = Array.isArray(errors) ? errors.find((e): e is string => typeof e === 'string' && e.trim() !== '') : undefined;
+  const text = message.subtype === 'success' ? message.result : undefined;
+  return { ok: false, error: (first ?? text ?? null)?.trim().slice(0, 300) || null };
+}
 const STREAM_FLUSH_MS = 30;
 
 export function buildOptions(config: HostConfig, log: HostEvents['log']): Options {
@@ -107,12 +155,24 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
     options.forkSession = true;
     options.sessionId = config.sessionId;
   }
+  const extraArgs: Record<string, string | null> = {};
   if (config.worktree) {
     // Claude Code creates the worktree itself (same place and naming as `claude --worktree`).
-    options.extraArgs = { worktree: config.worktree.name };
+    extraArgs.worktree = config.worktree.name;
     if (config.worktree.baseRef === 'head') options.settings = { worktree: { baseRef: 'head' } };
   }
+  // Claude Code's "Enabled by default" for Claude in Chrome only applies in a terminal; an SDK host turns it on itself.
+  // The SDK passes a null value as a bare flag: `--chrome`.
+  if (config.chrome) extraArgs.chrome = null;
+  if (Object.keys(extraArgs).length > 0) options.extraArgs = extraArgs;
   return options;
+}
+
+/** The text of an assistant message (Claude Code's error messages are one text block). */
+function textOf(message: Extract<SDKMessage, { type: 'assistant' }>): string | null {
+  const content = message.message.content as Array<{ type: string; text?: string }>;
+  const text = content.filter((block) => block.type === 'text' && block.text).map((block) => block.text).join('\n');
+  return text || null;
 }
 
 function toRaw(message: Extract<SDKMessage, { type: 'assistant' | 'user' }>): RawSessionMessage {
@@ -160,9 +220,13 @@ export class SessionHost {
   terminalOnly: string[] = [];
   models: ModelOption[] = [];
   lastActivity = Date.now();
+  /** The prompt cache of this turn's last response: reported with the turn's end, so the window hears it once a turn. */
+  private cacheSeen: { at: number; ttl: CacheTtl | null } | null = null;
   /** When the process ended (closed or crashed), for telling our own exiting process apart from another window. */
   closedAt: number | undefined;
   info: SessionHostInfo;
+  /** The session's Claude Code mods (attached when it reports `ui_surface_v1` and Show mods is on). */
+  readonly mods: ModsSurface;
 
   constructor(
     private readonly config: HostConfig,
@@ -188,6 +252,7 @@ export class SessionHost {
       profileId: config.profileId,
       backgroundTasks: [],
     };
+    this.mods = new ModsSurface(() => this.info.sessionId, events.mods ?? NO_MODS, events.mods !== undefined && config.showMods !== false);
     this.initialized = new Promise((resolve, reject) => {
       this.initResolve = resolve;
       this.initReject = reject;
@@ -207,7 +272,10 @@ export class SessionHost {
   start(): void {
     this.query = (async () => this.startQuery({ prompt: this.input, options: buildOptions(this.config, this.events.log) }))().then(
       (query) => {
-        void this.loop(query);
+        // The loop catches its own failures; this is the last line, so nothing becomes an unhandled rejection.
+        this.loop(query).catch((error: unknown) => this.events.log('error', `Session ${this.sessionId} broke: ${(error as Error).message}`));
+        this.mods.setBridge(modsBridge(query));
+        void this.readInitCapabilities(query);
         return query;
       },
       (error: unknown) => {
@@ -267,8 +335,9 @@ export class SessionHost {
     this.drain();
   }
 
-  private push(text: string, attachments: readonly ImageAttachment[], after?: Promise<unknown>): string {
+  private push(typed: string, attachments: readonly ImageAttachment[], after?: Promise<unknown>): string {
     const uuid = randomUUID();
+    const text = this.events.expand ? this.expandSafely(typed) : typed;
     const content = [
       ...attachments.map((a) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: a.mediaType, data: a.data } })),
       ...(text ? [{ type: 'text' as const, text }] : []),
@@ -285,6 +354,16 @@ export class SessionHost {
     return uuid;
   }
 
+  /** A brief that can't be written is no reason to lose the message: it then goes as it was typed. */
+  private expandSafely(text: string): string {
+    try {
+      return this.events.expand!(this.sessionId, text);
+    } catch (error) {
+      this.events.log('warn', `Could not write a linked session's brief: ${error instanceof Error ? error.message : String(error)}`);
+      return text;
+    }
+  }
+
   /** Why the queue isn't sending by itself (see `SessionHostInfo.queueHold`). */
   private queueHold: SessionHostInfo['queueHold'] = null;
   /**
@@ -293,6 +372,11 @@ export class SessionHost {
    */
   private nowPhase: 'stopping' | 'sent' | null = null;
   private nowTimer: ReturnType<typeof setTimeout> | undefined;
+  /** This turn's `rejected` rate-limit update, and the latest of any status: what a usage limit that stops it says. */
+  private rejected: RateLimitUpdate | null = null;
+  private lastRateLimit: RateLimitUpdate | null = null;
+  /** The text of an error Claude Code reported as an assistant message this turn (a usage limit comes as one). */
+  private assistantError: string | null = null;
 
   /**
    * Holds a message until Claude's turn ends, then sends it, one message per turn. The transcript doesn't show
@@ -361,9 +445,14 @@ export class SessionHost {
     this.info = { ...this.info, queue: this.pending.map(summarise), queueHold: this.queueHold };
   }
 
-  /** When Claude is ready for the next message: sends the first queued one, unless the queue is on hold. */
+  /** The profile left its usage limit: what is queued may move on again. */
+  drainQueue(): void {
+    this.drain();
+  }
+
+  /** When Claude is ready for the next message: sends the first queued one, unless the queue is on hold or the profile is at a usage limit. */
   private drain(): void {
-    if (!this.active || this.busy || this.queueHold || this.nowPhase || this.pending.length === 0) return;
+    if (!this.active || this.busy || this.queueHold || this.nowPhase || this.pending.length === 0 || this.events.limited?.()) return;
     const next = this.pending.shift()!;
     this.push(next.text, next.attachments);
     this.publishQueue();
@@ -401,16 +490,6 @@ export class SessionHost {
       insertions: result.insertions ?? 0,
       deletions: result.deletions ?? 0,
     };
-  }
-
-  /**
-   * A side question on this process: Claude Code answers it beside the turn (if one runs), without tools, and writes
-   * nothing to the session. It isn't a message, so it never goes through the input, Up next or the status.
-   */
-  async askSideQuestion(question: string, history: SideExchange[]): Promise<SideAnswer> {
-    const query = await this.query;
-    if (!query) throw new Error('This session is not running');
-    return askSideQuestion(query, question, history);
   }
 
   async interrupt(): Promise<void> {
@@ -473,8 +552,19 @@ export class SessionHost {
    * map (their last state is still shown), and would otherwise keep the whole Query alive until quit.
    */
   private release(): void {
+    this.mods.close();
     this.input.end();
     this.query = Promise.resolve(undefined);
+  }
+
+  /** Capabilities from the initialize result, which comes before any turn's init message. */
+  private async readInitCapabilities(query: Query): Promise<void> {
+    try {
+      const init = (await query.initializationResult()) as { capabilities?: unknown };
+      if (Array.isArray(init?.capabilities) && this.active) this.mods.setCapabilities(init.capabilities.filter((c): c is string => typeof c === 'string'));
+    } catch {
+      // The init message carries them too.
+    }
   }
 
   private update(patch: Partial<SessionHostInfo>): void {
@@ -482,7 +572,12 @@ export class SessionHost {
     if (ended && this.closedAt === undefined) this.closedAt = Date.now();
     // Background tasks die with the process.
     this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [] } : {}) };
-    this.events.info(this.info);
+    try {
+      this.events.info(this.info);
+    } catch (error) {
+      // Whoever listens failing must not stop this host from tracking its own state.
+      this.events.log('warn', `Could not report session ${this.sessionId}: ${(error as Error).message}`);
+    }
   }
 
   private fail(error: unknown): void {
@@ -532,6 +627,8 @@ export class SessionHost {
         if (message.parent_tool_use_id !== null) return;
         // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
         if (this.nowPhase === 'sent') this.nowStarted();
+        if (message.error) this.assistantError = textOf(message) ?? this.assistantError;
+        this.noteCache(message.message as unknown as { usage?: Record<string, unknown> | null } | undefined);
         this.events.messages(this.sessionId, [toRaw(message)]);
         this.pushStream('clear', '');
         return;
@@ -541,14 +638,27 @@ export class SessionHost {
         if (message.parent_tool_use_id !== null || ('isReplay' in message && message.isReplay) || message.isSynthetic) return;
         this.events.messages(this.sessionId, [toRaw(message)]);
         return;
-      case 'result':
-        // A failed turn leaves the queue for you to decide, unless you stopped it yourself (already held) or sent a message now.
-        if ((message.subtype !== 'success' || message.is_error) && !this.nowPhase && !this.queueHold) this.holdQueue('error');
-        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd });
+      case 'result': {
+        const outcome = resultOutcome(message);
+        const stop = outcome.ok
+          ? null
+          : limitStop({ error: outcome.error ?? this.assistantError, rejected: this.rejected, last: this.lastRateLimit, prefixes: this.config.limitPrefixes ?? [] });
+        this.rejected = null;
+        this.assistantError = null;
+        // A failed turn leaves the queue for you to decide, unless you stopped it yourself (already held) or sent a
+        // message now. A usage limit holds it instead, until the limit is cleared.
+        if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold) this.holdQueue('error');
+        if (stop) this.events.limitHit?.(this.sessionId, stop);
+        else if (outcome.ok) this.events.turnOk?.(this.sessionId);
+        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache() });
         void this.refreshContext();
         this.events.usageHint?.();
+        this.events.turnEnded?.(this.sessionId, outcome);
         return;
+      }
       case 'rate_limit_event':
+        this.lastRateLimit = message.rate_limit_info;
+        if (message.rate_limit_info.status === 'rejected') this.rejected = message.rate_limit_info;
         this.events.rateLimit?.(this.sessionId, message.rate_limit_info);
         this.events.usageHint?.();
         return;
@@ -558,19 +668,29 @@ export class SessionHost {
   }
 
   private handleSystem(message: Extract<SDKMessage, { type: 'system' }>): void {
+    // Mods' toasts, statuses, panes and logs never reach the transcript.
+    if (this.mods.handleSystem(message as unknown as { subtype?: unknown } & Record<string, unknown>)) return;
     if (message.subtype === 'init') {
       const init = message as Extract<SDKMessage, { subtype: 'init' }>;
+      // Without an id the session would be filed under `undefined` (and break every list that looks it up): skip it.
+      if (typeof init.session_id !== 'string' || !init.session_id) {
+        this.events.log('warn', `Session ${this.sessionId}: ignored a startup message from Claude Code without a session id`);
+        return;
+      }
       const first = this.info.state === 'starting';
       this.update({
         sessionId: init.session_id,
-        cwd: init.cwd,
-        model: init.model,
-        permissionMode: init.permissionMode as PermissionMode,
+        cwd: typeof init.cwd === 'string' && init.cwd ? sessionFolder(this.info.cwd, init.cwd) : this.info.cwd,
+        model: typeof init.model === 'string' ? init.model : this.info.model,
+        permissionMode: typeof init.permissionMode === 'string' ? (init.permissionMode as PermissionMode) : this.info.permissionMode,
         state: first ? 'idle' : this.info.state,
       });
       const terminalOnly = (init as { terminal_slash_commands?: unknown }).terminal_slash_commands;
       if (Array.isArray(terminalOnly)) this.terminalOnly = terminalOnly.filter((c): c is string => typeof c === 'string');
       this.plugins = pluginsFromInit((init as { plugins?: unknown }).plugins);
+      const capabilities = (init as { capabilities?: unknown }).capabilities;
+      // Every turn's init lists them: one without `ui_surface_v1` means the mods are gone.
+      if (Array.isArray(capabilities)) this.mods.setCapabilities(capabilities.filter((c): c is string => typeof c === 'string'));
       this.initResolve(init.session_id);
       if (first) {
         void this.loadCatalogs();
@@ -691,6 +811,25 @@ export class SessionHost {
     this.commands = next;
     if (!first) this.events.commandsChanged?.();
     return true;
+  }
+
+  /**
+   * A response that read or wrote the prompt cache started its time again. Which cache it is comes from the responses
+   * that wrote to it; one that only read keeps the last one known.
+   */
+  private noteCache(message: { usage?: Record<string, unknown> | null } | undefined): void {
+    const usage = message?.usage;
+    if (!usage) return;
+    const touched = [usage.cache_read_input_tokens, usage.cache_creation_input_tokens].some((n) => typeof n === 'number' && n > 0);
+    if (!touched) return;
+    this.cacheSeen = { at: Date.now(), ttl: cacheTtlOf(usage) ?? this.cacheSeen?.ttl ?? this.info.cacheTtl ?? null };
+  }
+
+  private takeCache(): Pick<SessionHostInfo, 'cacheAt' | 'cacheTtl'> {
+    const seen = this.cacheSeen;
+    if (!seen) return {};
+    this.cacheSeen = null;
+    return { cacheAt: seen.at, cacheTtl: seen.ttl };
   }
 
   private async refreshContext(): Promise<void> {

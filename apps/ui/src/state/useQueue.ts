@@ -4,7 +4,12 @@ import { useHosts } from './hostsStore.ts';
 import { startQueued, useLater } from './laterStore.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { useProjects } from './projectsStore.ts';
-import { queueStates, queueToast, readyTransitions, type QueueEntry, type QueueSummary } from './queue.ts';
+import { projectOf, queueStates, queueToast, readyTransitions, type QueueEntry, type QueueSummary } from './queue.ts';
+import type { LaterItem, UsageLimitHit } from '@switchboard/protocol/client';
+import { limitOf } from '../lib/usageLimit.ts';
+import { useMinute } from '../components/focus/useMinute.ts';
+import { useLimits } from './limitsStore.ts';
+import { useProfiles } from './profilesStore.ts';
 import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
 import { inScope } from './sidebarRows.ts';
 import { useSidebarSections } from './sidebarSectionsStore.ts';
@@ -25,6 +30,22 @@ export function useProjectName(): (root: string) => string {
   return useMemo(() => (root: string) => projects.get(root)?.name ?? basename(root), [projects]);
 }
 
+/** The usage limit a queued item's Claude profile is at: its own profile, else its project's, else the default. */
+function useQueueLimit(): (item: LaterItem) => UsageLimitHit | null {
+  const limits = useLimits((s) => s.state);
+  const projects = useProjects((s) => s.projects);
+  const profiles = useProfiles((s) => s.profiles);
+  const defaultId = useProfiles((s) => s.defaultId);
+  return useMemo(() => {
+    const exists = (id: string | null | undefined): id is string => !!id && profiles.some((p) => p.id === id);
+    return (item: LaterItem) => {
+      const project = projects.get(projectOf(item.cwd))?.profileId;
+      const profileId = exists(item.profileId) ? item.profileId : exists(project) ? project : defaultId;
+      return limitOf(limits, profileId);
+    };
+  }, [limits, projects, profiles, defaultId]);
+}
+
 /** The queue with every item's state (ready, waiting, queued), how many are ready, and the first of them. */
 export function useQueue(rows?: readonly SessionRowData[]): QueueSummary & { rows: readonly SessionRowData[] } {
   const items = useLater((s) => s.items);
@@ -32,7 +53,9 @@ export function useQueue(rows?: readonly SessionRowData[]): QueueSummary & { row
   const listed = useListedRows();
   const all = rows ?? listed;
   const projectName = useProjectName();
-  const summary = useMemo(() => queueStates({ items, started, rows: all, projectName }), [items, started, all, projectName]);
+  const limitOf = useQueueLimit();
+  const now = useMinute(useLimits((s) => s.state.limits.length > 0));
+  const summary = useMemo(() => queueStates({ items, started, rows: all, projectName, limitOf, now }), [items, started, all, projectName, limitOf, now]);
   return { ...summary, rows: all };
 }
 

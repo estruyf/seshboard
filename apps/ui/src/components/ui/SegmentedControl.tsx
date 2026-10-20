@@ -11,8 +11,8 @@ export interface Segment<T extends string> {
   iconOnly?: boolean;
   /** A count after the label (changed files). Zero or null hides it. */
   badge?: number | null;
-  /** The small green "running" dot in the corner (terminals running). */
-  dot?: boolean;
+  /** The small dot in the corner: green for "running" (terminals running), `link` for "something new" (an answer is ready). */
+  dot?: boolean | 'link';
   tooltip?: string;
   /** An accessible name that says more than the label ("Hide changed files, 42 changed"). */
   ariaLabel?: string;
@@ -21,6 +21,12 @@ export interface Segment<T extends string> {
   disabled?: boolean;
   /** Toggle mode only: the segment opens a panel, so it says `aria-expanded` instead of `aria-pressed`. */
   expanded?: boolean;
+  /**
+   * Toggle mode, for segments that share one place (side panels that are tabs of the same area): of the ones that are
+   * on, `true` is the one showing (an accent bar under it) and `false` one that is on but behind it (softer).
+   * Leave it out when the segment is on its own.
+   */
+  front?: boolean;
   /** data- hooks for the segment's button. */
   data?: Record<`data-${string}`, string | boolean | undefined>;
 }
@@ -31,6 +37,8 @@ interface Common<T extends string> {
   segments: readonly Segment<T>[];
   /** `sm` 24px (inside a panel's header), `md` 28px (the session header). */
   size?: 'sm' | 'md';
+  /** As wide as its container, the segments sharing the width (the sidebar's Recent | Quickest to unblock). */
+  fill?: boolean;
   className?: string;
   'data-tooltip'?: string;
   [data: `data-${string}`]: unknown;
@@ -59,7 +67,7 @@ const HEIGHT = { sm: 'h-6', md: 'h-7' } as const;
  * independent switches (`aria-pressed`, or `aria-expanded` for a segment that opens a panel).
  */
 export function SegmentedControl<T extends string>(props: RadioProps<T> | ToggleProps<T>) {
-  const { label, segments, size = 'md', className = '', mode } = props;
+  const { label, segments, size = 'md', fill = false, className = '', mode } = props;
   const rest = Object.fromEntries(Object.entries(props).filter(([key]) => key.startsWith('data-')));
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const isOn = (segment: Segment<T>) => (props.mode === 'radio' ? props.value === segment.value : props.pressed.includes(segment.value));
@@ -83,11 +91,12 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
       aria-label={label}
       onKeyDown={onKeyDown}
       // The edge keeps the track visible where card and background are the same colour (white in light mode).
-      className={`inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-card p-0.5 shadow-[inset_0_0_0_1px_var(--sb-overlay-border)] ${HEIGHT[size]} ${size === 'sm' ? 'text-meta' : 'text-ui'} ${className}`}
+      className={`${fill ? 'flex w-full' : 'inline-flex shrink-0'} items-center gap-0.5 rounded-lg bg-card p-0.5 shadow-[inset_0_0_0_1px_var(--sb-overlay-border)] ${HEIGHT[size]} ${size === 'sm' ? 'text-meta' : 'text-ui'} ${className}`}
       {...rest}
     >
       {segments.map((segment, index) => {
         const on = isOn(segment);
+        const behind = on && segment.front === false;
         const aria =
           props.mode === 'radio'
             ? { role: 'radio', 'aria-checked': on, tabIndex: index === tabStop ? 0 : -1 }
@@ -101,19 +110,27 @@ export function SegmentedControl<T extends string>(props: RadioProps<T> | Toggle
               buttons.current[index] = el;
             }}
             type="button"
-            disabled={segment.disabled}
-            onClick={() => (props.mode === 'radio' ? props.onChange(segment.value) : props.onToggle(segment.value))}
+            // A disabled segment with a reason stays hoverable (a disabled button gets no pointer events), so its tooltip can say why.
+            disabled={segment.disabled && !segment.tooltip}
+            aria-disabled={segment.disabled || undefined}
+            onClick={() => {
+              if (segment.disabled) return;
+              if (props.mode === 'radio') props.onChange(segment.value);
+              else props.onToggle(segment.value);
+            }}
             aria-label={segment.ariaLabel ?? (segment.iconOnly ? segment.label : undefined)}
             aria-keyshortcuts={segment.kbd ? ariaShortcut(storedShortcut(segment.kbd)) : undefined}
             data-tooltip={segment.tooltip ?? (segment.iconOnly ? segment.label : undefined)}
-            className={`relative flex h-full shrink-0 items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 ${on ? 'bg-selected text-text' : 'text-muted enabled:hover:bg-border/50 enabled:hover:text-text'}`}
+            className={`relative flex h-full ${fill ? 'min-w-0 flex-auto' : 'shrink-0'} items-center justify-center gap-1 rounded-md px-1.5 whitespace-nowrap disabled:opacity-50 aria-disabled:cursor-default aria-disabled:opacity-50 ${behind ? 'bg-selected/40 text-muted hover:text-text' : on ? 'bg-selected text-text' : 'text-muted enabled:not-aria-disabled:hover:bg-border/50 enabled:not-aria-disabled:hover:text-text'}`}
+            data-segment-front={on && segment.front !== undefined ? segment.front : undefined}
             {...aria}
             {...segment.data}
           >
             {segment.icon}
-            {!segment.iconOnly && <span>{segment.label}</span>}
+            {!segment.iconOnly && <span className={fill ? 'truncate' : undefined}>{segment.label}</span>}
             {segment.badge ? <span className="text-meta tabular-nums">{segment.badge}</span> : null}
-            {segment.dot && <span className="absolute top-1 right-1 size-1.5 rounded-full bg-ok" aria-hidden />}
+            {segment.dot && <span className={`absolute top-1 right-1 size-1.5 rounded-full ${segment.dot === 'link' ? 'bg-link' : 'bg-ok'}`} aria-hidden />}
+            {on && segment.front === true && <span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-accent-ink" aria-hidden />}
           </button>
         );
       })}

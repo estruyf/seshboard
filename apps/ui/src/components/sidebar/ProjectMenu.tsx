@@ -1,12 +1,13 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
-import { Check, ChevronDown, Ellipsis, FolderCog, FolderGit2, FolderOpen, FolderPlus, GitBranch, Image, Layers, Pencil, RotateCcw, SlidersHorizontal, Smile, Type, X } from 'lucide-react';
+import { Check, ChevronDown, Ellipsis, FolderCog, FolderDown, FolderGit2, FolderOpen, FolderPlus, GitBranch, Image, Layers, Monitor, Pencil, RotateCcw, SlidersHorizontal, Smile, Type, X } from 'lucide-react';
 import { isAbsolutePath, type ProjectIconChoice } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
+import { useClone, useCloneEnabled } from '../../state/cloneStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -17,6 +18,9 @@ import { RenameProjectDialog } from '../projects/RenameProjectDialog.tsx';
 import { isQuestionsFolder } from '../../lib/questions.ts';
 import { Button } from '../ui/Button.tsx';
 import { Popover } from '../ui/Popover.tsx';
+import { ComputerChip } from '../computers/ComputerChip.tsx';
+import { useComputers } from '../../state/computersStore.ts';
+import { toggleSource } from '../../state/remoteRows.ts';
 
 const SUGGESTED = ['🚀', '🧪', '📦', '🛠️', '🌐', '📱', '🎨', '📝', '🤖', '⚡️', '🔥', '🧩', '📊', '🎬', '🚲', '☁️'];
 
@@ -133,7 +137,8 @@ export function manage(root: string | null = null): void {
 /**
  * Menu entries to rename a project, change its icon or remove it, and the emoji picker, rename dialog and remove confirmation they open (`overlays`).
  * `remove: false` leaves out "Remove from Switchboard…", for menus about something else (a session); `identity: true`
- * keeps only what the project is (profile, icon, name, folder), for the icon button on a project's row and page.
+ * keeps only what the project is (profile, icon, name, folder), for the icon button on a project's row and page;
+ * `nested: true` puts the profile and icon choices in submenus, for a menu where the project is one of several things.
  */
 export function useProjectIconEntries() {
   const actions = useProjectActions();
@@ -146,30 +151,27 @@ export function useProjectIconEntries() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
 
-  const entries = (root: string, at: { x: number; y: number }, { remove = true, identity = false }: { remove?: boolean; identity?: boolean } = {}): MenuEntry[] => {
+  const entries = (
+    root: string,
+    at: { x: number; y: number },
+    { remove = true, identity = false, nested = false }: { remove?: boolean; identity?: boolean; nested?: boolean } = {},
+  ): MenuEntry[] => {
     // Quick questions are not a project: no icon, name, profile or "Add to projects".
     if (isQuestionsFolder(root, questionsDir)) return [];
     const project = projects.get(root);
     const linked = project?.profileId ?? null;
-    // Which account new sessions here use; only worth asking once there is more than one.
-    const profileEntries: MenuEntry[] =
-      profiles.length > 1 && isAbsolutePath(root)
-        ? [
-            { heading: 'Claude profile' },
-            {
-              label: `Default${defaultProfile ? ` (${defaultProfile.name})` : ''}`,
-              hint: linked === null ? '✓' : undefined,
-              onSelect: () => void actions.setProfile(root, null),
-            },
-            ...profiles.map(
-              (p): MenuEntry => ({ label: p.name, icon: <ProfileDot color={p.color} />, hint: linked === p.id ? '✓' : undefined, onSelect: () => void actions.setProfile(root, p.id) }),
-            ),
-            'separator',
-          ]
-        : [];
-    return [
-      ...profileEntries,
-      { heading: 'Project icon' },
+    // The account new sessions here use.
+    const profileChoices: MenuEntry[] = [
+      {
+        label: `Default${defaultProfile ? ` (${defaultProfile.name})` : ''}`,
+        hint: linked === null ? '✓' : undefined,
+        onSelect: () => void actions.setProfile(root, null),
+      },
+      ...profiles.map(
+        (p): MenuEntry => ({ label: p.name, icon: <ProfileDot color={p.color} />, hint: linked === p.id ? '✓' : undefined, onSelect: () => void actions.setProfile(root, p.id) }),
+      ),
+    ];
+    const iconChoices: MenuEntry[] = [
       { label: 'Choose image…', icon: <Image size={13} />, onSelect: () => void actions.chooseImage(root) },
       { label: 'Use emoji…', icon: <Smile size={13} />, onSelect: () => setEmojiFor({ root, ...at }) },
       { label: 'Use letter', icon: <Type size={13} />, onSelect: () => void actions.setIcon(root, { kind: 'none' }) },
@@ -179,6 +181,28 @@ export function useProjectIconEntries() {
         hint: project?.iconSource === 'detected' ? 'current' : undefined,
         onSelect: () => void actions.setIcon(root, { kind: 'auto' }),
       },
+    ];
+    // Only worth asking once there is more than one profile.
+    const withProfile = profiles.length > 1 && isAbsolutePath(root);
+    const linkedProfile = profiles.find((p) => p.id === linked) ?? defaultProfile;
+    const choices: MenuEntry[] = nested
+      ? [
+          ...(withProfile
+            ? [
+                {
+                  label: 'Claude profile',
+                  icon: linkedProfile && <ProfileDot color={linkedProfile.color} />,
+                  hint: linkedProfile?.name,
+                  submenu: profileChoices,
+                  data: { 'data-project-profile-menu': true },
+                } satisfies MenuEntry,
+              ]
+            : []),
+          { label: 'Project icon', icon: <Image size={13} />, submenu: iconChoices, data: { 'data-project-icon-menu': true } },
+        ]
+      : [...(withProfile ? [{ heading: 'Claude profile' }, ...profileChoices, 'separator' as const] : []), { heading: 'Project icon' }, ...iconChoices];
+    return [
+      ...choices,
       'separator',
       ...(isAbsolutePath(root) ? [{ label: 'Rename project…', icon: <Pencil size={13} />, onSelect: () => setRenaming(root), data: { 'data-rename-project': true } } satisfies MenuEntry] : []),
       { label: 'Open folder in editor', icon: <FolderOpen size={13} />, disabled: !project?.exists, onSelect: () => void openIn(root).catch(() => {}) },
@@ -215,7 +239,27 @@ function filterItems(menu: HTMLElement | null): HTMLElement[] {
 }
 
 /** "All projects ⌄": filter the list to one of your projects, add one, or manage them. */
-export function ProjectFilter({ counts }: { counts: Map<string, { total: number; active: number }> }) {
+/** A computer in "Show sessions from": this one or a paired one, with how many sessions it has and how many need you. */
+export interface SourceSummary {
+  source: string;
+  label: string;
+  total: number;
+  waiting: number;
+  /** A paired computer that isn't connected: its sessions are its last list. */
+  offline: boolean;
+  remote: boolean;
+}
+
+/** A project on another computer, as the filter lists it (its key stands in for a folder). */
+export interface RemoteProjectSummary {
+  key: string;
+  name: string;
+  computerName: string;
+  offline: boolean;
+}
+
+export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { counts: Map<string, { total: number; active: number }>; sources?: readonly SourceSummary[]; remoteProjects?: readonly RemoteProjectSummary[] }) {
+  const hidden = useComputers((s) => s.hidden);
   const projects = useProjects((s) => s.projects);
   const filter = useProjects((s) => s.filter);
   const setFilter = useProjects((s) => s.setFilter);
@@ -226,9 +270,11 @@ export function ProjectFilter({ counts }: { counts: Map<string, { total: number;
   const menuId = useId();
 
   const showAdd = useProjects((s) => s.showAdd);
+  const cloneEnabled = useCloneEnabled();
   const sorted = addedProjects(projects);
   const current = filter ? projects.get(filter) : undefined;
-  const currentName = filter ? (current?.name ?? filter) : 'All projects';
+  const remoteCurrent = filter ? remoteProjects.find((p) => p.key === filter) : undefined;
+  const currentName = filter ? (remoteCurrent?.name ?? current?.name ?? filter) : 'All projects';
   const close = useCallback(() => setOpen(null), []);
   const choose = (action: () => void) => {
     setOpen(null);
@@ -289,16 +335,37 @@ export function ProjectFilter({ counts }: { counts: Map<string, { total: number;
         }}
         className="no-drag flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left text-ui text-muted hover:bg-border/50 hover:text-text"
       >
-        {filter ? <ProjectIcon project={current} root={filter} /> : <Layers size={14} className="shrink-0" aria-hidden />}
+        {filter ? <ProjectIcon project={current} root={filter} name={remoteCurrent?.name} remote={!!remoteCurrent} /> : <Layers size={14} className="shrink-0" aria-hidden />}
         <span className="min-w-0 flex-1 truncate">{currentName}</span>
+        {remoteCurrent && <ComputerChip name={remoteCurrent.computerName} offline={remoteCurrent.offline} />}
         <ChevronDown size={13} className={`shrink-0 text-faint transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
       <Button variant="quiet" iconOnly icon={<FolderPlus size={15} aria-hidden />} aria-label="Add a project" data-add-project onClick={() => showAdd(true)} className="no-drag" />
 
       {open && (
         <FilterPopover id={menuId} x={open.x} y={open.y} anchor={buttonRef} onClose={close} closeOnEscape={!submenu} onKeyDown={onMenuKeyDown}>
+          {/* With a paired computer: which computers' sessions the list shows (the Computers strip's filter too). */}
+          {sources.length > 1 && (
+            <>
+              <p role="none" className="px-3 pt-1.5 pb-1 text-meta font-semibold tracking-wide text-faint uppercase">
+                Show sessions from
+              </p>
+              {sources.map((source) => (
+                <SourceRow
+                  key={source.source}
+                  source={source}
+                  checked={!hidden.has(source.source)}
+                  onToggle={() => useComputers.getState().setHidden(toggleSource(hidden, source.source))}
+                />
+              ))}
+              <div role="separator" className="mx-2 my-1 border-t border-edge" />
+              <p role="none" className="px-3 pt-1 pb-1 text-meta font-semibold tracking-wide text-faint uppercase">
+                Projects
+              </p>
+            </>
+          )}
           <FilterRow selected={!filter} onSelect={() => choose(() => setFilter(null))} icon={<Layers size={14} aria-hidden />} label="All projects" />
-          <div role="separator" className="my-1 border-t border-border" />
+          <div role="separator" className="mx-2 my-1 border-t border-edge" />
           {sorted.map((project) => (
             <FilterRow
               key={project.root}
@@ -312,13 +379,25 @@ export function ProjectFilter({ counts }: { counts: Map<string, { total: number;
               count={counts.get(project.root)?.total ?? 0}
             />
           ))}
-          {sorted.length === 0 && (
+          {remoteProjects.map((project) => (
+            <FilterRow
+              key={project.key}
+              selected={filter === project.key}
+              onSelect={() => choose(() => setFilter(project.key))}
+              icon={<ProjectIcon project={undefined} root={project.key} name={project.name} remote />}
+              label={project.name}
+              chip={<ComputerChip name={project.computerName} offline={project.offline} />}
+              count={counts.get(project.key)?.total ?? 0}
+            />
+          ))}
+          {sorted.length === 0 && remoteProjects.length === 0 && (
             <p role="none" className="px-3 py-1.5 text-ui text-muted">
               No projects yet. Add the folders you work in.
             </p>
           )}
-          <div role="separator" className="my-1 border-t border-border" />
+          <div role="separator" className="mx-2 my-1 border-t border-edge" />
           <FilterRow onSelect={() => choose(() => showAdd(true))} icon={<FolderPlus size={14} aria-hidden />} label="Add project…" />
+          {cloneEnabled && <FilterRow onSelect={() => choose(() => useClone.getState().showDialog(true))} icon={<FolderDown size={14} aria-hidden />} label="Clone from GitHub…" />}
           <FilterRow onSelect={() => choose(() => manage())} icon={<FolderCog size={14} aria-hidden />} label="Manage projects…" />
         </FilterPopover>
       )}
@@ -376,7 +455,33 @@ function FilterPopover({
   );
 }
 
-function FilterRow(props: { selected?: boolean; root?: string; onSelect(): void; onMore?(el: HTMLElement): void; icon: ReactNode; label: string; title?: string; count?: number }) {
+/** A checkbox row in "Show sessions from": a computer, ticked while its sessions are listed. */
+function SourceRow({ source, checked, onToggle }: { source: SourceSummary; checked: boolean; onToggle(): void }) {
+  const detail = source.offline ? `offline · ${source.total}` : source.waiting > 0 ? `${source.total} · ${source.waiting} ${source.waiting === 1 ? 'needs' : 'need'} you` : `${source.total} ${source.total === 1 ? 'session' : 'sessions'}`;
+  return (
+    <div role="none" className="flex items-center pr-1 hover:bg-accent/10 focus-within:bg-accent/10">
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        aria-checked={checked}
+        tabIndex={-1}
+        data-filter-item
+        data-computer-source={source.source}
+        onClick={onToggle}
+        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left text-ui outline-none"
+      >
+        <span className="w-3 shrink-0" aria-hidden>
+          {checked && <Check size={12} className="text-accent-ink" />}
+        </span>
+        <Monitor size={13} aria-hidden className={`shrink-0 ${source.remote && !source.offline ? 'text-remote' : 'text-muted'}`} />
+        <span className={`min-w-0 flex-1 truncate ${source.offline ? 'text-muted' : ''}`}>{source.label}</span>
+        <span className="shrink-0 text-meta text-muted tabular-nums">{detail}</span>
+      </button>
+    </div>
+  );
+}
+
+function FilterRow(props: { selected?: boolean; root?: string; onSelect(): void; onMore?(el: HTMLElement): void; icon: ReactNode; label: string; title?: string; count?: number; chip?: ReactNode }) {
   const radio = props.selected !== undefined;
   return (
     <div role="none" className="group flex items-center pr-1 hover:bg-accent/10 focus-within:bg-accent/10" data-tooltip={props.title}>
@@ -399,7 +504,8 @@ function FilterRow(props: { selected?: boolean; root?: string; onSelect(): void;
         className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left text-ui outline-none"
       >
         {props.icon}
-        <span className="min-w-0 flex-1 truncate">{props.label}</span>
+        <span className={`min-w-0 truncate ${props.chip ? '' : 'flex-1'}`}>{props.label}</span>
+        {props.chip && <span className="flex min-w-0 flex-1">{props.chip}</span>}
         {props.count !== undefined && (
           <span className="text-meta text-muted tabular-nums">
             {props.count}

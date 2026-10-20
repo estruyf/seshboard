@@ -1,60 +1,100 @@
 // @ts-check
 /**
- * The docs sidebar, grouped like the app. Every slug here is a page in src/content/docs (or a page in
- * src/pages for the two generated ones), and the features test checks that features.json points at them.
+ * The docs sidebar, grouped by what people want to do rather than by where it sits in the app. Every slug here
+ * is a page in src/content/docs (or a page in src/pages for the two generated ones), and the features test
+ * checks that features.json points at them. The All features page (features.mdx) is built from this list, so
+ * a page added here shows up there too. Every group starts closed, so the list (and the menu on a phone) is a short
+ * table of contents; Starlight opens the group of the page you are on.
  * @type {NonNullable<import('@astrojs/starlight/types').StarlightUserConfig['sidebar']>}
  */
 export const sidebar = [
+  'features',
   {
-    label: 'Getting started',
-    items: ['getting-started/install', 'getting-started/first-launch', 'getting-started/first-session', 'getting-started/windows'],
+    label: 'Get started',
+    collapsed: true,
+    items: ['getting-started/install', 'getting-started/first-launch', 'getting-started/first-session', 'getting-started/next-steps', 'getting-started/windows'],
   },
   {
-    label: 'Sessions',
+    label: 'Guides',
+    collapsed: true,
+    items: ['guides/parallel-sessions', 'guides/review-fast', 'guides/two-accounts', 'guides/from-your-phone', 'guides/repeat-less'],
+  },
+  {
+    label: 'Start a session',
+    collapsed: true,
     items: [
-      'sessions/sidebar',
-      'sessions/states',
-      'sessions/conversation',
-      'sessions/side-questions',
-      'sessions/home',
-      'sessions/search',
-      'sessions/split-view',
-      'sessions/pinned',
-      'sessions/archived',
-      'sessions/unsent-drafts',
+      'new-session/form',
+      'new-session/models-and-options',
+      'new-session/auto-model',
+      'new-session/worktrees',
+      'new-session/quick-questions',
+      'new-session/queue',
+      'sessions/saved-prompts',
+      'links',
     ],
   },
   {
-    label: 'New session',
-    items: ['new-session/form', 'new-session/models-and-options', 'new-session/auto-model', 'new-session/worktrees', 'new-session/quick-questions', 'new-session/queue'],
+    label: 'Stay on top',
+    collapsed: true,
+    items: ['sessions/sidebar', 'sessions/states', 'sessions/home', 'sessions/catch-up', 'sessions/search', 'settings/notifications', 'focus-limit'],
   },
-  'command-palette',
-  { label: 'Keyboard shortcuts', link: '/keyboard-shortcuts/' },
+  {
+    label: 'Inside a session',
+    collapsed: true,
+    items: [
+      'sessions/conversation',
+      'permissions',
+      'sessions/ask',
+      'sessions/linking',
+      'sessions/agents',
+      'sessions/commands',
+      'sessions/mods',
+      'terminal-changes-git/changes',
+      'terminal-changes-git/git',
+      'terminal-changes-git/terminal',
+    ],
+  },
+  {
+    label: 'Arrange your sessions',
+    collapsed: true,
+    items: ['sessions/split-view', 'sessions/own-window', 'sessions/pinned', 'sessions/archived', 'sessions/unsent-drafts'],
+  },
   {
     label: 'Projects',
-    items: ['projects/projects-view', 'projects/overview', 'projects/sessions', 'projects/worktrees', 'projects/branches', 'projects/memory', 'projects/actions', 'projects/settings'],
+    collapsed: true,
+    items: ['projects/projects-view', 'projects/clone-from-github', 'projects/overview', 'projects/sessions', 'projects/worktrees', 'projects/branches', 'projects/memory', 'projects/actions', 'projects/settings'],
   },
   {
     label: 'Memory and knowledge',
+    collapsed: true,
     items: ['memory/overview', 'memory/what-loads', 'memory/adding-memory', 'memory/links-and-search', 'memory/share-with-the-team', 'memory/personal-memory', 'memory/import', 'memory/health'],
   },
   {
-    label: 'Terminal, changes and git',
-    items: ['terminal-changes-git/terminal', 'terminal-changes-git/changes', 'terminal-changes-git/git'],
-  },
-  'permissions',
-  'focus-limit',
-  'usage',
-  {
-    label: 'Themes',
-    items: ['themes/built-in', 'themes/custom', 'themes/syntax-colours'],
+    label: 'Accounts and usage',
+    collapsed: true,
+    items: ['settings/claude-profiles', 'usage'],
   },
   {
-    label: 'Settings',
-    items: ['settings', 'settings/sessions', 'settings/notifications', 'settings/claude-profiles', 'settings/updates', 'settings/backup'],
+    label: 'Work from anywhere',
+    collapsed: true,
+    items: ['remote-access', 'other-computers', 'vscode-companion'],
   },
-  'vscode-companion',
-  'links',
-  'troubleshooting',
-  { label: 'Changelog', link: '/changelog/' },
+  {
+    label: 'Make it yours',
+    collapsed: true,
+    items: ['themes/built-in', 'themes/custom', 'themes/syntax-colours', 'settings/backup'],
+  },
+  {
+    label: 'Reference',
+    collapsed: true,
+    items: [
+      'command-palette',
+      { label: 'Keyboard shortcuts', link: '/keyboard-shortcuts/' },
+      'settings',
+      'settings/sessions',
+      'settings/updates',
+      'troubleshooting',
+      { label: 'Changelog', link: '/changelog/' },
+    ],
+  },
 ];

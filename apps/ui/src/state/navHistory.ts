@@ -1,14 +1,17 @@
 import type { ProjectTab } from './projectPageStore.ts';
-import type { MainView, Pane, SettingsSection } from './sessionsStore.ts';
+import type { MainView, SettingsSection } from './sessionsStore.ts';
+import { leafIds, type Tile } from './tiling.ts';
 
 /** A place the main area can show, as the mouse's back and forward buttons return to it. Home is a session place with no session. */
 export type NavPlace =
-  | { view: 'session'; mainId: string | null; splitId: string | null; activePane: Pane }
+  | { view: 'session'; layout: Tile | null; active: string | null }
   | { view: 'new' }
   | { view: 'settings'; section: SettingsSection; from: Exclude<MainView, 'settings'> }
   | { view: 'projects' }
   | { view: 'project'; root: string; tab: ProjectTab }
-  | { view: 'usage'; profileId: string | null };
+  | { view: 'usage'; profileId: string | null }
+  /** A paired computer's page (its sessions are panes, in a session place). */
+  | { view: 'remote'; computerId: string };
 
 export interface NavHistory {
   entries: readonly NavPlace[];
@@ -25,10 +28,13 @@ export const emptyHistory: NavHistory = { entries: [], index: -1, at: 0 };
 
 const samePlace = (a: NavPlace, b: NavPlace) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Another tab of the same project, page of Settings or active pane of the same split: it changes the entry instead of adding one. */
+/** Another tab of the same project, page of Settings, or arrangement, sizes or active pane of the same sessions: it changes the entry instead of adding one. */
 function sameStop(a: NavPlace, b: NavPlace): boolean {
-  if (a.view === 'session' && b.view === 'session') return a.mainId === b.mainId && a.splitId === b.splitId;
+  // The same sessions in any arrangement (panes moved, swapped, resized, another one active) are the same stop; opening or closing a pane is a new one.
+  if (a.view === 'session' && b.view === 'session') return JSON.stringify(leafIds(a.layout).sort()) === JSON.stringify(leafIds(b.layout).sort());
   if (a.view === 'project' && b.view === 'project') return a.root === b.root;
+  // Another remote session is another stop, as another local one is.
+  if (a.view === 'remote' && b.view === 'remote') return a.computerId === b.computerId;
   return a.view === b.view;
 }
 

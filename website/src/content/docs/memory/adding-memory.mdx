@@ -6,6 +6,7 @@ description: Edit a memory, write a new one, or save part of a conversation as m
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
@@ -78,7 +79,7 @@ In the dialog, pick a name, a type, where it goes in **Save in** (this project, 
 
 When Claude saves a memory during a session, the conversation shows it as one line, **Saved memory** with the memory's name and type (<Pill tone="muted">Personal</Pill> for a personal one), instead of a file edit. **Open** shows it on the project's Memory tab.
 
-A session's menu (right-click it in the sidebar, or **⋯** in its header) lists the memories it wrote under **Memories from this session**. Pick one to open it.
+A session's menu lists the memories it wrote: under **Memories** when you right-click it in the sidebar, and under **Memories from this session** in **⋯** in its header. Pick one to open it.
 
 ## Edit instruction files
 
@@ -95,3 +96,7 @@ Files that only load, such as your profile's `CLAUDE.md` or an imported file, op
 ## Settings
 
 Where new personal memories go is set in [Settings › Memory](/settings/#memory). Nothing else changes the editor.
+
+## Related
+
+<Related pages={['memory/links-and-search', 'memory/share-with-the-team', 'sessions/conversation', 'memory/health']} />

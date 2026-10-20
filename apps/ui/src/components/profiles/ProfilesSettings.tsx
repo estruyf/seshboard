@@ -1,12 +1,17 @@
-import { Check, ChevronRight, Copy, FolderOpen, Plus, X } from 'lucide-react';
+import { Check, ChevronRight, Copy, FolderOpen, LogIn, Plus, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { expandHome, isAbsolutePath, PROFILE_COLORS, separatorOf, type ClaudeProfile, type ProfileColor, type ProjectDefaults } from '@switchboard/protocol/client';
+import type { EngineClient } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { guessHome, tildify } from '../../lib/format.ts';
+import { tildify } from '../../lib/format.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
+import { openTerminal } from '../../state/terminalsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { describeDefaults, ProjectDefaultsEditor } from '../projects/ProjectDefaultsEditor.tsx';
+import { APP_TERMINAL } from '../terminal/appTerminal.ts';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Radio, RadioGroup } from '../ui/Radio.tsx';
 import { PROFILE_DOT } from './ProfileBadge.tsx';
 
@@ -23,6 +28,12 @@ const quote = (path: string) => (/^[\w./~-]+$/.test(path) ? path : `'${path.repl
 
 /** The command that signs Claude Code in for one config folder. Switchboard never handles credentials itself. */
 export const loginCommand = (profile: Pick<ClaudeProfile, 'configDir' | 'builtin'>) => (profile.builtin ? 'claude' : `CLAUDE_CONFIG_DIR=${quote(profile.configDir)} claude`);
+
+/**
+ * Starts Claude Code with a profile's folder in the window's own terminal, which docks next to Settings, so you sign
+ * in there. The engine sets the folder, so nothing is typed or quoted for the shell.
+ */
+const signInHere = (client: EngineClient, profileId: string) => openTerminal(client, APP_TERMINAL, null, 'claude', false, profileId);
 
 const COLOR_NAME: Record<ProfileColor, string> = {
   yellow: 'Yellow',
@@ -182,9 +193,24 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
           {profile.account.organization && <> · {profile.account.organization}</>}
         </p>
       ) : (
-        <div className="grid gap-1 text-ui text-muted">
+        <div className="grid gap-1.5 text-ui text-muted">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+            <p className="min-w-0 flex-1">
+              Not signed in yet. Sign in opens Claude Code with this profile in Switchboard’s terminal. Follow its steps, or type <code className="font-mono">/login</code>.
+            </p>
+            <Button
+              variant="primary"
+              icon={<LogIn size={13} aria-hidden />}
+              className="shrink-0"
+              disabled={!client}
+              onClick={() => client && void signInHere(client, profile.id)}
+              data-profile-sign-in={profile.id}
+            >
+              Sign in
+            </Button>
+          </div>
           <p>
-            Not signed in yet. In Terminal, run this command, then type <code className="font-mono">/login</code>:
+            Or run this command in your own terminal, then type <code className="font-mono">/login</code>:
           </p>
           <CopyCommand command={loginCommand(profile)} block />
         </div>
@@ -205,6 +231,7 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
   const [name, setName] = useState('Work');
   const [color, setColor] = useState<ProfileColor>('blue');
   const [folder, setFolder] = useState<string | null>(null);
+  const [signIn, setSignIn] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const suggested = home ? `${home}${separatorOf(home)}.claude-${slug(name)}` : '';
@@ -217,8 +244,12 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
     setBusy(true);
     setError(null);
     try {
-      await client.call('profiles.add', { name: name.trim(), color, configDir: path });
+      const { id } = await client.call('profiles.add', { name: name.trim(), color, configDir: path });
       onDone();
+      if (!signIn) return;
+      // An existing folder may have its login already.
+      const { profiles } = await client.call('profiles.list', {});
+      if (!profiles.find((p) => p.id === id)?.account) await signInHere(client, id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -254,9 +285,12 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
         </Button>
       </div>
       <p className="text-ui text-muted">
-        Claude Code keeps a separate login, settings, plugins and sessions in each folder. A new folder is created; sign in there afterwards. Use an existing one (for
-        example where you already run <code className="font-mono">CLAUDE_CONFIG_DIR=… claude</code>) to see its sessions.
+        Claude Code keeps a separate login, settings, plugins and sessions in each folder. A new folder is created. Use an existing one (for example where you already
+        run <code className="font-mono">CLAUDE_CONFIG_DIR=… claude</code>) to see its sessions.
       </p>
+      <Checkbox checked={signIn} onChange={setSignIn} className="w-fit text-ui text-text" dataAttrs={{ 'data-new-profile-sign-in': true }}>
+        Sign in now: open Claude Code with this profile in Switchboard’s terminal
+      </Checkbox>
       {error && (
         <p role="alert" className="text-ui text-error">
           Couldn't add the profile: {error}
@@ -310,7 +344,7 @@ function SetupGuide() {
             <span className="font-medium text-text">Add it here.</span>
             <span>
               Choose <span className="text-text">Add profile</span>, give it a name and colour, and pick the folder <code className="font-mono">{folder}</code>. Its sessions
-              show up in the sidebar. You can also add the profile first: Switchboard creates the folder and shows the sign-in command on the profile.
+              show up in the sidebar. You can also add the profile first: Switchboard creates the folder and opens Claude Code in its terminal, so you sign in there.
             </span>
           </li>
           <li className={step}>
@@ -340,9 +374,7 @@ export function ProfilesSettings() {
   const client = connection.status === 'connected' ? connection.client : null;
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<ClaudeProfile | null>(null);
-  // The built-in folder is usually ~/.claude, which tells us where home is.
-  const builtin = profiles.find((p) => p.builtin)?.configDir;
-  const home = guessHome(profiles.map((p) => p.configDir)) ?? (builtin && /[\\/]\.claude$/.test(builtin) ? builtin.slice(0, -'/.claude'.length) : null);
+  const home = useHomeFolder();
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2" data-profiles>

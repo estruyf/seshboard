@@ -1,0 +1,77 @@
+---
+title: Ask about this session
+description: Ask Claude about the session in a panel next to the conversation, while it keeps working. Nothing is added to the conversation.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+**Ask** opens a panel next to the conversation where you can ask Claude about the session you are in. Use it for "what changed so far?" or "which file did you change for this?", also while Claude is busy with something else. Your questions and Claude's answers never enter the conversation: they don't wait in [Up next](/sessions/conversation/#up-next), and Claude isn't stopped or steered.
+
+<Screenshot name="ask-panel" alt="A session where Claude is running the invoice tests. On the right, the Ask about this session panel, not added to the conversation, shows the question Why were the totals off by a cent? with Claude's answer, a follow-up Which test covers it? with its answer, and the field Ask a follow-up… with Claude keeps working under it" eager />
+
+<Aside>
+This panel replaces the side question panel above the message box from earlier versions. `/btw` still works: it asks in this panel.
+</Aside>
+
+## Ask a question
+
+The **Ask** button sits next to **Send** (or **Stop** while Claude works), in blue.
+
+- **With an empty message box**, **Ask** opens the panel, with the cursor in its own field.
+- **With text in the message box**, **Ask** asks that text, empties the box and opens the panel.
+- **`/btw` and a question** in the message box asks it the same way. Type `/btw` at the start of the box and a space, or pick **/btw** from the <Kbd shortcut="composer.commands" /> list: it turns into a blue token, and <Kbd keys="enter" /> asks. `/btw` on its own opens the panel. <Kbd keys="backspace" /> right after the token makes the box a normal message again.
+- **Ask** in the session's header, next to **Changes**, **Agents** and **Terminal**, opens the panel too. Click it again to close the panel, or to bring it to the front when another panel is in front of it.
+- *Ask about this session* in the command palette opens the panel. It has no shortcut by default.
+
+Images and context chips in the message box stay there for your next message.
+
+The first time, the panel offers four questions to start with: *What changed so far?*, *Which files did it touch?*, *Why this approach?* and *What is left to do?*. Click one to ask it.
+
+## The panel
+
+The panel says **Ask about this session**, with *not added to the conversation* under it. Each question shows on the right, with Claude's answer under it, written like any other reply.
+
+- While Claude answers, a blue caret follows the text, with **Answering** under it. The panel stays at the bottom while the answer comes in, unless you scroll up to read.
+- **Copy** copies an answer as markdown.
+- **Quote in message** puts the answer in the message box as a quote, ready for you to add to it and send.
+- If a question fails, the panel says why, with **Try again**.
+
+Type a follow-up in the field at the bottom and press <Kbd keys="enter" />. <Kbd keys="shift+enter" /> starts a new line, and <Kbd keys="arrowup" /> in the empty field puts your last question back to edit. Under the field, the panel says whether **Claude keeps working** or **Claude is idle**.
+
+<Kbd keys="escape" /> in the field leaves it, and <Kbd keys="escape" /> again closes the panel. **×** closes it too. Drag the panel's left edge to make it wider or narrower, or focus the edge and use <Kbd keys="arrowleft|arrowright" />.
+
+Closing the panel while Claude answers doesn't stop the answer. When it is ready, a blue dot shows on the **Ask** button and on **Ask** in the header. Opening the panel clears it.
+
+## Threads
+
+Questions in the panel form a thread. A follow-up goes to Claude with the earlier questions and answers of its thread, so "and the release script?" makes sense after "which files did it touch?".
+
+- **New thread** (**+**) starts an empty one. The thread you were in stays.
+- **Earlier threads** (the clock) lists the threads in this session, newest first, with their first question, how many questions they have and how long ago they started. Pick one to open it.
+
+Switchboard keeps the last 20 threads of each session, also after you quit. Deleting a session deletes them too.
+
+## Next to Changes
+
+[Changes](/terminal-changes-git/changes/) and Ask share the right side of the session. With both open, tabs at the top switch between **Changes** and **Ask**, each with its count: the changed files, and the questions in the thread on screen. Opening Changes while Ask is open brings Changes to the front without closing Ask. The window remembers the last tab and the panel's width.
+
+## What Claude knows and does
+
+Claude answers from the session's conversation as it is at that moment, and from the project. It can read files, search, and look at git: the status, diffs, the log and commits. It can't change anything: it doesn't edit files or run other commands.
+
+Nothing of it changes the session: not the conversation, the title, the number of messages, its state in the sidebar, or Up next. An answer doesn't mark the session unread, and it doesn't play a sound or show a notification.
+
+Answers use the session's model and your plan, like the session itself. In [Usage](/usage/), their tokens show as their own row, **Side questions**, with how many questions there were.
+
+You can ask from your phone too, with [Remote access](/remote-access/#ask-about-this-session). The threads are the same on both.
+
+<Aside type="tip">
+A session doesn't have to be running to answer. For a past session, or one that is open in another Claude Code window, Switchboard asks a short-lived copy of it, which writes nothing.
+</Aside>
+
+## Related
+
+<Related pages={['sessions/catch-up', 'sessions/agents', 'sessions/search', 'focus-limit']} />

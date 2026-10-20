@@ -19,6 +19,7 @@ Project actions are in the **⋯** menu of a session's header, for the things yo
 | **Shortcut** | Optional, for example ⌘⇧T. |
 | **Ask before running** | Shows a confirmation first. Useful for publish or deploy. |
 | **Run in every new worktree** | Runs before Claude starts in each new worktree session, for example to install dependencies. Claude's first message waits until it has finished. |
+| **Send the output to Claude when it finishes** | When the command ends, its exit code and the last 200 lines of its output go to the session as your message, held in Up next while Claude works. |
 
 Your actions are listed under **Project actions** in the **⋯** menu, with their shortcuts. Use **Edit actions…** there to change or remove them.
 
@@ -46,7 +47,7 @@ In commands, every value is quoted for the shell, so a branch name or title can 
 
 ## Sharing actions with your team
 
-Put a `.switchboard.json` file in the root of the repository and commit it. Everyone using Switchboard on that repo gets its actions.
+Put a `.switchboard.json` file in the root of the repository and commit it. Everyone using Switchboard on that repo gets its actions. In the action editor, **Saved for** › **Shared with the project** writes an action to the file for you (and creates the file when there is none); moving it back to *This project* or *All projects*, or deleting it, takes it out again.
 
 ```json
 {
@@ -70,11 +71,35 @@ Put a `.switchboard.json` file in the root of the repository and commit it. Ever
 | `confirm` | `false` | Ask before running |
 | `shortcut` | none | For example `"cmd+shift+t"` |
 | `runOnWorktreeCreate` | `false` | Run in every new worktree before Claude starts |
+| `sendOutput` | `false` | When it ends, send its exit code and the end of its output to Claude |
 | `id` | from the name | Lowercase letters, digits and dashes |
 
-Actions with the same `id` (by default, the same name) replace each other: your actions for this project win over shared ones, and shared ones win over your *All projects* actions. Shared actions can't be edited in the app; change `.switchboard.json` instead.
+Actions with the same `id` (by default, the same name) replace each other: your actions for this project win over shared ones, and shared ones win over your *All projects* actions.
 
-**Safety:** a command from a repository could do anything, so Switchboard shows you the exact command the first time you run a shared action and asks you to approve it. If someone changes the command later, you're asked again.
+When Switchboard writes the file, it keeps keys it doesn't know and their order, and the file's indent, and leaves out settings that are at their default, so the commit shows only the action that changed. A file it can't read is never overwritten. The file is watched: a pull that changes it updates the actions in the app.
+
+### Shared prompts
+
+The same file holds the project's shared [saved prompts](https://switchboard.struyfconsulting.com/sessions/saved-prompts/), under `prompts`. Switchboard writes them there when you choose **Share with the project** for a prompt, and takes them out again when you move it back:
+
+```json
+{
+  "actions": [],
+  "prompts": [
+    { "id": "fix-failing-test", "name": "Fix failing test", "text": "Fix {{test:file}}. It fails on {{branch:branch}}." }
+  ]
+}
+```
+
+| Key | Values |
+|---|---|
+| `name` | Up to 60 characters (required) |
+| `text` | The prompt, with blanks written as `{{name}}` or `{{name:type}}` (required) |
+| `id` | Lowercase letters, digits and dashes. From the name when it's left out |
+
+When Switchboard writes the file, it keeps keys it doesn't know and their order, and the file's indent, so the commit shows only the prompt that changed. How often you use a shared prompt is kept on your computer, never in the file. The file is watched: a pull that changes it updates the prompts in the app.
+
+**Safety:** a command from a repository could do anything, so Switchboard shows you the exact command the first time you run a shared action and asks you to approve it. If someone changes the command later, you're asked again. An action you share yourself is approved for you when you save it.
 
 ## Project icons
 

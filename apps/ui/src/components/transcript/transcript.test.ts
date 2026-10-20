@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TranscriptMessage } from '@switchboard/protocol/client';
 import { agentReport, buildDisplayItems, groupActivity, type DisplayItem } from './displayItems.ts';
 import { activitySummary, gerund, stepLabel, toolSummary } from './toolSummary.ts';
-import { agentRuns } from './agentRuns.ts';
+import { agentForTask, agentModel, agentRuns, shownAgent, splitAgents, taskForAgent } from './agentRuns.ts';
 
 const m = (uuid: string, role: TranscriptMessage['role'], blocks: TranscriptMessage['blocks'], parentToolUseId: string | null = null): TranscriptMessage => ({
   uuid,
@@ -110,6 +110,18 @@ describe('stepLabel', () => {
     expect(stepLabel(tool('1', 'Bash', { description: 'Read the file' }), null).present).toBe('Reading the file');
   });
 
+  it('names a command without a description by what it runs, not its script', () => {
+    const run = (command: string) => stepLabel(tool('1', 'Bash', { command }), null);
+    expect(run('npm test')).toEqual({ past: 'Run npm test', present: 'Running npm test' });
+    expect(run('cd "/repo/my app" && npm test').present).toBe('Running npm test');
+    expect(run("python3 -I - <<'E'\nimport re\nR=re.compile(r'<<<<<<< HEAD')\nE").present).toBe('Running a Python script');
+    expect(run('/usr/bin/python3.12 -c "import sys; print(sys.version); print(sys.path); print(sys.executable)"').present).toBe('Running a Python script');
+    expect(run("cat > /tmp/a.txt <<'EOF'\nhello\nEOF").present).toBe('Running cat');
+    expect(run('FORCE_COLOR=0 git log --oneline --decorate --graph --all --since="2 weeks ago" -- apps/ui').present).toBe('Running git');
+    expect(run("node -e 'console.log(1)'\necho done").present).toBe('Running a Node script');
+    expect(run('$(which x) --a-very-long-flag-to-push-this-over-the-limit --and-another-one').present).toBe('Running a command');
+  });
+
   it('turns verbs into -ing forms', () => {
     expect(['Read', 'Run', 'Use', 'Write', 'Fix', 'Stop', 'Open', 'Tie', 'Check', 'commit', 'Let', 'Add', 'Show', 'Plan', 'Edit', 'Visit', 'Quit', 'Rerun'].map(gerund)).toEqual([
       'Reading', 'Running', 'Using', 'Writing', 'Fixing', 'Stopping', 'Opening', 'Tying', 'Checking', 'committing', 'Letting', 'Adding', 'Showing', 'Planning', 'Editing', 'Visiting', 'Quitting', 'Rerunning',
@@ -163,5 +175,93 @@ describe('agentRuns', () => {
     ]);
     // Nothing runs in a session that isn't open.
     expect(agentRuns(items, false).some((r) => r.running)).toBe(false);
+  });
+
+  it('runs a background agent again when a message to it follows its last report (resumed after the usage limit)', () => {
+    const report = (key: string, status: string, text: string) => ({ kind: 'agent-report', key, at: null, agentId: 'abc123', toolUseId: null, status, title: text, text }) as DisplayItem;
+    const send = (key: string, to: string, isError = false) =>
+      ({ ...tool(key, 'SendMessage', { to, message: 'Carry on' }), result: { text: '{"success":true}', isError, truncated: false, images: [], at: null } }) as DisplayItem;
+    const bg = agent('bg', launched('abc123'));
+    const stopped = report('r1', 'failed', 'Agent terminated early: You\'ve hit your session limit');
+    const state = (items: DisplayItem[]) => agentRuns(items, true)[0]!;
+
+    expect(state([bg, stopped])).toMatchObject({ running: false, failed: true });
+    expect(state([bg, report('r0', 'killed', 'Stopped')]).failed).toBe(true);
+    expect(state([bg, report('r0', 'completed', 'Done')]).failed).toBe(false);
+    expect(state([bg]).failed).toBe(false);
+    // The user (or Claude) sends it on again: it runs until its next report.
+    expect(state([bg, stopped, send('s1', 'abc123')])).toMatchObject({ running: true, failed: false });
+    const second = report('r2', 'completed', 'Done after the resume');
+    expect(state([bg, stopped, send('s1', 'abc123'), second])).toMatchObject({ running: false, failed: false, report: 'Done after the resume' });
+    expect(state([bg, stopped, send('s1', 'abc123'), second, send('s2', 'abc123')]).running).toBe(true);
+    // A message before the report, to another agent, or one that failed, changes nothing.
+    expect(state([bg, send('s0', 'abc123'), stopped]).running).toBe(false);
+    expect(state([bg, stopped, send('s1', 'other')]).running).toBe(false);
+    expect(state([bg, stopped, send('s1', 'abc123', true)]).running).toBe(false);
+    expect(agentRuns([bg, stopped, send('s1', 'abc123')], false)[0]!.running).toBe(false);
+  });
+
+  it('marks a foreground agent whose call returned an error as failed', () => {
+    const errored = { ...agent('fg', 'API Error'), result: { text: 'API Error', isError: true, truncated: false, images: [], at: null } } as DisplayItem;
+    expect(agentRuns([errored], true)[0]).toMatchObject({ running: false, failed: true });
+    expect(agentRuns([agent('ok', 'Found 3 files')], true)[0]!.failed).toBe(false);
+  });
+
+  it('keeps what each agent was asked, its type and what it reported', () => {
+    const asked = {
+      ...tool('a', 'Agent', { description: 'Find the tests', subagent_type: 'Explore', prompt: 'Look for every test file.' }),
+      result: { text: 'Found 3 files', isError: false, truncated: false, images: [], at: null },
+    } as DisplayItem;
+    const bg = { ...tool('b', 'Agent', { description: 'Review it' }), result: { text: launched('abc123'), isError: false, truncated: false, images: [], at: null } } as DisplayItem;
+    const hand = { kind: 'agent-report', key: 'r', at: null, agentId: 'abc123', toolUseId: null, status: 'completed', title: 'Done', text: 'Looks fine.' } as DisplayItem;
+    const [first, second] = agentRuns([asked, bg, hand], true);
+    expect(first).toMatchObject({ type: 'Explore', what: 'Find the tests', prompt: 'Look for every test file.', report: 'Found 3 files', agentId: null });
+    // A background agent's own report is the hand-back, not the launch message.
+    expect(second).toMatchObject({ background: true, agentId: 'abc123', report: 'Looks fine.', prompt: null, type: null });
+  });
+
+  it('names the model an agent runs on: the one its replies used, else the one the call asked for', () => {
+    const [withModel, without] = agentRuns([agent('a', null), agent('b', null)].map((item, i) => (i === 0 ? ({ ...item, input: { description: 'a', model: 'haiku' } } as DisplayItem) : item)), true);
+    expect(withModel!.asked).toBe('haiku');
+    expect(without!.asked).toBeNull();
+    const used = { model: 'claude-opus-5-5', input: 0, output: 0, cacheRead: 0, cacheWrite: 0, replies: 1 };
+    expect(agentModel(withModel!, used)).toBe('claude-opus-5-5');
+    expect(agentModel(withModel!, undefined)).toBe('haiku');
+    expect(agentModel(without!, undefined)).toBeNull();
+    // Replies that used more than one model name none.
+    expect(agentModel(without!, { ...used, model: null })).toBeNull();
+  });
+});
+
+describe('agents and the background tasks', () => {
+  const run = (key: string, over: Partial<ReturnType<typeof agentRuns>[number]>) => ({ item: tool(key, 'Agent', {}), running: true, background: true, agentId: null, type: null, what: key, prompt: null, asked: null, report: null, ...over }) as ReturnType<typeof agentRuns>[number];
+  const task = (taskId: string, description: string) => ({ taskId, type: 'local_agent', description, startedAt: 0 });
+
+  it('finds the agent a task stands for by its id, else by a description only one running agent has', () => {
+    const runs = [run('a', { agentId: 'abc123', what: 'Review' }), run('b', { what: 'Lint' }), run('c', { what: 'Lint' })];
+    expect(agentForTask(task('abc123', 'something else'), runs)?.item.key).toBe('a');
+    expect(agentForTask(task('zzz', 'Review'), runs)?.item.key).toBe('a');
+    // Two agents with the same words: no guess.
+    expect(agentForTask(task('zzz', 'Lint'), runs)).toBeUndefined();
+    expect(agentForTask(task('zzz', 'Unknown'), runs)).toBeUndefined();
+  });
+
+  it('only a running background agent has a task to stop', () => {
+    const a = run('a', { agentId: 'abc123' });
+    expect(taskForAgent(a, [task('abc123', 'x')])?.taskId).toBe('abc123');
+    expect(taskForAgent(run('a', { agentId: 'abc123', running: false }), [task('abc123', 'x')])).toBeUndefined();
+    expect(taskForAgent(run('a', { agentId: 'abc123', background: false }), [task('abc123', 'x')])).toBeUndefined();
+  });
+
+  it('splits running from finished and shows the one picked, else the newest running, else the newest', () => {
+    const runs = [run('new', { running: false }), run('busy', {}), run('old', { running: false })];
+    const { active, finished } = splitAgents(runs);
+    expect(active.map((r) => r.item.key)).toEqual(['busy']);
+    expect(finished.map((r) => r.item.key)).toEqual(['new', 'old']);
+    expect(shownAgent(runs, runs[2]!.item.id)?.item.key).toBe('old');
+    expect(shownAgent(runs, null)?.item.key).toBe('busy');
+    expect(shownAgent(runs, 'gone')?.item.key).toBe('busy');
+    expect(shownAgent([run('x', { running: false }), run('y', { running: false })], null)?.item.key).toBe('x');
+    expect(shownAgent([], null)).toBeUndefined();
   });
 });

@@ -8,6 +8,7 @@ import Os from '../../../components/Os.astro';
 import OnlyOn from '../../../components/OnlyOn.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 **Settings › Notifications** sets how Switchboard gets your attention while you work in another session or app: with a <Os mac="macOS" windows="Windows" /> notification, a sound, or both. Notifications and sounds each have their own card and switch, so you can have one without the other. You never get either for the session you are looking at in a focused window.
 
@@ -31,6 +32,8 @@ The command palette has *Notifications: turn off* and *Notifications: turn on*.
 ### When the system turns them off
 
 <Os mac="macOS" windows="Windows" /> can turn off notifications for an app on its own. When it has, Settings › Notifications says so at the top of the page, with **<Os mac="Open System Settings" windows="Open Windows settings" />** to go and turn them on. Sounds and <Os mac="the Dock badge" windows="the taskbar dot" /> still work. Switchboard checks again when you come back to its window.
+
+Newer versions of macOS don't let Switchboard see that setting. There, the page can't tell you, so next to **Send a test notification** it asks "Nothing showed up?" and has **Open System Settings** to check that Switchboard is allowed.
 
 ## Sounds
 
@@ -66,3 +69,7 @@ The sounds are the ones in Windows' Media folder, such as Windows Notify Messagi
 <Aside type="tip">
 Sounds you pick on one computer move with an [exported backup](/settings/backup/). A sound the other computer doesn't have plays its own default sound for that moment instead.
 </Aside>
+
+## Related
+
+<Related pages={['sessions/states', 'remote-access', 'projects/actions', 'settings/backup']} />

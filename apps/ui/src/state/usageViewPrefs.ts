@@ -3,18 +3,28 @@ import type { MainView } from './sessionsStore.ts';
 
 export type UsageTab = 'limits' | 'tokens';
 
+/** Whose tokens the view counts: this computer's, or also the same account's on paired computers. */
+export type UsageComputers = 'this' | 'all';
+
 const PERIODS: readonly UsagePeriod[] = ['window', 'day', 'week', 'month'];
 
-/** The tab and period saved last time (JSON), or the defaults: Limits, current window. */
-export function readRemembered(saved: string | null): { tab: UsageTab; period: UsagePeriod } {
+export interface Remembered {
+  tab: UsageTab;
+  period: UsagePeriod;
+  computers: UsageComputers;
+}
+
+/** The tab, period and computers saved last time (JSON), or the defaults: Limits, current window, every computer. */
+export function readRemembered(saved: string | null): Remembered {
   try {
-    const value = JSON.parse(saved ?? '{}') as { tab?: unknown; period?: unknown };
+    const value = JSON.parse(saved ?? '{}') as { tab?: unknown; period?: unknown; computers?: unknown };
     return {
       tab: value.tab === 'tokens' ? 'tokens' : 'limits',
       period: PERIODS.includes(value.period as UsagePeriod) ? (value.period as UsagePeriod) : 'window',
+      computers: value.computers === 'this' ? 'this' : 'all',
     };
   } catch {
-    return { tab: 'limits', period: 'window' };
+    return { tab: 'limits', period: 'window', computers: 'all' };
   }
 }
 

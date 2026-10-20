@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { LaterItem, LiveSession, SessionHostInfo } from '@switchboard/protocol/client';
 import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
+import { useTilingArea } from './tilingArea.ts';
 import type { QueueEntry } from './queue.ts';
-import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startOfDay, startupSession, waitingLabel } from './sidebarRows.ts';
+import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, quickestGroups, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startOfDay, startupSession, waitingLabel } from './sidebarRows.ts';
 import { closedSections, DEFAULT_SECTIONS, parseSections, toggleAllSections } from './sidebarSections.ts';
 
 const NOW = Date.UTC(2026, 9, 5, 12);
@@ -295,6 +296,52 @@ describe('buildListRows', () => {
     expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, queue: { entries: [], ready: 0 } }))).toEqual(['[working 1 first]', 'busy', '[today 2]', 'a', 'b']);
   });
 
+  it('in Quickest to unblock, ranks what needs you, then what you read, then what still works, without the Queue or Pinned', () => {
+    const quick = new Map([
+      ['slow', { reviewMinutes: 5, testsFailed: false }],
+      ['fast', { reviewMinutes: 2, testsFailed: false }],
+      ['fast-failing', { reviewMinutes: 2, testsFailed: true }],
+      ['ask', { reviewMinutes: 1, testsFailed: false }],
+    ]);
+    const list = [
+      row('read-old', { updatedAt: NOW - 3 * HOUR }),
+      row('slow', { unread: true }),
+      row('fast-failing', { unread: true, updatedAt: NOW - 10 * 60_000 }),
+      row('pin', { pinned: true }),
+      row('no-card', { unread: true }),
+      row('busy', { live: live('running') }),
+      row('fast', { unread: true }),
+      row('ask', { live: live('needs-you') }),
+      row('failed', { error: true }),
+    ];
+    expect(quickestGroups(list, quick).map((g) => [g.group, g.rows.map((r) => r.id)])).toEqual([
+      // Waiting for you first; then by review time, failing tests last among equals, and sessions without a card after.
+      ['review', ['ask', 'fast', 'fast-failing', 'slow', 'no-card', 'failed']],
+      ['read', ['pin', 'read-old']],
+      ['still-working', ['busy']],
+    ]);
+    expect(shape(buildListRows(list, [], { now: NOW, archivedOpen: false, queue: queueOf('Idea'), sort: 'quickest', quick }))).toEqual([
+      '[review 6 first]',
+      'ask',
+      'fast',
+      'fast-failing',
+      'slow',
+      'no-card',
+      'failed',
+      '[read 2]',
+      'pin',
+      'read-old',
+      '[still-working 1]',
+      'busy',
+    ]);
+  });
+
+  it('never closes Needs review, and says nothing on Still working’s closed header', () => {
+    const list = [row('a', { unread: true }), row('b', { live: live('running') })];
+    const rows = buildListRows(list, [], { now: NOW, archivedOpen: false, sort: 'quickest', closed: new Set(['still-working']) });
+    expect(shape(rows)).toEqual(['[review 1 first]', 'a', '[still-working 1 closed]']);
+  });
+
   it('never offers queued prompts to Select all', () => {
     const rows = buildListRows(active, archived, { now: NOW, archivedOpen: true, queue: queueOf('Idea') });
     expect([...sessionsByHeader(rows)]).toEqual([['working', ['busy']], ['today', ['a', 'b']], ['archived', ['old']]]);
@@ -430,28 +477,47 @@ describe('toRows', () => {
 });
 
 describe('panes', () => {
-  const reset = () => useSessions.setState({ selectedId: null, mainId: null, splitId: null, activePane: 'main', view: 'session' });
+  const reset = () => useSessions.setState({ selectedId: null, layout: null, paneIds: [], view: 'session' });
   const state = () => {
     const s = useSessions.getState();
-    return { main: s.mainId, split: s.splitId, active: s.activePane, selected: s.selectedId };
+    return { panes: s.paneIds, selected: s.selectedId };
   };
 
-  it('opens a session beside, selects into the active pane, and closes back to one', () => {
+  it('opens sessions beside, selects into the active pane, and closes back to one', () => {
     reset();
     const s = useSessions.getState();
     s.select('a');
-    expect(state()).toEqual({ main: 'a', split: null, active: 'main', selected: 'a' });
+    expect(state()).toEqual({ panes: ['a'], selected: 'a' });
     s.openBeside('b');
-    expect(state()).toEqual({ main: 'a', split: 'b', active: 'split', selected: 'b' });
+    expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
     s.select('c');
-    expect(state()).toEqual({ main: 'a', split: 'c', active: 'split', selected: 'c' });
-    // Selecting what the other pane shows just focuses it.
+    expect(state()).toEqual({ panes: ['a', 'c'], selected: 'c' });
+    // Selecting what another pane shows just focuses it.
     s.select('a');
-    expect(state()).toEqual({ main: 'a', split: 'c', active: 'main', selected: 'a' });
+    expect(state()).toEqual({ panes: ['a', 'c'], selected: 'a' });
     s.openBeside('d');
-    expect(state()).toEqual({ main: 'a', split: 'd', active: 'split', selected: 'd' });
-    s.closePane('main');
-    expect(state()).toEqual({ main: 'd', split: null, active: 'main', selected: 'd' });
+    expect(state()).toEqual({ panes: ['a', 'd', 'c'], selected: 'd' });
+    s.closePane('a');
+    expect(state()).toEqual({ panes: ['d', 'c'], selected: 'd' });
+    s.closeOtherPanes();
+    expect(state()).toEqual({ panes: ['d'], selected: 'd' });
+  });
+
+  it('keeps the selected session in the active pane through every change', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.openBeside('c');
+    s.focusPane('a');
+    expect(useSessions.getState().selectedId).toBe('a');
+    s.swapPanes();
+    expect(useSessions.getState().selectedId).toBe('a');
+    s.flipSplit();
+    expect(useSessions.getState().selectedId).toBe('a');
+    s.focusNext();
+    expect(useSessions.getState().selectedId).not.toBe('a');
+    expect(useSessions.getState().paneIds).toContain(useSessions.getState().selectedId);
   });
 
   it('closes the panes showing archived sessions', () => {
@@ -460,18 +526,90 @@ describe('panes', () => {
     s.select('a');
     s.openBeside('b');
     s.closeSessions(['x']);
-    expect(state()).toEqual({ main: 'a', split: 'b', active: 'split', selected: 'b' });
+    expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
     s.closeSessions(['a']);
-    expect(state()).toEqual({ main: 'b', split: null, active: 'main', selected: 'b' });
+    expect(state()).toEqual({ panes: ['b'], selected: 'b' });
     s.openBeside('c');
     s.closeSessions(['c']);
-    expect(state()).toEqual({ main: 'b', split: null, active: 'main', selected: 'b' });
+    expect(state()).toEqual({ panes: ['b'], selected: 'b' });
     s.openBeside('c');
     s.closeSessions(['b', 'c']);
-    expect(state()).toEqual({ main: null, split: null, active: 'main', selected: null });
+    expect(state()).toEqual({ panes: [], selected: null });
     s.select('d');
     s.closeSessions(['d']);
-    expect(state()).toEqual({ main: null, split: null, active: 'main', selected: null });
+    expect(state()).toEqual({ panes: [], selected: null });
+  });
+
+  it('keeps the same sessions array while only sizes change, so the sidebar does not redraw', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    const before = useSessions.getState().paneIds;
+    s.resizePanes({ direction: 'row', children: [{ id: 'a' }, { id: 'b' }], sizes: [0.3, 0.7] });
+    expect(useSessions.getState().paneIds).toBe(before);
+    expect(useSessions.getState().layout).toMatchObject({ sizes: [0.3, 0.7] });
+  });
+
+  it('says so, and opens nothing, when the window has no room for another pane', () => {
+    reset();
+    useTilingArea.getState().set({ width: 700, height: 360 });
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.openBeside('c');
+    expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
+    s.dropOn('c', { kind: 'pane', id: 'a', zone: 'top' });
+    expect(state()).toEqual({ panes: ['a', 'b'], selected: 'b' });
+    useTilingArea.getState().set(null);
+    s.openBeside('c');
+    expect(state()).toEqual({ panes: ['a', 'b', 'c'], selected: 'c' });
+  });
+
+  it('turns a split only when the result fits the window', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.openBeside('c');
+    const before = useSessions.getState().layout;
+    useTilingArea.getState().set({ width: 1100, height: 700 });
+    s.flipSplit();
+    expect(useSessions.getState().layout).toBe(before);
+    useTilingArea.getState().set(null);
+    s.flipSplit();
+    expect(useSessions.getState().layout).not.toBe(before);
+  });
+
+  it('drops a pane or a new session onto a part of a pane', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.dropOn('a', { kind: 'pane', id: 'b', zone: 'right' });
+    expect(state()).toEqual({ panes: ['b', 'a'], selected: 'a' });
+    s.dropOn('n', { kind: 'pane', id: 'b', zone: 'bottom' });
+    expect(state()).toEqual({ panes: ['b', 'n', 'a'], selected: 'n' });
+    s.dropOn('x', { kind: 'pane', id: 'n', zone: 'center' });
+    expect(state()).toEqual({ panes: ['b', 'x', 'a'], selected: 'x' });
+  });
+
+  it('docks along a window edge, and a session already open moves instead of opening twice', () => {
+    reset();
+    const s = useSessions.getState();
+    s.select('a');
+    s.openBeside('b');
+    s.openBeside('c');
+    useTilingArea.getState().set({ width: 2400, height: 1200 });
+    s.dropOn('c', { kind: 'edge', side: 'right' });
+    expect(state().panes).toHaveLength(3);
+    expect(useSessions.getState().layout).toMatchObject({ direction: 'row' });
+    s.dropOn('n', { kind: 'edge', side: 'left' });
+    expect(state()).toEqual({ panes: ['n', 'a', 'b', 'c'], selected: 'n' });
+    // The sidebar row of a session that is open moves its pane: still four panes, none duplicated.
+    s.dropOn('a', { kind: 'edge', side: 'bottom' });
+    expect([...useSessions.getState().paneIds].sort()).toEqual(['a', 'b', 'c', 'n']);
+    useTilingArea.getState().set(null);
   });
 });
 

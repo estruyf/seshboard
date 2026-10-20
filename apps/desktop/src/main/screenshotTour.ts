@@ -64,6 +64,8 @@ export async function runScreenshotTour(win: BrowserWindow, outDir: string, hook
   await need("document.querySelector('[data-new-profile-folder]')", 'the add profile form did not open');
   await setFieldValue(win, '[data-new-profile-name]', 'Work');
   await setFieldValue(win, '[data-new-profile-folder]', join(homedir(), '.claude-work'));
+  // The demo folder is signed in already; off anyway, so no Claude Code starts in the terminal.
+  await click('[data-new-profile-sign-in]');
   await click('[data-add-profile-submit]');
   await need("document.querySelectorAll('[data-profiles] [data-profile]').length === 2", 'the Work profile was not added');
   await click('[data-close-settings]');
@@ -121,7 +123,7 @@ export async function runScreenshotTour(win: BrowserWindow, outDir: string, hook
     await js(`document.querySelector('${row(working)}').dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }))`);
     await need(`document.querySelectorAll('[data-pane]').length === 2 && document.querySelector('[data-current-session="${working}"] [data-transcript-item]')`, 'the second pane did not open');
     await shot(`split-${scheme}`);
-    await click('[data-pane="split"] [data-close-pane]');
+    await click(`[data-pane="${working}"] [data-close-pane]`);
     await need("!document.querySelector('[data-split]')", 'the second pane did not close');
 
     // The keyboard shortcuts sheet (⌘/) over the finished session: what works here, the rest faded.

@@ -10,6 +10,7 @@ import OnlyOn from '../../components/OnlyOn.astro';
 import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../components/Related.astro';
 
 When something doesn't work, Switchboard can tell you a lot about what it sees: the engine behind it, the Claude Code it found, and its recent log. This page covers the usual problems, where your data lives, and common questions.
 
@@ -119,6 +120,14 @@ Git for Windows leaves out files whose full path is longer than 260 characters u
 
 The engine runs separately from the window. If it stops, Switchboard starts it again and the window reconnects on its own; buttons that need it say *Connecting to the engine…* in the meantime. Your sessions are kept. Settings → Diagnostics counts how often it reconnected.
 
+## Remote: the phone can't connect
+
+- **The card in Settings → Remote doesn't say Running.** It says why, with the fix as a button: install the tunnel's tool or use Cloudflare instead, use the next free port, or try again (Switchboard also tries again by itself when the tunnel stops).
+- **Tailscale fails to start.** `tailscale serve` needs HTTPS certificates turned on for your tailnet, in Tailscale's admin console under DNS. The message in Settings → Remote says where.
+- **ngrok connects on the computer but not on the phone.** ngrok's free plan can put a warning page in front of the address. Use Cloudflare or Tailscale.
+- **The phone says it can't reach your computer** after a Cloudflare quick tunnel restarted: the address changed. The card says **Address changed**: click **Reconnect a paired device** and scan it.
+- **The phone says to pair again.** The phone was revoked, wasn't used for 30 days, or Switchboard's key changed (for example after moving to another computer). Pair it again.
+
 ## Your data
 
 - **Sessions** stay where Claude Code keeps them: <Os mac="~/.claude" windows="%USERPROFILE%\.claude" />, and the folder of each other [Claude profile](/settings/claude-profiles/) you add. Switchboard reads them and runs your own `claude` to do the work, so a session is the same in the terminal and in the app.
@@ -129,7 +138,7 @@ The engine runs separately from the window. If it stops, Switchboard starts it a
 
 ### Does Switchboard send my data anywhere?
 
-No. It asks GitHub whether there is a new Switchboard release (turn that off in [Settings → About](/settings/#about)), and the npm registry which Claude Code version is the newest (turn that off there too). Your prompts and sessions only go where Claude Code sends them. The [VS Code companion](/vscode-companion/) talks to Switchboard over a socket (a named pipe on Windows) on your computer only.
+No. It asks GitHub whether there is a new Switchboard release (turn that off in [Settings → About](/settings/#about)), and the npm registry which Claude Code version is the newest (turn that off there too). Your prompts and sessions only go where Claude Code sends them. The [VS Code companion](/vscode-companion/) talks to Switchboard over a socket (a named pipe on Windows) on your computer only. [Remote](/remote-access/) only runs when you turn it on: then the tunnel you chose carries what your paired phone sees, encrypted from the phone to your computer so the tunnel can't read it.
 
 ### Does it need its own login?
 
@@ -176,3 +185,7 @@ Uninstalling never touches Claude Code's folder (`~/.claude`). Your sessions bel
 ## Settings
 
 [Settings → Diagnostics](/settings/#diagnostics) and [Settings → About](/settings/#about) are the places to look first. For a bug report, include the version from About and what *Check transcript…* or the Engine log says.
+
+## Related
+
+<Related pages={['getting-started/windows', 'settings/updates', 'settings/backup', 'settings/claude-profiles']} />

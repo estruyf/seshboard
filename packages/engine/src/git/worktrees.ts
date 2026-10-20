@@ -193,17 +193,17 @@ function run(command: string, args: string[], cwd: string, env: Record<string, s
  * signed in, or the repository isn't on GitHub. `env` is the login shell's, so `gh` is on the PATH.
  */
 export async function fetchPullRequests(root: string, env: Record<string, string>, gh: GhCommand = defaultGh()): Promise<Map<string, WorktreePullRequest> | null> {
-  const out = await run(gh.file, [...gh.args, 'pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,state,headRefName,url,isDraft'], root, ghEnv(env), 15_000);
+  const out = await run(gh.file, [...gh.args, 'pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,state,headRefName,baseRefName,url,isDraft'], root, ghEnv(env), 15_000);
   if (out === null) return null;
   try {
-    const list = JSON.parse(out) as Array<{ number: number; state: string; headRefName: string; url: string; isDraft?: boolean }>;
+    const list = JSON.parse(out) as Array<{ number: number; state: string; headRefName: string; baseRefName?: string; url: string; isDraft?: boolean }>;
     const byBranch = new Map<string, WorktreePullRequest>();
     // gh lists the newest first; an open one wins over an older merged or closed one either way.
     for (const pr of list) {
       const state = pr.state.toLowerCase();
       if (state !== 'open' && state !== 'merged' && state !== 'closed') continue;
       const known = byBranch.get(pr.headRefName);
-      if (!known || (state === 'open' && known.state !== 'open')) byBranch.set(pr.headRefName, { number: pr.number, state, url: pr.url, ...(state === 'open' ? { draft: pr.isDraft === true } : {}) });
+      if (!known || (state === 'open' && known.state !== 'open')) byBranch.set(pr.headRefName, { number: pr.number, state, url: pr.url, ...(state === 'open' ? { draft: pr.isDraft === true } : {}), ...(pr.baseRefName ? { base: pr.baseRefName } : {}) });
     }
     return byBranch;
   } catch {

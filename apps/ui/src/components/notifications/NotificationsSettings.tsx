@@ -96,6 +96,9 @@ export function NotificationsSettings() {
   // A sound this computer lacks (chosen on a Mac, imported on Windows) shows as the one that plays instead.
   const current = (event: SoundEvent) => (list ? resolveSound(sounds.byEvent[event], list, event) : null);
   const windows = currentPlatform() === 'win32';
+  const systemSettings = windows ? 'Windows settings' : 'System Settings';
+  // Newer macOS no longer tells us (see notificationPermission.ts), so the page points to the system's own setting.
+  const cantTell = permission === 'unknown' && (windows || currentPlatform() === 'darwin');
 
   return (
     <div className="grid gap-4" data-notification-settings>
@@ -110,7 +113,7 @@ export function NotificationsSettings() {
           }
           data-notifications-blocked
         >
-          Notifications are off for Switchboard in {windows ? 'Windows settings' : 'System Settings'}. Sounds and the {windows ? 'taskbar dot' : 'Dock badge'} still work.
+          Notifications are off for Switchboard in {systemSettings}. Sounds and the {windows ? 'taskbar dot' : 'Dock badge'} still work.
         </Notice>
       )}
 
@@ -118,7 +121,12 @@ export function NotificationsSettings() {
         <CardHeader label="Notifications" detail="A system notification when Claude needs you, finishes or stops with an error, and when a project action ends." icon={<Bell size={16} aria-hidden />}>
           <Switch checked={notifications.enabled} onChange={(enabled) => update({ notifications: { enabled } })} dataAttrs={{ 'data-notifications-toggle': true }} />
         </CardHeader>
-        <Row label="Check that they come through." off={!notifications.enabled}>
+        <Row label="Check that they come through." detail={cantTell ? `Nothing showed up? Check that Switchboard is allowed to send notifications in ${systemSettings}.` : undefined} off={!notifications.enabled}>
+          {cantTell && (
+            <Button variant="quiet" size="sm" onClick={() => window.switchboard?.openNotificationSettings()} data-open-notification-settings-hint>
+              {windows ? 'Open Windows settings' : 'Open System Settings'}
+            </Button>
+          )}
           <Button variant="quiet" size="sm" disabled={!notifications.enabled} onClick={() => window.switchboard?.testNotification()} data-notifications-test>
             Send a test notification
           </Button>

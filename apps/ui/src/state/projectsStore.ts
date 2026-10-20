@@ -4,6 +4,7 @@ import type { ProjectInfo, SessionSummary } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { withQuestions } from '../lib/questions.ts';
 import { useSessions } from './sessionsStore.ts';
+import { popoutSession } from './popoutsStore.ts';
 
 const FILTER_KEY = 'ui.projectFilter';
 
@@ -88,14 +89,15 @@ export function useProjectsSync(): void {
   // An import (in any window) can add, remove and reorder projects.
   useEffect(() => client?.on('settings.imported', () => useProjects.getState().reload()), [client]);
 
+  // The sidebar's filter: a pop-out has no sidebar, and leaves it alone.
   useEffect(() => {
-    if (!client) return;
+    if (!client || popoutSession) return;
     void client.call('appState.get', { key: FILTER_KEY }).then(({ value }) => {
       if (typeof value === 'string') useProjects.getState().setFilter(value);
     });
   }, [client]);
 
   useEffect(() => {
-    if (client) void client.call('appState.set', { key: FILTER_KEY, value: filter });
+    if (client && !popoutSession) void client.call('appState.set', { key: FILTER_KEY, value: filter });
   }, [client, filter]);
 }

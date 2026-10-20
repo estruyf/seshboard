@@ -10,6 +10,7 @@ import { CopyForAppDialog } from '../memory/CopyForAppDialog.tsx';
 import { CopySectionDialog } from '../memory/CopySectionDialog.tsx';
 import { ImportDialog } from '../memory/ImportDialog.tsx';
 import { RememberDialog } from '../memory/RememberDialog.tsx';
+import { PromptEditor } from '../savedPrompts/PromptEditor.tsx';
 import { ShareDialog } from '../memory/ShareDialog.tsx';
 import { RenameProjectDialog } from '../projects/RenameProjectDialog.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
@@ -36,6 +37,8 @@ export function PaletteDialogs() {
       return <RenameSessionDialog sessionId={dialog.sessionId} title={dialog.title} onClose={close} />;
     case 'rename-project':
       return <RenameProjectDialog root={dialog.root} onClose={close} />;
+    case 'prompt-editor':
+      return <PromptEditor editing={dialog.editing} text={dialog.text} fromMessage={dialog.fromMessage} root={dialog.root} scope={dialog.scope} onClose={close} />;
     case 'delete-session': {
       const runningHere = isActiveHost(host);
       return (
@@ -54,10 +57,8 @@ export function PaletteDialogs() {
             if (!client) throw new Error('Not connected to the engine');
             await client.call('session.delete', { sessionId: dialog.sessionId });
             useDrafts.getState().removeDraft(dialog.sessionId);
-            const panes = useSessions.getState();
-            // Two panes: the other one takes the full width. One: back Home, rather than keep a trashed session on screen.
-            if (panes.splitId && (dialog.sessionId === panes.mainId || dialog.sessionId === panes.splitId)) panes.closePane(dialog.sessionId === panes.mainId ? 'main' : 'split');
-            else if (panes.selectedId === dialog.sessionId) panes.closeSession();
+            // Its pane closes and the others take the space; the last one goes back Home, rather than keep a trashed session on screen.
+            useSessions.getState().closeSessions([dialog.sessionId]);
           }}
           onClose={close}
         />

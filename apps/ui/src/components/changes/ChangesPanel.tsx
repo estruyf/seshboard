@@ -1,16 +1,19 @@
 import { trashName } from '../../lib/platform.ts';
-import { ChevronRight, ExternalLink, Maximize2, Minimize2, RefreshCw, Undo2, WrapText, X } from 'lucide-react';
-import { memo, useEffect, useId, useMemo, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { ChevronRight, ExternalLink, Maximize2, Minimize2, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
+import { memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { joinPath, type ChangedFile, type ChangesBase, type GitChanges } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { claim, release } from '../../lib/inFlight.ts';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff.ts';
 import { useMemoryView } from '../../state/memoryStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
+import { popoutSession } from '../../state/popoutsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Notice } from '../ui/Notice.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { CHANGES_DEFAULT_WIDTH, CHANGES_MAX_SHARE, CHANGES_MIN_WIDTH, changesWidthForKey, clampChangesWidth } from './changesWidth.ts';
 
@@ -39,10 +42,13 @@ export const useChangesLayout = create<ChangesLayout>()((set) => ({
   expanded: false,
   setWidth: (width) => {
     const next = clampChangesWidth(width, window.innerWidth);
-    try {
-      localStorage.setItem(WIDTH_KEY, String(next));
-    } catch {
-      // Remembering the width is a convenience.
+    // Remembered by the main window only: a pop-out is narrower, and its clamped width would shrink the next launch's.
+    if (!popoutSession) {
+      try {
+        localStorage.setItem(WIDTH_KEY, String(next));
+      } catch {
+        // Remembering the width is a convenience.
+      }
     }
     set({ width: next });
   },
@@ -143,19 +149,30 @@ const FileDiff = memo(function FileDiff({ id, cwd, base, path, version }: { id: 
  * whole branch compared with where it left its base branch (what a merge or PR contains).
  */
 export function ChangesPanel({
+  sessionId,
   cwd,
   changes,
   base,
   onBase,
   onRefresh,
   onClose,
+  tabs,
+  shared,
+  outside = [],
 }: {
+  sessionId: string;
   cwd: string;
   changes: GitChanges | null;
   base: ChangesBase;
   onBase(base: ChangesBase): void;
   onRefresh(): void;
   onClose(): void;
+  /** Ask is open too: this row of tabs goes on top, with the close button on its right. */
+  tabs?: (actions: ReactNode) => ReactNode;
+  /** Ask is open too: the two share the right side's width. */
+  shared?: { width: number; setWidth(width: number): void };
+  /** Files the last turn changed outside the plan (its catch-up), relative to the checkout: tinted, with a notice. */
+  outside?: readonly string[];
 }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -165,11 +182,14 @@ export function ChangesPanel({
   const [error, setError] = useState<string | null>(null);
   const wrap = useOverlay((s) => s.diffWrap);
   const toggleWrap = useOverlay((s) => s.toggleDiffWrap);
-  const width = useChangesLayout((s) => s.width);
-  const setWidth = useChangesLayout((s) => s.setWidth);
+  const ownWidth = useChangesLayout((s) => s.width);
+  const setOwnWidth = useChangesLayout((s) => s.setWidth);
+  const width = shared?.width ?? ownWidth;
+  const setWidth = shared?.setWidth ?? setOwnWidth;
   const expanded = useChangesLayout((s) => s.expanded);
   const toggleExpanded = useChangesLayout((s) => s.toggleExpanded);
   const files = changes?.files ?? [];
+  const outsideSet = useMemo(() => new Set(outside), [outside]);
   const added = files.reduce((n, f) => n + f.additions, 0);
   const removed = files.reduce((n, f) => n + f.deletions, 0);
   const editable = base === 'uncommitted';
@@ -179,12 +199,27 @@ export function ChangesPanel({
   // File paths have spaces and slashes, which don't make good ids for aria-controls.
   const idBase = useId();
 
-  /** Runs a git call, then refreshes; `what` finishes "Couldn't …" when it fails. */
-  const run = (call: Promise<unknown>, what: string) =>
-    void call.then(
-      () => (setError(null), onRefresh()),
-      (e: Error) => setError(`Couldn't ${what}: ${e.message}`),
-    );
+  /**
+   * Paths being staged or unstaged right now. A second click (a double click on a box, Stage all twice) waits
+   * for the first: two `git add` at once fight over git's index lock, and the second fails.
+   */
+  const stagingRef = useRef(new Set<string>());
+  const [staging, setStaging] = useState<ReadonlySet<string>>(new Set());
+  /** Stages or unstages, then refreshes; `what` finishes "Couldn't …" when it fails. */
+  const stage = (paths: string[], staged: boolean, what: string) => {
+    if (!client || !claim(stagingRef.current, paths)) return;
+    setStaging(new Set(stagingRef.current));
+    void client
+      .call('git.stage', { cwd, paths, staged })
+      .then(
+        () => (setError(null), onRefresh()),
+        (e: Error) => setError(`Couldn't ${what}: ${e.message}`),
+      )
+      .finally(() => {
+        release(stagingRef.current, paths);
+        setStaging(new Set(stagingRef.current));
+      });
+  };
   const toggle = (path: string) =>
     setOpen((s) => {
       const next = new Set(s);
@@ -196,12 +231,13 @@ export function ChangesPanel({
   // Show in Changes (after sharing a memory): open that file's diff once the list has it.
   const changesFocus = useMemoryView((s) => s.changesFocus);
   useEffect(() => {
-    if (!changesFocus || !files.some((f) => f.path === changesFocus.path)) return;
+    // Only the panel of the session it was asked for: another pane on the same checkout may have Changes open too.
+    if (!changesFocus || changesFocus.sessionId !== sessionId || !files.some((f) => f.path === changesFocus.path)) return;
     const { path } = changesFocus;
     useMemoryView.setState({ changesFocus: null });
     setOpen((s) => new Set(s).add(path));
     requestAnimationFrame(() => document.querySelector(`[data-changed-file="${CSS.escape(path)}"]`)?.scrollIntoView({ block: 'nearest' }));
-  }, [changesFocus, files]);
+  }, [changesFocus, files, sessionId]);
 
   // Closing the panel (or moving it to the other pane) brings the conversation back.
   useEffect(() => () => useChangesLayout.getState().toggleExpanded(false), []);
@@ -252,6 +288,7 @@ export function ChangesPanel({
           data-changes-resize
         />
       )}
+      {tabs?.(<Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />)}
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
         {/* Arrow keys move between the two, like any radio group; only the chosen one is a Tab stop. */}
         <SegmentedControl
@@ -298,9 +335,14 @@ export function ChangesPanel({
           data-changes-expand
         />
         <Button variant="quiet" size="sm" iconOnly icon={<RefreshCw size={12} />} onClick={onRefresh} data-tooltip="Check git for changes again" aria-label="Refresh changes" />
-        <Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />
+        {!tabs && <Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />}
       </div>
 
+      {outside.length > 0 && (
+        <Notice tone="caution" icon={<TriangleAlert size={13} aria-hidden />} className="m-2" data-changes-outside>
+          {outside.length === 1 ? '1 file outside the plan' : `${outside.length} files outside the plan`}
+        </Notice>
+      )}
       {(error ?? changes?.error) && (
         <p role="alert" className="border-b border-border px-3 py-2 text-meta text-error">
           {error ?? changes?.error}
@@ -320,16 +362,17 @@ export function ChangesPanel({
             const name = file.path.slice(slash + 1);
             const diffId = `${idBase}-diff-${index}`;
             return (
-              <div key={file.path} className="border-b border-border" data-changed-file={file.path}>
+              <div key={file.path} className={`border-b border-border ${outsideSet.has(file.path) ? 'bg-caution/10' : ''}`} data-changed-file={file.path} data-outside-plan={outsideSet.has(file.path) || undefined}>
                 <div className="group flex h-8 items-center gap-2 pr-2 pl-1.5 text-ui hover:bg-border/30">
                   {editable && (
                     <Checkbox
                       checked={file.staged}
                       label={file.staged ? `Unstage ${file.path}` : `Stage ${file.path}`}
                       tooltip={file.staged ? 'Staged: click to unstage' : 'Stage'}
-                      onChange={(staged) => client && run(client.call('git.stage', { cwd, paths: [file.path], staged }), `${staged ? 'stage' : 'unstage'} ${name}`)}
+                      onChange={(staged) => stage([file.path], staged, `${staged ? 'stage' : 'unstage'} ${name}`)}
+                      // Not disabled while git runs (a disabled box drops the keyboard's focus): `stage` ignores the click.
                       className="ml-0.5 shrink-0 p-0.5"
-                      dataAttrs={{ 'data-stage-file': file.path }}
+                      dataAttrs={{ 'data-stage-file': file.path, 'data-staging': staging.has(file.path) || undefined }}
                     />
                   )}
                   <button
@@ -383,7 +426,7 @@ export function ChangesPanel({
 
       {editable && files.length > 0 && client && (
         <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3 text-ui">
-          <Button size="sm" onClick={() => run(client.call('git.stage', { cwd, paths: files.map((f) => f.path), staged: !allStaged }), allStaged ? 'unstage the files' : 'stage the files')}>
+          <Button size="sm" onClick={() => stage(files.map((f) => f.path), !allStaged, allStaged ? 'unstage the files' : 'stage the files')} aria-busy={staging.size > 0 || undefined} data-stage-all>
             {allStaged ? 'Unstage all' : 'Stage all'}
           </Button>
           <span className="flex-1" />

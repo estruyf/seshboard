@@ -142,6 +142,9 @@ describe('SessionIndex', () => {
     expect(t.index.get(ID_B)!.unread).toBe(true);
     t.index.markViewed(ID_B);
     expect(t.index.get(ID_B)).toMatchObject({ unread: false });
+    t.index.markUnviewed(ID_B);
+    expect(t.index.get(ID_B)).toMatchObject({ unread: true });
+    t.index.markViewed(ID_B);
     t.index.setFlags(ID_A, { pinned: true, archived: true });
     expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ id: ID_A, pinned: true });
     expect(t.index.get(ID_A)!.archivedAt).toBeGreaterThan(0);
@@ -382,6 +385,20 @@ describe('TranscriptHub', () => {
     hub.watch(ID_B, (u) => later.push(u));
     await until(() => later.length === 1);
     expect(later[0]!.messages).toEqual([]);
+    hub.stop();
+  });
+
+  it('reads a held message with the file, as a phone asks for a page before it watches', async () => {
+    const { source, messages } = fakeSource([]);
+    messages.set(ID_A, [msg('0')]);
+    const hub = new TranscriptHub(source, () => {});
+    hub.pushLive(ID_A, [msg('1')], true);
+    expect(uuids(await hub.readWithHeld(ID_A))).toEqual(['0', '1']);
+    expect(uuids(await hub.read(ID_A))).toEqual(['0']);
+
+    // Once the file has it, it is there once.
+    messages.set(ID_A, [msg('0'), msg('1')]);
+    expect(uuids(await hub.readWithHeld(ID_A))).toEqual(['0', '1']);
     hub.stop();
   });
 

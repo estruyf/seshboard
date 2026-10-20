@@ -1,5 +1,7 @@
 import { ChevronRight } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
+import { useSecondClock } from '../../lib/secondClock.ts';
+import { LiveTurnParts, type LiveTurnInfo } from './TurnMeta.tsx';
 import type { ActivityGroup, DisplayItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
 import { ToolDetails, ToolImages } from './ToolDetails.tsx';
@@ -24,16 +26,8 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-/** Ticks once a second while `active`. */
-export function useTicker(active: boolean): number {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(timer);
-  }, [active]);
-  return active ? now : 0;
-}
+/** Ticks once a second while `active`, on the window's one clock. */
+export const useTicker = useSecondClock;
 
 // Open groups and steps survive scrolling out of the virtualised list and back.
 const openKeys = new Set<string>();
@@ -100,6 +94,7 @@ export function ActivityGroupView({
   sessionId,
   active,
   activeLabel,
+  live = null,
 }: {
   group: ActivityGroup;
   cwd: string | null;
@@ -108,9 +103,11 @@ export function ActivityGroupView({
   active: boolean;
   /** Overrides the current step while Claude is between steps (thinking, waiting for you). */
   activeLabel: string | null;
+  /** While active: the turn's live numbers, which the working line shows instead of the run's own time. */
+  live?: LiveTurnInfo | null;
 }) {
   const [open, toggle] = useOpen(group.key);
-  const now = useTicker(active);
+  const now = useTicker(active && !live);
   const items = group.items;
   const last = items.at(-1)!;
   const started = items[0]!.at;
@@ -138,8 +135,10 @@ export function ActivityGroupView({
         </span>
         <span className={`min-w-0 truncate ${active ? 'text-text/85' : 'text-muted group-hover:text-text'}`}>{label}</span>
         {failures > 0 && !active && <span className="shrink-0 text-meta text-error">· {failures} failed</span>}
+        {/* While Claude works on it: the turn's time and tokens so far, as the setting says. */}
+        {active && live && <LiveTurnParts live={live} startedAt={null} />}
         {/* How long the run took (still counting while Claude works on it). */}
-        {duration && (
+        {duration && !(active && live) && (
           <span className="shrink-0 text-meta text-faint tabular-nums">
             <span className="sr-only">{active ? ', running for ' : ', took '}</span>
             {duration}

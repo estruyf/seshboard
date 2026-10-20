@@ -9,12 +9,31 @@ export interface ToolResultView {
   at: number | null;
 }
 
-/** Every item carries `at`: when its message was written (epoch ms), if known. */
+/**
+ * The tokens of the API response an assistant item came from. Claude Code writes a response as one message per content
+ * block, each with the whole response's usage, so every item of it carries the same `id`: count it once.
+ */
+export interface ReplyUsage {
+  /** The response's id (the message's uuid when Claude Code didn't keep one). */
+  id: string;
+  model: string | null;
+  /** The Task/Agent call a subagent's reply belongs to; null for Claude's own. */
+  agent: string | null;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/**
+ * Every item carries `at`: when its message was written (epoch ms), if known. Items from Claude's replies carry the
+ * reply's `usage` when it reported one, and `failed` when Claude Code wrote the reply itself for an API error.
+ */
 export type DisplayItem =
   | { kind: 'user'; key: string; at: number | null; text: string; images: ImageRef[]; subagent: boolean }
   | { kind: 'command'; key: string; at: number | null; name: string; args: string }
-  | { kind: 'text'; key: string; at: number | null; text: string; subagent: boolean }
-  | { kind: 'thinking'; key: string; at: number | null; text: string }
+  | { kind: 'text'; key: string; at: number | null; text: string; subagent: boolean; usage?: ReplyUsage; failed?: true }
+  | { kind: 'thinking'; key: string; at: number | null; text: string; usage?: ReplyUsage }
   | {
       kind: 'tool';
       key: string;
@@ -25,13 +44,14 @@ export type DisplayItem =
       inputTruncated: boolean;
       result: ToolResultView | null;
       subagent: boolean;
+      usage?: ReplyUsage;
     }
   | { kind: 'notice'; key: string; at: number | null; text: string }
   /**
    * A background agent or task finishing: its report, handed back to the session. `toolUseId`
    * ties it to the call that started it (task notifications carry it; agent hand-backs don't).
    */
-  | { kind: 'agent-report'; key: string; at: number | null; agentId: string; toolUseId: string | null; status: string; title: string; text: string };
+  | { kind: 'agent-report'; key: string; at: number | null; agentId: string; toolUseId: string | null; status: string; title: string; text: string; progress?: true };
 
 const SYSTEM_REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
 const tag = (text: string, name: string) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)?.[1]?.trim() ?? null;
@@ -43,7 +63,8 @@ const NOTICE_LABELS: Record<string, string> = {
 
 const AGENT_MESSAGE = /<agent-message from="([^"]+)">([\s\S]*?)<\/agent-message>/;
 
-type Report = { agentId: string; toolUseId: string | null; status: string; title: string; text: string };
+/** `progress`: a note from a task that still runs (a monitor's event), not its end. */
+type Report = { agentId: string; toolUseId: string | null; status: string; title: string; text: string; progress?: true };
 
 /**
  * A background agent or task reporting back, in either of Claude Code's forms: an agent hand-back
@@ -57,7 +78,8 @@ export function agentReport(text: string): Report | null {
     const taskId = field('task-id');
     if (!taskId) return null;
     const summary = field('summary') ?? 'Background task finished';
-    return { agentId: taskId, toolUseId: field('tool-use-id'), status: field('status') ?? 'completed', title: summary, text: field('result') ?? summary };
+    const status = field('status');
+    return { agentId: taskId, toolUseId: field('tool-use-id'), status: status ?? 'completed', title: summary, text: field('result') ?? summary, ...(status === null ? { progress: true as const } : {}) };
   }
   // The saved transcript puts a line before the tag; the live stream sends the tag on its own.
   if (!/^(Another Claude session sent a message:\s*)?<agent-message from="/.test(trimmed)) return null;
@@ -81,6 +103,24 @@ function userTextItem(text: string, key: string, at: number | null, subagent: bo
   const cleaned = text.replace(SYSTEM_REMINDER, '').trim();
   if (!cleaned && images.length === 0) return null;
   return { kind: 'user', key, at, text: cleaned, images, subagent };
+}
+
+const SYNTHETIC = '<synthetic>';
+const API_ERROR = /^\s*API Error\b/;
+
+/** An assistant message's tokens, or null when it reported none (old sessions, remote ones, Claude Code's own notices). */
+function replyUsage(message: TranscriptMessage): ReplyUsage | null {
+  const usage = message.usage;
+  if (!usage) return null;
+  return {
+    id: usage.id ?? message.uuid,
+    model: message.model,
+    agent: message.parentToolUseId,
+    input: usage.input,
+    output: usage.output,
+    cacheRead: usage.cacheRead,
+    cacheWrite: usage.cacheCreation,
+  };
 }
 
 /**
@@ -120,14 +160,18 @@ export function buildDisplayItems(messages: readonly TranscriptMessage[]): Displ
       continue;
     }
 
+    const usage = replyUsage(message);
+    const extra = usage ? { usage } : {};
+    // Claude Code writes an API error as a reply of its own, without a model behind it.
+    const failed = message.model === SYNTHETIC ? { failed: true as const } : {};
     for (const [i, block] of message.blocks.entries()) {
       const key = `${message.uuid}:${i}`;
       switch (block.type) {
         case 'text':
-          if (block.text.trim()) items.push({ kind: 'text', key, at, text: block.text, subagent });
+          if (block.text.trim()) items.push({ kind: 'text', key, at, text: block.text, subagent, ...extra, ...(API_ERROR.test(block.text) ? failed : {}) });
           break;
         case 'thinking':
-          if (block.text.trim()) items.push({ kind: 'thinking', key, at, text: block.text });
+          if (block.text.trim()) items.push({ kind: 'thinking', key, at, text: block.text, ...extra });
           break;
         case 'tool_use':
           items.push({
@@ -140,6 +184,7 @@ export function buildDisplayItems(messages: readonly TranscriptMessage[]): Displ
             inputTruncated: block.truncated,
             result: results.get(block.id) ?? null,
             subagent,
+            ...extra,
           });
           break;
         default:

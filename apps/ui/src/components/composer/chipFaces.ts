@@ -1,22 +1,22 @@
 import type { Effort, PermissionMode } from '@switchboard/protocol/client';
 
 /**
- * How compact the message box's chips are. 0: everything. 1: effort and mode show only their icon.
- * 2: the model drops its version. 3: the profile shows only its dot. Each step keeps whole words, so a
- * chip never ends in "…".
+ * How compact the message box's chips are. 0: everything. 1: the profile shows only its dot. 2: the model
+ * drops its version. 3: effort shows only its bars. 4: the mode shows only its dot. The model, effort and mode
+ * say the most about a run, so they shrink last. Each step keeps whole words, so a chip never ends in "…".
  */
-export type FooterLevel = 0 | 1 | 2 | 3;
+export type FooterLevel = 0 | 1 | 2 | 3 | 4;
 
-export const FOOTER_LEVELS: readonly FooterLevel[] = [0, 1, 2, 3];
+export const FOOTER_LEVELS: readonly FooterLevel[] = [0, 1, 2, 3, 4];
 
 /**
  * The fullest level whose chips fit: `widths[level]` is the chip row's own width at that level, and
- * `widthAvailable` the room the footer leaves it. Past level 3 there is nothing left to drop, so it stays there.
+ * `widthAvailable` the room the footer leaves it. Past level 4 there is nothing left to drop, so it stays there.
  */
 export function footerLevel(widthAvailable: number, widths: readonly number[]): FooterLevel {
   // Half a pixel of slack: measured widths are fractional, and a row that fits exactly must not flip.
   for (const level of FOOTER_LEVELS) if ((widths[level] ?? Infinity) <= widthAvailable + 0.5) return level;
-  return 3;
+  return 4;
 }
 
 /** The model chip's name: "Opus 4.5", without "Claude" or a note in brackets; "Default model" when nothing is picked. */
@@ -63,5 +63,5 @@ export const MODE_SHORT: Record<PermissionMode, string> = {
 
 /** What each chip shows at a level. */
 export function chipShape(level: FooterLevel): { effortLabel: boolean; modeLabel: boolean; modelVersion: boolean; profileName: boolean } {
-  return { effortLabel: level < 1, modeLabel: level < 1, modelVersion: level < 2, profileName: level < 3 };
+  return { effortLabel: level < 3, modeLabel: level < 4, modelVersion: level < 2, profileName: level < 1 };
 }

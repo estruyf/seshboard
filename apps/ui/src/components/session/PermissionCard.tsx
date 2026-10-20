@@ -1,13 +1,15 @@
-import { ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
+import { Check, CircleHelp, ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { PermissionDecision, PermissionRequest } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { useWhy } from '../../state/whyStore.ts';
 import { Markdown } from '../transcript/Markdown.tsx';
 import { Button } from '../ui/Button.tsx';
 import { CheckMark } from '../ui/Checkbox.tsx';
 import { RadioGroup } from '../ui/Radio.tsx';
 import { toolSummary } from '../transcript/toolSummary.ts';
 import { cardKeyAction, OVERLAY_SELECTOR, waitingLabel, type CardKind, type KeyTarget } from './permissionKeys.ts';
+import { nextOpenQuestion } from './questionFlow.ts';
 
 /** Sends the answer; resolves to whether the engine took it (a failure shows under the card). */
 type Respond = (decision: PermissionDecision) => Promise<boolean>;
@@ -61,7 +63,7 @@ function ownsShortcuts(card: HTMLElement): boolean {
   return (session ?? document).querySelector('[data-permission-request]') === card;
 }
 
-interface Shortcuts {
+export interface Shortcuts {
   allow(): void;
   deny(): void;
   pick?(index: number): void;
@@ -73,7 +75,7 @@ interface Shortcuts {
  * the window in the capture phase so it runs before the message box, whose Escape would otherwise
  * stop Claude instead of answering the card.
  */
-function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind, optionCount: number, busy: boolean, shortcuts: Shortcuts) {
+export function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind, optionCount: number, busy: boolean, shortcuts: Shortcuts) {
   const latest = useRef({ shortcuts, optionCount, busy });
   useEffect(() => {
     latest.current = { shortcuts, optionCount, busy };
@@ -90,6 +92,8 @@ function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind
       if (action.type === 'enter' && !s.enter) return;
       event.preventDefault();
       event.stopPropagation();
+      // Esc closes "Why Claude asks" before it says no.
+      if (action.type === 'deny' && useWhy.getState().open?.sessionId === card.dataset.permissionSession) return useWhy.getState().close();
       if (action.type === 'allow') s.allow();
       else if (action.type === 'deny') s.deny();
       else if (action.type === 'pick') s.pick?.(action.index);
@@ -101,7 +105,7 @@ function useCardShortcuts(cardRef: RefObject<HTMLElement | null>, kind: CardKind
 }
 
 /** "Waiting 2m", refreshed every half minute. */
-function Waiting({ since }: { since: number }) {
+export function Waiting({ since }: { since: number }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
@@ -111,7 +115,28 @@ function Waiting({ since }: { since: number }) {
   return label ? <span className="shrink-0 text-meta font-medium text-warn">{label}</span> : null;
 }
 
-function Header({ icon, title, titleId, createdAt, sub }: { icon: ReactNode; title: string; titleId: string; createdAt: number; sub?: string | null }) {
+/** "Why?": opens or closes the side panel that explains the request. */
+function WhyButton({ request }: { request: PermissionRequest }) {
+  const open = useWhy((s) => s.open?.requestId === request.requestId);
+  return (
+    <Button
+      variant="quiet"
+      size="sm"
+      icon={<CircleHelp size={13} aria-hidden />}
+      selected={open}
+      aria-expanded={open}
+      aria-label="Why is Claude asking?"
+      data-tooltip="Why is Claude asking?"
+      onClick={() => useWhy.getState().toggle(request.sessionId, request.requestId)}
+      className="shrink-0"
+      data-permission-why
+    >
+      Why?
+    </Button>
+  );
+}
+
+function Header({ icon, title, titleId, createdAt, sub, request }: { icon: ReactNode; title: string; titleId: string; createdAt: number; sub?: string | null; request: PermissionRequest }) {
   return (
     <div className="flex items-center gap-2.5">
       <span className="flex size-6.5 shrink-0 items-center justify-center rounded-md bg-warn/15 text-warn" aria-hidden>
@@ -124,12 +149,13 @@ function Header({ icon, title, titleId, createdAt, sub }: { icon: ReactNode; tit
         {sub && <p className="text-meta text-muted">{sub}</p>}
       </div>
       <Waiting since={createdAt} />
+      <WhyButton request={request} />
     </div>
   );
 }
 
 /** The always-visible "no, do this instead" field; Enter in it denies with what you typed. */
-function FeedbackField({ value, onChange, onSubmit, busy }: { value: string; onChange(value: string): void; onSubmit(): void; busy: boolean }) {
+export function FeedbackField({ value, onChange, onSubmit, busy }: { value: string; onChange(value: string): void; onSubmit(): void; busy: boolean }) {
   return (
     <input
       value={value}
@@ -148,7 +174,7 @@ function FeedbackField({ value, onChange, onSubmit, busy }: { value: string; onC
   );
 }
 
-function DenyButton({ label, busy, onClick }: { label: string; busy: boolean; onClick(): void }) {
+export function DenyButton({ label, busy, onClick }: { label: string; busy: boolean; onClick(): void }) {
   return (
     <Button variant="quiet" size="lg" disabled={busy} onClick={onClick} shortcut="permission.deny" data-permission-deny className="ml-auto">
       {label}
@@ -156,7 +182,7 @@ function DenyButton({ label, busy, onClick }: { label: string; busy: boolean; on
   );
 }
 
-function ErrorLine({ error }: { error: string | null }) {
+export function ErrorLine({ error }: { error: string | null }) {
   return error ? (
     <p className="text-ui text-error" role="alert">
       {error}
@@ -210,6 +236,7 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
   return (
     <div className="grid gap-2.5">
       <Header
+        request={request}
         icon={command !== undefined ? <SquareTerminal size={15} /> : <ShieldQuestion size={15} />}
         title={permissionTitle(request, cwd)}
         titleId={titleId}
@@ -221,7 +248,8 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
       ) : (
         detail && <p className="truncate rounded-lg border border-border bg-bg px-3 py-2 font-mono text-ui text-muted">{detail}</p>
       )}
-      {request.description && <p className="text-ui text-muted">{request.description}</p>}
+      {/* Claude Code often describes a command with the command itself: it shows once, above. */}
+      {request.description && request.description.trim() !== command?.trim() && <p className="text-ui text-muted">{request.description}</p>}
       {request.decisionReason && <p className="text-meta text-muted">{request.decisionReason}</p>}
       <button
         type="button"
@@ -269,7 +297,7 @@ interface Question {
 }
 
 /** One answer as a row with its number key. Single choice rows are radios, multi-select rows checkboxes. */
-function OptionRow({
+export function OptionRow({
   n,
   label,
   description,
@@ -332,6 +360,34 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
 
   const final = (q: Question) => [...(answers[q.question] ?? []), ...(other[q.question]?.trim() ? [other[q.question]!.trim()] : [])];
   const complete = questions.every((q) => final(q).length > 0);
+
+  const nextUnanswered = (from: number) => nextOpenQuestion(questions.map((q) => final(q).length > 0), from);
+  /** One way to answer, for a click and a number key. A single choice that is the first answer moves on; changing an answer, or a multi-select, stays. */
+  const choose = (qi: number, q: Question, label: string) => {
+    const first = final(q).length === 0;
+    toggle(q, label);
+    setStep(qi);
+    const next = !q.multiSelect && first ? nextUnanswered(qi) : undefined;
+    if (next !== undefined) setStep(next);
+  };
+  /** Enter, and Enter in the answer field: on to the next open question, or send when none is left. */
+  const advance = () => {
+    const next = nextUnanswered(Math.min(step, last));
+    if (next !== undefined) setStep(next);
+    else submit();
+  };
+
+  // Bring the question you move on to into view, when it isn't (a tall card scrolls with the conversation).
+  const fieldsets = useRef<Array<HTMLFieldSetElement | null>>([]);
+  const moved = useRef(false);
+  useEffect(() => {
+    if (!moved.current) {
+      moved.current = true;
+      return;
+    }
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    fieldsets.current[Math.min(step, last)]?.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }, [step, last]);
   const submit = () => {
     if (!complete) return;
     const result = Object.fromEntries(questions.map((q) => [q.question, final(q).join(', ')]));
@@ -345,11 +401,9 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
     pick: (index) => {
       const option = current?.options[index];
       if (!current || !option) return;
-      toggle(current, option.label);
-      // A single choice is the whole answer to that question; go on to the next one.
-      if (!current.multiSelect && step < last) setStep(step + 1);
+      choose(Math.min(step, last), current, option.label);
     },
-    enter: () => (step < last ? setStep(step + 1) : submit()),
+    enter: advance,
   });
 
   return (
@@ -358,10 +412,10 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
       aria-labelledby={titleId}
       onSubmit={(e) => {
         e.preventDefault();
-        submit();
+        advance();
       }}
     >
-      <Header icon={<MessageCircleQuestion size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
+      <Header request={request} icon={<MessageCircleQuestion size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
       {questions.map((q, qi) => {
         const picked = answers[q.question] ?? [];
         const rows = q.options.map((option, i) => (
@@ -373,19 +427,32 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
             checked={picked.includes(option.label)}
             multi={q.multiSelect ?? false}
             tabbable={picked.length === 0 && i === 0}
-            onSelect={() => {
-              setStep(qi);
-              toggle(q, option.label);
-            }}
+            onSelect={() => choose(qi, q, option.label)}
           />
         ));
-        // With several questions, the ones the number keys don't answer right now step back a little.
-        const dimmed = questions.length > 1 && qi !== step;
+        // With several questions, a rail and a counter mark the one the number keys answer now. Questions you have answered
+        // fade back (hover or focus brings them back); the ones still to come stay fully readable, as you read ahead.
+        const several = questions.length > 1;
+        const isCurrent = several && qi === step;
+        const answered = final(q).length > 0;
         return (
-          <fieldset key={q.question} className={`grid gap-1.5 ${dimmed ? 'opacity-75' : ''}`} onFocus={() => setStep(qi)}>
+          <fieldset
+            key={q.question}
+            ref={(el) => void (fieldsets.current[qi] = el)}
+            className={`grid gap-1.5 transition-opacity ${several ? `border-l-2 pl-3 ${isCurrent ? 'border-accent-ink' : 'border-border'}` : ''} ${several && answered && !isCurrent ? 'opacity-60 focus-within:opacity-100 hover:opacity-100' : ''}`}
+            data-question-current={several ? isCurrent : undefined}
+            onFocus={() => setStep(qi)}
+          >
             <legend className="mb-1.5 text-body font-medium">
+              {several && <span className={`mr-2 text-meta tabular-nums ${isCurrent ? 'font-semibold text-accent-ink' : 'text-muted'}`}>{`${qi + 1} of ${questions.length}`}</span>}
               {q.header && <span className="mr-2 rounded bg-border/70 px-1.5 py-0.5 text-meta text-muted uppercase">{q.header}</span>}
               {q.question}
+              {several && answered && (
+                <span className="ml-2 inline-flex items-center gap-0.5 align-middle text-meta font-normal text-ok">
+                  <Check size={12} aria-hidden />
+                  Answered
+                </span>
+              )}
             </legend>
             {q.multiSelect ? (
               rows
@@ -401,6 +468,13 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
               aria-label={`Your own answer to: ${q.question}`}
               className="h-8 rounded-md border border-border bg-bg px-2.5 text-ui outline-none placeholder:text-faint focus:border-accent-ink/60"
             />
+            {isCurrent && q.multiSelect && nextUnanswered(qi) !== undefined && (
+              <div>
+                <Button type="button" variant="quiet" size="sm" onClick={advance} data-question-next>
+                  Next question
+                </Button>
+              </div>
+            )}
           </fieldset>
         );
       })}
@@ -410,7 +484,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
         </Button>
         {current && current.options.length > 0 && !busy && (
           <span className="text-meta text-muted">
-            {`Press 1${current.options.length > 1 ? ` to ${Math.min(9, current.options.length)}` : ''} to pick, Enter for ${step < last ? 'the next question' : 'send'}`}
+            {`Press 1${current.options.length > 1 ? ` to ${Math.min(9, current.options.length)}` : ''} to pick, Enter for ${nextUnanswered(Math.min(step, last)) !== undefined ? 'the next question' : 'send'}`}
           </span>
         )}
         <DenyButton label="Skip" busy={busy} onClick={skip} />
@@ -437,7 +511,7 @@ function PlanApproval({ request, titleId, cardRef }: CardProps) {
   useCardShortcuts(cardRef, 'plan', 0, busy, { allow: () => void approveWithEdits(), deny: keepPlanning });
   return (
     <div className="grid gap-2.5">
-      <Header icon={<ClipboardList size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
+      <Header request={request} icon={<ClipboardList size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
       <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-border bg-bg px-3 py-2">
         <Markdown text={plan} />
       </div>
@@ -471,6 +545,7 @@ export function PermissionCard({ request, cwd }: { request: PermissionRequest; c
       // The margin keeps the 4px ring inside the scrolling list that holds the cards.
       className="rounded-xl border border-warn/55 bg-[color-mix(in_oklab,var(--color-warn)_5%,var(--color-card))] px-4 py-3 ring-4 ring-warn/10"
       data-permission-request
+      data-permission-session={request.sessionId}
     >
       {request.toolName === 'AskUserQuestion' ? (
         <AskUserQuestion request={request} titleId={titleId} cardRef={cardRef} />

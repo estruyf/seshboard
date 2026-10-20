@@ -7,8 +7,9 @@ import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
-Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, notifications and sounds, your Claude profiles, memory, backups and updates. Changes apply at once; there is nothing to save.
+Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, notifications and sounds, your Claude profiles, usage, memory, backups and updates. Changes apply at once; there is nothing to save.
 
 ## Open it
 
@@ -29,7 +30,7 @@ Click a result, or pick one with <Kbd keys="arrowup|arrowdown" /> and press <Kbd
 
 ## General
 
-<Screenshot name="settings-general" alt="Settings on General: On startup with Home, The last session and New session, Project order with Recent and Your order, and the Ask before quitting switch" />
+<Screenshot name="settings-general" alt="Settings on General: On startup with Home, The last session and New session, the permission mode for new sessions, and the Ask before quitting switch" />
 
 ### On startup
 
@@ -48,16 +49,11 @@ What Switchboard shows when it opens:
 
 A project's own default mode comes first (its [Settings tab](/projects/settings/)), then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions). A session started by a link never starts in Auto mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
 
-### Projects
-
-**Project order** sets how New session, Home and the command palette list your projects:
-
-- **Recent** (the default): the ones you used last first.
-- **Your order**: the order you set in the [Projects view](/projects/projects-view/).
+**Use Claude in Chrome** (off by default) gives sessions the browser tools of the Claude in Chrome extension, so Claude can open pages, click and read them in your own Chrome. It needs the extension installed in Chrome. Claude Code's own **Enabled by default** for Claude in Chrome only works in a terminal, so turn it on here for Switchboard's sessions. It applies to sessions you start or resume after you change it: a session that is running keeps what it started with until you stop and resume it.
 
 ### Quitting
 
-**Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press. On Windows, closing the window quits Switchboard, so it asks then too (but not while Windows shuts down or signs you out).
+**Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press. On Windows, closing the window quits Switchboard, so it asks then too (but not while Windows shuts down or signs you out). With **Warn when quitting** on under [Large context](#large-context), quitting with a large session open asks even with Ask before quitting off.
 
 ## Theme
 
@@ -93,6 +89,17 @@ See [Sidebar](/sessions/sidebar/).
 
 See [Sessions](/settings/sessions/) for the details.
 
+## Projects
+
+<Screenshot name="settings-projects" alt="Settings on Projects: Project order with Recent and Your order, and Clone from GitHub off, with Clone into and its Choose… button" />
+
+**Project order** sets how New session, Home and the command palette list your projects:
+
+- **Recent** (the default): the ones you used last first.
+- **Your order**: the order you set in the [Projects view](/projects/projects-view/).
+
+**Clone from GitHub** (off by default) starts a project from a GitHub URL: New session clones it, adds it to your projects and runs your first prompt there. Turning it on asks for the folder new projects go in, shown as **Clone into**, with **Choose…** to change it. Each computer has its own setting and folder. See [Clone from GitHub](/projects/clone-from-github/).
+
 ## Conversation
 
 <Screenshot name="settings-conversation" alt="Settings on Conversation: two previews, Summarised and Every step" />
@@ -104,7 +111,40 @@ See [Sessions](/settings/sessions/) for the details.
 
 See [Conversation](/sessions/conversation/).
 
+**Show prompt outline** (on by default) puts a thin rail beside the conversation with a mark for each of your prompts. Click a mark to go back to it. See [Go back to a prompt](/sessions/conversation/#go-back-to-a-prompt).
+
+**Under each reply** sets the faint line under the last reply of each turn. It shows next to the reply's buttons when you hover the reply:
+
+- **Nothing**: no line.
+- **Time**: when the turn ended, such as `14:32`.
+- **Time and duration** (the default): `14:32 · 2m 14s`.
+- **Time, duration and tokens**: `14:32 · 2m 14s · 18.4k tokens`.
+
+See [How long a turn took](/sessions/conversation/#how-long-a-turn-took).
+
+**Split view** has **Fade inactive panes** (on by default). With sessions side by side, the panes other than the active one are faded until you point at one. Turn it off to show them as clearly as the active pane, which keeps its line along the top. See [Split view](/sessions/split-view/).
+
+**Clicking a file link** sets what a click does on a file in Claude's replies:
+
+- **Show in <Os mac="Finder" windows="File Explorer" />** (the default): the file is selected in its folder.
+- **Open in editor**: the file opens in your default editor, at its line.
+
+<Kbd shortcut="transcript.file-link-other" /> on a link does the other one, and its right-click menu lists both, with **Copy path**.
+
+**Usage limits** has **Resume after a usage limit resets**:
+
+- **Ask each time** (the default): a session a usage limit stopped offers **Resume when it resets** in its notice.
+- **Always**: such a session resumes by itself, shortly after the limit resets.
+
+See [When you hit a limit](/usage/#when-you-hit-a-limit).
+
+**Catch-up** has **Write catch-up summaries with Haiku**: on (the default), a finished session shows a short briefing over the conversation, and **Why?** on a permission gets a plain explanation. Off, neither calls a model. See [Catch-up](/sessions/catch-up/) and [Why is Claude asking?](/permissions/#why-is-claude-asking).
+
 **Auto model** turns Auto on or off in the model menus, and sets the models it can pick, which way it leans when in doubt, and whether it suggests a stronger model later. See [Auto model](/new-session/auto-model/).
+
+## Mods
+
+**Show mods** turns Claude Code mods on or off in every session, without a restart: the bands, panes, statuses, toasts and views that plugins draw. Under it, each mod from your enabled plugins has a switch that shows or hides its UI here. See [Claude Code mods](/sessions/mods/).
 
 ## Notifications
 
@@ -124,6 +164,7 @@ With the limit on:
 - **Sessions at the same time**: the limit, from 1 to 10 (3 to start with), set with **−** and **+**. A session counts while it is working, waiting for you, or finished but not read yet.
 - **When you reach it**: **Nudge** (the default) asks first; **Strict** waits until you finish, settle or stop a session.
 - **Count terminal and IDE sessions** (off by default): also count live Claude Code sessions started outside Switchboard.
+- **Count sessions on other computers** (on by default): also count sessions that are working, need you or are unread on computers you paired.
 
 The command palette has *Focus limit: turn on*, *Focus limit: turn off* and *Focus limit: set limit…*. See [Focus limit](/focus-limit/).
 
@@ -147,6 +188,26 @@ Below the list:
 
 See [Claude profiles](/settings/claude-profiles/).
 
+## Usage
+
+How much of your plan's 5-hour and weekly limits you have used.
+
+<Screenshot name="settings-usage" alt="Settings on Usage: Open usage, the Show estimated cost and Show it on the usage bars switches, Currency set to US dollar, and under Large context the Warn about a large context switch, Large from at 60%, Notify before the cache expires and Warn when quitting" />
+
+- **Usage view**: **Open usage** opens the [Usage view](/usage/), which shows what used your plan.
+- **Show estimated cost** (on by default): what your tokens would cost at Anthropic's API prices: after the 5-hour and weekly bars, such as *5h 38% ≈$4.10*, next to Context under a session's message box, and in the Usage view. Your plan is not billed per token, so this is never a charge. See [Estimated cost](/usage/#estimated-cost).
+- **Show it on the usage bars** (on by default): whether the estimate also shows after the 5-hour and weekly bars. Turn it off to keep the estimate in the Usage view and next to Context. It needs **Show estimated cost**.
+- **Currency**: the currency the estimate is shown in, such as US dollar, Euro, British pound or Japanese yen. The estimate is worked out in US dollars and converted at fixed exchange rates; the line under it says which day they are from.
+
+### Large context
+
+When a session's context is large, its next message after the prompt cache expires reads all of it again. See [Large context](/sessions/conversation/#large-context).
+
+- **Warn about a large context** (on by default): a note above the message box says how large the context is and when its cache expires, while the session waits for you.
+- **Large from** (60% by default): how full the context window is before it counts as large. The context ring turns orange from here too.
+- **Notify before the cache expires** (on by default): a notification 5 minutes before a large session's hour-long cache expires. It follows your [notification settings](#notifications).
+- **Warn when quitting** (off by default): quitting with a large session open asks first, and says what picking it up later would cost. Until you turn it on, the quit prompt says this once.
+
 ## Memory
 
 <Screenshot name="settings-memory" alt="Settings on Memory: the Import from Claude export, Paste from Claude app and Copy for Claude app buttons, the Personal memory card with its folder, MEMORY.md meter and Remove from Claude Code, the Personal memories list, and every project with its memory count" />
@@ -160,6 +221,10 @@ What Claude Code remembers about you and your projects. Everything stays plain M
 - **Projects**: every project with how many memories it has and its MEMORY.md meter. Click one to open its [Memory tab](/projects/memory/).
 
 See [Claude Code memory](/memory/overview/).
+
+## Prompts
+
+Your [saved prompts](/sessions/saved-prompts/): prompts with blanks you fill in when you use them. **New prompt** makes one. The list is grouped by where each prompt is kept: **Every project**, then per project **just for you** and **shared with the project**. Each row's **⋯** menu has **Edit…**, **Duplicate**, where to use it, and **Delete**.
 
 ## VS Code
 
@@ -197,6 +262,7 @@ The engine behind Switchboard, the Claude Code it runs, and its recent log. Look
 - **Runtime**: the **Electron**, **Node** and **SQLite** versions, and the **Cache database** (with a button to show it in <Os mac="Finder" windows="File Explorer" />).
 - **Rendering**: a code block and some Markdown in the theme in use.
 - **Engine log**: the engine's messages since this window connected.
+- **Mod logs**: what [mods](/sessions/mods/) wrote to their log in running sessions.
 
 *Engine diagnostics* in the command palette opens this section. See [Troubleshooting](/troubleshooting/).
 
@@ -207,7 +273,7 @@ The engine behind Switchboard, the Claude Code it runs, and its recent log. Look
 - The version you run, and the commit it was built from (handy for bug reports), with **Release notes** and **Changelog** links.
 - **Updates**: whether Switchboard is up to date and when it last checked, with **Check for Updates**. When a new version is out: **Download**, then **Restart to update**, and what's new in it.
 - **Check for updates automatically** (on by default): shortly after Switchboard opens, then every few hours. Nothing downloads until you choose to.
-- **Channel**: **Stable** (published releases, the default) or **Nightly** (pre-release builds as they are published).
+- **Channel**: **Stable** (published releases, the default) or **Beta** (beta versions to test what comes next, and the published releases).
 - **Claude Code**: the Claude Code Switchboard runs, whether it is up to date, **Installed**, **Latest**, **Installed with** and **Path**, with **Check for Updates** and, when a newer version is out, **Update to v…**.
 - **Check for Claude Code updates automatically** (on by default).
 
@@ -216,3 +282,7 @@ See [Updates](/settings/updates/).
 <Aside>
 Your preferences, theme choice and the other choices here are kept in Switchboard's app data: <Os mac="~/Library/Application Support/Switchboard" windows="%APPDATA%\Switchboard" />. [Settings → Backup](/settings/backup/) saves them to a file.
 </Aside>
+
+## Related
+
+<Related pages={['settings/backup', 'keyboard-shortcuts', 'themes/built-in', 'troubleshooting']} />

@@ -1,6 +1,6 @@
-import { ImagePlus, MessageCircleDashed, Paperclip } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { joinPath, MAX_SIDE_QUESTION_LENGTH, type ContextItem, type ImageAttachment, type SlashCommand } from '@switchboard/protocol/client';
+import { ImagePlus, MessageCircleQuestion, Paperclip } from 'lucide-react';
+import { Fragment, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { blanksLeftText, blanksOf, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { attachmentsAfterSend, textAfterSend } from './afterSend.ts';
@@ -9,17 +9,27 @@ import { addChips, isLongPaste, pastedItem, pasteTooLongReason, promptWithContex
 import { ContextTray } from './ContextTray.tsx';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
+import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
-import { onFirstLine, onLastLine, textareaRows } from './caretLine.ts';
-import { appendQuote, applyEdit, deadKeyWrap, editKey } from './editing.ts';
+import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
+import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
-import { joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
+import { askFromBox, joinSideToken, SIDE_DESCRIPTION, SIDE_TOKEN, sideKey, splitSideToken, withSideCommand } from './sideToken.ts';
 import { tokenAtCaret } from './tokens.ts';
+import { branchOf, linkableSessions } from './sessionLinks.ts';
+import { useSessions } from '../../state/sessionsStore.ts';
+import { useHosts } from '../../state/hostsStore.ts';
+import { shortAge } from '../../lib/format.ts';
 import { useAttachments } from './useAttachments.ts';
 import { ariaKeysFor, formatKeys, keysFor, localizeKeys, matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { submitKey } from '../newSession/startMenu.ts';
+import { blanksLeft, fillMessage, scopeKey, slashScore, startFill, type FillState } from '../savedPrompts/fillModel.ts';
+import { PromptFiller, type PromptFillerHandle } from '../savedPrompts/PromptFiller.tsx';
+import { engineClient, useSavedPrompts, useSavedPromptsStore } from '../savedPrompts/savedPromptsStore.ts';
+import { PromptIcon, ScopeTag } from '../savedPrompts/ScopeTag.tsx';
 
-type PaletteItem = { value: string; label: string; detail: string };
+/** A row of the / or @ list; `prompt` makes it a saved prompt rather than a command, `session` a session to link. */
+type PaletteItem = { value: string; label: string; detail: string; prompt?: SavedPrompt; session?: SessionSummary };
 interface Palette {
   kind: 'slash' | 'file';
   /** Where the token being completed starts (the `/` or `@`). */
@@ -63,6 +73,8 @@ export interface ComposerProps {
   controls?: ReactNode;
   /** Buttons in the card's bottom-right corner, before attach (a session's Tools). */
   actions?: ReactNode;
+  /** Mods' chips (the prompt shield and statuses), first on the right of the footer; they fold before anything else moves. */
+  status?: ReactNode;
   /** Right before Stop and Send: the ring that stands in for the session footer while the terminal is open below. */
   meter?: ReactNode;
   /** A shortcut shown on the submit button, like `⌘↵`. */
@@ -97,13 +109,26 @@ export interface ComposerProps {
   onInterrupt?(): void;
   onCycleMode?(): void;
   /**
-   * Side questions (/btw): the slash menu offers `/btw`, and `/btw ` at the start of the box becomes a token. While
-   * it is there, Enter asks (`onAsk`) right away, even while Claude works, and never sends or queues a message;
-   * Enter with no question is `onBare`. `request` changing puts the token in the box and focuses it (the palette).
+   * Ask about this session: the Ask button before Send or Stop, and `/btw`. With text in the box, Ask asks it
+   * (`onAsk`) right away, even while Claude works, and never sends or queues a message; with an empty box it opens
+   * the panel (`onOpen`). The slash menu offers `/btw`, and `/btw ` at the start of the box becomes a token: Enter
+   * then asks what follows it, and a bare `/btw` opens the panel. `open` presses the button; `ready` puts a dot on
+   * it (an answer came in while the panel was closed).
    */
-  sideQuestions?: { onAsk(question: string): Promise<void>; onBare(): void; request?: number };
-  /** Escape in the box, before it stops Claude: true when something used it (the side question panel closed). */
+  ask?: { onAsk(question: string): Promise<void>; onOpen(): void; open: boolean; ready: boolean };
+  /** Escape in the box, before it stops Claude: true when something used it (Reply in the catch-up leaves the box). */
   onEscape?(): boolean;
+  /**
+   * Saved prompts in the / menu, for this project (`root`; null: only the ones for every project). `projectName` names
+   * the project in their tags. Without it the box offers none.
+   */
+  savedPrompts?: { root: string | null; projectName: string | null };
+  /**
+   * Session linking: the `@` list also offers sessions (this project's, `root`, first), never `sessionId` itself. A
+   * picked one keeps `@<its title>` in the text and becomes a chip; the engine adds a brief about it when the message
+   * goes to Claude. Without it, `@` only lists files.
+   */
+  links?: { sessionId: string | null; root: string | null };
 }
 
 /** What the message was made of: the typed text and the context chips that `promptWithContext` put together. */
@@ -145,11 +170,11 @@ export function Composer(props: ComposerProps) {
   const client = connection.status === 'connected' ? connection.client : null;
   const [saved] = useState(() => (props.draftKey === undefined ? undefined : useDrafts.getState().drafts[props.draftKey]));
   // A draft kept with the side question token comes back as the token and its question.
-  const [initial] = useState(() => (props.sideQuestions ? splitSideToken(saved?.text ?? '') : { token: false, question: saved?.text ?? '' }));
+  const [initial] = useState(() => (props.ask ? splitSideToken(saved?.text ?? '') : { token: false, question: saved?.text ?? '' }));
   const [text, setText] = useState(initial.question);
-  /** The `/btw` token is at the start of the box: Enter asks a side question. */
+  /** The `/btw` token is at the start of the box: Enter asks about the session. */
   const [sideToken, setSideToken] = useState(initial.token);
-  const side = props.sideQuestions;
+  const side = props.ask;
   /** Text from a draft or a preset: `/btw ` at its start becomes the token. */
   const loadText = (value: string): string => {
     const split = side ? splitSideToken(value) : { token: false, question: value };
@@ -158,6 +183,13 @@ export function Composer(props: ComposerProps) {
     return split.question;
   };
   const [palette, setPalette] = useState<Palette | null>(null);
+  /** A saved prompt being filled in: the box shows it over the text, which then holds what goes after it. */
+  const [fillState, setFill] = useState<FillState | null>(saved?.fill ?? null);
+  const fillerRef = useRef<PromptFillerHandle>(null);
+  const promptsFor = props.savedPrompts;
+  const { prompts: savedPrompts } = useSavedPrompts(promptsFor ? promptsFor.root : undefined);
+  const projectName = promptsFor?.projectName ?? 'This project';
+  const left = fillState ? blanksLeft(fillState) : [];
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -221,6 +253,7 @@ export function Composer(props: ComposerProps) {
     if (presetSeq === undefined) return;
     presetApplied.current = true;
     const value = loadText(props.preset!.text);
+    setFill(null);
     if (props.preset!.attachments) setAttachments(props.preset!.attachments);
     if (props.preset!.context) setLocalChips(addChips([], props.preset!.context));
     history.current!.reset();
@@ -237,7 +270,8 @@ export function Composer(props: ComposerProps) {
   useEffect(() => history.current!.setEntries(props.history ?? []), [props.history]);
 
   const onTextChange = props.onTextChange;
-  useEffect(() => onTextChange?.(joinSideToken(sideToken, text)), [text, sideToken, onTextChange]);
+  // With a saved prompt in the box, the message as it would be sent.
+  useEffect(() => onTextChange?.(fillState ? fillMessage(fillState, text) : joinSideToken(sideToken, text)), [text, sideToken, fillState, onTextChange]);
   const onContextChange = props.onContextChange;
   useEffect(() => onContextChange?.(chips.map(({ id: _id, ...item }) => item as ContextItem)), [chips, onContextChange]);
   const onAttachmentsChange = props.onAttachmentsChange;
@@ -256,7 +290,7 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     const store = useDrafts.getState();
     if (draftKey === lastKey.current) {
-      if (draftKey !== undefined) store.setDraft(draftKey, { text: joinSideToken(sideToken, text), attachments });
+      if (draftKey !== undefined) store.setDraft(draftKey, { text: joinSideToken(sideToken, text), attachments, fill: fillState });
       return;
     }
     const previous = lastKey.current;
@@ -269,6 +303,7 @@ export function Composer(props: ComposerProps) {
     if (target && hasContent(target)) {
       loadText(target.text);
       setAttachments(target.attachments);
+      setFill(target.fill ?? null);
       history.current!.reset();
       closePalette();
       onDraftLoaded.current?.(target);
@@ -278,8 +313,9 @@ export function Composer(props: ComposerProps) {
       setText('');
       setSideToken(false);
       setAttachments([]);
+      setFill(null);
     }
-  }, [draftKey, text, attachments, sideToken]);
+  }, [draftKey, text, attachments, sideToken, fillState]);
   useEffect(() => {
     presetApplied.current = false;
   });
@@ -293,13 +329,13 @@ export function Composer(props: ComposerProps) {
     caretToEnd(true);
   }, [focusRequest, props.disabledReason]);
 
-  // Quote in reply: the quote goes at the end, as if typed (so ⌘Z takes it out), and the caret under it.
+  // Quote in reply (or a prompt put here for you, `plain`): it goes at the end, as if typed (so ⌘Z takes it out), and the caret under it.
   const quoteRequest = useDrafts((s) => (draftKey !== undefined && s.quote?.key === draftKey ? s.quote : null));
   useEffect(() => {
     if (!quoteRequest) return;
     useDrafts.getState().clearQuote();
     const el = ref.current;
-    const edit = appendQuote(el?.value ?? text, quoteRequest.text);
+    const edit = (quoteRequest.plain ? appendText : appendQuote)(el?.value ?? text, quoteRequest.text);
     if (!edit) return;
     if (!el || el.disabled) return setText((current) => current + edit.insert);
     history.current!.reset();
@@ -332,17 +368,6 @@ export function Composer(props: ComposerProps) {
     el.focus();
   }, [props.focusRequest, props.disabledReason]);
 
-  // The palette's Ask a side question…: the token goes in front of what is in the box, and the box takes focus.
-  const sideRequest = side?.request;
-  const lastSideRequest = useRef(sideRequest);
-  useEffect(() => {
-    if (sideRequest === lastSideRequest.current) return;
-    lastSideRequest.current = sideRequest;
-    setSideToken(true);
-    closePalette();
-    caretToEnd(true);
-  }, [sideRequest]);
-
   /** `withToken`: the side question token is in the box, where commands and files don't apply. */
   const updatePalette = (value: string, caret: number, withToken = sideToken) => {
     // Any edit makes an earlier file search stale, whatever this one turns out to be.
@@ -351,21 +376,43 @@ export function Composer(props: ComposerProps) {
     if (!token) return setPalette(null);
     if (token.kind === 'slash') {
       const q = token.query.toLowerCase();
+      // Commands and saved prompts match the same way: the start of the name first, then its letters in order.
       const listed = props.commands
-        .filter((c) => c.name.toLowerCase().includes(q) || (q.length > 2 && c.description.toLowerCase().includes(q)))
-        .sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)) || a.name.localeCompare(b.name))
+        .map((c) => ({ c, score: slashScore(q, c.name, c.description) }))
+        .filter((entry) => entry.score !== null)
+        .sort((a, b) => b.score! - a.score! || a.c.name.localeCompare(b.c.name))
         .slice(0, 60)
-        .map((c) => ({ value: `/${c.name}`, label: `/${c.name}`, detail: c.argumentHint ? `${c.argumentHint} · ${c.description}` : c.description }));
+        .map(({ c }) => ({ value: `/${c.name}`, label: `/${c.name}`, detail: c.argumentHint ? `${c.argumentHint} · ${c.description}` : c.description }));
       // /btw only makes a token at the start of the box; Claude Code's own /btw is never listed.
-      const items = !side ? listed : token.start === 0 ? withSideCommand(listed, q, { value: SIDE_TOKEN, label: SIDE_TOKEN, detail: SIDE_DESCRIPTION }) : listed.filter((item) => item.value !== SIDE_TOKEN);
+      const commands = !side ? listed : token.start === 0 ? withSideCommand(listed, q, { value: SIDE_TOKEN, label: SIDE_TOKEN, detail: SIDE_DESCRIPTION }) : listed.filter((item) => item.value !== SIDE_TOKEN);
+      // Saved prompts come first, most recently used first while nothing is typed.
+      const prompts: PaletteItem[] = !promptsFor
+        ? []
+        : savedPrompts
+            .map((prompt, order) => ({ prompt, score: slashScore(q, prompt.name, prompt.text), order }))
+            .filter((entry) => entry.score !== null)
+            .sort((a, b) => (q ? b.score! - a.score! : 0) || a.order - b.order)
+            .slice(0, 20)
+            .map(({ prompt }) => ({ value: `prompt:${scopeKey(prompt.scope)}:${prompt.id}`, label: prompt.name, detail: promptPreview(prompt.text), prompt }));
+      const items = [...prompts, ...commands];
       return setPalette(items.length ? { kind: 'slash', start: token.start, items, active: 0 } : null);
     }
-    if (!client || !props.cwd) return setPalette(null);
+    // Sessions to link come first, at once; files follow when the search answers.
+    const linked = new Set(chips.flatMap((c) => (c.kind === 'session' ? [c.sessionId] : [])));
+    const sessionItems: PaletteItem[] =
+      props.links && addContext
+        ? linkableSessions(useSessions.getState().sessions.values(), { selfId: props.links.sessionId, root: props.links.root, query: token.query })
+            .filter((session) => !linked.has(session.id))
+            .map((session) => ({ value: `session:${session.id}`, label: session.title, detail: branchOf(session) ?? '', session }))
+        : [];
+    setPalette(sessionItems.length ? { kind: 'file', start: token.start, items: sessionItems, active: 0 } : null);
+    if (!client || !props.cwd) return;
     client.call('files.search', { cwd: props.cwd, query: token.query, limit: 8 }).then(
       ({ files }) => {
         if (seq !== searchSeq.current) return;
-        const items = files.map((f) => ({ value: `@${f}`, label: f.slice(f.lastIndexOf('/') + 1), detail: f }));
-        setPalette(items.length ? { kind: 'file', start: token.start, items, active: 0 } : null);
+        const items = [...sessionItems, ...files.map((f) => ({ value: `@${f}`, label: f.slice(f.lastIndexOf('/') + 1), detail: f }))];
+        // The highlighted row stays where it was, when it still is one.
+        setPalette((current) => (items.length ? { kind: 'file', start: token.start, items, active: current && current.kind === 'file' && current.active < items.length ? current.active : 0 } : null));
       },
       () => {},
     );
@@ -378,9 +425,80 @@ export function Composer(props: ComposerProps) {
     useComposerTargets.getState().register({ key: draftKey, cwd });
     return () => useComposerTargets.getState().unregister(draftKey);
   }, [draftKey, cwd]);
+  // Claude Code may read this box, fill it or show a suggestion in it, for a mod. Never sends.
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const textNow = useRef(text);
+  textNow.current = text;
+  useEffect(() => {
+    if (draftKey === undefined || props.disabledReason) return;
+    return registerModComposer(draftKey, {
+      read: () => {
+        const el = ref.current;
+        const value = el?.value ?? textNow.current;
+        return { text: value, cursor: el && document.activeElement === el ? el.selectionStart : value.length };
+      },
+      fill: (insert, mode) => {
+        const el = ref.current;
+        const current = el?.value ?? textNow.current;
+        const next = filled(current, el?.selectionStart ?? current.length, insert, mode);
+        setText(next.text);
+        setSuggestion(null);
+        requestAnimationFrame(() => ref.current?.setSelectionRange(next.caret, next.caret));
+        return true;
+      },
+      suggest: (value) => {
+        // Only in an empty box: it never covers what you typed.
+        if ((ref.current?.value ?? textNow.current) !== '') return false;
+        setSuggestion(value.trim() ? value : null);
+        return true;
+      },
+    });
+  }, [draftKey, props.disabledReason]);
+  // Typing drops the suggestion.
+  useEffect(() => {
+    if (text) setSuggestion(null);
+  }, [text]);
   const openPicker = () => {
     if (draftKey !== undefined && cwd && !props.disabledReason) useComposerTargets.getState().openPicker({ key: draftKey, cwd });
   };
+
+  /** Starts filling a saved prompt in the box: focus on its first empty blank (or the text under it, without blanks). */
+  const startPrompt = (prompt: SavedPrompt) => {
+    setFill(startFill(prompt));
+    history.current!.reset();
+    requestAnimationFrame(() => {
+      if (blanksOf(prompt.text).length) fillerRef.current?.focusBlank();
+      else ref.current?.focus();
+    });
+  };
+  /** Clear ×: the prompt leaves the box, with what its blanks held; what was typed under it stays. */
+  const clearFill = () => {
+    if (!fillState) return;
+    setFill(null);
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  };
+  // The palette's Use saved prompt… and New session's chips ask a box by its key.
+  const promptRequest = useDrafts((s) => (draftKey !== undefined && s.promptRequest?.key === draftKey ? s.promptRequest : null));
+  useEffect(() => {
+    if (!promptRequest || props.disabledReason) return;
+    useDrafts.getState().clearPromptRequest();
+    if (promptRequest.prompt) return startPrompt(promptRequest.prompt);
+    // All prompts…: the / menu, as if / was typed at the start.
+    const el = ref.current;
+    if (!el) return;
+    const value = text.startsWith('/') ? text : `/${text ? ` ${text}` : ''}`;
+    setText(value);
+    el.focus();
+    requestAnimationFrame(() => {
+      el.setSelectionRange(1, 1);
+      updatePalette(value, 1);
+    });
+  }, [promptRequest, props.disabledReason]);
 
   const choose = (item: PaletteItem) => {
     const el = ref.current;
@@ -392,6 +510,32 @@ export function Composer(props: ComposerProps) {
       setSideToken(true);
       closePalette();
       requestAnimationFrame(() => el.setSelectionRange(0, 0));
+      return;
+    }
+    // A saved prompt goes over the text, to be filled in; the / and what was typed after it go, the rest stays as what is sent after it.
+    if (item.prompt) {
+      setText(`${text.slice(0, palette.start)}${text.slice(caret).replace(/^ /, '')}`.trim());
+      closePalette();
+      startPrompt(item.prompt);
+      return;
+    }
+    // A session from the @ list: its label stays in the text, so the sentence still reads, and it becomes a chip.
+    if (item.session && addContext) {
+      const linkedNow = chips.filter((c) => c.kind === 'session');
+      if (linkedNow.length >= MAX_LINKS_PER_MESSAGE) {
+        closePalette();
+        setNotice(`Link up to ${MAX_LINKS_PER_MESSAGE} sessions in one message.`);
+        return;
+      }
+      const label = uniqueLabel(linkLabel(item.session.title), linkedNow.map((c) => (c as { label: string }).label));
+      const mention = `@${label} `;
+      // The `@` and what was typed after it go, wherever the caret is by now.
+      const end = palette.start + 1 + (/^[^\s@]*/.exec(text.slice(palette.start + 1))?.[0].length ?? 0);
+      setText(`${text.slice(0, palette.start)}${mention}${text.slice(end).replace(/^ /, '')}`);
+      closePalette();
+      addContext([{ kind: 'session', sessionId: item.session.id, label }]);
+      const position = palette.start + mention.length;
+      requestAnimationFrame(() => el.setSelectionRange(position, position));
       return;
     }
     // A file from the @ list becomes a chip; the @ and what was typed after it go.
@@ -413,10 +557,18 @@ export function Composer(props: ComposerProps) {
   /** `requested`: sent through `submitRequest` rather than Enter or the button. `send`: the secondary action instead of `onSubmit`. */
   const submit = async (requested = false, send: (value: string, attachments: ImageAttachment[], parts: SentParts) => Promise<void | false> | void | false = (value, sent, parts) => props.onSubmit(value, sent, requested, parts)) => {
     if (sending || props.disabledReason) return;
+    // A saved prompt with a required blank still empty: the keys go to that blank instead of sending.
+    if (fillState && left.length) {
+      fillerRef.current?.focusBlank(left[0]);
+      return;
+    }
     const sentText = text;
     const sentChips = chips;
+    const sentFill = fillState;
+    // A saved prompt is filled in, and what was typed under it goes after it.
+    const typed = sentFill ? fillMessage(sentFill, text) : text;
     // The chips go with the message: files as @ mentions after what you typed, text in fenced blocks.
-    const value = promptWithContext(text, sentChips, cwd);
+    const value = promptWithContext(typed, sentChips, cwd);
     const sentAttachments = attachments;
     if (!value && sentAttachments.length === 0) return;
     // Said here rather than as the engine's "Invalid params": the text stays, so you can trim it.
@@ -426,7 +578,12 @@ export function Composer(props: ComposerProps) {
     setNotice(null);
     closePalette();
     try {
-      if ((await send(value, sentAttachments, { typed: sentText, context: sentChips.map(({ id: _id, ...item }) => item as ContextItem) })) === false) return;
+      if ((await send(value, sentAttachments, { typed, context: sentChips.map(({ id: _id, ...item }) => item as ContextItem) })) === false) return;
+      if (sentFill) {
+        // Counted for the order of the lists; a prompt deleted meanwhile just isn't.
+        void engineClient()?.call('savedPrompts.used', { id: sentFill.prompt.id, scope: sentFill.prompt.scope }).catch(() => {});
+        setFill((current) => (current === sentFill ? null : current));
+      }
       if (sentChips.length) {
         const ids = sentChips.map((chip) => chip.id);
         if (draftKey !== undefined) useDrafts.getState().removeContext(draftKey, ids);
@@ -447,20 +604,24 @@ export function Composer(props: ComposerProps) {
   };
 
   /**
-   * Asks what follows the token as a side question: right away, also while Claude works, and never as a message
-   * or into Up next. Without a question it opens the latest side question. Images and context stay in the box.
+   * Asks what is in the box (after the token, if it is there) about the session: right away, also while Claude
+   * works, and never as a message or into Up next. With nothing to ask it opens the panel. Images and context stay
+   * in the box.
    */
   const ask = async () => {
     if (!side || sending || props.disabledReason) return;
     const sentText = text;
-    const question = text.trim();
-    if (!question) {
-      setSideToken(false);
-      setText('');
-      side.onBare();
+    const action = askFromBox(text);
+    if (action.kind === 'open') {
+      if (sideToken) {
+        setSideToken(false);
+        setText('');
+      }
+      side.onOpen();
       return;
     }
-    if (question.length > MAX_SIDE_QUESTION_LENGTH) return setNotice(`A side question can be up to ${MAX_SIDE_QUESTION_LENGTH.toLocaleString('en-US')} characters. Shorten it, or send it as a message.`);
+    const { question } = action;
+    if (question.length > MAX_SIDE_QUESTION_LENGTH) return setNotice(`A question about the session can be up to ${MAX_SIDE_QUESTION_LENGTH.toLocaleString('en-US')} characters. Shorten it, or send it as a message.`);
     setSending(true);
     setNotice(null);
     closePalette();
@@ -498,6 +659,13 @@ export function Composer(props: ComposerProps) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Tab takes a mod's suggestion into the empty box.
+    if (suggestion && event.key === 'Tab' && !event.shiftKey && !text) {
+      event.preventDefault();
+      setText(suggestion);
+      setSuggestion(null);
+      return;
+    }
     if (event.nativeEvent.isComposing) return;
     const el = event.currentTarget;
     // Backspace right after the token takes it out: the box is a normal message again.
@@ -514,7 +682,7 @@ export function Composer(props: ComposerProps) {
     if (route?.kind === 'palette') {
       event.preventDefault();
       setPalette({ ...palette!, active: route.active });
-      requestAnimationFrame(() => listRef.current?.children[route.active]?.scrollIntoView({ block: 'nearest' }));
+      requestAnimationFrame(() => document.getElementById(`${ids}-option-${route.active}`)?.scrollIntoView({ block: 'nearest' }));
       return;
     }
     if (route?.kind === 'history' && route.direction === 'older' && el.value === '' && attachments.length === 0 && !history.current!.browsing && props.onRecallQueued?.()) {
@@ -556,7 +724,7 @@ export function Composer(props: ComposerProps) {
         return;
       }
     }
-    // The side question panel closes first; Escape only stops Claude when nothing else took it.
+    // Something else (leaving Reply) takes Escape first; it only stops Claude when nothing did.
     if (event.key === 'Escape' && props.onEscape?.()) {
       event.preventDefault();
       return;
@@ -566,7 +734,7 @@ export function Composer(props: ComposerProps) {
     const other = props.others?.find((o) => matches(event.nativeEvent, o.shortcut));
     const send = other ? null : submitKey(event.nativeEvent, props.secondary?.shortcut);
     if (sideKey(event, { token: sideToken, selectionStart: el.selectionStart, selectionEnd: el.selectionEnd, sends: !!(other || send) }) === 'ask') {
-      // Every way of sending asks instead: a side question never queues, steers or stops Claude.
+      // Every way of sending asks instead: a question about the session never queues, steers or stops Claude.
       event.preventDefault();
       void ask();
     } else if (other) {
@@ -595,7 +763,7 @@ export function Composer(props: ComposerProps) {
     const other = props.others?.find((o) => o.shortcut === shortcut);
     return other ? submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts)) : Promise.resolve();
   };
-  const hasText = !!text.trim() || chips.length > 0;
+  const hasText = !!text.trim() || chips.length > 0 || !!fillState;
   const hasMessage = hasText || attachments.length > 0;
   const attach = (
     <>
@@ -639,7 +807,14 @@ export function Composer(props: ComposerProps) {
   );
 
   return (
-    <div ref={rootRef} className="relative" onFocusCapture={() => draftKey !== undefined && useComposerTargets.getState().register({ key: draftKey, cwd })}>
+    <div
+      ref={rootRef}
+      className="relative"
+      onFocusCapture={() => {
+        if (draftKey !== undefined) useComposerTargets.getState().register({ key: draftKey, cwd });
+        if (promptsFor?.root && useSavedPromptsStore.getState().lastRoot !== promptsFor.root) useSavedPromptsStore.setState({ lastRoot: promptsFor.root });
+      }}
+    >
       <DropOverlay drop={drop} />
       {palette && (
         // Focus stays in the message box (aria-activedescendant points at the highlighted option), so the
@@ -649,25 +824,65 @@ export function Composer(props: ComposerProps) {
           id={`${ids}-palette`}
           className="absolute right-0 bottom-full left-0 z-10 mb-2 max-h-72 overflow-y-auto rounded-lg border overlay"
           role="listbox"
-          aria-label={palette.kind === 'slash' ? 'Commands' : 'Files'}
+          aria-label={palette.kind === 'slash' ? (palette.items[0]?.prompt ? 'Saved prompts and commands' : 'Commands') : palette.items[0]?.session ? 'Sessions and files' : 'Files'}
           data-palette
         >
-          {palette.items.map((item, i) => (
-            <li
-              key={item.value}
-              id={`${ids}-option-${i}`}
-              role="option"
-              aria-selected={i === palette.active}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                choose(item);
-              }}
-              className={`flex w-full cursor-default items-baseline gap-3 px-3 py-1.5 text-left hover:bg-accent/10 ${i === palette.active ? 'bg-accent/15' : ''}`}
-            >
-              <span className="shrink-0 font-mono text-ui">{item.label}</span>
-              <span className="min-w-0 truncate text-meta text-muted">{item.detail}</span>
-            </li>
-          ))}
+          {palette.items.map((item, i) => {
+            // With saved prompts in the list, each group gets its heading.
+            const heading =
+              palette.kind === 'slash'
+                ? palette.items[0]?.prompt
+                  ? i === 0
+                    ? 'Saved prompts'
+                    : !item.prompt && palette.items[i - 1]?.prompt
+                      ? 'Commands'
+                      : null
+                  : null
+                : palette.items[0]?.session
+                  ? i === 0
+                    ? 'Sessions'
+                    : !item.session && palette.items[i - 1]?.session
+                      ? 'Files'
+                      : null
+                  : null;
+            return (
+              <Fragment key={item.value}>
+                {heading && (
+                  <li role="presentation" className="px-3 pt-2 pb-1 text-meta font-semibold tracking-wide text-faint uppercase" data-palette-heading>
+                    {heading}
+                  </li>
+                )}
+                <li
+                  id={`${ids}-option-${i}`}
+                  role="option"
+                  aria-selected={i === palette.active}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    choose(item);
+                  }}
+                  className={`flex w-full cursor-default items-baseline gap-3 px-3 py-1.5 text-left hover:bg-accent/10 ${i === palette.active ? 'bg-accent/15' : ''}`}
+                  data-saved-prompt-option={item.prompt ? item.prompt.id : undefined}
+                  data-link-option={item.session ? item.session.id : undefined}
+                >
+                  {item.session ? (
+                    <LinkOption session={item.session} />
+                  ) : item.prompt ? (
+                    <>
+                      <PromptIcon size={12} aria-hidden className="shrink-0 self-center text-muted" />
+                      <span className="shrink-0 text-ui font-semibold text-text">{item.label}</span>
+                      <span className="min-w-0 flex-1 truncate text-meta text-muted">{item.detail}</span>
+                      <ScopeTag scope={item.prompt.scope} projectName={projectName} className="self-center" />
+                    </>
+                  ) : (
+                    <>
+                      <span className="shrink-0 font-mono text-ui">{item.label}</span>
+                      <span className="min-w-0 truncate text-meta text-muted">{item.detail}</span>
+                    </>
+                  )}
+                </li>
+              </Fragment>
+            );
+          })}
         </ul>
       )}
 
@@ -679,6 +894,23 @@ export function Composer(props: ComposerProps) {
         style={props.frameColor && !sideToken ? { borderColor: props.frameColor } : undefined}
         data-side-question={sideToken || undefined}
       >
+        {fillState && (
+          <>
+            <PromptFiller
+              ref={fillerRef}
+              state={fillState}
+              onChange={setFill}
+              projectName={projectName}
+              root={promptsFor?.root ?? null}
+              cwd={cwd}
+              disabled={disabled}
+              onClear={clearFill}
+              onSend={() => void submit()}
+              onLeave={() => ref.current?.focus()}
+            />
+            <div aria-hidden className="my-2 border-t border-dashed border-edge" />
+          </>
+        )}
         <ContextTray
           chips={chips}
           cwd={cwd}
@@ -703,10 +935,15 @@ export function Composer(props: ComposerProps) {
         />
         {/* Grows with the content up to max-h-80, then scrolls. CSS sizes it: collapsing it to measure scrollHeight
             made the conversation above taller for a moment, and the browser clamped its scroll position. */}
-        <div className="flex items-start gap-2">
+        <div className="relative flex items-start gap-2">
+          {fillState && !text && !props.disabledReason && (
+            <span className="pointer-events-none absolute top-0 left-0 text-body leading-relaxed text-muted" aria-hidden data-context-placeholder>
+              Add more context… <span className="text-faint">(optional, sent after the prompt)</span>
+            </span>
+          )}
           {sideToken && (
-            <span className="mt-px inline-flex shrink-0 items-center gap-1 rounded-md bg-link/12 px-1.5 py-0.5 font-mono text-ui text-link" data-btw-token data-tooltip="Side question: not added to the conversation. Backspace takes it out.">
-              <MessageCircleDashed size={12} aria-hidden />
+            <span className="mt-px inline-flex shrink-0 items-center gap-1 rounded-md bg-link/12 px-1.5 py-0.5 font-mono text-ui text-link" data-btw-token data-tooltip="Ask about this session: not added to the conversation. Backspace takes it out.">
+              <MessageCircleQuestion size={12} aria-hidden />
               {SIDE_TOKEN}
             </span>
           )}
@@ -717,8 +954,9 @@ export function Composer(props: ComposerProps) {
             value={text}
             rows={1}
             disabled={disabled}
-            placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : props.placeholder)}
-            aria-label={sideToken ? 'Side question for Claude' : 'Message to Claude'}
+            // Under a saved prompt the placeholder is drawn over the box, in two shades.
+            placeholder={props.disabledReason ?? (sideToken ? 'Ask about this session' : fillState ? undefined : (suggestion ?? props.placeholder))}
+            aria-label={sideToken ? 'Question about this session' : fillState ? 'More context, sent after the prompt' : 'Message to Claude'}
             aria-describedby={`${ids}-hint`}
             aria-keyshortcuts={props.running && props.onInterrupt ? ariaKeysFor('claude.stop') : undefined}
             // While the / or @ list is open, ↑ ↓ move through it without leaving the box.
@@ -740,6 +978,8 @@ export function Composer(props: ComposerProps) {
               }
               setText(el.value);
               updatePalette(el.value, el.selectionStart);
+              // After the box has grown (or not, at its full height): before the next paint, so nothing jumps.
+              requestAnimationFrame(() => revealCaret(el));
             }}
             onKeyDown={onKeyDown}
             {...deadKeyWrap(setText)}
@@ -749,7 +989,7 @@ export function Composer(props: ComposerProps) {
               ++searchSeq.current;
               setTimeout(() => setPalette(null), 100);
             }}
-            className={`block field-sizing-content max-h-80 w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large ? 'min-h-24 px-1 pt-1 text-title font-normal' : 'text-body'}`}
+            className={`block field-sizing-content max-h-80 w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large && !fillState ? 'min-h-24 px-1 pt-1 text-title font-normal' : 'text-body'}`}
           />
         </div>
         {props.controls && notice && (
@@ -757,19 +997,19 @@ export function Composer(props: ComposerProps) {
             {notice}
           </p>
         )}
-        <div className="mt-1.5 flex items-center justify-between gap-2">
+        <div className="mt-1.5 flex items-center justify-between gap-2" data-composer-footer>
           <span className="sr-only" role="status" aria-live="polite" data-history-announcer>
             {announcement}
           </span>
           {props.controls ? (
-            <div className="-ml-1.5 flex min-w-0 flex-1 items-center">
+            <div className="-ml-1.5 flex min-w-0 flex-1 items-center" data-composer-footer-start>
               {/* What goes into the message comes first; a thin line, then the chips that set how it runs. */}
               <div className="flex shrink-0 items-center gap-0.5">{attach}</div>
               <span aria-hidden className="mx-1.5 h-4 w-px shrink-0 bg-border" />
               {props.controls}
               {/* The keys still get read out with the message box; the chips take the hint's place on screen. */}
               <span id={`${ids}-hint`} className="sr-only">
-                {sideToken ? 'Enter asks a side question. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
+                {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
               </span>
             </div>
           ) : (
@@ -785,20 +1025,37 @@ export function Composer(props: ComposerProps) {
               )}
             </span>
           )}
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1.5" data-composer-footer-end>
+            {/* Said when it changes; empty (but there) once every required blank is filled. */}
+            <span role="status" aria-live="polite" className={`text-meta text-caution ${left.length ? '' : 'sr-only'}`} data-blanks-left={left.length || undefined}>
+              {left.length ? blanksLeftText(left.length) : ''}
+            </span>
+            {props.status}
             {props.dropHint && !text && attachments.length === 0 && !disabled && <span className="text-meta text-muted @max-[860px]:hidden">Paste or drop images and files</span>}
             {props.actions}
             {/* Without chips the hint line holds the left; the attach buttons stay on the right. */}
             {!props.controls && attach}
             {props.meter}
-            {sideToken ? (
-              <>
-                <span className="text-meta text-muted @max-[860px]:hidden">Not added to the conversation</span>
-                <Button variant="side" size="lg" icon={<MessageCircleDashed size={14} aria-hidden />} onClick={() => void ask()} disabled={disabled || sending} data-composer-ask>
-                  {sending ? 'Asking…' : 'Ask'}
+            {side && (
+              <span className="relative flex">
+                <Button
+                  variant="side"
+                  size="lg"
+                  selected={side.open}
+                  aria-pressed={side.open}
+                  icon={<MessageCircleQuestion size={14} aria-hidden />}
+                  onClick={() => void ask()}
+                  disabled={disabled || sending}
+                  data-tooltip="Ask about this session. Not added to the conversation."
+                  data-ask-button={side.open ? 'open' : ''}
+                >
+                  Ask
                 </Button>
-              </>
-            ) : (
+                {side.ready && !side.open && <span className="pointer-events-none absolute -top-1 -right-1 size-2 rounded-full bg-link ring-2 ring-card" data-ask-ready aria-hidden />}
+                {side.ready && !side.open && <span className="sr-only">An answer is ready</span>}
+              </span>
+            )}
+            {sideToken ? null : (
               <>
                 {props.running && props.onInterrupt && (
                   <Button size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow onClick={props.onInterrupt} data-tooltip={`Stop Claude (${formatKeys(keysFor('claude.stop'))})`} data-composer-stop>
@@ -807,7 +1064,7 @@ export function Composer(props: ComposerProps) {
                 )}
                 {props.submitControl ? (
                   props.submitControl({
-                    blocked: props.disabledReason ?? null,
+                    blocked: props.disabledReason ?? (left.length ? `Fill in the prompt first: ${blanksLeftText(left.length)}` : null),
                     sending,
                     hasMessage,
                     hasText,
@@ -818,14 +1075,14 @@ export function Composer(props: ComposerProps) {
                   })
                 ) : (
                   // A disabled button gets no hover, so the reason it's unavailable sits on this wrapper.
-                  <span className="flex" data-tooltip={!sending ? (props.disabledReason ?? (!hasMessage ? 'Type a message first' : undefined)) : undefined}>
+                  <span className="flex" data-tooltip={!sending ? (props.disabledReason ?? (left.length ? `Fill in the prompt first: ${blanksLeftText(left.length)}` : !hasMessage ? 'Type a message first' : undefined)) : undefined}>
                     <Button
                       variant="primary"
                       size="lg"
                       kbd={props.submitHint && !sending ? props.submitHint : undefined}
                       data-composer-submit
                       onClick={() => void submit()}
-                      disabled={disabled || sending || !hasMessage}
+                      disabled={disabled || sending || !hasMessage || left.length > 0}
                       className="disabled:pointer-events-none"
                     >
                       {sending ? 'Sending…' : (props.submitLabel ?? (props.running ? 'Queue' : 'Send'))}
@@ -838,5 +1095,22 @@ export function Composer(props: ComposerProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** A session in the `@` list: its status dot, title, branch and how long ago it was active. */
+function LinkOption({ session }: { session: SessionSummary }) {
+  const host = useHosts((s) => s.hosts.get(session.id));
+  const live = useSessions((s) => s.live.get(session.id));
+  const state = host && host.state !== 'closed' && host.state !== 'error' ? host.state : live?.status;
+  const dot = state === 'needs-you' ? 'bg-warn' : state === 'running' ? 'bg-accent-ink' : session.unread ? 'bg-unread' : 'bg-faint';
+  const branch = branchOf(session);
+  return (
+    <>
+      <span className={`size-1.5 shrink-0 self-center rounded-full ${dot}`} aria-hidden />
+      <span className="min-w-0 shrink truncate text-ui font-semibold text-text">{session.title}</span>
+      {branch && <span className="min-w-0 truncate font-mono text-meta text-muted">{branch}</span>}
+      <span className="ml-auto shrink-0 text-meta text-faint">{shortAge(session.updatedAt)}</span>
+    </>
   );
 }

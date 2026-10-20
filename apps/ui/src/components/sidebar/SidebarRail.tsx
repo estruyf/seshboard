@@ -1,9 +1,10 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { EyeOff, House, ListEnd, Pin, Plus, Search, Settings } from 'lucide-react';
+import { EyeOff, House, ListEnd, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
@@ -17,13 +18,18 @@ import { isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { FocusCounter } from '../focus/FocusCounter.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
+import { RAIL_TONE, railShape } from './rail.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
+import { useComputers } from '../../state/computersStore.ts';
+import { filterBySource, offlineLine } from '../../state/remoteRows.ts';
+import { openRow, useRemoteRows, useShownRowId } from '../../state/useRemoteRows.ts';
 import { Button } from '../ui/Button.tsx';
 import { newSessionDraftTooltip, PenBadge } from '../drafts/PenBadge.tsx';
 import { openDraft, useNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
 import { STATUS_LABEL } from './rowLabel.ts';
 import { useSessionMenu } from './useSessionMenu.tsx';
 import { RailStarButton } from './StarOnGithub.tsx';
+import { RailDevices, useDeviceAnnouncement } from '../remote/ConnectedDevices.tsx';
 import { localizeKeys, matches, modKey } from '../../lib/shortcuts.ts';
 
 /**
@@ -100,7 +106,6 @@ function QueueButton({ item }: { item: Extract<RailItem, { kind: 'queue' }> }) {
 }
 
 /** The 3px rail at a row's left edge, as in the open sidebar: only the states that ask for a look get one. */
-const RAIL_TONE: Partial<Record<Exclude<RowStatus, null>, string>> = { 'needs-you': 'bg-warn', running: 'bg-accent-ink', unread: 'bg-unread' };
 /** The dot at the icon's corner: needs you or unread, the two that wait for you to look. */
 const CORNER_DOT: Partial<Record<Exclude<RowStatus, null>, string>> = { 'needs-you': 'bg-warn', unread: 'bg-unread' };
 
@@ -122,6 +127,7 @@ const RailRow = memo(function RailRow({
   now,
   request,
   draft,
+  outside,
   onClick,
   onMenu,
   onMiddleClick,
@@ -136,12 +142,15 @@ const RailRow = memo(function RailRow({
   request: WaitingRequest | null;
   /** The start of an unsent message typed here, or null. */
   draft: string | null;
+  /** Its last turn changed files outside the plan: a warning badge. */
+  outside: boolean;
   onClick(event: MouseEvent, data: SessionRowData): void;
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
   onMiddleClick(data: SessionRowData): void;
 }) {
-  const project = useProjects((s) => s.projects.get(data.projectRoot));
-  const projectName = project?.name ?? basename(data.projectRoot);
+  const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
+  const remote = data.remote ?? null;
+  const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const status = rowStatus(data);
   // With more than one Claude profile the rail is the profile's colour on every row, as in the open sidebar.
   const multipleProfiles = useMultipleProfiles();
@@ -149,9 +158,11 @@ const RailRow = memo(function RailRow({
   const profileRail = multipleProfiles && profile ? PROFILE_DOT[profile.color] : null;
   const railTone = profileRail ?? (status && RAIL_TONE[status]);
   const dot = status && CORNER_DOT[status];
-  const line = statusLine(status, status === 'needs-you' ? waitingDetail(request) : null);
-  const meta = [projectName, data.branch, shortAge(data.updatedAt, now)].filter(Boolean).join(' · ');
-  const hint = localizeKeys('Click to open · ⌥-click to open beside');
+  const line = remote?.offline
+    ? { text: offlineLine(remote.computerName, remote.lastSeen, now), tone: 'faint' as const }
+    : statusLine(status, status === 'needs-you' ? (remote ? waitingDetail(remote.waitingTool ? { toolName: remote.waitingTool, input: null } : null) : waitingDetail(request)) : null);
+  const meta = [projectName, data.branch, remote ? `on ${remote.computerName}` : null, shortAge(data.updatedAt, now)].filter(Boolean).join(' · ');
+  const hint = remote ? 'Click to open' : localizeKeys('Click to open · ⌥-click to open beside');
   const menuAt = (el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
     return { x: rect.right - 4, y: rect.top + 8 };
@@ -160,12 +171,13 @@ const RailRow = memo(function RailRow({
     <button
       type="button"
       data-sidebar-rail-row={data.id}
+      data-remote-row={remote?.computerId}
       data-session-status={status ?? undefined}
       tabIndex={tabbable ? 0 : -1}
       aria-current={selected ? 'true' : undefined}
-      aria-label={[data.title || 'Untitled session', projectName, status ? STATUS_LABEL[status].toLowerCase() : null, beside ? 'open in the other pane' : null, draft !== null ? 'unsent message' : null].filter(Boolean).join(', ')}
+      aria-label={[data.title || 'Untitled session', projectName, status ? STATUS_LABEL[status].toLowerCase() : null, beside ? 'open in another pane' : null, draft !== null ? 'unsent message' : null, outside ? 'files outside the plan' : null].filter(Boolean).join(', ')}
       data-has-draft={draft !== null || undefined}
-      data-tooltip={[data.title, meta, line?.text ?? (draft !== null ? `Draft: ${draft}` : null), hint].filter(Boolean).join('\n')}
+      data-tooltip={[data.title, meta, line?.text ?? (draft !== null ? `Draft: ${draft}` : null), outside ? 'Files outside the plan' : null, hint].filter(Boolean).join('\n')}
       data-tooltip-placement="right"
       data-tooltip-title={data.title || 'Untitled session'}
       data-tooltip-meta={meta}
@@ -188,11 +200,16 @@ const RailRow = memo(function RailRow({
           onMenu(menuAt(e.currentTarget), data);
         }
       }}
-      className={`relative mx-auto flex h-10 w-11 items-center justify-center rounded-lg ${selected ? 'bg-selected' : beside ? 'bg-border/45 ring-1 ring-inset ring-border' : 'hover:bg-border/45'}`}
+      className={`relative mx-auto flex h-10 w-11 items-center justify-center rounded-lg ${selected ? 'bg-selected' : beside ? 'bg-border/45 ring-1 ring-inset ring-border' : 'hover:bg-border/45'} ${remote?.offline ? 'opacity-55' : ''}`}
     >
-      {railTone && <span aria-hidden className={`absolute inset-0 rounded-[inherit] [clip-path:inset(0_calc(100%-3px)_0_0)] ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
-      <ProjectIcon project={project} root={data.projectRoot} size={26} />
+      {railTone && <span aria-hidden className={`${railShape(selected || beside)} ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
+      <ProjectIcon project={project} root={data.projectRoot} size={26} name={remote?.projectName} remote={remote !== null} />
       {draft !== null && <PenBadge size={14} className="absolute bottom-0.5 left-0.5" data-rail-pen />}
+      {outside && (
+        <span aria-hidden className="absolute right-0.5 bottom-0.5 flex size-3.5 items-center justify-center rounded-full bg-sidebar text-caution" data-rail-outside>
+          <TriangleAlert size={10} />
+        </span>
+      )}
       {dot && (
         <span aria-hidden className={`absolute top-1 right-1 size-[9px] rounded-full ring-2 ring-sidebar ${dot} ${status === 'needs-you' ? 'animate-pulse' : ''}`} data-rail-dot={status} />
       )}
@@ -207,16 +224,16 @@ const RailRow = memo(function RailRow({
  * the sidebar first.
  */
 export function SidebarRail() {
+  const deviceNotice = useDeviceAnnouncement();
   const sessions = useSessions((s) => s.sessions);
   const live = useSessions((s) => s.live);
   const hosts = useHosts((s) => s.hosts);
   const permissions = useHosts((s) => s.permissions);
   const selectedId = useSessions((s) => s.selectedId);
-  const mainId = useSessions((s) => s.mainId);
-  const splitId = useSessions((s) => s.splitId);
+  const paneIds = useSessions((s) => s.paneIds);
   const view = useSessions((s) => s.view);
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
-  const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.mainId === null);
+  const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const now = useNow();
@@ -225,13 +242,22 @@ export function SidebarRail() {
   const newDraft = useNewSessionDraft();
 
   const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
-  const groups = useMemo(() => sidebarGroups(all, { now, archiveAfterDays }), [all, now, archiveAfterDays]);
+  // Other computers' sessions too, in the same groups, with the Computers filter applied: the same list as the open sidebar.
+  const remoteRows = useRemoteRows();
+  const hidden = useComputers((s) => s.hidden);
+  const listed = useMemo(() => filterBySource([...all, ...remoteRows], hidden), [all, remoteRows, hidden]);
+  const shownId = useShownRowId();
+  const sort = usePreferences((s) => s.prefs.sidebarSort);
+  const catchUps = useCatchUp((s) => s.cards);
+  const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
+  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick }), [listed, now, archiveAfterDays, sort, quick]);
   const sectionsOpen = useSidebarSections((s) => s.open);
   const queue = useQueue(all);
   const items = useMemo<RailItem[]>(() => {
     // Blocks in the open sidebar's order (the queue under Working), a thin line between them.
     const blocks: { key: string; items: RailItem[] }[] = [];
-    const queueBlock = queue.entries.length ? [{ key: 'queue', items: [{ kind: 'queue' as const, count: queue.entries.length, ready: queue.readyCount }] }] : [];
+    // The queue only shows in Recent, as in the sidebar.
+    const queueBlock = queue.entries.length && sort === 'recent' ? [{ key: 'queue', items: [{ kind: 'queue' as const, count: queue.entries.length, ready: queue.readyCount }] }] : [];
     let queued = false;
     for (const { group, rows } of groups) {
       if (!queued && group !== 'needs-you' && group !== 'working') {
@@ -241,7 +267,7 @@ export function SidebarRail() {
       if (isSectionKey(group) && !sectionsOpen[group]) {
         // A closed section is one chip; the open session stays beside it, as in the sidebar.
         const unread = rows.filter((row) => rowStatus(row) === 'unread').length;
-        const kept = rows.filter((row) => row.id === selectedId).map((data) => ({ kind: 'session' as const, data }));
+        const kept = rows.filter((row) => row.id === shownId).map((data) => ({ kind: 'session' as const, data }));
         blocks.push({ key: group, items: [{ kind: 'chip', section: group, group, count: rows.length, unread }, ...kept] });
       } else blocks.push({ key: group, items: rows.map((data) => ({ kind: 'session' as const, data })) });
       if (group === 'working') {
@@ -251,7 +277,7 @@ export function SidebarRail() {
     }
     if (!queued) blocks.push(...queueBlock);
     return blocks.flatMap((block, i) => [...(i > 0 ? [{ kind: 'divider' as const, key: `divider-${block.key}` }] : []), ...block.items]);
-  }, [groups, sectionsOpen, queue.entries.length, queue.readyCount, selectedId]);
+  }, [groups, sectionsOpen, queue.entries.length, queue.readyCount, shownId, sort]);
   const order = useMemo(() => items.flatMap((item) => (item.kind === 'session' ? [item.data.id] : [])), [items]);
   // The oldest open request of each waiting session: what its tooltip says it waits for.
   const requests = useMemo(() => {
@@ -275,7 +301,9 @@ export function SidebarRail() {
     }, [items]),
     overscan: 10,
   });
-  useEffect(() => virtualizer.measure(), [items, virtualizer]);
+  // No measure() when the items change: their heights are fixed per kind, and getItemKey changes with `items`,
+  // which recomputes every position. Measuring on each change queued another render, and a burst of new sessions
+  // ran into React's limit on nested updates.
   const virtualItems = virtualizer.getVirtualItems();
 
   // One Tab stop for the list (roving tabindex): the selected row while it's rendered, else the first rendered one.
@@ -285,7 +313,7 @@ export function SidebarRail() {
   });
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const tabStopId =
-    focusedId && renderedIds.includes(focusedId) ? focusedId : listView === 'session' && selectedId && renderedIds.includes(selectedId) ? selectedId : (renderedIds[0] ?? null);
+    focusedId && renderedIds.includes(focusedId) ? focusedId : shownId && renderedIds.includes(shownId) ? shownId : (renderedIds[0] ?? null);
 
   const focusRow = (id: string) => {
     setFocusedId(id);
@@ -310,8 +338,7 @@ export function SidebarRail() {
   const rowClick = useCallback((event: MouseEvent, data: SessionRowData) => {
     // Picking several sessions happens in the open sidebar.
     if (modKey(event) || event.shiftKey) return useSidebar.getState().setState('open');
-    if (event.altKey) useSessions.getState().openBeside(data.id);
-    else useSessions.getState().select(data.id);
+    openRow(data.id, { beside: event.altKey });
   }, []);
 
   return (
@@ -329,7 +356,7 @@ export function SidebarRail() {
             shortcut="session.new"
             data-tooltip-placement="right"
             data-new-session
-            onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession())}
+            onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))}
             className={`w-9! rounded-lg! ${view === 'new' ? 'ring-2 ring-accent/40 ring-offset-1 ring-offset-sidebar' : ''}`}
           />
           {newDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />}
@@ -383,12 +410,13 @@ export function SidebarRail() {
                 ) : (
                   <RailRow
                     data={item.data}
-                    selected={listView === 'session' && item.data.id === selectedId}
-                    beside={listView === 'session' && splitId !== null && item.data.id !== selectedId && (item.data.id === mainId || item.data.id === splitId)}
+                    selected={item.data.id === shownId}
+                    beside={listView === 'session' && item.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(item.data.id)}
                     tabbable={item.data.id === tabStopId}
                     now={now}
                     request={requests.get(item.data.id) ?? null}
                     draft={draftPreviews.get(item.data.id) ?? null}
+                    outside={(catchUps.get(item.data.id)?.signals.outOfScope.length ?? 0) > 0}
                     onClick={rowClick}
                     onMenu={menus.openSessionMenu}
                     onMiddleClick={menus.middleClick}
@@ -401,6 +429,7 @@ export function SidebarRail() {
       </div>
 
       <footer className="flex shrink-0 flex-col items-center gap-1.5 border-t border-border py-2">
+        <RailDevices />
         <FocusCounter compact />
         <RailStarButton
           sessions={all.length}
@@ -419,6 +448,9 @@ export function SidebarRail() {
           onClick={() => (view === 'settings' ? useSessions.getState().closeSettings() : useSessions.getState().openSettings())}
         />
       </footer>
+      <p className="sr-only" aria-live="polite">
+        {deviceNotice}
+      </p>
       {menus.overlays}
     </nav>
   );

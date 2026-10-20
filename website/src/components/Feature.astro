@@ -1,11 +1,21 @@
 ---
-/** One feature on the homepage: a heading, a short text and a link to its docs, next to a screenshot. */
+/**
+ * One feature on the homepage: a small label, a heading, a short text and a link to its docs, next to a
+ * screenshot. A list in the text (`- [Session states](/sessions/states/)`) shows as the related features under it,
+ * so the links stay in Markdown, where the links validator checks them. Two or more `shots` sit side by side
+ * (phone screens). On a phone the block reads heading, screenshot, text; a wide screenshot is cropped square
+ * around `focus` there, so the part that matters is big enough to read (a tap opens it whole).
+ */
 import Screenshot from './Screenshot.astro';
 
 interface Props {
   title: string;
-  shot: string;
-  alt: string;
+  /** A word or two over the heading, such as "Stay on top". */
+  eyebrow?: string;
+  shot?: string;
+  /** Several screenshots side by side, all with `alt`'s text plus their own. */
+  shots?: Array<{ name: string; alt: string }>;
+  alt?: string;
   /** A docs page, without the base: `/sessions/sidebar/`. */
   href: string;
   linkText?: string;
@@ -13,19 +23,25 @@ interface Props {
   flip?: boolean;
   /** At most this wide, in px: for a tall crop such as the sidebar. */
   shotWidth?: number;
+  /** Where the phone crop centres, as a CSS position such as `30% 20%`. Without it, the screenshot isn't cropped. */
+  focus?: string;
 }
-const { title, shot, alt, href, linkText = 'Read more', flip = false, shotWidth } = Astro.props;
+const { title, eyebrow, shot, shots, alt = '', href, linkText = 'Read more', flip = false, shotWidth, focus } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const pictures = shots ?? (shot ? [{ name: shot, alt }] : []);
 ---
 
 <section class:list={['sb-feature', 'not-content', { flip }]}>
   <div class="sb-feature-copy">
-    <h2>{title}</h2>
+    <div class="sb-feature-head">
+      {eyebrow && <p class="sb-feature-eyebrow">{eyebrow}</p>}
+      <h2>{title}</h2>
+    </div>
     <div class="sb-feature-text"><slot /></div>
     <a class="sb-feature-link" href={`${base}${href}`}>{linkText} →</a>
   </div>
-  <div class="sb-feature-shot">
-    <Screenshot name={shot} alt={alt} width={shotWidth} />
+  <div class:list={['sb-feature-shot', { several: pictures.length > 1, crop: !!focus }]} style={focus ? `--focus: ${focus}` : undefined}>
+    {pictures.map((picture) => <Screenshot name={picture.name} alt={picture.alt} width={shotWidth} />)}
   </div>
 </section>
 
@@ -34,27 +50,38 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
     display: grid;
     gap: 1.5rem;
     align-items: center;
-    padding-block: 3rem;
+    padding-block: 3.5rem;
     border-top: 1px solid var(--sb-border);
   }
   @media (min-width: 60rem) {
     .sb-feature {
       grid-template-columns: 5fr 8fr;
-      gap: 3rem;
+      gap: 3.5rem;
+    }
+    .sb-feature.flip {
+      grid-template-columns: 8fr 5fr;
     }
     .sb-feature.flip .sb-feature-copy {
       order: 2;
     }
   }
+  .sb-feature-eyebrow {
+    margin: 0 0 0.5rem;
+    font-size: var(--sb-text-meta);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sb-accent-ink);
+  }
   h2 {
     margin: 0;
-    font-size: var(--sb-text-hero);
+    font-size: calc(var(--sb-text-hero) * 1.2);
     font-weight: 600;
-    line-height: 1.3;
+    line-height: 1.25;
     color: var(--sb-text);
   }
   .sb-feature-text {
-    margin-top: 0.75rem;
+    margin-top: 0.85rem;
     font-size: var(--sb-text-body);
     line-height: 1.6;
     color: var(--sb-muted);
@@ -66,9 +93,33 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
     color: var(--sb-text);
     font-weight: 600;
   }
+  /* The related features: small links with an arrow, two to a row where there is room. */
+  .sb-feature-text :global(ul) {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.35rem 1rem;
+    margin: 1rem 0 1.1rem;
+    padding: 0.9rem 0 0;
+    border-top: 1px dashed var(--sb-border);
+    list-style: none;
+    font-size: var(--sb-text-ui);
+  }
+  .sb-feature-text :global(li) {
+    margin: 0;
+  }
+  .sb-feature-text :global(li a) {
+    color: var(--sb-text);
+    text-decoration: none;
+  }
+  .sb-feature-text :global(li a::before) {
+    content: '↳ ';
+    color: var(--sb-faint);
+  }
+  .sb-feature-text :global(li a:hover) {
+    color: var(--sb-accent-ink);
+  }
   .sb-feature-link {
     display: inline-block;
-    margin-top: 0.25rem;
     font-size: var(--sb-text-ui);
     font-weight: 600;
     color: var(--sb-accent-ink);
@@ -79,5 +130,65 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   }
   .sb-feature-shot :global(.sb-shot) {
     margin: 0 auto;
+  }
+  .sb-feature-shot.several {
+    display: flex;
+    justify-content: center;
+    gap: 1.25rem;
+  }
+  .sb-feature-shot.several :global(.sb-shot) {
+    flex: 1;
+    margin: 0;
+  }
+  .sb-feature-shot.several :global(.sb-shot:nth-child(2)) {
+    margin-top: 2.5rem;
+  }
+
+  /* A phone: heading, screenshot, text, links, one under the other. */
+  @media (max-width: 60rem) {
+    .sb-feature {
+      gap: 1.25rem;
+      padding-block: 2.5rem;
+    }
+    .sb-feature-copy {
+      display: contents;
+    }
+    .sb-feature-head {
+      order: 1;
+    }
+    .sb-feature-shot {
+      order: 2;
+    }
+    .sb-feature-text {
+      order: 3;
+      margin-top: 0;
+    }
+    .sb-feature-link {
+      order: 4;
+      margin-top: -0.75rem;
+    }
+    .sb-feature-text :global(ul) {
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem 0.75rem;
+    }
+    .sb-feature-shot.crop :global(.sb-shot-frame) {
+      aspect-ratio: 1;
+    }
+    .sb-feature-shot.crop :global(.sb-shot-frame img) {
+      height: 100%;
+      object-fit: cover;
+      object-position: var(--focus);
+    }
+  }
+  @media (max-width: 30rem) {
+    h2 {
+      font-size: var(--sb-text-hero);
+    }
+    .sb-feature-text {
+      font-size: var(--sb-text-ui);
+    }
+    .sb-feature-shot.several {
+      gap: 0.75rem;
+    }
   }
 </style>

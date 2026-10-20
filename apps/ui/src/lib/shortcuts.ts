@@ -224,9 +224,11 @@ export interface ShortcutContext {
   running: boolean;
   /** A permission or question card is waiting for an answer. */
   pending: "permission" | "question" | null;
+  /** The open session's catch-up: in full (the banner), folded into its strip, or none. */
+  catchUp: "full" | "strip" | null;
   /** Sessions picked in the sidebar. */
   selection: number;
-  /** Two sessions side by side. */
+  /** More than one pane open (sessions side by side or stacked). */
   split: boolean;
   /** The session's branch is behind its upstream, so it can be pulled. */
   behind: boolean;
@@ -241,6 +243,7 @@ export type ShortcutSection =
   | "session"
   | "composer"
   | "permissions"
+  | "catch-up"
   | "actions"
   | "new-session"
   | "settings"
@@ -253,6 +256,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
   session: "In a session",
   composer: "Message box",
   permissions: "Permissions and questions",
+  "catch-up": "Catch-up",
   actions: "Project actions",
   "new-session": "New session",
   usage: "Usage",
@@ -260,7 +264,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view";
 
 export interface ShortcutDef {
   id: string;
@@ -288,8 +292,14 @@ export interface ShortcutDef {
 
 const inSession = (ctx: ShortcutContext) =>
   ctx.view === "session" && ctx.session;
+/** ⌘J has a terminal to show: the session's, or outside a session (Settings too) the window's own. */
+const withTerminal = (ctx: ShortcutContext) =>
+  inSession(ctx) || ctx.view !== "session";
 const inMessageBox = (ctx: ShortcutContext) =>
   inSession(ctx) || ctx.view === "new-session";
+/** A catch-up is on screen; folded into its strip, only Space and ↩ work. */
+const withCatchUp = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp !== null;
+const catchUpCard = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp === "full";
 
 export const SHORTCUTS = [
   // General
@@ -384,6 +394,15 @@ export const SHORTCUTS = [
     section: "sessions",
   },
   {
+    id: "session.new-window",
+    keys: ["mod+alt+o"],
+    action: "Open this session in a new window",
+    section: "sessions",
+    context: "In a session",
+    note: "Closing that window puts nothing away: the session keeps running",
+    when: (ctx) => ctx.view === "session" && ctx.session,
+  },
+  {
     id: "sidebar.move",
     keys: ["arrowup", "arrowdown"],
     action: "Move through sessions",
@@ -438,6 +457,7 @@ export const SHORTCUTS = [
     action: "Open beside the current session",
     section: "sessions",
     context: "In the sidebar",
+    note: "Dragging the session onto a pane opens it there",
     where: "sidebar",
   },
   {
@@ -542,11 +562,71 @@ export const SHORTCUTS = [
     context: "On a session, project or file; or right-click",
   },
   {
+    id: "pane.close",
+    keys: ["mod+alt+w"],
+    action: "Close this pane",
+    section: "sessions",
+    context: "With more than one pane open",
+    note: "The panes next to it take its space",
+    when: (ctx) => ctx.split,
+  },
+  {
     id: "pane.close-other",
     keys: ["mod+\\"],
-    action: "Close the other pane",
+    action: "Close the other panes",
     section: "sessions",
-    context: "With two panes open",
+    context: "With more than one pane open",
+    note: "Keeps the pane you are in",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.focus-left",
+    keys: ["mod+alt+arrowleft"],
+    action: "Go to the pane on the left",
+    section: "sessions",
+    context: "With more than one pane open",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.focus-right",
+    keys: ["mod+alt+arrowright"],
+    action: "Go to the pane on the right",
+    section: "sessions",
+    context: "With more than one pane open",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.focus-up",
+    keys: ["mod+alt+arrowup"],
+    action: "Go to the pane above",
+    section: "sessions",
+    context: "With more than one pane open",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.focus-down",
+    keys: ["mod+alt+arrowdown"],
+    action: "Go to the pane below",
+    section: "sessions",
+    context: "With more than one pane open",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.swap",
+    keys: ["mod+shift+x"],
+    action: "Swap this pane with the next one",
+    section: "sessions",
+    context: "With more than one pane open",
+    note: "Dragging a pane's header onto the middle of another one does the same",
+    when: (ctx) => ctx.split,
+  },
+  {
+    id: "pane.orientation",
+    keys: ["mod+shift+o"],
+    action: "Stack this pane's split, or put it side by side",
+    section: "sessions",
+    context: "With more than one pane open",
+    note: "Turns the panes this one sits in the other way",
     when: (ctx) => ctx.split,
   },
 
@@ -577,6 +657,40 @@ export const SHORTCUTS = [
     where: "find",
   },
   {
+    id: "transcript.prompt-previous",
+    keys: ["mod+shift+arrowup"],
+    action: "Previous prompt",
+    section: "session",
+    note: "Not in a text field that has text, where it selects to the start",
+    when: (ctx) => inSession(ctx) && ctx.focus !== "terminal",
+  },
+  {
+    id: "transcript.prompt-next",
+    keys: ["mod+shift+arrowdown"],
+    action: "Next prompt",
+    section: "session",
+    note: "After the last prompt, it goes to the end of the conversation",
+    when: (ctx) => inSession(ctx) && ctx.focus !== "terminal",
+  },
+  {
+    id: "transcript.run-send",
+    keys: ["alt+click"],
+    action: "Run a code block and give Claude its output",
+    section: "session",
+    context: "On a code block's Run button",
+    note: "It runs in a tab of its own; when it ends, Claude gets the exit code and the end of what it printed",
+    when: inSession,
+  },
+  {
+    id: "transcript.file-link-other",
+    keys: ["shift+click"],
+    action: "Open a file link the other way",
+    section: "session",
+    context: "On a file in the conversation",
+    note: "A click does what Settings › Conversation sets; this does the other",
+    when: inSession,
+  },
+  {
     id: "changes.toggle",
     keys: ["mod+shift+d"],
     action: "Show or hide Changes",
@@ -584,18 +698,42 @@ export const SHORTCUTS = [
     when: inSession,
   },
   {
+    id: "agents.toggle",
+    keys: ["mod+shift+k"],
+    action: "Show or hide Agents",
+    section: "session",
+    when: inSession,
+    note: "The agents Claude started in this session, beside the conversation",
+  },
+  {
+    id: "commands.toggle",
+    keys: ["mod+shift+e"],
+    action: "Show or hide Commands",
+    section: "session",
+    when: inSession,
+    note: "The commands Claude runs in the background, with their output",
+  },
+  {
+    id: "ask.open",
+    keys: [],
+    action: "Ask about this session",
+    section: "session",
+    when: inSession,
+    note: "No key by default: use the Ask button next to Send, the command palette, or /btw",
+  },
+  {
     id: "terminal.toggle",
     keys: ["mod+j", "ctrl+`"],
     action: "Show or hide the terminal",
-    section: "session",
-    when: inSession,
+    section: "general",
+    when: withTerminal,
   },
   {
     id: "terminal.maximize",
     keys: ["mod+shift+j"],
     action: "Maximize or restore the terminal",
-    section: "session",
-    when: inSession,
+    section: "general",
+    when: withTerminal,
   },
   {
     id: "terminal.restore",
@@ -603,7 +741,7 @@ export const SHORTCUTS = [
     action: "Restore the terminal",
     section: "session",
     context: "While it fills the view, outside the shell",
-    when: (ctx) => inSession(ctx) && ctx.terminal.maximized,
+    when: (ctx) => withTerminal(ctx) && ctx.terminal.maximized,
     where: "terminal",
   },
   {
@@ -612,7 +750,7 @@ export const SHORTCUTS = [
     action: "Clear the terminal",
     section: "session",
     context: "In the terminal",
-    when: (ctx) => inSession(ctx) && ctx.terminal.open,
+    when: (ctx) => withTerminal(ctx) && ctx.terminal.open,
     where: "terminal",
   },
   {
@@ -621,7 +759,7 @@ export const SHORTCUTS = [
     action: "Stop the action",
     section: "session",
     context: "In the terminal, while an action runs",
-    when: (ctx) => inSession(ctx) && ctx.terminal.actionRunning,
+    when: (ctx) => withTerminal(ctx) && ctx.terminal.actionRunning,
     where: "terminal",
   },
   {
@@ -738,6 +876,26 @@ export const SHORTCUTS = [
     where: "composer",
   },
   {
+    id: "composer.next-blank",
+    keys: ["tab"],
+    action: "Next blank",
+    section: "composer",
+    context: "In a saved prompt",
+    note: "After the last blank, on to the text under the prompt",
+    when: inMessageBox,
+    where: "composer",
+  },
+  {
+    id: "composer.previous-blank",
+    keys: ["shift+tab"],
+    action: "Previous blank",
+    section: "composer",
+    context: "In a saved prompt",
+    note: "Backspace in an empty blank takes it out of the prompt",
+    when: inMessageBox,
+    where: "composer",
+  },
+  {
     id: "composer.history",
     keys: ["arrowup", "arrowdown"],
     action: "Bring back an earlier message",
@@ -774,6 +932,76 @@ export const SHORTCUTS = [
     when: (ctx) => inSession(ctx) && ctx.pending === "question",
   },
 
+  // Catch-up: the banner over a finished session. Never in the message box or another field.
+  {
+    id: "catchup.primary",
+    keys: ["enter"],
+    action: "Run the catch-up's main action",
+    section: "catch-up",
+    context: "Commit, Reply, Review changes or Archive",
+    when: withCatchUp,
+    where: "view",
+  },
+  {
+    id: "catchup.close",
+    keys: ["escape"],
+    action: "Close the reply, the Changes panel, Details, then the catch-up",
+    section: "catch-up",
+    context: "One at a time, the nearest first",
+    when: withCatchUp,
+    where: "view",
+  },
+  {
+    id: "catchup.review",
+    keys: ["d"],
+    action: "Review changes",
+    section: "catch-up",
+    context: "Opens or closes the Changes panel",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.commit",
+    keys: ["c"],
+    action: "Commit",
+    section: "catch-up",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.reply",
+    keys: ["r"],
+    action: "Reply to Claude",
+    section: "catch-up",
+    context: "Puts you in the message box",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.read",
+    keys: ["u"],
+    action: "Mark as read",
+    section: "catch-up",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.archive",
+    keys: ["e"],
+    action: "Archive, and go to the next session",
+    section: "catch-up",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.expand",
+    keys: ["space"],
+    action: "Open or close Details, or show the folded catch-up",
+    section: "catch-up",
+    when: withCatchUp,
+    where: "view",
+  },
+
   // New session
   {
     id: "new-session.pick",
@@ -791,6 +1019,7 @@ export const SHORTCUTS = [
     when: (ctx) => ctx.view === "new-session",
     where: "composer",
   },
+
 
   {
     id: "new-session.queue",
@@ -910,6 +1139,13 @@ export function matches(
 /** A shortcut's main keys in the stored form (`cmd+j`), for a button's `kbd` or a palette row. */
 export const keysFor = (id: ShortcutId) =>
   comboPresses(shortcutById(id).keys[0]!)[0]!;
+
+/**
+ * The click that does `id`, in the stored form (`shift+click`), for text such as a tooltip: `formatKeys(clickKeysFor(id))`.
+ * `keysFor` is for key presses and skips clicks.
+ */
+export const clickKeysFor = (id: ShortcutId) =>
+  shortcutById(id).keys.find((combo) => combo.endsWith("click")) ?? "";
 
 /** Every key that runs `id`, as `aria-keyshortcuts` lists them (space-separated). */
 export const ariaKeysFor = (id: ShortcutId) =>

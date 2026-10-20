@@ -398,4 +398,174 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX side_questions_session ON side_questions (session_id, at);
   `,
+
+  // v24: Remote, the phones you paired. Only their public keys: a copy of the database gives nobody access. Your
+  // own choices, not derived from ~/.claude: keep them when rebuilding.
+  `
+  CREATE TABLE remote_devices (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    public_key   TEXT NOT NULL UNIQUE,
+    created_at   INTEGER NOT NULL,
+    last_seen_at INTEGER,
+    revoked_at   INTEGER
+  );
+  `,
+
+  // v25: Catch-up, the briefing on each session's latest turn (one per session, replaced by the next turn), and the
+  // tokens its Haiku summaries used. Summaries run with `persistSession: false`, so no transcript holds those tokens and
+  // the Usage scanner never sees them; this is their only record.
+  `
+  CREATE TABLE catchup (
+    session_id TEXT PRIMARY KEY,
+    turn_id    TEXT NOT NULL,
+    json       TEXT NOT NULL
+  );
+  CREATE TABLE catchup_usage (
+    id          TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    at          INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    session_id  TEXT,
+    input       INTEGER NOT NULL,
+    output      INTEGER NOT NULL,
+    cache_read  INTEGER NOT NULL,
+    cache_write INTEGER NOT NULL
+  );
+  CREATE INDEX catchup_usage_scope_at ON catchup_usage (scope, at);
+  `,
+
+  // v26: Ask about this session. Questions about a session come in threads (a thread's earlier questions go along
+  // with each follow-up), and a failed one is kept with its error. Earlier side questions become one thread per
+  // session. Each answer's tokens are kept too, since the short-lived process that answers leaves no transcript for
+  // the Usage scanner. All of it is user data: keep it when rebuilding.
+  `
+  CREATE TABLE ask_threads (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX ask_threads_session ON ask_threads (session_id, created_at);
+  ALTER TABLE side_questions ADD COLUMN thread_id TEXT;
+  ALTER TABLE side_questions ADD COLUMN error TEXT;
+  WITH first AS (
+    SELECT session_id, question, MIN(at) AS at FROM side_questions GROUP BY session_id
+  )
+  INSERT INTO ask_threads (id, session_id, title, created_at)
+    SELECT 'btw-' || session_id, session_id, CASE WHEN length(question) > 80 THEN substr(question, 1, 79) || '…' ELSE question END, at FROM first;
+  UPDATE side_questions SET thread_id = 'btw-' || session_id;
+  CREATE INDEX side_questions_thread ON side_questions (thread_id, at);
+  CREATE TABLE side_question_usage (
+    id          TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    session_id  TEXT,
+    at          INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    input       INTEGER NOT NULL,
+    output      INTEGER NOT NULL,
+    cache_read  INTEGER NOT NULL,
+    cache_write INTEGER NOT NULL
+  );
+  CREATE INDEX side_question_usage_scope_at ON side_question_usage (scope, at);
+  `,
+
+  // v27: Usage limits. The limit each Claude profile is at (one per profile, until a turn there gets through), and the
+  // sessions armed to resume when it resets, so a resume survives quitting the app. The armed resumes are your own
+  // choices: keep them when rebuilding.
+  `
+  CREATE TABLE usage_limits (
+    profile_id TEXT PRIMARY KEY,
+    json       TEXT NOT NULL
+  );
+  CREATE TABLE limit_resumes (
+    session_id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    at         INTEGER NOT NULL,
+    attempts   INTEGER NOT NULL DEFAULT 0
+  );
+  `,
+
+  // v28: Other computers. This app paired with Remote on another computer, as a phone does: that computer's public
+  // key, address and the id it gave this one (this app's own device key stays in the system's keychain). And whether a
+  // device paired here is a phone or another computer, for Settings › Remote, and the address each one last connected
+  // through (to tell when a quick tunnel's new address hasn't reached them). Your own choices: keep them.
+  `
+  CREATE TABLE remote_computers (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    engine_key TEXT NOT NULL UNIQUE,
+    address    TEXT NOT NULL,
+    device_id  TEXT NOT NULL,
+    paired_at  INTEGER NOT NULL
+  );
+  ALTER TABLE remote_devices ADD COLUMN kind TEXT NOT NULL DEFAULT 'phone';
+  ALTER TABLE remote_devices ADD COLUMN last_address TEXT;
+  `,
+
+  // v29: A shell action can send its output to the session when it ends. Your choice, on your actions.
+  `
+  ALTER TABLE project_actions ADD COLUMN send_output INTEGER NOT NULL DEFAULT 0;
+  `,
+
+  // v30: Saved prompts with blanks. Yours for every project (no project root) or for one project, just for you. The
+  // shared ones live in the project's .switchboard.json, but how often you use them is yours, so it is kept here by
+  // project and id, never in that file. All of it is your own: keep it when rebuilding.
+  `
+  CREATE TABLE saved_prompts (
+    id           TEXT NOT NULL,
+    project_root TEXT,
+    name         TEXT NOT NULL,
+    text         TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    uses         INTEGER NOT NULL DEFAULT 0,
+    last_used_at INTEGER
+  );
+  CREATE UNIQUE INDEX saved_prompts_key ON saved_prompts (COALESCE(project_root, ''), id);
+  CREATE TABLE shared_prompt_uses (
+    project_root TEXT NOT NULL,
+    id           TEXT NOT NULL,
+    uses         INTEGER NOT NULL DEFAULT 0,
+    last_used_at INTEGER,
+    PRIMARY KEY (project_root, id)
+  );
+  `,
+
+  // v31: Writes to the hour-long prompt cache cost more than to the 5-minute one, so the cost estimate keeps them apart:
+  // `cache_write_1h` is the part of `cache_write` that went to it. Responses counted before have no split yet
+  // (`split` 0): every transcript is read once more to add it, without counting anything twice. The usage of
+  // transcripts that are gone stays as it was, priced as 5-minute writes.
+  `
+  ALTER TABLE session_usage ADD COLUMN cache_write_1h INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE usage_messages ADD COLUMN split INTEGER NOT NULL DEFAULT 0;
+  UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL;
+  `,
+
+  // v32: Session linking (docs/session-linking.md). Links between sessions (a message in one linked the other), and the
+  // pull requests each session opened or whose branch it worked on. Both are read back from transcripts (a brief names
+  // its session, `gh pr create` prints its link), so a rebuild may drop them.
+  `
+  CREATE TABLE session_links (
+    from_session TEXT NOT NULL,
+    to_session   TEXT NOT NULL,
+    label        TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    PRIMARY KEY (from_session, to_session, created_at)
+  );
+  CREATE INDEX session_links_to ON session_links (to_session);
+  CREATE TABLE session_prs (
+    session_id TEXT NOT NULL,
+    repo       TEXT NOT NULL,
+    number     INTEGER NOT NULL,
+    url        TEXT NOT NULL,
+    state      TEXT NOT NULL,
+    base       TEXT,
+    head       TEXT,
+    source     TEXT NOT NULL,
+    seen_at    INTEGER NOT NULL,
+    checked_at INTEGER NOT NULL,
+    PRIMARY KEY (session_id, repo, number)
+  );
+  `,
 ];

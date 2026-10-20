@@ -24,13 +24,16 @@
     "test": "vitest run",
     "check": "npm run typecheck && npm run test",
     "docs:shortcuts": "node apps/ui/scripts/docs-shortcuts.ts",
-    "website:dev": "npm run dev -w @switchboard/website",
-    "website:build": "npm run build -w @switchboard/website",
+    "website:dev": "npm run build -w @switchboard/remote && npm run dev -w @switchboard/website",
+    "website:build": "npm run build -w @switchboard/remote && npm run build -w @switchboard/website",
     "website:screenshots": "npm run build -w @switchboard/desktop && node scripts/website-screenshots.ts",
+    "chaos": "npm run build -w @switchboard/desktop && node scripts/chaos/run.ts",
+    "chaos:round": "npm run build -w @switchboard/desktop && node scripts/chaos/round.ts",
     "dist": "npm run dist -w @switchboard/desktop",
     "smoke:packaged": "npm run smoke:packaged -w @switchboard/desktop",
     "dist:preview": "npm run dist:preview -w @switchboard/desktop",
-    "dist:notarized": "npm run dist:notarized -w @switchboard/desktop"
+    "dist:notarized": "npm run dist:notarized -w @switchboard/desktop",
+    "dev:remote": "npm run dev -w @switchboard/remote"
   },
   "devDependencies": {
     "@types/node": "^24.19.1",

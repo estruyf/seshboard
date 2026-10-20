@@ -1,14 +1,16 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type SideQuestionEvent, type TranscriptUpdate } from '@switchboard/protocol';
+import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@switchboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine } from './engine.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
+import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { git } from './git/gitChanges.ts';
 import { userShell } from './system/shell.ts';
+import { shellName } from './terminals/outputMessage.ts';
 
 const SESSION_ID = '33333333-3333-4333-8333-333333333333';
 /** The shell the engine's terminals run for the environment the tests give it: zsh here, PowerShell on Windows. */
@@ -38,12 +40,24 @@ function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?:
     setModel: async () => {},
     supportedCommands: async () => [],
     supportedModels: async () => [],
-    askSideQuestion: async (question: string) => ({ response: `It was --cleanStart (${question})`, synthetic: false }),
+  });
+  /** A question about a session: one streamed answer from the fork, with its tokens. */
+  const answer = (prompt: AsyncIterable<SDKUserMessage>) => ({
+    async *[Symbol.asyncIterator]() {
+      for await (const message of prompt) {
+        const text = (message.message.content as Array<{ text?: string }>)[0]?.text ?? '';
+        const reply = `It was --cleanStart (${text.split('\n').at(-1)})`;
+        yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text: reply } } };
+        yield { type: 'assistant', parent_tool_use_id: null, message: { id: 'm1', model: 'claude-opus-5-5', usage: { input_tokens: 2, output_tokens: 9, cache_read_input_tokens: 800, cache_creation_input_tokens: 0 }, content: [{ type: 'text', text: reply }] } };
+        yield { type: 'result', subtype: 'success', is_error: false, result: reply };
+      }
+    },
+    close: () => {},
   });
   return {
-    query: ({ options }) => {
+    query: ({ prompt, options }) => {
       created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode });
-      return quiet() as never;
+      return (options.forkSession && options.persistSession === false ? answer(prompt) : quiet()) as never;
     },
     startup: async ({ options }) => ({ query: () => (created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode }), quiet()), close: () => {} }) as never,
   };
@@ -99,6 +113,7 @@ describe('engine over a MessagePort', () => {
     const { client, dataDir } = connect();
     const info = await client.call('system.info', {});
     expect(info.paths.database).toBe(join(dataDir, 'cache.sqlite'));
+    expect(info.paths.home).toBe(homedir());
     expect(info.versions.sqlite).toMatch(/^\d+\.\d+/);
     expect(info.shell.resolved).toBe(false);
     expect(info.claude).toBeNull();
@@ -206,6 +221,25 @@ describe('engine over a MessagePort', () => {
     expect((await client.call('later.list', {})).items.map((i) => i.id)).toEqual([next.id, missing.id]);
   });
 
+  it('takes a file as neither a project folder nor a session folder', async () => {
+    const created: Array<{ cwd?: string }> = [];
+    const { client, dataDir } = connect({ sdk: fakeSdk(created) });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-file-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    const file = join(repo, 'package.json');
+    writeFileSync(file, '{}\n');
+    expect(await client.call('projects.inspect', { path: file })).toMatchObject({ path: file, exists: false, isFile: true, isGitRepo: false });
+    expect(await client.call('projects.inspect', { path: repo })).toMatchObject({ exists: true, isGitRepo: true });
+    expect(await client.call('projects.inspect', { path: repo })).not.toHaveProperty('isFile');
+    // A path under a file (ENOTDIR) is just missing.
+    expect(await client.call('projects.inspect', { path: join(file, 'src') })).toMatchObject({ exists: false, isGitRepo: false });
+    await expect(client.call('session.create', { cwd: file, prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_A_FOLDER', message: `That is a file, not a folder: ${file}` });
+    await expect(client.call('session.create', { cwd: join(file, 'src'), prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(client.call('session.create', { cwd: join(dataDir, 'gone'), prompt: 'hi' })).rejects.toThrow(/Folder not found/);
+    expect(created).toEqual([]);
+  });
+
   it('pushes log events to attached clients', async () => {
     const { client, engine } = connect();
     const seen: LogEntry[] = [];
@@ -253,31 +287,35 @@ describe('engine over a MessagePort', () => {
     await client.call('transcript.unwatch', { sessionId: SESSION_ID });
   });
 
-  it('answers a side question and keeps it, with nothing added to the transcript or the session file', async () => {
+  it('answers a question about the session and keeps it in a thread, with nothing added to the transcript or the session file', async () => {
     const created: Array<{ cwd?: string }> = [];
     const { client, projectDir } = connect({ sdk: fakeSdk(created) });
     await new Promise((resolve) => client.on('sessions.changed', resolve));
     const file = join(projectDir, `${SESSION_ID}.jsonl`);
     const before = readFileSync(file, 'utf8');
-    const events: SideQuestionEvent[] = [];
-    client.on('session.btw', (event) => events.push(event));
+    const events: AskEvent[] = [];
+    client.on('session.ask', (event) => events.push(event));
+    const tokens: string[][] = [];
+    client.on('usage.tokens', (event) => tokens.push(event.profileIds));
 
-    const { id } = await client.call('session.btw', { sessionId: SESSION_ID, question: 'Which flag?' });
+    const { threadId, id } = await client.call('session.ask', { sessionId: SESSION_ID, question: 'Which flag?' });
     await expect.poll(() => events.some((e) => e.id === id && e.done)).toBe(true);
     expect(events).toEqual([
-      { sessionId: SESSION_ID, id, delta: 'It was --cleanStart (Which flag?)' },
-      { sessionId: SESSION_ID, id, done: true },
+      { sessionId: SESSION_ID, threadId, id, delta: 'It was --cleanStart (Which flag?)' },
+      { sessionId: SESSION_ID, threadId, id, done: true, answer: 'It was --cleanStart (Which flag?)' },
     ]);
-    // Answered by a short-lived copy in the session's folder; the session itself wasn't started.
-    expect(created).toEqual([{ cwd: PARSER, model: undefined, permissionMode: undefined }]);
+    // Answered by a short-lived fork in the session's folder; the session itself wasn't started.
+    expect(created).toEqual([{ cwd: PARSER, model: undefined, permissionMode: 'default' }]);
     expect((await client.call('hosts.list', {})).hosts).toEqual([]);
-    const list = await client.call('session.btwList', { sessionId: SESSION_ID });
-    expect(list).toMatchObject({ unsupported: false, items: [{ id, question: 'Which flag?', answer: 'It was --cleanStart (Which flag?)' }] });
+    const { threads } = await client.call('session.askThreads', { sessionId: SESSION_ID });
+    expect(threads).toMatchObject([{ id: threadId, title: 'Which flag?', items: [{ id, question: 'Which flag?', answer: 'It was --cleanStart (Which flag?)' }] }]);
+    // Its tokens count in Usage.
+    expect(tokens.length).toBeGreaterThan(0);
 
     const { messages } = await client.call('transcript.get', { sessionId: SESSION_ID });
     expect(messages.map((m) => m.uuid)).toEqual(['u1', 'a1']);
     expect(readFileSync(file, 'utf8')).toBe(before);
-    await expect(client.call('session.btw', { sessionId: SESSION_ID, question: '   ' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await expect(client.call('session.ask', { sessionId: SESSION_ID, question: '   ' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
   });
 
   it('renames a session through Claude Code and sends the new title at once', async () => {
@@ -450,6 +488,89 @@ describe('engine over a MessagePort', () => {
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'shared' })).rejects.toMatchObject({ code: 'UNTRUSTED' });
     await client.call('actions.trust', { projectRoot: project, id: 'shared' });
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'shared' })).resolves.toMatchObject({ kind: 'terminal' });
+
+    // One you share yourself goes in the file, is approved for you, and says the project's actions changed.
+    const changed: Array<string | null> = [];
+    client.on('actions.changed', ({ root }) => void changed.push(root));
+    await client.call('actions.save', { projectRoot: project, shared: true, action: { id: 'lint', name: 'Lint', command: 'npm run lint' } });
+    expect(JSON.parse(readFileSync(join(project, '.switchboard.json'), 'utf8')).actions.map((a: { id: string }) => a.id)).toEqual(['shared', 'lint']);
+    await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'lint' })).resolves.toMatchObject({ kind: 'terminal' });
+    await client.call('actions.delete', { projectRoot: project, shared: true, id: 'lint' });
+    expect((await client.call('actions.list', { projectRoot: project })).actions.map((a) => a.id)).toEqual(['shared', 'greet']);
+    await expect(client.call('actions.save', { projectRoot: null, shared: true, action: { id: 'x', name: 'X', command: 'x' } })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    expect(changed).toContain(project);
+  });
+
+  it('sends what a command printed, and how it ended, to the session when a run that reports back ends', async () => {
+    const ptys: Array<{ emit: (data: string) => void; exit: (event: { exitCode: number }) => void }> = [];
+    const prompts: string[] = [];
+    const project = mkdtempSync(join(tmpdir(), 'switchboard-project-'));
+    // A Claude Code that takes in what it is sent and never answers.
+    const sdk: SdkRuntime = {
+      query: ({ prompt }) =>
+        ({
+          async *[Symbol.asyncIterator]() {
+            for await (const message of prompt as AsyncIterable<SDKUserMessage>) prompts.push((message.message.content as Array<{ text?: string }>).map((c) => c.text ?? '').join(''));
+          },
+          interrupt: async () => {},
+          close: () => {},
+          setPermissionMode: async () => {},
+          setModel: async () => {},
+          supportedCommands: async () => [],
+          supportedModels: async () => [],
+        }) as never,
+      startup: async () => ({ query: () => ({}) as never, close: () => {} }) as never,
+    };
+    const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
+    const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(join(projectDir, `${SESSION_ID}.jsonl`), '{"entrypoint":"cli"}\n');
+    const engine = createEngine({
+      dataDir,
+      claudeConfigDir: join(dataDir, 'claude'),
+      shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '', SHELL: '/bin/zsh' }, resolved: false, durationMs: 0 }),
+      claudeBinary: '/nonexistent/claude',
+      sessionSource: fakeSource,
+      sdk: async () => sdk,
+      spawnPty: async () => () => {
+        const entry: (typeof ptys)[number] = { emit: () => {}, exit: () => {} };
+        ptys.push(entry);
+        return { pid: 999_998_000 + ptys.length, onData: (l) => ((entry.emit = l), { dispose() {} }), onExit: (l) => ((entry.exit = l), { dispose() {} }), write() {}, resize() {}, kill() {} };
+      },
+    });
+    const { port1, port2 } = new MessageChannel();
+    const detach = engine.attach(messagePortTransport(asDomPort(port1)));
+    const client = createRpcClient<Contract>(messagePortTransport(asDomPort(port2)));
+    cleanups.push(() => {
+      client.dispose();
+      detach();
+      engine.close();
+      port1.close();
+      port2.close();
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    });
+    await new Promise((resolve) => client.on('sessions.changed', resolve));
+    const reached = async (text: string) => {
+      for (let i = 0; i < 200; i++) {
+        const queued = (await client.call('upNext.list', {})).queues.flatMap((q) => q.queue.map((m) => m.text));
+        if ([...prompts, ...queued].some((p) => p.includes(text))) return true;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      return false;
+    };
+
+    // A plain run tells nobody.
+    const plain = await client.call('terminal.run', { sessionId: SESSION_ID, cwd: project, command: 'echo quiet' });
+    expect(plain).toMatchObject({ kind: 'action', title: 'echo quiet', sessionId: SESSION_ID });
+    ptys[0]!.emit('quiet\r\n');
+    ptys[0]!.exit({ exitCode: 0 });
+
+    await client.call('terminal.run', { sessionId: SESSION_ID, cwd: project, command: 'npm test', sendOutput: true });
+    ptys[1]!.emit('\u001b[31m1 failed\u001b[0m\r\n');
+    ptys[1]!.exit({ exitCode: 1 });
+    expect(await reached(`I ran \`npm test\` in the terminal (${shellName(shell)}). It failed with exit code 1.\n\nThe output:\n\`\`\`text\n1 failed\n\`\`\``)).toBe(true);
+    expect(await reached('echo quiet')).toBe(false);
   });
 
   it('stops an action terminal and restarts it in the same tab, checking the action again', async () => {
@@ -615,12 +736,18 @@ describe('Claude profiles', () => {
         },
         startup: async () => ({ query: () => undefined, close() {} }),
       }) as never;
+    // And the config folder each terminal gets.
+    const terminalEnvs: Array<{ configDir: string | undefined }> = [];
     const engine = createEngine({
       dataDir,
       claudeConfigDir: personal,
       shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '' }, resolved: false, durationMs: 0 }),
       claudeBinary: '/nonexistent/claude',
       sdk,
+      spawnPty: async () => (_file, _args, options) => {
+        terminalEnvs.push({ configDir: options.env.CLAUDE_CONFIG_DIR });
+        return { pid: 1, onData: () => ({ dispose() {} }), onExit: () => ({ dispose() {} }), write() {}, resize() {}, kill() {} };
+      },
     });
     const { port1, port2 } = new MessageChannel();
     const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -671,6 +798,13 @@ describe('Claude profiles', () => {
     expect((await client.call('profiles.list', {})).defaultId).toBe(workId);
     await client.call('session.commands', { cwd: resolve('/var') });
     expect(envs.at(-1)?.CLAUDE_CONFIG_DIR).toBe(work);
+
+    // A terminal can be opened with a profile of its own (Settings signs a new profile in that way), whatever its folder's is.
+    await client.call('terminal.open', { sessionId: null, kind: 'shell', cols: 80, rows: 24, profileId: 'default' });
+    expect(terminalEnvs.at(-1)?.configDir).toBe(personal);
+    await client.call('terminal.open', { sessionId: null, cwd: tmpdir(), kind: 'shell', cols: 80, rows: 24 });
+    expect(terminalEnvs.at(-1)?.configDir).toBe(work);
+    await expect(client.call('terminal.open', { sessionId: null, kind: 'claude', cols: 80, rows: 24, profileId: 'gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
     // Removing the profile forgets its sessions and links; the folder stays.
     await expect(client.call('profiles.remove', { id: 'default' })).rejects.toMatchObject({ code: 'BUILTIN' });

@@ -6,9 +6,10 @@ description: Send what you're looking at in VS Code to a Switchboard session, an
 import Kbd from '../../components/Kbd.astro';
 import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
+import Related from '../../components/Related.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-The Switchboard Companion extension for VS Code (also Cursor, Windsurf and VSCodium) sends what you're looking at in the editor to a Switchboard session: the selected lines, the open file, files from the Explorer, problems, terminal output and changed files. It also works the other way: when a session in your workspace needs you, you can answer it from a VS Code notification.
+When you're reading code in VS Code and want Claude to look at it, send it to a session in a few keys instead of copying paths and lines by hand. The Switchboard Companion extension for VS Code (also Cursor, Windsurf and VSCodium) sends what you're looking at in the editor to a Switchboard session: the selected lines, the open file, files from the Explorer, problems, terminal output and changed files. It also works the other way: when a session in your workspace needs you, you can answer it from a VS Code notification.
 
 It is a companion, not a chat. Claude Code's own extension stays the chat inside VS Code; Switchboard is where you manage your sessions and talk to them.
 
@@ -107,3 +108,7 @@ Commands, all under **Switchboard** in VS Code's command palette: *Add Selection
 ## Settings
 
 [Settings → VS Code](/settings/#vs-code) in Switchboard shows whether an editor is connected right now. If it says no editor is connected, install the extension and open a folder in VS Code. How the connection works is in [VS Code companion](https://github.com/estruyf/switchboard/blob/main/docs/vscode-companion.md) on GitHub.
+
+## Related
+
+<Related pages={['permissions', 'sessions/conversation', 'links', 'remote-access']} />

@@ -1,8 +1,11 @@
+import type { PromptScope } from '@switchboard/protocol/client';
 import type { ColorScheme, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import type { ActionIcon, HostState } from '@switchboard/protocol/client';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import type { Direction } from '../../state/tiling.ts';
+import type { Way } from '../../state/tilingGeometry.ts';
 
 /** Where you are: what the main area shows. */
 /** `projects` is the list of projects; `project` one project's page. */
@@ -26,12 +29,12 @@ export interface PaletteSession {
   running: boolean;
   /** What it is waiting for. */
   waiting: 'question' | 'permission' | null;
+  /** How its catch-up shows: in full (the card or the banner), folded into the strip, or not at all. */
+  catchUp: 'full' | 'strip' | null;
   /** Your prompts in it (to fork from or rewind to). */
   prompts: number;
   /** Claude has replied at least once (Copy last reply). */
   hasReply: boolean;
-  /** Side questions (/btw) kept for it that can be browsed (Show side questions). */
-  sideQuestions: number;
 }
 
 /** The session's checkout, once read (null outside git, or until it has been read). */
@@ -49,10 +52,16 @@ export interface PaletteGit {
   pr: { number: number; url: string } | null;
   /** The branch is behind its upstream and can be pulled now (⌘⇧L). */
   pullable: boolean;
+  /** Checks of the open pull request that failed. */
+  failingChecks: number;
 }
 
 export interface PaletteTerminal {
-  /** The panel shows in the session view. */
+  /** Whose panel ⌘J works on: the session's id, `APP_TERMINAL` for the window's own outside a session, null in Settings. */
+  owner: string | null;
+  /** Where a new tab starts: the session's folder, or for the window's terminal the project on screen (null: the home folder). */
+  cwd: string | null;
+  /** The panel shows. */
   open: boolean;
   maximized: boolean;
   dock: TerminalDock;
@@ -62,14 +71,24 @@ export interface PaletteTerminal {
 
 /** What the palette knows about where you are; every command's `when()` reads it. Built from the stores. */
 export interface PaletteContext {
+  /**
+   * This is a pop-out: the palette of a session in a window of its own. Its context is that session. Commands for what
+   * the main window owns (the sidebar, panes, Home) are left out and the ones that start or find another session run there
+   * (`popoutCommands.ts`).
+   */
+  popout: boolean;
   view: PaletteView;
   /** Connected to the engine. */
   connected: boolean;
   session: PaletteSession | null;
   git: PaletteGit | null;
   terminal: PaletteTerminal;
-  /** Two sessions side by side. */
+  /** More than one pane open. */
   split: boolean;
+  /** How the split holding the active pane lays its panes out: `row` side by side, `column` one above the other; null with one pane. */
+  splitDirection: Direction | null;
+  /** The directions in which the active pane has a neighbour to go to. */
+  paneWays: readonly Way[];
   /** Null while the focus limit is off. */
   focusLimit: number | null;
   /** Settings › Notifications: notifications and sounds on or off. */
@@ -100,8 +119,14 @@ export interface PaletteContext {
   newSession: { canWorktree: boolean; canSaveDefaults: boolean; canQueue: boolean; canCatchUp: boolean } | null;
   /** The scratch folder quick questions run in; null until the engine has said. */
   questionsDir: string | null;
+  /** The saved prompts the message box on screen can use ("Prompt: <name>", Use saved prompt…). */
+  prompts: Array<{ id: string; name: string; scope: PromptScope }>;
   /** The message box Add context… adds to (the session's, or New session's), once its folder is known. */
   composer: { key: string; cwd: string } | null;
   /** VS Code is installed, so a session can continue in its Claude Code extension. */
   canContinueInVSCode: boolean;
+  /** Clone from GitHub is on (Settings › Projects): "New session from a GitHub repository…". */
+  cloneEnabled: boolean;
+  /** Paired computers that are connected: "New session on <name>…" and "Show only <name>". */
+  computers: Array<{ id: string; name: string }>;
 }

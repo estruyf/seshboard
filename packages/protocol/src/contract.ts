@@ -12,6 +12,7 @@ import {
   PermissionMode,
   PermissionRequest,
   ProjectInspection,
+  FolderEntry,
   RewindResult,
   ContextUsage,
   QueuedMessage,
@@ -30,14 +31,16 @@ import {
   SearchHit,
   SessionsChanged,
   SessionsSnapshot,
+  AgentUsage,
   TranscriptDiagnosis,
   TranscriptMessage,
   TranscriptUpdate,
 } from './sessions.ts';
 import { TerminalInfo, TerminalKind } from './terminal.ts';
-import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot } from './usage.ts';
+import { LimitsState } from './usageLimit.ts';
+import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
-import { ChangesBase, GithubStarStatus, GitChanges, GitSyncAction, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
+import { ChangesBase, CheckLog, ChecksFinished, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
 import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
@@ -46,13 +49,41 @@ import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from './later.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
-import { SideQuestionEvent, SideQuestionList } from './sideQuestions.ts';
+import { AskEvent, AskThreadList } from './sideQuestions.ts';
+import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
-import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
+import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
+import { GithubIssue, GithubPullRequest, PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './savedPromptSchema.ts';
 import { CompanionTarget } from './companion.ts';
+import { DeviceName, RemoteSettings, RemoteStatus } from './remote.ts';
+import { ComputerEvent, ComputerMethodSchema, ComputersStatus } from './computers.ts';
+import { ClonePlan, CloneProgress, CloneSettings } from './clone.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
 import { KEEP_REASONS } from './retention.ts';
+import {
+  HookableComponentSchema,
+  ModFocusParams,
+  ModFocusResult,
+  ModInfo,
+  ModInputParams,
+  ModInstance,
+  ModLog,
+  ModPaneRoster,
+  ModPressParams,
+  ModPromptAnswer,
+  ModPromptAsk,
+  ModRenderParams,
+  ModRenderResult,
+  ModScrollParams,
+  ModScrollResult,
+  ModSelectParams,
+  ModSite,
+  ModsSnapshot,
+  ModsSurfaceState,
+  ModStatus,
+  ModToast,
+} from './mods.ts';
 import { ExportCandidate, HealthFinding, LoadEntry, MemoryHit, MemoryImportPreview, MemoryList, PersonalMemory, SectionCopy, SharePreview, ShareTarget } from './memory.ts';
 
 export const ClaudeInstall = z.object({
@@ -74,6 +105,8 @@ export const SystemInfo = z.object({
     dataDir: z.string(),
     database: z.string(),
     claudeConfigDir: z.string(),
+    /** The folder a terminal without a folder starts in. */
+    home: z.string(),
   }),
   shell: z.object({
     path: z.string(),
@@ -163,6 +196,15 @@ export const contract = {
       result: z.object({}),
     },
     /**
+     * What a linked session's chip shows (session linking): its branch, its pull request, and whether it is gone. Also
+     * warms what the engine needs to write the brief when the message is sent (the project's pull requests, the
+     * branch's commits), so sending doesn't wait for gh.
+     */
+    'sessions.linkInfo': {
+      params: z.object({ sessionId: SessionId }),
+      result: z.object({ gone: z.boolean(), branch: z.string().nullable(), pr: WorktreePullRequest.nullable() }),
+    },
+    /**
      * Moves a session's transcript (and its subagent transcripts) to the Trash.
      * Stops it first when it runs in this app; refuses (SESSION_BUSY_ELSEWHERE) when another window has it open.
      */
@@ -200,6 +242,8 @@ export const contract = {
     'session.rename': { params: z.object({ sessionId: SessionId, title: z.string().trim().min(1).max(200) }), result: z.object({}) },
     /** The user is looking at this session now; clears its unread state. */
     'sessions.markViewed': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Mark as unread: the session counts as unread again until it is looked at. */
+    'sessions.markUnviewed': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /**
      * Your projects (`added`) in your order, plus every other folder Claude Code has sessions for
      * (`added: false`), which the Add project picker offers and the sidebar uses for icons.
@@ -222,6 +266,23 @@ export const contract = {
      * sessions (most recently active first), with a git remote on that repository. Null when none has one.
      */
     'projects.findByRepo': { params: z.object({ repo: z.string().max(200).regex(/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/) }), result: z.object({ root: AbsolutePath.nullable() }) },
+    // --- Clone from GitHub (Settings › Projects) ------------------------------------------------------------
+    'projects.cloneSettings': { params: z.object({}), result: CloneSettings },
+    /** Changes Settings › Projects › Clone from GitHub; turning it on needs a folder (INVALID). `projects.cloneSettings` follows. */
+    'projects.setCloneSettings': { params: CloneSettings.partial(), result: CloneSettings },
+    /**
+     * Where a clone of the repository a URL names would go (`name`: the folder's name, the repository's when left out),
+     * and whether something is there already. INVALID for a URL that isn't a GitHub repository, with why.
+     */
+    'projects.clonePlan': { params: z.object({ url: z.string().max(2_000), name: z.string().max(255).optional() }), result: ClonePlan },
+    /**
+     * Clones the repository into the Clone into folder as `name`, then adds it to your projects. Returns at once; the
+     * clone reports through `projects.cloneProgress` with `jobId`. A checkout of the same repository already there is
+     * used as it is. CLONE_OFF while the setting is off, CLONE_TAKEN when something else has the name.
+     */
+    'projects.clone': { params: z.object({ jobId: z.string().min(1).max(100), url: z.string().max(2_000), name: z.string().min(1).max(255) }), result: z.object({}) },
+    /** Stops a clone; the folder it made goes (never one that was there before). `cancelled` follows. */
+    'projects.cancelClone': { params: z.object({ jobId: z.string().min(1).max(100) }), result: z.object({}) },
     // --- Claude profiles (one login per config folder) --------------------------------------
     'profiles.list': { params: z.object({}), result: ProfilesSnapshot },
     /** Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`. */
@@ -253,6 +314,14 @@ export const contract = {
     'transcript.subagent': {
       params: z.object({ sessionId: SessionId, toolUseId: z.string().min(1).max(200) }),
       result: z.object({ agentId: z.string().nullable(), agentType: z.string().nullable(), messages: z.array(TranscriptMessage) }),
+    },
+    /**
+     * The tokens each subagent of a session used, from their own transcripts (the session's transcript doesn't have
+     * them), counted the way the Usage view counts them. For the tokens of the turn that started each one.
+     */
+    'transcript.agentUsage': {
+      params: z.object({ sessionId: SessionId }),
+      result: z.object({ agents: z.array(AgentUsage) }),
     },
     /**
      * Checks why a session's conversation shows the way it does: its transcript files in every
@@ -336,19 +405,35 @@ export const contract = {
     /** Every session's Up next as it is kept (also sessions that aren't running); `upNext.changed` follows each change. */
     'upNext.list': { params: z.object({}), result: z.object({ queues: z.array(z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) })) }) },
     /**
-     * Asks a side question (`/btw`): Claude answers from the session's conversation, without tools, and nothing is
-     * added to it. It runs beside a turn in progress, never in Up next. The answer comes through `session.btw` events
-     * with the returned id. A session that isn't running here is answered by a short-lived copy that writes nothing.
+     * Asks about the session (Ask about this session, or `/btw`): Claude answers from the session's conversation and
+     * the project, with read-only tools (read files, search, git status, diff, log and show), and nothing is added to
+     * the conversation. It runs beside a turn in progress, never in Up next. Without `threadId` it starts a new
+     * thread; with one, the thread's earlier questions and answers go along. The answer comes through `session.ask`
+     * events with the returned ids.
      */
-    'session.btw': {
-      params: z.object({ sessionId: SessionId, question: z.string().trim().min(1).max(MAX_SIDE_QUESTION_LENGTH) }),
-      result: z.object({ id: z.string(), at: z.number() }),
+    'session.ask': {
+      params: z.object({
+        sessionId: SessionId,
+        threadId: z.string().max(100).optional(),
+        question: z.string().trim().min(1).max(MAX_SIDE_QUESTION_LENGTH),
+        /** A failed question in the thread that this asks again: it goes, and this one takes its place at the end. */
+        replaces: z.string().max(100).optional(),
+      }),
+      result: z.object({ threadId: z.string(), id: z.string(), at: z.number() }),
     },
-    /** The side questions kept for a session, oldest first (answered ones only). */
-    'session.btwList': { params: z.object({ sessionId: SessionId }), result: SideQuestionList },
+    /** The threads kept for a session, newest first. */
+    'session.askThreads': { params: z.object({ sessionId: SessionId }), result: AskThreadList },
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Stops one of the session's background tasks (a shell command, subagent or workflow); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string() }), result: z.object({}) },
+    /**
+     * The end of what a background command printed, from the output file Claude Code named in the transcript (the
+     * engine reads only task output files). `missing`: no such file, yet or any more.
+     */
+    'session.taskOutput': {
+      params: z.object({ sessionId: SessionId, outputFile: AbsolutePath }),
+      result: z.object({ text: z.string(), size: z.number(), truncated: z.boolean(), missing: z.boolean() }),
+    },
     /** A new session with this one's conversation up to and including `messageUuid`. */
     'session.forkAt': { params: z.object({ sessionId: SessionId, messageUuid: z.string() }), result: z.object({ sessionId: z.string() }) },
     /**
@@ -415,11 +500,34 @@ export const contract = {
       }),
       result: UsageBreakdown,
     },
+    /**
+     * The estimated API cost of each running plan window (the 5-hour one and the weekly ones), from the profile's
+     * transcripts on this computer. A window without a reset time ahead has none.
+     */
+    'usage.cost': {
+      params: z.object({ profileId: ProfileId.optional() }),
+      result: z.object({ windows: z.array(WindowCost) }),
+    },
+    /**
+     * The estimated API cost of one session since it started, in US dollars: its transcript and the helper calls made
+     * for it. `cost` is null before any of its tokens were read; `partial` when a model without a known price was left out.
+     */
+    'usage.sessionCost': {
+      params: z.object({ sessionId: SessionId, profileId: ProfileId.optional() }),
+      result: z.object({ cost: z.object({ usd: z.number(), partial: z.boolean() }).nullable() }),
+    },
     /** A profile's plan % over the period, per window, as recorded from /usage results and rate-limit updates. */
     'usage.history': {
       params: z.object({ profileId: ProfileId.optional(), period: UsagePeriod, timeZone: z.string().max(100).default('UTC') }),
       result: PlanHistory,
     },
+
+    /** Profiles at a plan usage limit, the sessions armed to resume when it resets, and those that gave up; `limits.changed` follows each change. */
+    'limits.state': { params: z.object({}), result: LimitsState },
+    /** Resume now: sends a short message to a session a usage limit stopped, and lets its queue move on once a turn gets through. */
+    'limits.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Resume when it resets: arms (or disarms) a session to continue by itself shortly after its profile's limit resets. */
+    'limits.arm': { params: z.object({ sessionId: SessionId, armed: z.boolean() }), result: z.object({}) },
 
     // --- Folders, files and editors -----------------------------------------------------------
     /**
@@ -427,7 +535,17 @@ export const contract = {
      * project: `projects.list` leaves it out, and adding, renaming or setting defaults for it is refused (INVALID).
      */
     'questions.folder': { params: z.object({}), result: z.object({ path: AbsolutePath }) },
+    /** Whether `path` is a folder (`exists` is false for a file, with `isFile` set) and the git checkout it is in. */
     'projects.inspect': { params: z.object({ path: AbsolutePath }), result: ProjectInspection },
+    /**
+     * The folders in `path` (absolute, `~` or `~/…`) whose name starts with `prefix`, ignoring case: folders only,
+     * sorted by name, at most 50, hidden ones only for a prefix that starts with a dot. `here` is `path` itself, null
+     * when it is not a folder. Unreadable folders are left out; nothing here is an error. For typing a path in New session.
+     */
+    'fs.folders': {
+      params: z.object({ path: z.string().min(1).max(1024), prefix: z.string().max(255).default('') }),
+      result: z.object({ here: FolderEntry.nullable(), folders: z.array(FolderEntry) }),
+    },
     /** Fuzzy file search for @-mentions (git-tracked and untracked-but-not-ignored files). */
     'files.search': {
       params: z.object({ cwd: AbsolutePath, query: z.string().max(500), limit: z.number().int().min(1).max(200).default(50) }),
@@ -455,12 +573,16 @@ export const contract = {
       params: z.object({ projectRoot: AbsolutePath }),
       result: z.object({ actions: z.array(ListedAction), sharedFile: z.string().nullable(), errors: z.array(z.string()) }),
     },
-    /** Saves one of your actions; `projectRoot: null` makes it global. `previousId` renames. */
+    /**
+     * Saves one of your actions; `projectRoot: null` makes it global. `shared` saves it in the project's
+     * .switchboard.json instead, for everyone on the project (and approves its command for you). `previousId` renames.
+     */
     'actions.save': {
-      params: z.object({ projectRoot: AbsolutePath.nullable(), action: ProjectAction, previousId: z.string().optional() }),
+      params: z.object({ projectRoot: AbsolutePath.nullable(), action: ProjectAction, previousId: z.string().optional(), shared: z.boolean().optional() }),
       result: z.object({}),
     },
-    'actions.delete': { params: z.object({ projectRoot: AbsolutePath.nullable(), id: z.string() }), result: z.object({}) },
+    /** Deletes one of your actions, or with `shared` takes it out of the project's .switchboard.json. */
+    'actions.delete': { params: z.object({ projectRoot: AbsolutePath.nullable(), id: z.string(), shared: z.boolean().optional() }), result: z.object({}) },
     /** Approves a shared action's exact command (an edited command needs approval again), or an imported action of yours. */
     'actions.trust': { params: z.object({ projectRoot: AbsolutePath, id: z.string() }), result: z.object({}) },
     /** Starter actions for a project (package.json scripts, git, gh). */
@@ -469,6 +591,36 @@ export const contract = {
     'actions.run': {
       params: z.object({ sessionId: SessionId, projectRoot: AbsolutePath, cwd: AbsolutePath, id: z.string() }),
       result: ActionRunResult,
+    },
+
+    // --- Saved prompts ---------------------------------------------------------------------------
+    /**
+     * Your prompts for every project, plus the project's own (just for you, and shared in its .switchboard.json)
+     * when `root` is given, most recently used first. `errors` says what in the shared file couldn't be read.
+     */
+    'savedPrompts.list': {
+      params: z.object({ root: AbsolutePath.optional() }),
+      result: z.object({ prompts: z.array(SavedPrompt), errors: z.array(z.string()) }),
+    },
+    /** Creates a prompt (without an `id`) or updates one in its place. Shared ones are written to the project's file. */
+    'savedPrompts.save': { params: z.object({ prompt: SavedPromptInput }), result: z.object({ prompt: SavedPrompt }) },
+    'savedPrompts.delete': { params: z.object({ id: SavedPromptId, scope: PromptScope }), result: z.object({}) },
+    /**
+     * Moves a prompt to another place (global, just for you, shared; in another project too) in one step: it is
+     * written there first, then taken out of where it was, so a failure loses nothing. WRITE_FAILED says why.
+     */
+    'savedPrompts.move': { params: z.object({ id: SavedPromptId, from: PromptScope, to: PromptScope }), result: z.object({ prompt: SavedPrompt }) },
+    /** A prompt was sent: counts it, for ordering. Shared prompts' counts stay in the database. */
+    'savedPrompts.used': { params: z.object({ id: SavedPromptId, scope: PromptScope }), result: z.object({}) },
+    /** Open pull requests of the project, for a `pr` blank (cached for a minute). Empty with a `reason` without gh or a GitHub remote. */
+    'github.pullRequests': {
+      params: z.object({ root: AbsolutePath }),
+      result: z.object({ pullRequests: z.array(GithubPullRequest), repo: z.string().nullable(), reason: z.string().nullable() }),
+    },
+    /** An issue from a link, `#123` or `123`, for an `issue` blank (cached for a minute). Null with a `reason` when it can't be found. */
+    'github.issue': {
+      params: z.object({ root: AbsolutePath, ref: z.string().trim().min(1).max(500) }),
+      result: z.object({ issue: GithubIssue.nullable(), reason: z.string().nullable() }),
     },
 
     /**
@@ -480,7 +632,7 @@ export const contract = {
       // Memories (`memories`) match their name, description and text; `memoryTypes` and `memoryScope` (a project root,
       // `personal` or `all`) narrow them, and `only` leaves out conversations or memory.
       params: z.object({
-        query: z.string().max(500),
+        query: z.string().max(MAX_SEARCH_QUERY_LENGTH),
         limit: z.number().int().min(1).max(500).default(200),
         scope: z.enum(['switchboard', 'all']).default('all'),
         only: z.enum(['all', 'conversations', 'memory']).default('all'),
@@ -509,8 +661,14 @@ export const contract = {
       params: z.object({ cwd: AbsolutePath, base: ChangesBase, path: z.string().max(4096) }),
       result: z.object({ diff: z.string(), truncated: z.boolean() }),
     },
-    /** Local branches of the repository at `cwd`, and the one checked out (null when detached or not a repo). */
-    'git.branches': { params: z.object({ cwd: AbsolutePath }), result: z.object({ current: z.string().nullable(), branches: z.array(z.string()) }) },
+    /**
+     * Local branches of the repository at `cwd`, and the one checked out (null when detached or not a repo).
+     * `checkedOutElsewhere`: the branches checked out in another worktree, which git won't switch to here.
+     */
+    'git.branches': {
+      params: z.object({ cwd: AbsolutePath }),
+      result: z.object({ current: z.string().nullable(), branches: z.array(z.string()), checkedOutElsewhere: z.array(z.string()).optional() }),
+    },
     /**
      * Checks out a local branch in the checkout at `cwd` with `git switch`: uncommitted changes that
      * don't conflict come along, and git refuses (GIT_FAILED) when they do. Nothing is stashed or
@@ -574,6 +732,25 @@ export const contract = {
     'git.prFor': { params: z.object({ cwd: AbsolutePath, fresh: z.boolean().default(false) }), result: z.object({ pr: WorktreePullRequest.nullable() }) },
     /** Marks a draft pull request ready for review (`gh pr ready`). GH_FAILED with gh's message. */
     'git.prReady': { params: z.object({ cwd: AbsolutePath, number: z.number().int().positive() }), result: z.object({}) },
+    /**
+     * The checks of the open pull request of the branch checked out at `cwd` (`gh pr checks`), null without one. A read
+     * from the last 20 seconds is reused unless `fresh`; `afterPush` keeps asking for a while when there are none yet
+     * (GitHub takes a moment to start them). While some run, the engine reads them again by itself (every 30 seconds,
+     * every 5 minutes while no window has focus) and sends each read through `git.checks`; `sessionId` is the session
+     * told through `git.checksFinished` when they finish.
+     */
+    'git.prChecks': {
+      params: z.object({ cwd: AbsolutePath, sessionId: SessionId.optional(), fresh: z.boolean().default(false), afterPush: z.boolean().default(false) }),
+      result: z.object({ checks: PrChecks.nullable() }),
+    },
+    /**
+     * The end of each failed check's log (`gh run view <run> --job <job> --log-failed`): its last 150 lines, without
+     * colours and timestamps, all of them together within what a message can hold.
+     */
+    'git.prCheckLogs': {
+      params: z.object({ cwd: AbsolutePath, checks: z.array(z.object({ name: z.string().max(500), workflow: z.string().max(500), link: z.string().max(2_000) })).min(1).max(50) }),
+      result: z.object({ logs: z.array(CheckLog) }),
+    },
 
     /** Whether the account gh is signed in with has starred Switchboard (the sidebar's Star on GitHub button). */
     'github.starStatus': { params: z.object({}), result: z.object({ status: GithubStarStatus }) },
@@ -637,21 +814,33 @@ export const contract = {
     /**
      * Starts a terminal. `claude` runs `claude --resume <session>` (or `--fork-session` with `fork`);
      * it refuses with SESSION_RUNNING_HERE / SESSION_BUSY_ELSEWHERE when the session is open in a process already.
+     * Without a session it is the window's own terminal (outside session views); without `cwd` it starts in the home folder.
+     * It gets the Claude profile of its session, or of its folder's project; `profileId` picks one instead (Settings › Claude
+     * profiles opens `claude` with a new profile's folder to sign in), and is refused with NOT_FOUND when that profile is gone.
      */
     'terminal.open': {
       params: z.object({
         sessionId: SessionId.nullable(),
-        cwd: AbsolutePath,
+        cwd: AbsolutePath.optional(),
         kind: TerminalKind,
         cols: z.number().int().min(2).max(1000),
         rows: z.number().int().min(1).max(500),
         fork: z.boolean().default(false),
+        profileId: ProfileId.optional(),
       }),
+      result: TerminalInfo,
+    },
+    /**
+     * Runs a command (from a code block in the conversation) in a terminal tab of its own, which ends with it. With
+     * `sendOutput`, its exit code and the end of its output then go to the session as a message, queued while Claude works.
+     */
+    'terminal.run': {
+      params: z.object({ sessionId: SessionId, cwd: AbsolutePath, command: z.string().trim().min(1).max(10_000), sendOutput: z.boolean().default(false) }),
       result: TerminalInfo,
     },
     'terminal.list': { params: z.object({}), result: z.object({ terminals: z.array(TerminalInfo) }) },
     /** The font the user's own terminal uses (Ghostty, VS Code), so prompts with Nerd Font glyphs render. */
-    'terminal.font': { params: z.object({}), result: z.object({ fontFamily: z.string().nullable(), source: z.string().nullable() }) },
+    'terminal.font': { params: z.object({}), result: z.object({ fontFamily: z.string().nullable(), fontFamilies: z.array(z.string()), source: z.string().nullable() }) },
     /** Streams this terminal's output to the caller; returns recent output to replay first. */
     'terminal.attach': { params: z.object({ id: z.string() }), result: z.object({ info: TerminalInfo, replay: z.string() }) },
     'terminal.detach': { params: z.object({ id: z.string() }), result: z.object({}) },
@@ -765,6 +954,45 @@ export const contract = {
     },
     /** Whether the companion socket is listening, and how many editors are connected to it. */
     'companion.status': { params: z.object({}), result: z.object({ listening: z.boolean(), clients: z.number(), error: z.string().nullable() }) },
+
+    // --- Remote: follow and steer sessions from a phone (docs/remote-access.md) --------------------------------
+    'remote.status': { params: z.object({}), result: RemoteStatus },
+    /** Changes Settings › Remote; the server starts, restarts or stops to match. */
+    'remote.configure': { params: RemoteSettings.partial(), result: RemoteStatus },
+    /** Pair a device: the link for the QR code (good for one use and two minutes). */
+    'remote.pair.start': { params: z.object({}), result: z.object({ url: z.string(), expiresAt: z.number() }) },
+    /** A link for phones already paired, with the engine's current address (a tunnel that got a new one). */
+    'remote.connectLink': { params: z.object({}), result: z.object({ url: z.string() }) },
+    /** The pairing dialog was closed: the QR code stops working, and a phone waiting for Allow is denied. */
+    'remote.pair.cancel': { params: z.object({}), result: z.object({}) },
+    /** Allow or Deny for the phone waiting with this request's code. */
+    'remote.pair.decide': { params: z.object({ requestId: z.string().min(1).max(100), allow: z.boolean() }), result: z.object({}) },
+    /** Revoke: the device can't connect any more, and its open connections close at once. */
+    'remote.revoke': { params: z.object({ deviceId: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Renames a paired device (Settings › Remote, Rename); `remote.changed` follows with the new name. */
+    'remote.rename': { params: z.object({ deviceId: z.string().min(1).max(100), name: DeviceName }), result: z.object({}) },
+
+    // --- Other computers: this app paired with Remote on another computer (docs/remote-access.md) -------------------
+    'computers.status': { params: z.object({}), result: ComputersStatus },
+    /**
+     * A link copied from another computer's Pair a device: pairs with it (the progress and the code to compare come
+     * with `computers.changed`). A link from Reconnect a paired device tells a paired computer's new address.
+     */
+    'computers.add': { params: z.object({ link: z.string().trim().min(1).max(2_000) }), result: z.object({}) },
+    /** Stops pairing (the other computer's question goes away with the connection). */
+    'computers.cancelPairing': { params: z.object({}), result: z.object({}) },
+    /** Forgets a paired computer here (that computer still lists this one until you revoke it there). */
+    'computers.forget': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Try again now to reach a computer that is offline. */
+    'computers.retry': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /**
+     * A request to another computer, in its remote contract (`COMPUTER_METHODS`). That computer checks the params;
+     * the result is its, unchecked here: show it as text, as the remote app does. UNAVAILABLE while not connected.
+     */
+    'computers.call': {
+      params: z.object({ computerId: z.string().min(1).max(100), method: ComputerMethodSchema, params: z.json() }),
+      result: z.json(),
+    },
     /**
      * Continues a session in an editor's Claude Code extension: stops it here and waits for its process to exit,
      * opens its folder in the editor, then the session in the extension (it only resumes sessions of the folder
@@ -939,6 +1167,22 @@ export const contract = {
       result: SectionCopy,
     },
 
+    // --- Catch-up ------------------------------------------------------------------------------
+    /** A session's catch-up: the briefing on its last turn (null when it has none, or a new turn started since). */
+    'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
+    /** Every session's catch-up, for the sidebar's review times (a window that just connected); `catchup.changed` follows each change. */
+    'catchup.list': { params: z.object({}), result: z.object({ catchUps: z.array(CatchUp) }) },
+    /**
+     * Makes the catch-up for a session's last finished turn now, from its transcript (also for a session that ran in a
+     * terminal), and sends it with `catchup.changed`. NOT_FOUND without a finished turn; SESSION_BUSY while Claude works.
+     */
+    'catchup.build': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp }) },
+    /**
+     * Why the session asks for an open permission or question: the turn so far and, with summaries on, Haiku's plain
+     * explanation (6 seconds at most). The same request answers from memory the second time. NOT_FOUND once it is answered.
+     */
+    'catchup.why': { params: z.object({ sessionId: SessionId, requestId: z.string() }), result: z.object({ why: RequestWhy }) },
+
     // --- Claude Code updates -----------------------------------------------------------------
     'claudeUpdate.get': { params: z.object({}), result: ClaudeUpdateState },
     /** Compares the installed Claude Code with the newest on its channel now. The result arrives through `claudeUpdate.changed`. */
@@ -952,6 +1196,36 @@ export const contract = {
     'claudeUpdate.dismiss': { params: z.object({}), result: z.object({}) },
     /** Turns automatic checks on or off (remembered). */
     'claudeUpdate.setEnabled': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
+    /** What the mods of every running session show now (`mods.*` events follow). */
+    'mods.snapshot': { params: z.object({}), result: z.object({ sessions: z.array(ModsSnapshot) }) },
+    /**
+     * Has a mod draw a component instance. Fails with MOD_TIMEOUT when Claude Code doesn't answer in 30 s, and with
+     * MODS_OFF when the session isn't attached (Show mods is off, or its Claude Code has no mods).
+     */
+    'mods.render': { params: ModRenderParams, result: ModRenderResult },
+    'mods.press': { params: ModPressParams, result: z.object({ handled: z.boolean() }) },
+    'mods.input': { params: ModInputParams, result: z.object({ handled: z.boolean() }) },
+    'mods.select': { params: ModSelectParams, result: z.object({ handled: z.boolean() }) },
+    'mods.scroll': { params: ModScrollParams, result: ModScrollResult },
+    'mods.focus': { params: ModFocusParams, result: ModFocusResult },
+    /** The pane roster as Claude Code holds it. */
+    'mods.panes': { params: z.object({ sessionId: SessionId }), result: ModPaneRoster },
+    /** You picked a pane's tab (`show`), it took the keyboard (`focus`, null when it let go) or you closed it (`close`). */
+    'mods.pane': {
+      params: z.object({ sessionId: SessionId, action: z.enum(['show', 'focus', 'close']), id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).nullable() }),
+      result: z.object({}),
+    },
+    /** The window's answer to a `mods.promptAsk` (the message box read, filled or given a suggestion). */
+    'mods.promptAnswer': { params: ModPromptAnswer, result: z.object({}) },
+    /**
+     * What mods replaced last time in this profile's sessions, while the plugins and managed settings are the same, so
+     * the conversation knows before Claude Code is ready (and the built-in view doesn't flash first). Empty otherwise.
+     */
+    'mods.hooked': { params: z.object({ profileId: ProfileId }), result: z.object({ hooked: z.array(HookableComponentSchema) }) },
+    /** A session's mod log lines (`ui_log`), oldest first. */
+    'mods.logs': { params: z.object({ sessionId: SessionId.optional() }), result: z.object({ logs: z.array(ModLog) }) },
+    /** Plugins with a mod module, per Claude profile, from their enabled plugins, plugin folders and managed settings (Settings › Mods). */
+    'mods.list': { params: z.object({}), result: z.object({ mods: z.array(ModInfo) }) },
   },
   events: {
     'engine.log': LogEntry,
@@ -963,8 +1237,8 @@ export const contract = {
     /** Claude Code reported a new model list (replaces the one from `models.list`). */
     'models.changed': z.object({ models: z.array(ModelOption) }),
     'session.stream': StreamDelta,
-    /** A side question's answer coming in (`session.btw`), and its end. */
-    'session.btw': SideQuestionEvent,
+    /** An answer coming in (`session.ask`), and its end. */
+    'session.ask': AskEvent,
     'session.permission': PermissionRequest,
     'session.permissionResolved': z.object({ requestId: z.string(), sessionId: z.string() }),
     /** Output for an attached terminal (batched). */
@@ -984,14 +1258,30 @@ export const contract = {
     'worktrees.sizes': z.object({ sizes: z.array(WorktreeSize) }),
     /** A `git.prCreate` moved on: pushing, creating, done or failed. */
     'git.pr': PrProgress,
+    /** A pull request's checks were read (`git.prChecks`, or the engine reading running ones again). */
+    'git.checks': PrChecks,
+    /** A session's pull request's checks all finished after some were running: main's notifier says so. */
+    'git.checksFinished': ChecksFinished,
     /** The whole queue, in order, whenever an item is added, moved, changed, started or removed. */
     'later.changed': z.object({ items: z.array(LaterItem), started: z.array(QueueStarted) }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
+    /** A profile hit or left a usage limit, or a resume was armed, fired or gave up. */
+    'limits.changed': LimitsState,
+    /** A session armed with Resume when it resets was sent its message after the reset (for the notification). */
+    'limits.resumed': z.object({ sessionId: z.string() }),
     /** Skills were reloaded: ask for slash command lists again. */
     'commands.changed': z.object({}),
+    /** Actions changed (saved, deleted, or the shared file changed, as after a pull): `root` null for global ones. */
+    'actions.changed': z.object({ root: z.string().nullable() }),
+    /** Saved prompts changed (saved, moved, deleted, or the shared file changed, as after a pull): `root` null for global ones. */
+    'savedPrompts.changed': z.object({ root: z.string().nullable() }),
     /** Settings were imported: reload projects and actions. */
     'settings.imported': z.object({}),
+    /** A clone (`projects.clone`) moved on: its progress, then done, failed or cancelled. */
+    'projects.cloneProgress': CloneProgress,
+    /** Settings › Projects › Clone from GitHub changed (in any window). */
+    'projects.cloneSettings': CloneSettings,
     /**
      * Context from the VS Code companion, for this window to add as chips (to a session's message box, or New session
      * on a folder) and confirm with `companion.received`. Sent to the window that reported focus last.
@@ -999,8 +1289,45 @@ export const contract = {
     'companion.context': z.object({ deliveryId: z.string(), target: CompanionTarget, items: ContextItems, reveal: z.boolean() }),
     /** The companion asked to show a session (its status bar item): select it and bring the window forward. */
     'companion.reveal': z.object({ sessionId: z.string() }),
+    /** A session's catch-up was made, refreshed or cleared (null: a new message or turn started). */
+    'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
+    /** Settings › Remote changed: listening, devices, connections, pairing. */
+    'remote.changed': RemoteStatus,
+    /**
+     * A prompt or an answer to a permission prompt came from a paired device, for its label in the conversation and
+     * the sidebar's last action. `device` is its name (kept for older callers), `deviceId` the device itself; `answer`
+     * is set for an answer (`requestId` set): the tool it was about and whether it was allowed.
+     */
+    'remote.fromDevice': z.object({
+      sessionId: z.string(),
+      messageUuid: z.string().nullable(),
+      requestId: z.string().nullable(),
+      device: z.string(),
+      deviceId: z.string(),
+      answer: z.object({ toolName: z.string(), allowed: z.boolean() }).nullable().default(null),
+    }),
+    /** Paired computers: their connections and pairing. */
+    'computers.changed': ComputersStatus,
+    /** An event from a connected computer (`sessions.changed`, `transcript.updated`, `session.stream`, …). */
+    'computers.event': ComputerEvent,
     /** A project's memory or instruction files changed (`root` null: the personal folder): list them again. */
     'memory.changed': z.object({ root: z.string().nullable() }),
+    /** A session's mods surface changed: supported, attached, what mods replace, prompt screening. */
+    'mods.state': ModsSurfaceState,
+    /** A mod's toast (the last 20 per session are kept). */
+    'mods.toast': ModToast,
+    /** A session's statuses, one per mod, whenever one changes. */
+    'mods.statuses': z.object({ sessionId: z.string(), statuses: z.array(ModStatus) }),
+    'mods.log': ModLog,
+    /** Draw these instances again (all of them when `instances` is null). */
+    'mods.invalidate': z.object({ sessionId: z.string(), instances: z.array(ModInstance).nullable() }),
+    'mods.panes': z.object({ sessionId: z.string(), roster: ModPaneRoster }),
+    /** A mod scrolled a band or pane. */
+    'mods.scroll': z.object({ sessionId: z.string(), component: ModSite, instanceId: z.string(), offset: z.number().int(), followEnd: z.boolean() }),
+    /** A mod moved the focus ring to one of its elements. */
+    'mods.focus': z.object({ sessionId: z.string(), component: ModSite, instanceId: z.string(), plugin: z.string(), key: z.string() }),
+    /** Claude Code asks a session's message box (answer with `mods.promptAnswer`; the window showing the session answers). */
+    'mods.promptAsk': ModPromptAsk,
   },
 } as const satisfies ContractShape;
 

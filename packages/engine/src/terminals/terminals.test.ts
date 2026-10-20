@@ -218,21 +218,140 @@ describe('TerminalManager', () => {
     expect(fake.pty.killed).toBe(true);
     await expect(manager.open({ sessionId: null, cwd: join(tempDir(), 'missing'), kind: 'shell', cols: 80, rows: 24, fork: false })).rejects.toThrow(/Folder not found/);
   });
+
+  /** A new pty for every spawn, each one able to exit and to fail like a closed pty does. */
+  function fakePtys() {
+    const ptys: Array<Pty & { killed: boolean; exit(code: number): void; closed: boolean }> = [];
+    const spawn: SpawnPty = () => {
+      let onExit: (event: { exitCode: number }) => void = () => {};
+      const pty = {
+        pid: 5000 + ptys.length,
+        killed: false,
+        closed: false,
+        onData: () => ({ dispose() {} }),
+        onExit: (l: typeof onExit) => ((onExit = l), { dispose() {} }),
+        write() {
+          if (pty.closed) throw new Error('write EIO');
+        },
+        resize() {
+          if (pty.closed) throw new Error('ioctl(2) failed, EBADF');
+        },
+        kill() {
+          pty.killed = true;
+        },
+        exit: (code: number) => onExit({ exitCode: code }),
+      };
+      ptys.push(pty);
+      return pty;
+    };
+    return { spawn, ptys };
+  }
+
+  it('starts one process for two Restarts at once, and kills one that starts after its tab closed', async () => {
+    const fake = fakePtys();
+    const { manager } = setup(fake.spawn);
+    const info = await manager.open({ sessionId: null, cwd: tempDir(), kind: 'action', command: 'echo hi', title: 'Echo', cols: 80, rows: 24, fork: false });
+    fake.ptys[0]!.exit(0);
+    const [a, b] = await Promise.all([manager.restart(info.id), manager.restart(info.id)]);
+    expect(fake.ptys).toHaveLength(2);
+    expect(a).toEqual(b);
+    expect(a).toMatchObject({ id: info.id, exitCode: null, pid: fake.ptys[1]!.pid });
+    // Running again: a later Restart is refused as before.
+    await expect(manager.restart(info.id)).rejects.toThrow(/still running/);
+
+    fake.ptys[1]!.exit(0);
+    const restarting = manager.restart(info.id);
+    manager.close(info.id);
+    await expect(restarting).rejects.toThrow(/gone/);
+    expect(fake.ptys).toHaveLength(3);
+    expect(fake.ptys[2]!.killed).toBe(true);
+  });
+
+  it('reports what each run printed when it ends, and whether you stopped it, but not for a closed tab', async () => {
+    let emit: (data: string) => void = () => {};
+    let exit: (event: { exitCode: number }) => void = () => {};
+    const spawn: SpawnPty = () => ({
+      pid: 6000,
+      onData: (l) => ((emit = l), { dispose() {} }),
+      onExit: (l) => ((exit = l), { dispose() {} }),
+      write() {},
+      resize() {},
+      kill() {},
+    });
+    const exits: Array<{ exitCode: number | null; output: string; stopped: boolean }> = [];
+    const manager = new TerminalManager({
+      spawn: async () => spawn,
+      env: async () => ({ PATH: '', SHELL: '/bin/sh' }),
+      claudePath: async () => undefined,
+      onData: () => {},
+      onChange: () => {},
+      onExit: (info, run) => exits.push({ exitCode: info.exitCode, ...run }),
+      log: () => {},
+    });
+    managers.push(manager);
+    const info = await manager.open({ sessionId: 's1', cwd: tempDir(), kind: 'action', command: 'npm test', title: 'Test', cols: 80, rows: 24, fork: false });
+    emit('1 failed\r\n');
+    exit({ exitCode: 1 });
+    // The command shown above the output and the line saying it ended aren't part of it.
+    expect(exits).toEqual([{ exitCode: 1, output: '1 failed\r\n', stopped: false }]);
+
+    // A second run reports only its own output; Stop is remembered for the run it was pressed in.
+    await manager.restart(info.id);
+    emit('all passed\r\n');
+    manager.stop(info.id);
+    exit({ exitCode: 130 });
+    expect(exits[1]).toEqual({ exitCode: 130, output: 'all passed\r\n', stopped: true });
+
+    await manager.restart(info.id);
+    manager.close(info.id);
+    exit({ exitCode: 0 });
+    expect(exits).toHaveLength(2);
+  });
+
+  it('drops a resize or keystroke for a pty that closed before its exit event', async () => {
+    const fake = fakePtys();
+    const { manager } = setup(fake.spawn);
+    const info = await manager.open({ sessionId: null, cwd: tempDir(), kind: 'shell', cols: 80, rows: 24, fork: false });
+    fake.ptys[0]!.closed = true;
+    expect(() => manager.resize(info.id, 120, 40)).not.toThrow();
+    expect(() => manager.write(info.id, 'ls\n')).not.toThrow();
+    expect(manager.list()[0]).toMatchObject({ cols: 80, rows: 24, exitCode: null });
+  });
 });
 
 describe('terminal font detection', async () => {
-  const { ghosttyFont, vscodeTerminalFont, windowsTerminalFont } = await import('../system/terminalFont.ts');
-  it('reads Ghostty and VS Code settings', () => {
-    expect(ghosttyFont('theme = dark\nfont-family = "SauceCodePro Nerd Font Mono"\nfont-size = 13\n')).toBe('SauceCodePro Nerd Font Mono');
-    expect(ghosttyFont('font-family = JetBrains Mono\n')).toBe('JetBrains Mono');
-    expect(ghosttyFont('font-size = 13\n')).toBeNull();
-    expect(vscodeTerminalFont('{\n  // comment\n  "terminal.integrated.fontFamily": "MesloLGS NF",\n}')).toBe('MesloLGS NF');
-    expect(vscodeTerminalFont('{ "editor.fontFamily": "X" }')).toBeNull();
+  const { ghosttyFonts, vscodeTerminalFonts, windowsTerminalFonts, parseFontFamilies } = await import('../system/terminalFont.ts');
+
+  it('splits a CSS font list into names without quotes, generics or repeats', () => {
+    expect(parseFontFamilies("'Cascadia Cove', monospace")).toEqual(['Cascadia Cove']);
+    expect(parseFontFamilies('"Fira Code", \'JetBrains Mono\' ,  Menlo, "fira code", sans-serif')).toEqual(['Fira Code', 'JetBrains Mono', 'Menlo']);
+    expect(parseFontFamilies('"Name, with comma", Hack')).toEqual(['Name, with comma', 'Hack']);
+    expect(parseFontFamilies("Foo's Mono, Bar")).toEqual(["Foo's Mono", 'Bar']);
+    expect(parseFontFamilies('monospace')).toEqual([]);
+    expect(parseFontFamilies(' , UI-Monospace, ,')).toEqual([]);
+  });
+
+  it('reads Ghostty settings: every font-family line, in order, and an empty one starts over', () => {
+    expect(ghosttyFonts('theme = dark\nfont-family = "SauceCodePro Nerd Font Mono"\nfont-size = 13\n')).toEqual(['SauceCodePro Nerd Font Mono']);
+    expect(ghosttyFonts('font-family = JetBrains Mono\n')).toEqual(['JetBrains Mono']);
+    expect(ghosttyFonts('font-family = JetBrains Mono\r\nfont-family-bold = Other\r\nfont-family = "Symbols Nerd Font"\r\nfont-family = jetbrains mono\r\n')).toEqual(['JetBrains Mono', 'Symbols Nerd Font']);
+    expect(ghosttyFonts('font-family = Old\nfont-family = ""\nfont-family = New\nfont-family = Newer\n')).toEqual(['New', 'Newer']);
+    expect(ghosttyFonts('font-family = Old\nfont-family =\n')).toEqual([]);
+    expect(ghosttyFonts('font-size = 13\n')).toEqual([]);
+  });
+
+  it('reads the terminal font list from VS Code settings', () => {
+    expect(vscodeTerminalFonts('{\n  // comment\n  "terminal.integrated.fontFamily": "MesloLGS NF",\n}')).toEqual(['MesloLGS NF']);
+    expect(vscodeTerminalFonts(String.raw`{ "terminal.integrated.fontFamily": "'Cascadia Cove', monospace" }`)).toEqual(['Cascadia Cove']);
+    expect(vscodeTerminalFonts(String.raw`{ "terminal.integrated.fontFamily": "\"Fira Code\", \"Hack Nerd Font\", monospace" }`)).toEqual(['Fira Code', 'Hack Nerd Font']);
+    expect(vscodeTerminalFonts('{ "terminal.integrated.fontFamily": "monospace" }')).toEqual([]);
+    expect(vscodeTerminalFonts('{ "editor.fontFamily": "X" }')).toEqual([]);
   });
 
   it('reads Windows Terminal settings, the defaults first and the older key too', () => {
-    expect(windowsTerminalFont('{ "profiles": { "defaults": { "font": { "size": 11, "face": "CaskaydiaCove NF" } }, "list": [{ "font": { "face": "Other" } }] } }')).toBe('CaskaydiaCove NF');
-    expect(windowsTerminalFont('{ "profiles": { "defaults": { "fontFace": "Cascadia Mono" } } }')).toBe('Cascadia Mono');
-    expect(windowsTerminalFont('{ "profiles": { "defaults": {} } }')).toBeNull();
+    expect(windowsTerminalFonts('{ "profiles": { "defaults": { "font": { "size": 11, "face": "CaskaydiaCove NF" } }, "list": [{ "font": { "face": "Other" } }] } }')).toEqual(['CaskaydiaCove NF']);
+    expect(windowsTerminalFonts('{ "profiles": { "defaults": { "font": { "face": "Cascadia Code, Segoe UI Emoji" } } } }')).toEqual(['Cascadia Code', 'Segoe UI Emoji']);
+    expect(windowsTerminalFonts('{ "profiles": { "defaults": { "fontFace": "Cascadia Mono" } } }')).toEqual(['Cascadia Mono']);
+    expect(windowsTerminalFonts('{ "profiles": { "defaults": {} } }')).toEqual([]);
   });
 });

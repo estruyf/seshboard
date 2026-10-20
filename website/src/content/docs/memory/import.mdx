@@ -6,10 +6,11 @@ sidebar:
 ---
 
 import Kbd from '../../../components/Kbd.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-The Claude app keeps its own memory about you. Switchboard can bring it into Claude Code as memory files, from the app's data export or from text you paste, and copy your Claude Code memories the other way, to paste in the app.
+The Claude app keeps its own memory about you. Import it, and Claude Code starts out knowing what the app already knows instead of learning it again. Switchboard brings it in as memory files, from the app's data export or from text you paste, and copies your Claude Code memories the other way, to paste in the app.
 
 <Screenshot name="memory-paste" alt="The Paste from the Claude app dialog with pasted text, and its preview listing each memory with where it goes" eager />
 
@@ -86,3 +87,7 @@ The text is split into one memory per heading, else per bullet, else per paragra
 ## Settings
 
 The buttons live in [Settings › Memory](/settings/#memory). Imported personal memories go to your [personal memory](/memory/personal-memory/) folder.
+
+## Related
+
+<Related pages={['memory/personal-memory', 'memory/health', 'memory/adding-memory', 'settings']} />

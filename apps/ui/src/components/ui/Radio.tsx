@@ -46,7 +46,8 @@ export function Radio({
       {...dataAttrs}
     >
       <RadioMark checked={checked} className="mt-px" />
-      <span className="min-w-0">{children}</span>
+      {/* Takes the row's width, so a radio as wide as its group can put something on the right. */}
+      <span className="min-w-0 flex-1">{children}</span>
     </button>
   );
 }

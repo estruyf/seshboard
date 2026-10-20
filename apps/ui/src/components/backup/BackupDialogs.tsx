@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { BACKUP_SECTIONS, settingsFileName, type BackupSection, type FolderMapping, type ImportChange, type ImportMode, type ImportPreview } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { DEFAULT_EXPORT_SECTIONS, groupChanges, hasEffect, SECTION_INFO, summarizeChanges } from '../../lib/backup.ts';
-import { basename, guessHome, tildify } from '../../lib/format.ts';
+import { basename, tildify } from '../../lib/format.ts';
 import { useBackup } from '../../state/backupStore.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -191,12 +192,15 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
     if (to) setRelocate((list) => [...list.filter((m) => m.from !== from), { from, to }]);
   };
 
-  const home = useMemo(() => guessHome([...(preview?.missingFolders ?? []), ...relocate.map((m) => m.to), ...(preview?.changes.map((c) => c.label) ?? [])]), [preview, relocate]);
+  const home = useHomeFolder();
   const groups = useMemo(() => groupChanges((preview?.changes ?? []).filter((c) => sections?.includes(c.section))), [preview, sections]);
   const effect = preview ? hasEffect(preview.changes) : false;
 
   if (!path) return null;
   const exported = preview?.exportedAt ? new Date(preview.exportedAt) : null;
+  // Without a preview the body already says why the file couldn't be read; the footer only reports
+  // what goes wrong after that (an import that failed).
+  const footerError = preview ? error : null;
 
   return (
     <Dialog
@@ -205,7 +209,9 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
       subtitle={
         preview
           ? `From ${basename(path)}${exported && !Number.isNaN(exported.getTime()) ? `, exported ${exported.toLocaleDateString()}` : ''}${preview.appVersion !== 'unknown' ? ` by Switchboard ${preview.appVersion}` : ''}.`
-          : `Reading ${basename(path)}…`
+          : error
+            ? `From ${basename(path)}.`
+            : `Reading ${basename(path)}…`
       }
       onClose={onClose}
       data-import-dialog
@@ -216,8 +222,8 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
           </Button>
         ) : (
           <>
-            <span role={error ? 'alert' : 'status'} className={`min-w-0 flex-1 truncate text-ui ${error ? 'text-error' : 'text-muted'}`} data-tooltip={error ?? undefined} data-import-summary>
-              {error ?? (preview ? summarizeChanges(preview.changes, preview.unchanged) : '')}
+            <span role={footerError ? 'alert' : 'status'} className={`min-w-0 flex-1 truncate text-ui ${footerError ? 'text-error' : 'text-muted'}`} data-tooltip={footerError ?? undefined} data-import-summary>
+              {footerError ?? (preview ? summarizeChanges(preview.changes, preview.unchanged) : '')}
             </span>
             <Button onClick={onClose}>Cancel</Button>
             <Button variant="primary" onClick={() => void apply()} disabled={busy || !effect || !client} data-import-settings>

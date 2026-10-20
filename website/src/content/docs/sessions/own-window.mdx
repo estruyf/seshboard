@@ -1,0 +1,67 @@
+---
+title: Sessions in their own window
+description: Open a session in a window of its own, next to the main window or on another screen.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
+
+Open a session in a window of its own to keep an eye on it next to the main window, or on another screen. The window is the whole session: the conversation, the message box, the permission prompts and questions Claude asks, and all the panels (Changes, Ask, Agents, Commands and the terminal), as in a pane of the main window. Only the sidebar stays in the main window.
+
+## Open a session in its own window
+
+With the session open:
+
+- Press <Kbd shortcut="session.new-window" />.
+- Click **Open in new window** in the session's header.
+- Choose *Open in new window* in the command palette.
+
+Or right-click a session in the sidebar and choose **Open in new window**.
+
+The window opens beside the main window when there is room on that screen, and over it when there isn't. It is wide enough for a panel next to the conversation. Move it and resize it like any other window.
+
+## One window per session
+
+A session is open in one place at a time. When it moves to its own window, its pane in the main window closes. Its row in the sidebar shows a small window icon.
+
+- Clicking that row brings the session's window to the front, and so does clicking a notification about it.
+- Opening the session again in any other way also brings its window to the front.
+
+## Work in the window
+
+The message box, permission prompts and questions work as they do in the main window. A message you started typing goes with the session, so it is there in either window.
+
+The header's panel buttons open the panels in the window. The panels that are open go with the session: a session that pops out opens with the panels it had open in the main window, on the same agent, command or Ask thread, and when it comes back, the main window shows the panels as you left them in its window. After that, each window keeps its own: opening [Changes](/terminal-changes-git/changes/) or the terminal here doesn't open it in the main window. Each window also keeps the size of its own panels. In a narrow window (under about 640 pixels), a panel takes the whole window. Close the panel, or make the window wider, to see the conversation again.
+
+Shortcuts for the session work in its window, such as <Kbd shortcut="find" />, <Kbd shortcut="changes.toggle" />, <Kbd shortcut="terminal.toggle" /> for the terminal and <Kbd shortcut="editor.open" /> to open the folder in your editor.
+
+## The command palette in the window
+
+<Kbd shortcut="palette.commands" /> opens the [command palette](/command-palette/) in the window, with the commands for its session: Toggle agents, Toggle changes, Rename session…, Fork session…, Change model…, the git commands, the project's actions and the terminal's. They act on the session in this window, not on the one selected in the main window. <Kbd shortcut="shortcuts" /> opens the keyboard shortcuts sheet here too, and so does **Keyboard Shortcuts** in the Help menu when the window is in front.
+
+The commands for what only the main window has, such as the sidebar, split view and Home, are left out. Anything that starts or finds another session goes to the main window, which comes to the front:
+
+- <Kbd shortcut="palette.goto" /> (Go to), <Kbd shortcut="search" />, <Kbd shortcut="session.new" /> and <Kbd shortcut="session.question" />.
+- The palette's **Go to session…**, **Search conversations**, **New session…**, **Quick question…**, **Next session** and **Previous session**.
+
+Things that have no page in this window open in the main window too, which comes to the front: Settings, the Usage view, a project's page and New session in a new worktree.
+
+While the session's window is in front, Switchboard sends no notification about that session, as for a session on screen in the main window.
+
+## Move it back or close the window
+
+- **Move back to main window** in the window's header shows the session in a pane of the main window again, with its panels as they were in its window, and closes its window.
+- The **×** in the header, or the window's own close button, closes the window. The session stays in the sidebar, and a session that is working keeps running. Its panels are as you left them when you open it again.
+
+Closing the main window closes these windows too. They don't come back after Switchboard restarts.
+
+<Aside type="tip">
+To see two sessions at once in the main window, use [split view](/sessions/split-view/).
+</Aside>
+
+## Related
+
+<Related pages={['sessions/split-view', 'permissions', 'settings/notifications', 'sessions/sidebar']} />

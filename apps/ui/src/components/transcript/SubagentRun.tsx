@@ -7,8 +7,9 @@ import { TranscriptItem } from './TranscriptItem.tsx';
 /**
  * The subagent's own conversation, loaded from its transcript file when the
  * Task card is opened. Refreshes every 2 s while the subagent is still running.
+ * `fill`: no height limit, for a panel that scrolls as a whole.
  */
-export function SubagentRun({ sessionId, toolUseId, running, cwd }: { sessionId: string; toolUseId: string; running: boolean; cwd: string | null }) {
+export function SubagentRun({ sessionId, toolUseId, running, cwd, fill = false }: { sessionId: string; toolUseId: string; running: boolean; cwd: string | null; fill?: boolean }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [messages, setMessages] = useState<TranscriptMessage[] | null>(null);
@@ -33,7 +34,7 @@ export function SubagentRun({ sessionId, toolUseId, running, cwd }: { sessionId:
   if (messages === null) return <p className="py-1 text-ui text-muted">Loading the subagent’s work…</p>;
   if (items.length === 0) return <p className="py-1 text-ui text-muted">{running ? 'The subagent is starting…' : 'No transcript was saved for this subagent.'}</p>;
   return (
-    <div className="grid max-h-[420px] gap-2 overflow-y-auto border-l-2 border-accent-ink/30 py-1 pl-3" data-subagent-run>
+    <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 border-l-2 border-accent-ink/30 py-1 pl-3 ${fill ? '' : 'max-h-[420px] overflow-y-auto'}`} data-subagent-run>
       {items.map((item) => (
         <TranscriptItem key={item.key} item={item} cwd={cwd} sessionId={sessionId} />
       ))}

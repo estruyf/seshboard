@@ -1,7 +1,7 @@
-import type { HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
+import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
 
 export interface AttentionEvent {
-  kind: 'needs-you' | 'finished' | 'failed' | 'action-done';
+  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring';
   sessionId: string;
   title: string;
   body: string;
@@ -20,6 +20,7 @@ const basename = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).po
  * - Terminal (CLI) sessions waiting for you, when the sidebar lists sessions from
  *   other apps. Claude desktop and IDE sessions are skipped: they notify on their own.
  * - Project actions that finish.
+ * - The checks of a session's pull request that finish.
  */
 export class Attention {
   private readonly hostStates = new Map<string, HostState>();
@@ -35,7 +36,7 @@ export class Attention {
     this.titles.set(sessionId, title);
   }
 
-  private label(sessionId: string, cwd: string | null): string {
+  label(sessionId: string, cwd: string | null): string {
     const title = this.titles.get(sessionId) ?? 'New session';
     return cwd ? `${title} · ${basename(cwd)}` : title;
   }
@@ -44,6 +45,10 @@ export class Attention {
     const previous = this.hostStates.get(info.sessionId);
     this.hostStates.set(info.sessionId, info.state);
     const busy = previous === 'running' || previous === 'needs-you';
+    // A usage limit stopped the turn: it didn't finish, and it can't go on until the limit resets.
+    if (busy && info.state === 'idle' && info.usageLimit?.sessionIds.includes(info.sessionId)) {
+      return [{ kind: 'failed', sessionId: info.sessionId, title: 'Usage limit reached', body: this.label(info.sessionId, info.cwd) }];
+    }
     if (busy && info.state === 'idle') {
       return [{ kind: 'finished', sessionId: info.sessionId, title: 'Claude finished', body: this.label(info.sessionId, info.cwd), cwd: info.cwd }];
     }
@@ -57,6 +62,25 @@ export class Attention {
     this.pending.set(request.requestId, request);
     const what = request.toolName === 'AskUserQuestion' ? 'Claude has a question' : request.toolName === 'ExitPlanMode' ? 'Claude has a plan for you' : `Claude wants to use ${request.toolName}`;
     return [{ kind: 'needs-you', sessionId: request.sessionId, title: what, body: this.titles.get(request.sessionId) ?? 'Waiting for your approval' }];
+  }
+
+  /** A session armed with Resume when it resets was sent its message after the reset. */
+  onResumed(sessionId: string): AttentionEvent[] {
+    return [{ kind: 'resumed', sessionId, title: 'Resumed after the usage limit reset', body: this.titles.get(sessionId) ?? 'New session' }];
+  }
+
+  /** The checks of a session's pull request all finished, after some were running. */
+  onChecksFinished(event: ChecksFinished): AttentionEvent[] {
+    const failed = event.outcome === 'fail';
+    const counts = failed ? `${event.failed} of ${event.total} ${event.total === 1 ? 'check' : 'checks'} failed` : `${event.total === 1 ? 'The check' : `All ${event.total} checks`} passed`;
+    return [
+      {
+        kind: failed ? 'checks-failed' : 'checks-passed',
+        sessionId: event.sessionId,
+        title: `Checks ${failed ? 'failed' : 'passed'} on PR #${event.pr.number}`,
+        body: `${counts} · ${this.titles.get(event.sessionId) ?? event.branch}`,
+      },
+    ];
   }
 
   onPermissionResolved(requestId: string): void {

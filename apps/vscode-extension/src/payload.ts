@@ -1,5 +1,5 @@
 import { isAbsolutePath } from '@switchboard/protocol/paths';
-import type { ContextItemInput } from '@switchboard/protocol/companion-client';
+import type { CompanionContextItemInput as ContextItemInput } from '@switchboard/protocol/companion-client';
 
 /**
  * Turning what is selected in VS Code into context items. Pure (no `vscode` import), so it can be tested: the

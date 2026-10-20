@@ -2,7 +2,7 @@ import type { ActionScope, ActionSuggestion, ListedAction, ProjectAction } from 
 import { basename } from '../../lib/format.ts';
 import { formatShortcut, normalizeShortcut, reservedShortcuts, sameShortcut } from '../../lib/shortcuts.ts';
 
-/** The form's state: an action plus where it is saved. `shared` only appears read-only. */
+/** The form's state: an action plus where it is saved: yours (`project`, `global`) or the project's .switchboard.json (`shared`). */
 export type ActionDraft = ProjectAction & { scope: ActionScope };
 
 export const EMPTY_DRAFT: ActionDraft = {
@@ -15,6 +15,7 @@ export const EMPTY_DRAFT: ActionDraft = {
   confirm: false,
   shortcut: null,
   runOnWorktreeCreate: false,
+  sendOutput: false,
   scope: 'project',
 };
 
@@ -35,6 +36,9 @@ export function slug(name: string): string {
   );
 }
 
+/** Where a save or delete goes, as `actions.save` and `actions.delete` take it. */
+export const scopeParams = (scope: ActionScope, projectRoot: string): { projectRoot: string | null; shared?: true } => (scope === 'global' ? { projectRoot: null } : scope === 'shared' ? { projectRoot, shared: true } : { projectRoot });
+
 /** A stable key for an action in the list (ids are only unique within a scope). */
 export const actionKey = (a: { scope: ActionScope; id: string }) => `${a.scope}:${a.id}`;
 
@@ -54,7 +58,7 @@ export function applySavedAction(actions: ListedAction[], saved: ListedAction, p
 /** The list without one action, for a delete that shows before the list reloads. */
 export const withoutAction = (actions: ListedAction[], removed: { scope: ActionScope; id: string }) => actions.filter((a) => actionKey(a) !== actionKey(removed));
 
-/** Splits the list into the actions you can edit and the read-only ones from .switchboard.json. */
+/** Splits the list into your actions and the project's shared ones from .switchboard.json. */
 export function groupActions(actions: ListedAction[]): {
   yours: ListedAction[];
   shared: ListedAction[];
@@ -92,7 +96,10 @@ export function validateDraft(draft: ActionDraft, actions: ListedAction[], editi
     // An edit in the same scope keeps its id, so only new ids can clash.
     const id = slug(name);
     const clash = actions.find((a) => a.scope === draft.scope && a.id === id);
+    // Your own action for this project wins over a shared one with its id, so a new shared one would be hidden.
+    const hiding = draft.scope === 'shared' && actions.find((a) => a.scope === 'project' && a.id === id && !(editing && a.scope === editing.scope && a.id === editing.id));
     if (clash) errors.name = `“${clash.name}” already uses this name.`;
+    else if (hiding) errors.name = `Your action “${hiding.name}” for this project already uses this name.`;
   }
   const command = draft.command.trim();
   if (!command) errors.command = draft.type === 'shell' ? 'Enter the command to run.' : 'Enter what to ask Claude.';

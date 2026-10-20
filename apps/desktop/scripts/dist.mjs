@@ -1,5 +1,5 @@
 // Packages Switchboard for the OS this runs on, with that platform's flags in one place; any other arguments
-// (--config, --publish, -c.publish.channel=nightly) are passed on to electron-builder, on Windows through a config
+// (--config, --publish, -c.publish.channel=beta) are passed on to electron-builder, on Windows through a config
 // file (windowsBuildConfig.mjs). Afterwards it checks that the app's archive holds only the app.
 // Usage: node scripts/dist.mjs [electron-builder arguments]   (npm run dist runs electron-vite build first)
 import { spawnSync } from 'node:child_process';

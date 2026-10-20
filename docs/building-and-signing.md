@@ -156,8 +156,12 @@ Everyone on the Stable channel is offered the release within a few hours, or str
 ### Channels and pre-releases
 
 - **Stable:** a normal (not pre-release) release with a version like `v1.2.3`. Its feeds are `latest-mac.yml` and `latest.yml` (Windows), and the updater finds them on the repository's latest release.
-- **Nightly:** a *pre-release* tagged like `v1.2.3-nightly.20261006.1`. The workflow builds it with `-c.publish.channel=nightly`, so its feeds are `nightly-mac.yml` and `nightly.yml`, which only apps on the Nightly channel look for. A nightly version published as a normal release fails the workflow. There is no scheduled nightly workflow yet; publish one by hand when you want to.
-- **Any other pre-release** (`v1.2.3-beta.1`, say) gets the `.dmg`, `.zip` and installer but no feed, so no one is updated to it. A pre-release version published as a normal release fails the workflow, since Stable users would be offered it.
+- **Beta:** a *pre-release* tagged like `v1.3.0-beta.1`. The workflow builds it with `-c.publish.channel=beta`, so its feeds are `beta-mac.yml` and `beta.yml`. Apps on the Beta channel look at the newest release or beta pre-release, whichever was published last: they read `beta-mac.yml` from a beta, and fall back to `latest-mac.yml` on a release. So Beta users get each beta and each release. A beta version published as a normal release fails the workflow. Its release notes come from the `## [Unreleased]` section of `CHANGELOG.md`, which keeps sections for releases only.
+- **Any other pre-release** (`v1.2.3-rc.1`, say) gets the `.dmg`, `.zip` and installer but no feed, so no one is updated to it. A pre-release version published as a normal release fails the workflow, since Stable users would be offered it.
+
+Each comes from its own branch, and the workflow fails otherwise (`.github/scripts/release-branch.sh`): a release from `main`, a beta from `dev`. `main` holds only what was released; work lands on `dev` and is merged into `main` for a release.
+
+A beta is always for a version after the latest release, and the workflow checks that too: after `v1.2.0`, the betas are `v1.3.0-beta.N` (or `v1.2.1-beta.N`). Beta users get the newest entry on the releases page, so a beta for `1.2.0` published after `v1.2.0` would be what they are offered, and it is older than what they run. Neither channel ever goes back to an older version: someone who leaves Beta while on `v1.3.0-beta.2` stays on it until `v1.3.0` is out.
 
 On macOS only arm64 is built. If an Intel build is added, both architectures must go into one `latest-mac.yml` (a `files` entry each) rather than two feeds overwriting each other. On Windows one installer holds both architectures, so `latest.yml` names a single file.
 
@@ -218,7 +222,7 @@ npm run mock-updates -w @switchboard/desktop -- --fake 9.9.9
 SWITCHBOARD_MOCK_UPDATES=1 npm run dev
 ```
 
-Settings → About → *Check for Updates* finds v9.9.9 with its release notes, and the update message shows in the window's corner. Downloading fails, since there is no build behind a fake feed. The fake feed answers as both `latest-mac.yml` and `latest.yml`, so it works on Windows too; `--fake 9.9.9-nightly.20261006.1` serves `nightly-mac.yml` and `nightly.yml` for the Nightly channel. The smoke test runs one check against the mock feed when `SWITCHBOARD_MOCK_UPDATES=1` is set (it never downloads).
+Settings → About → *Check for Updates* finds v9.9.9 with its release notes, and the update message shows in the window's corner. Downloading fails, since there is no build behind a fake feed. The fake feed answers as both `latest-mac.yml` and `latest.yml`, so it works on Windows too; `--fake 9.9.9-beta.1` serves `beta-mac.yml` and `beta.yml` for the Beta channel. The smoke test runs one check against the mock feed when `SWITCHBOARD_MOCK_UPDATES=1` is set (it never downloads).
 
 **The whole flow** (download, restart, *Updated to vX*) needs two signed builds, since Squirrel.Mac only installs an update signed by the same Developer ID:
 

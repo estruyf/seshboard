@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { BUILTIN_PROFILE_ID, type LogLevel, type SessionsChanged, type SessionSummary } from '@switchboard/protocol';
+import { BUILTIN_PROFILE_ID, withoutBriefs, type LogLevel, type SessionsChanged, type SessionSummary } from '@switchboard/protocol';
 import { originFromEntrypoint, readHead, readLastActivity, type TranscriptHead } from '../claude/origin.ts';
 import type { ProjectResolver } from '../claude/projectResolver.ts';
 import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
@@ -204,6 +204,13 @@ export class SessionIndex {
     this.writeFlags(sessionId, { ...(this.flags.get(sessionId) ?? NO_FLAGS), viewedAt: Date.now() });
   }
 
+  /** Unread again (Undo after Mark as read on a phone): seen last just before its latest activity. */
+  markUnviewed(sessionId: string): void {
+    const updatedAt = this.entries.get(sessionId)?.summary.updatedAt;
+    if (updatedAt === undefined) return;
+    this.writeFlags(sessionId, { ...(this.flags.get(sessionId) ?? NO_FLAGS), viewedAt: updatedAt - UNREAD_SLACK_MS - 1 });
+  }
+
   private writeFlags(sessionId: string, flags: Flags): void {
     this.flags.set(sessionId, flags);
     this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt);
@@ -359,7 +366,9 @@ export class SessionIndex {
     const entrypoint = previous?.entrypoint ?? readOnce().entrypoint;
     const cwd = info.cwd ?? previous?.summary.cwd ?? readOnce().cwd;
     const location = cwd ? this.options.resolver.resolve(cwd) : null;
-    const title = oneLine(info.customTitle || info.summary || info.firstPrompt || 'Untitled session', TITLE_MAX);
+    // A linked session's brief is part of the first message, but not what you asked (session linking).
+    const firstPrompt = info.firstPrompt ? withoutBriefs(info.firstPrompt) : '';
+    const title = oneLine(info.customTitle || info.summary || firstPrompt || 'Untitled session', TITLE_MAX);
     // The SDK's lastModified is the file's mtime, which moves when Claude Code merely exits or
     // reopens the session; use the last message instead. Read again only when the file changed.
     const unchanged = previous && file && previous.mtime === file.mtime;
@@ -367,7 +376,7 @@ export class SessionIndex {
     const summary: RawSummary = {
       id: info.sessionId,
       title,
-      firstPrompt: info.firstPrompt ? oneLine(info.firstPrompt, 500) : null,
+      firstPrompt: firstPrompt ? oneLine(firstPrompt, 500) : null,
       customTitle: info.customTitle ?? null,
       cwd,
       projectRoot: location?.root ?? cwd ?? 'Unknown folder',

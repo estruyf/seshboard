@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { onFirstLine, onLastLine, type RowOf } from './caretLine.ts';
+import { onFirstLine, onLastLine, scrollToRow, type RowOf } from './caretLine.ts';
 
 /** Rows as a textarea that wraps every `width` characters would lay them out (20px a row). */
 const wrapsAt =
@@ -76,5 +76,21 @@ describe('onLastLine', () => {
   it('falls back to the very end when rows cannot be measured', () => {
     expect(onLastLine('fix the tests', 13, 13, null)).toBe(true);
     expect(onLastLine('fix the tests', 4, 4, null)).toBe(false);
+  });
+});
+
+describe('scrollToRow', () => {
+  it('scrolls down to a new row under the bottom edge', () => {
+    // A box 320px tall scrolled to the end of 400px, and a new row added under it.
+    expect(scrollToRow(80, 320, 400, 20)).toBe(100);
+  });
+
+  it('scrolls up to a row above the top edge', () => {
+    expect(scrollToRow(100, 320, 40, 20)).toBe(40);
+  });
+
+  it('stays put when the row shows', () => {
+    expect(scrollToRow(80, 320, 200, 20)).toBe(80);
+    expect(scrollToRow(80, 320, 380, 20)).toBe(80);
   });
 });

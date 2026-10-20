@@ -78,12 +78,14 @@ const permission = (sessionId: string, createdAt: number): PermissionRequest => 
   createdAt,
 });
 
-const input = (parts: { hosts?: SessionHostInfo[]; live?: LiveSession[]; sessions?: SessionSummary[]; permissions?: PermissionRequest[]; countExternal?: boolean }): FocusInput => ({
+const input = (parts: { hosts?: SessionHostInfo[]; live?: LiveSession[]; sessions?: SessionSummary[]; permissions?: PermissionRequest[]; countExternal?: boolean; remote?: FocusInput['remote']; countRemote?: boolean }): FocusInput => ({
   hosts: new Map((parts.hosts ?? []).map((h) => [h.sessionId, h])),
   live: new Map((parts.live ?? []).map((l) => [l.sessionId, l])),
   sessions: new Map((parts.sessions ?? []).map((s) => [s.id, s])),
   permissions: parts.permissions ?? [],
   countExternal: parts.countExternal ?? false,
+  remote: parts.remote,
+  countRemote: parts.countRemote,
 });
 
 const ids = (i: FocusInput) => focusSessions(i).map((s) => `${s.id}:${s.state}`);
@@ -154,7 +156,7 @@ describe('what counts as going', () => {
 });
 
 describe('the gate', () => {
-  const nudge: FocusPrefs = { focusLimit: 3, focusMode: 'nudge', focusCountExternal: false };
+  const nudge: FocusPrefs = { focusLimit: 3, focusMode: 'nudge', focusCountExternal: false, focusCountRemote: true };
   const strict: FocusPrefs = { ...nudge, focusMode: 'strict' };
   const going = (n: number) => focusSessions(input({ hosts: Array.from({ length: n }, (_, i) => host(`s${i}`, 'running')) }));
 
@@ -198,6 +200,19 @@ describe('the gate', () => {
     const parts = { hosts: [host('a', 'running'), host('b', 'running')], live: [live('term', 'running')] };
     expect(focusVerdict(focusSessions(input(parts)), strict).kind).toBe('allowed');
     expect(focusVerdict(focusSessions(input({ ...parts, countExternal: true })), { ...strict, focusCountExternal: true }).kind).toBe('blocked');
+  });
+});
+
+describe('sessions on other computers', () => {
+  const row = (id: string, status: 'running' | 'needs-you' | 'unread' | 'idle', offline = false) =>
+    ({ id: `remote:c1:${id}`, title: id, updatedAt: NOW, remote: { computerId: 'c1', computerName: 'studio', sessionId: id, projectId: 'p', projectName: 'site', status, waitingTool: null, workingSince: null, offline, lastSeen: null } });
+  const rows = [row('a', 'running'), row('b', 'needs-you'), row('c', 'unread'), row('d', 'idle'), row('e', 'running', true)];
+
+  it('counts what is going on a paired computer, unless turned off', () => {
+    const counted = focusSessions(input({ remote: rows, countRemote: true }));
+    expect(counted.map((s) => s.id)).toEqual(['remote:c1:b', 'remote:c1:a', 'remote:c1:c']);
+    expect(counted[0]!.remote).toEqual({ computerName: 'studio' });
+    expect(focusSessions(input({ remote: rows, countRemote: false }))).toEqual([]);
   });
 });
 

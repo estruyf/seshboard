@@ -11,6 +11,7 @@ import Os from '../../../components/Os.astro';
 import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 A session shows its conversation with Claude, with the message box at the bottom. You chat as you would in the terminal, with streaming replies, `/` commands, `@` mentions and images, and you can follow every step Claude takes without the noise.
 
@@ -27,8 +28,8 @@ The header shows the title, the [state](/sessions/states/), the project and the 
 Type in the message box and press <Kbd shortcut="composer.send" />. <Kbd shortcut="composer.newline" /> starts a new line. In a list (`- `, `* ` or `1. `) it starts the next item, numbered one up; on an empty item it ends the list.
 
 - **Commands and skills:** type <Kbd shortcut="composer.commands" /> at the start of the message for your commands and skills, your own included.
-- **Side questions:** `/btw` and a question asks Claude about the session without adding it to the conversation, also while Claude works. See [Side questions](/sessions/side-questions/).
-- **Mention a file:** type <Kbd shortcut="composer.mention" /> and pick a file from the list.
+- **Ask about this session:** the **Ask** button next to **Send** (or `/btw` and a question) asks Claude about the session in a panel on the right, without adding it to the conversation, also while Claude works. See [Ask about this session](/sessions/ask/).
+- **Mention a file or a session:** type <Kbd shortcut="composer.mention" /> and pick a file from the list, or another session to [link it](/sessions/linking/): Claude then gets its branch, pull request, what it did and its last reply.
 - **Code:** select text and type <Kbd keys="`" /> to wrap it as code: one line as `inline code`, several lines in a code block.
 - **Earlier messages:** <Kbd shortcut="composer.history" /> at the start of your text brings back what you sent before. On the first line, the first <Kbd keys="arrowup" /> takes the caret to the start, and the next one brings the message back. Esc goes back to what you were typing.
 - **Images:** paste them, drop them on the session, or click the image button under the message box. Images Claude reads or you attach show in the conversation.
@@ -83,9 +84,11 @@ Messages in Up next are kept when you look at other sessions, stop the session o
 
 Each run of tool calls is one line, like Claude Code: what Claude is doing right now ("Reading src/app.ts…"), or what it did when the run ends ("Ran 3 commands and edited 2 files"), with how long it took. Click the line to see every step, and a step to see its details: diffs, command output, to-do lists and subagent runs.
 
+A command Claude runs without a description shows what it runs, not its script. A short command shows as it is, such as **Running npm test**. A long command or an inline script shows the program, such as **Running git** or **Running a Python script**. Open the step to see the whole command.
+
 - A **Tasks** pill above the message box shows Claude's to-do list ("Tasks 2 of 5"); click it to open the list.
-- A green pill above the message box lists what runs in the background, such as a long command or an agent, with a way to stop each one.
-- A file Claude names in a reply, such as `src/search/suggestions.ts:69`, is a link. Click it to open the file in your editor at that line.
+- A green pill above the message box lists what runs in the background, such as a long command or an agent, with a way to stop each one. Click a command's name to see its output in the [Commands panel](/sessions/commands/), or an agent's name to open it in the [Agents panel](/sessions/agents/).
+- A file Claude names in a reply, such as `src/search/suggestions.ts:69`, is a link, and so is the **Show** or **Open** chip beside a tool run that read or changed a file. Click it to show the file in <Os mac="Finder" windows="File Explorer" />, where it is selected. <Kbd shortcut="transcript.file-link-other" /> opens it in your editor instead, at that line. Right-click it (or press <Kbd shortcut="context-menu" />) for **Show in <Os mac="Finder" windows="File Explorer" />**, **Open in** your editor and **Copy path**, above the message's **Quote** and **Remember this…**. If the file is gone, the link turns red and says so. To make a click open the editor, and <Kbd shortcut="transcript.file-link-other" /> show the file, change **Clicking a file link** in [Settings, Conversation](/settings/#conversation).
 - Images in your messages show above the text, so **Show more** never hides them: one image at its own shape, two to four as thumbnails, and five or more as tiles with +N for the rest. Hover one for its type, size and pixel size.
 - Images open full size with a click. <Kbd keys="arrowleft|arrowright" /> (or the filmstrip at the bottom) step through all of a message's images.
 
@@ -93,10 +96,11 @@ Prefer to see each tool call as its own card? Choose **Every step** in [Settings
 
 ### Code blocks
 
-Hover a code block in Claude's reply for its buttons:
+Hover a code block in Claude's reply for its buttons. In a long block they stay at the top of the conversation while you scroll, so you don't have to scroll back up to copy.
 
 - **Copy** copies the code.
-- **Run in terminal** (on shell code blocks) types the command into a terminal tab of the session and runs it. For a block that shows a terminal session (`$` lines with their output), only the `$` lines run.
+- **Run in terminal** (on shell code blocks, and on Windows PowerShell ones too) types the command into a terminal tab of the session and runs it. For a block that shows a terminal session (`$` lines with their output), only the `$` lines run.
+- **Run and send the output to Claude** (next to it, or <Kbd keys="alt+click" /> on **Run in terminal**) runs the command in a terminal tab of its own, which ends with the command. When it ends, Claude gets a message from you with the command, its exit code and the end of its output (the last 200 lines), so it can carry on from there. While Claude works, the message waits in **Up next** until Claude finishes its turn; remove it there if you change your mind. A line under the output in the tab says where it went. If you stop the command, the message says so. Close the tab before it ends, and nothing is sent.
 - A markdown block (a README, a pull request description) opens rendered, with a **Preview | Source** switch above it. Copy still copies the markdown.
 
 <Screenshot name="code-block" alt="A code block in Claude's reply with syntax colours and the copy button in its corner" width={720} />
@@ -104,6 +108,40 @@ Hover a code block in Claude's reply for its buttons:
 ### Save an image
 
 Use the save button on an image, right-click it and choose **Save image…**, or press <Kbd keys="mod+s" /> while it is open full size.
+
+## How long a turn took
+
+A turn is your prompt and everything Claude does until it stops and waits for you again. Under the last reply of each turn, a faint line says when the turn ended and how long it took, such as `14:32 · 2m 14s`. Like the reply's buttons, it shows when you hover the reply, next to them. Moving to the buttons with <Kbd keys="tab" /> shows it too.
+
+<Screenshot name="turn-details" alt="Under Claude's last reply, the time, duration and tokens of the turn, with the tokens' tooltip open: the total, a bar of the token types, a row for each and the model" />
+
+- **The time** is the time of day today, the day this week, and the date before that. Hover it for the full date and time, the duration and the tokens.
+- **The duration** is Claude's own time. Time a permission prompt, a question or a plan waited for your answer is left out, and shown in brackets: `48s (12s waiting on you)`. A turn you stopped says **Stopped after**, and a turn that ended on an error says **Failed after**, in red.
+- **The tokens** show when you choose them in [Settings, Conversation](/settings/#conversation). They count every reply in the turn, its agents' replies included. Hover or focus them for what they were made of: input, output, cache write and cache read, in the colours of the [Usage](/usage/) view, and the model when the turn used one. <Kbd keys="escape" /> closes it. Old sessions don't have token counts, so they show no tokens.
+
+While Claude works, the working line counts the same way: `Reading AGENTS.md · 0m 37s · 3.2k tokens`. While a prompt waits for you, it says **Waiting for you** and **paused**, and the clock stops.
+
+Hover one of your prompts to see when you sent it, and from which phone or computer when it came from a [paired device](/remote-access/).
+
+In a narrow pane the line drops the tokens first, then the duration. To change what the line shows, or turn it off, use **Under each reply** in [Settings, Conversation](/settings/#conversation).
+
+## Go back to a prompt
+
+In a long conversation, the prompt outline takes you back to what you asked. It is a thin rail on the right of the conversation, with a mark for each of your prompts. The mark of the prompt at the top of the view is highlighted, and it moves as you scroll.
+
+<Screenshot name="prompt-outline" alt="The prompt outline on the right of the conversation: a mark for each prompt, the current one highlighted, and a card with the start of a prompt, its number and time, and the keys for the previous and next prompt" />
+
+- **Hover** a mark to see the start of the prompt, when you sent it and the images it had.
+- **Click** a mark to scroll to its prompt. The prompt lands at the top of the view with a short highlight.
+- **Previous prompt** (<Kbd shortcut="transcript.prompt-previous" />) goes to the prompt before. When you have scrolled down inside a long prompt, it goes back to the start of that prompt first.
+- **Next prompt** (<Kbd shortcut="transcript.prompt-next" />) goes to the prompt after. From the last prompt, it goes to the end of the conversation.
+- Both are in the command palette, as *Previous prompt* and *Next prompt*.
+
+With the keyboard, <Kbd keys="tab" /> reaches the rail after the conversation. <Kbd keys="arrowup|arrowdown" /> move between the marks, <Kbd keys="enter" /> or <Kbd keys="space" /> scrolls to the prompt, and <Kbd keys="home" /> and <Kbd keys="end" /> go to the first and the last.
+
+Only your own prompts get a mark: not `/` commands, messages still in **Up next** or prompts Claude gave its agents. The rail shows from 3 prompts, in a pane at least 600 pixels wide, so it hides when panes are side by side and narrow. The keys work also when the rail is hidden. They don't work in a text field with text in it, where they select to the start or the end of the text; in an empty message box they do.
+
+To hide the rail, turn off **Show prompt outline** in [Settings, Conversation](/settings/#conversation).
 
 ## Change the model, mode and effort
 
@@ -118,9 +156,22 @@ In a narrow pane the chips get shorter (effort and mode show only their icon) in
 
 ### Context window and usage
 
-Under the message box, a line shows your plan usage (your 5-hour and weekly limits; hover for when they reset) and a ring for how full the **context window** is. Click the ring to see what fills it, like `/context`, and **Compact now** to compact the conversation. *Compact context* in the command palette does the same.
+Under the message box, a line shows your plan usage (your 5-hour and weekly limits; hover for when they reset), what the session would cost at API prices (*Cost ≈$12.40*, see [Estimated cost](/usage/#estimated-cost)), and a ring for how full the **context window** is. Click the ring to see what fills it, like `/context`, and **Compact now** to compact the conversation. *Compact context* in the command palette does the same.
 
 After a compaction the whole conversation stays: a *Conversation compacted* line marks each place it was compacted, and you can scroll back past it.
+
+### Large context
+
+Anthropic keeps a conversation's context in its prompt cache for a while after the last message: an hour or 5 minutes, depending on what Claude Code asks for. Each message that reads from the cache starts that time again. Once the cache expires, the next message reads the whole context again, at a price several times higher than reading it from the cache. It doesn't matter whether Switchboard is open: only the time since the last message counts.
+
+When a session's context is large (60% full or more, by default), the ring turns orange and a note above the message box says so while the session waits for you:
+
+- While the cache is kept: *Large context: 412k tokens (82%). Its cache expires in 48 min. After that, your next message reads all of it again (≈$3.20).* **Compact now** compacts it while that is still cheap.
+- After the cache expired, such as the next morning: *Its cache expired 14 h ago, so your next message reads all of it again (≈$3.20).* Compacting now would read it all again too, so the note doesn't offer it.
+
+The cost shows with **Show estimated cost** on, and reading it all again counts toward your plan's limits too. For a session that isn't running in Switchboard, the size is an estimate from the last reply. Close the note with its **×**; it comes back the next time Switchboard starts.
+
+With **Notify before the cache expires** on, you get a notification 5 minutes before a large session's hour-long cache expires, while it waits for you. Quitting Switchboard with a large session open says so once, and **Warn me about this every time I quit** turns that on for good. Change the percentage or turn any of this off in [Settings › Usage](/settings/#large-context).
 
 ## The hover toolbar
 
@@ -133,6 +184,7 @@ Hover over a message for its toolbar:
 - **On Claude's replies:**
   - **Fork from here.** A new session with the conversation up to this message.
   - **Copy as Markdown.**
+  - **Copy as rich text.** Copies the reply as it looks, to paste into an email, a document, Slack or Notion with its headings, lists, bold, links, code and tables. A field that takes only plain text gets the Markdown. Links to files in the project paste as their text.
 - **On both:** **Remember this…** (the brain button) saves the message as a memory. See [Remember this](/memory/adding-memory/#remember-this).
 
 You can also select text in any message and press <Kbd keys="mod+c" />. A toolbar shows above the selection with **Quote**, **Copy** and **Remember this…**. Press <Kbd keys="tab" /> to reach it from the keyboard, <Kbd keys="arrowleft|arrowright" /> to move between its buttons, and <Kbd keys="escape" /> to close it. The command palette has *Fork session…* and *Rewind to a message…* to pick a message from a list, and *Copy last reply*.
@@ -153,8 +205,9 @@ If the session is still open somewhere else, such as a terminal, Switchboard say
 
 ## Agents and tools
 
-- **Agents:** the agents Claude starts, background ones included, are under **⋯** in the header, with how many run ("2 running"). A dot on **⋯** says some are running. Choose **Agents** to see what each one is doing.
-- **Tools:** the blocks button under the message box (or *Tools: MCP servers, skills, agents, plugins* in the command palette) opens the session's **MCP servers**, **Skills & commands**, **Agents** and **Plugins**. MCP servers show their status and tools; while the session runs in Switchboard, you can turn a server on or off, or reconnect it.
+- **Agents:** the agents Claude starts, background ones included, show in the [Agents panel](/sessions/agents/) next to the conversation. Open it with the **Agents** button in the header, or from the background tasks above the message box.
+- **Commands:** the commands Claude runs in the background, and monitors, show in the [Commands panel](/sessions/commands/) with their output, live while they run.
+- **Tools:** the blocks button under the message box (or *Tools: MCP servers, skills, agents, plugins* in the command palette) opens the session's **MCP servers**, **Skills & commands**, **Agents** and **Plugins**. MCP servers show their status and tools; while the session runs in Switchboard, you can turn a server on or off, or reconnect it. With **Use Claude in Chrome** on in [Settings › General](/settings/#new-sessions), sessions you start or resume list **claude-in-chrome** here, with the browser tools of the Claude in Chrome extension.
 
 <Screenshot name="tools" alt="The Tools dialog on the MCP servers tab: each server with its status and number of tools, and tabs for skills and commands, agents and plugins" />
 
@@ -184,4 +237,10 @@ Click the **×** in the header (or *Close session* in the command palette) to go
 ## Settings
 
 - [Settings, Conversation](/settings/#conversation): **Summarised** (the default) shows each run of tool calls as one line; **Every step** shows each tool call as its own card.
+- **Show prompt outline** (on by default) shows the rail of your prompts beside the conversation.
+- **Under each reply** sets the line under each turn: **Nothing**, **Time**, **Time and duration** (the default) or **Time, duration and tokens**.
 - Each project's defaults for model, effort and mode are on its [Settings tab](/projects/settings/).
+
+## Related
+
+<Related pages={['permissions', 'sessions/ask', 'sessions/linking', 'sessions/saved-prompts', 'sessions/split-view']} />

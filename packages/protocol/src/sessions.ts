@@ -185,10 +185,31 @@ export const TranscriptMessage = z.object({
   parentToolUseId: z.string().nullable(),
   model: z.string().nullable(),
   blocks: z.array(TranscriptBlock),
-  /** Token counts Claude reported for an assistant message (how full the context was then). */
-  usage: z.object({ input: z.number(), output: z.number(), cacheRead: z.number(), cacheCreation: z.number() }).nullable().optional(),
+  /**
+   * Token counts Claude reported for an assistant message (how full the context was then). Claude Code writes one
+   * message per content block and repeats the response's usage on each, so `id` (the API response's id) counts it once.
+   * `cacheTtl`: which prompt cache it wrote to, when it wrote any (`contextCache.ts`).
+   */
+  usage: z
+    .object({ input: z.number(), output: z.number(), cacheRead: z.number(), cacheCreation: z.number(), id: z.string().optional(), cacheTtl: z.enum(['5m', '1h']).optional() })
+    .nullable()
+    .optional(),
 });
 export type TranscriptMessage = z.infer<typeof TranscriptMessage>;
+
+/** The tokens one subagent used (all its replies), for the turn that started it. */
+export const AgentUsage = z.object({
+  /** The Task/Agent tool call that started it. */
+  toolUseId: z.string(),
+  /** Its model, when all its replies used one. */
+  model: z.string().nullable(),
+  input: z.number(),
+  output: z.number(),
+  cacheRead: z.number(),
+  cacheWrite: z.number(),
+  replies: z.number(),
+});
+export type AgentUsage = z.infer<typeof AgentUsage>;
 
 /** One message matching a search. `snippet` marks matched words with \u0002 … \u0003. */
 export const SearchHit = z.object({

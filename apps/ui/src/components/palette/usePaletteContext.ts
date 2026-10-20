@@ -4,6 +4,8 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { findModelOption } from '../../lib/models.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
+import { useCatchUp } from '../../state/catchUpStore.ts';
+import { showOf } from '../../state/catchUpShow.ts';
 import { promptLabel } from '../../state/queue.ts';
 import { useUnsent } from '../drafts/useUnsent.ts';
 import { useQueue } from '../../state/useQueue.ts';
@@ -11,20 +13,27 @@ import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjectPage } from '../../state/projectPageStore.ts';
+import { useCloneEnabled } from '../../state/cloneStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { isQuestionsFolder } from '../../lib/questions.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { isActive } from '../../state/sidebarRows.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
-import { browsable, EMPTY_SIDE } from '../../state/sideQuestions.ts';
-import { useSideQuestions } from '../../state/sideQuestionsStore.ts';
+import { parentSplit } from '../../state/tiling.ts';
+import { neighbour, type Way } from '../../state/tilingGeometry.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { activeComposer, useComposerTargets } from '../../state/composerTargets.ts';
+import { draftRoot } from '../../state/drafts.ts';
+import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
+import { APP_TERMINAL, appTerminalFolder, ownerSession, terminalOwner } from '../terminal/appTerminal.ts';
 import { planGit } from '../git/gitPlan.ts';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './paletteContext.ts';
+import { useComputers } from '../../state/computersStore.ts';
+import { localSessionId } from '../../state/remoteSelection.ts';
+import { popoutSession } from '../../state/popoutsStore.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
 function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
@@ -41,8 +50,10 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
       client.call('git.github', { cwd }).catch(() => null),
       // gh's list is cached in the engine, so this is quick after the first time.
       client.call('git.prFor', { cwd }).catch(() => ({ pr: null })),
+      // A recent read is reused, so this is quick while the git button shows them.
+      client.call('git.prChecks', { cwd }).catch(() => ({ checks: null })),
     ]).then(
-      ([status, changes, github, { pr }]) => {
+      ([status, changes, github, { pr }, { checks }]) => {
         if (cancelled) return;
         const plan = planGit(status, busy);
         setGit({
@@ -53,6 +64,7 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
           github: github !== null,
           pr: pr?.state === 'open' ? { number: pr.number, url: pr.url } : null,
           pullable: plan.blocked.pull === null,
+          failingChecks: checks?.checks.filter((check) => check.bucket === 'fail').length ?? 0,
         });
       },
       () => !cancelled && setGit(null),
@@ -65,6 +77,8 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
 }
 
 /** Where you are, from the stores: what every command's `when()` reads. */
+const WAYS: readonly Way[] = ['left', 'right', 'up', 'down'];
+
 export function usePaletteContext(): PaletteContext {
   const connection = useEngineConnection();
   const connected = connection.status === 'connected';
@@ -72,7 +86,8 @@ export function usePaletteContext(): PaletteContext {
   const selectedId = useSessions((s) => s.selectedId);
   const sessions = useSessions((s) => s.sessions);
   const live = useSessions((s) => s.live);
-  const splitId = useSessions((s) => s.splitId);
+  const layout = useSessions((s) => s.layout);
+  const paneCount = useSessions((s) => s.paneIds.length);
   const settingsSection = useSessions((s) => s.settingsSection);
   const hosts = useHosts((s) => s.hosts);
   const permissions = useHosts((s) => s.permissions);
@@ -80,6 +95,7 @@ export function usePaletteContext(): PaletteContext {
   const projects = useProjects((s) => s.projects);
   const projectFilter = useProjects((s) => s.filter);
   const questionsDir = useProjects((s) => s.questionsDir);
+  const cloneEnabled = useCloneEnabled();
   const prefs = usePreferences((s) => s.prefs);
   const themes = useThemes((s) => s.themes);
   const activeTheme = useThemes((s) => s.active.entry.id);
@@ -95,12 +111,15 @@ export function usePaletteContext(): PaletteContext {
   const sidebar = useSidebar((s) => s.state);
   const boxes = useComposerTargets((s) => s.boxes);
   const editors = useHosts((s) => s.editors);
+  const computers = useComputers((s) => s.status?.computers);
 
   const pageRoot = useProjectPage((s) => s.root);
-  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : selectedId ? 'session' : 'home';
-  const id = view === 'session' ? selectedId : null;
+  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
+  // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
+  const id = view === 'session' ? localSessionId(selectedId) : null;
 
-  const sides = useSideQuestions((s) => s.sessions);
+  const catchUps = useCatchUp((s) => s.cards);
+  const collapsedCatchUps = useCatchUp((s) => s.collapsed);
   const session = useMemo<PaletteSession | null>(() => {
     if (!id) return null;
     const row = toRows(sessions, live, hosts).find((r) => r.id === id);
@@ -124,11 +143,11 @@ export function usePaletteContext(): PaletteContext {
         : null,
       running: active?.state === 'running' || active?.state === 'needs-you',
       waiting: waitingOn.length === 0 ? null : waitingOn.some((p) => p.toolName === 'AskUserQuestion') ? 'question' : 'permission',
+      catchUp: showOf({ card: catchUps.get(id) ?? null, enabled: prefs.catchUpSummaries, summary, host, live: live.get(id) ?? null, permissions: waitingOn, collapsed: collapsedCatchUps }),
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
-      sideQuestions: browsable(sides.get(id) ?? EMPTY_SIDE),
     };
-  }, [id, sessions, live, hosts, permissions, models, digest, sides]);
+  }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries]);
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);
@@ -137,21 +156,33 @@ export function usePaletteContext(): PaletteContext {
   const { actions } = useProjectActionList(projectRoot);
 
   const added = useMemo(() => addedProjects(projects), [projects]);
+  // The saved prompts of the message box on screen: its project's, else only the ones for every project.
+  const composer = activeComposer(boxes, view === 'session' ? 'session' : view === 'new-session' ? 'new' : 'other', selectedId);
+  const promptRoot = composer ? (view === 'new-session' ? draftRoot(composer.key) : projectRoot) : null;
+  const { prompts: savedPrompts } = useSavedPrompts(promptRoot && !isQuestionsFolder(promptRoot, questionsDir) ? promptRoot : null);
   const currentRoot = view === 'project' && pageRoot ? pageRoot : projectRoot && isAbsolutePath(projectRoot) ? projectRoot : projectFilter;
-  const activeTerminal = id ? (terminals.get(activeTerminals.get(id) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === id).at(-1)) : undefined;
+  // ⌘J's panel: the session's, or outside a session the window's own, which starts in the project on screen.
+  const owner = terminalOwner(view, id);
+  const terminalCwd = owner === APP_TERMINAL ? appTerminalFolder(view, { projectRoot: pageRoot, newSessionCwd: activeComposer(boxes, 'new', null)?.cwd ?? null }) : (session?.cwd ?? null);
+  const activeTerminal = owner ? (terminals.get(activeTerminals.get(owner) ?? '') ?? [...terminals.values()].filter((t) => t.sessionId === ownerSession(owner)).at(-1)) : undefined;
 
   return {
+    popout: popoutSession !== null,
     view,
     connected,
     session,
     git: session?.cwd && !question ? git : null,
     terminal: {
-      open: id !== null && openFor.has(id),
-      maximized: id !== null && maximizedFor.has(id),
+      owner,
+      cwd: terminalCwd,
+      open: owner !== null && openFor.has(owner),
+      maximized: owner !== null && maximizedFor.has(owner),
       dock,
-      action: activeTerminal?.kind === 'action' && activeTerminal.sessionId === id ? { running: activeTerminal.exitCode === null } : null,
+      action: owner && activeTerminal?.kind === 'action' && activeTerminal.sessionId === ownerSession(owner) ? { running: activeTerminal.exitCode === null } : null,
     },
-    split: splitId !== null,
+    split: paneCount > 1,
+    splitDirection: paneCount > 1 && selectedId ? (parentSplit(layout, selectedId)?.split.direction ?? null) : null,
+    paneWays: paneCount > 1 && selectedId ? WAYS.filter((way) => neighbour(layout, selectedId, way) !== null) : [],
     focusLimit: prefs.focusLimit,
     notifications: prefs.notifications.enabled,
     sounds: prefs.sounds.enabled,
@@ -170,7 +201,10 @@ export function usePaletteContext(): PaletteContext {
     settingsSection,
     newSession: view === 'new-session' ? newSessionInfo : null,
     questionsDir,
-    composer: activeComposer(boxes, view === 'session' ? 'session' : view === 'new-session' ? 'new' : 'other', selectedId),
+    composer,
+    prompts: composer ? savedPrompts.map((p) => ({ id: p.id, name: p.name, scope: p.scope })) : [],
     canContinueInVSCode: editors.some((e) => e.id === 'vscode'),
+    cloneEnabled,
+    computers: (computers ?? []).filter((c) => c.state === 'connected').map((c) => ({ id: c.id, name: c.name })),
   };
 }

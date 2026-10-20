@@ -1,13 +1,22 @@
 import { Bot, ChevronRight, ClipboardList } from 'lucide-react';
-import { memo, useId, useState, type ReactNode } from 'react';
-import { isAbsolutePath } from '@switchboard/protocol/client';
-import { useOpenIn } from '../OpenInButton.tsx';
+import type { HookableComponent } from '@switchboard/protocol/client';
+import { useMods } from '../../state/modsStore.ts';
+import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
+import { replaceableOf } from '../mods/modReplace.ts';
+import { memo, useId, useMemo, useState, type ReactNode } from 'react';
+import { isAbsolutePath, parseBriefs } from '@switchboard/protocol/client';
+import { LinkedSessions } from './LinkedSessions.tsx';
+import { fileLinkChipLabel } from './fileLinkAction.ts';
+import { useFileLinkActions } from './useFileLinkActions.tsx';
 import { DiffView } from './DiffView.tsx';
 import { ActivityGroupView } from './ActivityGroup.tsx';
 import { ClampedPrompt } from './ClampedPrompt.tsx';
-import type { RenderItem } from './displayItems.ts';
+import type { DisplayItem, RenderItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
-import { MessageToolbar } from './messageActions.tsx';
+import { MessageToolbar, messageUuid, REVEAL_IN_REPLY_ROW } from './messageActions.tsx';
+import { sentLine } from './turnFormat.ts';
+import { TurnMetaLine, type LiveTurnInfo } from './TurnMeta.tsx';
+import { useRemote } from '../../state/remoteStore.ts';
 import { ToolDetails, ToolImages, type ToolItem } from './ToolDetails.tsx';
 import { messageImageSlots } from './imageLayout.ts';
 import { TranscriptImage } from './TranscriptImage.tsx';
@@ -65,11 +74,36 @@ function fileTarget(item: ToolItem): { path: string; line?: number } | null {
   return typeof input.offset === 'number' && input.offset > 0 ? { path, line: input.offset } : { path };
 }
 
+/**
+ * The chip beside a tool run that touched a file: a click does what Settings › Conversation says for a file link (show it
+ * in the file manager, or open it in the editor), Shift-click does the other, and the context menu lists both. It is the
+ * same action as a file link in a reply (`useFileLinkActions`), so a file that is gone shows its error here too.
+ */
+function FileToolChip({ path, line }: { path: string; line?: number }) {
+  const { action, tooltip, error, handlers, extras } = useFileLinkActions(path, line);
+  const label = fileLinkChipLabel(action);
+  return (
+    <>
+      <button
+        type="button"
+        {...handlers}
+        data-tooltip={error ?? tooltip}
+        aria-label={error ?? tooltip}
+        data-file-chip={path}
+        data-file-link-action={action}
+        className={`shrink-0 rounded px-1 text-meta group-hover/row:opacity-100 hover:bg-border/60 focus-visible:opacity-100 ${error ? 'text-error opacity-100' : 'text-muted opacity-0 hover:text-accent-ink'}`}
+      >
+        {label}
+      </button>
+      {extras}
+    </>
+  );
+}
+
 const resultState = (item: ToolItem) => (item.result === null ? 'pending' : item.result.isError ? 'error' : 'ok');
 
 function ToolCard({ item, cwd, sessionId }: { item: ToolItem; cwd: string | null; sessionId: string }) {
   const [open, setOpen] = useState(false);
-  const openIn = useOpenIn();
   const target = fileTarget(item);
   const hunks = editHunks(item);
   const isAgent = item.name === 'Task' || item.name === 'Agent';
@@ -85,19 +119,7 @@ function ToolCard({ item, cwd, sessionId }: { item: ToolItem; cwd: string | null
         controls={detailsId}
         // A running agent spins; everything else shows how it went.
         mark={isAgent && item.result === null ? <Spinner /> : <Dot state={resultState(item)} />}
-        after={
-          target && (
-            <button
-              type="button"
-              data-tooltip={`Open ${target.path} in your editor`}
-              aria-label={`Open ${target.path} in your editor`}
-              onClick={() => void openIn(target.path, target.line ? { line: target.line } : {}).catch(() => {})}
-              className="shrink-0 rounded px-1 text-meta text-muted opacity-0 group-hover/row:opacity-100 hover:bg-border/60 hover:text-accent-ink focus-visible:opacity-100"
-            >
-              Open ↗
-            </button>
-          )
-        }
+        after={target && <FileToolChip path={target.path} line={target.line} />}
       >
         {isAgent && <Bot size={13} className="shrink-0 text-muted" aria-hidden />}
         <span className="shrink-0 text-ui font-medium">{label}</span>
@@ -217,12 +239,77 @@ function ToolOrMemory({ item, cwd, sessionId }: { item: ToolItem; cwd: string | 
   return <ToolCard item={item} cwd={cwd} sessionId={sessionId} />;
 }
 
-export const TranscriptItem = memo(function TranscriptItem({
+/** Your prompt, on the right as a card; hovering it says when you sent it, and from which paired device. */
+function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'user' }>; sessionId: string }) {
+  const device = useRemote((s) => s.sentFrom.get(messageUuid(item.key)) ?? null);
+  const sent = item.at !== null ? sentLine(item.at, device) : undefined;
+  // Linked sessions' briefs show as rows under what you typed, not as code blocks in it.
+  const { text, briefs } = useMemo(() => (item.subagent ? { text: item.text, briefs: [] } : parseBriefs(item.text)), [item.text, item.subagent]);
+  return (
+    // Your prompt sits on the right as a card, so the conversation reads like a chat.
+    <div className="flex justify-end">
+      <div
+        className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5"
+        data-remember-from={item.subagent ? undefined : 'user'}
+        data-message-key={item.key}
+        data-prompt-bubble={item.subagent ? undefined : true}
+        data-tooltip={item.subagent ? undefined : sent}
+      >
+        <Speaker name={item.subagent ? 'Prompt to the subagent' : 'You'} />
+        {(item.text || !item.subagent) && <MessageToolbar itemKey={item.key} kind="user" text={text} copyOnly={item.subagent} />}
+        {/* Images come first, so "Show more" never hides them: one large, a few as thumbnails, many as tiles. */}
+        {item.images.length > 0 && (
+          <div className={`flex flex-wrap gap-1.5 ${text ? 'mb-2' : ''}`} data-prompt-images={item.images.length}>
+            {messageImageSlots(item.images.length).map((slot) => {
+              const image = item.images[slot.index]!;
+              return <TranscriptImage key={image.imageId} sessionId={sessionId} image={image} variant={slot.variant} gallery={item.images} index={slot.index} more={slot.more} />;
+            })}
+          </div>
+        )}
+        {/* Your prompts render as Markdown too, so code and code blocks are styled. */}
+        {text && (
+          <ClampedPrompt itemKey={item.key} className="text-body [overflow-wrap:anywhere] [&_p]:whitespace-pre-wrap [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+            <Markdown text={text} />
+          </ClampedPrompt>
+        )}
+        <LinkedSessions briefs={briefs} />
+      </div>
+    </div>
+  );
+}
+
+const NO_HOOKED: readonly HookableComponent[] = [];
+
+export const TranscriptItem = memo(function TranscriptItem(props: {
+  item: RenderItem;
+  cwd: string | null;
+  sessionId: string;
+  active?: boolean;
+  activeLabel?: string | null;
+  /** For the activity group Claude is on: the live part of the working line. */
+  live?: LiveTurnInfo | null;
+}) {
+  // A mod that replaces this kind of item draws it, with the built-in one where it puts its `engine` node.
+  const hooked = useMods((s) => s.sessions.get(props.sessionId)?.state.hooked) ?? NO_HOOKED;
+  const expected = useExpectedHooked(props.sessionId);
+  const target = replaceableOf(props.item, hooked.length ? hooked : expected);
+  const builtIn = <BuiltInItem {...props} />;
+  return target ? (
+    <ModReplaced sessionId={props.sessionId} target={target}>
+      {builtIn}
+    </ModReplaced>
+  ) : (
+    builtIn
+  );
+});
+
+function BuiltInItem({
   item,
   cwd,
   sessionId,
   active = false,
   activeLabel = null,
+  live = null,
 }: {
   item: RenderItem;
   cwd: string | null;
@@ -230,35 +317,12 @@ export const TranscriptItem = memo(function TranscriptItem({
   /** For an activity group: Claude is working on it now. */
   active?: boolean;
   activeLabel?: string | null;
+  live?: LiveTurnInfo | null;
 }) {
-  if (item.kind === 'activity') return <ActivityGroupView group={item} cwd={cwd} sessionId={sessionId} active={active} activeLabel={activeLabel} />;
+  if (item.kind === 'activity') return <ActivityGroupView group={item} cwd={cwd} sessionId={sessionId} active={active} activeLabel={activeLabel} live={live} />;
+  if (item.kind === 'user') return <PromptItem item={item} sessionId={sessionId} />;
   const indent = 'subagent' in item && item.subagent ? 'ml-6 border-l border-border pl-3' : '';
   switch (item.kind) {
-    case 'user':
-      return (
-        // Your prompt sits on the right as a card, so the conversation reads like a chat.
-        <div className="flex justify-end">
-          <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-remember-from={item.subagent ? undefined : 'user'} data-message-key={item.key}>
-            <Speaker name={item.subagent ? 'Prompt to the subagent' : 'You'} />
-            {(item.text || !item.subagent) && <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly={item.subagent} />}
-            {/* Images come first, so "Show more" never hides them: one large, a few as thumbnails, many as tiles. */}
-            {item.images.length > 0 && (
-              <div className={`flex flex-wrap gap-1.5 ${item.text ? 'mb-2' : ''}`} data-prompt-images={item.images.length}>
-                {messageImageSlots(item.images.length).map((slot) => {
-                  const image = item.images[slot.index]!;
-                  return <TranscriptImage key={image.imageId} sessionId={sessionId} image={image} variant={slot.variant} gallery={item.images} index={slot.index} more={slot.more} />;
-                })}
-              </div>
-            )}
-            {/* Your prompts render as Markdown too, so code and code blocks are styled. */}
-            {item.text && (
-              <ClampedPrompt itemKey={item.key} className="text-body [&_p]:whitespace-pre-wrap [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
-                <Markdown text={item.text} />
-              </ClampedPrompt>
-            )}
-          </div>
-        </div>
-      );
     case 'command':
       return (
         // A prompt card like your other messages: the command as a chip, then everything you wrote after it.
@@ -278,7 +342,12 @@ export const TranscriptItem = memo(function TranscriptItem({
         <div className={`group/message relative text-body ${indent}`} data-remember-from={item.subagent ? undefined : 'claude'} data-message-key={item.key}>
           <Speaker name={item.subagent ? 'Subagent' : 'Claude'} />
           <Markdown text={item.text} />
-          <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly={item.subagent} />
+          {/* The actions, then (under a turn's last reply) when the turn ended, how long it took and its tokens: both
+              hidden until the reply is hovered or the row has focus, with their space kept. */}
+          <div className="group/reply-row -ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
+            <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly={item.subagent} />
+            {!item.subagent && <TurnMetaLine itemKey={item.key} className={REVEAL_IN_REPLY_ROW} />}
+          </div>
         </div>
       );
     case 'thinking':
@@ -296,4 +365,4 @@ export const TranscriptItem = memo(function TranscriptItem({
     case 'notice':
       return <p className="text-center text-meta whitespace-pre-wrap text-muted">{item.text}</p>;
   }
-});
+}

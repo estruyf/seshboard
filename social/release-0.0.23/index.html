@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  .copy { width: 450px; }
+  .also { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 22px; font-size: 13px; color: var(--faint); }
+  .also .pill { height: 26px; padding: 0 11px; font-size: 12.5px; color: var(--text); background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px var(--edge); }
+  .code { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
+
+  /* The / menu: saved prompts first, then commands. */
+  .slash {
+    position: absolute; left: 0; top: 38px; width: 300px; padding: 6px;
+    background: var(--popover); border-radius: 12px;
+    box-shadow: 0 0 0 1px var(--edge), 0 4px 10px rgba(0,0,0,0.35), 0 24px 50px -10px rgba(0,0,0,0.85);
+  }
+  .slash .section { padding: 6px 8px 5px; color: var(--faint); }
+  .opt { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; padding: 6px 8px; border-radius: 7px; }
+  .opt.on { background: rgba(255,212,59,0.13); }
+  .opt b { font-size: 12px; font-weight: 600; color: var(--text); }
+  .opt span { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .opt .ic { grid-row: span 2; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: rgba(255,255,255,0.06); color: var(--muted); align-self: center; }
+  .opt.on .ic { background: rgba(255,212,59,0.2); color: var(--accent); }
+  .opt .ic svg { width: 12px; height: 12px; }
+  .opt.cmd b { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-weight: 500; font-size: 11.5px; }
+
+  /* The large-context note above the message box. */
+  .note {
+    position: absolute; left: 318px; top: 78px; width: 282px; padding: 11px 13px;
+    background: var(--card); border-radius: 11px; font-size: 12px; line-height: 1.5; color: var(--muted);
+    box-shadow: inset 0 0 0 1px rgba(255,169,77,0.45), 0 20px 46px -12px rgba(0,0,0,0.8);
+  }
+  .note .t { display: flex; align-items: flex-start; gap: 8px; }
+  .note .t svg { flex: none; width: 14px; height: 14px; color: var(--caution); margin-top: 2px; }
+  .note b { color: var(--text); font-weight: 600; }
+  .note .cost { color: var(--caution); font-weight: 600; }
+  .note .acts { margin-top: 8px; padding-left: 22px; }
+  .note .acts span { display: inline-flex; height: 24px; padding: 0 9px; align-items: center; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--text); box-shadow: inset 0 0 0 1px var(--edge); }
+
+  /* The message box with a saved prompt and its blanks. */
+  .sb { left: 0; top: 262px; width: 600px; padding: 14px 15px 11px; }
+  .fill { font-size: 14px; line-height: 2; color: var(--text); }
+  .blank { display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 8px; border-radius: 7px; font-size: 12.5px; vertical-align: 1px; line-height: 1; }
+  .blank svg { width: 12px; height: 12px; }
+  .blank.filled { background: rgba(116,192,252,0.12); color: var(--link); box-shadow: inset 0 0 0 1px rgba(116,192,252,0.35); }
+  .blank.empty { color: var(--caution); box-shadow: inset 0 0 0 1px rgba(255,169,77,0.6); background: rgba(255,169,77,0.08); }
+  .blank.empty i { width: 1.5px; height: 14px; background: var(--accent); }
+  .sb .foot { margin-top: 10px; }
+  .left { color: var(--caution); font-size: 11.5px; }
+  .sb .foot .send { opacity: 0.45; }
+
+  /* Under the message box: the plan bars with their cost, and the session's context and cost. */
+  .band { position: absolute; left: 6px; top: 408px; width: 590px; display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+  .bar { display: flex; align-items: center; gap: 7px; }
+  .bar .track { width: 46px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.1); overflow: hidden; }
+  .bar .track b { display: block; height: 100%; border-radius: 999px; }
+  .bar em { font-style: normal; color: var(--text); font-weight: 600; }
+  .ctx { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+  .ctx svg { width: 14px; height: 14px; }
+  .ctx em { font-style: normal; color: var(--text); font-weight: 600; }
+
+  /* A callout on the costs, as the eye lands there last. */
+  .callout { position: absolute; left: 6px; top: 444px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--faint); }
+  .callout svg { width: 14px; height: 14px; color: var(--faint); }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard 0.0.23</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Out now</div>
+    <h1>Saved prompts, and <span class="hl">what your tokens cost</span></h1>
+    <p class="sub">Type <b>/</b> for your <b>saved prompts</b> and fill in an issue, a pull request or a branch. See every window, session and model <b>at API prices</b>, in your currency.</p>
+    <div class="also">Also new:
+      <span class="pill">Clone from GitHub</span>
+      <span class="pill">PR checks</span>
+      <span class="pill">Session in its own window</span>
+    </div>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Download for free</span>
+    <span class="where">switchboard.struyfconsulting.com</span>
+  </div>
+
+  <div class="stage">
+    <div class="note">
+      <div class="t">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M8 1.8l6.2 3.4L8 8.6 1.8 5.2z"/><path d="M1.8 8.2L8 11.6l6.2-3.4M1.8 11L8 14.4l6.2-3.4"/></svg>
+        <div><b>Large context:</b> 412k tokens (82%). Its cache expires in 48 min. After that, your next message reads all of it again <span class="cost">(≈$3.20)</span>.</div>
+      </div>
+      <div class="acts"><span>Compact now</span></div>
+    </div>
+
+    <div class="sb">
+      <div class="fill">Fix
+        <span class="blank filled"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/></svg>#42 Theme toggle ignores the system</span>
+        on
+        <span class="blank filled code"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="3.5" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="5" r="1.8"/><path d="M4 5.3v5.4M12 6.8c0 3-8 2-8 4"/></svg>feat/dark-mode</span>
+        and add a test for
+        <span class="blank empty">what to test<i></i></span>
+      </div>
+      <div class="foot">
+        <span>Opus · High</span>
+        <span class="left">1 blank left</span>
+        <span class="send">Send <span class="kbd">⌘↵</span></span>
+      </div>
+    </div>
+
+    <div class="slash">
+      <div class="section">Saved prompts</div>
+      <div class="opt on"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/></svg></span><b>Fix an issue</b><span>Fix {issue} on {branch} and add a test</span></div>
+      <div class="opt"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="3.5" r="1.8"/><circle cx="4" cy="12.5" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><path d="M4 5.3v5.4M12 10.7V7a2 2 0 0 0-2-2H7"/></svg></span><b>Review a pull request</b><span>Review {pull request} for edge cases</span></div>
+      <div class="opt"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 2.5h8v11H4zM6 6h4M6 8.5h4M6 11h2"/></svg></span><b>Release notes</b><span>Write release notes for {branch}</span></div>
+      <div class="section">Commands</div>
+      <div class="opt cmd"><span class="ic">/</span><b>/compact</b><span>Summarise the conversation</span></div>
+    </div>
+
+    <div class="band">
+      <span class="bar">5h <span class="track"><b style="width:38%;background:var(--ok)"></b></span>38% <em>≈$4.10</em></span>
+      <span class="bar">Week <span class="track"><b style="width:52%;background:var(--ok)"></b></span>52% <em>≈$61</em></span>
+      <span class="ctx"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2.4"/><circle cx="8" cy="8" r="6" fill="none" stroke="#ffa94d" stroke-width="2.4" stroke-dasharray="31 38" transform="rotate(-90 8 8)"/></svg>Context 412k · Cost <em>≈$12.40</em></span>
+    </div>
+    <div class="callout"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 4.8v.2"/></svg>An estimate at API prices. Your plan is never billed per token.</div>
+  </div>
+</body>
+</html>

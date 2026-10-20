@@ -1,0 +1,41 @@
+---
+title: Commands
+description: See the commands Claude runs in the background in a panel next to the conversation, with their command line, how they ended and their output.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Related from '../../../components/Related.astro';
+
+Claude can run a command in the background, such as a build, a test run or a dev server, and keep working while it runs. It can also start a monitor, which watches a command and tells Claude about each line it prints. The **Commands** panel shows these next to the conversation, with what each one prints. Open it to see how a build or a test run is going, read its output, or stop it.
+
+## Open the panel
+
+- Press <Kbd shortcut="commands.toggle" />, or use the **Commands** button in the header. It appears once Claude has run a command in the background in the session, and shows how many are running.
+- Click the name of a command in the list of background tasks above the message box.
+- Open the command's call in the conversation and press **Open in Commands panel**.
+- Choose **Commands** under **⋯**, or *Toggle commands* in the command palette.
+
+The panel is a tab next to Changes, Ask and Agents. With more than one open, their tabs sit at the top, and the Commands tab counts the commands that are running. They share one width: drag the left edge, or use the arrow keys on it.
+
+## The list
+
+**Running** lists the commands that still run, **Finished** the ones that ended, newest first. Finished commands stay in the list for the whole session. Each row shows what the command does, how long it ran and, when it failed, its exit code. A monitor has a **monitor** label. Click a section's title to fold it. Press <Kbd keys="arrowup" /> or <Kbd keys="arrowdown" /> on a row to move to the next one.
+
+## The command you picked
+
+Under the list you see:
+
+- How it ended: **Running**, **Finished** or **Failed** with its exit code, or **Stopped**. When Claude Code stopped it, for example at its time limit, it says so.
+- The command line, as Claude wrote it.
+- **Output:** what the command printed. While it runs, new lines appear as they come and the panel follows the end. Scroll up to read, and it stays where you are. For long output the panel shows the last part, and says how big the whole output is. **Copy** copies the output you see.
+- **Stop**, while it runs. It stops that command and leaves Claude and the other commands alone. Claude is told it was stopped.
+
+Claude Code keeps the output in a temporary folder and cleans it up after a while. When it is gone, the panel says so; the command stays in the list.
+
+<Kbd keys="escape" /> closes the panel when it has the focus.
+
+## Related
+
+<Related pages={['sessions/agents', 'terminal-changes-git/terminal', 'projects/actions', 'sessions/states']} />

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- resizes-content: Chrome on Android shrinks the page for the keyboard, so the message box stays above it. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#15181f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <!--
+      No apple-mobile-web-app-status-bar-style on purpose: black-translucent always draws the clock in white, which
+      disappears on the light theme. Without it, iOS colours the status bar from the theme-color tags above, which
+      match each theme. Don't add it back.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Switchboard" />
+    <link rel="manifest" href="/remote/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/remote/apple-touch-icon.png" />
+    <title>Switchboard Remote</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

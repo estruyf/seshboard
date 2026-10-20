@@ -1,9 +1,9 @@
 import { fileManagerName } from '../lib/platform.ts';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { FolderOpen } from 'lucide-react';
-import type { LogLevel } from '@switchboard/protocol/client';
+import type { LogLevel, ModLog } from '@switchboard/protocol/client';
 import { useDiagnostics } from '../engine/useDiagnostics.ts';
-import { useEngineConnection } from '../engine/useEngine.ts';
+import { useEngineConnection, useEngineStalled } from '../engine/useEngine.ts';
 import { CodeBlock } from './transcript/CodeBlock.tsx';
 import { Markdown } from './transcript/Markdown.tsx';
 import { Button } from './ui/Button.tsx';
@@ -84,6 +84,7 @@ const logTone: Record<LogLevel, string> = {
 
 export function EngineDiagnostics() {
   const connection = useEngineConnection();
+  const stalled = useEngineStalled();
   const { info, pingMs, logs, error, refreshPing } = useDiagnostics();
   const [openError, setOpenError] = useState<string | null>(null);
   const client = connection.status === 'connected' ? connection.client : null;
@@ -102,6 +103,10 @@ export function EngineDiagnostics() {
     ) : connection.status === 'connecting' ? (
       <span className="flex items-center gap-2">
         <Dot tone="warn" /> Connecting…
+      </span>
+    ) : stalled ? (
+      <span className="flex items-center gap-2" data-diagnostics-stalled>
+        <Dot tone="warn" /> Not answering. Waiting for it…
       </span>
     ) : (
       <span className="flex items-center gap-2">
@@ -205,6 +210,35 @@ export function EngineDiagnostics() {
           )}
         </div>
       </Card>
+
+      <ModLogs />
     </div>
+  );
+}
+
+/** What mods wrote with `$.ui.log`: here, never in the conversation. */
+function ModLogs() {
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const [logs, setLogs] = useState<ModLog[]>([]);
+  useEffect(() => {
+    if (!client) return;
+    void client.call('mods.logs', {}).then(({ logs }) => setLogs(logs), () => {});
+    return client.on('mods.log', (entry) => setLogs((current) => [...current, entry].slice(-500)));
+  }, [client]);
+  return (
+    <Card title="Mod logs">
+      <div role="log" aria-label="Mod logs" tabIndex={0} className="max-h-48 overflow-y-auto px-4 py-2 font-mono text-ui select-text" data-mod-logs>
+        {logs.length === 0 ? (
+          <p className="text-muted">No mod has written to its log in a running session.</p>
+        ) : (
+          logs.map((entry, i) => (
+            <p key={i} className="text-muted">
+              <span className="text-faint">{new Date(entry.at).toLocaleTimeString()}</span> <span className="text-text">{entry.plugin}</span> {entry.text}
+            </p>
+          ))
+        )}
+      </div>
+    </Card>
   );
 }

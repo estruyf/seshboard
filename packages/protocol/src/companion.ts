@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AbsolutePath } from './absolutePath.ts';
 import type { ContractShape } from './rpc.ts';
-import { ContextItems } from './context.ts';
+import { CompanionContextItems } from './context.ts';
 import { PermissionDecision, PermissionRequest } from './host.ts';
 
 /**
@@ -76,7 +76,7 @@ export const companionContract = {
      * `reveal` brings Switchboard to the front on that session.
      */
     'context.add': {
-      params: z.object({ target: CompanionTarget, items: ContextItems, reveal: z.boolean().default(true) }),
+      params: z.object({ target: CompanionTarget, items: CompanionContextItems, reveal: z.boolean().default(true) }),
       result: z.object({}),
     },
     /** Shows a session in Switchboard and brings it to the front (the status bar item). */

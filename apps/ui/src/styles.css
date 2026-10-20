@@ -24,6 +24,8 @@
   --sb-caution: #b35900;
   /* Claude Code memory (MEMORY.md in What loads here): a hue of its own, never a status. */
   --sb-memory: #8250df;
+  /* Only for things on another computer (its chips, badges, the line over its sessions): no state uses violet. */
+  --sb-remote: #7048e8;
   /*
    * The selected row in a list: a neutral fill (a yellow tint disappears on the light sidebar). A tint
    * of the text colour rather than a fixed grey, so it shows on every surface: sidebar, card, dialog.
@@ -83,6 +85,7 @@
     --sb-unread: #74c0fc;
     --sb-caution: #ffa94d;
     --sb-memory: #b197fc;
+    --sb-remote: #b197fc;
     --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
     --sb-profile-yellow: #ffd43b;
     --sb-profile-blue: #74c0fc;
@@ -134,6 +137,7 @@
   --sb-unread: #74c0fc;
   --sb-caution: #ffa94d;
   --sb-memory: #b197fc;
+  --sb-remote: #b197fc;
   --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
   --sb-profile-yellow: #ffd43b;
   --sb-profile-blue: #74c0fc;
@@ -179,6 +183,7 @@
   --color-unread: var(--sb-unread);
   --color-caution: var(--sb-caution);
   --color-memory: var(--sb-memory);
+  --color-remote: var(--sb-remote);
   --color-selected: var(--sb-selected);
   --color-profile-yellow: var(--sb-profile-yellow);
   --color-profile-blue: var(--sb-profile-blue);
@@ -238,16 +243,6 @@
 @utility overlay {
   background-color: var(--sb-popover);
   border-color: var(--sb-overlay-border);
-  box-shadow: var(--sb-overlay-shadow);
-}
-
-/*
- * The side question panel (/btw) over the message box: the floating surface and shadow, with a frame in the
- * side channel's blue (`link`), so it never reads as part of the conversation.
- */
-@utility side-panel {
-  background-color: var(--sb-popover);
-  border: 1px solid var(--sb-link);
   box-shadow: var(--sb-overlay-shadow);
 }
 
@@ -324,6 +319,21 @@
 }
 @utility no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* While a pane is dragged by its header (split view): the grab cursor everywhere, and no text selected on the way. */
+[data-pane-dragging],
+[data-pane-dragging] * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+/* No tooltips while dragging: they would cover the drop indicator. */
+[data-pane-dragging] [data-tooltip-layer] {
+  display: none;
+}
+/* The window's drag regions (the headers) take the mouse from the page on some systems; during a drag over the panes they don't. */
+[data-pane-dragging] * {
+  -webkit-app-region: no-drag !important;
 }
 
 html,
@@ -454,7 +464,7 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
 .composer-flash {
   animation: composer-flash 600ms ease-out;
 }
-/* A side answer still coming in: a blinking block after its last line, in the side channel's blue. */
+/* An answer in the Ask panel still coming in: a blinking block after its last line, in the side channel's blue. */
 .stream-caret > :last-child > :last-child::after,
 .stream-caret:empty::after {
   content: '';
@@ -507,6 +517,29 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
   }
 }
 
+/* A prompt the prompt outline jumped to: a 2px accent ring that fades out. No ring with reduced motion. */
+.prompt-landing [data-prompt-bubble] {
+  animation: prompt-landing 1.2s ease-out;
+}
+@keyframes prompt-landing {
+  from {
+    box-shadow: 0 0 0 2px var(--sb-accent);
+  }
+  to {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prompt-landing [data-prompt-bubble] {
+    animation: none;
+  }
+}
+
+/* The prompt outline's marks draw their focus ring around the mark itself, not around the rail-wide hit area. */
+html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
+  outline: none;
+}
+
 /* A setting Settings' search jumped to: the same glow, on its row. */
 .setting-flash {
   animation: search-highlight 2.5s ease-out;
@@ -520,4 +553,10 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
 ::highlight(find-current) {
   background-color: var(--sb-accent);
   color: var(--sb-on-accent);
+}
+
+/* A narrow pop-out: a panel on the right fills the session view (its own width is a wider window's). */
+[data-narrow-panel] > aside {
+  width: 100% !important;
+  max-width: 100%;
 }

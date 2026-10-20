@@ -1,3 +1,8 @@
+import { Bot, ScrollText } from 'lucide-react';
+import { openAgents } from '../../state/agentsPanelStore.ts';
+import { openCommands } from '../../state/commandsPanelStore.ts';
+import { backgroundTaskOf } from './commandRuns.ts';
+import { Button } from '../ui/Button.tsx';
 import { DiffView } from './DiffView.tsx';
 import type { DisplayItem } from './displayItems.ts';
 import { SubagentRun } from './SubagentRun.tsx';
@@ -26,13 +31,33 @@ export function ToolImages({ item, sessionId }: { item: ToolItem; sessionId: str
  * `withDiffAndImages` adds the diff and images, which tool cards already show outside this.
  */
 export function ToolDetails({ item, cwd, sessionId, withDiffAndImages = false }: { item: ToolItem; cwd: string | null; sessionId: string; withDiffAndImages?: boolean }) {
-  if (isAgentTool(item)) return <SubagentRun sessionId={sessionId} toolUseId={item.id} running={item.result === null} cwd={cwd} />;
+  if (isAgentTool(item)) {
+    return (
+      <div className="grid gap-1.5">
+        <div>
+          <Button variant="quiet" size="sm" icon={<Bot size={12} aria-hidden />} onClick={() => openAgents(sessionId, item.id)} data-open-in-agents>
+            Open in Agents panel
+          </Button>
+        </div>
+        <SubagentRun sessionId={sessionId} toolUseId={item.id} running={item.result === null} cwd={cwd} />
+      </div>
+    );
+  }
   if (item.name === 'TodoWrite') return <TodoList todos={parseTodos(item.input)} />;
   const hunks = editHunks(item);
   const failed = item.result?.isError ?? false;
   const command = item.name === 'Bash' && typeof (item.input as { command?: unknown }).command === 'string' ? (item.input as { command: string }).command : null;
+  // A command Claude sent to the background: its output is in the Commands panel, not in this call's result.
+  const backgroundTask = item.subagent ? null : backgroundTaskOf(item);
   return (
     <div className="grid gap-2 select-text">
+      {backgroundTask && (
+        <div>
+          <Button variant="quiet" size="sm" icon={<ScrollText size={12} aria-hidden />} onClick={() => openCommands(sessionId, backgroundTask)} data-open-in-commands>
+            Open in Commands panel
+          </Button>
+        </div>
+      )}
       {withDiffAndImages && hunks && !failed && <DiffView hunks={hunks} truncated={item.inputTruncated} />}
       {!hunks && (
         <pre className="max-h-64 overflow-auto rounded bg-code px-2 py-1.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted">

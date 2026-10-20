@@ -3,6 +3,7 @@ import { satteri } from '@astrojs/markdown-satteri';
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 import starlightLinksValidator from 'starlight-links-validator';
+import { tableLabels } from './src/plugins/tableLabels.mjs';
 import { withBase } from './src/plugins/withBase.mjs';
 import { sidebar } from './src/sidebar.mjs';
 
@@ -24,9 +25,11 @@ export default defineConfig({
   site,
   base,
   trailingSlash: 'always',
+  // Pages that moved: the old address still lands on the new one.
+  redirects: { '/sessions/side-questions/': '/sessions/ask/' },
   markdown: {
     // Runs before the links validator (which the plugin adds after these), so it checks the links as they ship.
-    processor: satteri({ hastPlugins: [withBase(base)] }),
+    processor: satteri({ hastPlugins: [withBase(base), tableLabels()] }),
   },
   integrations: [
     starlight({

@@ -72,6 +72,41 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "palette:close-other-panes",
+      "name": "Close other panes",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:new-saved-prompt",
+      "name": "New saved prompt…",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "palette:prompt:*",
+      "name": "Prompt: <name>",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "palette:settings-prompts",
+      "name": "Settings: Prompts",
+      "page": "settings"
+    },
+    {
+      "id": "palette:swap-panes",
+      "name": "Swap panes",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:stack-panes",
+      "name": "Stack panes",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:panes-side-by-side",
+      "name": "Show panes side by side",
+      "page": "sessions/split-view"
+    },
+    {
       "id": "palette:close-session",
       "name": "Close session",
       "page": "sessions/home"
@@ -102,8 +137,23 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "palette:prompt-previous",
+      "name": "Previous prompt",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:prompt-next",
+      "name": "Next prompt",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "palette:create-pr",
       "name": "Create pull request…",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "palette:fix-checks",
+      "name": "Fix failing checks with Claude",
       "page": "terminal-changes-git/git"
     },
     {
@@ -177,14 +227,9 @@
       "page": "settings/notifications"
     },
     {
-      "id": "palette:side-question",
-      "name": "Ask a side question…",
-      "page": "sessions/side-questions"
-    },
-    {
-      "id": "palette:side-questions",
-      "name": "Show side questions",
-      "page": "sessions/side-questions"
+      "id": "palette:ask-session",
+      "name": "Ask about this session",
+      "page": "sessions/ask"
     },
     {
       "id": "palette:sounds-on",
@@ -198,7 +243,27 @@
     },
     {
       "id": "palette:focus-other-pane",
-      "name": "Focus other pane",
+      "name": "Focus next pane",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:focus-pane-left",
+      "name": "Focus pane on the left",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:focus-pane-right",
+      "name": "Focus pane on the right",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:focus-pane-up",
+      "name": "Focus pane above",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "palette:focus-pane-down",
+      "name": "Focus pane below",
       "page": "sessions/split-view"
     },
     {
@@ -282,6 +347,11 @@
       "page": "projects/actions"
     },
     {
+      "id": "palette:new-app-terminal-tab",
+      "name": "New terminal tab (outside a session)",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
       "id": "palette:new-session",
       "name": "New session…",
       "page": "new-session/form"
@@ -290,6 +360,11 @@
       "id": "palette:new-session-here",
       "name": "new-session-here",
       "page": "new-session/form"
+    },
+    {
+      "id": "palette:new-session-clone",
+      "name": "New session from a GitHub repository…",
+      "page": "projects/clone-from-github"
     },
     {
       "id": "palette:new-session-worktree",
@@ -310,6 +385,16 @@
       "id": "palette:next-session",
       "name": "Next session",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:open-in-new-window",
+      "name": "Open in new window",
+      "page": "sessions/own-window"
+    },
+    {
+      "id": "feature:own-window-panels",
+      "name": "A session's own window: its panels, shortcuts and command palette, and the open panels go with the session",
+      "page": "sessions/own-window"
     },
     {
       "id": "palette:open-in-editor",
@@ -370,6 +455,11 @@
       "id": "palette:rename-project",
       "name": "Rename project…",
       "page": "projects/projects-view"
+    },
+    {
+      "id": "palette:new-session-linked",
+      "name": "New session linked to this one",
+      "page": "sessions/linking"
     },
     {
       "id": "palette:rename-session",
@@ -462,6 +552,11 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-usage",
+      "name": "settings-usage",
+      "page": "settings"
+    },
+    {
       "id": "palette:settings-sidebar",
       "name": "settings-sidebar",
       "page": "settings"
@@ -470,6 +565,11 @@
       "id": "palette:settings-sessions",
       "name": "Settings: Sessions",
       "page": "settings/sessions"
+    },
+    {
+      "id": "palette:settings-projects",
+      "name": "Settings: Projects",
+      "page": "settings"
     },
     {
       "id": "palette:settings-theme",
@@ -567,6 +667,21 @@
       "page": "themes/built-in"
     },
     {
+      "id": "palette:toggle-app-terminal",
+      "name": "Toggle terminal (outside a session)",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "palette:toggle-agents",
+      "name": "Toggle agents",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "palette:toggle-commands",
+      "name": "Toggle commands",
+      "page": "sessions/commands"
+    },
+    {
       "id": "palette:toggle-changes",
       "name": "Toggle changes",
       "page": "terminal-changes-git/changes"
@@ -597,6 +712,26 @@
       "page": "sessions/unsent-drafts"
     },
     {
+      "id": "palette:connect-computer",
+      "name": "Connect to another computer",
+      "page": "other-computers"
+    },
+    {
+      "id": "palette:new-session-on:*",
+      "name": "New session on <computer>…",
+      "page": "other-computers"
+    },
+    {
+      "id": "palette:show-only:*",
+      "name": "Show only <computer>",
+      "page": "other-computers"
+    },
+    {
+      "id": "palette:use-saved-prompt",
+      "name": "Use saved prompt…",
+      "page": "sessions/saved-prompts"
+    },
+    {
       "id": "palette:vscode-extension",
       "name": "VS Code extension",
       "page": "vscode-companion"
@@ -612,9 +747,44 @@
       "page": "projects/worktrees"
     },
     {
+      "id": "saved-prompts:new-session-chips",
+      "name": "Saved prompts above New session's message box",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "saved-prompts:save-as-prompt",
+      "name": "Save as prompt… on a message you sent",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "saved-prompts:shared",
+      "name": "Shared prompts in .switchboard.json",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "saved-prompts:slash",
+      "name": "Saved prompts in the / menu",
+      "page": "sessions/saved-prompts"
+    },
+    {
       "id": "shortcut:changes.toggle",
       "name": "changes.toggle",
       "page": "command-palette"
+    },
+    {
+      "id": "shortcut:agents.toggle",
+      "name": "agents.toggle",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "shortcut:commands.toggle",
+      "name": "commands.toggle",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "shortcut:ask.open",
+      "name": "ask.open",
+      "page": "sessions/ask"
     },
     {
       "id": "shortcut:claude.stop",
@@ -645,6 +815,16 @@
       "id": "shortcut:composer.newline",
       "name": "composer.newline",
       "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:composer.next-blank",
+      "name": "Next blank",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "shortcut:composer.previous-blank",
+      "name": "Previous blank",
+      "page": "sessions/saved-prompts"
     },
     {
       "id": "shortcut:composer.send",
@@ -702,6 +882,16 @@
       "page": "sessions/search"
     },
     {
+      "id": "shortcut:transcript.prompt-previous",
+      "name": "transcript.prompt-previous",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:transcript.prompt-next",
+      "name": "transcript.prompt-next",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "shortcut:git.pull",
       "name": "Pull",
       "page": "terminal-changes-git/git"
@@ -752,8 +942,48 @@
       "page": "command-palette"
     },
     {
+      "id": "shortcut:pane.close",
+      "name": "pane.close",
+      "page": "sessions/split-view"
+    },
+    {
       "id": "shortcut:pane.close-other",
       "name": "pane.close-other",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.focus-left",
+      "name": "pane.focus-left",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.focus-right",
+      "name": "pane.focus-right",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.focus-up",
+      "name": "pane.focus-up",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.focus-down",
+      "name": "pane.focus-down",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:session.new-window",
+      "name": "session.new-window",
+      "page": "sessions/own-window"
+    },
+    {
+      "id": "shortcut:pane.swap",
+      "name": "pane.swap",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "shortcut:pane.orientation",
+      "name": "pane.orientation",
       "page": "sessions/split-view"
     },
     {
@@ -932,6 +1162,16 @@
       "page": "command-palette"
     },
     {
+      "id": "shortcut:transcript.file-link-other",
+      "name": "transcript.file-link-other",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:transcript.run-send",
+      "name": "transcript.run-send",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "settings:about",
       "name": "Settings: About",
       "page": "settings"
@@ -950,6 +1190,11 @@
       "id": "settings:diagnostics",
       "name": "Settings: Diagnostics",
       "page": "settings"
+    },
+    {
+      "id": "settings:mods",
+      "name": "Settings: Mods",
+      "page": "sessions/mods"
     },
     {
       "id": "settings:focus",
@@ -977,6 +1222,16 @@
       "page": "projects/settings"
     },
     {
+      "id": "settings:prompts",
+      "name": "Settings: Prompts",
+      "page": "sessions/saved-prompts"
+    },
+    {
+      "id": "settings:usage",
+      "name": "Settings › Usage: Open usage, Show estimated cost, Currency and Large context",
+      "page": "settings"
+    },
+    {
       "id": "settings:sidebar",
       "name": "Settings: Sidebar",
       "page": "sessions/sidebar"
@@ -987,6 +1242,11 @@
       "page": "settings/sessions"
     },
     {
+      "id": "settings:projects",
+      "name": "Settings: Projects (Project order, Clone from GitHub)",
+      "page": "projects/clone-from-github"
+    },
+    {
       "id": "settings:theme",
       "name": "Settings: Theme",
       "page": "settings"
@@ -995,6 +1255,266 @@
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"
+    },
+    {
+      "id": "settings:remote",
+      "name": "Settings: Remote",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:other-computers",
+      "name": "Other computers: their sessions in the same sidebar and view, marked with the computer's name",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-filter",
+      "name": "Computers strip and Show sessions from: filter the sidebar by computer",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:run-on",
+      "name": "Run on: start a new session on a paired computer",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:usage-other-computers",
+      "name": "Usage: count the same account's tokens on other computers, with a Computer grouping",
+      "page": "usage"
+    },
+    {
+      "id": "feature:computers-attachments",
+      "name": "Other computers: send images and files with a message or a new session",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:remote-status-card",
+      "name": "Settings › Remote: the status card and the fix for each problem",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:connected-devices",
+      "name": "Sidebar: Connected to this Mac, the devices connected right now, their last action and Revoke",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-idle-line",
+      "name": "Settings › Remote: Show in the sidebar when nobody is connected",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-rename-device",
+      "name": "Settings › Remote: rename a paired device",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-reconnect",
+      "name": "Settings › Remote: Reconnect a paired device after the address changed",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-needs-you-cards",
+      "name": "Remote: answer what Claude asks from the list",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-list-filters",
+      "name": "Remote: search, with the All, Needs you and Working chips (in the wide sidebar, and on a phone while you search)",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-connection-chip",
+      "name": "Remote: the computer's name at the top (the chip on a wide screen) and its menu, with the connection's state",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-docked-prompt",
+      "name": "Remote: Claude needs you, docked above the message box",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-tell-instead",
+      "name": "Remote: Or tell Claude what to do instead",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-markdown",
+      "name": "Remote: formatted answers, Copy on code blocks",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-folded-steps",
+      "name": "Remote: tool runs folded into one line",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-catch-up",
+      "name": "Remote: catch-up on a finished session",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-row-menu",
+      "name": "Remote: Mark as read and Archive from a long press, a right-click or the row's actions button",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-session-menu",
+      "name": "Remote: Stop, Mark as read and Archive",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-changes",
+      "name": "Remote: Changes",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-commit",
+      "name": "Remote: Commit",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-new-session-options",
+      "name": "Remote: model (also Auto), effort, mode and worktree in New session",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-queue-for-later",
+      "name": "Remote: Queue for later",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-model-mode-chips",
+      "name": "Remote: model, effort and mode of a running session",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-notifications",
+      "name": "Remote: notifications",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-home",
+      "name": "Remote: what needs you on a wide screen, and Finished, ready to review",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-ask",
+      "name": "Remote: Ask about this session",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-usage-home",
+      "name": "Remote: the usage card on the first screen, and each profile's full card",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-keys",
+      "name": "Remote: keys on a wide screen (J, K, A, D, N, ?)",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-palette",
+      "name": "Remote: search and jump to a session or an action",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-changes-panel",
+      "name": "Remote: Changes on the right in a wide window",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-images",
+      "name": "Remote: images in a message",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-tab-signals",
+      "name": "Remote: the needs-you count and dot in the browser tab",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-notification-actions",
+      "name": "Remote: Deny and Allow on a notification",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-offline-help",
+      "name": "Remote: why the phone can't connect, and Help",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-drawer",
+      "name": "Remote: switch sessions from the sessions drawer (button or edge swipe), with the Home row",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-first-screen",
+      "name": "Remote: the first screen with the usage card, what needs you and the groups",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-pull-to-refresh",
+      "name": "Remote: pull to refresh",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-swipe-actions",
+      "name": "Remote: swipe to mark as read or archive, with Undo",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-disconnect",
+      "name": "Remote: Disconnect and Connect from the computer's menu",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-keyboard",
+      "name": "Remote: the message box stays above the keyboard, and the prompt folds to one line while you type",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-fold-sidebar",
+      "name": "Remote: fold the sidebar into the drawer on a narrow wide screen",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-update",
+      "name": "Remote: A new version is ready, with Reload and Later, and pull to update",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-profile",
+      "name": "Remote: the Claude profile of a new session, in the list and in a session's header",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-working-line",
+      "name": "Remote: the working line with its timer, and the pulsing working dot",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-background-tasks",
+      "name": "Remote and other computers: what runs in the background, and Stop for each task",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-streaming-markdown",
+      "name": "Remote: answers formatted while Claude writes them",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-multiple-computers",
+      "name": "Remote: pair with more than one computer, see the sessions of all of them in one list, pick where a new session runs (Run on), and get notifications from all of them",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-up-next",
+      "name": "Remote: Up next, with × to remove a message, and what you queued on the computer",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-drafts",
+      "name": "Remote: each session keeps the message you didn't send, also after a reload",
+      "page": "remote-access"
     },
     {
       "id": "project-tab:actions",
@@ -1092,9 +1612,49 @@
       "page": "new-session/queue"
     },
     {
-      "id": "feature:agents-dialog",
-      "name": "Agents",
-      "page": "sessions/conversation"
+      "id": "feature:agents-panel",
+      "name": "Agents panel",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "feature:agents-from-background-tasks",
+      "name": "Open an agent from the background tasks list",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "feature:agents-stop",
+      "name": "Stop a background agent from the panel",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "feature:agents-failed",
+      "name": "Agents panel: Failed for an agent that ended on an error, hit the usage limit or was stopped; an agent that runs again moves back to Active",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "feature:agents-open-from-conversation",
+      "name": "Open in Agents panel, from an agent's call",
+      "page": "sessions/agents"
+    },
+    {
+      "id": "feature:commands-panel",
+      "name": "Commands panel: background commands and monitors with their output",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "feature:commands-from-background-tasks",
+      "name": "Open a command from the background tasks list",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "feature:commands-stop",
+      "name": "Stop a background command from the panel",
+      "page": "sessions/commands"
+    },
+    {
+      "id": "feature:commands-open-from-conversation",
+      "name": "Open in Commands panel, from a command's call",
+      "page": "sessions/commands"
     },
     {
       "id": "feature:always-allow",
@@ -1127,9 +1687,34 @@
       "page": "sessions/archived"
     },
     {
+      "id": "feature:ask-button",
+      "name": "Ask button next to Send",
+      "page": "sessions/ask"
+    },
+    {
+      "id": "feature:ask-changes-tabs",
+      "name": "Changes and Ask as tabs on the right",
+      "page": "sessions/ask"
+    },
+    {
       "id": "feature:ask-claude-to-commit",
       "name": "Ask Claude to commit",
       "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:ask-quote",
+      "name": "Quote in message from an answer",
+      "page": "sessions/ask"
+    },
+    {
+      "id": "feature:ask-ready-dot",
+      "name": "Dot on Ask when an answer is ready",
+      "page": "sessions/ask"
+    },
+    {
+      "id": "feature:ask-threads",
+      "name": "Ask threads: follow-ups, New thread, Earlier threads",
+      "page": "sessions/ask"
     },
     {
       "id": "feature:auto-archive",
@@ -1152,6 +1737,61 @@
       "page": "new-session/auto-model"
     },
     {
+      "id": "feature:usage-limit-notice",
+      "name": "Usage limit notice: which limit, reset time and countdown, Resume now",
+      "page": "usage"
+    },
+    {
+      "id": "feature:usage-limit-resume",
+      "name": "Resume when it resets, kept across restarts, with a notification",
+      "page": "usage"
+    },
+    {
+      "id": "feature:usage-limit-hold",
+      "name": "Up next and the queue wait while a profile is at its usage limit",
+      "page": "usage"
+    },
+    {
+      "id": "feature:usage-cost-estimate",
+      "name": "Estimated API cost after the 5-hour and weekly usage bars, in a currency you pick",
+      "page": "usage"
+    },
+    {
+      "id": "feature:large-context-warning",
+      "name": "Large context: the ring turns orange from a percentage you pick, and a note says when the prompt cache expires and what the next message costs after",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:cache-expiry-notification",
+      "name": "A notification before a large session's hour-long prompt cache expires",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:quit-large-context",
+      "name": "Quitting with a large session open warns once, or every time with Warn when quitting",
+      "page": "settings"
+    },
+    {
+      "id": "feature:usage-cost-breakdown",
+      "name": "Usage view: estimated cost per window, session, project, model, day and computer",
+      "page": "usage"
+    },
+    {
+      "id": "feature:session-cost",
+      "name": "A session's estimated cost next to Context under its message box",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:remote-costs",
+      "name": "Other computers: a remote session's cost, and plan window costs added up across paired computers",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:usage-limit-setting",
+      "name": "Settings › Conversation › Resume after a usage limit resets",
+      "page": "usage"
+    },
+    {
       "id": "feature:auto-model-suggest",
       "name": "Suggest a stronger model later",
       "page": "new-session/auto-model"
@@ -1159,6 +1799,11 @@
     {
       "id": "feature:auto-routing-usage",
       "name": "Auto routing in Usage",
+      "page": "usage"
+    },
+    {
+      "id": "feature:side-questions-usage",
+      "name": "Side questions in Usage",
       "page": "usage"
     },
     {
@@ -1252,6 +1897,11 @@
       "page": "settings/updates"
     },
     {
+      "id": "feature:claude-in-chrome",
+      "name": "Use Claude in Chrome",
+      "page": "settings"
+    },
+    {
       "id": "feature:claude-profiles",
       "name": "Claude profiles",
       "page": "settings/claude-profiles"
@@ -1274,6 +1924,11 @@
     {
       "id": "feature:compacted-conversation",
       "name": "Compacted conversations show in full",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:prompt-outline",
+      "name": "Prompt outline beside the conversation, and Show prompt outline in Settings, Conversation",
       "page": "sessions/conversation"
     },
     {
@@ -1322,6 +1977,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:copy-rich-text",
+      "name": "Copy a reply as rich text",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:copy-to-my-memory",
       "name": "Copy to my memory… (a section of an instruction file)",
       "page": "memory/share-with-the-team"
@@ -1334,6 +1994,16 @@
     {
       "id": "feature:view-pr",
       "name": "View PR #123 on the git button once the branch has an open pull request, and Mark ready for review",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:pr-checks",
+      "name": "Pull request checks on the git button and in its menu, read again while they run, with a notification when they finish",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:fix-checks",
+      "name": "Fix failing checks with Claude: the failed jobs' logs as chips under a prompt in the message box",
       "page": "terminal-changes-git/git"
     },
     {
@@ -1448,8 +2118,13 @@
     },
     {
       "id": "feature:file-links",
-      "name": "Open files from replies",
+      "name": "Show or open files from replies",
       "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:file-link-click",
+      "name": "Clicking a file link: show or open (Settings, Conversation)",
+      "page": "settings"
     },
     {
       "id": "feature:file-mentions",
@@ -1469,6 +2144,11 @@
     {
       "id": "feature:focus-count-external",
       "name": "Count terminal and IDE sessions",
+      "page": "focus-limit"
+    },
+    {
+      "id": "feature:focus-count-remote",
+      "name": "Count sessions on other computers",
       "page": "focus-limit"
     },
     {
@@ -1963,7 +2643,7 @@
     },
     {
       "id": "feature:profile-sign-in",
-      "name": "Sign in to a profile with CLAUDE_CONFIG_DIR and /login",
+      "name": "Sign in to a profile in Switchboard's terminal, or with CLAUDE_CONFIG_DIR and /login",
       "page": "settings/claude-profiles"
     },
     {
@@ -2182,6 +2862,16 @@
       "page": "projects/projects-view"
     },
     {
+      "id": "feature:link-sessions",
+      "name": "Link another session with @ in the message box",
+      "page": "sessions/linking"
+    },
+    {
+      "id": "feature:new-linked-session",
+      "name": "New session linked to this one (session menu)",
+      "page": "sessions/linking"
+    },
+    {
       "id": "feature:rename-session",
       "name": "Rename a session",
       "page": "sessions/sidebar"
@@ -2205,6 +2895,16 @@
       "id": "feature:run-code-block",
       "name": "Run code blocks in the terminal",
       "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:run-code-block-send-output",
+      "name": "Run a code block and send its output to Claude",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:action-send-output",
+      "name": "Send a project action's output to Claude when it finishes",
+      "page": "projects/actions"
     },
     {
       "id": "feature:save-as-project-default",
@@ -2245,6 +2945,16 @@
       "id": "feature:session-context-menu",
       "name": "Session context menu",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:session-menu-project",
+      "name": "Session menu: Project submenu with Claude profile, Project icon, Rename project…, Open project, Worktrees…, Branches… and Project settings…",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:mark-unread",
+      "name": "Mark as read or Mark as unread in the session menu",
+      "page": "sessions/catch-up"
     },
     {
       "id": "feature:session-hud",
@@ -2369,6 +3079,36 @@
     {
       "id": "feature:split-view",
       "name": "Split view",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:swap-panes-drag",
+      "name": "Dock or swap panes by dragging a header",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:stacked-panes",
+      "name": "Side by side and stacked panes, mixed",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:drag-session-to-pane",
+      "name": "Drag a session from the sidebar onto a pane",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:dock-window-edge",
+      "name": "Dock a pane along a whole window edge",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:pane-dividers",
+      "name": "Resize panes with a divider",
+      "page": "sessions/split-view"
+    },
+    {
+      "id": "feature:small-window-panes",
+      "name": "Only the active pane in a small window",
       "page": "sessions/split-view"
     },
     {
@@ -2527,6 +3267,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:turn-details",
+      "name": "Under each reply: when a turn ended, how long it took and its tokens, and the setting in Settings, Conversation",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:tool-activity",
       "name": "Tool activity: Summarised or Every step",
       "page": "settings"
@@ -2534,6 +3279,11 @@
     {
       "id": "feature:tool-runs-summarised",
       "name": "Summarised tool runs",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:command-step-labels",
+      "name": "A command without a description shows what it runs (Running git, Running a Python script)",
       "page": "sessions/conversation"
     },
     {
@@ -2573,7 +3323,7 @@
     },
     {
       "id": "feature:update-channel",
-      "name": "Update channel: Stable or Nightly",
+      "name": "Update channel: Stable or Beta",
       "page": "settings/updates"
     },
     {
@@ -2847,6 +3597,26 @@
       "page": "usage"
     },
     {
+      "id": "palette:build-catch-up",
+      "name": "Catch up on this session",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "palette:show-catch-up",
+      "name": "Show catch-up",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "feature:catch-up-details",
+      "name": "Catch-up banner: Details open when it shows, with Mark as read and the other actions",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "palette:why-request",
+      "name": "Why is Claude asking?",
+      "page": "permissions"
+    },
+    {
       "id": "shortcut:usage.open",
       "name": "usage.open",
       "page": "usage"
@@ -2872,9 +3642,89 @@
       "page": "usage"
     },
     {
+      "id": "shortcut:catchup.primary",
+      "name": "catchup.primary",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.close",
+      "name": "catchup.close",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.review",
+      "name": "catchup.review",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.commit",
+      "name": "catchup.commit",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.reply",
+      "name": "catchup.reply",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.read",
+      "name": "catchup.read",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.archive",
+      "name": "catchup.archive",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.expand",
+      "name": "catchup.expand",
+      "page": "sessions/catch-up"
+    },
+    {
       "id": "slash:btw",
-      "name": "/btw side questions",
-      "page": "sessions/side-questions"
+      "name": "/btw asks about the session",
+      "page": "sessions/ask"
+    },
+    {
+      "id": "feature:mods",
+      "name": "Claude Code mods: bands, panes, statuses, toasts and replaced views, framed with the mod's name",
+      "page": "sessions/mods"
+    },
+    {
+      "id": "feature:show-mods",
+      "name": "Settings › Mods: Show mods, and a switch per mod",
+      "page": "sessions/mods"
+    },
+    {
+      "id": "feature:mods-chip",
+      "name": "The mods chip in the session header and its popover",
+      "page": "sessions/mods"
+    },
+    {
+      "id": "feature:clone-from-github",
+      "name": "Clone from GitHub: start a project from a GitHub URL in New session, with the clone's progress and Cancel",
+      "page": "projects/clone-from-github"
+    },
+    {
+      "id": "feature:clone-sidebar",
+      "name": "Sidebar: Clone from GitHub… in the add project menu, clones and adds the project",
+      "page": "projects/clone-from-github"
+    },
+    {
+      "id": "feature:clone-trust",
+      "name": "Clone from GitHub: asks before the first session when the repository brings hooks, MCP servers or rules",
+      "page": "projects/clone-from-github"
+    },
+    {
+      "id": "feature:clone-link",
+      "name": "Links: Clone owner/name when no checkout of a link's repo is found",
+      "page": "links"
+    },
+    {
+      "id": "feature:clone-other-computer",
+      "name": "Clone from GitHub on another computer (Run on)",
+      "page": "other-computers"
     }
   ]
 }

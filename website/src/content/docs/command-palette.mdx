@@ -7,6 +7,7 @@ import Kbd from '../../components/Kbd.astro';
 import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../components/Related.astro';
 
 The command palette puts everything Switchboard can do one search away. It lists the commands that fit where you are, jumps to any session or project, and starts a new session without leaving the keyboard.
 
@@ -52,7 +53,7 @@ With nothing typed, the commands for where you are come first, in groups:
 - **Git**: when its folder is a git repository.
 - **Project actions**: the session's project actions, as *Run: &lt;action&gt;*.
 - **Terminal**: while the terminal panel is open.
-- **Split view**: with two sessions side by side.
+- **Split view**: with two sessions open together.
 - **New session**: while New session is open.
 - **Settings**: while Settings is open, to go to a section.
 
@@ -136,6 +137,7 @@ Titles in angle brackets show the name of the current project, action or theme. 
 | *Reload skills* | Connected to the engine | |
 | *Export settings…* | Always | |
 | *Import settings…* | Always | |
+| *Connect to another computer…* | Always | |
 | *VS Code extension* | Always | |
 | *Engine diagnostics* | Always | |
 | *Keyboard shortcuts* | Always | <Kbd shortcut="shortcuts" /> |
@@ -171,6 +173,8 @@ Commands that need the engine (Switchboard's background process) hide while it i
 | *Check transcript…* | Session open | |
 | *Toggle terminal* | Session open | <Kbd shortcut="terminal.toggle" /> |
 | *New terminal tab* | The session has a folder | |
+| *Toggle agents* | Session open | <Kbd shortcut="agents.toggle" /> |
+| *Toggle commands* | Session open | <Kbd shortcut="commands.toggle" /> |
 | *Toggle changes* | The session has a folder | <Kbd shortcut="changes.toggle" /> |
 | *Tools: MCP servers, skills, agents, plugins* | The session has a folder | |
 | *Open folder in editor* | The session has a folder | <Kbd shortcut="editor.open" /> |
@@ -215,10 +219,15 @@ Commands that need the engine (Switchboard's background process) hide while it i
 
 ### Split view
 
-| Command | Shows |
-|---|---|
-| *Focus other pane* | Two sessions side by side |
-| *Close this pane* | Two sessions side by side |
+| Command | Shows | Shortcut |
+|---|---|---|
+| *Focus next pane* | More than one pane open | |
+| *Focus pane on the left*, *on the right*, *above* or *below* | The active pane has a neighbour that way | <Kbd shortcut="pane.focus-left" />, <Kbd shortcut="pane.focus-right" />, <Kbd shortcut="pane.focus-up" />, <Kbd shortcut="pane.focus-down" /> |
+| *Swap panes* | More than one pane open | <Kbd shortcut="pane.swap" /> |
+| *Stack panes* | The panes the active pane sits in are side by side | <Kbd shortcut="pane.orientation" /> |
+| *Show panes side by side* | The panes the active pane sits in are stacked | <Kbd shortcut="pane.orientation" /> |
+| *Close this pane* | More than one pane open | <Kbd shortcut="pane.close" /> |
+| *Close other panes* | More than one pane open | <Kbd shortcut="pane.close-other" /> |
 
 ### New session
 
@@ -236,6 +245,14 @@ Commands that need the engine (Switchboard's background process) hide while it i
 Every key is also on the shortcuts sheet (<Kbd shortcut="shortcuts" />) and in [Keyboard shortcuts](/keyboard-shortcuts/).
 </Aside>
 
+## In a session's own window
+
+In a [session's own window](/sessions/own-window/#the-command-palette-in-the-window), <Kbd shortcut="palette.commands" /> opens the palette there, and its commands act on that window's session. It has no Go to mode or "+" for a new session, and leaves out the commands for the sidebar, split view and Home. *Go to session…*, *Search conversations*, *New session…*, *Quick question…*, *Next session* and *Previous session* run in the main window, which comes to the front.
+
 ## Settings
 
-*Project order* in [Settings → General](/settings/#general) sets how the palette lists your projects: most recent first, or in your order.
+*Project order* in [Settings → Projects](/settings/#projects) sets how the palette lists your projects: most recent first, or in your order.
+
+## Related
+
+<Related pages={['keyboard-shortcuts', 'sessions/search', 'links', 'new-session/form']} />

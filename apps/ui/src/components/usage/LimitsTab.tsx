@@ -1,19 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Info, Zap } from 'lucide-react';
-import type { UsageLimit, UsagePeriod, UsageRow, UsageScan } from '@switchboard/protocol/client';
+import { Info, Monitor, Zap } from 'lucide-react';
+import type { UsageLimit, UsagePeriod, UsageScan } from '@switchboard/protocol/client';
 import { basename } from '../../lib/format.ts';
+import { thisComputerName } from '../../lib/platform.ts';
+import { useComputers } from '../../state/computersStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
+import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { ComputerChip } from '../computers/ComputerChip.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
+import { Notice } from '../ui/Notice.tsx';
 import { useUsageFor } from '../UsageBand.tsx';
-import { usageMessage, visibleLimits } from '../usageFormat.ts';
+import { usageMessage, visibleLimits, windowCostOf } from '../usageFormat.ts';
+import { useCostFormat } from './useCost.ts';
+import { useWindowCosts } from './useWindowCosts.ts';
 import { ChartCard, ChartTable, LegendItem, PercentLines } from './charts.tsx';
 import { ShareInfo } from './ShareInfo.tsx';
-import { useBreakdown, usePlanHistory } from './useUsageData.ts';
-import { foldRows, formatShare, historyTooShort, isLow, limitTitle, modelName, percentLeft, PERIOD_SHORT, recordedSince, resetsIn, seriesColor, seriesName, sinceLabel, visibleSeries } from './usageModel.ts';
+import type { MergedRow, Uncounted } from './usageMerge.ts';
+import { useBreakdown, useCountedBreakdown, usePlanHistory } from './useUsageData.ts';
+import { computersLabel, foldRows, formatShare, historyTooShort, isLow, limitTitle, modelName, percentLeft, PERIOD_SHORT, recordedSince, resetsIn, seriesColor, seriesName, sinceLabel, visibleSeries } from './usageModel.ts';
 
 /** One plan window: what's left in large type, a bar whose used part is hatched (it comes back at the reset), and when. */
-function LimitCard({ limit, now }: { limit: UsageLimit; now: number }) {
+function LimitCard({ limit, now, cost, costWhere }: { limit: UsageLimit; now: number; /** The window's estimated cost ("≈$23.14"), when it is shown. */ cost: string | null; /** "on This PC and mystic": whose tokens it counts. */ costWhere: string }) {
   const { name, scope } = limitTitle(limit);
   const left = percentLeft(limit);
   const low = isLow(left);
@@ -45,6 +53,11 @@ function LimitCard({ limit, now }: { limit: UsageLimit; now: number }) {
           </span>
         )}
       </p>
+      {cost && (
+        <p className="text-meta text-muted" data-tooltip={`What this window's tokens ${costWhere} would cost at Anthropic's API prices. Your plan is not billed per token.`} data-usage-limit-cost>
+          <span className="font-semibold text-text tabular-nums">{cost}</span> at API prices
+        </p>
+      )}
     </article>
   );
 }
@@ -96,10 +109,20 @@ export function ModelCell({ model, fastTurns }: { model: string | null; fastTurn
   );
 }
 
-/** Opens a session from a usage row, when it is still in the list. */
+/** Opens a session from a usage row, here or on another computer, when it is still in that list. */
 export function useOpenSession() {
   const sessions = useSessions((s) => s.sessions);
-  return (id: string | null) => (id && sessions.has(id) ? () => useSessions.getState().select(id) : null);
+  const lists = useComputers((s) => s.lists);
+  return (row: MergedRow) => {
+    const id = row.sessionId;
+    if (!id) return null;
+    if (row.computer) {
+      // Another computer's session, while its list there has it.
+      const computerId = row.computer.id;
+      return lists.get(computerId)?.sessions.some((s) => s.id === id) ? () => useComputers.getState().openSession({ computerId, sessionId: id }) : null;
+    }
+    return sessions.has(id) ? () => useSessions.getState().select(id) : null;
+  };
 }
 
 /** The project a row belongs to, for its icon and name. */
@@ -108,13 +131,43 @@ export function useProjectName() {
   return (root: string | null) => (root ? (projects.get(root)?.name ?? basename(root)) : 'Unknown folder');
 }
 
+/** The name of a row's project: this computer's, or another computer's, which comes without its folder. */
+export function rowProjectName(row: MergedRow, nameOf: (root: string | null) => string): string {
+  return row.remoteProject ? (row.remoteProject.name ?? 'Unknown folder') : nameOf(row.projectRoot);
+}
+
+/** A row's project icon; another computer's carries the computer badge. */
+export function RowProjectIcon({ row, size }: { row: MergedRow; size: number }) {
+  const projects = useProjects((s) => s.projects);
+  if (row.computer) return row.remoteProject?.id ? <ProjectIcon project={undefined} root={remoteProjectKey(row.computer.id, row.remoteProject.id)} name={row.remoteProject.name ?? undefined} size={size} remote /> : null;
+  return row.projectRoot ? <ProjectIcon project={projects.get(row.projectRoot)} root={row.projectRoot} size={size} /> : null;
+}
+
+/** The chip of the computer a row's tokens were used on, when that is another computer. */
+export function RowComputer({ row }: { row: MergedRow }) {
+  return row.computer ? <ComputerChip name={row.computer.name} data-usage-row-computer={row.computer.id} /> : null;
+}
+
+/** Why paired computers' tokens aren't in the numbers: offline, an older Switchboard, another account, or no account here. */
+export function NotCounted({ uncounted, noAccount, inline = false }: { uncounted: readonly Uncounted[]; noAccount: boolean; inline?: boolean }) {
+  if (!noAccount && uncounted.length === 0) return null;
+  const text = noAccount ? "This profile isn't signed in to a claude.ai account, so other computers can't be matched to it." : `Not counted: ${uncounted.map((u) => u.reason).join(' ')}`;
+  return (
+    <Notice icon={<Monitor size={14} aria-hidden />} inline={inline} data-tooltip={inline ? text : undefined} data-usage-uncounted>
+      {text}
+    </Notice>
+  );
+}
+
 /** Which sessions used the current window: the top five and the rest folded into one line. */
 function WindowSessions({ profileId }: { profileId: string }) {
-  const data = useBreakdown(profileId, 'window', 'session');
-  const projects = useProjects((s) => s.projects);
+  const { data, counted, uncounted, noAccount } = useCountedBreakdown(profileId, 'window', 'session');
   const nameOf = useProjectName();
   const open = useOpenSession();
   const { shown, rest } = useMemo(() => foldRows(data?.rows ?? [], 5), [data]);
+  const cost = useCostFormat();
+  // Session, model, cost (while it shows) and share.
+  const cols = cost ? 'grid-cols-[minmax(0,1fr)_auto_auto_auto]' : 'grid-cols-[minmax(0,1fr)_auto_auto]';
   return (
     <section className="grid min-w-0 content-start rounded-xl border border-border bg-card" aria-label="What used this window" data-usage-window>
       <header className="flex flex-wrap items-baseline gap-x-2 px-4 pt-4 pb-3">
@@ -122,38 +175,49 @@ function WindowSessions({ profileId }: { profileId: string }) {
         {data && (
           <p className="text-meta text-muted">
             since {sinceLabel(data.from)} · {data.totals.sessions} {data.totals.sessions === 1 ? 'session' : 'sessions'}
+            {counted.length > 0 && ` · ${computersLabel(counted.length + 1)}`}
           </p>
         )}
       </header>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 border-b border-border px-4 pb-2 text-meta tracking-wide text-muted uppercase">
+      {(noAccount || uncounted.length > 0) && (
+        <div className="px-4 pb-2">
+          <NotCounted uncounted={uncounted} noAccount={noAccount} inline />
+        </div>
+      )}
+      <div className={`grid ${cols} items-center gap-x-4 border-b border-border px-4 pb-2 text-meta tracking-wide text-muted uppercase`}>
         <span>Session</span>
         <span className="w-14">Model</span>
+        {cost && <span className="w-16 text-right">Cost (est.)</span>}
         <ShareInfo className="w-24 text-right uppercase hover:text-text" data-usage-share-header>
           Share (est.)
         </ShareInfo>
       </div>
       {data && data.rows.length === 0 && <p className="px-4 py-3 text-ui text-muted">Nothing used this window yet.</p>}
-      {shown.map((row: UsageRow) => {
-        const onOpen = open(row.sessionId);
+      {shown.map((row) => {
+        const onOpen = open(row);
         return (
           <button
             key={row.key}
             type="button"
             disabled={!onOpen}
             onClick={onOpen ?? undefined}
-            className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 border-b border-border px-4 py-2 text-left text-ui enabled:hover:bg-border/45"
+            className={`grid ${cols} items-center gap-x-4 border-b border-border px-4 py-2 text-left text-ui enabled:hover:bg-border/45`}
             data-usage-row={row.sessionId ?? row.key}
           >
             <span className="flex min-w-0 items-center gap-2.5">
-              {row.projectRoot && <ProjectIcon project={projects.get(row.projectRoot)} root={row.projectRoot} size={20} />}
+              <RowProjectIcon row={row} size={20} />
               <span className="grid min-w-0">
                 <span className="truncate font-medium text-text">{row.label}</span>
-                <span className="truncate text-meta text-muted">{nameOf(row.projectRoot)}</span>
+                <span className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
+                  <span className="truncate">{rowProjectName(row, nameOf)}</span>
+                  <RowComputer row={row} />
+                </span>
               </span>
             </span>
             <span className="w-14 text-muted">
               <ModelCell model={row.model} fastTurns={row.fastTurns} />
             </span>
+            {cost && <span className="w-16 text-right text-muted tabular-nums">{cost(row.cost)}</span>}
             <span className="w-24">
               <ShareBar share={row.share} compact />
             </span>
@@ -161,9 +225,11 @@ function WindowSessions({ profileId }: { profileId: string }) {
         );
       })}
       {rest && (
-        <p className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b border-border px-4 py-2 text-ui text-muted">
+        <p className={`grid ${cols} gap-x-4 border-b border-border px-4 py-2 text-ui text-muted`}>
           <span>{rest.count} more</span>
-          <span className="tabular-nums">{formatShare(rest.share)}</span>
+          <span className="w-14" />
+          {cost && <span className="w-16 text-right tabular-nums">{cost(rest.cost)}</span>}
+          <span className="w-24 text-right tabular-nums">{formatShare(rest.share)}</span>
         </p>
       )}
       <p className="flex gap-2 px-4 py-3 text-meta text-muted">
@@ -188,6 +254,11 @@ export function LimitsTab({ profileId, period }: { profileId: string; period: Us
     return () => clearInterval(timer);
   }, []);
   const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
+  const cost = useCostFormat();
+  const priced = useWindowCosts(profileId, cost !== null && limits.length > 0);
+  const windowCosts = priced.windows;
+  // Which computers the cards' costs count, once others are paired.
+  const costWhere = priced.counted.length > 0 ? `on ${[thisComputerName(), ...priced.counted.map((c) => c.name)].join(' and ')}` : 'on this computer';
   const series = useMemo(() => visibleSeries(period, history?.series ?? []), [period, history]);
   const range = useMemo(() => {
     const to = now;
@@ -211,7 +282,7 @@ export function LimitsTab({ profileId, period }: { profileId: string; period: Us
       ) : (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
           {limits.map((limit) => (
-            <LimitCard key={`${limit.kind}:${limit.scope ?? ''}`} limit={limit} now={now} />
+            <LimitCard key={`${limit.kind}:${limit.scope ?? ''}`} limit={limit} now={now} costWhere={costWhere} cost={cost && windowCostOf(limit, windowCosts) ? cost(windowCostOf(limit, windowCosts)!.usd) : null} />
           ))}
         </div>
       )}

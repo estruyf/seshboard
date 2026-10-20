@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from '@switchboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
+import { runOnce } from '../lib/inFlight.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { passFocusGate } from './focusGate.ts';
 import { moveTarget } from './queue.ts';
@@ -133,20 +134,27 @@ export async function setWaitFor(item: LaterItem, waitFor: QueueWaitFor): Promis
   await clientNow().call('later.update', { id: item.id, waitFor });
 }
 
+/** Queued items being started (from the gate until the engine answers), so each starts once. */
+const starting = new Set<string>();
+
 /**
  * Starts a queued item: the focus limit's gate first (at the limit it can only stay queued), then the session
  * starts from the item's draft and opens, and the item leaves the queue. Returns the session, or null when
  * nothing started. A failure is said in a toast and the item stays queued.
  */
 export async function startQueued(item: LaterItem): Promise<string | null> {
-  const outcome = await passFocusGate({ saveForLater: async () => {}, saveLabel: 'Keep it queued' });
-  if (outcome !== 'start') return null;
-  try {
-    const { sessionId } = await clientNow().call('later.start', { id: item.id });
-    useSessions.getState().select(sessionId);
-    return sessionId;
-  } catch (error) {
-    toast(`Couldn't start it: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
-  }
+  // A double click on Start (or Start then ⌘↵) starts it once: the second call would find it gone from the queue.
+  const started = await runOnce(starting, item.id, async () => {
+    const outcome = await passFocusGate({ saveForLater: async () => {}, saveLabel: 'Keep it queued' });
+    if (outcome !== 'start') return null;
+    try {
+      const { sessionId } = await clientNow().call('later.start', { id: item.id });
+      useSessions.getState().select(sessionId);
+      return sessionId;
+    } catch (error) {
+      toast(`Couldn't start it: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  });
+  return started ?? null;
 }

@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { placeTooltip, placeTooltipRight } from './tooltipPlacement.ts';
 
-const SHOW_DELAY = 450;
+/** How long the pointer rests on a target before its tooltip shows. Exported for tooltips drawn by their own component (the prompt outline). */
+export const SHOW_DELAY = 450;
 /** Moving from one tooltip target to the next within this window shows the next one at once. */
-const WARM_WINDOW = 400;
+export const WARM_WINDOW = 400;
 
 interface Shown {
   text: string;

@@ -12,14 +12,18 @@
  *
  * Usage: npm run website:screenshots [-- --only home,palette]   (--only takes the setup, then just those)
  */
-import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { homedir, userInfo } from 'node:os';
+import { randomBytes } from 'node:crypto';
+import { createServer } from 'node:net';
+import { DatabaseSync } from 'node:sqlite';
+import { homedir, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
-import { _electron, type ElectronApplication, type Locator, type Page } from 'playwright-core';
+import { _electron, chromium, type ElectronApplication, type Locator, type Page } from 'playwright-core';
 import sharp from 'sharp';
 import { createDemoWorld, type DemoWorld } from '../apps/desktop/scripts/screenshot-demo.ts';
+import { x25519 } from '@noble/curves/ed25519.js';
 
 const root = join(import.meta.dirname, '..');
 const appDir = join(root, 'apps', 'desktop');
@@ -52,15 +56,31 @@ function commitFile(cwd: string, path: string, content: string, message: string,
 
 /**
  * The tour's gh (SWITCHBOARD_GH): signed in, unless the file `.fake-gh-signed-out` is in the demo home, and nothing
- * else works, so pull request lists stay empty and nothing ever reaches GitHub.
+ * else works, so pull request lists stay empty and nothing ever reaches GitHub. While `.fake-gh-checks` is there (the
+ * checks it holds), feat/dark-mode has pull request #42 with those checks.
  */
 function fakeGh(home: string): string {
   const path = join(home, '.local', 'bin', 'fake-gh');
   mkdirSync(join(path, '..'), { recursive: true });
   const signedOut = join(home, '.fake-gh-signed-out');
+  const checks = join(home, '.fake-gh-checks');
+  const pr = JSON.stringify([{ number: 42, state: 'OPEN', headRefName: 'feat/dark-mode', url: 'https://github.com/acme/acme-store/pull/42', isDraft: false }]);
   writeFileSync(
     path,
-    `#!/bin/sh\nif [ "$1 $2" = "auth status" ]; then\n  if [ -f '${signedOut}' ]; then echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1; fi\n  exit 0\nfi\necho "the screenshot tour's gh never reaches GitHub" >&2\nexit 1\n`,
+    [
+      '#!/bin/sh',
+      'if [ "$1 $2" = "auth status" ]; then',
+      `  if [ -f '${signedOut}' ]; then echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1; fi`,
+      '  exit 0',
+      'fi',
+      `if [ -f '${checks}' ]; then`,
+      `  if [ "$1 $2" = "pr list" ]; then echo '${pr}'; exit 0; fi`,
+      `  if [ "$1 $2" = "pr checks" ]; then cat '${checks}'; exit 1; fi`,
+      'fi',
+      `echo "the screenshot tour's gh never reaches GitHub" >&2`,
+      'exit 1',
+      '',
+    ].join('\n'),
   );
   chmodSync(path, 0o755);
   return path;
@@ -162,6 +182,11 @@ function extendWorld(world: DemoWorld): void {
           { name: 'Dev server', icon: 'play', command: 'npm run dev' },
           { name: 'Install', icon: 'package', command: 'npm install', runOnWorktreeCreate: true },
           { name: 'Review', icon: 'sparkles', type: 'prompt', command: 'Review the changes on ${branch} and list anything risky.' },
+        ],
+        // Saved prompts the team shares.
+        prompts: [
+          { id: 'fix-failing-test', name: 'Fix failing test', text: 'Fix {{test:file}}. It fails on {{branch:branch}} since the last merge.' },
+          { id: 'review-pull-request', name: 'Review pull request', text: 'Review {{pr:pr}}. Focus on {{focus:choice=security|performance|tests}}.' },
         ],
       },
       null,
@@ -437,16 +462,156 @@ class Tour {
   }
 }
 
+/**
+ * Another computer named "mystic" for the Other computers pictures: the real Remote hub over the made-up sessions of
+ * scripts/remote-demo.ts, in a throwaway folder on a free port. It pairs through Settings › Remote as a person would,
+ * `take` runs, then the computer is removed and the hub stopped, so no other picture shows it.
+ */
+async function withComputer(t: Tour, take: (computerId: string) => Promise<void>): Promise<void> {
+  const port = await new Promise<number>((resolve) => {
+    const server = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
+  const dir = mkdtempSync(join(tmpdir(), 'switchboard-shots-computer-'));
+  const linkFile = join(dir, 'link.txt');
+  const hub = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(root, 'scripts', 'remote-demo.ts')], {
+    env: { ...process.env, SWITCHBOARD_DEMO_DIR: dir, SWITCHBOARD_DEMO_NAME: 'mystic', SWITCHBOARD_DEMO_LINK_FILE: linkFile, PORT: String(port) },
+    stdio: 'ignore',
+  });
+  try {
+    const started = Date.now();
+    while (!existsSync(linkFile)) {
+      if (Date.now() - started > 20_000) throw new Error('the demo computer wrote no pairing link');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    await t.click('[data-open-settings]');
+    await t.click('[data-settings-section="remote"]');
+    await t.page.fill('[data-computers-link]', readFileSync(linkFile, 'utf8').trim());
+    await t.click('[data-computers-add]');
+    await t.need('[data-computer][data-computer-state="connected"]', 'the demo computer did not connect', 20_000);
+    const computerId = (await t.page.getAttribute('[data-computer]', 'data-computer'))!;
+    await t.click('[data-close-settings]');
+    await t.need('[data-session-list] [data-remote-row]', 'no remote session in the sidebar');
+    await take(computerId);
+  } finally {
+    await t.home().catch(() => {});
+    await t.click('[data-open-settings]').catch(() => {});
+    await t.click('[data-settings-section="remote"]').catch(() => {});
+    if (await t.page.locator('[data-computer-forget]').count()) {
+      await t.click('[data-computer-forget]');
+      await t.click('[data-confirm-strip] [data-confirm]');
+      await t.gone('[data-computer]', 'the demo computer was not removed').catch(() => {});
+    }
+    await t.click('[data-close-settings]').catch(() => {});
+    hub.kill();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+  }
+}
+
+/** A port nothing listens on, on this computer. */
+function freePort(): Promise<number> {
+  return new Promise((resolve) => {
+    const server = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+/** Waits until `check` holds, or fails with `message`. */
+async function waitFor(check: () => boolean | Promise<boolean>, message: string, timeout = 20_000): Promise<void> {
+  const started = Date.now();
+  while (!(await check())) {
+    if (Date.now() - started > timeout) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/** A phone's size for the remote app's pictures: an iPhone, at 2x so the files stay small. */
+const PHONE = { width: 390, height: 844 };
+
+/**
+ * The remote app on a phone (Remote's page): the real app from apps/remote, served by Vite, against the made-up
+ * computer of scripts/remote-demo.ts ("Studio Mac", two profiles), in Chrome at a phone's size with touch. It pairs as a
+ * phone would, then takes the first screen, the computer's menu (from its name, the large title) and the sessions
+ * drawer in both colour schemes.
+ */
+async function phoneShots(): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), 'switchboard-shots-phone-'));
+  const [vitePort, hubPort] = [await freePort(), await freePort()];
+  const appUrl = `http://localhost:${vitePort}/remote/`;
+  const vite = spawn(process.execPath, [join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(vitePort)], { cwd: join(root, 'apps', 'remote'), stdio: 'ignore' });
+  const linkFile = join(dir, 'link.txt');
+  const hub = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(root, 'scripts', 'remote-demo.ts')], {
+    env: { ...process.env, SWITCHBOARD_DEMO_DIR: dir, SWITCHBOARD_DEMO_NAME: 'Studio Mac', SWITCHBOARD_DEMO_LINK_FILE: linkFile, SWITCHBOARD_REMOTE_APP_URL: appUrl, PORT: String(hubPort) },
+    stdio: 'ignore',
+  });
+  // Google Chrome when it is there, else Playwright's own Chromium.
+  const browser = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch());
+  try {
+    await waitFor(() => existsSync(linkFile), 'the demo computer wrote no pairing link');
+    await waitFor(() => fetch(appUrl).then((r) => r.ok, () => false), 'Vite did not serve the remote app');
+    const context = await browser.newContext({ viewport: PHONE, deviceScaleFactor: SCALE, isMobile: true, hasTouch: true, colorScheme: 'dark' });
+    const page = await context.newPage();
+    page.setDefaultTimeout(15_000);
+    await page.goto(readFileSync(linkFile, 'utf8').trim());
+    await page.getByRole('button', { name: 'Pair' }).click();
+    await page.waitForSelector('[data-remote-computer-title="large"][data-remote-connection="connected"]');
+    await page.waitForSelector('[data-remote-usage-card]');
+    // The offer to turn on notifications isn't what these pictures are about.
+    const notNow = page.getByRole('button', { name: 'Not now' });
+    if (await notNow.count()) await notNow.click();
+    const shot = async (name: string, scheme: 'dark' | 'light') => {
+      // The spinners and the slide of the drawer settle first.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const path = join(outDir, `${name}-${scheme}.png`);
+      await page.screenshot({ path, animations: 'disabled' });
+      writeFileSync(path, await sharp(path).png({ compressionLevel: 9, effort: 10, adaptiveFiltering: true }).toBuffer());
+      console.log(`  ${name}-${scheme}.png`);
+    };
+    for (const scheme of ['dark', 'light'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.evaluate(() => document.querySelector('[data-remote-list]')?.scrollTo(0, 0));
+      await shot('remote-phone-first-screen', scheme);
+
+      await page.click('[data-remote-computer-title="large"]');
+      await page.waitForSelector('[role=menu]');
+      await shot('remote-phone-computer-menu', scheme);
+      await page.keyboard.press('Escape');
+
+      // The drawer over a session, the way it opens from the session's header.
+      await page.click('[data-remote-list] [data-remote-session]:not([data-remote-session=""])');
+      await page.click('[data-remote-drawer-button]');
+      await page.waitForSelector('[data-remote-drawer="open"]');
+      await shot('remote-phone-drawer', scheme);
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('[data-remote-drawer]', { state: 'detached' });
+      await page.goBack();
+      await page.waitForSelector('[data-remote-usage-card]');
+    }
+    await context.close();
+  } finally {
+    await browser.close().catch(() => {});
+    hub.kill();
+    vite.kill();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+  }
+}
+
 // ---------------------------------------------------------------------------------------------------------
 // The screens, in order. Each starts from Home with nothing open, and leaves it that way.
 
 type Screen = { name: string; take(t: Tour): Promise<void> };
 
 const HERO = 'Add dark mode toggle';
+/** The finished session the catch-up pictures open (its catch-up comes with the demo, `demoCatchUps`). */
+const CATCH_UP = 'Refactor auth middleware';
 const WORKING = 'Fix rounding';
 const NEEDS_YOU = 'Upgrade Stripe';
 
-/** The side question for its picture has been asked (in the first colour scheme). */
+/** The questions for the Ask panel's picture have been asked (in the first colour scheme). */
 let sideAsked = false;
 
 const screens: Screen[] = [
@@ -466,6 +631,18 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'session-menu',
+    async take(t) {
+      const id = await t.openSession(HERO);
+      await t.q(`[data-sidebar-state] [data-session-id="${id}"]`).click({ button: 'right' });
+      await t.click('[role=menu] [data-session-project-menu]', 'the session menu has no Project');
+      await t.need('[role=menu][aria-label="Project"]', 'the Project submenu did not open');
+      await t.shot('session-menu', { keepFocus: true });
+      await t.escape(2);
+      await t.gone('[role=menu]', 'the session menu did not close');
+    },
+  },
+  {
     name: 'main-window',
     async take(t) {
       await t.openSession(HERO);
@@ -479,7 +656,48 @@ const screens: Screen[] = [
     name: 'conversation',
     async take(t) {
       await t.openSession(HERO);
+      // The hero has four prompts: the prompt outline shows its marks beside the conversation.
+      await t.need('[data-current-session] [data-prompt-outline] [data-prompt-mark][data-current]', 'the prompt outline beside the conversation');
       await t.shot('conversation');
+    },
+  },
+  {
+    name: 'prompt-outline',
+    async take(t) {
+      await t.openSession(HERO);
+      await t.need('[data-current-session] [data-prompt-mark="2"]', 'the prompt outline beside the conversation');
+      // From the keyboard, as Tab would get there: the focused mark shows its tooltip and its ring.
+      await t.page.evaluate(() => document.querySelector<HTMLElement>('[data-current-session] [data-prompt-mark="1"]')?.focus());
+      await t.press('ArrowDown');
+      await t.need('[data-current-session] [data-prompt-tooltip]', 'the tooltip of a focused mark');
+      await t.shot('prompt-outline', { clip: '[data-current-session] [data-transcript-area]', keepFocus: true });
+      await t.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
+    },
+  },
+  {
+    name: 'turn-details',
+    async take(t) {
+      // Time, duration and tokens under each reply, with the tokens' tooltip open (from the keyboard, as Tab gets there).
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="conversation"]');
+      await t.click('[data-turn-details="tokens"]');
+      await t.click('[data-close-settings]');
+      await t.openSession(HERO);
+      const tokens = t.page.locator('[data-current-session] [data-turn-meta] [data-turn-tokens]').last();
+      await tokens.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {
+        throw new Error('no finished turn with tokens in the hero session');
+      });
+      await tokens.scrollIntoViewIfNeeded();
+      await t.settle();
+      await tokens.focus();
+      await t.need('[data-turn-tokens-tooltip]', 'the tokens did not open their tooltip on focus');
+      await t.shot('turn-details', { clip: '[data-current-session] [data-transcript-area]', keepFocus: true });
+      await t.escape();
+      await t.gone('[data-turn-tokens-tooltip]', 'Esc did not close the tokens tooltip');
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="conversation"]');
+      await t.click('[data-turn-details="duration"]');
+      await t.click('[data-close-settings]');
     },
   },
   {
@@ -541,25 +759,65 @@ const screens: Screen[] = [
       await t.q(`[data-sidebar-state] [data-session-id="${working}"]`).click({ modifiers: ['Alt'] });
       await t.until(`document.querySelectorAll('[data-pane]').length === 2 && document.querySelector('[data-current-session="${working}"] [data-transcript-item]')`, 'the second pane did not open');
       await t.shot('split');
-      await t.click('[data-pane="split"] [data-close-pane]');
+      await t.click(`[data-pane="${working}"] [data-close-pane]`);
       await t.gone('[data-split]', 'the second pane did not close');
     },
   },
   {
-    // A side question (/btw) about the session Claude is working in, answered by the engine's stub (never a model).
-    // The first picture asks it; the second opens it again with a bare /btw, so both show the same panel.
-    name: 'side-question',
+    // Ask about this session, next to the session Claude is working in, answered by the engine's stub (never a
+    // model). The first picture asks a question from the message box and a follow-up in the panel; the second opens
+    // the panel again on the same thread.
+    name: 'ask-panel',
     async take(t) {
       await t.openSession(WORKING);
       const pane = '[data-current-session]';
-      await t.q(`${pane} [data-composer]`).fill(sideAsked ? '/btw ' : '/btw Why were the totals off by a cent?');
-      await t.need(`${pane} [data-btw-token]`, '"/btw " did not become the token');
-      await t.click(`${pane} [data-composer-ask]`, 'no Ask button with the token');
-      await t.need(`${pane} [data-btw-panel] [data-btw-answer="done"]`, 'the side answer did not come in', 15_000);
-      sideAsked = true;
-      await t.shot('side-question');
-      await t.click(`${pane} [data-btw-close]`);
-      await t.gone(`${pane} [data-btw-panel]`, 'the side question panel did not close');
+      if (!sideAsked) {
+        await t.q(`${pane} [data-composer]`).fill('Why were the totals off by a cent?');
+        await t.click(`${pane} [data-ask-button]`, 'no Ask button next to Send');
+        await t.need(`${pane} [data-ask-panel] [data-ask-item="done"]`, 'the answer did not come in', 15_000);
+        await t.q(`${pane} [data-ask-field]`).fill('Which test covers it?');
+        await t.q(`${pane} [data-ask-field]`).press('Enter');
+        await t.until(`document.querySelectorAll('${pane} [data-ask-item="done"]').length === 2`, 'the follow-up did not get its answer', 15_000);
+        sideAsked = true;
+      } else {
+        await t.click(`${pane} [data-ask-button]`, 'no Ask button next to Send');
+        await t.until(`document.querySelectorAll('${pane} [data-ask-item="done"]').length === 2`, 'the panel did not open on the thread');
+      }
+      await t.shot('ask-panel');
+      await t.click(`${pane} [data-ask-close]`);
+      await t.gone(`${pane} [data-ask-panel]`, 'the Ask panel did not close');
+    },
+  },
+  {
+    name: 'catch-up-banner',
+    async take(t) {
+      await t.openSession(CATCH_UP);
+      // Read sessions show the strip; Show catch-up opens the banner.
+      await t.need('[data-current-session] [data-catchup-strip]', 'the catch-up strip did not show');
+      await t.shot('catch-up-strip', { clip: '[data-current-session] [data-catchup-strip]', pad: 12 });
+      await t.click('[data-current-session] [data-catchup-show]');
+      await t.need('[data-current-session] [data-catchup-banner]', 'the catch-up banner did not open');
+      // The banner opens with Details; the plain banner is the one with Details closed.
+      await t.need('[data-current-session] [data-catchup-details]', 'Details did not open with the banner');
+      await t.click('[data-current-session] [data-catchup-details-toggle]');
+      await t.gone('[data-current-session] [data-catchup-details]', 'Details did not close');
+      await t.shot('catch-up-banner');
+      await t.click('[data-current-session] [data-catchup-details-toggle]');
+      await t.need('[data-current-session] [data-catchup-details]', 'Details did not open');
+      await t.shot('catch-up-banner-details', { clip: '[data-current-session] [data-catchup-banner]', pad: 12 });
+      // Folded again, so the session opens on its strip in the other screens.
+      await t.click('[data-current-session] [data-catchup-collapse]');
+      await t.need('[data-current-session] [data-catchup-strip]', 'the banner did not fold into the strip');
+    },
+  },
+  {
+    name: 'sidebar-quickest',
+    async take(t) {
+      await t.home();
+      await t.click('[data-sort-quick]');
+      await t.need('[data-session-group="review"]', 'Quickest to unblock did not group the sessions');
+      await t.shot('sidebar-quickest', { clip: '[data-sidebar-state]' });
+      await t.click('[data-sort-recent]');
     },
   },
   {
@@ -630,6 +888,43 @@ const screens: Screen[] = [
       } finally {
         rmSync(signedOut, { force: true });
         restore();
+      }
+    },
+  },
+  {
+    name: 'git-checks',
+    async take(t) {
+      // The checks of a pull request for feat/dark-mode, with times around now. The Branches tab's refresh reads the
+      // pull requests again (they are kept for a few minutes); it runs again at the end, so later pictures have none.
+      const minutes = (n: number) => new Date(Date.now() - n * 60_000).toISOString();
+      const run = (job: number) => `https://github.com/acme/acme-store/actions/runs/1001/job/${job}`;
+      const checks = [
+        { name: 'test (ubuntu-latest)', state: 'FAILURE', bucket: 'fail', link: run(2001), workflow: 'CI', description: '', startedAt: minutes(9), completedAt: minutes(5.3) },
+        { name: 'lint', state: 'SUCCESS', bucket: 'pass', link: run(2002), workflow: 'CI', description: '', startedAt: minutes(9), completedAt: minutes(8.2) },
+        { name: 'build', state: 'SUCCESS', bucket: 'pass', link: run(2003), workflow: 'CI', description: '', startedAt: minutes(9), completedAt: minutes(7.75) },
+        { name: 'deploy-preview', state: 'IN_PROGRESS', bucket: 'pending', link: run(2004), workflow: 'Preview', description: '', startedAt: minutes(1.2), completedAt: '0001-01-01T00:00:00Z' },
+      ];
+      const marker = join(t.world.home, '.fake-gh-checks');
+      const readPullRequests = async () => {
+        await openProjectPage(t, 'acme-store');
+        await t.click('[data-project-tab="branches"]');
+        await t.need('[data-branches-table] [data-branch-row]', 'the branches tab showed nothing', 30_000);
+        await t.click('[data-branch-refresh]');
+        await t.gone('[data-branches-loading]', 'the branches kept loading');
+        await t.until('!document.querySelector("[data-branch-refresh]:disabled")', 'the branches did not refresh', 30_000);
+      };
+      writeFileSync(marker, JSON.stringify(checks));
+      try {
+        await readPullRequests();
+        await t.openSession(HERO);
+        await t.click('[data-git-button] [data-git-menu]');
+        await t.need('[role="menu"] [data-check="fail"]', 'the git menu listed no failed check', 15_000);
+        await t.shot('git-checks', { keepFocus: true });
+        await t.escape();
+      } finally {
+        rmSync(marker, { force: true });
+        await readPullRequests();
+        await t.home();
       }
     },
   },
@@ -718,6 +1013,8 @@ const screens: Screen[] = [
     name: 'auto-model-session',
     async take(t) {
       await t.openSession(HERO);
+      // The pick shows above the first answer, which a long session leaves out of view: jump to the first prompt.
+      await t.click('[data-current-session] [data-prompt-mark="0"]', 'the prompt outline has no first prompt');
       await t.need('[data-auto-pick-line="opus"]', 'the session did not show what Auto picked');
       await t.click('[data-auto-why]');
       await t.need('[data-auto-popover]', 'Why did not open the popover');
@@ -731,7 +1028,8 @@ const screens: Screen[] = [
     async take(t) {
       await t.click('[data-open-settings]');
       await t.click('[data-settings-section="conversation"]');
-      await t.need('[data-auto-model-settings]', 'Settings › Conversation has no Auto model block');
+      // Below Catch-up on the page: bring it into view for its picture.
+      await (await t.need('[data-auto-model-settings]', 'Settings › Conversation has no Auto model block')).evaluate((el) => el.scrollIntoView({ block: 'center' }));
       await t.shot('auto-model-settings', { clip: '[data-auto-model-settings]', pad: 16 });
       await t.click('[data-close-settings]');
     },
@@ -760,12 +1058,132 @@ const screens: Screen[] = [
     },
   },
   {
+    // Clone from GitHub, from a bare repository in the clone source a driven run clones from (never the network):
+    // turned on with ~/Developer as its folder, the form filled in and the clone done, with a prompt. Turned off after.
+    name: 'clone-from-github',
+    async take(t) {
+      const userData = await t.app.evaluate(({ app }) => app.getPath('userData'));
+      const work = join(t.world.home, '.tmp-clone', 'design-tokens');
+      const bare = join(userData, 'clone-source', 'acme', 'design-tokens.git');
+      // Taken once per scheme: start from nothing each time.
+      rmSync(work, { recursive: true, force: true });
+      rmSync(bare, { recursive: true, force: true });
+      mkdirSync(work, { recursive: true });
+      git(work, ['init', '-q', '-b', 'main']);
+      commitFile(work, 'README.md', '# Design tokens\n\nColours, type and spacing for the Acme apps.\n', 'Add the README');
+      mkdirSync(join(userData, 'clone-source', 'acme'), { recursive: true });
+      git(work, ['clone', '-q', '--bare', work, bare]);
+      const folder = join(t.world.home, 'Developer');
+      await t.app.evaluate((_electron, dir) => {
+        process.env.SWITCHBOARD_PICK_FOLDER = dir;
+      }, folder);
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="projects"]');
+      await t.click('[data-clone-enabled]');
+      await t.until(`document.querySelector('[data-clone-enabled]')?.getAttribute('aria-checked') === 'true'`, 'Clone from GitHub did not turn on');
+      await t.click('[data-close-settings]');
+
+      await openNewSession(t, 'acme-store');
+      await t.click('[data-new-session-view] [data-clone-from-github]');
+      await t.page.locator('[data-clone-url]').fill('https://github.com/acme/design-tokens');
+      await t.until(`document.querySelector('[data-clone-repo]')?.dataset.clonePlan === 'free'`, 'the clone form did not say where it goes');
+      await t.press('Enter');
+      await t.until(`document.querySelector('[data-clone-repo]')?.dataset.cloneState === 'done'`, 'the clone did not finish');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('Read the tokens and list the colours that fail contrast in dark mode.');
+      await t.settle();
+      await t.shot('clone-from-github');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+
+      // Back as it was: the form closed, the project removed, the setting off, the clone gone.
+      await t.click('[data-clone-close]');
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="projects"]');
+      await t.click('[data-clone-enabled]');
+      await t.until(`document.querySelector('[data-clone-enabled]')?.getAttribute('aria-checked') === 'false'`, 'Clone from GitHub did not turn off');
+      await t.click('[data-close-settings]');
+      const clone = JSON.stringify(join(folder, 'design-tokens'));
+      await t.click('[data-open-projects]');
+      await t.click(`[data-project-row=${clone}] [data-project-more-button]`);
+      await t.click('[role=menu] [data-remove-project]');
+      await t.click('[data-confirm]');
+      await t.gone(`[data-project-row=${clone}]`, 'the clone was not removed from the projects');
+      rmSync(join(folder, 'design-tokens'), { recursive: true, force: true });
+      rmSync(join(t.world.home, '.tmp-clone'), { recursive: true, force: true });
+    },
+  },
+  {
     name: 'queue',
     async take(t) {
       await t.home();
       await t.need('[data-home-queue] [data-queue-item]', 'Home shows no queue');
       await hideUsageStatus(t);
       await t.shot('queue');
+    },
+  },
+  {
+    name: 'saved-prompts-slash',
+    async take(t) {
+      await openNewSession(t, 'acme-store');
+      await t.click('[data-new-session-view] [data-composer]');
+      await t.page.keyboard.insertText('/');
+      await t.need('[data-palette] [data-saved-prompt-option]', 'the / menu listed no saved prompts');
+      await t.shot('saved-prompts-slash', { keepFocus: true });
+      await t.escape();
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+    },
+  },
+  {
+    name: 'saved-prompt-fill',
+    async take(t) {
+      await openNewSession(t, 'acme-store');
+      await t.click('[data-new-session-view] [data-saved-prompt-chip="implement-issue"]', 'New session has no chip for Implement issue');
+      await t.need('[data-saved-prompt-header]', 'the chip did not put the prompt in the message box');
+      await t.until(`document.activeElement?.matches('[data-blank="issue"]')`, 'the first blank did not take the focus');
+      // Without GitHub here, the issue's number is taken as typed.
+      await t.press('1');
+      await t.need('[data-blank-popover] [data-blank-field]', 'typing on the issue did not open its field');
+      await t.page.keyboard.type('32');
+      await t.click('[data-blank-popover] [data-blank-option="#132"]', 'the typed issue was not offered');
+      await t.until(`document.activeElement?.matches('[data-blank="branch"]')`, 'the branch blank did not take the focus');
+      await t.press('Enter');
+      await t.click('[data-blank-popover] [data-blank-option="feat/wishlist"]', 'the branch list has no feat/wishlist');
+      await t.click('[data-new-session-view] [data-composer]');
+      await t.page.keyboard.insertText('Keep the wishlist button working while you are there.');
+      await t.need('[data-blanks-left="1"]', 'the box did not say 1 blank left');
+      await t.shot('saved-prompt-fill', { clip: '[data-new-session-view]', pad: 8 });
+      // Back to an empty box, so no unsent prompt is left for the other pictures.
+      await t.click('[data-saved-prompt-clear]');
+      await t.page.locator('[data-new-session-view] [data-composer]').first().fill('');
+    },
+  },
+  {
+    name: 'saved-prompt-editor',
+    async take(t) {
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="prompts"]');
+      await t.click('[data-saved-prompts-new]', 'Settings › Prompts has no New prompt');
+      await (await t.need('[data-prompt-editor-name]', 'New prompt did not open')).fill('Ship a fix');
+      await t.click('[data-prompt-editor]');
+      await t.page.keyboard.insertText('Fix {{issue:issue}} and add a test for it. Deploy to {{env:choice=staging|production}} when it passes.');
+      await t.need('[data-prompt-editor-preview]', 'the editor has no preview line');
+      await t.shot('saved-prompt-editor', { keepFocus: true });
+      // Never saved: the picture is all it is for.
+      await t.click('[data-prompt-editor-dialog] button:has-text("Cancel")');
+      await t.gone('[data-prompt-editor-dialog]', 'the prompt editor did not close');
+      await t.click('[data-close-settings]');
+    },
+  },
+  {
+    name: 'settings-prompts',
+    async take(t) {
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="prompts"]');
+      await t.need('[data-saved-prompt-row="fix-failing-test"]', 'Settings › Prompts did not list the shared prompts');
+      await t.click('[data-saved-prompt-row="fix-failing-test"] [data-saved-prompt-menu]');
+      await t.need('[role="menu"] [data-prompt-move]', 'the prompt menu has no Use in');
+      await t.shot('settings-prompts', { keepFocus: true });
+      await t.escape();
+      await t.click('[data-close-settings]');
     },
   },
   {
@@ -943,6 +1361,27 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'usage-limit-notice',
+    async take(t) {
+      // A finished session on the Work profile, so the made-up limit shows nowhere else in the pictures.
+      const title = 'Add CSV export to the reports endpoint';
+      // It is old enough to be under Archived: open it from there, then fold Archived again.
+      await t.home();
+      if (!(await t.page.locator('[data-archived-header]').count())) await t.click('[data-archived-toggle]');
+      await t.openSession(title);
+      await t.click('[data-archived-toggle]');
+      await t.need('[data-archived-dock]', 'Archived did not close');
+      const resetsAt = Math.round((Date.now() + (4 * 60 + 42) * 60_000) / 60_000) * 60_000;
+      const held = ['Then add a test for an empty report.', 'Update the API docs for text/csv.'];
+      writeFileSync(demoLimitFile(t.world), JSON.stringify({ sessionId: t.world.history[title]!.id, kind: 'five_hour', resetsAt, held }));
+      await t.need('[data-current-session] [data-limit-notice="stopped"]', 'the usage limit notice did not show', 10_000);
+      await t.need('[data-current-session] [data-queue-hold="limit"]', 'Up next did not say the usage limit holds it');
+      await t.shot('usage-limit-notice');
+      writeFileSync(demoLimitFile(t.world), 'null');
+      await t.gone('[data-current-session] [data-limit-notice]', 'the usage limit notice did not go away');
+    },
+  },
+  {
     name: 'usage-tokens',
     async take(t) {
       await openUsageView(t, 'tokens', 'week');
@@ -985,7 +1424,178 @@ const screens: Screen[] = [
       await t.click('[data-close-settings]');
     },
   },
-  ...(['general', 'theme', 'sidebar', 'conversation', 'focus', 'profiles', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
+  {
+    // Remote on with your own address (no tunnel tool needed) and two made-up devices written into the throwaway
+    // profile's cache: the status card, Paired devices, the folded Connection and Other computers. Turned off after.
+    name: 'settings-remote',
+    async take(t) {
+      const userData = await t.app.evaluate(({ app }) => app.getPath('userData'));
+      const db = new DatabaseSync(join(userData, 'cache.sqlite'));
+      try {
+        const insert = db.prepare('INSERT OR REPLACE INTO remote_devices (id, name, kind, public_key, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)');
+        insert.run('demo-phone', "Sam's iPhone", 'phone', 'demo-phone-key', Date.now() - 12 * DAY, Date.now() - 6 * 60 * 60 * 1000);
+        insert.run('demo-laptop', 'Studio laptop', 'browser', 'demo-laptop-key', Date.now() - 3 * DAY, Date.now() - 2 * DAY);
+      } finally {
+        db.close();
+      }
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="remote"]');
+      await t.need('[data-remote-off-card]', 'Settings › Remote did not say Remote is off');
+      await t.click('[data-remote-tunnel-option="custom"]');
+      await t.page.fill('[data-remote-custom-url] input', 'https://remote.example.com');
+      await t.click('[data-remote-save-connection]');
+      await t.click('[data-remote-turn-on]');
+      await t.need('[data-remote-status]', 'Turn on showed no status card');
+      // Switchboard itself may have Remote's port on this Mac: the card's own fix moves to a free one.
+      await t.settle();
+      if (await t.page.locator('[data-remote-action="use-port"]').count()) await t.click('[data-remote-action="use-port"]');
+      await t.until(`document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle === 'Running'`, 'Remote did not say Running');
+      await t.settle();
+      await t.shot('settings-remote');
+      await t.click('[data-remote-enabled]');
+      await t.click('[data-close-settings]');
+    },
+  },
+  {
+    // Connected to this Mac: two made-up devices, paired days ago in the throwaway profile's cache, connect for real
+    // (the engine's test phone, with the engine's key from a pairing link that is cancelled at once). The sidebar's
+    // section with the details popover open. Revoked and turned off after.
+    name: 'connected-devices',
+    async take(t) {
+      const userData = await t.app.evaluate(({ app }) => app.getPath('userData'));
+      const devices = [
+        { id: 'demo-connected-phone', name: "Sam's iPhone", kind: 'phone', secret: randomBytes(32), paired: Date.now() - 3 * DAY },
+        { id: 'demo-connected-browser', name: 'Safari on Studio laptop', kind: 'browser', secret: randomBytes(32), paired: Date.now() - 9 * DAY },
+      ];
+      const db = new DatabaseSync(join(userData, 'cache.sqlite'));
+      try {
+        const insert = db.prepare('INSERT OR REPLACE INTO remote_devices (id, name, kind, public_key, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)');
+        for (const d of devices) insert.run(d.id, d.name, d.kind, Buffer.from(x25519.getPublicKey(d.secret)).toString('base64url'), d.paired, d.paired);
+      } finally {
+        db.close();
+      }
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="remote"]');
+      // My own address, as in settings-remote: no tunnel starts, and the address is a made-up one.
+      await t.need('[data-remote-off-card]', 'Settings › Remote did not say Remote is off');
+      await t.click('[data-remote-tunnel-option="custom"]');
+      await t.page.fill('[data-remote-custom-url] input', 'https://remote.example.com');
+      await t.click('[data-remote-save-connection]');
+      await t.click('[data-remote-turn-on]');
+      await t.need('[data-remote-status]', 'Turn on showed no status card');
+      await t.settle();
+      if (await t.page.locator('[data-remote-action="use-port"]').count()) await t.click('[data-remote-action="use-port"]');
+      await t.until(`document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle === 'Running'`, 'Remote did not say Running');
+      // The engine's key, from a pairing link; closing the dialog makes the link useless. Copy link is caught in the
+      // page, so the system's clipboard is never touched.
+      await t.page.evaluate(() => {
+        navigator.clipboard.writeText = async (text: string) => void ((window as unknown as { demoLink: string }).demoLink = text);
+      });
+      await t.click('[data-remote-action="pair"]');
+      await t.click('[data-remote-copy-link]');
+      await t.until('Boolean(window.demoLink)', 'Copy link gave no pairing link');
+      const link = await t.page.evaluate(() => (window as unknown as { demoLink: string }).demoLink);
+      await t.page.keyboard.press('Escape');
+      const settings = new DatabaseSync(join(userData, 'cache.sqlite'));
+      const port = (JSON.parse((settings.prepare("SELECT value FROM app_state WHERE key = 'remote.settings'").get() as { value: string }).value) as { port: number }).port;
+      settings.close();
+      const phones = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(root, 'scripts', 'demo-phones.ts')], {
+        env: { ...process.env, SWITCHBOARD_DEMO_LINK: link, PORT: String(port), SWITCHBOARD_DEMO_SECRETS: devices.map((d) => d.secret.toString('base64')).join(',') },
+        stdio: ['ignore', 'pipe', 'inherit'],
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          phones.stdout.on('data', (data: Buffer) => data.toString().includes('connected') && resolve());
+          phones.on('exit', (code) => reject(new Error(`the demo devices did not connect (exit ${code})`)));
+        });
+        await t.click('[data-close-settings]');
+        await t.need('[data-connected-devices="devices"] [data-connected-device="demo-connected-browser"]', 'the connected devices did not show in the sidebar');
+        // The toasts for the new connections are not part of this picture.
+        const toasts = t.page.locator('[data-device-toast] [data-toast-close]');
+        for (let i = 0; i < 5 && (await toasts.count()); i++) await toasts.first().click({ force: true }).catch(() => {});
+        await t.gone('[data-device-toast]', 'the connected toasts did not go');
+        await t.click('[data-connected-device="demo-connected-phone"] [data-device-row]');
+        await t.need('[data-device-details]', 'the details popover did not open');
+        await t.settle();
+        await t.shot('connected-devices');
+        await t.page.keyboard.press('Escape');
+      } finally {
+        phones.kill();
+        await t.click('[data-open-settings]').catch(() => {});
+        await t.click('[data-settings-section="remote"]').catch(() => {});
+        for (const d of devices) {
+          if (!(await t.page.locator(`[data-remote-device="${d.id}"] [data-remote-revoke]`).count())) continue;
+          await t.click(`[data-remote-device="${d.id}"] [data-remote-revoke]`);
+          await t.click('[data-confirm-strip] [data-confirm]');
+        }
+        await t.click('[data-remote-enabled]').catch(() => {});
+        await t.click('[data-close-settings]').catch(() => {});
+      }
+    },
+  },
+  {
+    // Other computers: a paired computer's sessions in the sidebar with its chips and the Computers strip, one of them
+    // open with the violet line, New session with Run on set to it, and Usage counting its tokens. Nothing is started there.
+    name: 'computers',
+    async take(t) {
+      await withComputer(t, async (computerId) => {
+        await t.shot('computers-sidebar', { clip: '[data-sidebar-state]' });
+        await t.click(`[data-session-list] [data-remote-row="${computerId}"]`);
+        await t.need('[data-remote-header]', 'the remote session did not open');
+        await t.need('[data-transcript] [data-prompt-bubble]', 'the remote conversation did not load');
+        await t.shot('computers-session');
+        await t.click('[data-new-session]');
+        await t.click(`[data-run-on-option="${computerId}"]`);
+        await t.need('[data-remote-new-session] [data-remote-project]', 'Run on mystic showed no projects');
+        await t.click('[data-remote-new-session] [data-remote-project]');
+        await t.page.fill('[data-remote-new-session] textarea', 'Add rate limits to the webhook endpoints, as in the spec');
+        // An image and a file to send with it: a screenshot of the docs' own, and a made-up spec.
+        await t.page.setInputFiles('[data-remote-new-session] [data-remote-attach-input]', [
+          { name: 'rate-limits.png', mimeType: 'image/png', buffer: readFileSync(join(outDir, 'code-block-dark.png')) },
+          { name: 'webhook-limits.md', mimeType: 'text/markdown', buffer: Buffer.from('# Webhook limits\n\n100 requests a minute per key.\n') },
+        ]);
+        await t.need('[data-remote-new-session] [data-remote-file]', 'the attached file did not show');
+        await t.need('[data-remote-new-session] [data-attachments] img', 'the attached image did not show');
+        await t.shot('computers-new-session');
+        for (let i = 0; i < 2; i++) await t.click('[data-remote-new-session] [data-remote-attachments] button[aria-label^="Remove"]');
+        await t.page.fill('[data-remote-new-session] textarea', '');
+        await t.click('[data-run-on-option="local"]');
+        // Usage with All computers: mystic's tokens for the same account next to this computer's, then per computer.
+        await openUsageView(t, 'tokens', 'week');
+        await t.click('[data-usage-computers-choice="all"]');
+        await t.click('[data-usage-group="session"]');
+        await t.need(`[data-usage-breakdown] [data-usage-row-from="${computerId}"]`, 'the breakdown listed no session from mystic', 20_000);
+        await t.need('[data-usage-headline] [data-usage-computers="2"]', 'the totals did not count two computers');
+        await t.shot('usage-computers');
+        await t.click('[data-usage-group="computer"]');
+        await t.need(`[data-usage-breakdown="computer"] [data-usage-row="${computerId}"]`, 'the breakdown had no row for mystic');
+        await t.shot('usage-by-computer', { clip: '[data-usage-breakdown]', pad: 8 });
+        await t.click('[data-usage-group="session"]');
+        await t.escape();
+        await t.gone('[data-usage-view]', 'Esc did not leave the Usage view');
+      });
+    },
+  },
+  {
+    name: 'mods',
+    async take(t) {
+      for (const end = Date.now() + 45_000; !existsSync(modsStarted) && Date.now() < end; ) await new Promise((resolve) => setTimeout(resolve, 200));
+      if (!existsSync(modsStarted)) throw new Error('the mods session did not start');
+      const started = JSON.parse(readFileSync(modsStarted, 'utf8')) as { sessionId?: string; supported?: boolean };
+      if (!started.sessionId || !started.supported) throw new Error("the mods session didn't start, or this Claude Code doesn't draw mods");
+      await t.click(`[data-session-id="${started.sessionId}"]`);
+      // Claude Code doesn't say which mod drew a band, so with two mods in the profile its frame says "mod".
+      await t.need('[data-current-session] [data-mod-bands] [data-mod-band]', 'the agent-watch band did not show');
+      await t.need('[data-current-session] [data-mod-pane="agents"]', 'the Agents pane did not open');
+      await t.settle();
+      await t.shot('mods');
+      await t.click('[data-current-session] [data-mods-chip]');
+      await t.need('[data-mods-popover]', 'the mods popover did not open');
+      await t.shot('mods-popover', { clip: '[data-mods-popover]', pad: 12, keepFocus: true });
+      await t.page.keyboard.press('Escape');
+    },
+  },
+  ...(['general', 'theme', 'sidebar', 'projects', 'conversation', 'mods', 'focus', 'profiles', 'usage', 'memory', 'vscode', 'backup', 'diagnostics', 'about'] as const).map(
     (section): Screen => ({
       name: `settings-${section}`,
       async take(t) {
@@ -1029,6 +1639,23 @@ async function openNewSession(t: Tour, project: string): Promise<void> {
   }
   void index;
   throw new Error(`New session could not pick ${project}`);
+}
+
+/** Makes a saved prompt in Settings › Prompts, the text pasted in (its blanks become chips). */
+async function makePrompt(t: Tour, name: string, text: string, useIn: 'global' | 'personal'): Promise<void> {
+  await t.click('[data-open-settings]');
+  await t.click('[data-settings-section="prompts"]');
+  await t.click('[data-saved-prompts-new]', 'Settings › Prompts has no New prompt');
+  await (await t.need('[data-prompt-editor-name]', 'New prompt did not open')).fill(name);
+  await t.click(`[data-prompt-use-in="${useIn}"]`);
+  await t.click('[data-prompt-editor]');
+  await t.page.keyboard.insertText(text);
+  await t.need('[data-prompt-editor] [data-editor-blank]', 'the pasted prompt has no blanks');
+  await t.click('[data-prompt-editor-save]');
+  await t.gone('[data-prompt-editor-dialog]', `“${name}” was not saved`);
+  // The toast that says it was saved would be in the pictures.
+  await t.page.locator('[data-toast] button[aria-label="Dismiss"]').first().click().catch(() => {});
+  await t.click('[data-close-settings]');
 }
 
 async function openMemoryTab(t: Tour): Promise<void> {
@@ -1116,10 +1743,15 @@ function demoUsage(world: DemoWorld): string {
         },
       ],
       autoPicks: demoAutoPicks(world, now),
+      catchUps: demoCatchUps(world, now),
+      limitFile: demoLimitFile(world),
     }),
   );
   return file;
 }
+
+/** Where the tour writes the made-up usage limit for its picture; the demo engine watches it (see `DemoUsage.limitFile`). */
+const demoLimitFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-limit.json');
 
 /**
  * What Auto model picked for some of the demo sessions, and a few more routing calls, so a session shows its pick
@@ -1152,6 +1784,46 @@ function demoAutoPicks(world: DemoWorld, now: number) {
   return picks;
 }
 
+/**
+ * Catch-up cards for some of the finished demo sessions, as if their turns had just ended (the engine stores them,
+ * SWITCHBOARD_DEMO_USAGE): one ready to commit, one with a file outside what was asked, one with failing tests.
+ */
+function demoCatchUps(world: DemoWorld, now: number) {
+  const of = (title: string) => world.history[title]!.id;
+  const card = (title: string, ask: string, ago: number, patch: Record<string, unknown>) => ({
+    sessionId: of(title),
+    turnId: `demo-${of(title)}`,
+    generatedAt: now - ago,
+    source: 'model',
+    state: 'finished',
+    ask,
+    skipped: [],
+    ...patch,
+  });
+  return [
+    card(CATCH_UP, 'Split the auth middleware into session and API-key checks, they are tangled together right now.', 4 * 60_000, {
+      did: ['Split the auth middleware into a session check and an API-key check', 'Each route now picks the check it needs', 'Removed the old combined middleware', 'Added 6 tests for the two checks'],
+      skipped: ['Left the admin routes on the old check for now'],
+      need: { kind: 'commit', title: 'Commit the changes', text: 'Tests pass and every change stays in src/middleware. Ready to commit.' },
+      signals: { tests: { state: 'passed', passed: 14, failed: 0, command: 'npm test' }, diff: { files: 6, add: 120, del: 40 }, outOfScope: [], scope: 'src/middleware', plan: 'followed' },
+      reviewMinutes: 3,
+    }),
+    card('Write a getting started guide', 'Write a getting started guide for the docs site: install, first request, and where to go next.', 30 * 60_000, {
+      did: ['Wrote the getting started guide', 'Linked it from the sidebar under Start here'],
+      need: { kind: 'review', title: 'Review the changes', text: '1 file outside src/content/docs. Look at it before you commit.' },
+      signals: { tests: { state: 'notRun' }, diff: { files: 2, add: 64, del: 3 }, outOfScope: ['astro.config.mjs'], scope: 'src/content/docs', plan: null },
+      reviewMinutes: 2,
+    }),
+    card('Add CSV export to the reports endpoint', 'Let /reports return CSV when the client asks for text/csv.', 2 * 3_600_000, {
+      did: ['Let GET /reports answer with CSV for Accept: text/csv', 'Streamed the rows instead of building the whole file'],
+      skipped: ['2 of 9 tests fail'],
+      need: { kind: 'reply', title: 'Decide about the failing tests', text: '2 of 9 tests fail. Tell Claude how to go on.' },
+      signals: { tests: { state: 'failed', passed: 7, failed: 2, command: 'npm test' }, diff: { files: 3, add: 80, del: 10 }, outOfScope: [], scope: null, plan: null },
+      reviewMinutes: 4,
+    }),
+  ];
+}
+
 // ---------------------------------------------------------------------------------------------------------
 // Setup: what someone would do after installing, then the state the pictures need.
 
@@ -1164,6 +1836,8 @@ async function setUp(t: Tour): Promise<void> {
   await t.click('[data-add-profile]');
   await (await t.need('[data-new-profile-name]', 'the add profile form did not open')).fill('Work');
   await t.q('[data-new-profile-folder]').fill(join(t.world.home, '.claude-work'));
+  // The demo folder is signed in already; off anyway, so no Claude Code starts in the terminal.
+  await t.click('[data-new-profile-sign-in]');
   await t.click('[data-add-profile-submit]');
   await t.until(`document.querySelectorAll('[data-profiles] [data-profile]').length === 2`, 'the Work profile was not added');
   await t.click('[data-close-settings]');
@@ -1185,6 +1859,10 @@ async function setUp(t: Tour): Promise<void> {
   // Pin the session people come back to.
   await t.openSession('Refactor auth middleware');
   await t.command('pin', 'Pin');
+
+  // Saved prompts of your own, for every project and for acme-store (the open session's project) just for you.
+  await makePrompt(t, 'Implement issue', 'Start implementing {{issue:issue}} on {{branch:branch}}. Deploy to {{env:choice=staging|production}} when the tests pass.', 'global');
+  await makePrompt(t, 'Write release notes', 'Write the release notes for {{version}} from the changes since {{base:branch}}.', 'personal');
 
   // An unsent message in a finished session.
   await t.openSession('Investigate flaky checkout');
@@ -1247,6 +1925,20 @@ console.log(`demo home: ${world.home}`);
 // The registry the app checks offers the version that is installed, so Settings says Claude Code is up to date.
 const claudeVersion = claude ? (/\d+\.\d+\.\d+/.exec(execFileSync(claude, ['--version'], { encoding: 'utf8' }))?.[0] ?? '2.0.0') : '2.0.0';
 
+// Claude Code mods: two made-up mods (scripts/demo-mods) in a throwaway profile of their own. The app starts a session
+// with them as it opens, with agent-watch's `/agent-watch`, which the mod answers without the model.
+// They live in the demo home, so Settings › Mods shows them as ~/.claude/plugins/<name>.
+const modsDir = mkdtempSync(join(tmpdir(), 'switchboard-shots-mods-'));
+const demoMods = ['agent-watch', 'pr-status'].map((name) => {
+  const folder = join(world.home, '.claude', 'plugins', name);
+  cpSync(join(root, 'scripts', 'demo-mods', name), folder, { recursive: true });
+  return folder;
+});
+mkdirSync(join(world.home, '.claude-mods'));
+mkdirSync(join(modsDir, 'switchboard'));
+const modsStarted = join(modsDir, 'started.json');
+const modsSpec = { pluginDir: demoMods.join(':'), configDir: join(world.home, '.claude-mods'), cwd: join(modsDir, 'switchboard'), out: modsStarted, prompt: '/agent-watch', profileName: 'Mods' };
+
 const electronPath = createRequire(join(appDir, 'package.json'))('electron') as unknown as string;
 const { ELECTRON_RUN_AS_NODE: _, ...env } = process.env;
 const app = await _electron.launch({
@@ -1257,6 +1949,7 @@ const app = await _electron.launch({
     HOME: world.home,
     CLAUDE_CONFIG_DIR: join(world.home, '.claude'),
     SWITCHBOARD_DRIVEN: '1',
+    SWITCHBOARD_SMOKE_MODS: JSON.stringify(modsSpec),
     SWITCHBOARD_GH: fakeGh(world.home),
     SWITCHBOARD_DEMO_USAGE: demoUsage(world),
     // No "Claude Code vX is available" in the pictures: the registry offers nothing newer.
@@ -1288,6 +1981,7 @@ try {
       await screen.take(tour);
     }
   }
+  if (!only || only.has('remote-phone')) await phoneShots();
 } catch (error) {
   failed = true;
   console.error(`✗ ${(error as Error).message}`);
@@ -1301,6 +1995,7 @@ try {
   }
   world.stop();
   rmSync(world.home, { recursive: true, force: true });
+  rmSync(modsDir, { recursive: true, force: true });
 }
 if (failed) process.exit(1);
 console.log(`✓ screenshots written to ${outDir}`);

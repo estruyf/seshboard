@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CanUseTool, Options, PermissionResult, PermissionUpdate, Query, SDKUserMessage, WarmQuery } from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, HookCallback, Options, PermissionResult, PermissionUpdate, Query, SDKUserMessage, WarmQuery } from '@anthropic-ai/claude-agent-sdk';
 import {
   RpcError,
   type Capabilities,
@@ -19,21 +19,30 @@ import {
   type SessionHostInfo,
   type SlashCommand,
   type StreamDelta,
+  type UsageLimitHit,
   type WorktreeRequest,
+  type ModLog,
+  type ModPromptAnswer,
+  type ModPromptAsk,
+  type ModsSnapshot,
 } from '@switchboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
+import type { ModsEvents, ModsSurface } from './modsSurface.ts';
 import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery } from './sessionHost.ts';
-import { askSideQuestion, type SideAnswer, type SideExchange } from './sideQuestions.ts';
+import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
+import { limitPrefixes, type LimitStop } from '../usageLimit/usageLimit.ts';
 
 /** The two SDK entry points the manager needs; injected so tests can fake Claude Code. */
 export interface SdkRuntime {
   query(args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }): Query;
   startup(args: { options: Options }): Promise<WarmQuery>;
+  /** The messages that mean a usage limit was reached (alpha in the SDK, so it may be missing: see `limitPrefixes`). */
+  USAGE_LIMIT_ERROR_PREFIXES?: readonly string[];
 }
 
 export interface HostManagerDeps {
@@ -89,7 +98,27 @@ export interface HostManagerDeps {
   upNext?: { list(sessionId: string): StoredUpNext[]; all(): Array<{ sessionId: string; queue: QueuedMessage[] }>; save(sessionId: string, messages: readonly StoredUpNext[]): void };
   /** A session's Up next changed (running or not), for windows showing it. */
   onUpNext?: (sessionId: string, queue: QueuedMessage[]) => void;
+  /** A session's turn ended: finished, or stopped with an error. */
+  onTurnEnd?: (sessionId: string, outcome: { ok: boolean; error: string | null }) => void;
+  /**
+   * Plan usage limits per profile (`UsageLimits`): a turn a limit stopped sets one, a turn that gets through clears it,
+   * and while one is set the profile's queues wait. Call `limitChanged` when one is set or cleared from elsewhere.
+   */
+  limits?: { of(profileId: string): UsageLimitHit | null; hit(profileId: string, sessionId: string, stop: LimitStop): void; ok(profileId: string, sessionId: string): void };
+  /**
+   * Where sessions' mods report to (the `mods.*` events). `ask` goes to the windows; their answer comes back through
+   * `answerModPrompt`. Without it, sessions never attach mods.
+   */
+  mods?: Omit<ModsEvents, 'ask' | 'diagnostics'> & { ask(ask: ModPromptAsk): void };
+  /**
+   * Session linking (`LinkService`): `expand` turns a message's stubs into briefs as it goes to Claude Code, `warm`
+   * reads gh and git for them first (briefly) when a message is sent or queued.
+   */
+  links?: { expand(sessionId: string, text: string): string; warm(text: string): Promise<void> };
 }
+
+/** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
+const MOD_ASK_MS = 5_000;
 
 /** Command lists differ per folder (project commands) and per profile (user commands, skills, plugins). */
 export interface CommandKey {
@@ -142,6 +171,8 @@ export interface CreateParams {
   pickModel?: (sessionId: string) => Promise<{ model: string | null; autoPick: AutoPick }>;
 }
 
+const NOT_RUNNING_MESSAGE = 'This session is not running in Switchboard';
+
 const DEFAULT_MODELS: ModelOption[] = [
   { value: 'default', displayName: 'Default', description: 'Your Claude Code default', supportsEffort: true },
   { value: 'opus', displayName: 'Opus', description: 'Most capable', supportsEffort: true },
@@ -171,6 +202,12 @@ export class HostManager {
   private readonly choosing = new Set<string>();
   private readonly reaper: ReturnType<typeof setInterval>;
 
+  /** Show mods (Settings › Mods); every session follows it, without a restart. */
+  private showMods = true;
+  /** Use Claude in Chrome (Settings › General): sessions, and the pre-warmed process, start with `--chrome`. */
+  private chrome = false;
+  private readonly modAsks = new Map<string, (answer: ModPromptAnswer | null) => void>();
+
   constructor(private readonly deps: HostManagerDeps) {
     this.settings = deps.sessionSettings ?? createMemorySessionSettings();
     if (deps.models?.length) this.models = deps.models;
@@ -190,6 +227,7 @@ export class HostManager {
   }
 
   async create(params: CreateParams): Promise<string> {
+    await this.deps.links?.warm(params.prompt);
     const warm = this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
@@ -213,6 +251,8 @@ export class HostManager {
       if (params.model) await host.setModel(params.model).catch(() => {});
       if (params.permissionMode !== 'default') await host.setPermissionMode(params.permissionMode).catch(() => {});
     }
+    // Claude Code has already failed (no login, a folder it can't start in): no message can go, so say why.
+    if (!host.active) throw new RpcError('START_FAILED', host.info.error ?? 'Claude Code stopped before the session started');
     // Return the id now, so the window can show the session (and its setup terminals) right away.
     const setup = params.beforeFirstMessage?.(sessionId).catch((error: Error) => this.deps.log('warn', `Worktree setup failed: ${error.message}`));
     if (params.pickModel) {
@@ -267,7 +307,7 @@ export class HostManager {
    * A fork, or an idle session, just sends.
    */
   async send(params: { sessionId: string; text: string; attachments: ImageAttachment[]; fork: boolean; mode?: SendMode }): Promise<{ sessionId: string; messageUuid: string; queued: boolean }> {
-    const host = await this.ensureHost(params.sessionId, params.fork, 'This session is open in another Claude Code window. Fork it to continue here.');
+    const [host] = await Promise.all([this.ensureHost(params.sessionId, params.fork, 'This session is open in another Claude Code window. Fork it to continue here.'), this.deps.links?.warm(params.text)]);
     const mode = params.mode ?? 'queue';
     let messageUuid: string;
     let queued = false;
@@ -383,10 +423,13 @@ export class HostManager {
   }
 
   async context(sessionId: string): Promise<ContextUsage> {
+    const host = this.require(sessionId);
     try {
-      return await this.require(sessionId).contextUsage();
+      return await host.contextUsage();
     } catch (error) {
       if (error instanceof RpcError) throw error;
+      // While its process starts or exits, Claude Code can't answer ("ProcessTransport is not ready for writing").
+      if (!host.active || host.info.state === 'starting') throw new RpcError('NOT_RUNNING', NOT_RUNNING_MESSAGE);
       throw new RpcError('CONTEXT_FAILED', (error as Error).message);
     }
   }
@@ -429,12 +472,28 @@ export class HostManager {
 
   /** What Auto picked for a session (null: it didn't), also when it isn't running. */
   autoPick(sessionId: string): AutoPick | null {
+    // A host without a proper id must not break the whole list.
+    if (typeof sessionId !== 'string' || !sessionId) return null;
     if (!this.picks.has(sessionId)) this.picks.set(sessionId, this.settings.get(sessionId)?.autoPick ?? null);
     return this.picks.get(sessionId) ?? null;
   }
 
   private withPick(info: SessionHostInfo): SessionHostInfo {
-    return { ...info, autoPick: this.autoPick(info.sessionId), ...(this.choosing.has(info.sessionId) ? { autoChoosing: true } : {}) };
+    return {
+      ...info,
+      autoPick: this.autoPick(info.sessionId),
+      ...(this.choosing.has(info.sessionId) ? { autoChoosing: true } : {}),
+      usageLimit: this.deps.limits?.of(info.profileId) ?? null,
+    };
+  }
+
+  /** A profile hit or left a usage limit: its sessions report it, and their queues move on once it is cleared. */
+  limitChanged(profileId: string): void {
+    for (const host of this.hosts.values()) {
+      if (!host.active || host.info.profileId !== profileId) continue;
+      this.deps.onInfo(this.withPick(host.info));
+      host.drainQueue();
+    }
   }
 
   close(sessionId: string): void {
@@ -569,21 +628,86 @@ export class HostManager {
   }
 
   /**
-   * Answers a side question for a session. One running here answers on its own process, beside its turn. Otherwise a
-   * short-lived copy answers: resumed as a fork that persists nothing, so the session isn't started, nothing is
-   * written, and it works while another Claude Code window has the session open.
+   * Answers a question about a session (Ask about this session) from a short-lived fork of it: resumed with
+   * `forkSession` and `persistSession: false`, so the session isn't touched (also while it runs a turn here or in
+   * another Claude Code window) and nothing is written. It keeps the session's model, effort and tools, so the prompt
+   * cache still matches, and a PreToolUse hook lets only reading through (spike 14). Text comes in through `onText`.
    */
-  async sideQuestion(sessionId: string, question: string, history: SideExchange[]): Promise<SideAnswer> {
-    const host = this.running(sessionId) ?? (await this.starting.get(sessionId)?.catch(() => null));
-    if (host?.active) return host.askSideQuestion(question, history);
+  async askAbout(sessionId: string, prompt: string, onText: (text: AskText) => void): Promise<AskResult> {
     const cwd = this.deps.sessionCwd(sessionId);
     if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');
-    const model = this.settings.get(sessionId)?.model ?? null;
-    return this.withHelper(cwd, this.deps.sessionProfile(sessionId), (query) => askSideQuestion(query, question, history), {
-      extra: { resume: sessionId, forkSession: true, ...(model ? { model } : {}) },
-      // A long conversation takes a while to load and answer from.
-      timeoutMs: 180_000,
+    const profileId = this.deps.sessionProfile(sessionId);
+    const running = this.running(sessionId)?.info;
+    const settings = this.settings.get(sessionId);
+    const model = running?.model ?? settings?.model ?? null;
+    const effort = running?.effort ?? settings?.effort ?? null;
+    const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
+    const helperId = randomUUID();
+    this.deps.ephemeral?.add(helperId);
+    const message: SDKUserMessage = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: prompt }] }, parent_tool_use_id: null };
+    const input: AsyncIterable<SDKUserMessage> = (async function* () {
+      yield message;
+    })();
+    const guard: HookCallback = async (hook) => {
+      const tool = hook as { tool_name?: string; tool_input?: unknown };
+      const allowed = isReadOnlyTool(tool.tool_name ?? '', (tool.tool_input ?? {}) as Record<string, unknown>);
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: allowed ? 'allow' : 'deny', ...(allowed ? {} : { permissionDecisionReason: READ_ONLY_REASON }) } };
+    };
+    const query = sdk.query({
+      prompt: input,
+      options: {
+        resume: sessionId,
+        forkSession: true,
+        // Claude Code takes a custom id with --resume only together with --fork-session; the engine hides it by this id.
+        sessionId: helperId,
+        persistSession: false,
+        cwd,
+        env,
+        pathToClaudeCodeExecutable: claudePath,
+        settingSources: ['user', 'project', 'local'],
+        systemPrompt: { type: 'preset', preset: 'claude_code' },
+        includePartialMessages: true,
+        maxTurns: ASK_MAX_TURNS,
+        permissionMode: 'default',
+        hooks: { PreToolUse: [{ hooks: [guard] }] },
+        // The hook already allowed or denied; this only answers what it let through that would otherwise prompt.
+        canUseTool: async (name, toolInput) => (isReadOnlyTool(name, toolInput) ? { behavior: 'allow', updatedInput: toolInput } : { behavior: 'deny', message: READ_ONLY_REASON }),
+        ...(model ? { model } : {}),
+        ...(effort ? { effort } : {}),
+        stderr: (data) => this.deps.log('debug', `[claude ask] ${data.trimEnd()}`),
+      },
     });
+    // Each API response once, by its message id: Claude Code repeats a message's usage on every block of it.
+    const responses = new Map<string, AskUsage>();
+    let answer: string | null = null;
+    let error: string | undefined;
+    const run = async () => {
+      for await (const event of query) {
+        if (event.type === 'stream_event') {
+          const raw = event.event as { type?: string; delta?: { type?: string; text?: string } };
+          if (event.parent_tool_use_id === null && raw.type === 'content_block_delta' && raw.delta?.type === 'text_delta' && raw.delta.text) onText({ delta: raw.delta.text });
+        } else if (event.type === 'assistant') {
+          const usage = readUsage(event.message);
+          if (usage) responses.set(usage.key, { model: usage.model, tokens: usage.tokens });
+          // Text before a tool call is Claude saying what it reads next; the answer comes after.
+          if (event.parent_tool_use_id === null && event.message.content.some((block: { type: string }) => block.type === 'tool_use')) onText({ reset: true });
+        } else if (event.type === 'result') {
+          if (event.subtype === 'success' && !event.is_error) answer = event.result;
+          else error = event.subtype === 'error_max_turns' ? 'Claude needed more steps than a side question gets. Ask something narrower.' : (('errors' in event && event.errors[0]) || 'Claude could not answer.');
+          break;
+        }
+      }
+    };
+    try {
+      await Promise.race([run(), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Claude took too long to answer.')), ASK_TIMEOUT_MS))]);
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      query.close();
+      // Its registry entry stays until the process has exited.
+      setTimeout(() => this.deps.ephemeral?.delete(helperId), 30_000).unref?.();
+    }
+    return { answer, ...(error ? { error } : {}), usage: sumByModel([...responses.values()]) };
   }
 
   /**
@@ -628,6 +752,63 @@ export class HostManager {
     this.deps.onModels?.(models);
   }
 
+  /** Show mods on or off: open sessions attach or detach at once. */
+  setShowMods(enabled: boolean): void {
+    this.showMods = enabled;
+    for (const host of this.hosts.values()) if (host.active) host.mods.setEnabled(enabled);
+  }
+
+  /**
+   * Use Claude in Chrome on or off. Claude Code reads `--chrome` only at startup, so running sessions keep what they
+   * started with; the warm process is dropped, or the next new session would take one started with the old value.
+   */
+  setChrome(enabled: boolean): void {
+    // Main sends every engine setting after any preference change: only a real change costs the warm process.
+    if (enabled === this.chrome) return;
+    this.chrome = enabled;
+    this.discardWarm();
+  }
+
+  /** The mods surface of a running session (NOT_RUNNING otherwise). */
+  mods(sessionId: string): ModsSurface {
+    return this.require(sessionId).mods;
+  }
+
+  /** What every running session's mods show. */
+  modsSnapshots(): ModsSnapshot[] {
+    return [...this.hosts.values()].filter((h) => h.active).map((h) => h.mods.snapshot());
+  }
+
+  /** Mod log lines of one session, or of all of them. */
+  modLogs(sessionId?: string): ModLog[] {
+    const hosts = sessionId ? [this.hosts.get(sessionId)].filter((h) => h !== undefined) : [...this.hosts.values()];
+    return hosts.flatMap((h) => h.mods.logLines()).sort((a, b) => a.at - b.at);
+  }
+
+  /** A window answered Claude Code's question about its message box; the first answer wins. */
+  answerModPrompt(answer: ModPromptAnswer): void {
+    const resolve = this.modAsks.get(answer.requestId);
+    this.modAsks.delete(answer.requestId);
+    resolve?.(answer);
+  }
+
+  private askWindow(ask: ModPromptAsk): Promise<ModPromptAnswer | null> {
+    const mods = this.deps.mods;
+    if (!mods) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.modAsks.delete(ask.requestId);
+        resolve(null);
+      }, MOD_ASK_MS);
+      timer.unref?.();
+      this.modAsks.set(ask.requestId, (answer) => {
+        clearTimeout(timer);
+        resolve(answer);
+      });
+      mods.ask(ask);
+    });
+  }
+
   /** Forgets what a session ran with (it was moved to the Trash). */
   forget(sessionId: string): void {
     this.lastMode.delete(sessionId);
@@ -669,6 +850,7 @@ export class HostManager {
         permissionMode: 'default',
         effort: null,
         worktree: null,
+        chrome: this.chrome,
         env,
         claudePath,
         canUseTool: (...args) => (route.canUseTool ? route.canUseTool(...args) : Promise.resolve({ behavior: 'deny', message: 'Not ready' })),
@@ -676,10 +858,15 @@ export class HostManager {
       this.deps.log,
     );
     const warm = sdk.startup({ options });
-    warm.catch((error: unknown) => this.deps.log('debug', `Pre-warm failed: ${(error as Error).message}`));
     const timer = setTimeout(() => this.discardWarm(), this.deps.warmTtlMs ?? 120_000);
     timer.unref?.();
-    this.warm = { cwd, profileId, sessionId, warm, route, timer };
+    const entry: Warm = { cwd, profileId, sessionId, warm, route, timer };
+    this.warm = entry;
+    // A process that failed (no login, crashed) is no use to a session: drop it, so the next pre-warm tries again.
+    warm.catch((error: unknown) => {
+      this.deps.log('debug', `Pre-warm failed: ${(error as Error).message}`);
+      if (this.warm === entry) this.discardWarm();
+    });
   }
 
   closeAll(): void {
@@ -708,7 +895,7 @@ export class HostManager {
 
   private require(sessionId: string): SessionHost {
     const host = this.hosts.get(sessionId);
-    if (!host?.active) throw new RpcError('NOT_RUNNING', 'This session is not running in Switchboard');
+    if (!host?.active) throw new RpcError('NOT_RUNNING', NOT_RUNNING_MESSAGE);
     return host;
   }
 
@@ -740,13 +927,18 @@ export class HostManager {
     let hostRef: SessionHost | undefined;
     const canUseTool: CanUseTool = (toolName, input, options) => this.ask(hostRef!.sessionId, toolName, input, options);
     const startQuery: StartQuery = warm
-      ? async ({ prompt }) => {
+      ? async (args) => {
           warm.route.canUseTool = canUseTool;
-          return (await warm.warm).query(prompt);
+          // It failed after this session took it: start a fresh process, which fails with its own reason if Claude Code can't run.
+          const started = await warm.warm.catch((error: Error) => {
+            this.deps.log('info', `Pre-warmed process failed (${error.message}); starting a fresh one`);
+            return null;
+          });
+          return started ? started.query(args.prompt) : sdk.query(args);
         }
       : (args) => sdk.query(args);
     const host = new SessionHost(
-      { ...config, env, claudePath, canUseTool },
+      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods, chrome: this.chrome },
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),
@@ -758,6 +950,12 @@ export class HostManager {
         // onInfo stores this session's new list right after.
         commandsChanged: () => this.forgetCommands(config.profileId),
         queue: (sessionId, messages) => this.saveQueue(sessionId, messages),
+        turnEnded: (sessionId, outcome) => this.deps.onTurnEnd?.(sessionId, outcome),
+        limitHit: (sessionId, stop) => this.deps.limits?.hit(config.profileId, sessionId, stop),
+        turnOk: (sessionId) => this.deps.limits?.ok(config.profileId, sessionId),
+        limited: () => !!this.deps.limits?.of(config.profileId),
+        ...(this.deps.links ? { expand: (id: string, text: string) => this.deps.links!.expand(id, text) } : {}),
+        mods: this.deps.mods ? { ...this.deps.mods, ask: (ask) => this.askWindow(ask), diagnostics: this.deps.log } : undefined,
       },
       startQuery,
     );

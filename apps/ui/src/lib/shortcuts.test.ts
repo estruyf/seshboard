@@ -3,6 +3,7 @@ import {
   ariaKeysFor,
   ariaShortcut,
   available,
+  clickKeysFor,
   comboPresses,
   formatKeys,
   formatShortcut,
@@ -91,6 +92,7 @@ const HOME: ShortcutContext = {
   session: false,
   running: false,
   pending: null,
+  catchUp: null,
   selection: 0,
   split: false,
   behind: false,
@@ -146,6 +148,8 @@ describe('the shortcut registry', () => {
     expect(comboPresses('mod+q mod+q')).toEqual(['cmd+q']);
     expect(comboPresses('alt+click')).toEqual([]);
     expect(comboPresses('middleclick')).toEqual([]);
+    expect(clickKeysFor('transcript.file-link-other')).toBe('shift+click');
+    expect(formatKeys(clickKeysFor('transcript.file-link-other'))).toBe('⇧-click');
   });
 
   it('matches key presses to a shortcut and its alternatives', () => {
@@ -170,6 +174,14 @@ describe('the shortcut registry', () => {
     expect(matches(press('0'), 'permission.pick')).toBe(false);
     expect(matches(press('3', { metaKey: true }), 'new-session.pick')).toBe(true);
     expect(matches(press('\\', { metaKey: true }), 'pane.close-other')).toBe(true);
+    expect(matches(press('X', { metaKey: true, shiftKey: true }), 'pane.swap')).toBe(true);
+    expect(matches(press('O', { metaKey: true, shiftKey: true }), 'pane.orientation')).toBe(true);
+    // Option changes the letter on a Mac (⌥W is ∑): the physical key counts.
+    expect(matches({ ...press('∑', { metaKey: true, altKey: true }), code: 'KeyW' }, 'pane.close')).toBe(true);
+    expect(matches(press('ArrowLeft', { metaKey: true, altKey: true }), 'pane.focus-left')).toBe(true);
+    expect(matches(press('ArrowDown', { metaKey: true, altKey: true }), 'pane.focus-down')).toBe(true);
+    // ⌥ with the arrows alone belongs to the queue and Up next.
+    expect(matches(press('ArrowUp', { altKey: true }), 'pane.focus-up')).toBe(false);
     expect(matches(press('F2'), 'sidebar.rename')).toBe(true);
     expect(matches(press('Backspace', { metaKey: true }), 'sidebar.delete')).toBe(true);
     expect(matches(press('F10', { shiftKey: true }), 'context-menu')).toBe(true);
@@ -196,18 +208,33 @@ describe('the shortcut registry', () => {
     // For every shortcut with a condition: a place it works, and one it doesn't.
     const cases: Partial<Record<ShortcutId, [works: ShortcutContext, doesnt: ShortcutContext]>> = {
       'sidebar.clear-selection': [at({ selection: 2 }), HOME],
+      'pane.close': [at({ split: true }), HOME],
       'pane.close-other': [at({ split: true }), HOME],
+      'pane.focus-left': [at({ split: true }), HOME],
+      'pane.focus-right': [at({ split: true }), HOME],
+      'pane.focus-up': [at({ split: true }), HOME],
+      'pane.focus-down': [at({ split: true }), HOME],
+      'pane.swap': [at({ split: true }), HOME],
+      'pane.orientation': [at({ split: true }), HOME],
       find: [SESSION, { ...SESSION, focus: 'terminal' }],
       'find.next': [SESSION, HOME],
       'find.previous': [SESSION, HOME],
       'changes.toggle': [SESSION, at({ view: 'session' })],
-      'terminal.toggle': [SESSION, HOME],
-      'terminal.maximize': [SESSION, at({ view: 'settings' })],
+      'agents.toggle': [SESSION, at({ view: 'session' })],
+      'commands.toggle': [SESSION, at({ view: 'session' })],
+      'ask.open': [SESSION, at({ view: 'session' })],
+      'transcript.file-link-other': [SESSION, HOME],
+      'transcript.run-send': [SESSION, HOME],
+      'transcript.prompt-previous': [SESSION, { ...SESSION, focus: 'terminal' }],
+      'transcript.prompt-next': [{ ...SESSION, focus: 'composer' }, HOME],
+      'terminal.toggle': [at({ view: 'settings' }), at({ view: 'session', session: false })],
+      'terminal.maximize': [at({ view: 'settings' }), at({ view: 'session', session: false })],
       'terminal.restore': [{ ...SESSION, terminal: { open: true, maximized: true, actionRunning: false } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],
       'terminal.clear': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }, SESSION],
       'terminal.stop-action': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: true } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],
       'git.pull': [{ ...SESSION, behind: true }, SESSION],
       'pr.create': [SESSION, HOME],
+      'session.new-window': [SESSION, HOME],
       'editor.open': [SESSION, at({ view: 'new-session' })],
       'claude.stop': [{ ...SESSION, running: true }, SESSION],
       'composer.send-now': [{ ...SESSION, running: true }, SESSION],
@@ -220,11 +247,21 @@ describe('the shortcut registry', () => {
       'composer.newline': [SESSION, at({ view: 'settings' })],
       'composer.commands': [at({ view: 'new-session' }), at({ view: 'projects' })],
       'composer.mention': [SESSION, HOME],
+      'composer.next-blank': [SESSION, HOME],
+      'composer.previous-blank': [at({ view: 'new-session' }), HOME],
       'composer.history': [SESSION, at({ view: 'new-session' })],
       'composer.add-context': [at({ view: 'new-session' }), HOME],
       'permission.allow': [{ ...SESSION, pending: 'permission' }, SESSION],
       'permission.deny': [{ ...SESSION, pending: 'question' }, SESSION],
       'permission.pick': [{ ...SESSION, pending: 'question' }, { ...SESSION, pending: 'permission' }],
+      'catchup.primary': [{ ...SESSION, catchUp: 'strip' }, SESSION],
+      'catchup.close': [{ ...SESSION, catchUp: 'full' }, { ...at({ view: 'usage' }), catchUp: 'full' }],
+      'catchup.review': [{ ...SESSION, catchUp: 'full' }, { ...SESSION, catchUp: 'strip' }],
+      'catchup.commit': [{ ...SESSION, catchUp: 'full' }, { ...SESSION, catchUp: 'strip' }],
+      'catchup.reply': [{ ...SESSION, catchUp: 'full' }, SESSION],
+      'catchup.read': [{ ...SESSION, catchUp: 'full' }, SESSION],
+      'catchup.archive': [{ ...SESSION, catchUp: 'full' }, SESSION],
+      'catchup.expand': [{ ...SESSION, catchUp: 'strip' }, SESSION],
       'new-session.pick': [at({ view: 'new-session' }), SESSION],
       'new-session.start': [at({ view: 'new-session' }), SESSION],
       'new-session.queue': [at({ view: 'new-session' }), SESSION],
@@ -252,6 +289,7 @@ const INTENDED_OVERLAPS: Record<string, string> = {
   escape: 'Esc closes or cancels what is nearest: a menu or dialog first, then a waiting card, then the message box stops Claude.',
   'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session). Create pull request is a dialog: while it is open, ⌘↩ is its own.',
   'cmd+k': 'In the terminal ⌘K clears it, as in Terminal; the palette is ⌘⇧P there.',
+  'shift+tab': 'In the text of the message box ⇧⇥ switches the permission mode; on the blanks of a saved prompt (above that text) it goes to the previous blank.',
 };
 
 describe('shortcut collisions', () => {
@@ -261,7 +299,7 @@ describe('shortcut collisions', () => {
   const contexts = VIEWS.flatMap((view) =>
     FOCUS.flatMap((focus): ShortcutContext[] => [
       at({ view, focus, session: view === 'session' }),
-      { view, focus, session: view === 'session', running: true, pending: 'question', selection: 2, split: true, behind: true, terminal: { open: true, maximized: true, actionRunning: true } },
+      { view, focus, session: view === 'session', running: true, pending: 'question', catchUp: 'full', selection: 2, split: true, behind: true, terminal: { open: true, maximized: true, actionRunning: true } },
     ]),
   );
 
@@ -324,6 +362,7 @@ describe('shortcuts on Windows', () => {
     expect(formatKeys('mod+q mod+q')).toBe('Ctrl+Q then Ctrl+Q');
     expect(formatKeys('mod+1..9')).toBe('Ctrl+1 to Ctrl+9');
     expect(formatKeys('alt+click')).toBe('Alt+click');
+    expect(formatKeys(clickKeysFor('transcript.file-link-other'))).toBe('Shift+click');
     expect(formatKeys('mod+enter')).toBe('Ctrl+Enter');
     expect(spokenKeys('mod+enter')).toBe('Control, Enter');
     expect(ariaShortcut('mod+k')).toBe('Control+K');

@@ -1,11 +1,16 @@
 import type { Options, PermissionResult, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
-import { HostManager, type SdkRuntime } from './hostManager.ts';
+import { openCacheDatabase } from '../db/database.ts';
+import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
+import type { LimitStop } from '../usageLimit/usageLimit.ts';
 import { describeSuggestions } from './permissions.ts';
 import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, type HostConfig } from './sessionHost.ts';
-import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
+import { createMemorySessionSettings, createSessionSettingsStore, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
 /** Minimal async channel that can also fail, like a Claude Code process dying. */
@@ -52,6 +57,8 @@ class FakeQuery {
   inputEnded = false;
   mode: string;
   model = 'fake-model';
+  /** The folder Claude's shell is in, which `cd` moves; each turn's init reports it. */
+  shellCwd: string | undefined;
   constructor(
     readonly prompt: AsyncIterable<SDKUserMessage>,
     readonly options: Options,
@@ -71,8 +78,22 @@ class FakeQuery {
     for await (const message of this.prompt) {
       const text = (message.message.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text')?.text ?? '';
       this.received.push({ text, ...(message.priority ? { priority: message.priority } : {}) });
-      this.out.push({ type: 'system', subtype: 'init', session_id: sessionId, cwd: this.options.cwd, model: this.model, permissionMode: this.mode });
+      this.out.push({ type: 'system', subtype: 'init', session_id: sessionId, cwd: this.shellCwd ?? this.options.cwd, model: this.model, permissionMode: this.mode });
       state('running');
+      if (text.startsWith('<side-question>')) {
+        await this.answerSideQuestion(sessionId, text);
+        state('idle');
+        continue;
+      }
+      if (text.startsWith('limit')) {
+        // A usage limit: Claude Code reports it rejected, says so as an error message, and the turn ends as an error.
+        const said = "You've hit your limit · resets 3pm";
+        this.out.push({ type: 'rate_limit_event', session_id: sessionId, rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: 1_760_000_000 } });
+        this.out.push({ type: 'assistant', uuid: `a-${text}`, error: 'rate_limit', parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: [{ type: 'text', text: said }] } });
+        this.out.push({ type: 'result', subtype: 'success', is_error: true, result: said, total_cost_usd: 0, session_id: sessionId });
+        state('idle');
+        continue;
+      }
       if (text === 'crash') {
         this.out.fail(new Error('Claude Code process exited with code 1'));
         return;
@@ -96,7 +117,11 @@ class FakeQuery {
         for (const chunk of ['Hel', 'lo']) {
           this.out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text: chunk } } });
         }
-        assistant('Hello');
+        if (text === 'cache') {
+          // A reply that wrote to the hour-long prompt cache.
+          const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 5, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 5 } };
+          this.out.push({ type: 'assistant', uuid: 'a-cache', parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: [{ type: 'text', text: 'Hello' }], usage } });
+        } else assistant('Hello');
       }
       this.out.push({ type: 'result', subtype: text === 'fail' ? 'error_during_execution' : 'success', is_error: text === 'fail', total_cost_usd: 0.01, session_id: sessionId });
       state('idle');
@@ -136,11 +161,28 @@ class FakeQuery {
   async getContextUsage() {
     return { percentage: 12.4 };
   }
-  /** Side questions asked, with the history that came along. */
-  sideQuestions: Array<{ question: string; history: unknown }> = [];
-  async askSideQuestion(question: string, options?: { history?: unknown }) {
-    this.sideQuestions.push({ question, history: options?.history ?? [] });
-    return { response: `Side answer to ${question}`, synthetic: false };
+  /** What the PreToolUse hook decided for each tool a side question tried. */
+  hookDecisions: Array<{ tool: string; decision: string }> = [];
+  /**
+   * A side question: Claude tries to read a file and to write one (through the PreToolUse hook), says what it reads
+   * next (text the answer drops), then streams its answer. Each response repeats its usage on every block.
+   */
+  private async answerSideQuestion(sessionId: string, text: string) {
+    const hook = this.options.hooks?.PreToolUse?.[0]?.hooks[0];
+    for (const [tool, input] of [['Read', { file_path: '/work/app/README.md' }], ['Write', { file_path: '/work/app/x.txt', content: 'x' }]] as const) {
+      const out = (await hook?.({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input } as never, undefined, { signal: new AbortController().signal })) as { hookSpecificOutput?: { permissionDecision?: string } } | undefined;
+      this.hookDecisions.push({ tool, decision: out?.hookSpecificOutput?.permissionDecision ?? 'none' });
+    }
+    const usage = { input_tokens: 3, output_tokens: 20, cache_read_input_tokens: 5000, cache_creation_input_tokens: 100 };
+    const delta = (chunk: string) => this.out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text: chunk } } });
+    delta('Let me look.');
+    for (const block of [{ type: 'text', text: 'Let me look.' }, { type: 'tool_use', name: 'Read' }]) {
+      this.out.push({ type: 'assistant', parent_tool_use_id: null, session_id: sessionId, message: { id: 'msg-1', model: 'fake', usage, content: [block] } });
+    }
+    const question = text.split('\n').at(-1);
+    for (const chunk of ['Answer to ', question]) delta(chunk!);
+    this.out.push({ type: 'assistant', parent_tool_use_id: null, session_id: sessionId, message: { id: 'msg-2', model: 'fake', usage, content: [{ type: 'text', text: `Answer to ${question}` }] } });
+    this.out.push({ type: 'result', subtype: 'success', is_error: false, result: `Answer to ${question}`, session_id: sessionId });
   }
   close() {
     this.closed = true;
@@ -157,7 +199,22 @@ const until = async (check: () => boolean, timeoutMs = 2000) => {
 };
 
 function setup(
-  opts: { openElsewhere?: string[]; cwds?: Record<string, string>; profiles?: Record<string, string>; settings?: SessionSettingsStore; refreshLive?: () => void; upNext?: ReturnType<typeof memoryUpNext> } = {},
+  opts: {
+    openElsewhere?: string[];
+    cwds?: Record<string, string>;
+    profiles?: Record<string, string>;
+    settings?: SessionSettingsStore;
+    refreshLive?: () => void;
+    upNext?: ReturnType<typeof memoryUpNext>;
+    /** Pre-warmed processes fail to start, at once or after a while (no login, a crash). */
+    warmFails?: { message: string; afterMs?: number };
+    /** Claude Code can't be started at all. */
+    startFails?: string;
+    /** Sees each process as it starts, before it gets a message. */
+    onQuery?: (query: FakeQuery) => void;
+    limits?: HostManagerDeps['limits'];
+    links?: HostManagerDeps['links'];
+  } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
   const models: ModelOption[][] = [];
@@ -168,17 +225,25 @@ function setup(
   const permissions: PermissionRequest[] = [];
   const resolved: string[] = [];
   const created: string[] = [];
+  const turns: Array<{ sessionId: string; ok: boolean; error: string | null }> = [];
   const warmups: Array<{ options: Options; closed: boolean }> = [];
   const ephemeral = new Set<string>();
   const sdk: SdkRuntime = {
     query: ({ prompt, options }) => {
+      if (opts.startFails) throw new Error(opts.startFails);
       const q = new FakeQuery(prompt, options);
       queries.push(q);
+      opts.onQuery?.(q);
       return q as never;
     },
+    USAGE_LIMIT_ERROR_PREFIXES: ["You've hit your", "You've reached your"],
     startup: async ({ options }) => {
       const warmup = { options, closed: false };
       warmups.push(warmup);
+      if (opts.warmFails) {
+        await new Promise((r) => setTimeout(r, opts.warmFails!.afterMs ?? 0));
+        throw new Error(opts.warmFails.message);
+      }
       return {
         query: (prompt: AsyncIterable<SDKUserMessage>) => {
           const q = new FakeQuery(prompt, options);
@@ -204,14 +269,17 @@ function setup(
     onPermission: (r) => permissions.push(r),
     onPermissionResolved: (id) => resolved.push(id),
     onCreated: (id) => created.push(id),
+    onTurnEnd: (sessionId, outcome) => turns.push({ sessionId, ...outcome }),
     sessionSettings: opts.settings,
+    limits: opts.limits,
+    links: opts.links,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
     ephemeral,
     log: () => {},
   });
-  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral, upNextEvents };
+  return { manager, queries, infos, streams, messages, permissions, resolved, created, models, warmups, ephemeral, upNextEvents, turns };
 }
 
 /** Up next kept in memory, as the engine keeps it in SQLite. */
@@ -243,6 +311,125 @@ describe('HostManager', () => {
     // The Working list orders by when you last sent a message.
     expect(t.infos.at(-1)!.promptedAt).toBeGreaterThanOrEqual(t.infos.at(-1)!.startedAt);
     await expect(t.manager.commands(id, undefined, 'default')).resolves.toEqual([{ name: 'review', description: 'Review the diff', argumentHint: '' }]);
+    t.manager.closeAll();
+  });
+
+  it('keeps the session in its folder when Claude cds into a subfolder, and follows it into a worktree', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    t.queries[0]!.shellCwd = '/work/app/packages/ui';
+    await t.manager.send({ sessionId: id, text: 'again', attachments: [], fork: false });
+    await until(() => t.queries[0]!.received.length === 2 && lastState(t.infos, id) === 'idle');
+    expect(t.infos.at(-1)!.cwd).toBe('/work/app');
+    t.queries[0]!.shellCwd = '/work/app/.claude/worktrees/fix-login';
+    await t.manager.send({ sessionId: id, text: 'and again', attachments: [], fork: false });
+    await until(() => t.infos.at(-1)!.cwd === '/work/app/.claude/worktrees/fix-login');
+    t.manager.closeAll();
+  });
+
+  it('reports when a turn last used the prompt cache, and which cache it is', async () => {
+    const t = setup();
+    const before = Date.now();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    // A reply without usage says nothing about the cache.
+    expect(t.infos.at(-1)!.cacheAt).toBeUndefined();
+    await t.manager.send({ sessionId: id, text: 'cache', attachments: [], fork: false });
+    await until(() => t.infos.at(-1)!.cacheTtl === '1h');
+    expect(t.infos.at(-1)!.cacheAt).toBeGreaterThanOrEqual(before);
+    t.manager.closeAll();
+  });
+
+  it('reports each turn\'s end, finished or failed, for its catch-up', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
+    await until(() => t.turns.length === 1);
+    expect(t.turns).toEqual([{ sessionId: id, ok: true, error: null }]);
+    await t.manager.send({ sessionId: id, text: 'fail', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(t.turns[1]).toMatchObject({ sessionId: id, ok: false });
+    t.manager.closeAll();
+  });
+
+  it('sets the profile\'s usage limit when a turn stops on it, holds the queue, and lets it go once a turn gets through', async () => {
+    // The profile's limit, kept as UsageLimits keeps it (that class has its own tests).
+    let limit: (LimitStop & { profileId: string; sessionIds: string[] }) | null = null;
+    const hits: Array<{ profileId: string; sessionId: string }> = [];
+    let manager: HostManager | undefined;
+    const t = setup({
+      limits: {
+        of: (profileId) => (limit?.profileId === profileId ? { ...limit, since: 0 } : null),
+        hit: (profileId, sessionId, stop) => {
+          hits.push({ profileId, sessionId });
+          limit = { ...stop, profileId, sessionIds: [sessionId] };
+        },
+        ok: (profileId) => {
+          if (limit?.profileId !== profileId) return;
+          limit = null;
+          manager!.limitChanged(profileId);
+        },
+      },
+    });
+    manager = t.manager;
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'limit' });
+    await until(() => lastState(t.infos, id) === 'idle' && t.turns.length === 1);
+    expect(hits).toEqual([{ profileId: 'default', sessionId: id }]);
+    expect(limit).toMatchObject({ kind: 'five_hour', resetsAt: 1_760_000_000_000, message: "You've hit your limit · resets 3pm" });
+    expect(t.turns[0]).toMatchObject({ ok: false });
+
+    // The session reports the limit, and what you queue waits for it instead of running into it.
+    t.manager.limitChanged('default');
+    expect(t.infos.at(-1)).toMatchObject({ sessionId: id, usageLimit: { profileId: 'default', kind: 'five_hour' } });
+    // Not the error hold: the queue moves on by itself once the limit is cleared.
+    expect(t.infos.at(-1)!.queueHold).toBeNull();
+
+    // A message sent while the limit holds still goes (it is yours); when it gets through, the limit is cleared.
+    await t.manager.send({ sessionId: id, text: 'Say hi', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(limit).toBeNull();
+    await until(() => t.infos.at(-1)!.usageLimit === null);
+    t.manager.closeAll();
+  });
+
+  it('holds Up next while the profile is at a usage limit, and sends it once the limit is cleared', async () => {
+    let limited = true;
+    const t = setup({ limits: { of: (profileId) => (limited ? { profileId, kind: null, resetsAt: null, since: 0, message: null, sessionIds: [] } : null), hit: () => {}, ok: () => {} } });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test' });
+    await until(() => t.permissions.length === 1);
+    await t.manager.send({ sessionId: id, text: 'Then the docs', attachments: [], fork: false });
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['bash:npm test']);
+    limited = false;
+    t.manager.limitChanged('default');
+    await until(() => t.queries[0]!.received.length === 2);
+    expect(t.queries[0]!.received.at(-1)!.text).toBe('Then the docs');
+    t.manager.closeAll();
+  });
+
+  it('writes linked sessions\' briefs as each message goes to Claude Code, a queued one when it goes', async () => {
+    let version = 1;
+    const warmed: string[] = [];
+    const t = setup({
+      links: {
+        expand: (id, text) => text.replace('[stub]', `[brief ${version} for ${id}]`),
+        warm: async (text) => void warmed.push(text),
+      },
+    });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test [stub]' });
+    await until(() => t.permissions.length === 1);
+    expect(t.queries[0]!.received[0]!.text).toBe(`bash:npm test [brief 1 for ${id}]`);
+    // Queued while Claude works: written when it goes, with what is true then.
+    await t.manager.send({ sessionId: id, text: 'Then stack on [stub]', attachments: [], fork: false });
+    version = 2;
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
+    await until(() => t.queries[0]!.received.length === 2);
+    expect(t.queries[0]!.received[1]!.text).toBe(`Then stack on [brief 2 for ${id}]`);
+    // The transcript shows what Claude read.
+    expect(JSON.stringify(t.messages)).toContain(`[brief 2 for ${id}]`);
+    expect(warmed).toEqual(['bash:npm test [stub]', 'Then stack on [stub]']);
     t.manager.closeAll();
   });
 
@@ -347,18 +534,20 @@ describe('HostManager', () => {
       t.manager.closeAll();
     });
 
-    it('answers a side question beside a running turn, without touching the turn, the queue or the transcript', async () => {
-      const t = setup();
+    it('answers a question about a running session from a fork, without touching the turn, the queue or the transcript', async () => {
+      const cwds: Record<string, string> = {};
+      const t = setup({ cwds });
       const id = await busy(t);
+      cwds[id] = '/w';
       await send(t, id, 'Then the docs');
+      await t.manager.setModel(id, 'opus');
       const infosBefore = t.infos.length;
       const messagesBefore = t.messages.length;
 
-      const history = [{ question: 'Earlier?', response: 'Yes' }];
-      await expect(t.manager.sideQuestion(id, 'Which flag?', history)).resolves.toEqual({ response: 'Side answer to Which flag?', synthetic: false });
-      // Asked on the session's own process, with the earlier exchanges, never as a message.
-      expect(t.queries).toHaveLength(1);
-      expect(t.queries[0]!.sideQuestions).toEqual([{ question: 'Which flag?', history }]);
+      await expect(t.manager.askAbout(id, '<side-question>\n</side-question>\n\nWhich flag?', () => {})).resolves.toMatchObject({ answer: 'Answer to Which flag?' });
+      // A fork of its own, on the session's model; the session's process never got it as a message.
+      expect(t.queries).toHaveLength(2);
+      expect(t.queries[1]!.options).toMatchObject({ resume: id, forkSession: true, persistSession: false, cwd: '/w', model: 'opus' });
       expect(t.queries[0]!.received).toEqual([{ text: 'bash:npm test' }]);
       expect(t.queries[0]!.interrupts).toBe(0);
       // No status, queue or transcript change came from it.
@@ -372,21 +561,32 @@ describe('HostManager', () => {
       t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
       await until(() => t.queries[0]!.received.length === 2);
       expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['bash:npm test', 'Then the docs']);
-      expect(t.messages.flatMap((m) => m.messages.map((x) => x.uuid))).toContain('a-allow');
       t.manager.closeAll();
     });
 
-    it('answers a side question for a session that is not running from a fork that writes nothing', async () => {
+    it('answers a question from a fork that writes nothing, with read-only tools, streaming, and its tokens', async () => {
       const t = setup({ cwds: { 'old-1': '/work/app' }, openElsewhere: ['old-1'] });
-      await expect(t.manager.sideQuestion('old-1', 'What changed?', [])).resolves.toMatchObject({ response: 'Side answer to What changed?' });
-      // Not resumed: a short-lived copy, even with the session open in another window.
+      const texts: unknown[] = [];
+      const result = await t.manager.askAbout('old-1', '<side-question>\nframing\n</side-question>\n\nWhat changed?', (text) => texts.push(text));
+      expect(result).toEqual({ answer: 'Answer to What changed?', usage: [{ model: 'fake', tokens: { input: 6, output: 40, cacheRead: 10_000, cacheWrite: 200 } }] });
+      // What came before the tool call is dropped; the answer streams after it.
+      expect(texts).toEqual([{ delta: 'Let me look.' }, { reset: true }, { delta: 'Answer to ' }, { delta: 'What changed?' }]);
+      // Not resumed: a short-lived fork that persists nothing, even with the session open in another window.
       expect(t.manager.has('old-1')).toBe(false);
       expect(t.queries).toHaveLength(1);
-      expect(t.queries[0]!.options).toMatchObject({ resume: 'old-1', forkSession: true, persistSession: false, cwd: '/work/app' });
-      expect(t.queries[0]!.options.sessionId).not.toBe('old-1');
-      expect(t.queries[0]!.received).toEqual([]);
-      expect(t.queries[0]!.closed).toBe(true);
-      expect(t.ephemeral.has(t.queries[0]!.options.sessionId!)).toBe(true);
+      const q = t.queries[0]!;
+      expect(q.options).toMatchObject({ resume: 'old-1', forkSession: true, persistSession: false, cwd: '/work/app', includePartialMessages: true });
+      expect(q.options.sessionId).not.toBe('old-1');
+      expect(q.options.tools).toBeUndefined();
+      // Reading goes through; anything else is denied by the hook.
+      expect(q.hookDecisions).toEqual([
+        { tool: 'Read', decision: 'allow' },
+        { tool: 'Write', decision: 'deny' },
+      ]);
+      await expect(q.options.canUseTool!('Edit', { file_path: 'x' }, {} as never)).resolves.toMatchObject({ behavior: 'deny' });
+      await expect(q.options.canUseTool!('Bash', { command: 'git diff HEAD~1' }, {} as never)).resolves.toMatchObject({ behavior: 'allow' });
+      expect(q.closed).toBe(true);
+      expect(t.ephemeral.has(q.options.sessionId!)).toBe(true);
       t.manager.closeAll();
     });
 
@@ -607,6 +807,47 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('answers "not running" for the context of a session whose process is exiting', async () => {
+    let exiting = false;
+    const t = setup({
+      onQuery: (q) => {
+        q.getContextUsage = async () => {
+          if (!exiting) return { totalTokens: 124, maxTokens: 1000, percentage: 12.4, model: 'fake', categories: [] } as never;
+          // The process goes away while the SDK asks it.
+          q.out.fail(new Error('Claude Code process exited with code 1'));
+          await new Promise((r) => setTimeout(r, 10));
+          throw new Error('ProcessTransport is not ready for writing');
+        };
+      },
+    });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    await expect(t.manager.context(id)).resolves.toMatchObject({ percentage: 12.4 });
+    exiting = true;
+    await expect(t.manager.context(id)).rejects.toMatchObject({ code: 'NOT_RUNNING' });
+    expect(lastState(t.infos, id)).toBe('error');
+    await expect(t.manager.context(id)).rejects.toMatchObject({ code: 'NOT_RUNNING' });
+    t.manager.closeAll();
+  });
+
+  it('ignores a startup message without a session id, so the session list keeps working', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'switchboard-host-'));
+    const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
+    try {
+      const t = setup({ settings: createSessionSettingsStore(cache.db), onQuery: (q) => q.out.push({ type: 'system', subtype: 'init' }) });
+      const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+      await until(() => lastState(t.infos, id) === 'idle');
+      expect(t.infos.every((i) => i.sessionId === id && i.cwd === '/w')).toBe(true);
+      expect(t.manager.list().hosts).toMatchObject([{ sessionId: id, cwd: '/w', state: 'idle' }]);
+      // A host that got no proper id can't break the list either.
+      expect(t.manager.autoPick(undefined as never)).toBeNull();
+      t.manager.closeAll();
+    } finally {
+      cache.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('isolates a crashing Claude Code process to its own session', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'crash' });
@@ -629,6 +870,43 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('drops a pre-warmed process that failed, so the next pre-warm tries again and a session starts fresh', async () => {
+    const t = setup({ warmFails: { message: 'Claude Code process exited with code 1' } });
+    await t.manager.prewarm('/work/app', 'default');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(t.ephemeral.size).toBe(1);
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups).toHaveLength(2);
+    await new Promise((r) => setTimeout(r, 20));
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries).toHaveLength(1);
+    expect(t.queries[0]!.options).toMatchObject({ sessionId: id, permissionMode: 'plan' });
+    t.manager.closeAll();
+  });
+
+  it('starts a fresh process when the pre-warmed one fails after a new session took it', async () => {
+    const t = setup({ warmFails: { message: 'Claude Code process exited with code 1', afterMs: 30 } });
+    await t.manager.prewarm('/work/app', 'default');
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan', model: 'opus' });
+    expect(id).toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries).toHaveLength(1);
+    expect(t.queries[0]!.options).toMatchObject({ sessionId: id, permissionMode: 'plan', model: 'opus' });
+    expect(t.queries[0]!.received).toEqual([{ text: 'Say hi' }]);
+    t.manager.closeAll();
+  });
+
+  it('says why a new session could not start instead of "not running"', async () => {
+    const t = setup({ warmFails: { message: 'Claude Code process exited with code 1', afterMs: 30 }, startFails: 'Not logged in · Please run /login' });
+    await t.manager.prewarm('/work/app', 'default');
+    await expect(t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan' })).rejects.toMatchObject({
+      code: 'START_FAILED',
+      message: 'Not logged in · Please run /login',
+    });
+    t.manager.closeAll();
+  });
+
   it('keeps a pre-warmed process out of the session list until a session adopts it', async () => {
     const t = setup();
     await t.manager.prewarm('/work/app', 'default');
@@ -640,6 +918,49 @@ describe('HostManager', () => {
     await t.manager.prewarm('/work/other', 'default');
     t.manager.closeAll();
     expect(t.ephemeral.has(t.warmups[1]!.options.sessionId!)).toBe(true);
+  });
+
+  it('starts sessions and the pre-warmed process with --chrome while Use Claude in Chrome is on', async () => {
+    const t = setup();
+    t.manager.setChrome(true);
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups[0]!.options.extraArgs).toEqual({ chrome: null });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.extraArgs).toEqual({ chrome: null });
+    t.manager.setChrome(false);
+    const other = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, other) === 'idle');
+    expect(t.queries[1]!.options.extraArgs).toBeUndefined();
+    t.manager.closeAll();
+  });
+
+  it('drops the pre-warmed process when Use Claude in Chrome changes, and keeps it when it does not', async () => {
+    const t = setup();
+    await t.manager.prewarm('/work/app', 'default');
+    // Main sends every setting again after any preference change: the same value keeps the process.
+    t.manager.setChrome(false);
+    expect(t.warmups[0]!.closed).toBe(false);
+    t.manager.setChrome(true);
+    await until(() => t.warmups[0]!.closed);
+    // The next new session starts its own process, with the new value, instead of taking the old one.
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi' });
+    expect(id).not.toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.extraArgs).toEqual({ chrome: null });
+    // A pre-warm after the change starts with it.
+    await t.manager.prewarm('/work/app', 'default');
+    expect(t.warmups[1]!.options.extraArgs).toEqual({ chrome: null });
+    t.manager.closeAll();
+  });
+
+  it('drops a pre-warm still starting when Use Claude in Chrome changes', async () => {
+    const t = setup();
+    const starting = t.manager.prewarm('/work/app', 'default');
+    t.manager.setChrome(true);
+    await starting;
+    expect(t.warmups).toHaveLength(0);
+    t.manager.closeAll();
   });
 
   it('keeps one pre-warmed process when pre-warms overlap, and none after a shutdown', async () => {
@@ -968,6 +1289,20 @@ describe('buildOptions', () => {
     expect(fork).toMatchObject({ resume: 's1', forkSession: true, sessionId: 'f1' });
     expect(fork.model).toBeUndefined();
     expect(() => buildOptions({ ...config, mode: 'fork', worktree: null }, () => {})).toThrow(/forks from/);
+  });
+  it('passes --chrome only when Use Claude in Chrome is on', () => {
+    // Off (or not said): no flag, and no extraArgs at all without a worktree.
+    expect(buildOptions({ ...config, worktree: null }, () => {}).extraArgs).toBeUndefined();
+    expect(buildOptions({ ...config, worktree: null, chrome: false }, () => {}).extraArgs).toBeUndefined();
+    expect(buildOptions(config, () => {}).extraArgs).toEqual({ worktree: 'fix-login' });
+    // On: a null value, which the SDK passes as a bare `--chrome`.
+    expect(buildOptions({ ...config, worktree: null, chrome: true }, () => {}).extraArgs).toEqual({ chrome: null });
+    expect(buildOptions({ ...config, mode: 'resume', worktree: null, chrome: true }, () => {}).extraArgs).toEqual({ chrome: null });
+  });
+  it('keeps the worktree when Claude in Chrome is on too', () => {
+    const options = buildOptions({ ...config, chrome: true }, () => {});
+    expect(options.extraArgs).toEqual({ worktree: 'fix-login', chrome: null });
+    expect(options.settings).toEqual({ worktree: { baseRef: 'head' } });
   });
 });
 

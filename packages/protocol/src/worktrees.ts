@@ -8,6 +8,8 @@ export const WorktreePullRequest = z.object({
   url: z.string(),
   /** An open pull request that is still a draft. */
   draft: z.boolean().optional(),
+  /** The branch it merges into. */
+  base: z.string().optional(),
 });
 export type WorktreePullRequest = z.infer<typeof WorktreePullRequest>;
 

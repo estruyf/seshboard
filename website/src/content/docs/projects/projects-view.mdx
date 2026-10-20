@@ -7,10 +7,11 @@ sidebar:
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Projects are the folders you work in with Switchboard. They are listed in the sidebar and in New session, in the order you set here. The **Projects** view is where you add, order, rename and remove them, and where you open each project's own page.
+Projects are the folders you work in with Switchboard. Add a folder once, and it is ready to pick in New session, to filter the sidebar by, and to open on a page of its own with its sessions, worktrees, branches and memory. The **Projects** view is where you add, order, rename and remove them, and where you open each project's own page.
 
 <Screenshot name="projects-view" alt="The Projects view: a list of projects, each with its icon, name, new-session defaults, session count and a worktree pill that says how many worktrees there are and how many can go" eager />
 
@@ -20,7 +21,7 @@ Projects are the folders you work in with Switchboard. They are listed in the si
 - Run *Manage projects* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />).
 - Choose **Manage projects…** at the bottom of the project filter at the top of the sidebar.
 
-To add a project straight away, run *Add project…* in the palette, click the **+** folder button next to the project filter, or choose **Add project…** in that filter.
+To add a project straight away, run *Add project…* in the palette, click the **+** folder button next to the project filter, or choose **Add project…** in that filter. New session has **Add project…** too, which picks the project you add there.
 
 ## Add a project
 
@@ -122,9 +123,13 @@ A project opens on the tab you left it on, for as long as the app runs. The firs
 
 ## Settings
 
-**Settings → General → Project order** chooses how New session, Home and the command palette list your projects:
+**Settings → Projects → Project order** chooses how New session, Home and the command palette list your projects:
 
 - *Recent* (the default): the ones you used last first.
 - *Your order*: the order you set in the Projects view.
 
 See [Settings](/settings/#general).
+
+## Related
+
+<Related pages={['projects/settings', 'new-session/form', 'sessions/sidebar', 'projects/clone-from-github']} />

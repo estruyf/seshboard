@@ -1,15 +1,25 @@
 import { fileManagerName } from '../../lib/platform.ts';
 import {
   Activity,
+  AppWindow,
   Archive,
   ArchiveRestore,
+  ArrowDown,
   ArrowDownCircle,
+  ArrowLeft,
   ArrowLeftRight,
+  ArrowRight,
+  ArrowRightLeft,
+  ArrowUp,
   Bell,
   BellOff,
   BellRing,
   Blocks,
+  Bot,
+  Bookmark,
+  BookmarkPlus,
   Brain,
+  CircleHelp,
   CloudDownload,
   Code,
   ChevronsDown,
@@ -23,6 +33,7 @@ import {
   FileDiff,
   Folder,
   FolderCog,
+  FolderDown,
   FolderGit2,
   FolderPlus,
   Gauge,
@@ -30,6 +41,7 @@ import {
   GitBranchPlus,
   GitCommitHorizontal,
   GitFork,
+  Link2,
   GitMerge,
   GitPullRequest,
   Hash,
@@ -39,10 +51,10 @@ import {
   ListChecks,
   ListEnd,
   ListPlus,
+  NotebookText,
   PencilLine,
   Maximize2,
   MessageSquare,
-  MessageCircleDashed,
   MessageCircleQuestion,
   MessagesSquare,
   Monitor,
@@ -55,6 +67,7 @@ import {
   PanelLeftDashed,
   PanelLeftOpen,
   PanelRight,
+  PanelsTopLeft,
   Pencil,
   Pin,
   PinOff,
@@ -62,7 +75,9 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Rows2,
   Save,
+  ScrollText,
   Settings,
   Settings2,
   Share2,
@@ -85,23 +100,28 @@ import {
   Users,
   Volume2,
   VolumeX,
+  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/protocol/bridge';
+import type { PromptScope } from '@switchboard/protocol/client';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import type { Way } from '../../state/tilingGeometry.ts';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import { ACTION_ICON } from '../actions/actionIcon.ts';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
+import { popoutClass } from './popoutCommands.ts';
+import { APP_TERMINAL } from '../terminal/appTerminal.ts';
 import type { PaletteContext } from './paletteContext.ts';
 import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteState.ts';
 
 /** Requests the session view answers, because the dialog or menu they open lives there. */
-export type SessionRequest = 'commit' | 'create-pr' | 'branch-menu' | 'edit-actions' | 'new-action' | 'side-ask' | 'side-show';
+export type SessionRequest = 'commit' | 'create-pr' | 'fix-checks' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next';
 /** Requests the New session view answers: they change its own choices. */
-export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up';
+export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up' | 'add-project';
 
 /** What commands do, implemented against the stores in `paletteApi.ts` (and faked in tests). */
 export interface PaletteApi {
@@ -141,6 +161,14 @@ export interface PaletteApi {
   exportTheme(): void;
   setFocusLimit(on: boolean): void;
   renameSession(): void;
+  /** New session on this session's project, linked to it (session linking). */
+  newLinkedSession(): void;
+  /** Opens the session's catch-up from its strip (or for a read session). */
+  showCatchUp(): void;
+  /** Makes the catch-up for the session's last finished turn now, and shows it. */
+  buildCatchUp(): void;
+  /** Opens "Why Claude asks" beside the session for its oldest open permission or question. */
+  showWhy(): void;
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
   compact(): void;
   copyLastReply(): void;
@@ -153,6 +181,8 @@ export interface PaletteApi {
   toggleTerminal(): void;
   newTerminalTab(): void;
   toggleChanges(): void;
+  toggleAgents(): void;
+  toggleCommands(): void;
   showTools(): void;
   openInEditor(): void;
   revealInFinder(): void;
@@ -171,16 +201,32 @@ export interface PaletteApi {
   stageAll(): void;
   revertAll(): void;
   runAction(id: string): void;
+  /** Puts a saved prompt in the message box on screen, to fill in. */
+  usePrompt(scope: PromptScope, id: string): void;
+  /** The saved prompt editor, for a new one. */
+  newPrompt(): void;
   hideTerminal(): void;
   toggleMaximizeTerminal(): void;
   dockTerminal(dock: TerminalDock): void;
   stopAction(): void;
   restartAction(): void;
-  focusOtherPane(): void;
+  focusNextPane(): void;
+  /** Goes to the pane next door in a direction. */
+  focusPane(way: Way): void;
+  swapPanes(): void;
+  /** Turns the split holding the active pane the other way. */
+  flipSplit(): void;
   closePane(): void;
+  closeOtherPanes(): void;
+  /** Shows the session on screen in a window of its own. */
+  openInNewWindow(): void;
   newSessionRequest(kind: NewSessionRequest): void;
   /** Opens the New session view (Add to queue… outside it). */
   openNewSession(): void;
+  /** Opens New session with another computer picked in Run on. */
+  newSessionOn(computerId: string): void;
+  /** The sidebar shows only that computer's sessions (the Computers filter). */
+  showOnlyComputer(computerId: string): void;
   /** Starts a queued item (through the focus limit's gate). */
   startQueued(id: string): void;
 }
@@ -240,7 +286,12 @@ const indexed = (ctx: PaletteContext) => session(ctx)?.indexed === true;
 const withCwd = (ctx: PaletteContext) => !!session(ctx)?.cwd;
 const hosted = (ctx: PaletteContext) => !!session(ctx)?.host && ctx.connected;
 const inGit = (ctx: PaletteContext) => withCwd(ctx) && ctx.git !== null && ctx.connected;
-const terminalOpen = (ctx: PaletteContext) => hasSession(ctx) && ctx.terminal.open;
+/** The panel ⌘J works on is open: the session's, or outside a session the window's own. */
+const terminalOpen = (ctx: PaletteContext) => ctx.terminal.owner !== null && ctx.terminal.open;
+/** More than one pane is open, in the session view: the commands that arrange them. */
+const panes = (ctx: PaletteContext) => ctx.split && ctx.view === 'session';
+/** Outside a session, where the window's own terminal is. */
+const appTerminal = (ctx: PaletteContext) => ctx.terminal.owner === APP_TERMINAL;
 
 const THEMES: Array<{ value: ColorScheme; label: string; icon: LucideIcon }> = [
   { value: 'system', label: 'Match System', icon: Monitor },
@@ -258,11 +309,14 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: Lucid
   { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
   { id: 'sessions', label: 'Sessions', icon: Archive },
+  { id: 'projects', label: 'Projects', icon: FolderGit2 },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'focus', label: 'Focus', icon: Target },
   { id: 'profiles', label: 'Claude profiles', icon: Users },
+  { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'prompts', label: 'Prompts', icon: Bookmark },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
@@ -295,6 +349,15 @@ export const COMMANDS: PaletteCommand[] = [
     next: (ctx) => ({ kind: 'prompt', root: ctx.questionsDir!, worktree: false, chip: 'Quick question' }),
   },
   {
+    id: 'new-session-clone',
+    title: 'New session from a GitHub repository…',
+    group: 'general',
+    icon: FolderDown,
+    keywords: 'clone git github url repository repo download start',
+    when: (ctx) => ctx.cloneEnabled,
+    next: () => ({ kind: 'clone', chip: 'Clone from GitHub' }),
+  },
+  {
     id: 'new-session-worktree',
     title: 'New session in a worktree…',
     group: 'general',
@@ -303,6 +366,9 @@ export const COMMANDS: PaletteCommand[] = [
     when: always,
     next: () => ({ kind: 'projects', purpose: 'new-session', worktree: true, chip: 'New session in a worktree' }),
   },
+  // The window's own terminal, outside a session (a session's are under This session).
+  { id: 'toggle-app-terminal', title: 'Toggle terminal', group: 'general', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: appTerminal, run: (api) => api.toggleTerminal() },
+  { id: 'new-app-terminal-tab', title: 'New terminal tab', group: 'general', icon: Plus, keywords: 'shell', when: (ctx) => appTerminal(ctx) && ctx.connected, run: (api) => api.newTerminalTab() },
   { id: 'go-to-session', title: 'Go to session…', group: 'general', shortcut: keysFor('palette.goto'), icon: MessagesSquare, keywords: 'open switch find project quick', when: always, mode: 'goto' },
   { id: 'next-session', title: 'Next session', group: 'general', shortcut: keysFor('session.next'), icon: ChevronsDown, keywords: 'switch cycle down sidebar order', when: always, run: (api) => api.goToSession(1) },
   { id: 'previous-session', title: 'Previous session', group: 'general', shortcut: keysFor('session.previous'), icon: ChevronsUp, keywords: 'switch cycle up sidebar order back', when: always, run: (api) => api.goToSession(-1) },
@@ -341,7 +407,8 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'import-theme', title: 'Import theme…', group: 'general', icon: Upload, keywords: 'colours colors json file', when: always, run: (api) => api.importTheme() },
   { id: 'export-theme', title: 'Export current theme…', group: 'general', icon: Download, keywords: 'colours colors json file save', when: always, run: (api) => api.exportTheme() },
   { id: 'manage-projects', title: 'Manage projects', group: 'general', icon: FolderCog, keywords: 'folders defaults', when: (ctx) => ctx.view !== 'projects', run: (api) => api.manageProjects() },
-  { id: 'add-project', title: 'Add project…', group: 'general', icon: FolderPlus, keywords: 'folder', when: always, run: (api) => api.addProject() },
+  // In New session the project added is picked there too.
+  { id: 'add-project', title: 'Add project…', group: 'general', icon: FolderPlus, keywords: 'folder', when: always, run: (api, ctx) => (ctx.newSession ? api.newSessionRequest('add-project') : api.addProject()) },
   {
     id: 'worktrees-here',
     title: (ctx) => `Worktrees in ${ctx.currentProject?.name ?? 'this project'}`,
@@ -434,6 +501,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'reload-skills', title: 'Reload skills', group: 'general', icon: RefreshCw, keywords: 'refresh slash commands plugins', when: (ctx) => ctx.connected, run: (api) => api.reloadSkills() },
   { id: 'export-settings', title: 'Export settings…', group: 'general', icon: Upload, keywords: 'backup save move mac projects actions preferences', when: always, run: (api) => api.backup('export') },
   { id: 'import-settings', title: 'Import settings…', group: 'general', icon: Download, keywords: 'backup restore move mac projects actions preferences', when: always, run: (api) => api.backup('import') },
+  { id: 'connect-computer', title: 'Connect to another computer…', group: 'general', icon: Monitor, keywords: 'pair remote machine mac pc other computers sessions link', when: always, run: (api) => api.openSettings('remote') },
   { id: 'vscode-extension', title: 'VS Code extension', group: 'general', icon: SquareCode, keywords: 'companion cursor windsurf install marketplace settings', when: always, run: (api) => api.openSettings('vscode') },
   { id: 'manage-sessions', title: 'Manage sessions', group: 'general', icon: Archive, keywords: 'archived archive delete trash clean up old all sessions overview size disk', when: always, run: (api) => api.manageSessions() },
   {
@@ -499,7 +567,35 @@ export const COMMANDS: PaletteCommand[] = [
   },
 
   // A session is open
+  { id: 'show-catch-up', title: 'Show catch-up', group: 'session', shortcut: 'space', icon: NotebookText, keywords: 'briefing summary what happened review', when: (ctx) => session(ctx)?.catchUp === 'strip', run: (api) => api.showCatchUp() },
+  {
+    id: 'build-catch-up',
+    title: 'Catch up on this session',
+    group: 'session',
+    icon: NotebookText,
+    keywords: 'briefing summary what happened review recap',
+    when: (ctx) => ctx.connected && indexed(ctx) && session(ctx)?.catchUp === null && !session(ctx)?.running,
+    run: (api) => api.buildCatchUp(),
+  },
+  {
+    id: 'why-request',
+    title: 'Why is Claude asking?',
+    group: 'session',
+    icon: CircleHelp,
+    keywords: 'permission question explain reason allow deny',
+    when: (ctx) => session(ctx)?.waiting != null,
+    run: (api) => api.showWhy(),
+  },
   { id: 'rename-session', title: 'Rename session…', group: 'session', icon: Pencil, keywords: 'title name', when: indexed, run: (api) => api.renameSession() },
+  {
+    id: 'new-session-linked',
+    title: 'New session linked to this one',
+    group: 'session',
+    icon: Link2,
+    keywords: 'link mention stack pull request pr branch context reference @',
+    when: (ctx) => indexed(ctx) && !!session(ctx)!.projectRoot,
+    run: (api) => api.newLinkedSession(),
+  },
   {
     id: 'pin',
     title: (ctx) => (ctx.session?.pinned ? 'Unpin' : 'Pin'),
@@ -541,33 +637,30 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'change-effort', title: 'Change effort…', group: 'session', icon: Gauge, keywords: 'thinking', when: (ctx) => hosted(ctx) && session(ctx)!.host!.supportsEffort, next: () => ({ kind: 'pick', list: 'effort', chip: 'Effort' }) },
   { id: 'change-mode', title: 'Change permission mode…', group: 'session', shortcut: keysFor('mode.cycle'), icon: ShieldCheck, keywords: 'plan accept edits auto', when: hosted, next: () => ({ kind: 'pick', list: 'mode', chip: 'Permission mode' }) },
   {
-    id: 'side-question',
-    title: 'Ask a side question…',
+    id: 'ask-session',
+    title: 'Ask about this session',
     group: 'session',
-    icon: MessageCircleDashed,
-    keywords: '/btw by the way aside not added to the conversation',
+    icon: MessageCircleQuestion,
+    keywords: '/btw side question by the way aside threads not added to the conversation',
     when: (ctx) => session(ctx) !== null && ctx.connected,
-    run: (api) => api.sessionRequest('side-ask'),
+    run: (api) => api.sessionRequest('ask'),
   },
-  {
-    id: 'side-questions',
-    title: 'Show side questions',
-    group: 'session',
-    icon: MessageCircleDashed,
-    keywords: '/btw earlier answers browse',
-    hint: (ctx) => String(session(ctx)?.sideQuestions ?? 0),
-    when: (ctx) => (session(ctx)?.sideQuestions ?? 0) > 0,
-    run: (api) => api.sessionRequest('side-show'),
-  },
+  { id: 'prompt-previous', title: 'Previous prompt', group: 'session', shortcut: keysFor('transcript.prompt-previous'), icon: ArrowUp, keywords: 'outline rail jump back earlier message scroll', when: hasSession, run: (api) => api.sessionRequest('prompt-previous') },
+  { id: 'prompt-next', title: 'Next prompt', group: 'session', shortcut: keysFor('transcript.prompt-next'), icon: ArrowDown, keywords: 'outline rail jump forward later message scroll', when: hasSession, run: (api) => api.sessionRequest('prompt-next') },
   { id: 'remember-this', title: 'Remember this…', group: 'session', icon: Brain, keywords: 'memory save note selection reply', when: (ctx) => !!session(ctx)?.hasReply && ctx.connected, run: (api) => api.rememberThis() },
+  { id: 'use-saved-prompt', title: 'Use saved prompt…', group: 'general', icon: Bookmark, keywords: 'template snippet blanks fill prompts', when: (ctx) => ctx.composer !== null && ctx.prompts.length > 0, next: () => ({ kind: 'pick', list: 'prompt', chip: 'Saved prompt' }) },
+  { id: 'new-saved-prompt', title: 'New saved prompt…', group: 'general', icon: BookmarkPlus, keywords: 'template snippet blanks create prompts', when: (ctx) => ctx.connected, run: (api) => api.newPrompt() },
   { id: 'quote-in-reply', title: 'Quote in reply', group: 'session', icon: TextQuote, keywords: 'quote answer question selection reply message box', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.quoteInReply() },
   { id: 'copy-last-reply', title: 'Copy last reply', group: 'session', icon: Copy, keywords: 'clipboard markdown answer', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.copyLastReply() },
   { id: 'copy-session-id', title: 'Copy session id', group: 'session', icon: Hash, keywords: 'clipboard uuid resume', when: (ctx) => session(ctx) !== null, run: (api) => api.copySessionId() },
   { id: 'check-transcript', title: 'Check transcript…', group: 'session', icon: Stethoscope, keywords: 'diagnose empty missing messages error debug compacted', when: (ctx) => session(ctx) !== null && ctx.connected, run: (api) => api.checkTranscript() },
   { id: 'toggle-terminal', title: 'Toggle terminal', group: 'session', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: (ctx) => session(ctx) !== null, run: (api) => api.toggleTerminal() },
   { id: 'new-terminal-tab', title: 'New terminal tab', group: 'session', icon: Plus, keywords: 'shell', when: (ctx) => withCwd(ctx) && ctx.connected, run: (api) => api.newTerminalTab() },
-  { id: 'toggle-changes', title: 'Toggle changes', group: 'session', shortcut: keysFor('changes.toggle'), icon: FileDiff, keywords: 'diff git panel', when: withCwd, run: (api) => api.toggleChanges() },
+  { id: 'toggle-agents', title: 'Toggle agents', group: 'session', shortcut: keysFor('agents.toggle'), icon: Bot, keywords: 'subagents background panel', when: hasSession, run: (api) => api.toggleAgents() },
+  { id: 'toggle-commands', title: 'Toggle commands', group: 'session', shortcut: keysFor('commands.toggle'), icon: ScrollText, keywords: 'background shell output monitor panel', when: hasSession, run: (api) => api.toggleCommands() },
+  { id: 'toggle-changes', title: 'Toggle changes', group: 'session', shortcut: keysFor('changes.toggle'), icon: FileDiff, keywords: 'diff git panel', when: inGit, run: (api) => api.toggleChanges() },
   { id: 'tools', title: 'Tools: MCP servers, skills, agents, plugins', group: 'session', icon: Blocks, keywords: 'mcp extensions capabilities', when: withCwd, run: (api) => api.showTools() },
+  { id: 'open-in-new-window', title: 'Open in new window', group: 'session', shortcut: keysFor('session.new-window'), icon: AppWindow, keywords: 'pop out popout detach separate window monitor screen tile', when: hasSession, run: (api) => api.openInNewWindow() },
   { id: 'open-in-editor', title: 'Open folder in editor', group: 'session', shortcut: keysFor('editor.open'), icon: Code, keywords: 'vscode cursor', when: withCwd, run: (api) => api.openInEditor() },
   { id: 'reveal-in-finder', title: `Reveal folder in ${fileManagerName()}`, group: 'session', icon: Folder, keywords: 'show files', when: withCwd, run: (api) => api.revealInFinder() },
   {
@@ -614,6 +707,15 @@ export const COMMANDS: PaletteCommand[] = [
     when: (ctx) => inGit(ctx) && ctx.git!.github && (ctx.git!.pr !== null || ctx.git!.prBlocked === null),
     run: (api, ctx) => (ctx.git?.pr ? api.openUrl(ctx.git.pr.url) : api.sessionRequest('create-pr')),
   },
+  {
+    id: 'fix-checks',
+    title: 'Fix failing checks with Claude',
+    group: 'git',
+    icon: Wrench,
+    keywords: 'git github pr ci checks actions failed red build tests logs',
+    when: (ctx) => inGit(ctx) && ctx.git!.failingChecks > 0 && ctx.composer !== null,
+    run: (api) => api.sessionRequest('fix-checks'),
+  },
   { id: 'sync', title: 'Sync with remote', group: 'git', icon: RefreshCw, keywords: 'git pull push fetch', when: (ctx) => inGit(ctx) && ctx.git!.hasRemote, run: (api) => api.syncWithRemote() },
   { id: 'switch-branch', title: 'Switch branch…', group: 'git', icon: GitBranch, keywords: 'git checkout', when: (ctx) => inGit(ctx) && !session(ctx)!.isWorktree && !session(ctx)!.running, run: (api) => api.sessionRequest('branch-menu') },
   { id: 'stage-all', title: 'Stage all', group: 'git', icon: ListChecks, keywords: 'git add', when: (ctx) => inGit(ctx) && ctx.git!.unstaged > 0, run: (api) => api.stageAll() },
@@ -642,10 +744,19 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'restart-action', title: 'Restart action', group: 'terminal', icon: RotateCcw, keywords: 'run again', when: (ctx) => terminalOpen(ctx) && ctx.terminal.action !== null && ctx.connected, run: (api) => api.restartAction() },
 
   // Split view
-  { id: 'focus-other-pane', title: 'Focus other pane', group: 'panes', icon: ArrowLeftRight, keywords: 'split switch', when: (ctx) => ctx.split && ctx.view === 'session', run: (api) => api.focusOtherPane() },
-  { id: 'close-pane', title: 'Close this pane', group: 'panes', icon: Columns2, keywords: 'split', when: (ctx) => ctx.split && ctx.view === 'session', run: (api) => api.closePane() },
+  { id: 'focus-other-pane', title: 'Focus next pane', group: 'panes', icon: ArrowLeftRight, keywords: 'split switch other tile', when: panes, run: (api) => api.focusNextPane() },
+  { id: 'focus-pane-left', title: 'Focus pane on the left', group: 'panes', shortcut: keysFor('pane.focus-left'), icon: ArrowLeft, keywords: 'split tile go', when: (ctx) => panes(ctx) && ctx.paneWays.includes('left'), run: (api) => api.focusPane('left') },
+  { id: 'focus-pane-right', title: 'Focus pane on the right', group: 'panes', shortcut: keysFor('pane.focus-right'), icon: ArrowRight, keywords: 'split tile go', when: (ctx) => panes(ctx) && ctx.paneWays.includes('right'), run: (api) => api.focusPane('right') },
+  { id: 'focus-pane-up', title: 'Focus pane above', group: 'panes', shortcut: keysFor('pane.focus-up'), icon: ArrowUp, keywords: 'split tile go top', when: (ctx) => panes(ctx) && ctx.paneWays.includes('up'), run: (api) => api.focusPane('up') },
+  { id: 'focus-pane-down', title: 'Focus pane below', group: 'panes', shortcut: keysFor('pane.focus-down'), icon: ArrowDown, keywords: 'split tile go bottom', when: (ctx) => panes(ctx) && ctx.paneWays.includes('down'), run: (api) => api.focusPane('down') },
+  { id: 'swap-panes', title: 'Swap panes', group: 'panes', shortcut: keysFor('pane.swap'), icon: ArrowRightLeft, keywords: 'split exchange switch move left right top bottom next tile', when: panes, run: (api) => api.swapPanes() },
+  { id: 'stack-panes', title: 'Stack panes', group: 'panes', shortcut: keysFor('pane.orientation'), icon: Rows2, keywords: 'split layout orientation direction flip vertical rows above below tile', when: (ctx) => panes(ctx) && ctx.splitDirection === 'row', run: (api) => api.flipSplit() },
+  { id: 'panes-side-by-side', title: 'Show panes side by side', group: 'panes', shortcut: keysFor('pane.orientation'), icon: Columns2, keywords: 'split layout orientation direction flip horizontal columns left right tile', when: (ctx) => panes(ctx) && ctx.splitDirection === 'column', run: (api) => api.flipSplit() },
+  { id: 'close-pane', title: 'Close this pane', group: 'panes', shortcut: keysFor('pane.close'), icon: X, keywords: 'split tile', when: panes, run: (api) => api.closePane() },
+  { id: 'close-other-panes', title: 'Close other panes', group: 'panes', shortcut: keysFor('pane.close-other'), icon: PanelsTopLeft, keywords: 'split tile only keep', when: panes, run: (api) => api.closeOtherPanes() },
 
   // New session is on screen
+
   { id: 'toggle-worktree', title: 'Toggle worktree', group: 'new-session', icon: FolderGit2, keywords: 'isolated checkout', when: (ctx) => !!ctx.newSession?.canWorktree, run: (api) => api.newSessionRequest('toggle-worktree') },
   { id: 'save-defaults', title: 'Save as project default', group: 'new-session', icon: Save, keywords: 'model effort mode', when: (ctx) => !!ctx.newSession?.canSaveDefaults, run: (api) => api.newSessionRequest('save-defaults') },
   { id: 'catch-up', title: 'Update from remote', group: 'new-session', icon: CloudDownload, keywords: 'git pull fetch sync latest', when: (ctx) => !!ctx.newSession?.canCatchUp, run: (api) => api.newSessionRequest('catch-up') },
@@ -678,6 +789,19 @@ export function actionCommands(ctx: PaletteContext): PaletteCommand[] {
   }));
 }
 
+/** "Prompt: <name>" for each saved prompt the message box on screen can use. */
+export function promptCommands(ctx: PaletteContext): PaletteCommand[] {
+  return ctx.prompts.map((prompt) => ({
+    id: `prompt:${prompt.scope.kind}:${prompt.id}`,
+    title: `Prompt: ${prompt.name}`,
+    group: 'general',
+    icon: Bookmark,
+    keywords: 'saved prompt template snippet',
+    when: (c) => c.composer !== null,
+    run: (api) => api.usePrompt(prompt.scope, prompt.id),
+  }));
+}
+
 /** "Theme: <name>" for each theme but the one in use. */
 export function themeCommands(ctx: PaletteContext): PaletteCommand[] {
   return ctx.themes.map((theme) => ({
@@ -704,9 +828,38 @@ export function projectCommands(ctx: PaletteContext): PaletteCommand[] {
   }));
 }
 
-/** Every command that can show here, before matching what is typed. */
+/** For each connected computer: "New session on <name>…" (New session with it picked in Run on) and "Show only <name>". */
+export function computerCommands(ctx: PaletteContext): PaletteCommand[] {
+  return ctx.computers.flatMap((computer) => [
+    {
+      id: `new-session-on:${computer.id}`,
+      title: `New session on ${computer.name}…`,
+      group: 'general' as const,
+      icon: Monitor,
+      keywords: 'start run remote other computer machine',
+      when: always,
+      run: (api: PaletteApi) => api.newSessionOn(computer.id),
+    },
+    {
+      id: `show-only:${computer.id}`,
+      title: `Show only ${computer.name}`,
+      group: 'general' as const,
+      icon: Monitor,
+      keywords: 'filter sidebar sessions computer remote',
+      when: always,
+      run: (api: PaletteApi) => api.showOnlyComputer(computer.id),
+    },
+  ]);
+}
+
+/**
+ * Every command that can show here, before matching what is typed. In a pop-out the ones that make no sense there
+ * (`popoutCommands.ts`) are left out, whatever their `when()` says.
+ */
 export function visibleCommands(ctx: PaletteContext, commands: readonly PaletteCommand[] = COMMANDS): PaletteCommand[] {
-  return [...commands, ...actionCommands(ctx), ...themeCommands(ctx), ...projectCommands(ctx)].filter((command) => command.when(ctx));
+  return [...commands, ...actionCommands(ctx), ...promptCommands(ctx), ...themeCommands(ctx), ...projectCommands(ctx), ...computerCommands(ctx)].filter(
+    (command) => (!ctx.popout || popoutClass(command.id) !== 'hide') && command.when(ctx),
+  );
 }
 
 /** A command as a row: its title for this context, and which letters matched what was typed. */

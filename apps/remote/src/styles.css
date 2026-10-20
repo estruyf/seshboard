@@ -1,0 +1,337 @@
+@import 'tailwindcss';
+
+/*
+ * The desktop app's tokens (apps/ui/src/styles.css, Demo Time), so the phone looks like Switchboard: the same surfaces,
+ * text and status colours (needs you `warn`, working `accent-ink`, background `ok`, unread `unread`). It follows the
+ * phone's light or dark mode. Themes stay on the computer.
+ */
+:root {
+  color-scheme: light dark;
+  --sb-bg: #ffffff;
+  --sb-sidebar: #f4f6fa;
+  --sb-card: #ffffff;
+  --sb-border: #e1e4e8;
+  --sb-edge: #d1d5da;
+  --sb-text: #202736;
+  --sb-muted: #505869;
+  --sb-faint: #687082;
+  --sb-accent: #ffd43b;
+  --sb-accent-ink: #916c00;
+  --sb-on-accent: #15181f;
+  --sb-link: #005cc5;
+  --sb-ok: #00806f;
+  --sb-warn: #d1186b;
+  --sb-error: #d73a49;
+  --sb-unread: #005cc5;
+  --sb-selected: color-mix(in srgb, var(--sb-text) 10%, transparent);
+  --sb-code-bg: #f4f6fa;
+  --sb-diff-added: #00806f1f;
+  --sb-diff-removed: #d73a491f;
+  --sb-focus-ring: #916c008c;
+  --sb-caution: #b35900;
+  --sb-popover: #ffffff;
+  --sb-overlay-border: #d1d5da;
+  --sb-overlay-shadow: 0 2px 6px rgb(21 24 31 / 0.08), 0 12px 32px -4px rgb(21 24 31 / 0.2);
+  /* Claude profile colours (dots that tell accounts apart). */
+  --sb-profile-yellow: #b08300;
+  --sb-profile-blue: #1f6feb;
+  --sb-profile-green: #1a7f37;
+  --sb-profile-purple: #8250df;
+  --sb-profile-red: #cf222e;
+  --sb-profile-orange: #d1600a;
+  --sb-profile-gray: #6e7781;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sb-bg: #15181f;
+    --sb-sidebar: #202736;
+    --sb-card: #202736;
+    --sb-border: #2d3142;
+    --sb-edge: #414861;
+    --sb-text: #d9dbe1;
+    --sb-muted: #9ba4b7;
+    --sb-faint: #8b94a6;
+    --sb-accent: #ffd43b;
+    --sb-accent-ink: #ffd43b;
+    --sb-on-accent: #15181f;
+    --sb-link: #74c0fc;
+    --sb-ok: #51cf66;
+    --sb-warn: #ed217c;
+    --sb-error: #ff6b6b;
+    --sb-unread: #74c0fc;
+    --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
+    --sb-code-bg: #202736;
+    --sb-diff-added: #51cf661f;
+    --sb-diff-removed: #ff6b6b1f;
+    --sb-focus-ring: #ffd43b8c;
+    --sb-caution: #ffa94d;
+    --sb-popover: #2a3244;
+    --sb-overlay-border: #414861;
+    --sb-overlay-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 10px rgb(0 0 0 / 0.35), 0 16px 40px -6px rgb(0 0 0 / 0.7);
+    --sb-profile-yellow: #ffd43b;
+    --sb-profile-blue: #74c0fc;
+    --sb-profile-green: #51cf66;
+    --sb-profile-purple: #b197fc;
+    --sb-profile-red: #ff8787;
+    --sb-profile-orange: #ffa94d;
+    --sb-profile-gray: #9ba4b7;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--sb-bg);
+  --color-sidebar: var(--sb-sidebar);
+  --color-card: var(--sb-card);
+  --color-border: var(--sb-border);
+  --color-edge: var(--sb-edge);
+  --color-text: var(--sb-text);
+  --color-muted: var(--sb-muted);
+  --color-faint: var(--sb-faint);
+  --color-accent: var(--sb-accent);
+  --color-accent-ink: var(--sb-accent-ink);
+  --color-on-accent: var(--sb-on-accent);
+  --color-link: var(--sb-link);
+  --color-ok: var(--sb-ok);
+  --color-warn: var(--sb-warn);
+  --color-error: var(--sb-error);
+  --color-unread: var(--sb-unread);
+  --color-caution: var(--sb-caution);
+  --color-popover: var(--sb-popover);
+  --color-selected: var(--sb-selected);
+  --color-code: var(--sb-code-bg);
+  --color-diff-added: var(--sb-diff-added);
+  --color-diff-removed: var(--sb-diff-removed);
+  --color-profile-yellow: var(--sb-profile-yellow);
+  --color-profile-blue: var(--sb-profile-blue);
+  --color-profile-green: var(--sb-profile-green);
+  --color-profile-purple: var(--sb-profile-purple);
+  --color-profile-red: var(--sb-profile-red);
+  --color-profile-orange: var(--sb-profile-orange);
+  --color-profile-gray: var(--sb-profile-gray);
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, Menlo, monospace;
+  /* The desktop's scale with a mouse; one step up on a touch screen (see the --sb-text-* values below). */
+  --text-meta: var(--sb-text-meta);
+  --text-meta--line-height: 1.45;
+  --text-ui: var(--sb-text-ui);
+  --text-ui--line-height: 1.45;
+  --text-body: var(--sb-text-body);
+  --text-body--line-height: 1.55;
+  --text-title: var(--sb-text-title);
+  --text-title--line-height: 1.35;
+  --text-hero: var(--sb-text-hero);
+  --text-hero--line-height: 1.3;
+}
+
+/* A phone held at arm's length: one step up from the desktop. Fields stay at 16px so iOS doesn't zoom in. */
+:root {
+  --sb-text-meta: 12px;
+  --sb-text-ui: 14px;
+  --sb-text-body: 16px;
+  --sb-text-title: 17px;
+  --sb-text-hero: 22px;
+}
+/* A computer's browser: the desktop app's own sizes (AGENTS.md, Type scale). */
+@media (pointer: fine) {
+  :root {
+    --sb-text-meta: 11px;
+    --sb-text-ui: 12px;
+    --sb-text-body: 13.5px;
+    --sb-text-title: 15px;
+    --sb-text-hero: 20px;
+  }
+}
+
+/*
+ * The dynamic viewport's height, not 100%: in Safari 100% reaches under the toolbar, which hid the bottom bar. On an
+ * iPhone the keyboard doesn't change it; the session view follows the visual viewport while you type instead
+ * (`useVisualViewport`).
+ */
+html,
+body,
+#root {
+  height: 100dvh;
+}
+
+body {
+  margin: 0;
+  background: var(--sb-bg);
+  color: var(--sb-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * In the base layer so utilities win: a field inside a framed box (`outline-none`) shows its focus on the frame, not
+ * as a second ring inside it. Tailwind 4 gives buttons the arrow; clickable controls get the pointer back.
+ */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+  }
+  :is(button, [role='button'], [role='checkbox'], [role='radio'], summary, label[for]) {
+    cursor: pointer;
+  }
+  :is(button, [role='button'], [role='checkbox'], [role='radio']):is(:disabled, [aria-disabled='true']) {
+    cursor: not-allowed;
+  }
+}
+
+/* A text field: a bordered box whose frame turns yellow, with a faint 4px ring, while you type in it. */
+@utility field {
+  border: 1px solid var(--sb-edge);
+  border-radius: 0.5rem;
+  background: var(--sb-card);
+  color: var(--sb-text);
+  outline: none;
+  transition: border-color 120ms, box-shadow 120ms;
+  &::placeholder {
+    color: var(--sb-faint);
+  }
+  &:focus,
+  &:focus-within {
+    border-color: var(--sb-accent-ink);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--sb-accent) 20%, transparent);
+  }
+}
+
+/* Room for the notch and the home indicator in a home-screen app. */
+.safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+.safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* Claude is working: three dots that take turns, as on the computer (apps/ui/src/styles.css). */
+.working-dots {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.working-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--sb-accent-ink);
+  animation: working-dot 1.2s ease-in-out infinite;
+}
+.working-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.working-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes working-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+/* Floating things (menus, sheets, toasts): the popover surface, its border and shadow (AGENTS.md, Surfaces). */
+@utility overlay {
+  background-color: var(--sb-popover);
+  border: 1px solid var(--sb-overlay-border);
+  box-shadow: var(--sb-overlay-shadow);
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.sheet-in {
+  animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 160ms ease-out;
+}
+@media (min-width: 768px) {
+  .sheet-in {
+    animation: toast-in 160ms ease-out;
+  }
+}
+.scrim-in {
+  animation: fade-in 160ms ease-out;
+}
+.toast-in {
+  animation: toast-in 160ms ease-out;
+}
+/* A pulled list going back up, or to where the spinner shows. */
+.pull-settle {
+  transition: transform 200ms ease-out;
+}
+
+/* A prompt card that was answered folds away before it leaves the list. */
+.collapse-out {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 220ms ease-in,
+    opacity 180ms ease-in,
+    margin 220ms ease-in;
+}
+.collapse-out[data-leaving] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-block: 0;
+}
+.collapse-out > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-in,
+  .scrim-in,
+  .toast-in,
+  .pulse-dot {
+    animation: none;
+  }
+  .working-dots span {
+    animation: none;
+    opacity: 0.8;
+  }
+  .collapse-out,
+  .sheet-in,
+  .pull-settle {
+    transition: none;
+  }
+}
+
+/* A row of chips that scrolls sideways without a scrollbar. */
+@utility scroll-row {
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

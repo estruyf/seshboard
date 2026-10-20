@@ -1,11 +1,13 @@
+import { isKeptUnread, releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, Blocks, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, SquareTerminal, X } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
-import { basename, guessHome, shortAge, tildify } from '../../lib/format.ts';
+import { basename, shortAge, tildify } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
+import { useHomeFolder } from '../../state/homeStore.ts';
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
@@ -13,12 +15,16 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { realBranch, useSessions, type Pane } from '../../state/sessionsStore.ts';
-import { runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
-import { sessionDraftBanner } from '../../state/drafts.ts';
+import { realBranch, useSessions } from '../../state/sessionsStore.ts';
+import { popOut, popoutSession, showInMain } from '../../state/popoutsStore.ts';
+import { currentPlatform } from '../../lib/platform.ts';
+import { runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
+import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { useUpNext } from '../../state/upNextStore.ts';
+import { useLimits } from '../../state/limitsStore.ts';
+import { UsageLimitNotice } from '../session/UsageLimitNotice.tsx';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
@@ -27,14 +33,25 @@ import { AutoWand } from '../composer/ComposerChips.tsx';
 import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
+import { ModBands } from '../mods/ModBands.tsx';
+import { ModPanePanel } from '../mods/ModPanePanel.tsx';
+import { ModFooterChips } from '../mods/ModFooterChips.tsx';
+import { ModsChip } from '../mods/ModsChip.tsx';
+import { shownMods } from '../mods/modVisibility.ts';
+import { useMods, useSessionMods } from '../../state/modsStore.ts';
+import { ModReplaced } from '../mods/ModReplaced.tsx';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
+import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
 import { ActionPills } from '../actions/ActionPills.tsx';
 import { useActionsMenu } from '../actions/useActionsMenu.tsx';
 import { CapabilitiesDialog } from '../capabilities/CapabilitiesDialog.tsx';
 import { ChangesPanel, useChangesLayout } from '../changes/ChangesPanel.tsx';
 import { ContextMeter } from '../session/ContextMeter.tsx';
+import { LargeContextNotice } from '../session/LargeContextNotice.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
+import { useHeight } from '../ui/useHeight.ts';
+import { useWidth } from '../ui/useWidth.ts';
 import { BranchMenu } from '../worktree/BranchMenu.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import { WorktreeMenu } from '../worktree/WorktreeMenu.tsx';
@@ -47,31 +64,62 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
 import { SessionControls } from '../session/StatusBar.tsx';
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
+import { SessionCost } from '../usage/SessionCost.tsx';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
 import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
+import { agentForTask } from './agentRuns.ts';
+import { useAgentRuns } from './useAgentRuns.ts';
+import { commandForTask } from './commandRuns.ts';
+import { useCommandRuns } from './useCommandRuns.ts';
 import { backgroundSummary } from './backgroundTasks.ts';
 import { PromptExpansionContext, type PromptExpansion } from './ClampedPrompt.tsx';
 import { buildDisplayItems, groupActivity, type RenderItem } from './displayItems.ts';
+import { durationWords, liveParts, tokenWords } from './turnFormat.ts';
+import { LiveTurnParts, TurnMetaContext, type LiveTurnInfo, type TurnMetaValue } from './TurnMeta.tsx';
+import { claudeMs, liveTurn, type Turn } from './turns.ts';
+import { useAgentTokens, useTurns } from './useTurns.ts';
 import { memoryWriteOf } from './memoryWrites.ts';
 import { useKnownMemoryFolders, useMemoryFoldersSync } from '../memory/useMemoryFolders.ts';
-import { useRememberLayer } from '../memory/RememberLayer.tsx';
+import { MessageMenuContext, useRememberLayer } from '../memory/RememberLayer.tsx';
 import { FindBar } from './FindBar.tsx';
 import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
-import { SideQuestionChip, SideQuestionPanel } from '../sideQuestions/SideQuestionPanel.tsx';
-import { askSideQuestion, closeSideQuestion, dropSideChip, expandSideQuestion, loadSideQuestions, moveSideQuestion, openLatestSideQuestion, openSideQuestion, retrySideQuestion, useSessionSide } from '../../state/sideQuestionsStore.ts';
+import { AgentsPanel } from '../agents/AgentsPanel.tsx';
+import { CommandsPanel } from '../commands/CommandsPanel.tsx';
+import { AskPanel } from '../ask/AskPanel.tsx';
+import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
+import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
+import { itemCount } from '../../state/ask.ts';
+import { askAbout, closeAsk, loadAskThreads, newAskThread, openAsk, pickAskThread, retryAsk, toggleAskPanel, useSessionAsk } from '../../state/askStore.ts';
+import { closeAgents, openAgents, pickAgent, toggleAgentsPanel, useSessionAgents } from '../../state/agentsPanelStore.ts';
+import { closeCommands, openCommands, pickCommand, toggleCommandsPanel, useSessionCommands } from '../../state/commandsPanelStore.ts';
+import { closeChanges, toggleChangesPanel, useSessionChanges } from '../../state/changesPanelStore.ts';
+import { toggleTerminalPanel, useRightPanel, useRightTab } from '../../state/rightPanelStore.ts';
+import { useTaskStrip } from '../../state/taskStripStore.ts';
 import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { TranscriptItem } from './TranscriptItem.tsx';
 import { useTranscript } from './useTranscript.ts';
+import { PromptOutline } from './PromptOutline.tsx';
+import { currentPrompt, isPrompt, LAND_OFFSET, MIN_PROMPTS, MIN_WIDTH, nextPrompt, outlinePrompts, previousPrompt, promptKeysBlocked, type OutlinePrompt } from './promptOutline.ts';
+import { startNewSession } from '../newSession/startSession.ts';
+import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
+import { restartAsNew } from './restartAsNew.ts';
 import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
+import { CatchUpSlot } from '../catchUp/CatchUp.tsx';
+import { replyPlaceholder } from '../catchUp/catchUpModel.ts';
+import { useCatchUp } from '../../state/catchUpStore.ts';
+import { useCatchUpShow } from '../../state/catchUpShow.ts';
+import { useWhy } from '../../state/whyStore.ts';
+import { WhyPanel } from '../session/WhyPanel.tsx';
 
 const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', sdk: 'SDK', app: 'Switchboard', unknown: '' } as const;
 
@@ -81,6 +129,8 @@ const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', s
  */
 const STATUS_TONE = { running: 'text-accent-ink', 'needs-you': 'text-warn', idle: 'text-muted' } as const;
 
+/** A pop-out narrower than this (the session view's width) gives a panel on the right the whole view. */
+const NARROW_POPOUT_PANEL = 640;
 /** Within this many pixels of the end counts as at the end (rounding), so the conversation follows new output again. */
 const AT_END_PX = 4;
 /** Further up than this, Jump to latest shows. */
@@ -99,12 +149,25 @@ const Sep = () => (
  * What Claude is doing right now, before it lands in the transcript: the text it's writing,
  * or (when no step line is already showing it) dots, the time since your message, and the step.
  */
-function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string; since: number | null; showIndicator: boolean }) {
+/** The working line, drawn by a mod that replaces the Spinner. */
+function SpinnerSlot({ sessionId, message, children }: { sessionId: string; message: string; children: ReactNode }) {
+  const hooked = useMods((s) => s.sessions.get(sessionId)?.state.hooked.includes('Spinner') ?? false);
+  const target = useMemo(() => ({ component: 'Spinner' as const, instanceId: 'spinner', props: { message } }), [message]);
+  return hooked ? (
+    <ModReplaced sessionId={sessionId} target={target}>
+      {children}
+    </ModReplaced>
+  ) : (
+    <>{children}</>
+  );
+}
+
+function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: string; since: number | null; showIndicator: boolean; live: LiveTurnInfo }) {
   const block = useHosts((s) => s.streaming.get(sessionId));
   const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
   // A new session on Auto: your message waits until Auto has picked its model.
   const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
-  const now = useTicker((running || choosing) && showIndicator && block?.kind !== 'text');
+  const now = useTicker(choosing && showIndicator);
   if (choosing) {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-auto-choosing>
@@ -128,19 +191,31 @@ function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string
     );
   }
   if (!running || !showIndicator) return null;
-  const label = block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
+  const label = live.waitingSince !== null ? 'Waiting for you' : block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
   return (
     <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
+      <SpinnerSlot sessionId={sessionId} message={label}>
       <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
         <span className="flex w-4 shrink-0 justify-center">
           <WorkingDots />
         </span>
-        {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
         <span className="shrink-0">{label}</span>
+        {/* The turn's time and tokens so far, as Settings › Conversation says. */}
+        <LiveTurnParts live={live} startedAt={since} />
         {block?.kind === 'thinking' && block.text && <span className="min-w-0 truncate text-faint italic">{block.text.slice(-160)}</span>}
       </p>
+      </SpinnerSlot>
     </div>
   );
+}
+
+/** How the turn that just ended went, as the setting shows it, for its announcement: " It took 2 minutes 14 seconds, 18.4 thousand tokens." */
+function finishedDetails(live: LiveTurnInfo | null): string {
+  if (!live?.turn) return '';
+  const parts = liveParts(live.mode);
+  const worked = claudeMs(live.turn) ?? liveTurn(live.turn, Date.now(), null).workedMs;
+  const said = [...(parts.duration && worked !== null ? [`It took ${durationWords(worked)}`] : []), ...(parts.tokens && live.turn.tokens ? [tokenWords(live.turn.tokens.total)] : [])];
+  return said.length ? ` ${said.join(', ')}.` : '';
 }
 
 /**
@@ -148,7 +223,7 @@ function StreamingBlock({ sessionId, since, showIndicator }: { sessionId: string
  * The transcript itself is not a live region: streamed text and rows the list mounts while you
  * scroll would be read out non-stop.
  */
-function Announcer({ sessionId, working, failed, permissions, cwd }: { sessionId: string; working: boolean; failed: boolean; permissions: PermissionRequest[]; cwd: string | null }) {
+function Announcer({ sessionId, working, failed, permissions, cwd, turn }: { sessionId: string; working: boolean; failed: boolean; permissions: PermissionRequest[]; cwd: string | null; turn: RefObject<LiveTurnInfo | null> }) {
   const [message, setMessage] = useState('');
   // A trailing no-break space makes a repeated message a change, so it's read out again.
   const say = (text: string) => setMessage((current) => (current.replace(/\u00a0$/, '') === text ? `${text}\u00a0` : text));
@@ -163,8 +238,8 @@ function Announcer({ sessionId, working, failed, permissions, cwd }: { sessionId
   useEffect(() => {
     const was = previous.current;
     previous.current = { sessionId, working };
-    if (was.sessionId === sessionId && was.working && !working) say(failed ? 'Claude stopped with an error.' : 'Claude finished.');
-  }, [sessionId, working, failed]);
+    if (was.sessionId === sessionId && was.working && !working) say(`${failed ? 'Claude stopped with an error.' : 'Claude finished.'}${finishedDetails(turn.current)}`);
+  }, [sessionId, working, failed, turn]);
   return (
     <p className="sr-only" role="status" aria-live="polite" data-announcer>
       {message}
@@ -173,53 +248,90 @@ function Announcer({ sessionId, working, failed, permissions, cwd }: { sessionId
 }
 
 /**
- * The checkout's git changes, refreshed when the session does something (debounced),
- * when the window comes back into focus, and on request. `isRepo` is false outside git.
+ * The checkout's git changes, refreshed when the session does something (debounced), when the Changes panel
+ * opens, when the window comes back into focus or into view, on request, and every few seconds while the window
+ * is visible: files also change from the terminal, a project action or another app. `open`: the Changes panel
+ * shows them. `isRepo` is false outside git.
  */
-function useGitChanges(cwd: string | null, base: ChangesBase, activity: string) {
+function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, open: boolean) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [changes, setChanges] = useState<GitChanges | null>(null);
   const [isRepo, setIsRepo] = useState(true);
-  const [version, setVersion] = useState(0);
+  /** Asks for a check after `delay` ms (a later ask replaces a waiting one); a no-op without a folder. */
+  const request = useRef<(delay: number) => void>(() => {});
+  const openRef = useRef(open);
+  openRef.current = open;
   useEffect(() => {
     if (!client || !cwd) return;
     let cancelled = false;
-    const timer = setTimeout(() => {
-      client.call('git.changes', { cwd, base }).then(
-        (result) => !cancelled && (setChanges(result), setIsRepo(true)),
-        () => !cancelled && (setChanges(null), setIsRepo(false)),
-      );
-    }, 500);
+    // One git.changes at a time: an ask while one runs checks again once it is back.
+    let busy = false;
+    let again = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = () => {
+      timer = undefined;
+      if (busy) {
+        again = true;
+        return;
+      }
+      busy = true;
+      client
+        .call('git.changes', { cwd, base })
+        .then(
+          (result) => {
+            if (cancelled) return;
+            // The open panel takes every new list (its open diffs reload with it); the header's count only needs news.
+            setChanges((current) => (!openRef.current && sameChanges(current, result) ? current : result));
+            setIsRepo(true);
+          },
+          () => !cancelled && (setChanges(null), setIsRepo(false)),
+        )
+        .finally(() => {
+          busy = false;
+          if (cancelled || !again) return;
+          again = false;
+          load();
+        });
+    };
+    const ask = (delay: number) => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(load, delay);
+    };
+    request.current = ask;
+    ask(500);
+    const visible = () => document.visibilityState === 'visible';
+    // Nothing is checked while the window is hidden; it checks once it shows again.
+    const poll = setInterval(() => visible() && !busy && timer === undefined && load(), GIT_POLL_MS);
+    const onVisible = () => visible() && ask(0);
+    const onFocus = () => ask(500);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      request.current = () => {};
     };
-  }, [client, cwd, base, activity, version]);
+  }, [client, cwd, base]);
+  // The session did something (or the branch changed): check again once it settles.
+  useEffect(() => request.current(500), [activity]);
+  // Opening the panel shows what is there now, not what was there at the last check.
   useEffect(() => {
-    const onFocus = () => setVersion((v) => v + 1);
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, []);
-  return { changes, isRepo, refresh: () => setVersion((v) => v + 1) };
+    if (open) request.current(0);
+  }, [open]);
+  const refresh = useCallback(() => request.current(500), []);
+  return { changes, isRepo, refresh };
 }
 
-/** An element's width, following resizes (null until it has been measured). */
-function useWidth(ref: RefObject<HTMLElement | null>): number | null {
-  const [width, setWidth] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setWidth(el.getBoundingClientRect().width);
-    const observer = new ResizeObserver(([entry]) => setWidth(entry!.contentRect.width));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref]);
-  return width;
-}
-
-/** A session: live transcript, plus composer and controls when it can run here. */
-export function TranscriptView({ sessionId, pane = null, active = true }: { sessionId: string; pane?: Pane | null; active?: boolean }) {
+/**
+ * A session: live transcript, plus composer and controls when it can run here. `tiled`: it is one of several
+ * panes, so its header has the handle to drag it by and a close for the pane, and an inactive one dims.
+ * `leading`: it is the pane at the window's top left, which carries the sidebar toggle.
+ */
+export function TranscriptView({ sessionId, tiled = false, active = true, leading = true }: { sessionId: string; tiled?: boolean; active?: boolean; leading?: boolean }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const summary = useSessions((s) => s.sessions.get(sessionId) ?? null);
@@ -229,11 +341,10 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const permissionMap = useHosts((s) => s.permissions);
   const commandsVersion = useHosts((s) => s.commandsVersion);
   const permissions = useMemo(() => [...permissionMap.values()].filter((p) => p.sessionId === sessionId), [permissionMap, sessionId]);
-  const home = useSessions((s) => guessHome([...s.sessions.values()].slice(0, 20).flatMap((x) => (x.cwd ? [x.cwd] : []))));
+  const home = useHomeFolder();
   const { status, messages, error: readError, retry: retryRead } = useTranscript(sessionId);
   // The terminal panel belongs to this session's view: another session doesn't show it.
   const panelOpen = useTerminals((s) => s.openFor.has(sessionId));
-  const togglePanel = useTerminals((s) => s.togglePanel);
   const terminalCount = useTerminals((s) => [...s.terminals.values()].filter((t) => t.sessionId === sessionId && t.exitCode === null).length);
 
   // Setup and project actions open their own terminal tab: show it as soon as one starts.
@@ -276,13 +387,29 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const projectRoot = summary?.projectRoot ?? registryLive?.projectRoot ?? null;
   const project = useProjects((s) => (projectRoot ? s.projects.get(projectRoot) : undefined));
 
+  // The catch-up: a briefing on the last turn, as a banner over the conversation.
+  const { card: catchUp, show: catchUpShow } = useCatchUpShow(sessionId);
+  const replying = useCatchUp((s) => s.replying === sessionId);
+  // When you opened this session: a catch-up made before that is what you came back to.
+  const openedAt = useRef({ sessionId, at: Date.now() });
+  if (openedAt.current.sessionId !== sessionId) openedAt.current = { sessionId, at: Date.now() };
+  /**
+   * Opening a session with a catch-up doesn't mark it read: Mark as read, or anything that ends what it needs, does. A
+   * card made while you were looking (you watched the turn end) is no news, so the session is read as usual then.
+   */
+  const keepUnread = catchUp !== null && catchUpShow !== null && catchUp.generatedAt < openedAt.current.at;
+
   // Looking at a session marks it read, also while new output keeps arriving.
   const unread = summary?.unread ?? false;
   useEffect(() => {
-    if (!client || !unread) return;
+    if (!client || !unread || keepUnread || isKeptUnread(sessionId)) return;
     const timer = setTimeout(() => void client.call('sessions.markViewed', { sessionId }).catch(() => {}), 600);
     return () => clearTimeout(timer);
-  }, [client, sessionId, unread, summary?.updatedAt]);
+  }, [client, sessionId, unread, summary?.updatedAt, keepUnread]);
+  // Marked as unread while open: it stays so until you leave the session.
+  useEffect(() => () => releaseUnread(sessionId), [sessionId]);
+  // Reply put you in the message box: another session isn't a reply to this one.
+  useEffect(() => () => useCatchUp.setState((s) => (s.replying === sessionId ? { replying: null } : {})), [sessionId]);
 
   // The latest task list, pinned above the composer while there's still work on it.
   const todos = useMemo(() => {
@@ -294,7 +421,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   }, [items]);
   // The task list and the background tasks start folded into their pills (the pills say how far
   // along, and how many); one opens below them at a time.
-  const [openStrip, setOpenStrip] = useState<'todos' | 'background' | null>(null);
+  // Per session, so the strip is as you left it when you come back to the session.
+  const openStrip = useTaskStrip((s) => s.open.get(sessionId)) ?? null;
   const todosOpen = openStrip === 'todos';
   const todosId = useId();
   const backgroundId = useId();
@@ -302,7 +430,11 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const activeHost = isActiveHost(host) ? host : null;
   const live = activeHost ? hostAsLive(activeHost) : registryLive;
   const openElsewhere = !activeHost && registryLive !== null;
-  const cwd = activeHost?.cwd ?? summary?.cwd ?? registryLive?.cwd ?? null;
+  // Last, the host's own folder: a session whose Claude Code failed (or stopped) before it wrote a transcript has no
+  // other, and without one the message box would stay shut.
+  const cwd = activeHost?.cwd ?? summary?.cwd ?? registryLive?.cwd ?? host?.cwd ?? null;
+  /** Failed before it wrote a transcript: nothing to resume, so the next message starts it again as a new session. */
+  const restart = restartAsNew(host, { hasTranscript: summary !== null, openElsewhere });
   /** A quick question: no project actions, and no git (nothing to diff, commit or branch). The terminal still opens, in its folder. */
   const question = useProjects((s) => isQuestionsFolder(projectRoot ?? cwd, s.questionsDir));
   const options = sessionOptions(question);
@@ -310,6 +442,14 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const showTodos = todos.some((t) => t.status !== 'completed') && (live !== null || activeHost !== null);
   const backgroundTasks = activeHost?.backgroundTasks ?? [];
   const backgroundOpen = openStrip === 'background' && backgroundTasks.length > 0;
+  const stopTask = async (taskId: string) => {
+    try {
+      await client!.call('session.stopTask', { sessionId, taskId });
+    } catch (error) {
+      setActionError(`Could not stop the task: ${(error as Error).message}`);
+      throw error;
+    }
+  };
   /** The Claude profile (account) the session bills to. */
   const profileId = activeHost?.profileId ?? summary?.profileId ?? registryLive?.profileId ?? null;
   // Project actions: called once here (it listens for their shortcuts and owns their dialogs), then
@@ -317,28 +457,114 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const actionsMenu = useActionsMenu({ sessionId, projectRoot: options.projectActions ? projectRoot : null, cwd, active });
 
   // The Changes panel (⌘⇧D): the checkout's git diff, with stage and revert.
-  const changesOpen = useOverlay((s) => s.changesOpen);
-  // With two panes, panels and dialogs belong to the active one.
+  const changesOpen = useSessionChanges(sessionId);
+  // With two panes, dialogs belong to the active one; the side panels are each session's own.
   const toolsOpen = useOverlay((s) => s.open === 'tools') && active;
-  const toggleChanges = useOverlay((s) => s.toggleChanges);
   const [changesBase, setChangesBase] = useState<ChangesBase>('uncommitted');
   // A branch switch (here or in another pane on the same checkout) changes what the panel shows.
   const branchSwitches = useCheckoutBranches((s) => s.switches);
-  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, `${items.length}:${live?.status ?? ''}:${branchSwitches}`);
+  const { changes, isRepo: inRepo, refresh: refreshChanges } = useGitChanges(options.git ? cwd : null, changesBase, `${items.length}:${live?.status ?? ''}:${branchSwitches}`, changesOpen);
   const isRepo = options.git && inRepo;
   // The badge on the Changes button counts uncommitted files only (the panel can compare with a branch too).
   const changedCount = changesBase === 'uncommitted' && changes ? changes.files.length : 0;
-  const showChanges = Boolean(changesOpen && active && cwd && isRepo);
+  // A session in its own window (a pop-out) is a full session: it has every panel, each window keeping its own. Only the
+  // header's window buttons differ (`inPopout`).
+  const inPopout = popoutSession === sessionId;
+  const showChanges = Boolean(changesOpen && cwd && isRepo);
+  // "Why is Claude asking?" on a permission card: its panel takes the Changes panel's place while it is open.
+  const whyOpen = useWhy((s) => s.open);
+  const whyRequest = active && whyOpen?.sessionId === sessionId ? (permissions.find((p) => p.requestId === whyOpen.requestId) ?? null) : null;
+  // Answered (here, in a terminal or by a hook): the panel goes with the request.
+  useEffect(() => {
+    if (whyOpen?.sessionId === sessionId && !permissions.some((p) => p.requestId === whyOpen.requestId)) useWhy.getState().close();
+  }, [whyOpen, permissions, sessionId]);
   const changesExpanded = useChangesLayout((s) => s.expanded);
-  // The terminal docks below or on the right; the right side goes to Changes when both want it. Maximized, it
-  // takes the whole view: the conversation (and Changes) stay mounted but hidden.
-  // Each pane shows its own session's terminal, so with two panes both can have one.
+  // Ask about this session shares the right side with Changes: both open, they are tabs (the last one picked in front).
+  const ask = useSessionAsk(sessionId);
+  const rightTab = useRightTab(sessionId);
+  const rightWidth = useRightPanel((s) => s.width);
+  const setRightWidth = useRightPanel((s) => s.setWidth);
+  // Agents joins them: the agents Claude started in this session, with the running ones counted on their tab.
+  const { agents, running: agentsRunning } = useAgentRuns(items, live !== null);
+  const agentsState = useSessionAgents(sessionId);
+  // Their open state is per session, so unlike Changes (one flag for the window) they stay when another pane is focused.
+  const showAgents = agentsState.open;
+  // And Commands: the shell commands and monitors Claude ran in the background, with their output.
+  const { commands: backgroundCommands, running: commandsRunning } = useCommandRuns(items, live !== null, activeHost?.backgroundTasks ?? null);
+  const commandsState = useSessionCommands(sessionId);
+  const showCommands = commandsState.open;
+  // The terminal docks below or on the right. On the right it is a tab like the others, so opening Changes, Ask,
+  // Agents or Commands next to it keeps it there. Maximized, it takes the whole view: the conversation (and the other panels) stay
+  // mounted but hidden. Each pane shows its own session's terminal, so with two panes both can have one.
   const terminalShown = panelOpen;
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyWidth = useWidth(bodyRef);
-  const terminalBlocked = rightBlocked(showChanges, bodyWidth);
+  const bodyHeight = useHeight(bodyRef);
+  // "Why?" takes the whole right side while it is open.
+  const terminalBlocked = rightBlocked(whyRequest ? 'changes' : null, bodyWidth);
   const terminalDock = effectiveDock(useTerminals((s) => s.dock), terminalBlocked);
   const terminalMaximized = useTerminals((s) => s.maximizedFor.has(sessionId)) && terminalShown;
+  const terminalOnRight = terminalShown && terminalDock === 'right' && !terminalMaximized;
+  // Mods' panes are tabs too, while Claude Code has them open (and Show mods and the mod's own switch are on).
+  const sessionMods = useSessionMods(sessionId);
+  const showMods = usePreferences((s) => s.prefs.showMods);
+  const hiddenMods = usePreferences((s) => s.prefs.hiddenMods);
+  const modPrefs = useMemo(() => ({ showMods, hiddenMods }), [showMods, hiddenMods]);
+  const modPanes = useMemo(
+    () => (sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
+    [sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
+  );
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  const modPaneFront = paneOfTab(right.tab);
+  const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
+  // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
+  const changesFront = right.tabs && showChanges ? right.tab === 'changes' : undefined;
+  const askFront = right.tabs && ask.open ? right.tab === 'ask' : undefined;
+  const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
+  const commandsFront = right.tabs && showCommands ? right.tab === 'commands' : undefined;
+  const terminalFront = right.tabs && terminalOnRight ? right.tab === 'terminal' : undefined;
+  const panesOpen = modPanes.length > 0;
+  // A pop-out can be narrower than a panel and a usable conversation together: then the panel takes the whole view,
+  // and the header's buttons (or the panel's ×) bring the conversation back.
+  const narrowPanel = inPopout && (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_POPOUT_PANEL;
+  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || terminalOnRight || panesOpen);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || terminalOnRight || panesOpen);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || terminalOnRight || panesOpen);
+  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || terminalOnRight || panesOpen);
+  // Picking a mod's tab tells Claude Code which pane is shown.
+  const pickRightTab = (tab: RightTab) => {
+    useRightPanel.getState().setTab(sessionId, tab);
+    const pane = paneOfTab(tab);
+    if (pane && client) void client.call('mods.pane', { sessionId, action: 'show', id: pane }).catch(() => {});
+  };
+  const closeModPane = (id: string) => {
+    if (client) void client.call('mods.pane', { sessionId, action: 'close', id }).catch(() => {});
+  };
+  const rightTabs = (actions: ReactNode) => (
+    <RightPanelTabs
+      tab={right.tab ?? 'changes'}
+      open={right.open}
+      onTab={pickRightTab}
+      counts={{ changes: changes?.files.length ?? 0, ask: itemCount(ask), agents: agentsRunning, commands: commandsRunning, terminal: terminalCount }}
+      titles={Object.fromEntries(modPanes.map((p) => [p.id, p.title]))}
+    >
+      {actions}
+    </RightPanelTabs>
+  );
+  // A mod asked for one of its panes to take the keyboard: its tab comes to the front and takes focus.
+  const [paneFocus, setPaneFocus] = useState({ id: null as string | null, nonce: 0 });
+  const focusRequested = active ? sessionMods.panes.focusRequestedId : null;
+  useEffect(() => {
+    if (!focusRequested || !modPanes.some((p) => p.id === focusRequested)) return;
+    useRightPanel.getState().setTab(sessionId, modPaneTab(focusRequested));
+    setPaneFocus((f) => ({ id: focusRequested, nonce: f.nonce + 1 }));
+  }, [focusRequested, modPanes]);
+  // The terminal coming to the right (opened, or docked there) comes to the front, as a panel opened there does.
+  const terminalWasOnRight = useRef(terminalOnRight);
+  useEffect(() => {
+    if (terminalOnRight && !terminalWasOnRight.current) useRightPanel.getState().setTab(sessionId, 'terminal');
+    terminalWasOnRight.current = terminalOnRight;
+  }, [terminalOnRight]);
   // Docked below, the terminal takes the room of the footer under the message box: a ring in the box stands in for it.
   const foldFooter = terminalShown && terminalDock === 'bottom' && !terminalMaximized;
   const usageLines = useUsageLines(profileId);
@@ -354,13 +580,28 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
       if (event.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
       if (active && isShortcut(event, 'changes.toggle')) {
         event.preventDefault();
-        toggleChanges();
+        toggleChangesHere();
+      }
+      if (active && isShortcut(event, 'agents.toggle')) {
+        event.preventDefault();
+        toggleAgentsHere();
+      }
+      if (active && isShortcut(event, 'commands.toggle')) {
+        event.preventDefault();
+        toggleCommandsHere();
       }
       // ⌘F finds in this conversation (the terminal keeps its own keys).
       if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm')) {
         event.preventDefault();
         setFindQuery((q) => q ?? '');
         setFindFocus((n) => n + 1);
+      }
+      // ⌘⇧↑ / ⌘⇧↓ move between your prompts, also with the rail hidden. Not in the terminal, nor in a field with
+      // text, where they select to the start or the end.
+      const promptStep = isShortcut(event, 'transcript.prompt-previous') ? -1 : isShortcut(event, 'transcript.prompt-next') ? 1 : 0;
+      if (active && promptStep !== 0 && !(event.target as HTMLElement | null)?.closest?.('.xterm') && !promptKeysBlocked(document.activeElement as HTMLElement | null)) {
+        event.preventDefault();
+        stepPrompt(promptStep);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -377,6 +618,22 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const activeLabel =
     live?.status === 'needs-you' ? 'Waiting for you' : streamKind === 'thinking' ? 'Thinking' : streamKind === 'tool' && streamTool ? `Using ${streamTool}` : null;
   // When your last message went in, for the "9s · Thinking" timer.
+  // Turns: the line under each finished one, and the working line's numbers for the open one.
+  const agentTokens = useAgentTokens(client, sessionId, items, working);
+  const turns = useTurns(sessionId, items, agentTokens);
+  const turnDetails = usePreferences((s) => s.prefs.turnDetails);
+  const openTurn = working ? (turns.at(-1) ?? null) : null;
+  const finishedByReply = useMemo(() => {
+    const map = new Map<string, Turn>();
+    for (const turn of turns) if (turn !== openTurn && turn.replyKey) map.set(turn.replyKey, turn);
+    return map;
+  }, [turns, openTurn]);
+  // While a prompt waits on you, the clock stops: that time isn't Claude's.
+  const waitingSince = live?.status === 'needs-you' && permissions.length > 0 ? Math.min(...permissions.map((p) => p.createdAt)) : null;
+  const liveTurnInfo = useMemo<LiveTurnInfo>(() => ({ turn: openTurn, waitingSince, mode: turnDetails }), [openTurn, waitingSince, turnDetails]);
+  // The latest turn, for the announcement when it ends.
+  const lastTurnRef = useRef<LiveTurnInfo | null>(null);
+  lastTurnRef.current = { turn: turns.at(-1) ?? null, waitingSince: null, mode: turnDetails };
   const turnStart = useMemo(() => {
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i]!;
@@ -440,6 +697,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     syncAway();
     // Rows mount and unmount while scrolling; their matches need highlighting again.
     if (findQuery !== null) schedulePaint();
+    if (showOutline) scheduleCurrent();
   };
   // Scrolling up stops following at once, before the scroll lands: the next token would pull it back.
   const leaveEnd = () => {
@@ -495,6 +753,108 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     if (tailRef.current) observer.observe(tailRef.current);
     return () => observer.disconnect();
   }, []);
+
+  // The prompt outline: a mark for each of your prompts beside the conversation, and ⌘⇧↑ / ⌘⇧↓ to move between them.
+  // The list only changes when a prompt comes or goes, so the rail doesn't redraw for every new line from Claude.
+  const promptList = useRef<OutlinePrompt[]>([]);
+  const prompts = useMemo(() => {
+    const next = outlinePrompts(renderItems);
+    const was = promptList.current;
+    if (next.length === was.length && next.every((p, i) => p.key === was[i]!.key && p.index === was[i]!.index)) return was;
+    return (promptList.current = next);
+  }, [renderItems]);
+  const showOutlinePref = usePreferences((s) => s.prefs.promptOutline);
+  const transcriptWidth = useWidth(scrollRef);
+  const turnMeta = useMemo<TurnMetaValue>(() => ({ byReply: finishedByReply, mode: turnDetails, width: transcriptWidth }), [finishedByReply, turnDetails, transcriptWidth]);
+  const showOutline = showOutlinePref && prompts.length >= MIN_PROMPTS && (transcriptWidth ?? 0) >= MIN_WIDTH && status === 'ready' && !terminalMaximized;
+  /** Where each prompt's row starts, from the virtualizer: measured, or estimated for rows not rendered yet. */
+  const promptStarts = () => {
+    virtualizer.getTotalSize(); // brings the measurements up to date
+    return prompts.map((p) => virtualizer.measurementsCache[p.index]?.start ?? 0);
+  };
+  // The rail's positions follow the measurements, at most once a frame.
+  const [outlineMeasure, setOutlineMeasure] = useState<{ starts: number[]; total: number; gutter: number }>({ starts: [], total: 0, gutter: 0 });
+  useEffect(() => {
+    if (!showOutline) return;
+    const frame = requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      const starts = promptStarts();
+      const total = virtualizer.getTotalSize();
+      // The scrollbar's width: the rail sits just left of it.
+      const gutter = el ? el.offsetWidth - el.clientWidth : 0;
+      setOutlineMeasure((was) => (was.total === total && was.gutter === gutter && was.starts.length === starts.length && was.starts.every((s, i) => s === starts[i]) ? was : { starts, total, gutter }));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showOutline, prompts, totalSize, transcriptWidth, virtualizer]);
+  // A jump that couldn't bring its prompt to the top (near the end) still makes it the current one, until you scroll.
+  const pinnedPrompt = useRef<{ index: number; top: number } | null>(null);
+  const findCurrentPrompt = () => {
+    const el = scrollRef.current;
+    if (!el || prompts.length === 0) return -1;
+    const pinned = pinnedPrompt.current;
+    if (pinned && pinned.index < prompts.length && Math.abs(el.scrollTop - pinned.top) <= 2) return pinned.index;
+    pinnedPrompt.current = null;
+    return currentPrompt(promptStarts(), el.scrollTop);
+  };
+  const [currentMark, setCurrentMark] = useState(-1);
+  const currentFrame = useRef(0);
+  const scheduleCurrent = () => {
+    cancelAnimationFrame(currentFrame.current);
+    currentFrame.current = requestAnimationFrame(() => setCurrentMark(findCurrentPrompt()));
+  };
+  useEffect(() => {
+    if (showOutline) scheduleCurrent();
+  }, [showOutline, outlineMeasure]);
+  useEffect(() => () => cancelAnimationFrame(currentFrame.current), []);
+  // The prompt a jump landed on: a short accent ring on it (none with reduced motion, see styles.css).
+  const [landingKey, setLandingKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!landingKey) return;
+    const timer = setTimeout(() => setLandingKey(null), 1_200);
+    return () => clearTimeout(timer);
+  }, [landingKey]);
+  /** Scrolls so prompt `index` (of `prompts`) sits LAND_OFFSET below the top of the view. Stops following the end. */
+  const jumpToPrompt = (index: number) => {
+    const el = scrollRef.current;
+    const prompt = prompts[index];
+    if (!el || !prompt) return;
+    follow(false);
+    // Sets scrollTop itself, like following the end does: scrollToIndex keeps chasing its target and fights a scroll.
+    const place = () => {
+      const start = promptStarts()[index];
+      if (start === undefined) return;
+      el.scrollTop = Math.max(0, start - LAND_OFFSET);
+      pinnedPrompt.current = { index, top: el.scrollTop };
+    };
+    place();
+    setCurrentMark(index);
+    // The rows around it are measured once they render: settle on the exact spot over the next frames.
+    requestAnimationFrame(() => {
+      place();
+      requestAnimationFrame(place);
+    });
+    // A second jump to the same prompt plays the ring again.
+    setLandingKey(null);
+    requestAnimationFrame(() => setLandingKey(prompt.key));
+  };
+  const jumpRef = useRef(jumpToPrompt);
+  jumpRef.current = jumpToPrompt;
+  const onOutlineJump = useCallback((index: number) => jumpRef.current(index), []);
+  /** Previous prompt (-1) or Next prompt (1); from the last prompt, Next goes to the end. */
+  const stepPrompt = (direction: 1 | -1) => {
+    const el = scrollRef.current;
+    if (!el || prompts.length === 0 || terminalMaximized) return;
+    const starts = promptStarts();
+    const current = findCurrentPrompt();
+    const target = direction === 1 ? nextPrompt(starts, el.scrollTop, current) : previousPrompt(starts, el.scrollTop, current);
+    if (target === 'end') jumpToLatest();
+    else if (target !== null) jumpToPrompt(target);
+  };
+  // Another session in this pane starts at its end, with nothing pinned.
+  useEffect(() => {
+    pinnedPrompt.current = null;
+    setLandingKey(null);
+  }, [sessionId]);
 
   // Search opened this session at a message: scroll there once it's loaded, and highlight it briefly.
   const focusMessage = useOverlay((s) => (s.focusMessage?.sessionId === sessionId ? s.focusMessage.messageUuid : null));
@@ -622,8 +982,16 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const [boxPreset, setBoxPreset] = useState<{ text: string; attachments: ImageAttachment[]; seq: number } | null>(null);
   const presetSeq = useRef(0);
   const presetBox = useCallback((text: string, attachments: ImageAttachment[]) => setBoxPreset({ text, attachments, seq: ++presetSeq.current }), []);
+  // Claude Code failed before the session started: its first prompt is now the session's unsent message (the drafts
+  // store moved it there), and a box that was open already shows it too, ready to start the session again.
+  const restarting = restart !== null;
+  useEffect(() => {
+    if (!restarting) return;
+    const kept = useDrafts.getState().drafts[sessionId];
+    if (kept?.startIn) presetBox(kept.text, kept.attachments);
+  }, [restarting, sessionId]);
   const onDraftLoaded = (draft: ComposerDraft) => setRestored(draft.seeded ? null : draft);
-  const onDraftText = useCallback((text: string) => setRestored((current) => (current && current.text !== text ? null : current)), []);
+  const onDraftText = useCallback((text: string) => setRestored((current) => (current && draftMessage(current) !== text ? null : current)), []);
 
   // Fork, edit and rewind from a message.
   const [actionError, setActionError] = useState<string | null>(null);
@@ -670,9 +1038,11 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
       },
       canEdit: (uuid) => previous.has(uuid),
       runCommand: cwd ? (command) => void runInTerminal(client, sessionId, cwd, command).catch(fail) : null,
+      runAndSend: cwd ? (command) => void runAndSendOutput(client, sessionId, cwd, command).catch(fail) : null,
       remember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
+      savePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
     };
-  }, [client, items, sessionId, select, cwd, projectRoot]);
+  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions]);
 
   // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
@@ -683,6 +1053,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     },
     onRemember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
     onQuote: (text) => useDrafts.getState().requestQuote(sessionId, text),
+    onSavePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
   });
 
   // The command palette's Fork…, Rewind…, Copy last reply: your prompts and Claude's last reply, from the active pane.
@@ -693,32 +1064,33 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     let lastReply: string | null = null;
     for (const item of items) {
       const uuid = messageUuid(item.key);
-      if (item.kind === 'user' && !item.subagent && uuid !== before) prompts.push({ uuid, text: item.text, at: item.at, before });
+      if (isPrompt(item) && uuid !== before) prompts.push({ uuid, text: item.text, at: item.at, before });
       if (item.kind === 'text' && !item.subagent) lastReply = item.text;
       before = uuid;
     }
     usePaletteBus.setState({ digest: { sessionId, prompts, lastUuid: before, lastReply } });
   }, [active, items, sessionId]);
   useEffect(() => () => usePaletteBus.setState((s) => (s.digest?.sessionId === sessionId ? { digest: null } : {})), [sessionId]);
-  // Side questions (/btw): read once per session, so the palette can count them and a bare /btw opens at once.
-  const side = useSessionSide(sessionId);
-  const sideChip = side.chip ? side.items.find((item) => item.id === side.chip) : undefined;
-  /** Bumped by the palette's Ask a side question…: the message box takes the /btw token. */
-  const [sideRequest, setSideRequest] = useState(0);
+  // Ask about this session: its threads are read once per session, so the panel opens on them at once.
   useEffect(() => {
-    if (client) void loadSideQuestions(client, sessionId).catch(() => {});
+    if (client) void loadAskThreads(client, sessionId).catch(() => {});
   }, [client, sessionId]);
-  const closeSide = () => {
-    closeSideQuestion(sessionId);
+  const closeAskHere = () => {
+    closeAsk(sessionId);
     useDrafts.getState().requestFocus(sessionId);
+  };
+  const askHere = async (question: string) => {
+    if (!client) throw new Error('Not connected to the engine');
+    await askAbout(client, sessionId, question);
   };
 
   // The palette's Switch branch… and Finish worktree… open the header's branch menu; Rewind… asks to undo since a message.
   useSessionRequests(active, (request) => {
     if (request.kind === 'branch-menu') setBranchMenuRequest((n) => n + 1);
-    else if (request.kind === 'side-ask') setSideRequest((n) => n + 1);
-    else if (request.kind === 'side-show') void openLatestSideQuestion(client, sessionId);
+    else if (request.kind === 'ask') void openAsk(client, sessionId);
     else if (request.kind === 'rewind' && request.arg) messageActions?.rewind(request.arg);
+    else if (request.kind === 'prompt-previous') stepPrompt(-1);
+    else if (request.kind === 'prompt-next') stepPrompt(1);
   });
 
   /**
@@ -729,11 +1101,18 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
    */
   const send = async (text: string, attachments: ImageAttachment[], fork = false, ungated = false, mode?: SendMode): Promise<void | false> => {
     if (!client) throw new Error('Not connected to the engine');
+    if (restart) {
+      // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
+      const outcome = await startNewSession(
+        { ...restart, prompt: text, attachments, skipGate: ungated },
+        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
+      );
+      return outcome.kind === 'started' ? undefined : false;
+    }
     if (!ungated && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return false;
     const sentAt = Date.now();
     const result = await client.call('session.send', { sessionId, text, attachments, fork, ...(mode ? { mode } : {}) });
-    // A new message moves on from the last side answer: its chip goes.
-    dropSideChip(sessionId);
+    if (useCatchUp.getState().replying === sessionId) useCatchUp.getState().setReplying(null);
     // A queued message waits in Up next, so the conversation has nothing new to scroll to. The answer
     // can be well under way by now: if you scrolled up to read it, stay there.
     if (!result.queued && userScrollAt.current < sentAt) follow(true);
@@ -745,6 +1124,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   const keptUpNext = useUpNext((s) => s.queues.get(sessionId));
   const upNext = activeHost ? activeHost.queue : (keptUpNext ?? []);
   const upNextHold = activeHost ? activeHost.queueHold : upNext.length ? 'saved' : null;
+  // The profile is at a usage limit: Up next waits for it rather than sending into it.
+  const limitHeld = useLimits((s) => profileId !== null && s.state.limits.some((l) => l.profileId === profileId));
   /** Sending from Up next brings a session that isn't running back, which the focus limit has a say in. */
   const resumeAllowed = async () => Boolean(activeHost) || (await passFocusGate({ target: sessionId })) === 'start';
   const takeBack = async (id: string): Promise<boolean> => {
@@ -752,9 +1133,15 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     const { message } = await client.call('session.queue.remove', { sessionId, id });
     if (!message) return false;
     const draft = useDrafts.getState().drafts[sessionId];
-    const merged = mergeIntoBox({ text: draft?.text ?? '', attachments: draft?.attachments ?? [] }, message);
+    const merged = mergeIntoBox({ text: draft?.text ?? '', attachments: draft?.attachments ?? [] }, backInBox(message.text, message.attachments));
     presetBox(merged.text, merged.attachments);
     return true;
+  };
+  /** A message back in the box: its file mentions become chips again, as they were when it was written. */
+  const backInBox = (prompt: string, attachments: ImageAttachment[]) => {
+    const { text, context } = contextFromPrompt(prompt, cwd);
+    if (context.length) useDrafts.getState().addContext(sessionId, context);
+    return { text, attachments };
   };
   const upNextActions: UpNextActions = {
     edit: (message) => void takeBack(message.id).catch((e: Error) => setActionError(`Could not take the message back: ${e.message}`)),
@@ -767,7 +1154,10 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           toast('Removed from Up next', {
             undo: () => {
               // Still working: back in its place. Otherwise it would go at once, so it returns to the message box instead.
-              if (!running) return presetBox(removed.text, removed.attachments);
+              if (!running) {
+                const back = backInBox(removed.text, removed.attachments);
+                return presetBox(back.text, back.attachments);
+              }
               void client
                 .call('session.send', { sessionId, text: removed.text, attachments: removed.attachments, fork: false, mode: 'queue' })
                 .then((r) => (r.queued && at > 0 ? client.call('session.queue.move', { sessionId, id: r.messageUuid, toIndex: at }) : undefined))
@@ -822,7 +1212,18 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
     <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${terminalDock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
-      <TerminalPanel sessionId={sessionId} cwd={cwd} projectRoot={options.projectActions ? projectRoot : null} home={home} dock={terminalDock} rightBlocked={terminalBlocked} viewWidth={bodyWidth} />
+      <TerminalPanel
+        sessionId={sessionId}
+        cwd={cwd}
+        projectRoot={options.projectActions ? projectRoot : null}
+        home={home}
+        dock={terminalDock}
+        rightBlocked={terminalBlocked}
+        viewWidth={bodyWidth}
+        viewHeight={bodyHeight}
+        tabs={terminalOnRight && right.tabs ? rightTabs : undefined}
+        shared={terminalOnRight && right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
+      />
     </Suspense>
   );
 
@@ -831,14 +1232,22 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
     <div className="@container flex h-full min-h-0 flex-col" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-cwd={cwd ?? undefined} data-drop-zone>
       {/* With two panes, the active one has an accent line along the top. */}
       <header
-        className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 @max-[860px]:gap-2 @max-[860px]:px-4 ${pane && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
-        data-pane={pane ?? undefined}
-        data-pane-active={pane ? active : undefined}
+        className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 @max-[860px]:gap-2 @max-[860px]:px-4 ${tiled && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
+        data-pane={tiled ? sessionId : undefined}
+        data-pane-active={tiled ? active : undefined}
       >
-        {/* The sidebar toggle belongs to the window's left edge: in split view, only the left pane has it. */}
-        {pane !== 'split' && <SidebarToggle />}
-        {projectRoot && <ProjectIcon project={project} root={projectRoot} size={22} />}
-        <div className="min-w-24 flex-1">
+        {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
+        {leading && !inPopout && <SidebarToggle />}
+        {/* A pop-out's traffic lights sit over its header's left end (macOS); elsewhere the window has its own title bar. */}
+        {inPopout && currentPlatform() === 'darwin' && <span className="w-11 shrink-0" aria-hidden />}
+        {/* In a pane under 400px wide the header has no room for the icon: the title and the buttons come first. */}
+        {projectRoot && (
+          <span className="flex shrink-0 @max-[400px]:hidden">
+            <ProjectIcon project={project} root={projectRoot} size={22} />
+          </span>
+        )}
+        {/* With several panes this is the handle to drag the pane by (useTileDrag); it can't be part of the window's drag region, which takes the mouse. */}
+        <div className={`min-w-24 flex-1 @max-[400px]:min-w-16 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
           <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
             {title}
           </h1>
@@ -882,14 +1291,14 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
             )}
           </div>
         </div>
-        {/* Changes | Terminal: the two side panels as one compact, icon-only segmented control. */}
+        {/* Changes | Ask | Agents | Commands | Terminal: the side panels as one compact, icon-only segmented control. */}
         <SegmentedControl
           mode="toggle"
           label="Panels"
           className="no-drag"
           data-panel-toggles
-          pressed={[...(changesOpen ? ['changes' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
-          onToggle={(panel) => (panel === 'changes' ? toggleChanges() : togglePanel(sessionId))}
+          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
+          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : panel === 'commands' ? toggleCommandsHere() : toggleTerminalPanel(sessionId))}
           segments={[
             ...(cwd && isRepo
               ? [
@@ -899,11 +1308,61 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                     icon: <FileDiff size={14} aria-hidden />,
                     iconOnly: true,
                     badge: changedCount,
-                    tooltip: `${changesOpen ? 'Hide' : 'Show'} changed files (${formatKeys(keysFor('changes.toggle'))})`,
-                    ariaLabel: `${changesOpen ? 'Hide' : 'Show'} changed files${changedCount ? `, ${changedCount} changed` : ''} (${formatKeys(keysFor('changes.toggle'))})`,
+                    tooltip: `${changesFront === false ? 'Bring changed files to the front' : changesOpen ? 'Hide changed files' : 'Show changed files'} (${formatKeys(keysFor('changes.toggle'))})`,
+                    ariaLabel: `${changesFront === false ? 'Bring changed files to the front' : changesOpen ? 'Hide changed files' : 'Show changed files'}${changedCount ? `, ${changedCount} changed` : ''} (${formatKeys(keysFor('changes.toggle'))})`,
                     kbd: keysFor('changes.toggle'),
-                    expanded: changesOpen && active,
+                    front: changesFront,
+                    expanded: changesOpen && changesFront !== false,
                     data: { 'data-toggle-changes': true },
+                  },
+                ]
+              : []),
+            {
+              value: 'ask' as const,
+              label: 'Ask',
+              icon: <MessageCircleQuestion size={14} aria-hidden />,
+              iconOnly: true,
+              // An answer came in while the panel was closed.
+              dot: ask.ready && !ask.open ? 'link' : false,
+              tooltip: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ' · An answer is ready' : ''}`,
+              ariaLabel: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ', an answer is ready' : ''}`,
+              front: askFront,
+              expanded: ask.open && askFront !== false,
+              data: { 'data-toggle-ask': true },
+            },
+            // Only a session that has started agents has this; the panel stays reachable while it is open.
+            ...(agents.length > 0 || agentsState.open
+              ? [
+                  {
+                    value: 'agents' as const,
+                    label: 'Agents',
+                    icon: <Bot size={14} aria-hidden />,
+                    iconOnly: true,
+                    badge: agentsRunning,
+                    tooltip: `${agentsFront === false ? 'Bring agents to the front' : agentsState.open ? 'Hide agents' : 'Show agents'} (${formatKeys(keysFor('agents.toggle'))})${agentsRunning ? ` · ${agentsRunning} running` : ''}`,
+                    ariaLabel: `${agentsFront === false ? 'Bring agents to the front' : agentsState.open ? 'Hide agents' : 'Show agents'}${agentsRunning ? `, ${agentsRunning} running` : ''} (${formatKeys(keysFor('agents.toggle'))})`,
+                    kbd: keysFor('agents.toggle'),
+                    front: agentsFront,
+                    expanded: showAgents && agentsFront !== false,
+                    data: { 'data-toggle-agents': true },
+                  },
+                ]
+              : []),
+            // Only a session that has run background commands has this; the panel stays reachable while it is open.
+            ...(backgroundCommands.length > 0 || commandsState.open
+              ? [
+                  {
+                    value: 'commands' as const,
+                    label: 'Commands',
+                    icon: <ScrollText size={14} aria-hidden />,
+                    iconOnly: true,
+                    badge: commandsRunning,
+                    tooltip: `${commandsFront === false ? 'Bring commands to the front' : commandsState.open ? 'Hide commands' : 'Show background commands'} (${formatKeys(keysFor('commands.toggle'))})${commandsRunning ? ` · ${commandsRunning} running` : ''}`,
+                    ariaLabel: `${commandsFront === false ? 'Bring commands to the front' : commandsState.open ? 'Hide commands' : 'Show background commands'}${commandsRunning ? `, ${commandsRunning} running` : ''} (${formatKeys(keysFor('commands.toggle'))})`,
+                    kbd: keysFor('commands.toggle'),
+                    front: commandsFront,
+                    expanded: showCommands && commandsFront !== false,
+                    data: { 'data-toggle-commands': true },
                   },
                 ]
               : []),
@@ -913,10 +1372,11 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
               icon: <SquareTerminal size={14} aria-hidden />,
               iconOnly: true,
               dot: terminalCount > 0,
-              tooltip: `${panelOpen ? 'Hide' : 'Show'} terminal (${formatKeys(keysFor('terminal.toggle'))})${terminalCount ? ` · ${terminalCount} running` : ''}`,
-              ariaLabel: `${panelOpen ? 'Hide' : 'Show'} terminal${terminalCount ? `, ${terminalCount} running` : ''} (${formatKeys(keysFor('terminal.toggle'))})`,
+              tooltip: `${terminalFront === false ? 'Bring the terminal to the front' : panelOpen ? 'Hide terminal' : 'Show terminal'} (${formatKeys(keysFor('terminal.toggle'))})${terminalCount ? ` · ${terminalCount} running` : ''}`,
+              ariaLabel: `${terminalFront === false ? 'Bring the terminal to the front' : panelOpen ? 'Hide terminal' : 'Show terminal'}${terminalCount ? `, ${terminalCount} running` : ''} (${formatKeys(keysFor('terminal.toggle'))})`,
               kbd: keysFor('terminal.toggle'),
-              expanded: panelOpen,
+              front: terminalFront,
+              expanded: panelOpen && terminalFront !== false,
               data: { 'data-toggle-terminal': true },
             },
           ]}
@@ -933,22 +1393,62 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
             onCommit={() => void send('Commit the current changes with a clear, conventional commit message.', [], openElsewhere, true).catch((e: Error) => setActionError(e.message))}
             onBranchMenu={() => setBranchMenuRequest((n) => n + 1)}
             onNewWorktree={() => {
+              // New session is the main window's view: from a pop-out it opens there.
+              if (showInMain({ kind: 'new-session', cwd: projectRoot ?? cwd, worktree: true })) return;
               useProjects.getState().startIn(projectRoot ?? cwd, { worktree: true });
               useSessions.getState().setView('new');
             }}
           />
         )}
+        <ModsChip sessionId={sessionId} profileId={profileId} />
         <MoreMenu
           sessionId={sessionId}
           actions={actionsMenu}
           cwd={cwd}
-          items={items}
-          sessionOpen={live !== null}
+          agents={{ total: agents.length, running: agentsRunning }}
+          onAgents={() => openAgents(sessionId)}
+          commands={{ total: backgroundCommands.length, running: commandsRunning }}
+          onCommands={() => openCommands(sessionId)}
           profileId={profileId}
           title={summary ? title : null}
           onStop={activeHost ? () => void client?.call('session.close', { sessionId }) : null}
         />
-        {!pane && (
+        {!inPopout ? (
+          <Button
+            variant="quiet"
+            iconOnly
+            icon={<AppWindow size={15} aria-hidden />}
+            data-open-in-new-window
+            onClick={() => popOut(sessionId)}
+            aria-label="Open in new window"
+            shortcut="session.new-window"
+            className="no-drag shrink-0 @max-[420px]:hidden"
+          />
+        ) : (
+          <Button
+            variant="quiet"
+            iconOnly
+            icon={<SquareArrowDownLeft size={15} aria-hidden />}
+            data-move-to-main-window
+            onClick={() => window.switchboard?.popIn()}
+            data-tooltip="Move back to main window"
+            aria-label="Move back to main window"
+            className="no-drag shrink-0"
+          />
+        )}
+        {inPopout && (
+          <Button
+            variant="quiet"
+            iconOnly
+            icon={<X size={15} />}
+            data-close-window
+            onClick={() => window.close()}
+            data-tooltip="Close window (the session keeps running)"
+            aria-label="Close window"
+            className="no-drag shrink-0"
+          />
+        )}
+        {!tiled && !inPopout && (
           <Button
             variant="quiet"
             iconOnly
@@ -960,24 +1460,25 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
             className="no-drag shrink-0"
           />
         )}
-        {pane && (
+        {tiled && <SplitDirectionControl sessionId={sessionId} />}
+        {tiled && (
           <Button
             variant="quiet"
             iconOnly
             icon={<X size={15} />}
             data-close-pane
-            onClick={() => useSessions.getState().closePane(pane)}
-            // Braces, because a plain JSX attribute string keeps both backslashes of `\\`.
-            data-tooltip={`Close this pane (${formatKeys(keysFor('pane.close-other'))} closes the other one)`}
+            onClick={() => useSessions.getState().closePane(sessionId)}
             aria-label="Close this pane"
+            shortcut="pane.close"
             className="no-drag shrink-0"
           />
         )}
       </header>
 
-      <div ref={bodyRef} className="flex min-h-0 flex-1">
+      {/* In a narrow pop-out a panel on the right fills the view (the rule in styles.css), as an expanded Changes does. */}
+      <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
         {/* An expanded Changes panel takes the whole view; the conversation stays mounted (scroll position, drafts) but hidden. */}
-        <div className={`relative min-w-0 flex-1 flex-col ${(showChanges && changesExpanded && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
+        <div className={`relative min-w-0 flex-1 flex-col ${narrowPanel || (right.tab === 'changes' && !whyRequest && changesExpanded && !terminalMaximized) || (terminalMaximized && terminalDock === 'right') ? 'hidden' : 'flex'}`}>
           {findQuery !== null && !terminalMaximized && (
             <FindBar
               query={findQuery}
@@ -989,9 +1490,23 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
               focusNonce={findFocus}
             />
           )}
+          {catchUp && catchUpShow && !terminalMaximized && (
+            <CatchUpSlot
+              card={catchUp}
+              show={catchUpShow}
+              cwd={cwd}
+              changes={changes}
+              active={active}
+              changesOpen={showChanges}
+            />
+          )}
           <MessageActionsContext.Provider value={messageActions}>
           <PromptExpansionContext.Provider value={promptExpansion}>
+          <MessageMenuContext.Provider value={remember.openMenu}>
           <FileLinksProvider cwd={cwd}>
+          <TurnMetaContext.Provider value={turnMeta}>
+            {/* The conversation, and the prompt outline beside it in the gutter (outside the scroll, so it stays put). */}
+            <div className={`relative min-h-0 flex-1 flex-col ${terminalMaximized ? 'hidden' : 'flex'}`} data-transcript-area>
             <div
               ref={scrollRef}
               onScroll={() => (onScroll(), remember.handlers.onScroll())}
@@ -1004,6 +1519,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
               aria-label="Conversation"
               className={`min-h-0 flex-1 overflow-y-auto ${terminalMaximized ? 'hidden' : ''}`}
               data-transcript
+              // How many items the conversation has: the list is virtualised, so the rows in the DOM are only the ones in view.
+              data-transcript-count={renderItems.length}
             >
               {status === 'loading' ? (
                 <p className="p-8 text-center text-ui text-muted" role="status">
@@ -1047,7 +1564,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                       data-transcript-item
                       data-item-kind={renderItems[row.index]!.kind}
                       ref={virtualizer.measureElement}
-                      className={`absolute inset-x-6 pt-3 ${row.key === highlightKey ? 'search-highlight' : ''}`}
+                      className={`absolute inset-x-6 pt-3 ${row.key === highlightKey ? 'search-highlight' : ''} ${row.key === landingKey ? 'prompt-landing' : ''}`}
                       style={{ transform: `translateY(${row.start}px)` }}
                     >
                       {autoPick && row.index === firstAnswer && <AutoPickLine sessionId={sessionId} pick={autoPick} />}
@@ -1057,6 +1574,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                         sessionId={sessionId}
                         active={renderItems[row.index]!.key === activeGroupKey}
                         activeLabel={renderItems[row.index]!.key === activeGroupKey ? activeLabel : null}
+                        live={renderItems[row.index]!.key === activeGroupKey ? liveTurnInfo : null}
                       />
                     </div>
                   ))}
@@ -1068,7 +1586,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                 </div>
               )}
               <div ref={tailRef}>
-                <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} />
+                <StreamingBlock sessionId={sessionId} since={turnStart} showIndicator={activeGroupKey === null} live={liveTurnInfo} />
               </div>
               {/* Sticks to the bottom of the view while you read further up; takes no room at the end. */}
               {away && (
@@ -1083,11 +1601,17 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                 </div>
               )}
             </div>
+            {showOutline && (
+              <PromptOutline prompts={prompts} starts={outlineMeasure.starts} total={outlineMeasure.total} current={currentMark} right={outlineMeasure.gutter} onJump={onOutlineJump} />
+            )}
+            </div>
+          </TurnMetaContext.Provider>
           </FileLinksProvider>
+          </MessageMenuContext.Provider>
           </PromptExpansionContext.Provider>
           </MessageActionsContext.Provider>
           {remember.overlay}
-          <Announcer sessionId={sessionId} working={working} failed={host?.state === 'error'} permissions={permissions} cwd={cwd} />
+          <Announcer sessionId={sessionId} working={working} failed={host?.state === 'error'} permissions={permissions} cwd={cwd} turn={lastTurnRef} />
 
           {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} onClose={() => useOverlay.getState().close()} />}
       {rewinding && (
@@ -1105,6 +1629,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                       ? 'Nothing to undo: no files changed after this message.'
                       : null)
               }
+              // Still loading, or nothing to undo, isn't something going wrong.
+              blockedTone={!rewinding.error && (!rewinding.preview || (rewinding.preview.canRewind && rewinding.preview.files.length === 0)) ? 'info' : 'error'}
               body={
                 <>
                   <p>Files go back to how they were before this message. The conversation stays as it is.</p>
@@ -1146,7 +1672,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                           tone="muted"
                           selected={todosOpen}
                           icon={<ListTodo size={12} aria-hidden />}
-                          onClick={() => setOpenStrip((o) => (o === 'todos' ? null : 'todos'))}
+                          onClick={() => useTaskStrip.getState().toggle(sessionId, 'todos')}
                           aria-expanded={todosOpen}
                           aria-controls={todosOpen ? todosId : undefined}
                           data-tooltip={todosOpen ? 'Hide Claude’s task list' : 'Show Claude’s task list'}
@@ -1164,7 +1690,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                           shrink
                           selected={backgroundOpen}
                           icon={<LoaderCircle size={11} className="shrink-0 animate-[spin_2s_linear_infinite]" aria-hidden />}
-                          onClick={() => setOpenStrip((o) => (o === 'background' ? null : 'background'))}
+                          onClick={() => useTaskStrip.getState().toggle(sessionId, 'background')}
                           aria-expanded={backgroundOpen}
                           aria-controls={backgroundOpen ? backgroundId : undefined}
                           data-tooltip={backgroundOpen ? 'Hide what runs in the background' : 'Show what runs in the background'}
@@ -1185,14 +1711,11 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                     <BackgroundTaskList
                       id={backgroundId}
                       tasks={backgroundTasks}
-                      onStop={async (taskId) => {
-                        try {
-                          await client!.call('session.stopTask', { sessionId, taskId });
-                        } catch (error) {
-                          setActionError(`Could not stop the task: ${(error as Error).message}`);
-                          throw error;
-                        }
-                      }}
+                      onStop={stopTask}
+                      agentFor={(task) => agentForTask(task, agents)}
+                      onOpenAgent={(run) => openAgents(sessionId, run.item.id)}
+                      commandFor={(task) => commandForTask(task, backgroundCommands)}
+                      onOpenCommand={(run) => openCommands(sessionId, run.taskId)}
                     />
                   )}
                 </div>
@@ -1206,6 +1729,8 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                   ))}
                 </div>
               )}
+              {/* Mods' bands: under Switchboard's own cards, above Up next. */}
+              <ModBands sessionId={sessionId} profileId={profileId} working={running} />
               {openElsewhere && (
                 <Notice role="note" data-open-elsewhere>
                   This session is open in {ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'} right now. Sending here starts a{' '}
@@ -1218,6 +1743,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                 </Notice>
               )}
               <AutoSuggestNote sessionId={sessionId} pick={autoPick} items={items} contextTokens={host?.contextTokens ?? null} />
+              <LargeContextNotice sessionId={sessionId} live={contextLive} host={host} messages={messages} working={running} onCompact={compact} />
               {autoPick && <AutoPickPopover sessionId={sessionId} pick={autoPick} items={items} cwd={cwd} />}
               {actionsMenu.overlays}
               {restored && (
@@ -1230,26 +1756,14 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                   }}
                 />
               )}
-              <UpNext queue={upNext} hold={upNextHold} actions={upNextActions} />
-              {/* The side question floats over the conversation, as wide as the message box, so the transcript never moves. */}
+              {profileId && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
+              <UpNext queue={upNext} hold={upNextHold} limited={limitHeld} actions={upNextActions} />
               <div className="relative">
-                {(side.open || sideChip) && (
-                  <div className="absolute inset-x-0 bottom-full z-10 mb-2 flex">
-                    {side.open ? (
-                      <SideQuestionPanel
-                        state={side}
-                        onClose={closeSide}
-                        onMove={(step) => moveSideQuestion(sessionId, step)}
-                        onExpand={() => expandSideQuestion(sessionId)}
-                        onRetry={(item) => client && void retrySideQuestion(client, sessionId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
-                      />
-                    ) : (
-                      sideChip && <SideQuestionChip item={sideChip} onOpen={() => openSideQuestion(sessionId, sideChip.id)} />
-                    )}
-                  </div>
-                )}
                 <Composer
                   draftKey={sessionId}
+                  savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
+                  links={{ sessionId, root: projectRoot }}
+                  status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}
                   restored={restored !== null}
@@ -1258,7 +1772,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                   cwd={cwd}
                   commands={commands}
                   running={running}
-                  placeholder={running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : 'Message Claude to resume this session'}
+                  placeholder={replying && !running ? replyPlaceholder(title) : running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
                   submitLabel={openElsewhere ? 'Fork and send' : undefined}
                   dropHint={status === 'ready' && messages.length === 0}
                   disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
@@ -1287,17 +1801,12 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                       : undefined
                   }
                   onInterrupt={() => void client?.call('session.interrupt', { sessionId })}
-                  sideQuestions={{
-                    onAsk: async (question) => {
-                      if (!client) throw new Error('Not connected to the engine');
-                      await askSideQuestion(client, sessionId, question);
-                    },
-                    onBare: () => void openLatestSideQuestion(client, sessionId),
-                    request: sideRequest,
-                  }}
+                  ask={{ onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready }}
                   onEscape={() => {
-                    if (!side.open) return false;
-                    closeSideQuestion(sessionId);
+                    // Esc after Reply leaves the message box and goes back to the catch-up.
+                    if (useCatchUp.getState().replying !== sessionId) return false;
+                    useCatchUp.getState().setReplying(null);
+                    (document.activeElement as HTMLElement | null)?.blur();
                     return true;
                   }}
                   onCycleMode={
@@ -1343,6 +1852,7 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
                   <div className="@container/meters flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
                     <UsageBand profileId={profileId} footer />
                   </div>
+                  <SessionCost sessionId={sessionId} profileId={profileId} />
                   <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
                 </div>
               )}
@@ -1350,9 +1860,81 @@ export function TranscriptView({ sessionId, pane = null, active = true }: { sess
           </div>
           {terminalShown && terminalDock === 'bottom' && terminalPanel}
         </div>
-        {terminalShown && terminalDock === 'right' && terminalPanel}
-        {showChanges && cwd && !terminalMaximized && (
-          <ChangesPanel cwd={cwd} changes={changes} base={changesBase} onBase={setChangesBase} onRefresh={refreshChanges} onClose={() => toggleChanges(false)} />
+        {/* Behind another tab on the right, the terminal steps out; its shells keep running and it comes back as it was. */}
+        {terminalShown && terminalDock === 'right' && (!terminalOnRight || right.tab === 'terminal') && terminalPanel}
+        {whyRequest && !terminalMaximized && <WhyPanel request={whyRequest} cwd={cwd} />}
+        {!whyRequest && right.tab === 'changes' && cwd && !terminalMaximized && (
+          <ChangesPanel
+            sessionId={sessionId}
+            cwd={cwd}
+            changes={changes}
+            base={changesBase}
+            onBase={setChangesBase}
+            onRefresh={refreshChanges}
+            onClose={() => closeChanges(sessionId)}
+            outside={catchUp?.signals.outOfScope}
+            tabs={right.tabs ? rightTabs : undefined}
+            shared={right.tabs ? { width: rightWidth, setWidth: setRightWidth } : undefined}
+          />
+        )}
+        {!whyRequest && right.tab === 'ask' && !terminalMaximized && (
+          <AskPanel
+            sessionId={sessionId}
+            state={ask}
+            working={working}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+            onAsk={askHere}
+            onRetry={(threadId, item) => client && void retryAsk(client, sessionId, threadId, item.id, item.question).catch((e: Error) => setActionError(`Could not ask: ${e.message}`))}
+            onQuote={(answer) => useDrafts.getState().requestQuote(sessionId, answer)}
+            onNewThread={() => newAskThread(sessionId)}
+            onPickThread={(threadId) => pickAskThread(sessionId, threadId)}
+            onClose={closeAskHere}
+            disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
+          />
+        )}
+        {!whyRequest && frontPane && !terminalMaximized && (
+          <ModPanePanel
+            key={frontPane.id}
+            sessionId={sessionId}
+            pane={frontPane}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+            onClose={() => closeModPane(frontPane.id)}
+            focusNonce={paneFocus.id === frontPane.id ? paneFocus.nonce : 0}
+          />
+        )}
+        {!whyRequest && right.tab === 'agents' && !terminalMaximized && (
+          <AgentsPanel
+            sessionId={sessionId}
+            cwd={cwd}
+            runs={agents}
+            tokens={agentTokens}
+            tasks={backgroundTasks}
+            picked={agentsState.picked}
+            onPick={(agent) => pickAgent(sessionId, agent)}
+            onStop={stopTask}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+            onClose={() => closeAgents(sessionId)}
+          />
+        )}
+        {!whyRequest && right.tab === 'commands' && !terminalMaximized && (
+          <CommandsPanel
+            sessionId={sessionId}
+            runs={backgroundCommands}
+            tasks={backgroundTasks}
+            picked={commandsState.picked}
+            onPick={(taskId) => pickCommand(sessionId, taskId)}
+            onStop={stopTask}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+            onClose={() => closeCommands(sessionId)}
+          />
         )}
       </div>
     </div>

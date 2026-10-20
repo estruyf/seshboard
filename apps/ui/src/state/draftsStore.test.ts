@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ImageAttachment } from '@switchboard/protocol/client';
-import { DRAFT_SETTLE_MS, newDraftKey, parseDrafts, serializeDrafts } from './drafts.ts';
+import { DRAFT_SETTLE_MS, draftList, newDraftKey, parseDrafts, parseFirstPrompts, serializeDrafts, type SessionsSeen } from './drafts.ts';
 import { useDrafts } from './draftsStore.ts';
 
 const image = { mediaType: 'image/png', data: 'AAAA', name: 'shot.png' } as unknown as ImageAttachment;
@@ -9,7 +9,7 @@ const type = (key: string, text: string, attachments: ImageAttachment[] = []) =>
 
 beforeEach(() => {
   vi.useFakeTimers();
-  useDrafts.setState({ drafts: {}, loaded: false, focus: null, list: null, archivePrompt: null });
+  useDrafts.setState({ drafts: {}, firstPrompts: {}, loaded: false, focus: null, list: null, archivePrompt: null });
 });
 afterEach(() => vi.useRealTimers());
 
@@ -134,5 +134,61 @@ describe('context chips', () => {
     const context = restored[newDraftKey('/repo')]!.context!;
     expect(context.map(({ id: _id, ...item }) => item)).toEqual([file('/repo/a.ts'), { kind: 'text', source: 'terminal', label: 'Terminal', text: 'npm ERR!' }]);
     expect(context.every((chip) => typeof chip.id === 'string')).toBe(true);
+  });
+});
+
+describe('a new session that fails before it starts', () => {
+  const form = { choices: { model: '', permissionMode: 'default' as const, effort: '' as const, workspace: 'current' as const, baseRef: 'fresh' as const, branch: '' }, profileId: 'default' };
+  const start = { cwd: '/repo', prompt: 'A prompt that must not get lost\n\n@src/a.ts', attachments: [image], form };
+  const seen = (hosts: Record<string, 'running' | 'error'>, transcripts: string[] = []): SessionsSeen => ({ ready: true, hasTranscript: (id) => transcripts.includes(id), hostState: (id) => hosts[id] });
+
+  beforeEach(() => store().load({}));
+
+  it('keeps its first prompt out of sight while it runs, and forgets it once there is a transcript', () => {
+    store().keepFirstPrompt('s-1', start);
+    store().settleFirstPrompts(seen({ 's-1': 'running' }));
+    expect(store().drafts).toEqual({});
+    store().settleFirstPrompts(seen({ 's-1': 'running' }, ['s-1']));
+    expect(store().firstPrompts).toEqual({});
+    expect(store().drafts).toEqual({});
+  });
+
+  it('shows it as unsent when Claude Code fails, with its file as a chip again', () => {
+    store().keepFirstPrompt('s-1', start);
+    store().settleFirstPrompts(seen({ 's-1': 'error' }));
+    const kept = store().drafts['s-1']!;
+    expect(kept).toMatchObject({ text: 'A prompt that must not get lost', attachments: [image], startIn: '/repo', counted: true });
+    expect(kept.context?.map(({ id: _id, ...item }) => item)).toEqual([{ kind: 'file', path: '/repo/src/a.ts', directory: false }]);
+    expect(draftList(store().drafts)).toHaveLength(1);
+  });
+
+  it('finds it in New session after a restart', () => {
+    store().keepFirstPrompt('s-1', start);
+    const saved = JSON.parse(JSON.stringify(serializeDrafts(store().drafts, store().firstPrompts)));
+    useDrafts.setState({ drafts: {}, firstPrompts: {}, loaded: false });
+    store().load(parseDrafts(saved), parseFirstPrompts(saved));
+    store().settleFirstPrompts(seen({}));
+    expect(store().firstPrompts).toEqual({});
+    expect(store().drafts[newDraftKey('/repo')]).toMatchObject({ text: 'A prompt that must not get lost', counted: true, lostImages: 1, form });
+  });
+});
+
+describe('drafts from another window', () => {
+  it('takes them as they are, and forgets the ones gone there', () => {
+    type('s-1', 'here');
+    type('s-2', 'stays');
+    const there = { text: 'typed in the pop-out', attachments: [image], updatedAt: 5, counted: true, lostImages: 0 };
+    store().applyRelayed({ 's-1': null, 's-3': there });
+    expect(store().drafts['s-1']).toBeUndefined();
+    expect(store().drafts['s-2']!.text).toBe('stays');
+    expect(store().drafts['s-3']).toBe(there);
+  });
+
+  it("leaves settling to the window it was typed in", () => {
+    type('s-1', 'a');
+    const there = { text: 'ab', attachments: [], updatedAt: 5, counted: false, lostImages: 0 };
+    store().applyRelayed({ 's-1': there });
+    vi.advanceTimersByTime(DRAFT_SETTLE_MS * 2);
+    expect(store().drafts['s-1']).toBe(there);
   });
 });

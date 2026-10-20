@@ -1,4 +1,4 @@
-import { GitPullRequest, ListEnd, X } from 'lucide-react';
+import { GitPullRequest, Globe, ListEnd, Monitor, Puzzle, Smartphone, X, Users } from 'lucide-react';
 import { TOAST_MS, useToasts, type Toast } from '../../state/toastStore.ts';
 import { UpdateToasts } from '../updates/UpdateToasts.tsx';
 import { Button } from './Button.tsx';
@@ -13,6 +13,10 @@ function ToastCard({ toast }: { toast: Toast }) {
     <>
       {toast.icon === 'queue' && <ListEnd size={14} className="shrink-0 text-muted" aria-hidden />}
       {toast.icon === 'pull-request' && <GitPullRequest size={14} className="shrink-0 text-ok" aria-hidden />}
+      {toast.icon === 'phone' && <Smartphone size={14} className="shrink-0 text-ok" aria-hidden />}
+      {toast.icon === 'browser' && <Globe size={14} className="shrink-0 text-ok" aria-hidden />}
+      {toast.icon === 'computer' && <Monitor size={14} className="shrink-0 text-ok" aria-hidden />}
+      {toast.icon === 'shared' && <Users size={14} className="shrink-0 text-link" aria-hidden />}
       {toast.dot && <span className="size-2 shrink-0 rounded-full" style={{ background: toast.dot }} aria-hidden />}
       {toast.tone === 'ok' && <span className="size-2 shrink-0 rounded-full bg-ok" aria-hidden />}
     </>
@@ -28,7 +32,7 @@ function ToastCard({ toast }: { toast: Toast }) {
         actions={toast.actions?.length ? toast.actions.map((action) => (
           <Button
             key={action.label}
-            variant={action.primary ? 'primary' : 'secondary'}
+            variant={action.primary ? 'primary' : action.danger ? 'danger' : 'secondary'}
             onClick={() => {
               dismiss();
               action.onSelect();
@@ -60,7 +64,18 @@ function ToastCard({ toast }: { toast: Toast }) {
       {...toast.data}
     >
       {lead}
-      <span className="min-w-0 flex-1 truncate">{toast.message}</span>
+      {toast.source ? (
+        // A mod's toast: its name on a small line above, so it always says who wrote it.
+        <span className="min-w-0 flex-1 py-0.5">
+          <span className="flex items-center gap-1 text-meta text-muted" data-toast-source>
+            <Puzzle size={11} className="shrink-0" aria-hidden />
+            <span className="truncate">{toast.source}</span>
+          </span>
+          <span className="line-clamp-3 break-words">{toast.message}</span>
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1 truncate">{toast.message}</span>
+      )}
       {toast.undo && (
         // In the link colour, like the sidebar's Select all: the one thing to do with a toast.
         <button

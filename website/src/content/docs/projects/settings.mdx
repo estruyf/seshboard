@@ -7,10 +7,11 @@ sidebar:
 
 import Kbd from '../../../components/Kbd.astro';
 import Pill from '../../../components/Pill.astro';
+import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-The **Settings** tab of a project's page holds what new sessions in the project start with: the Claude profile, model, effort, permission mode, workspace and branch. It also holds the project's name and icon in Switchboard.
+Set a project's defaults once, and every new session in it starts the way you want, such as on your work account in a new worktree. The **Settings** tab of a project's page holds what new sessions in the project start with: the Claude profile, model, effort, permission mode, workspace and branch. It also holds the project's name and icon in Switchboard.
 
 <Screenshot name="project-settings" alt="The Settings tab of acme-store: Claude profile, Model and Effort, Permissions, Workspace with the worktree base, then the project's name with Rename and its icon with Choose image" eager />
 
@@ -55,4 +56,8 @@ None of this changes anything on disk or in the repository. Removing a project f
 
 ## Settings
 
-App-wide settings that affect projects are in **Settings → General** (*Project order*) and **Settings → Claude profiles**. See [Settings](/settings/#general) and [Claude profiles](/settings/#claude-profiles).
+App-wide settings that affect projects are in **Settings → Projects** (*Project order* and *Clone from GitHub*) and **Settings → Claude profiles**. See [Settings](/settings/#projects) and [Claude profiles](/settings/#claude-profiles).
+
+## Related
+
+<Related pages={['settings/claude-profiles', 'new-session/models-and-options', 'new-session/auto-model', 'new-session/worktrees']} />

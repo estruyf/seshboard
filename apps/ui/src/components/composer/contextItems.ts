@@ -1,4 +1,4 @@
-import { isAbsolutePath, MAX_CONTEXT_ITEMS, MAX_PROMPT_LENGTH, pathInside, separatorOf, type ContextItem } from '@switchboard/protocol/client';
+import { isAbsolutePath, joinPath, MAX_CONTEXT_ITEMS, MAX_PROMPT_LENGTH, parseBriefs, pathInside, separatorOf, writeStub, type ContextItem } from '@switchboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 
 /** A chip in the context tray: an item to send with the message, and an id to remove it by. */
@@ -12,6 +12,7 @@ const newId = () => `ctx-${Date.now().toString(36)}-${(nextId++).toString(36)}`;
 export function sameItem(a: ContextItem, b: ContextItem): boolean {
   if (a.kind === 'file' && b.kind === 'file') return a.path === b.path && a.range?.start === b.range?.start && a.range?.end === b.range?.end;
   if (a.kind === 'text' && b.kind === 'text') return a.source === b.source && a.text === b.text && a.path === b.path;
+  if (a.kind === 'session' && b.kind === 'session') return a.sessionId === b.sessionId;
   return false;
 }
 
@@ -42,6 +43,7 @@ const lines = (range: { start: number; end: number }) => (range.start === range.
 
 /** What a chip shows (`auth.ts:12-40`, `src/`), and its tooltip (the path, relative to the session's folder). */
 export function chipLabel(item: ContextItem, cwd: string | null): { label: string; detail: string } {
+  if (item.kind === 'session') return { label: item.label, detail: LINKED_SESSION_HINT };
   if (item.kind === 'file') {
     const where = relativeTo(item.path, cwd);
     if (item.directory) return { label: `${basename(item.path)}/`, detail: asFolder(where) };
@@ -53,6 +55,9 @@ export function chipLabel(item: ContextItem, cwd: string | null): { label: strin
   const size = item.text.split('\n').length;
   return { label: item.label, detail: [where, size === 1 ? '1 line of text' : `${size} lines of text`].filter(Boolean).join(' · ') };
 }
+
+/** A linked session's chip, said as its tooltip. */
+export const LINKED_SESSION_HINT = "Claude gets this session's branch, pull request, what it did and its last reply.";
 
 const lineCount = (text: string) => text.replace(/\n+$/, '').split('\n').length;
 
@@ -113,18 +118,58 @@ export function fenceFor(text: string): string {
 
 /**
  * The message Claude gets: what you typed, then the files as `@` mentions on one line (Claude reads them itself), then
- * each piece of text in a fenced block under its label.
+ * each piece of text in a fenced block under its label, then a stub for each linked session, which the engine turns
+ * into a brief about it when the message goes to Claude (docs/session-linking.md).
  */
 export function promptWithContext(text: string, chips: readonly ContextItem[], cwd: string | null): string {
   const files = chips.filter((c): c is Extract<ContextItem, { kind: 'file' }> => c.kind === 'file');
   const texts = chips.filter((c): c is Extract<ContextItem, { kind: 'text' }> => c.kind === 'text');
+  const sessions = chips.filter((c): c is Extract<ContextItem, { kind: 'session' }> => c.kind === 'session');
   const parts = [text.trim()];
   if (files.length) parts.push(files.map((f) => mentionFor(f, cwd)).join(' '));
   for (const item of texts) {
     const fence = fenceFor(item.text);
     parts.push(`${item.label}:\n${fence}${item.language ?? ''}\n${item.text.replace(/\n+$/, '')}\n${fence}`);
   }
+  for (const item of sessions) parts.push(writeStub(item.label, item.sessionId));
   return parts.filter(Boolean).join('\n\n');
+}
+
+const MENTION = String.raw`@(?:"[^"\n]+"|[^\s"]\S*)`;
+/** The line of mentions, either last or right before the first text block, as `promptWithContext` writes it. */
+const MENTION_LINE = new RegExp(String.raw`(^|\n\n)(${MENTION}(?: ${MENTION})*)(?=\n\n[^\n]*:\n\x60{3,}|$)`, 'g');
+
+function fileFromMention(mention: string, cwd: string | null): Extract<ContextItem, { kind: 'file' }> | null {
+  let target = mention.slice(1).replace(/^"(.*)"$/, '$1');
+  let range: { start: number; end: number } | undefined;
+  const hash = /#L(\d+)(?:-(\d+))?$/.exec(target);
+  if (hash) {
+    range = { start: Number(hash[1]), end: Number(hash[2] ?? hash[1]) };
+    target = target.slice(0, hash.index);
+  }
+  const directory = /[\\/]$/.test(target);
+  if (directory) target = target.replace(/[\\/]+$/, '');
+  if (!target) return null;
+  const path = isAbsolutePath(target) ? target : cwd ? joinPath(cwd, target) : null;
+  if (!path) return null;
+  return range && !directory ? { kind: 'file', path, directory, range } : { kind: 'file', path, directory };
+}
+
+/**
+ * The other way round from `promptWithContext`, for a message taken back to the box: its line of file mentions as
+ * chips again, and the text without it. A prompt without one comes back as it is.
+ */
+export function contextFromPrompt(sent: string, cwd: string | null): { text: string; context: ContextItem[] } {
+  // Linked sessions come back as chips, whether the brief was written yet or not; the label stays in the text.
+  const { text: prompt, briefs } = parseBriefs(sent);
+  const sessions: ContextItem[] = briefs.map((brief) => ({ kind: 'session', sessionId: brief.sessionId, label: brief.label }));
+  const match = [...prompt.matchAll(MENTION_LINE)].at(-1);
+  if (!match) return { text: prompt, context: sessions };
+  const files = (match[2]!.match(new RegExp(MENTION, 'g')) ?? []).map((m) => fileFromMention(m, cwd));
+  if (files.some((f) => !f)) return { text: prompt, context: sessions };
+  const before = prompt.slice(0, match.index);
+  const after = prompt.slice(match.index + match[0].length).replace(/^\n\n/, '');
+  return { text: [before, after].filter(Boolean).join('\n\n'), context: [...(files as ContextItem[]), ...sessions] };
 }
 
 /** Dropped files and folders, as context. */
@@ -134,7 +179,9 @@ export const droppedItems = (dropped: ReadonlyArray<{ path: string; directory: b
 /** A short summary of chips for a list (the Unsent list, a sidebar row): "2 files", "1 file and 1 text". */
 export function chipsSummary(chips: readonly ContextItem[]): string {
   const files = chips.filter((c) => c.kind === 'file').length;
-  const texts = chips.length - files;
+  const sessions = chips.filter((c) => c.kind === 'session').length;
+  const texts = chips.length - files - sessions;
   const say = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
-  return [files && say(files, 'file', 'files'), texts && say(texts, 'text', 'texts')].filter(Boolean).join(' and ');
+  const parts = [files && say(files, 'file', 'files'), texts && say(texts, 'text', 'texts'), sessions && say(sessions, 'linked session', 'linked sessions')].filter(Boolean) as string[];
+  return parts.length > 2 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts.join(' and ');
 }

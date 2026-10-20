@@ -5,23 +5,37 @@ import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { clampPanelHeight, clampPanelWidth, PANEL_DEFAULT_HEIGHT, PANEL_DEFAULT_WIDTH, parseDock, type TerminalDock } from '../components/terminal/terminalLayout.ts';
 import { trackRuns, type RunTimes } from '../components/terminal/terminalStatus.ts';
+import { ownerSession } from '../components/terminal/appTerminal.ts';
+import { ENGINE_RESTARTED_MESSAGE, panelsWithLostTerminals } from '../components/terminal/lostTerminals.ts';
+import { runOnce } from '../lib/inFlight.ts';
 import { passFocusGate } from './focusGate.ts';
+import { popoutSession } from './popoutsStore.ts';
 
 const PANEL_KEY = 'ui.terminalPanel';
 
-/** Why a terminal didn't open, shown in the panel. `code` is the engine's (e.g. SESSION_RUNNING_HERE), so the panel can offer a way out. */
+/** The code of the notice that says an engine restart closed a panel's terminals (not one of the engine's). */
+export const ENGINE_RESTARTED = 'ENGINE_RESTARTED';
+
+/**
+ * Why a terminal didn't open (or went away), shown in the panel. `code` is the engine's (e.g. SESSION_RUNNING_HERE), so
+ * the panel can offer a way out, or `ENGINE_RESTARTED`.
+ */
 export interface TerminalNotice {
   code: string | null;
   message: string;
 }
 
+/**
+ * Panels are keyed by their owner: a session's id, or `APP_TERMINAL` for the window's own terminal (outside
+ * sessions). Everything kept per panel below uses that key.
+ */
 interface TerminalsState {
   terminals: Map<string, TerminalInfo>;
   /** The engine's list has arrived, so "no terminals" really means none. */
   loaded: boolean;
-  /** Sessions whose view shows the panel: each session view has its own, so it stays with the view it was opened in. */
+  /** Panels that are shown: each session view has its own, so it stays with the view it was opened in, and the other views share the window's. */
   openFor: Set<string>;
-  /** The session whose panel the user just opened (Terminal button, ⌘J): it starts a shell when the session has none. */
+  /** The panel the user just opened (Terminal button, ⌘J): it starts a shell when it has no terminals. */
   shellWanted: string | null;
   /** Docked below: its height. */
   panelHeight: number;
@@ -29,16 +43,16 @@ interface TerminalsState {
   panelWidth: number;
   /** Where the user wants the panel. It still docks below while the Changes panel is on the right (`effectiveDock`). */
   dock: TerminalDock;
-  /** Sessions whose panel takes the whole session view, hiding the conversation (⌘⇧J; Esc or ⌘⇧J restores it). */
+  /** Panels that take the whole view, hiding the conversation or view under them (⌘⇧J; Esc or ⌘⇧J restores it). */
   maximizedFor: Set<string>;
   /** When each terminal's current run started and ended, for the run strip's elapsed time. */
   runs: Map<string, RunTimes>;
-  /** Selected tab per session. */
+  /** Selected tab per panel. */
   active: Map<string, string>;
-  /** Per session. */
+  /** Per panel. */
   notices: Map<string, TerminalNotice>;
   setTerminals(list: TerminalInfo[]): void;
-  /** A session's panel. No `open`: the user toggles it, and opening asks for a shell. `true`/`false`: show or hide what's there (an action's tab). */
+  /** A panel. No `open`: the user toggles it, and opening asks for a shell. `true`/`false`: show or hide what's there (an action's tab). */
   togglePanel(sessionId: string, open?: boolean): void;
   /** Restores the sessions whose panel was open when the app last closed. */
   restoreOpen(sessionIds: string[]): void;
@@ -105,24 +119,28 @@ export const useTerminals = create<TerminalsState>()((set) => ({
 }));
 
 /**
- * Opens a terminal tab for a session and shows it. When it can't (the session runs here or in another
- * Claude Code), the reason goes to the panel, which offers to stop it or open a fork.
+ * Opens a terminal tab in a panel (a session's, or the window's own with `APP_TERMINAL`) and shows it. When it
+ * can't (the session runs here or in another Claude Code), the reason goes to the panel, which offers to stop
+ * it or open a fork. `cwd` null: the home folder. `profileId` runs it with that Claude profile's login instead of
+ * the session's or the folder's (signing a profile in).
  */
-export async function openTerminal(client: EngineClient, sessionId: string, cwd: string, kind: TerminalKind, fork = false): Promise<string | null> {
+export async function openTerminal(client: EngineClient, owner: string, cwd: string | null, kind: TerminalKind, fork = false, profileId?: string): Promise<string | null> {
+  const sessionId = ownerSession(owner);
   // Claude in the terminal starts work too: the focus limit's gate, as for a message (a fork is a new session).
-  if (kind === 'claude' && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return null;
+  // Signing a profile in starts none.
+  if (kind === 'claude' && !profileId && (await passFocusGate({ target: fork ? null : sessionId })) !== 'start') return null;
   const state = useTerminals.getState();
-  state.setNotice(sessionId, null);
-  state.togglePanel(sessionId, true);
+  state.setNotice(owner, null);
+  state.togglePanel(owner, true);
   try {
-    const info = await client.call('terminal.open', { sessionId, cwd, kind, cols: 100, rows: 20, fork });
-    useTerminals.getState().setActive(sessionId, info.id);
+    const info = await client.call('terminal.open', { sessionId, ...(cwd ? { cwd } : {}), kind, cols: 100, rows: 20, fork, ...(profileId ? { profileId } : {}) });
+    useTerminals.getState().setActive(owner, info.id);
     return info.id;
   } catch (e) {
     const code = (e as { code?: string }).code ?? '';
     const message = e instanceof Error ? e.message : String(e);
     const blocked = code === 'SESSION_RUNNING_HERE' || code === 'SESSION_BUSY_ELSEWHERE';
-    useTerminals.getState().setNotice(sessionId, blocked ? { code, message } : { code: null, message: `Couldn't open the terminal: ${message}` });
+    useTerminals.getState().setNotice(owner, blocked ? { code, message } : { code: null, message: `Couldn't open the terminal: ${message}` });
     return null;
   }
 }
@@ -155,6 +173,23 @@ export async function runInTerminal(client: EngineClient, sessionId: string, cwd
 }
 
 /**
+ * Runs a code block's command and sends its output to Claude: in a tab of its own that ends with the command (so it is
+ * clear where the output starts and stops, and what it exited with), shown in the panel. When it ends, the engine sends
+ * the exit code and the end of the output to the session, held in Up next while Claude works.
+ */
+export async function runAndSendOutput(client: EngineClient, sessionId: string, cwd: string, command: string): Promise<void> {
+  const state = useTerminals.getState();
+  state.setNotice(sessionId, null);
+  state.togglePanel(sessionId, true);
+  try {
+    const info = await client.call('terminal.run', { sessionId, cwd, command, sendOutput: true });
+    useTerminals.getState().setActive(sessionId, info.id);
+  } catch (e) {
+    useTerminals.getState().setNotice(sessionId, { code: null, message: `Couldn't run the command: ${e instanceof Error ? e.message : String(e)}` });
+  }
+}
+
+/**
  * Resolves once the terminal has exited (or is gone), or after `timeoutMs`. Restart on a running action
  * stops it first, and the engine only restarts a terminal that has exited.
  */
@@ -181,13 +216,23 @@ export function waitForExit(id: string, timeoutMs: number): Promise<boolean> {
 /** Stop waits this long after ⌃C before it terminates, then kills (the engine's STOP_GRACE_MS, twice), plus a little. */
 const STOP_TIMEOUT_MS = 7_000;
 
-/** Runs a terminal's command again (an action's tab): a running one is stopped first, since the engine only restarts one that has exited. */
+/** Terminals being restarted (stopped, then run again), so quick clicks on Restart send one restart. */
+const restarting = new Set<string>();
+
+/**
+ * Runs a terminal's command again (an action's tab): a running one is stopped first, since the engine only restarts one
+ * that has exited. A second call while the first is still going is ignored.
+ */
 export async function restartTerminal(client: EngineClient, terminal: TerminalInfo): Promise<void> {
-  if (terminal.exitCode === null) {
-    await client.call('terminal.stop', { id: terminal.id });
-    if (!(await waitForExit(terminal.id, STOP_TIMEOUT_MS))) throw new Error('it did not stop');
-  }
-  await client.call('terminal.restart', { id: terminal.id });
+  await runOnce(restarting, terminal.id, async () => {
+    // The store's copy, not the one the click rendered: it may have exited, or started again, since.
+    const current = useTerminals.getState().terminals.get(terminal.id) ?? terminal;
+    if (current.exitCode === null) {
+      await client.call('terminal.stop', { id: terminal.id });
+      if (!(await waitForExit(terminal.id, STOP_TIMEOUT_MS))) throw new Error('it did not stop');
+    }
+    await client.call('terminal.restart', { id: terminal.id });
+  });
 }
 
 /** How many sessions' open panels are remembered across launches. */
@@ -204,8 +249,21 @@ export function useTerminalsSync(): void {
 
   useEffect(() => {
     if (!client) return;
-    const off = client.on('terminals.changed', ({ terminals }) => useTerminals.getState().setTerminals(terminals));
-    void client.call('terminal.list', {}).then(({ terminals }) => useTerminals.getState().setTerminals(terminals));
+    // A new client after one that had loaded means the engine restarted, and its terminals went with it. The first
+    // list from the new one says which sessions lost theirs; their panels say so instead of just showing New terminal.
+    const store = useTerminals.getState();
+    let before: TerminalInfo[] | null = store.loaded ? [...store.terminals.values()] : null;
+    const apply = (terminals: TerminalInfo[]) => {
+      if (before) {
+        for (const owner of panelsWithLostTerminals(before, terminals)) {
+          useTerminals.getState().setNotice(owner, { code: ENGINE_RESTARTED, message: ENGINE_RESTARTED_MESSAGE });
+        }
+        before = null;
+      }
+      useTerminals.getState().setTerminals(terminals);
+    };
+    const off = client.on('terminals.changed', ({ terminals }) => apply(terminals));
+    void client.call('terminal.list', {}).then(({ terminals }) => apply(terminals));
     void client.call('appState.get', { key: PANEL_KEY }).then(({ value }) => {
       const stored = value as { open?: unknown; height?: unknown; width?: unknown; dock?: unknown } | null;
       if (typeof stored?.height === 'number') useTerminals.getState().setPanelHeight(stored.height);
@@ -217,8 +275,9 @@ export function useTerminalsSync(): void {
     return off;
   }, [client]);
 
+  // Saved by the main window only: a pop-out's smaller window would clamp the sizes it saves.
   useEffect(() => {
-    if (!client) return;
+    if (!client || popoutSession) return;
     const timer = setTimeout(() => void client.call('appState.set', { key: PANEL_KEY, value: { open: [...openFor].slice(-REMEMBER_OPEN), height: panelHeight, width: panelWidth, dock } }), 300);
     return () => clearTimeout(timer);
   }, [client, openFor, panelHeight, panelWidth, dock]);

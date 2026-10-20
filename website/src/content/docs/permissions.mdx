@@ -10,6 +10,7 @@ import Os from '../../components/Os.astro';
 import Pill from '../../components/Pill.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../components/Related.astro';
 
 When Claude wants to run a command or edit a file, has a question for you, or has a plan ready, it waits for you. Switchboard shows a card above the message box with everything you need to decide, and marks the session <Pill tone="needs-you">Needs you</Pill> everywhere until you answer.
 
@@ -21,7 +22,7 @@ A session that needs you shows up in several places at once:
 
 - The sidebar puts it in the **Needs you** group at the top, with a pink rail and a pulsing dot. Home lists it first too.
 - A notification and <Os mac="the Dock badge" windows="a dot on the taskbar button" /> tell you, also while Switchboard is in the background. In the background, <Os mac="the Dock icon bounces" windows="the taskbar button also flashes until you switch to Switchboard" />. The notification says what Claude wants: "Claude wants to use Bash", "Claude has a question" or "Claude has a plan for you". Click it to open the session.
-- Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that needs you, or run *Go to next session that needs you* in the command palette.
+- Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that needs you, or run *Go to next session that needs you* in the command palette. It goes to sessions that wait for you first, then finished ones you haven't read, the quickest to review first (see [Catch-up](/sessions/catch-up/#quickest-to-unblock)).
 - With the session open, *Go to the permission* or *Go to the question* in the palette scrolls to the card.
 
 The card itself has a pink frame. After a minute it says how long it has been waiting ("Waiting 2m"). A card from a subagent says "From a subagent".
@@ -42,7 +43,7 @@ To say no and tell Claude what to do instead, type in the field under the button
 
 When Claude has a question ("Claude has a question for you"), the card lists the answers it suggests, each with a number.
 
-- Press a number key (<Kbd shortcut="permission.pick" />) to pick an answer, or click it. With several questions, a single-choice answer moves on to the next question.
+- Press a number key (<Kbd shortcut="permission.pick" />) to pick an answer, or click it. With several questions, the one you are answering has an accent line and "1 of 2" before it, and a question you have answered fades back and says **Answered** (point at it to read it again). Picking an answer to a single-choice question moves on to the next open question and scrolls it into view. A multi-select, and the field for your own answer, wait for <Kbd keys="enter" /> or **Next question**. Changing an earlier answer doesn't jump ahead.
 - <Kbd keys="enter" /> moves on to the next question, and on the last one sends your answers.
 - Type your own answer in the field under the choices ("Or type your own answer").
 - Some questions take more than one answer: tick each, and add something else if you want.
@@ -58,6 +59,19 @@ In Plan mode, Claude reads and plans without making changes. When it's done, the
 | **Approve and accept edits** | <Kbd shortcut="permission.allow" /> | Starts, and switches the session to Accept edits, so file edits apply without asking. |
 | **Approve, ask before edits** | | Starts, and asks before each file edit. |
 | **Keep planning** | <Kbd shortcut="permission.deny" /> | Claude goes on planning. Type what to change in the field under the buttons first, and press <Kbd keys="enter" /> to send it. |
+
+## Why is Claude asking?
+
+Every card has a **Why?** button at the top. It opens a panel beside the conversation, **Why Claude asks**, that helps you decide:
+
+- **Why Claude needs it:** how the request fits what you asked, from what Claude did so far. It says so when it doesn't seem to fit.
+- **What it does:** what happens if you say yes. For a command, what each part does and whether it only reads or changes something, such as files, git, packages or the network.
+- **What Claude said:** Claude's own last words before it asked.
+- **Your ask** and **So far:** the prompt that started this piece of work, and what Claude did since.
+
+The panel only explains: you still answer in the card. It closes when you answer, with **Why?** again, or with <Kbd shortcut="permission.deny" /> (the next <Kbd shortcut="permission.deny" /> says no). You can also run *Why is Claude asking?* from the [command palette](/command-palette/).
+
+Haiku writes **Why Claude needs it** and **What it does** when **Write catch-up summaries with Haiku** is on in [Settings](/settings/) › **Conversation**. It sees your prompt, Claude's last words, the list of tool calls and the request itself: a command, a file's path, a plan or the questions, never what an edit writes. Off, the panel shows the rest without a model. The tokens count toward the session's plan, and show in [Usage](/usage/) as **Catch-up summaries**.
 
 ## Answer from the keyboard
 
@@ -107,3 +121,7 @@ The VS Code setting `switchboard.prompts` turns these notifications off.
 - [Settings → Sidebar](/settings/#sidebar): *Show sessions from other apps* lists terminal sessions and notifies you when one waits.
 - [Settings → VS Code](/settings/#vs-code): the companion that lets you answer from VS Code.
 - A project's [Settings tab](/projects/settings/): the permission mode new sessions start in.
+
+## Related
+
+<Related pages={['new-session/models-and-options', 'settings/notifications', 'remote-access', 'vscode-companion']} />

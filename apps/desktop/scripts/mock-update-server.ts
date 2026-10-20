@@ -3,7 +3,7 @@
  *
  *   node scripts/mock-update-server.ts --dir dist            # serve a real build (latest-mac.yml + .zip, latest.yml + .exe)
  *   node scripts/mock-update-server.ts --fake 0.0.9          # serve a made-up feed offering v0.0.9
- *   node scripts/mock-update-server.ts --fake 0.0.9-nightly.20261006.1
+ *   node scripts/mock-update-server.ts --fake 0.0.9-beta.1
  *
  * Then start Switchboard with SWITCHBOARD_MOCK_UPDATES=1 (and SWITCHBOARD_MOCK_UPDATES_URL if you
  * changed --port). A fake feed is enough to see a check find an update and its release notes; the
@@ -30,10 +30,10 @@ if (!dir && !values.fake) {
 
 /**
  * The feeds for `version`, named the way electron-builder names them: latest-mac.yml with a .zip for macOS, latest.yml
- * with a setup .exe for Windows (nightly-mac.yml and nightly.yml for nightlies).
+ * with a setup .exe for Windows (beta-mac.yml and beta.yml for a beta).
  */
 function fakeFeeds(version: string): Map<string, string> {
-  const channel = /-nightly\./.test(version) ? 'nightly' : 'latest';
+  const channel = /-beta\./.test(version) ? 'beta' : 'latest';
   return new Map([
     [`${channel}-mac.yml`, fakeFeed(version, `Switchboard-${version}-arm64-mac.zip`)],
     [`${channel}.yml`, fakeFeed(version, `Switchboard-${version}-setup.exe`)],

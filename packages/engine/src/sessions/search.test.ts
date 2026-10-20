@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { removeDir } from '../util/removeDir.ts';
+import { writeStub } from '@switchboard/protocol';
 import { MARK_END, MARK_START, SearchIndex, searchableText, toFtsQuery } from './searchIndex.ts';
 
 const user = (uuid: string, text: string): RawSessionMessage => ({ type: 'user', uuid, message: { role: 'user', content: text }, parent_tool_use_id: null });
@@ -40,6 +41,8 @@ describe('searchableText and toFtsQuery', () => {
     expect(searchableText(msg('user', '<command-name>/review</command-name><command-args>--fast</command-args>'))).toBe('/review --fast');
     expect(searchableText(msg('user', '<local-command-stdout>x</local-command-stdout>'))).toBeNull();
     expect(searchableText(msg('user', '[Request interrupted by user]'))).toBeNull();
+    // A linked session's brief is that session's: only what you typed is searched here.
+    expect(searchableText(msg('user', `stack on @Usage cost\n\n${writeStub('Usage cost', 'id-1').replace('session: id-1', 'session: id-1\nbranch: worktree-usage-cost')}`))).toBe('stack on @Usage cost');
   });
 
   it('makes every word required, the last one a prefix, and keeps FTS syntax out', () => {

@@ -3,10 +3,10 @@ import { backTarget, readRemembered } from './usageViewPrefs.ts';
 
 describe('the Usage view', () => {
   it('opens on the tab and period left last time, and on Limits for the current window the first time', () => {
-    expect(readRemembered(null)).toEqual({ tab: 'limits', period: 'window' });
-    expect(readRemembered(JSON.stringify({ tab: 'tokens', period: 'week' }))).toEqual({ tab: 'tokens', period: 'week' });
-    expect(readRemembered(JSON.stringify({ tab: 'other', period: 'year' }))).toEqual({ tab: 'limits', period: 'window' });
-    expect(readRemembered('{broken')).toEqual({ tab: 'limits', period: 'window' });
+    expect(readRemembered(null)).toEqual({ tab: 'limits', period: 'window', computers: 'all' });
+    expect(readRemembered(JSON.stringify({ tab: 'tokens', period: 'week', computers: 'this' }))).toEqual({ tab: 'tokens', period: 'week', computers: 'this' });
+    expect(readRemembered(JSON.stringify({ tab: 'other', period: 'year', computers: 'some' }))).toEqual({ tab: 'limits', period: 'window', computers: 'all' });
+    expect(readRemembered('{broken')).toEqual({ tab: 'limits', period: 'window', computers: 'all' });
   });
 
   it('goes back to the view it was opened from', () => {

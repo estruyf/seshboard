@@ -8,6 +8,7 @@ import OnlyOn from '../../components/OnlyOn.astro';
 import Os from '../../components/Os.astro';
 import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
+import Related from '../../components/Related.astro';
 
 A `switchboard://` link opens Switchboard on New session with the project and prompt filled in, or jumps to a session. Put links in runbooks, alerts, READMEs, issue templates, or Raycast and Alfred scripts, or open them from a shell.
 
@@ -47,6 +48,8 @@ Every parameter is optional. When a link has more than one of `cwd`, `project` a
 Model, effort, permission mode and the worktree choice come from the project's defaults (or your last choices), as when you press <Kbd shortcut="session.new" />. A link can't set them.
 
 `repo` makes a link work for everyone on a team, wherever they cloned the repository.
+
+When none of your folders is a checkout of the `repo` and [Clone from GitHub](/projects/clone-from-github/) is on, the line above the message box offers **Clone owner/name**. It clones the repository into your **Clone into** folder and keeps the link's prompt. You press Start yourself, even when the link says `autostart`: a link never clones and starts on its own.
 
 ### Starting on its own
 
@@ -159,9 +162,13 @@ Parameters Switchboard doesn't know are ignored, so a link made for a newer vers
 
 - **Nothing happens.** <Os mac="macOS sends switchboard:// links to the copy of Switchboard it knows. Move Switchboard to Applications and open it once." windows="Switchboard registers switchboard:// links for you when it starts. Open it once from the Start menu after installing it. A build you run with npm run dev doesn't register them." />
 - **An `autostart` link didn't start.** It needs a prompt and a folder: `project`, `cwd`, or a `repo` Switchboard can find.
-- **The folder is empty.** The link names no folder, or no project or recent folder has a git remote on that `repo`. Add the checkout as a project, or use `cwd`.
+- **The folder is empty.** The link names no folder, or no project or recent folder has a git remote on that `repo`. Add the checkout as a project, use `cwd`, or choose **Clone owner/name** to clone it (with [Clone from GitHub](/projects/clone-from-github/) on).
 - **The prompt looks wrong.** Check the encoding: spaces as `%20`, new lines as `%0A`, `&` as `%26`, `#` as `%23`, `+` as `%2B`.
 
 ## Settings
 
 Links have no settings. What a started session uses comes from the [project's settings](/projects/settings/).
+
+## Related
+
+<Related pages={['new-session/form', 'projects/clone-from-github', 'sessions/saved-prompts', 'projects/settings']} />

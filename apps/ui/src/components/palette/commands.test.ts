@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { arrangeCommands, COMMANDS, hintOf, rememberIn, titleOf, visibleCommands, type PaletteApi } from './commands.ts';
-import type { PaletteContext, PaletteSession } from './paletteContext.ts';
+import type { PaletteContext, PaletteGit, PaletteSession } from './paletteContext.ts';
 import { shortcutGlyphs } from '../../lib/shortcuts.ts';
+import { APP_TERMINAL } from '../terminal/appTerminal.ts';
+import { isClassified, mainRequestFor, popoutClass } from './popoutCommands.ts';
 
 const SESSION: PaletteSession = {
   id: 's1',
@@ -15,20 +17,23 @@ const SESSION: PaletteSession = {
   host: null,
   running: false,
   waiting: null,
+  catchUp: null,
   prompts: 0,
   hasReply: false,
-  sideQuestions: 0,
 };
 
 /** Home, connected, nothing open: the context every test changes a little. */
 function context(over: Partial<PaletteContext> = {}): PaletteContext {
   return {
+    popout: false,
     view: 'home',
     connected: true,
     session: null,
     git: null,
-    terminal: { open: false, maximized: false, dock: 'bottom', action: null },
+    terminal: { owner: null, cwd: null, open: false, maximized: false, dock: 'bottom', action: null },
     split: false,
+    splitDirection: null,
+    paneWays: [],
     focusLimit: null,
     notifications: true,
     sounds: false,
@@ -41,6 +46,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     ],
     currentProject: null,
     actions: [],
+    prompts: [],
     canEditActions: false,
     colorScheme: 'system',
     themes: [
@@ -53,13 +59,18 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     settingsSection: 'general',
     newSession: null,
     questionsDir: '/data/questions',
+    cloneEnabled: false,
     composer: null,
     canContinueInVSCode: false,
+    computers: [],
     ...over,
   };
 }
 
-const inSession = (session: Partial<PaletteSession> = {}, over: Partial<PaletteContext> = {}) => context({ view: 'session', session: { ...SESSION, ...session }, ...over });
+/** A clean checkout with a GitHub remote. */
+const GIT: PaletteGit = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false, failingChecks: 0 };
+const inSession = (session: Partial<PaletteSession> = {}, over: Partial<PaletteContext> = {}) =>
+  context({ view: 'session', session: { ...SESSION, ...session }, terminal: { ...context().terminal, owner: 's1', cwd: '/work/app' }, ...over });
 const ids = (ctx: PaletteContext) => visibleCommands(ctx).map((c) => c.id);
 const groupIds = (ctx: PaletteContext, group: string) => visibleCommands(ctx).filter((c) => c.group === group).map((c) => c.id);
 
@@ -128,6 +139,14 @@ describe('when(): always', () => {
     expect(ids(context({ connected: false }))).not.toContain('quick-question');
   });
 
+  it('starts from a GitHub repository only while Clone from GitHub is on', () => {
+    expect(ids(context())).not.toContain('new-session-clone');
+    const ctx = context({ cloneEnabled: true });
+    const clone = visibleCommands(ctx).find((c) => c.id === 'new-session-clone')!;
+    expect(titleOf(clone, ctx)).toBe('New session from a GitHub repository…');
+    expect(clone.next!(ctx)).toEqual({ kind: 'clone', chip: 'Clone from GitHub' });
+  });
+
   it('names the current project in "New session in …", and needs projects to rename one', () => {
     const ctx = context({ currentProject: { root: '/work/app', name: 'app' } });
     const here = visibleCommands(ctx).find((c) => c.id === 'new-session-here')!;
@@ -144,7 +163,7 @@ describe('when(): always', () => {
 
 describe('when(): a session is open', () => {
   it('shows This session only in the session view', () => {
-    const shown = groupIds(inSession(), 'session');
+    const shown = groupIds(inSession({}, { git: GIT }), 'session');
     expect(shown).toEqual(expect.arrayContaining(['rename-session', 'pin', 'archive', 'copy-session-id', 'toggle-terminal', 'new-terminal-tab', 'toggle-changes', 'tools', 'open-in-editor', 'reveal-in-finder', 'close-session', 'delete-session']));
     expect(groupIds({ ...inSession(), view: 'settings' }, 'session')).toEqual([]);
   });
@@ -154,6 +173,13 @@ describe('when(): a session is open', () => {
     expect(fresh).not.toEqual(expect.arrayContaining(['rename-session']));
     for (const id of ['rename-session', 'pin', 'archive', 'delete-session', 'open-in-editor', 'toggle-changes', 'tools']) expect(fresh, id).not.toContain(id);
     expect(fresh).toEqual(expect.arrayContaining(['copy-session-id', 'close-session']));
+  });
+
+  it('offers Toggle changes only in a git checkout, where the Changes panel can show', () => {
+    expect(ids(inSession({}, { git: GIT }))).toContain('toggle-changes');
+    expect(ids(inSession())).not.toContain('toggle-changes');
+    // The folder commands still work outside git.
+    expect(ids(inSession())).toEqual(expect.arrayContaining(['open-in-editor', 'reveal-in-finder', 'tools']));
   });
 
   it('says Pin or Unpin, Archive or Unarchive, from the session', () => {
@@ -183,14 +209,14 @@ describe('when(): a session is open', () => {
     expect(talked).toEqual(expect.arrayContaining(['fork', 'rewind', 'copy-last-reply']));
   });
 
-  it('asks a side question in an open session, and shows earlier ones with their count once there are some', () => {
-    expect(ids(context())).not.toContain('side-question');
-    expect(ids(inSession())).toContain('side-question');
-    expect(ids(inSession())).not.toContain('side-questions');
-    const asked = inSession({ sideQuestions: 3 });
-    const show = visibleCommands(asked).find((c) => c.id === 'side-questions')!;
-    expect(titleOf(show, asked)).toBe('Show side questions');
-    expect(hintOf(show, asked)).toBe('3');
+  it('asks about the session in an open session, through the Ask panel', () => {
+    expect(ids(context())).not.toContain('ask-session');
+    expect(ids(inSession())).toContain('ask-session');
+    expect(ids(inSession({}, { connected: false }))).not.toContain('ask-session');
+    const api = { sessionRequest: vi.fn() } as unknown as PaletteApi;
+    const ctx = inSession();
+    visibleCommands(ctx).find((c) => c.id === 'ask-session')!.run!(api, ctx);
+    expect(api.sessionRequest).toHaveBeenCalledWith('ask');
   });
 
   it('stops Claude only while it runs here, and goes to what it waits for', () => {
@@ -206,7 +232,7 @@ describe('when(): a session is open', () => {
 });
 
 describe('when(): git, actions, terminal, panes', () => {
-  const git = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false };
+  const git = { changed: 0, unstaged: 0, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false, failingChecks: 0 };
 
   it('offers git commands in a repository, the ones for changes only with changes', () => {
     expect(groupIds(inSession(), 'git')).toEqual([]);
@@ -249,16 +275,38 @@ describe('when(): git, actions, terminal, panes', () => {
 
   it('shows the terminal commands while it is open, and docks to the other side', () => {
     expect(groupIds(inSession(), 'terminal')).toEqual([]);
-    const open = { open: true, maximized: false, dock: 'bottom' as const, action: null };
+    const open = { owner: 's1', cwd: '/work/app', open: true, maximized: false, dock: 'bottom' as const, action: null };
     expect(groupIds(inSession({}, { terminal: open }), 'terminal')).toEqual(['hide-terminal', 'maximize-terminal', 'dock-right']);
     expect(groupIds(inSession({}, { terminal: { ...open, dock: 'right' } }), 'terminal')).toContain('dock-below');
     expect(groupIds(inSession({}, { terminal: { ...open, action: { running: true } } }), 'terminal')).toEqual(expect.arrayContaining(['stop-action', 'restart-action']));
     expect(groupIds(inSession({}, { terminal: { ...open, action: { running: false } } }), 'terminal')).not.toContain('stop-action');
   });
 
-  it('offers the pane commands with two sessions side by side', () => {
+  it("offers the window's own terminal outside a session", () => {
+    const home = context({ terminal: { ...context().terminal, owner: APP_TERMINAL } });
+    expect(ids(home)).toEqual(expect.arrayContaining(['toggle-app-terminal', 'new-app-terminal-tab']));
+    expect(ids(home)).not.toContain('toggle-terminal');
+    expect(ids(inSession())).not.toContain('toggle-app-terminal');
+    const open = context({ terminal: { ...home.terminal, open: true } });
+    expect(groupIds(open, 'terminal')).toEqual(['hide-terminal', 'maximize-terminal', 'dock-right']);
+  });
+
+  it('offers the pane commands with more than one pane open', () => {
     expect(groupIds(inSession(), 'panes')).toEqual([]);
-    expect(groupIds(inSession({}, { split: true }), 'panes')).toEqual(['focus-other-pane', 'close-pane']);
+    expect(groupIds(inSession({}, { split: true, splitDirection: 'row' }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'stack-panes', 'close-pane', 'close-other-panes']);
+  });
+
+  it('offers the other direction of the split the active pane is in, never the one it has', () => {
+    expect(groupIds(inSession({}, { split: true, splitDirection: 'column' }), 'panes')).toEqual(['focus-other-pane', 'swap-panes', 'panes-side-by-side', 'close-pane', 'close-other-panes']);
+    expect(ids(inSession({}, { splitDirection: 'column' }))).not.toContain('panes-side-by-side');
+    expect(ids(context({ view: 'settings', split: true, splitDirection: 'row' }))).not.toContain('swap-panes');
+  });
+
+  it('offers to go only where the active pane has a neighbour', () => {
+    const open = (paneWays: PaletteContext['paneWays']) => groupIds(inSession({}, { split: true, splitDirection: 'row', paneWays }), 'panes').filter((id) => id.startsWith('focus-pane-'));
+    expect(open([])).toEqual([]);
+    expect(open(['right'])).toEqual(['focus-pane-right']);
+    expect(open(['left', 'right', 'up', 'down'])).toEqual(['focus-pane-left', 'focus-pane-right', 'focus-pane-up', 'focus-pane-down']);
   });
 });
 
@@ -280,7 +328,7 @@ describe('when(): New session and Settings', () => {
 
 describe('arrangeCommands', () => {
   it('puts where you are first, then recently used, then the rest', () => {
-    const ctx = inSession({}, { git: { changed: 1, unstaged: 1, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false } });
+    const ctx = inSession({}, { git: { changed: 1, unstaged: 1, hasRemote: true, prBlocked: null, github: true, pr: null, pullable: false, failingChecks: 0 } });
     const sections = arrangeCommands(visibleCommands(ctx), ctx, ['theme-dark', 'rename-session', 'unknown'], '');
     expect(sections.map((s) => s.label)).toEqual(['This session', 'Git', 'Recently used', 'Commands']);
     // A recent command already shown for where you are isn't listed twice.
@@ -295,7 +343,7 @@ describe('arrangeCommands', () => {
   });
 
   it('ranks matches by title, highlights the letters, and finds keywords too', () => {
-    const ctx = inSession();
+    const ctx = inSession({}, { git: GIT });
     const [matches] = arrangeCommands(visibleCommands(ctx), ctx, [], 'tog chan');
     expect(matches!.items[0]!.command.id).toBe('toggle-changes');
     expect(matches!.items[0]!.indices.length).toBeGreaterThan(0);
@@ -338,10 +386,10 @@ describe('sidebar and session navigation', () => {
     expect(ids(context({ sidebar: 'closed' }))).not.toContain('sidebar-close');
   });
 
-  it('puts ⌘B on Toggle sidebar and keeps ⌘\\ for closing the other pane', () => {
+  it('puts ⌘B on Toggle sidebar and ⌘\\ on closing the other panes', () => {
     const byShortcut = (keys: string) => COMMANDS.filter((c) => c.shortcut && shortcutGlyphs(c.shortcut) === keys).map((c) => c.id);
     expect(byShortcut('⌘B')).toEqual(['toggle-sidebar']);
-    expect(byShortcut('⌘\\')).toEqual([]);
+    expect(byShortcut('⌘\\')).toEqual(['close-other-panes']);
   });
 
   it('steps through sessions with their shortcuts', () => {
@@ -403,5 +451,77 @@ describe('project pages and worktrees', () => {
     byId(ctx, 'branches-here')!.run!(api, ctx);
     expect(api.openProject).toHaveBeenCalledWith('/work/app', 'branches');
     expect(ids(context({ projects: [] }))).not.toContain('branches');
+  });
+});
+
+describe('in a pop-out', () => {
+  /** A pop-out: its session in the view, in a git checkout, with split view's state as the main window left it. */
+  const popout = (session: Partial<PaletteSession> = {}, over: Partial<PaletteContext> = {}) => inSession({ prompts: 2, hasReply: true, ...session }, { popout: true, git: { ...GIT, changed: 2, unstaged: 1 }, ...over });
+  const dynamic = { actions: [{ id: 'a1', name: 'Test', shortcut: null, icon: 'play' as const }], canEditActions: true, computers: [{ id: 'c1', name: 'mystic' }] };
+
+  it('has a classification for every command, and leaves out one nobody decided on', () => {
+    const unclassified = COMMANDS.map((c) => c.id).filter((id) => !isClassified(id));
+    expect(unclassified).toEqual([]);
+    // A command nobody decided on is left out rather than run on the wrong window.
+    expect(popoutClass('some-future-command')).toBe('hide');
+  });
+
+  it('keeps the commands of the session, its git checkout, terminal and actions', () => {
+    const ctx = popout({ host: { state: 'idle', contextTokens: 100, supportsEffort: true } }, { ...dynamic, terminal: { ...context().terminal, owner: 's1', cwd: '/work/app', open: true } });
+    const shown = ids(ctx);
+    expect(shown).toEqual(
+      expect.arrayContaining(['toggle-agents', 'toggle-commands', 'toggle-changes', 'toggle-terminal', 'rename-session', 'fork', 'rewind', 'compact', 'change-model', 'change-mode', 'ask-session', 'commit', 'create-pr', 'sync', 'stage-all', 'hide-terminal', 'maximize-terminal', 'action:a1', 'edit-actions', 'open-in-editor', 'close-session', 'delete-session', 'shortcuts']),
+    );
+    // Preferences apply to every window.
+    expect(shown).toEqual(expect.arrayContaining(['theme-dark', 'theme:solarized', 'notifications-off', 'focus-on']));
+  });
+
+  it("leaves out the main window's: the panes, the sidebar, Home, the window's own terminal and what New session answers", () => {
+    const ctx = popout({}, { ...dynamic, split: true, splitDirection: 'row', paneWays: ['left', 'right'], sidebar: 'closed', newSession: { canWorktree: true, canSaveDefaults: true, canQueue: true, canCatchUp: true }, unsent: 2, queue: { count: 1, readyCount: 1, firstReady: { id: 'q', prompt: 'x' } }, cloneEnabled: true });
+    const shown = ids(ctx);
+    for (const id of ['focus-other-pane', 'focus-pane-left', 'swap-panes', 'stack-panes', 'close-pane', 'close-other-panes']) expect(shown, id).not.toContain(id);
+    for (const id of ['toggle-sidebar', 'sidebar-open', 'sidebar-minimize', 'sidebar-close', 'sidebar-compact', 'home', 'open-in-new-window', 'unsent', 'queue-start-next', 'queue-pick', 'manage-projects', 'add-project', 'new-session-clone', 'new-session-worktree', 'toggle-worktree', 'save-defaults', 'catch-up', 'show-only:c1', 'new-session-on:c1', 'import-theme', 'export-settings']) {
+      expect(shown, id).not.toContain(id);
+    }
+    expect(groupIds(ctx, 'panes')).toEqual([]);
+    expect(groupIds(ctx, 'new-session')).toEqual([]);
+    // The main window's palette is not changed by any of it.
+    const main = ids({ ...ctx, popout: false });
+    for (const id of ['focus-other-pane', 'toggle-sidebar', 'unsent', 'toggle-worktree', 'new-session-clone', 'open-in-new-window']) expect(main, id).toContain(id);
+  });
+
+  it('runs what starts or finds another session in the main window', () => {
+    const ctx = popout({}, { currentProject: { root: '/work/app', name: 'app' } });
+    const shown = ids(ctx);
+    for (const id of ['new-session', 'new-session-here', 'quick-question', 'go-to-session', 'next-session', 'previous-session', 'next-needs-you', 'search', 'search-memory', 'queue-add']) {
+      expect(shown, id).toContain(id);
+      expect(popoutClass(id), id).toBe('main');
+    }
+    expect(mainRequestFor('new-session', ctx)).toEqual({ kind: 'new-session', cwd: null, worktree: false });
+    expect(mainRequestFor('new-session-here', ctx)).toEqual({ kind: 'new-session', cwd: '/work/app', worktree: false });
+    expect(mainRequestFor('quick-question', ctx)).toEqual({ kind: 'new-session', cwd: '/data/questions', worktree: false });
+    expect(mainRequestFor('go-to-session', ctx)).toEqual({ kind: 'go-to' });
+    expect(mainRequestFor('search', ctx)).toEqual({ kind: 'search', memory: false });
+    expect(mainRequestFor('search-memory', ctx)).toEqual({ kind: 'search', memory: true });
+    expect(mainRequestFor('next-session', ctx)).toEqual({ kind: 'navigate', to: 'next' });
+    expect(mainRequestFor('previous-session', ctx)).toEqual({ kind: 'navigate', to: 'previous' });
+    expect(mainRequestFor('next-needs-you', ctx)).toEqual({ kind: 'navigate', to: 'needs-you' });
+  });
+
+  it('leaves Settings, Usage and project pages to the stores, which send them to the main window', () => {
+    const ctx = popout({}, { currentProject: { root: '/work/app', name: 'app' } });
+    for (const id of ['settings', 'open-usage', 'worktrees', 'branches', 'memory', 'diagnostics', 'project:/work/app']) {
+      expect(ids(ctx), id).toContain(id);
+      expect(popoutClass(id), id).toBe('main');
+      expect(mainRequestFor(id, ctx), id).toBeNull();
+    }
+    expect(ids(ctx)).not.toContain('settings-memory');
+  });
+
+  it('classifies every command as here, main or hidden', () => {
+    const count = (kind: string) => COMMANDS.filter((c) => popoutClass(c.id) === kind).length;
+    expect(count('here') + count('main') + count('hide')).toBe(COMMANDS.length);
+    expect(count('here')).toBeGreaterThan(60);
+    expect(count('main')).toBeGreaterThan(15);
   });
 });

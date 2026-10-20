@@ -1,6 +1,6 @@
 ---
 title: Terminal
-description: A built-in terminal for each session, opening a shell in the session's folder.
+description: A built-in terminal for each session, opening a shell in the session's folder, and one for the rest of the app.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -9,8 +9,11 @@ import OnlyOn from '../../../components/OnlyOn.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Related from '../../../components/Related.astro';
 
 Every session has its own terminal panel. It opens a shell in the session's folder (its worktree, when it has one), so you can run a command without leaving Switchboard. [Project actions](/projects/actions/), git steps and code blocks from the conversation run there too.
+
+Outside a session you have a terminal too: on Home, a project's page, Projects, Usage, New session and Settings. See [Outside a session](#outside-a-session).
 
 <Screenshot name="terminal" alt="A session with the terminal panel open below the conversation: tabs at the top, a shell with output, and buttons to dock, maximize and hide the panel" eager />
 
@@ -21,6 +24,18 @@ Every session has its own terminal panel. It opens a shell in the session's fold
 - Run *Toggle terminal* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />), or *New terminal tab* for another shell.
 
 The first time you open it, the panel starts a shell.
+
+### Outside a session
+
+Press <Kbd shortcut="terminal.toggle" /> anywhere else in the app to open a terminal that isn't tied to a session. It works on Home, a project's page, Projects, Usage, New session and Settings.
+
+- On a project's page, a new tab starts in the project's folder.
+- In New session, it starts in the folder the new session would start in.
+- Everywhere else, it starts in your home folder.
+
+These views share one terminal panel, so its tabs stay with you when you go from Home to a project and back. Each tab is named after its folder; hover it to see the full path. When you open a session, the panel steps aside for the session's own terminal, and it is back when you leave the session. Settings, even when you open it from a session, shows this shared terminal too.
+
+*Toggle terminal* and *New terminal tab* in the command palette work here too. You can maximize, dock and resize this panel the same way as a session's.
 
 <OnlyOn os="mac">
 
@@ -34,7 +49,7 @@ On Windows it is PowerShell: PowerShell 7 (`pwsh`) when it is installed, otherwi
 
 </OnlyOn>
 
-The terminal uses the font of your own terminal when it finds one, so prompt symbols show: <Os mac="Ghostty's font, or the terminal font of VS Code or Cursor" windows="Windows Terminal's font, or the terminal font of VS Code or Cursor" />.
+The terminal uses the font of your own terminal when it finds one, so prompt symbols show: <Os mac="Ghostty's font, or the terminal font of VS Code or Cursor" windows="Windows Terminal's font, or the terminal font of VS Code or Cursor" />. When that setting lists more than one font, such as `'Cascadia Code', monospace`, it uses each in order.
 
 ## How to use it
 
@@ -73,15 +88,17 @@ Press <Kbd shortcut="terminal.clear" /> in the terminal to clear it. Since that 
 
 ### Maximize
 
-Press <Kbd shortcut="terminal.maximize" />, or click the maximize button, to let the terminal fill the session view. Press it again, or <Kbd shortcut="terminal.restore" /> outside the shell (on the tabs or buttons), to restore it. Inside the shell, <Kbd keys="escape" /> belongs to the program that runs there.
+Press <Kbd shortcut="terminal.maximize" />, or click the maximize button, to let the terminal fill the session view (or, outside a session, the view you are on). Press it again, or <Kbd shortcut="terminal.restore" /> outside the shell (on the tabs or buttons), to restore it. Inside the shell, <Kbd keys="escape" /> belongs to the program that runs there.
 
 ### Dock below or on the right
 
 The panel docks below the conversation by default. Click the dock button to move it to the right, or back below. *Dock terminal right* and *Dock terminal below* in the command palette do the same. Switchboard remembers your choice.
 
+On the right, the terminal shares the side with the [Changes panel](/terminal-changes-git/changes/), the [Ask panel](/sessions/ask/) and the [Agents panel](/sessions/agents/). With more than one of them open, tabs at the top switch between them, and **Terminal** is the last tab. Opening Changes, Ask or Agents brings that panel to the front and keeps the terminal on the right, behind it. Click the **Terminal** tab, the **Terminal** button in the header or press <Kbd shortcut="terminal.toggle" /> to bring it back to the front. Its shells keep running behind the other tabs. As a tab, the terminal has the same width as the other panels.
+
 The terminal stays below while the right side isn't free:
 
-- when the [Changes panel](/terminal-changes-git/changes/) is open, since it also lives on the right;
+- when the [*Why is Claude asking?*](/permissions/#why-is-claude-asking) panel is open;
 - when the session view is too narrow for the terminal and a usable conversation side by side. Widen the window to dock it on the right.
 
 The dock button's tooltip says which one applies.
@@ -126,3 +143,7 @@ A session that is running in Switchboard can't be open in two places. Switchboar
 ## Settings
 
 The terminal has no settings of its own. Its colours follow the theme: see [Built-in themes](/themes/built-in/) and [Settings](/settings/#theme).
+
+## Related
+
+<Related pages={['projects/actions', 'terminal-changes-git/git', 'themes/syntax-colours', 'sessions/split-view']} />

@@ -1,6 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, mergePreferences, resolveSound, sanitizePreferences, type SoundList, type SoundPrefs } from './bridge.ts';
 
+describe('contextWarning preference', () => {
+  it('warns about a large context from 60%, and asks on quitting only once until turned on', () => {
+    expect(DEFAULT_PREFERENCES.contextWarning).toEqual({ enabled: true, percent: 60, notifyExpiry: true, onQuit: false, quitTipShown: false });
+  });
+
+  it('keeps the percentage to 40–95 in steps of 5, and fills in what is missing', () => {
+    expect(sanitizePreferences({ contextWarning: { percent: 72 } })).toEqual({ contextWarning: { ...DEFAULT_PREFERENCES.contextWarning, percent: 70 } });
+    expect(sanitizePreferences({ contextWarning: { percent: 5, onQuit: true } }).contextWarning).toMatchObject({ percent: 40, onQuit: true });
+    expect(sanitizePreferences({ contextWarning: { percent: 120 } }).contextWarning?.percent).toBe(95);
+    expect(sanitizePreferences({ contextWarning: 'on' })).toEqual({});
+  });
+
+  it('merges a change field by field', () => {
+    const merged = sanitizePreferences(mergePreferences({ ...DEFAULT_PREFERENCES, contextWarning: { ...DEFAULT_PREFERENCES.contextWarning, percent: 80 } }, { contextWarning: { quitTipShown: true } }));
+    expect(merged.contextWarning).toMatchObject({ percent: 80, quitTipShown: true, enabled: true });
+  });
+});
+
+describe('updateChannel preference', () => {
+  it('is Stable or Beta, and Nightly (which Beta replaced) becomes Beta', () => {
+    expect(DEFAULT_PREFERENCES.updateChannel).toBe('stable');
+    expect(sanitizePreferences({ updateChannel: 'beta' })).toEqual({ updateChannel: 'beta' });
+    expect(sanitizePreferences({ updateChannel: 'nightly' })).toEqual({ updateChannel: 'beta' });
+    expect(sanitizePreferences({ updateChannel: 'alpha' })).toEqual({});
+  });
+});
+
 describe('sidebarCollapsed preference', () => {
   it('collapses to the minimal rail by default', () => {
     expect(DEFAULT_PREFERENCES.sidebarCollapsed).toBe('minimal');
@@ -11,6 +38,39 @@ describe('sidebarCollapsed preference', () => {
     expect(sanitizePreferences({ sidebarCollapsed: 'minimal' })).toEqual({ sidebarCollapsed: 'minimal' });
     expect(sanitizePreferences({ sidebarCollapsed: 'hidden' })).toEqual({});
     expect(sanitizePreferences({ sidebarCollapsed: 1 })).toEqual({});
+  });
+});
+
+describe('fileLinkClick preference', () => {
+  it('shows the file in the file manager by default', () => {
+    expect(DEFAULT_PREFERENCES.fileLinkClick).toBe('file-manager');
+  });
+
+  it('keeps the two choices, and drops anything else', () => {
+    expect(sanitizePreferences({ fileLinkClick: 'editor' })).toEqual({ fileLinkClick: 'editor' });
+    expect(sanitizePreferences({ fileLinkClick: 'file-manager' })).toEqual({ fileLinkClick: 'file-manager' });
+    expect(sanitizePreferences({ fileLinkClick: 'finder' })).toEqual({});
+    expect(sanitizePreferences({ fileLinkClick: true })).toEqual({});
+    expect(sanitizePreferences({ fileLinkClick: null })).toEqual({});
+  });
+
+  it('falls back to the default for an unknown saved value, and to the last good one for an unknown change', () => {
+    expect({ ...DEFAULT_PREFERENCES, ...sanitizePreferences({ fileLinkClick: 'reveal' }) }.fileLinkClick).toBe('file-manager');
+    const editor = { ...DEFAULT_PREFERENCES, fileLinkClick: 'editor' as const };
+    expect({ ...editor, ...sanitizePreferences(mergePreferences(editor, { fileLinkClick: 'reveal' })) }.fileLinkClick).toBe('editor');
+  });
+});
+
+describe('fadeInactivePanes preference', () => {
+  it('fades the inactive panes by default', () => {
+    expect(DEFAULT_PREFERENCES.fadeInactivePanes).toBe(true);
+  });
+
+  it('keeps on and off, and drops anything else', () => {
+    expect(sanitizePreferences({ fadeInactivePanes: false })).toEqual({ fadeInactivePanes: false });
+    expect(sanitizePreferences({ fadeInactivePanes: true })).toEqual({ fadeInactivePanes: true });
+    expect(sanitizePreferences({ fadeInactivePanes: 'off' })).toEqual({});
+    expect(sanitizePreferences({ fadeInactivePanes: 0 })).toEqual({});
   });
 });
 

@@ -9,6 +9,7 @@ import type {
   SessionHostInfo,
   StreamDelta,
 } from '@switchboard/protocol/client';
+import type { Wait } from '../components/transcript/turns.ts';
 
 export interface StreamingBlock {
   kind: 'text' | 'thinking' | 'tool';
@@ -17,8 +18,15 @@ export interface StreamingBlock {
 
 interface HostsState {
   hosts: Map<string, SessionHostInfo>;
+  /** The engine has listed its hosts (once per connection). */
+  loaded: boolean;
   /** Open permission prompts, oldest first. */
   permissions: Map<string, PermissionRequest>;
+  /**
+   * Permission prompts answered while this window was open, per session: when each asked and when it was answered,
+   * for the time a turn waited on you. Kept in memory only; a turn without a record shows no waiting.
+   */
+  waits: Map<string, readonly Wait[]>;
   /** The block Claude is writing right now, per session. */
   streaming: Map<string, StreamingBlock>;
   models: ModelOption[];
@@ -37,9 +45,14 @@ interface HostsState {
   bumpCommands(): void;
 }
 
+/** The most answered prompts kept per session: enough for its recent turns. */
+const MAX_WAITS = 200;
+
 export const useHosts = create<HostsState>()((set) => ({
   hosts: new Map(),
+  loaded: false,
   permissions: new Map(),
+  waits: new Map(),
   streaming: new Map(),
   models: [],
   editors: [],
@@ -49,6 +62,7 @@ export const useHosts = create<HostsState>()((set) => ({
   reset: (hosts, permissions) =>
     set({
       hosts: new Map(hosts.map((h) => [h.sessionId, h])),
+      loaded: true,
       permissions: new Map(permissions.map((p) => [p.requestId, p])),
       streaming: new Map(),
     }),
@@ -75,9 +89,13 @@ export const useHosts = create<HostsState>()((set) => ({
   addPermission: (request) => set((state) => ({ permissions: new Map(state.permissions).set(request.requestId, request) })),
   removePermission: (requestId) =>
     set((state) => {
+      const request = state.permissions.get(requestId);
       const permissions = new Map(state.permissions);
       permissions.delete(requestId);
-      return { permissions };
+      if (!request) return { permissions };
+      const wait: Wait = { toolUseId: request.toolUseId, from: request.createdAt, to: Date.now() };
+      const waits = new Map(state.waits).set(request.sessionId, [...(state.waits.get(request.sessionId) ?? []), wait].slice(-MAX_WAITS));
+      return { permissions, waits };
     }),
   setModels: (models) => set({ models }),
   setEditors: (editors, defaultEditorId) => set({ editors, defaultEditorId }),

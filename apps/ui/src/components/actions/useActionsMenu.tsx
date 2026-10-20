@@ -11,7 +11,7 @@ import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import type { MenuEntry } from '../Menu.tsx';
 import { useFlash } from '../ui/useFlash.ts';
 import { ActionEditor, DeleteActionDialog } from './ActionEditor.tsx';
-import { applySavedAction, withoutAction } from './actionForm.ts';
+import { applySavedAction, scopeParams, withoutAction } from './actionForm.ts';
 import { appKeyInTerminal, sameShortcut } from '../../lib/shortcuts.ts';
 import { ACTION_ICON, formatShortcut, shortcutFromEvent, useProjectActionList } from './useActions.ts';
 
@@ -130,7 +130,7 @@ export function useActionsMenu({
   });
 
   const edit = (action: ListedAction) => setEditor({ action });
-  const askDelete = (action: ListedAction) => action.scope !== 'shared' && setDeleting(action);
+  const askDelete = (action: ListedAction) => setDeleting(action);
   if (!projectRoot) return { entries: [], overlays: null, error: null, actions: [], run, openEditor: null, edit, askDelete, status: null };
   const openEditor = () => setEditor({ action: null });
   const entries: MenuEntry[] = [
@@ -160,10 +160,10 @@ export function useActionsMenu({
           initialAction={editor.action}
           initial={editor.fresh ? {} : null}
           onChanged={reload}
-          onSaved={(saved, previous) => {
+          onSaved={(saved, previous, another) => {
             // The pill changes now; the reload that follows confirms it.
             update((list) => applySavedAction(list, saved, previous));
-            setEditor(null);
+            if (!another) setEditor(null);
             flash('Action saved');
           }}
           onClose={() => setEditor(null)}
@@ -174,7 +174,7 @@ export function useActionsMenu({
           action={deleting}
           onConfirm={async () => {
             if (!client) throw new Error('Not connected to the engine');
-            await client.call('actions.delete', { projectRoot: deleting.scope === 'global' ? null : projectRoot, id: deleting.id });
+            await client.call('actions.delete', { ...scopeParams(deleting.scope, projectRoot), id: deleting.id });
             update((list) => withoutAction(list, deleting));
             reload();
             flash('Action deleted');

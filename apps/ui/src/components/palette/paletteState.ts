@@ -10,6 +10,15 @@ export type PaletteMode = 'goto' | 'commands' | 'new' | 'actions' | 'help';
 /** The character that switches to each mode when typed first, as in VS Code. */
 export const PREFIXES = { commands: '>', new: '+', actions: '!', help: '?' } as const satisfies Record<Exclude<PaletteMode, 'goto'>, string>;
 
+/**
+ * The modes a pop-out's palette has: its commands (and the session's project actions), and the help. Go to and New
+ * session list sessions and projects that open in the main window, so a pop-out never shows them.
+ */
+export const POPOUT_MODES: readonly PaletteMode[] = ['commands', 'actions', 'help'];
+
+/** Whether a mode shows in this window (every one does, but in a pop-out). */
+export const modeAllowed = (mode: PaletteMode, popout: boolean): boolean => !popout || POPOUT_MODES.includes(mode);
+
 /** The mode a typed character switches to, or null when it isn't a prefix. */
 export function modeForPrefix(char: string | undefined): Exclude<PaletteMode, 'goto'> | null {
   for (const [mode, prefix] of Object.entries(PREFIXES)) if (prefix === char) return mode as Exclude<PaletteMode, 'goto'>;
@@ -17,7 +26,7 @@ export function modeForPrefix(char: string | undefined): Exclude<PaletteMode, 'g
 }
 
 /** Lists a `pick` step chooses from. */
-export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory';
+export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-limit' | 'queue' | 'memory' | 'prompt';
 
 /**
  * One step of a command that needs more input. `chip` is how it shows in the input; `from` is the
@@ -26,7 +35,9 @@ export type PickList = 'model' | 'effort' | 'mode' | 'fork' | 'rewind' | 'focus-
 export type PaletteStep =
   | { kind: 'projects'; purpose: 'new-session' | 'rename-project' | 'worktrees' | 'branches'; worktree: boolean; chip: string; from?: string }
   | { kind: 'prompt'; root: string; worktree: boolean; chip: string; from?: string }
-  | { kind: 'pick'; list: PickList; chip: string };
+  | { kind: 'pick'; list: PickList; chip: string }
+  /** Clone from GitHub: the repository's URL (or owner/name) is typed or pasted, then New session clones it. */
+  | { kind: 'clone'; chip: string };
 
 export interface PaletteState {
   mode: PaletteMode;
@@ -48,11 +59,12 @@ export const currentStep = (state: PaletteState): PaletteStep | null => state.st
 
 /**
  * The input changed. Outside a step, a prefix typed (or pasted) at the start switches mode and the
- * rest stays as the query; inside a step everything typed is the query.
+ * rest stays as the query; inside a step everything typed is the query. A prefix for a mode this window doesn't have
+ * (`popout`) is just text.
  */
-export function typeQuery(state: PaletteState, value: string): PaletteState {
+export function typeQuery(state: PaletteState, value: string, popout = false): PaletteState {
   const mode = state.steps.length === 0 ? modeForPrefix(value[0]) : null;
-  if (mode) return { ...initialState(mode), query: value.slice(1) };
+  if (mode && modeAllowed(mode, popout)) return { ...initialState(mode), query: value.slice(1) };
   return { ...state, query: value };
 }
 
@@ -68,9 +80,10 @@ export function switchMode(mode: PaletteMode): PaletteState {
 
 /**
  * ⌫ on an empty input: back one step (with what was typed before it), or out of a prefix mode to
- * go-to. Null when there is nowhere to go back to, so the key does nothing.
+ * go-to (in a pop-out, to the commands, which have nothing before them). Null when there is nowhere to go back to, so
+ * the key does nothing.
  */
-export function back(state: PaletteState): PaletteState | null {
+export function back(state: PaletteState, popout = false): PaletteState | null {
   if (state.steps.length > 0) {
     const steps = state.steps.slice(0, -1);
     const query = state.saved.at(-1) ?? '';
@@ -78,7 +91,8 @@ export function back(state: PaletteState): PaletteState | null {
     if (steps.length === 0 && state.mode === 'new') return { mode: 'goto', query: '', steps: [], saved: [] };
     return { ...state, steps, saved: state.saved.slice(0, -1), query };
   }
-  if (state.mode !== 'goto') return initialState('goto');
+  const home: PaletteMode = popout ? 'commands' : 'goto';
+  if (state.mode !== home) return initialState(home);
   return null;
 }
 

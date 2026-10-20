@@ -1,18 +1,24 @@
+import { startLinkedSession } from '../newSession/linkedSession.ts';
 import { restoreFrom, trashName } from '../../lib/platform.ts';
+import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { useState, type ReactNode } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
+import { popOut } from '../../state/popoutsStore.ts';
 import { useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { archivesOnMiddleClick, isActive } from '../../state/sidebarRows.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
+import { keepUnread } from '../../state/keptUnread.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
-import { sessionMemoryEntries } from '../memory/sessionMemories.tsx';
+import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
+import { useProjects } from '../../state/projectsStore.ts';
+import { remoteSessionEntries, setRemoteFlags } from '../computers/remoteActions.ts';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -21,7 +27,7 @@ export const ARCHIVE: FlagChange = { archived: true, pinned: false };
 export interface SessionMenus {
   /** Shows a menu at a point (the session menu, or one the caller builds). */
   showMenu(menu: { x: number; y: number; entries: MenuEntry[]; label: string }): void;
-  /** The menu of one session row: rename, pin, archive, open beside, project, delete. */
+  /** The menu of one session row: rename, pin, archive, open beside, the project and memories (in submenus), delete. */
   openSessionMenu(at: { x: number; y: number }, data: SessionRowData): void;
   /** Sets flags on sessions that have a transcript (only those have flags). */
   flagAll(targets: SessionRowData[], change: FlagChange): void;
@@ -46,6 +52,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   const selectedId = useSessions((s) => s.selectedId);
   const openIn = useOpenIn();
   const projectIcons = useProjectIconEntries();
+  const projects = useProjects((s) => s.projects);
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[]; label: string } | null>(null);
   const [deleting, setDeleting] = useState<SessionRowData[] | null>(null);
   const [renaming, setRenaming] = useState<SessionRowData | null>(null);
@@ -62,38 +69,76 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   };
 
   const middleClick = (data: SessionRowData) => {
-    if (archivesOnMiddleClick(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays)) flagAll([data], ARCHIVE);
+    if (!archivesOnMiddleClick(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays)) return;
+    // A session on another computer is archived there, through its own contract.
+    if (data.remote) return setRemoteFlags(client, data.remote.computerId, data.remote.sessionId, ARCHIVE);
+    flagAll([data], ARCHIVE);
+  };
+
+  // At once in the list (the same as the catch-up's Mark as read), then in the engine.
+  const markRead = (data: SessionRowData) => {
+    useSessions.getState().patchSummary(data.id, { unread: false, viewedAt: Date.now() });
+    void client?.call('sessions.markViewed', { sessionId: data.id }).catch(() => {});
+  };
+
+  const markUnread = (data: SessionRowData) => {
+    keepUnread(data.id);
+    useSessions.getState().patchSummary(data.id, { unread: true });
+    void client?.call('sessions.markUnviewed', { sessionId: data.id }).catch(() => {});
   };
 
   const openSessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
+    // A session on another computer: only what its remote contract offers (no rename, delete or folder here).
+    if (data.remote) {
+      const { computerId, computerName, offline, sessionId, projectId, projectName } = data.remote;
+      const computer = { id: computerId, name: computerName, state: offline ? ('offline' as const) : ('connected' as const) };
+      const session = { id: sessionId, title: data.title, pinned: data.pinned, projectId, projectName };
+      setMenu({ ...at, label: `Session “${data.title}” on ${computerName}`, entries: remoteSessionEntries(client, computer, session, { open: true }) });
+      return;
+    }
     const archivedNow = !isActive(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
     const flag = (change: FlagChange) => flagAll([data], change);
     const cwd = data.summary?.cwd ?? data.live?.cwd ?? null;
     // Removing the project from here read as removing the session; that lives in the project menus.
-    const projectEntries = projectIcons.entries(data.projectRoot, at, { remove: false });
+    const projectEntries = projectIcons.entries(data.projectRoot, at, { remove: false, nested: true });
+    const projectName = projects.get(data.projectRoot)?.name ?? data.projectRoot.split(/[\\/]/).filter(Boolean).at(-1) ?? data.projectRoot;
+    // The project's choices in one submenu, so the session's own items stay in view.
+    const projectMenu: MenuEntry[] = projectEntries.length
+      ? [{ label: 'Project', hint: projectName, submenu: [{ title: projectName, detail: data.projectRoot }, ...projectEntries], data: { 'data-session-project-menu': true } }]
+      : [];
     setMenu({
       ...at,
       label: `Session “${data.title}”`,
       entries: [
         { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary, data: { 'data-rename-session': true } },
+        ...(data.summary
+          ? [data.unread
+              ? ({ label: 'Mark as read', onSelect: () => markRead(data), data: { 'data-mark-read': true } } satisfies MenuEntry)
+              : ({ label: 'Mark as unread', onSelect: () => markUnread(data), data: { 'data-mark-unread': true } } satisfies MenuEntry)]
+          : []),
         { label: data.pinned ? 'Unpin' : 'Pin', onSelect: () => flag({ pinned: !data.pinned }), disabled: !data.summary },
         archivedNow
           ? { label: 'Unarchive', onSelect: () => flag({ archived: false }), disabled: !data.summary }
           : { label: 'Archive', hint: 'until new activity', onSelect: () => flag(ARCHIVE), disabled: !data.summary },
+        'separator',
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
+        { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
+        { label: 'New session linked to this one', onSelect: () => data.summary && startLinkedSession({ id: data.id, title: data.title, projectRoot: data.summary.projectRoot }), disabled: !data.summary, data: { 'data-new-linked-session': true } },
         { label: 'Open folder in editor', onSelect: () => cwd && void openIn(cwd).catch(() => {}), disabled: !cwd },
         { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(data.id) },
         'separator',
-        ...(projectEntries.length ? [...projectEntries, 'separator' as const] : []),
+        ...(projectMenu.length ? [...projectMenu, 'separator' as const] : []),
         { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary, onSelect: () => setDeleting([data]) },
       ],
     });
-    // The memories it wrote, once read: added above Delete while the menu is still this session's.
+    // The memories it wrote, once read: added under Project while the menu is still this session's.
     void client?.call('memory.bySession', { sessionId: data.id }).then(
       ({ memories }) => {
-        const extra = sessionMemoryEntries(memories);
-        if (!extra.length) return;
-        setMenu((m) => (m && m.label === `Session “${data.title}”` ? { ...m, entries: [...m.entries.slice(0, -1), ...extra, ...m.entries.slice(-1)] } : m));
+        const extra = sessionMemorySubmenu(memories);
+        if (!extra) return;
+        // Under Project, or in a group of its own above Delete when there is none.
+        const [index, insert]: [number, MenuEntry[]] = projectMenu.length ? [-2, [extra]] : [-1, [extra, 'separator']];
+        setMenu((m) => (m && m.label === `Session “${data.title}”` ? { ...m, entries: [...m.entries.slice(0, index), ...insert, ...m.entries.slice(index)] } : m));
       },
       () => {},
     );
@@ -135,9 +180,8 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
             for (const target of deleting) {
               await client.call('session.delete', { sessionId: target.id });
               useDrafts.getState().removeDraft(target.id);
-              const panes = useSessions.getState();
-              // Two panes: the other one takes the full width.
-              if (panes.splitId && (target.id === panes.mainId || target.id === panes.splitId)) panes.closePane(target.id === panes.mainId ? 'main' : 'split');
+              // Its pane closes and the others take the space.
+              useSessions.getState().closeSessions([target.id]);
             }
             onDeleted?.();
             const current = useSessions.getState().selectedId;

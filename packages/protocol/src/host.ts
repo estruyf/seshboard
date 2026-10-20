@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { UsageLimitHit } from './usageLimit.ts';
 
 /** Permission modes the UI can switch between (bypassPermissions is deliberately not offered). */
 export const PermissionMode = z.enum(['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']);
@@ -86,6 +87,12 @@ export const SessionHostInfo = z.object({
   /** Tokens in the context window now, and its size (from Claude Code, once it has started). */
   contextTokens: z.number().nullable(),
   contextMax: z.number().nullable(),
+  /**
+   * When the conversation last used Anthropic's prompt cache (its last request), and for how long the cache keeps it
+   * (`contextCache.ts`). Null or missing until a turn ran here.
+   */
+  cacheAt: z.number().nullable().optional(),
+  cacheTtl: z.enum(['5m', '1h']).nullable().optional(),
   error: z.string().nullable(),
   startedAt: z.number(),
   /** When you last sent a message (null before the first). The Working list orders by it, so sessions don't trade places as they write. */
@@ -108,6 +115,8 @@ export const SessionHostInfo = z.object({
   autoPick: AutoPick.nullable().optional(),
   /** Auto is still picking the model this session starts on; your first message waits for it. */
   autoChoosing: z.boolean().optional(),
+  /** Its profile is at a plan usage limit: what is queued waits, and new sessions in the profile wait too. */
+  usageLimit: UsageLimitHit.nullable().optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 
@@ -191,12 +200,25 @@ export type WorktreeRequest = z.infer<typeof WorktreeRequest>;
 
 export const ProjectInspection = z.object({
   path: z.string(),
+  /** True only for a folder. */
   exists: z.boolean(),
+  /** The path is a file, so `exists` is false; New session says so instead of "no longer exists". */
+  isFile: z.boolean().optional(),
   isGitRepo: z.boolean(),
   root: z.string(),
   branch: z.string().nullable(),
 });
 export type ProjectInspection = z.infer<typeof ProjectInspection>;
+
+/** A folder offered while typing a path in New session (`fs.folders`). */
+export const FolderEntry = z.object({
+  name: z.string(),
+  path: z.string(),
+  /** The folder is the top of a git checkout. */
+  isGit: z.boolean(),
+  branch: z.string().nullable(),
+});
+export type FolderEntry = z.infer<typeof FolderEntry>;
 
 export const EditorInfo = z.object({
   id: z.string(),

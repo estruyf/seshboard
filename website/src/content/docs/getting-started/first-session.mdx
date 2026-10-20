@@ -8,9 +8,10 @@ import Pill from '../../../components/Pill.astro';
 import OnlyOn from '../../../components/OnlyOn.astro';
 import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
+import Related from '../../../components/Related.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-A session is one conversation with Claude Code in a folder. You start one from **New session**: pick a project, write what Claude should work on, and press Start. Switchboard runs your own `claude` with your login and settings.
+Give Claude a task in one of your projects, then get on with something else: Switchboard tells you when the session needs you and when it is done. A session is one conversation with Claude Code in a folder. You start one from **New session**: pick a project, write what Claude should work on, and press Start. Switchboard runs your own `claude` with your login and settings.
 
 <Screenshot name="new-session" alt="New session with a project picked, the choice between the current checkout and a new worktree, and a prompt typed in the message box with the profile, model, effort and mode chips under it" eager />
 
@@ -76,6 +77,12 @@ Press <Kbd shortcut="session.next-needs-you" /> to jump to the next session that
 - Type in the message box under the conversation to send Claude the next message. See [Working in a session](/sessions/conversation/).
 - Open **Changes** (<Kbd shortcut="changes.toggle" />) to review what Claude changed. See [Changes](/terminal-changes-git/changes/).
 
+When this works, go on to [Things to try next](/getting-started/next-steps/): a dozen features that are easy to miss, such as asking about a session without interrupting it.
+
 ## Settings
 
 Projects can have their own defaults for new sessions (model, effort, permission mode, worktree and branch) on the [project's Settings tab](/projects/settings/). Turn on a [focus limit](/focus-limit/) in [Settings, Focus](/settings/#focus) if you want Switchboard to say when you have enough sessions going.
+
+## Related
+
+<Related pages={['getting-started/next-steps', 'sessions/states', 'new-session/worktrees', 'sessions/catch-up']} />

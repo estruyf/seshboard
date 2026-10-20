@@ -16,7 +16,9 @@ A fast macOS desktop control surface for Claude Code: start sessions, see what's
 
 **Non-goals (v1)**
 - Support for other agents (Codex, Cursor and so on). That's t3code's job.
-- A mobile app, web UI, or remote access. **Desktop only.**
+- A mobile app or a web UI. The desktop app is the product; the one exception is **Remote** (below).
+
+**Remote (in progress, #93).** Follow and steer sessions from a paired phone's browser, from anywhere: the session list, the live transcript, sending a prompt, answering a permission prompt, stopping a turn, starting a session in a known project. The engine listens on `127.0.0.1` behind a tunnel (Cloudflare, Tailscale, ngrok or your own), and the phone app is served from Switchboard's site. Pairing needs you at the computer, and every connection is a Noise handshake with the key from the QR code, encrypted end to end through the tunnel. Phase 2: Cloudflare Access in front of a named tunnel (the engine serving the remote app on that hostname) and push notifications. Design, threat model and phase 2: [docs/remote-access.md](docs/remote-access.md).
 - Reimplementing Claude Code. We drive the real thing.
 
 ---
@@ -238,8 +240,8 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 
 ### 5.7 Focus limit ✅ ([#24](https://github.com/estruyf/switchboard/issues/24))
 
-- **Preferences** (main): `focusLimit` (1–10, null is off), `focusMode` (`nudge` | `strict`), `focusCountExternal`. They travel with settings backups like every preference.
-- **Counting** is a pure module (`apps/ui/src/state/focus.ts`): active hosts that are working, need you, or are idle with an unread turn, minus sessions archived since (needs you always counts); with `focusCountExternal`, live registry entries from the terminal and IDEs too (never SDK processes, which are Switchboard's own). `focusVerdict` answers `allowed`, `ask` (Nudge) or `blocked` (Strict); a message to a session that already counts is always allowed.
+- **Preferences** (main): `focusLimit` (1–10, null is off), `focusMode` (`nudge` | `strict`), `focusCountExternal`, `focusCountRemote` (on by default). They travel with settings backups like every preference.
+- **Counting** is a pure module (`apps/ui/src/state/focus.ts`): active hosts that are working, need you, or are idle with an unread turn, minus sessions archived since (needs you always counts); with `focusCountExternal`, live registry entries from the terminal and IDEs too (never SDK processes, which are Switchboard's own); with `focusCountRemote`, sessions on connected paired computers that are working, need you or are unread. `focusVerdict` answers `allowed`, `ask` (Nudge) or `blocked` (Strict); a message to a session that already counts is always allowed.
 - **One gate** (`passFocusGate` in `focusGate.ts`) in front of every start: New session (and `autostart` links), messages to a session that doesn't count, forks, prompt actions, and Claude in the terminal. It shows one `alertdialog`; committing and compacting skip it.
 - **Later list:** `later_prompts` (migration v14, a user choice) with `later.list` / `later.add` / `later.remove` and a `later.changed` event. Undo re-adds an item with its id and time. A minimal toast with Undo stands in until #14.
 - Later: a reminder when a session has needed you for a while, waiting sessions in the quit prompt, a "hard stop" time, and the queue in settings backups.
@@ -266,6 +268,15 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - Sessions without a project, like a chat. They all run in one scratch folder the engine owns, `<dataDir>/questions` (so dev, smoke and the installed app each have their own), made when needed. `questions.folder` tells the UI its path. Claude Code sees an ordinary folder, so transcripts, resume, fork and search need no special cases.
 - **Never a project:** `projects.list` leaves the folder out, and `projects.add`, `rename`, `setIcon`, `setProfile` and `setDefaults` refuse it (INVALID). `session.create` refuses a worktree or branch there.
 - **UI:** the projects store adds an entry for the folder named *Questions* (never `added`, no session count), so every place that names a session's folder says Questions and no project list shows it. Pure helpers in `apps/ui/src/lib/questions.ts` (is this the folder, which options apply, the choices remembered for questions in `newSession.questionDefaults`, never a mode that skips prompts). New session (*Quick question* under the tiles, ⌘⇧N), the palette's *Quick question…* prompt step and `question=1` links all start through `startNewSession`. No git, project actions or Changes in the session view; the terminal works in the folder.
+
+### 5.11 Session linking
+
+Mention another session with `@` in the message box, and Claude gets a brief about it: folder, branch, pull request, what it did and its last reply. The case that drives it: "stack the PR on top of the one you opened in @Usage cost toggle". Design in [docs/session-linking.md](docs/session-linking.md).
+
+- ✅ **Phase 1:** a Sessions group in the `@` list, the label kept in the text and a `session` chip; the engine expands the chip's stub into the brief right before Claude reads it; links and the PRs a session opened are stored (`session_links`, `session_prs`); the transcript shows a **Linked:** row.
+- **Phase 2:** New worktree from a linked session's branch, **Builds on …** in the session header, the stacked base in Create pull request.
+- **Phase 3:** `ask_session`, an in-process tool that asks a linked session through a read-only fork.
+- **Phase 4:** a stack view.
 
 ### v0.2: power features
 - ✅ **Embedded terminal** per session (xterm.js on node-pty), plus a raw `claude` TUI tab for anything the GUI doesn't cover (including mods). Built ahead of schedule; project actions will reuse it.
@@ -323,7 +334,7 @@ Mods such as [claude-stats-mod](https://github.com/estruyf/claude-stats-mod) dra
 | **3 · Owned sessions** ✅ done | Create (current folder or worktree), resume, stream, composer, permissions, interrupt, status bar, **Open in editor**. Also: cache the login-shell environment (about 0.5 s per engine start today) | Verified against real Claude Code by `claude.live.test.ts` and the live smoke step: permission prompt in about 3 s, streaming, follow-up, stop/resume, interrupt, fork when open elsewhere. Only `PATH` is cached from the login shell, never the full environment | Can do a full day's work in the app instead of the terminal |
 | **4 · Rich rendering + actions** ✅ done (terminal first) | Tool cards, diffs, todos, subagents, plan mode, AskUserQuestion, notifications, clickable file links; **PtyHost + project actions** (shell and prompt types, toolbar, palette, shortcuts, `runOnWorktreeCreate`, `.switchboard.json`) | Verified in the app and against real Claude Code: inline diffs, todo checklist and strip, subagent transcripts (from `agent-<id>.meta.json`), Shiki highlighting loaded on demand, plan cards; project actions (shell in terminal tabs, prompts, `.switchboard.json` with per-command trust, shortcuts, worktree setup before the first prompt); notifications and dock badge from main's own engine connection |
 | **5 · Power** ✅ done | Free-form terminal tab, diff panel and rewind, worktree finishing actions, search, fork, MCP/skills panels, palette | Done: Changes panel (uncommitted or vs base, stage/unstage/revert, reverted new files to the Trash), undo file changes since a prompt (`rewindFiles`, previewed first), fork from any reply and edit-and-resend (`forkSession` up to a message), worktree finishing (commit with Claude, merge, push + `gh pr create`, remove with branch), full-text search (FTS5, indexed in the background, ⌘⇧F jumps to the message), ⌘K palette, Tools window (MCP status/toggle/reconnect live, skills, agents, plugins), and two sessions side by side. Verified by unit tests, the smoke test and the live smoke step |
-| **6 · Ship** (packaging, signing and notarization ✅ done) | Perf CI, code signing and notarization, auto-update, crash reporting (opt-in) | Signed DMG and auto-updates. Done so far: `npm run dist` builds an unsigned arm64 `.app` and `.dmg` (249 MB / 113 MB) with electron-builder; the SDK's bundled `claude` is left out (the user's own is used), `node-pty` is unpacked from the asar, and the full smoke test (live session included) passes against the packaged app. Signing (Developer ID, hardened runtime) and notarization are done too: `npm run dist:notarized` produces an app Gatekeeper accepts as *Notarized Developer ID*. Auto-update is done too: `electron-updater` checks the GitHub releases (Stable, or Nightly pre-releases), downloads when asked and installs on restart; the release workflow attaches the `.zip` and `latest-mac.yml` feed. Still to do: perf CI, crash reporting |
+| **6 · Ship** (packaging, signing and notarization ✅ done) | Perf CI, code signing and notarization, auto-update, crash reporting (opt-in) | Signed DMG and auto-updates. Done so far: `npm run dist` builds an unsigned arm64 `.app` and `.dmg` (249 MB / 113 MB) with electron-builder; the SDK's bundled `claude` is left out (the user's own is used), `node-pty` is unpacked from the asar, and the full smoke test (live session included) passes against the packaged app. Signing (Developer ID, hardened runtime) and notarization are done too: `npm run dist:notarized` produces an app Gatekeeper accepts as *Notarized Developer ID*. Auto-update is done too: `electron-updater` checks the GitHub releases (Stable, or Beta pre-releases too), downloads when asked and installs on restart; the release workflow attaches the `.zip` and `latest-mac.yml` feed. Still to do: perf CI, crash reporting |
 | **7 · Windows** (all 3 steps done on Windows and macOS; Windows signing to set up) | The same features on Windows, then a signed installer that updates itself. The plan, findings and progress are in [docs/windows-support.md](docs/windows-support.md) | `npm run check` and `npm run smoke` pass on Windows and macOS; a signed Windows installer is attached to each release. Steps 1 (usable on Windows) and 2 (the same features) pass `npm run check` and all 59 smoke steps on Windows, and `npm run check` and the same smoke steps as `main` on macOS. Step 3 builds the installer and the release job, and leaves the macOS build as it was; it needs Windows signing set up and a first release |
 
 ---
@@ -349,7 +360,7 @@ Mods such as [claude-stats-mod](https://github.com/estruyf/claude-stats-mod) dra
 |---|---|
 | Shell | **Electron** |
 | Language & UI | **TypeScript (strict) + React 19** across every package |
-| Scope | **Desktop only** (macOS first), with no remote, web or mobile |
+| Scope | **Desktop** (macOS first), with no web or mobile app; a paired phone can follow and steer sessions through **Remote** |
 | Workspace | **Current folder by default**, with an optional **new worktree**, matching Claude Code |
 | Name | **Switchboard** (working name) |
 | Project actions | **In MVP.** Shell or prompt actions, personal + optional `.switchboard.json`, shown in the toolbar and palette |

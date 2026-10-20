@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import type { ContextItem, ImageAttachment } from '@switchboard/protocol/client';
-import { addChips } from '../components/composer/contextItems.ts';
-import { DRAFT_SETTLE_MS, isCountingDraft, nextDraft, type Draft, type DraftForm } from './drafts.ts';
+import type { ContextItem, ImageAttachment, SavedPrompt } from '@switchboard/protocol/client';
+import { addChips, contextFromPrompt } from '../components/composer/contextItems.ts';
+import type { FillState } from '../components/savedPrompts/fillModel.ts';
+import { DRAFT_SETTLE_MS, isCountingDraft, nextDraft, settleFirstPrompts, type Draft, type DraftForm, type FirstPrompt, type SessionsSeen } from './drafts.ts';
 
 export type ComposerDraft = Draft<ImageAttachment>;
 
@@ -15,17 +16,24 @@ export interface ArchivePrompt {
 interface DraftsState {
   /** By session id, or `new:<project folder>` for New session (see `newDraftKey`). */
   drafts: Record<string, ComposerDraft>;
+  /** New sessions' first prompts by session id, out of sight until the session has a transcript or fails. */
+  firstPrompts: Record<string, FirstPrompt<ImageAttachment>>;
   /** The saved drafts have been read (or there were none to read). */
   loaded: boolean;
   /** A message box should take focus with the caret at the end of its text (opened from the Unsent list or ⌘P). */
   focus: { key: string; nonce: number } | null;
-  /** Text to quote at the end of a message box, which then takes focus (Quote in reply from the conversation). */
-  quote: { key: string; text: string; nonce: number } | null;
+  /** Text to quote at the end of a message box, which then takes focus (Quote in reply from the conversation); `plain` adds it as it is. */
+  quote: { key: string; text: string; nonce: number; plain?: boolean } | null;
+  /**
+   * A saved prompt to fill in a message box (null `prompt`: open its / menu), from the palette or New session's chips.
+   * The box with that key takes it, and the focus.
+   */
+  promptRequest: { key: string; prompt: SavedPrompt | null; nonce: number } | null;
   /** The Unsent messages popover: where it opens (its bottom-left corner when `above`). */
   list: { x: number; y: number; above: boolean } | null;
   archivePrompt: ArchivePrompt | null;
   /** The message box changed: keeps it (or forgets an empty one). */
-  setDraft(key: string, draft: { text: string; attachments: ImageAttachment[] }): void;
+  setDraft(key: string, draft: { text: string; attachments: ImageAttachment[]; fill?: FillState | null }): void;
   /** Adds context chips to a box (from the editor, a drop, the Add context picker); one that is there already isn't added again. */
   addContext(key: string, items: readonly ContextItem[]): void;
   /** Removes chips by id (the × on a chip, or the ones that were just sent). */
@@ -40,12 +48,20 @@ interface DraftsState {
   removeDrafts(keys: readonly string[]): void;
   /** A New session prompt follows the project it moves to. */
   moveDraft(from: string, to: string): void;
+  /** Keeps a new session's first prompt (as sent: its `@` mentions become chips again) until the session has a transcript. */
+  keepFirstPrompt(sessionId: string, start: { cwd: string; prompt: string; attachments: ImageAttachment[]; form: DraftForm }): void;
+  /** Moves first prompts on as sessions start, fail or turn out gone (`settleFirstPrompts`). */
+  settleFirstPrompts(seen: SessionsSeen): void;
   /** Drafts read back after a restart; anything typed meanwhile wins. */
-  load(drafts: Record<string, ComposerDraft>): void;
+  load(drafts: Record<string, ComposerDraft>, firstPrompts?: Record<string, FirstPrompt<ImageAttachment>>): void;
+  /** Drafts that changed in another window, by key (`null`: gone). That window settles them; this one takes them as they are. */
+  applyRelayed(change: Record<string, ComposerDraft | null>): void;
   requestFocus(key: string): void;
   clearFocus(): void;
-  requestQuote(key: string, text: string): void;
+  requestQuote(key: string, text: string, options?: { plain?: boolean }): void;
   clearQuote(): void;
+  requestPrompt(key: string, prompt: SavedPrompt | null): void;
+  clearPromptRequest(): void;
   openList(at: { x: number; y: number; above: boolean }): void;
   closeList(): void;
   /** Archives right away, or first asks when one of the sessions holds an unsent message. */
@@ -100,9 +116,11 @@ export const useDrafts = create<DraftsState>()((set, get) => {
 
   return {
     drafts: {},
+    firstPrompts: {},
     loaded: false,
     focus: null,
     quote: null,
+    promptRequest: null,
     list: null,
     archivePrompt: null,
     setDraft: (key, value) => {
@@ -166,11 +184,37 @@ export const useDrafts = create<DraftsState>()((set, get) => {
       set((s) => ({ drafts: { ...without(s.drafts, [from]), [to]: moved } }));
       settleLater(to, moved);
     },
-    load: (drafts) => set((s) => ({ drafts: { ...drafts, ...s.drafts }, loaded: true })),
+    keepFirstPrompt: (sessionId, { cwd, prompt, attachments, form }) => {
+      const { text, context } = contextFromPrompt(prompt, cwd);
+      const chips = addChips([], context);
+      const draft = { text, attachments, updatedAt: Date.now(), counted: true, lostImages: 0, form, startIn: cwd, ...(chips.length ? { context: chips } : {}) };
+      set((s) => ({ firstPrompts: { ...s.firstPrompts, [sessionId]: { draft, restored: false } } }));
+    },
+    settleFirstPrompts: (seen) => {
+      const { drafts, firstPrompts, loaded } = get();
+      if (!loaded) return;
+      const next = settleFirstPrompts(drafts, firstPrompts, seen);
+      if (next) set(next);
+    },
+    load: (drafts, firstPrompts = {}) => set((s) => ({ drafts: { ...drafts, ...s.drafts }, firstPrompts: { ...firstPrompts, ...s.firstPrompts }, loaded: true })),
+    applyRelayed: (change) => {
+      const keys = Object.keys(change);
+      if (keys.length === 0) return;
+      set((s) => {
+        const drafts = without(s.drafts, keys);
+        for (const key of keys) {
+          const draft = change[key];
+          if (draft) drafts[key] = draft;
+        }
+        return { drafts };
+      });
+    },
     requestFocus: (key) => set({ focus: { key, nonce: ++focusRequests } }),
     clearFocus: () => set({ focus: null }),
-    requestQuote: (key, text) => set({ quote: { key, text, nonce: ++focusRequests } }),
+    requestQuote: (key, text, options) => set({ quote: { key, text, nonce: ++focusRequests, ...(options?.plain ? { plain: true } : {}) } }),
     clearQuote: () => set({ quote: null }),
+    requestPrompt: (key, prompt) => set({ promptRequest: { key, prompt, nonce: ++focusRequests } }),
+    clearPromptRequest: () => set({ promptRequest: null }),
     openList: (list) => set({ list }),
     closeList: () => set({ list: null }),
     requestArchive: (prompt, needsAsking) => (needsAsking ? set({ archivePrompt: prompt }) : prompt.archive()),
