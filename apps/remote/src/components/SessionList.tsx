@@ -55,10 +55,10 @@ export function useNow(): number {
  *   (it opens the computer's menu), the usage card, every open prompt as a card (oldest first), then the groups the
  *   sidebar on the computer has. Pull it down to refresh; swipe a row to mark it read or archive it. Search takes the
  *   title's place, with the chips for what needs you and what works.
- * - `sidebar`: the wide layout's sidebar. The search opens the palette, chips for what needs you and what works,
+ * - `sidebar`: the wide layout's sidebar. The Home row under the title, the search opens the palette, chips for what needs you and what works,
  *   prompts are rows in Needs you (their cards are on the home view), rows are the desktop's size, and the `⋯` menu
  *   sits at the bottom next to New session.
- * - `drawer`: the sessions drawer. A search, the Home row (on every screen size: Home on a wide screen, the first
+ * - `drawer`: the sessions drawer. The Home row under the title (on every screen size: Home on a wide screen, the first
  *   screen on a phone), prompts as rows, the open session picked.
  */
 export type ListMode = 'phone' | 'sidebar' | 'drawer';
@@ -103,7 +103,6 @@ export function SessionList({
   onArchived,
   top,
   usage,
-  homeRow,
   headerEnd,
   onPalette,
 }: {
@@ -128,11 +127,11 @@ export function SessionList({
   onOpen: (sessionId: string) => void;
   onNew: () => void;
   /**
-   * The sidebar's Home button, or the drawer's Home row, which shows on every screen size: Home on a wide screen, the
+   * The Home row under the title of the sidebar and the drawer, which shows on every screen size: Home on a wide screen, the
    * first screen on a phone.
    */
   onHome: () => void;
-  /** Home is on screen: its button or row shows as current. */
+  /** Home is on screen: its row shows as current. */
   homeOpen?: boolean;
   /** Asks for the list again (pull to refresh); done when the answer is in. */
   onRefresh: () => Promise<unknown>;
@@ -144,8 +143,6 @@ export function SessionList({
   top?: ReactNode;
   /** The first screen's usage card. */
   usage?: ReactNode;
-  /** The drawer's Home row, under its search: every profile's usage in a few words. */
-  homeRow?: ReactNode;
   /** At the end of the header (the drawer's button that keeps the sidebar open). */
   headerEnd?: ReactNode;
   /** Opens the ⌘K palette (the sidebar's search). */
@@ -382,21 +379,31 @@ export function SessionList({
     </>
   );
 
+  // Home is the first row under the title, in the sidebar and the drawer alike, above the computers and the search.
+  const homeButton = (
+    <button
+      type="button"
+      onClick={onHome}
+      aria-current={homeOpen ? 'page' : undefined}
+      className={`mx-2 flex items-center gap-2.5 rounded-lg px-2 text-left transition-colors ${drawer ? 'min-h-11' : 'min-h-8'} ${homeOpen ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
+      data-remote-home-row
+    >
+      <House className="size-4 shrink-0 text-muted" aria-hidden />
+      <span className={drawer ? 'text-body' : 'text-ui'}>Home</span>
+    </button>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {mode !== 'phone' && (
         <header className={`sticky top-0 z-10 flex items-center gap-2 bg-inherit pb-2 ${drawer ? 'px-3 pt-[max(0.75rem,env(safe-area-inset-top))]' : 'safe-top px-4'}`}>
           <Logo className="size-6" />
           <h1 className="min-w-0 flex-1 truncate text-title font-semibold">Sessions</h1>
-          {sidebar && (
-            <Button variant="quiet" size="md" aria-label="Home" title="Home" aria-current={homeOpen ? 'page' : undefined} onClick={onHome} className={`px-2! ${homeOpen ? 'bg-selected text-text' : ''}`} data-remote-home-button>
-              <House className="size-4" aria-hidden />
-            </Button>
-          )}
           {chip}
           {headerEnd}
         </header>
       )}
+      {(sidebar || (drawer && !query)) && <div className="pb-2">{homeButton}</div>}
       {mode !== 'phone' && strip && (
         <div className="scroll-row flex gap-1.5 px-3 pb-2" data-remote-computers>
           {strip}
@@ -417,20 +424,7 @@ export function SessionList({
       {drawer && (
         <>
           <div className="flex px-3 pb-2">{searchField}</div>
-          {!query && (
-            <button
-              type="button"
-              onClick={onHome}
-              aria-current={homeOpen ? 'page' : undefined}
-              className={`mx-2 flex min-h-11 items-center gap-2.5 rounded-lg px-2 text-left transition-colors ${homeOpen ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
-              data-remote-home-row
-            >
-              <House className="size-4 shrink-0 text-muted" aria-hidden />
-              <span className="shrink-0 text-body">Home</span>
-              <span className="flex min-w-0 flex-1 justify-end">{homeRow}</span>
-            </button>
-          )}
-          <div className="mt-1 border-b border-border" />
+          <div className="border-b border-border" />
         </>
       )}
       {mode !== 'phone' && banner}
