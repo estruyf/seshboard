@@ -67,6 +67,9 @@ export const IpcChannel = {
   notificationPermission: "switchboard:notification-permission",
   openNotificationSettings: "switchboard:open-notification-settings",
   testNotification: "switchboard:test-notification",
+  getOpenAtLogin: "switchboard:get-open-at-login",
+  setOpenAtLogin: "switchboard:set-open-at-login",
+  openLoginItemsSettings: "switchboard:open-login-items-settings",
   getPopouts: "switchboard:get-popouts",
   popOut: "switchboard:pop-out",
   popIn: "switchboard:pop-in",
@@ -835,6 +838,12 @@ export interface SwitchboardBridge {
   openNotificationSettings(): void;
   /** Shows one notification like a Needs you one, with its sound when sounds are on. */
   testNotification(): void;
+  /** Whether Switchboard opens when you log in to this computer, as the system has it. */
+  openAtLogin(): Promise<OpenAtLogin>;
+  /** Adds Switchboard to the system's login items, or takes it off; answers how it stands afterwards. */
+  setOpenAtLogin(on: boolean): Promise<OpenAtLogin>;
+  /** Opens the system's list of apps that open at login (Login Items, or Startup apps on Windows). */
+  openLoginItemsSettings(): void;
   /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
   readonly popout: string | null;
   /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
@@ -873,6 +882,13 @@ export interface SwitchboardBridge {
   /** In the main window: a pop-out asked for every unsent message. */
   onDraftsRequested(listener: () => void): () => void;
 }
+
+/**
+ * Whether Switchboard opens at login. The system holds it (System Settings › General › Login Items, or Startup apps
+ * on Windows), not the preferences, so a change made there shows here. `needs-approval`: macOS added it but waits for
+ * you to allow it there. `unavailable`: a development build, which would add Electron itself, or Linux.
+ */
+export type OpenAtLogin = "on" | "off" | "needs-approval" | "unavailable";
 
 /** `blocked`: notifications are turned off for Switchboard (or for every app) in the system's settings. `unknown` when it can't be told. */
 export type NotificationPermission = "allowed" | "blocked" | "unknown";

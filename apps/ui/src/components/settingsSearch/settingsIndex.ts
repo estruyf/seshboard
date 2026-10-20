@@ -1,5 +1,6 @@
 import { clickKeysFor, formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { fileManagerName, trashName } from '../../lib/platform.ts';
+import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { appIconDetail } from '../theme/appIconCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
@@ -14,6 +15,7 @@ export function settingsIndex(): SettingEntry[] {
   const trash = trashName();
   return [
     // General
+    { id: 'open-at-login', page: 'general', label: 'Open at login', detail: openAtLoginDetail(), keywords: 'launch start startup boot restart login item sign in automatically virtual machine vm', target: '[data-open-at-login]' },
     { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
     {
       id: 'new-session-mode',
