@@ -322,7 +322,7 @@ export class TriggerWatcher {
   }
 
   /**
-   * An event is picked up: it starts now or waits for a slot. An issue gets `claude: working` and loses the trigger's
+   * An event is picked up: it starts now or waits for a slot. An issue gets `switchboard: working` and loses the trigger's
    * label (state labels on), and is assigned to you (Assign to me when picked up), in one `gh issue edit`.
    */
   private async pickUp(trigger: Trigger, event: TriggerEvent): Promise<void> {

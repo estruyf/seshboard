@@ -491,7 +491,7 @@ export function CommandPalette() {
           usePaletteBus.getState().showDialog({ kind: 'rename-project', root: row.root });
           return;
         }
-        if (step?.kind === 'projects' && (step.purpose === 'worktrees' || step.purpose === 'branches')) {
+        if (step?.kind === 'projects' && (step.purpose === 'triggers' || step.purpose === 'worktrees' || step.purpose === 'branches')) {
           close();
           openProject(row.root, step.purpose);
           return;

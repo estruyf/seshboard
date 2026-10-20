@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Trigger, TriggerEvent } from '@switchboard/protocol/client';
-import { cardEvents, checkedLine, DEFAULT_PROMPTS, eventDetail, formProblem, formSource, formToSave, newTriggerForm, pausedLine, sharedRepoWarning, speakEvent, statusPill, triggerForm, updateForm } from './triggers.ts';
+import { cardEvents, checkedLine, checkedNowLine, DEFAULT_PROMPTS, eventDetail, formProblem, formSource, formToSave, newTriggerForm, pausedLine, sharedRepoWarning, speakEvent, statusPill, triggerForm, updateForm } from './triggers.ts';
 
 const ROOT = '/dev/switchboard';
 const form = (over = {}) => ({ ...newTriggerForm(ROOT, null), ...over });
@@ -8,7 +8,7 @@ const form = (over = {}) => ({ ...newTriggerForm(ROOT, null), ...over });
 describe('the trigger editor', () => {
   it('starts on issues for you, with the project defaults and a worktree', () => {
     const f = newTriggerForm(ROOT, { model: 'sonnet', effort: null, permissionMode: 'acceptEdits', workspace: null, baseRef: null, branch: null });
-    expect(f).toMatchObject({ kind: 'issues', which: 'both', label: 'claude', assignee: '@me', collaboratorsOnly: true, model: 'sonnet', permissionMode: 'acceptEdits', workspace: 'worktree', maxAtOnce: 3, maxWaiting: 10, name: 'Issues for you', prompt: DEFAULT_PROMPTS.issues });
+    expect(f).toMatchObject({ kind: 'issues', which: 'both', label: 'switchboard', assignee: '@me', collaboratorsOnly: true, model: 'sonnet', permissionMode: 'acceptEdits', workspace: 'worktree', maxAtOnce: 3, maxWaiting: 10, name: 'Issues for you', prompt: DEFAULT_PROMPTS.issues });
     expect(newTriggerForm(ROOT, null, { prompt: 'Fix it' }).prompt).toBe('Fix it');
   });
 
@@ -24,7 +24,7 @@ describe('the trigger editor', () => {
     expect(formProblem(form({ which: 'assignee', assignee: '' }))).toBe('Pick who the issues are assigned to.');
     expect(formProblem(form({ which: 'assignee', label: '' }))).toBeNull();
     expect(formSource(form({ which: 'assignee' }))).toEqual({ kind: 'issues', label: null, assignee: '@me', collaboratorsOnly: true });
-    expect(formSource(form({ which: 'label' }))).toEqual({ kind: 'issues', label: 'claude', assignee: null, collaboratorsOnly: true });
+    expect(formSource(form({ which: 'label' }))).toEqual({ kind: 'issues', label: 'switchboard', assignee: null, collaboratorsOnly: true });
   });
 
   it('holds one session at a time in the project folder', () => {
@@ -49,12 +49,12 @@ describe('the trigger editor', () => {
   });
 
   it('warns about a label alone on a shared repository', () => {
-    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'claude' }, 'estruyf/switchboard', 6)).toBe(
-      "estruyf/switchboard has 6 collaborators. Everyone's claude issues will start here. Use Assigned to me, turn on state labels, or Assign to me when picked up.",
+    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'switchboard' }, 'estruyf/switchboard', 6)).toBe(
+      "estruyf/switchboard has 6 collaborators. Everyone's switchboard issues will start here. Use Assigned to me, turn on state labels, or Assign to me when picked up.",
     );
-    expect(sharedRepoWarning({ kind: 'issues', which: 'both', label: 'claude' }, 'estruyf/switchboard', 6)).toBeNull();
-    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'claude' }, 'me/solo', 1)).toBeNull();
-    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'claude' }, 'o/r', null)).toBeNull();
+    expect(sharedRepoWarning({ kind: 'issues', which: 'both', label: 'switchboard' }, 'estruyf/switchboard', 6)).toBeNull();
+    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'switchboard' }, 'me/solo', 1)).toBeNull();
+    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'switchboard' }, 'o/r', null)).toBeNull();
   });
 
   it('reads a stored trigger back as the form it came from', () => {
@@ -79,6 +79,19 @@ describe('the Triggers tab', () => {
     expect(pausedLine({ paused: true, pausedReason: 'Imported. Check it, then resume.', failures: 0 })).toBe('Imported. Check it, then resume.');
     expect(pausedLine({ paused: true, pausedReason: null, failures: 0 })).toBe('Paused by you.');
     expect(pausedLine({ paused: false, pausedReason: null, failures: 0 })).toBeNull();
+  });
+
+  it('says what Check now found, or why it did not work', () => {
+    const issues = { name: 'Issues for you', source: { kind: 'issues' as const, label: 'switchboard', assignee: '@me', collaboratorsOnly: true }, paused: false, pausedReason: null, failures: 0, lastError: null, blockedUntil: null };
+    const ci = { ...issues, name: 'CI fails on main', source: { kind: 'ci' as const, branch: 'main', workflows: [] } };
+    expect(checkedNowLine(issues, 0, 0)).toEqual({ text: 'Checked Issues for you. Nothing new.', ok: true });
+    expect(checkedNowLine(issues, null, 0)).toEqual({ text: 'Checked Issues for you.', ok: true });
+    expect(checkedNowLine(issues, 1, 0).text).toBe('Checked Issues for you. 1 new issue.');
+    expect(checkedNowLine(issues, 3, 0).text).toBe('Checked Issues for you. 3 new issues.');
+    expect(checkedNowLine(ci, 2, 0).text).toBe('Checked CI fails on main. 2 new failed runs.');
+    expect(checkedNowLine({ ...issues, failures: 1, lastError: 'gh is signed out' }, 0, 0)).toEqual({ text: "Couldn't check Issues for you: gh is signed out.", ok: false });
+    expect(checkedNowLine({ ...issues, lastError: 'rate limited', blockedUntil: 60_000 }, 0, 0).text).toMatch(/^GitHub asked to slow down\. Issues for you checks again after /);
+    expect(checkedNowLine({ ...issues, paused: true, pausedReason: 'Folder not found' }, 0, 0).text).toBe('Issues for you: Paused: Folder not found.');
   });
 
   it('says when it last looked', () => {

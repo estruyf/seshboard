@@ -68,7 +68,7 @@ function fakeGh(home: string): string {
   const pr = JSON.stringify([{ number: 42, state: 'OPEN', headRefName: 'feat/dark-mode', url: 'https://github.com/acme/acme-store/pull/42', isDraft: false }]);
   // Triggers' calls (the editor's account, branch, workflows and collaborators) come from a made-up repository.
   const triggers = join(home, '.fake-gh-triggers.json');
-  writeFileSync(triggers, JSON.stringify({ repo: 'acme/acme-store', login: 'mara-k', defaultBranch: 'main', collaborators: 6, workflows: ['CI', 'Lint', 'E2E'], labels: ['claude'], issues: [], runs: [] }));
+  writeFileSync(triggers, JSON.stringify({ repo: 'acme/acme-store', login: 'mara-k', defaultBranch: 'main', collaborators: 6, workflows: ['CI', 'Lint', 'E2E'], labels: ['switchboard'], issues: [], runs: [] }));
   writeFileSync(
     path,
     [
@@ -1414,7 +1414,7 @@ const screens: Screen[] = [
   {
     name: 'trigger-editor',
     async take(t) {
-      // New trigger on acme-store's Triggers tab: issues with the claude label assigned to gh's account, state labels on.
+      // New trigger on acme-store's Triggers tab: issues with the switchboard label assigned to gh's account, state labels on.
       await openProjectPage(t, 'acme-store');
       await t.click('[data-project-tab="triggers"]');
       await t.click('[data-triggers-tab] [data-trigger-new]', 'the Triggers tab has no New trigger');
@@ -1972,7 +1972,7 @@ function demoTriggers(world: DemoWorld, now: number, hero: string) {
     maxAtOnce: 3,
     maxWaiting: 10,
     intervalMinutes: 5,
-    stateLabels: { on: false, working: 'claude: working', needsInput: 'claude: needs input', prOpen: 'claude: pr open', failed: 'claude: failed' },
+    stateLabels: { on: false, working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' },
     assignOnPickUp: false,
     paused: false,
     pausedReason: null,
@@ -2008,7 +2008,7 @@ function demoTriggers(world: DemoWorld, now: number, hero: string) {
     kind: 'issue',
     title,
     url: `https://github.com/acme/acme-store/issues/${number}`,
-    fields: { number: String(number), title, author: 'jules-d', labels: 'claude', assignees: 'mara-k' },
+    fields: { number: String(number), title, author: 'jules-d', labels: 'switchboard', assignees: 'mara-k' },
     status: 'started',
     reason: null,
     sessionId: null,
@@ -2023,9 +2023,9 @@ function demoTriggers(world: DemoWorld, now: number, hero: string) {
     ci('test', 'test', 4512, '9f3c2e1a7d', minutes(12), world.history[WORKING]?.id ?? null),
     ci('lint', 'lint', 4509, '1a7b0d4c2e', minutes(52), world.history[NEEDS_YOU]?.id ?? null),
     ci('e2e', 'e2e', 4497, '5c0e9b3f1a', minutes(26 * 60), world.history[CATCH_UP]?.id ?? null),
-    issue('212', 212, 'Pinned sessions lose their order after restart', minutes(40), { sessionId: hero, startedAt: minutes(40), label: 'claude: pr open' }),
-    issue('214', 214, 'Archive keeps the scroll position', minutes(9), { status: 'waiting', label: 'claude: working' }),
-    issue('215', 215, 'Add a Polish translation', minutes(6), { status: 'skipped', reason: "opened by someone outside the repository's collaborators", fields: { number: '215', title: 'Add a Polish translation', author: 'someone', labels: 'claude', assignees: 'mara-k' } }),
+    issue('212', 212, 'Pinned sessions lose their order after restart', minutes(40), { sessionId: hero, startedAt: minutes(40), label: 'switchboard: pr open' }),
+    issue('214', 214, 'Archive keeps the scroll position', minutes(9), { status: 'waiting', label: 'switchboard: working' }),
+    issue('215', 215, 'Add a Polish translation', minutes(6), { status: 'skipped', reason: "opened by someone outside the repository's collaborators", fields: { number: '215', title: 'Add a Polish translation', author: 'someone', labels: 'switchboard', assignees: 'mara-k' } }),
   ];
   const session = (event: (typeof events)[number], triggerName: string, ref: string) =>
     event.sessionId ? [{ sessionId: event.sessionId, triggerId: event.triggerId, eventId: event.id, triggerName, kind: event.kind, ref, url: event.url, at: event.startedAt ?? event.createdAt }] : [];
@@ -2033,10 +2033,10 @@ function demoTriggers(world: DemoWorld, now: number, hero: string) {
     triggers: [
       trigger('ci', 'CI fails on main', { source: { kind: 'ci', branch: 'main', workflows: [] }, lastCheckedAt: minutes(2) }),
       trigger('issues', 'Issues for you', {
-        source: { kind: 'issues', label: 'claude', assignee: '@me', collaboratorsOnly: true },
+        source: { kind: 'issues', label: 'switchboard', assignee: '@me', collaboratorsOnly: true },
         draft: { profileId: null, model: 'sonnet', effort: null, permissionMode: 'acceptEdits', workspace: 'worktree', baseRef: 'fresh' },
         maxAtOnce: 1,
-        stateLabels: { on: true, working: 'claude: working', needsInput: 'claude: needs input', prOpen: 'claude: pr open', failed: 'claude: failed' },
+        stateLabels: { on: true, working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' },
         lastCheckedAt: minutes(1),
       }),
       trigger('release', 'CI fails on release', { source: { kind: 'ci', branch: 'release', workflows: ['CI'] }, paused: true, pausedReason: 'gh is signed out', failures: 5, lastError: 'gh is signed out', lastCheckedAt: minutes(3 * 60) }),

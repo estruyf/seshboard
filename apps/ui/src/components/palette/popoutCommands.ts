@@ -77,6 +77,8 @@ const PLANS: Record<string, Plan> = {
   worktrees: 'main',
   'branches-here': 'main',
   branches: 'main',
+  'triggers-here': 'main',
+  'triggers-page': 'main',
   memory: 'main',
   'memory-settings': 'main',
   'connect-computer': 'main',

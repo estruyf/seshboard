@@ -1,4 +1,4 @@
-import { AlertTriangle, Clock, MoreHorizontal, Pause, Tag, Zap } from 'lucide-react';
+import { AlertTriangle, Clock, MoreHorizontal, Pause, RefreshCw, Tag, Zap } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { Trigger, TriggerEvent } from '@switchboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
@@ -32,6 +32,7 @@ export function TriggerCard({ trigger, events, now }: { trigger: Trigger; events
   const { stateOf, busy } = useTriggerSessions();
   const models = useHosts((s) => s.models);
   const login = useTriggers((s) => s.repoInfo.get(trigger.projectRoot)?.login ?? null);
+  const checking = useTriggers((s) => s.checking.has(trigger.id));
   const [all, setAll] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const sorted = useMemo(() => cardEvents(events), [events]);
@@ -105,8 +106,16 @@ export function TriggerCard({ trigger, events, now }: { trigger: Trigger; events
               Edit…
             </Button>
           ) : (
-            <Button size="md" onClick={() => void checkTriggerNow(trigger)} data-trigger-check>
-              Check now
+            <Button
+              size="md"
+              icon={<RefreshCw size={12} aria-hidden className={checking ? 'animate-spin motion-reduce:animate-none' : ''} />}
+              disabled={checking}
+              aria-busy={checking || undefined}
+              onClick={() => void checkTriggerNow(trigger)}
+              data-trigger-check
+              data-trigger-checking={checking || undefined}
+            >
+              {checking ? 'Checking…' : 'Check now'}
             </Button>
           )}
           <Switch

@@ -9,7 +9,7 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 import OnlyOn from '../../../components/OnlyOn.astro';
 import Related from '../../../components/Related.astro';
 
-A trigger starts a session when there is work, not at a set time. [Schedules](/new-session/schedules/) start a session at 08:00. A trigger starts one when CI fails on `main`, or when an issue is labelled `claude` or assigned to you.
+A trigger starts a session when there is work, not at a set time. [Schedules](/new-session/schedules/) start a session at 08:00. A trigger starts one when CI fails on `main`, or when an issue is labelled `switchboard` or assigned to you.
 
 Switchboard checks GitHub through the GitHub CLI (`gh`), every 5 minutes, on this computer. You need no webhook and no public address. A trigger belongs to a project, and lives on this computer only.
 
@@ -19,8 +19,8 @@ Switchboard checks GitHub through the GitHub CLI (`gh`), every 5 minutes, on thi
 
 <Steps>
 
-1. Open the project's page, and its **Triggers** tab. The project's **⋯** menu in the sidebar has **Triggers…**.
-2. Choose **New trigger**.
+1. Open the project's page, and its **Triggers** tab. The project's **⋯** menu in the sidebar has **Triggers…**. In the command palette, *Triggers…* asks for the project, and *Triggers in* the current project goes straight there.
+2. Choose **New trigger**. **Name** at the top follows the source, such as "CI fails on main", until you type one.
 3. Under **When**, pick **CI fails on a branch** or **Issues for you**, and say what to look for.
 4. Write the prompt under **Then**, and check what the sessions run with.
 5. Choose **Create trigger** (<Kbd keys="mod+enter" />).
@@ -33,7 +33,7 @@ You can also start from a prompt: write it in [New session](/new-session/form/),
 The first check marks what is there as seen, and starts nothing. Only failures and issues that come after start a session. The editor's footer says so: "Issues that match now are marked as seen. Only new ones start a session."
 </Aside>
 
-<Screenshot name="trigger-editor" alt="The New trigger dialog: Issues for you picked, Label and assigned to me, the claude label, only collaborators, state labels on, the prompt with event fields, what it runs with and how many at once" />
+<Screenshot name="trigger-editor" alt="The New trigger dialog: Issues for you picked, Label and assigned to me, the switchboard label, only collaborators, state labels on, the prompt with event fields, what it runs with and how many at once" />
 
 ## CI fails on a branch
 
@@ -67,7 +67,7 @@ An open issue that newly matches the filter starts a session that works on it.
 An issue newly matches when the label is added, when it is assigned to you, or when a matching issue is opened. The session is titled after the issue, such as "#212 Pinned sessions lose their order".
 
 <Aside type="caution">
-With **Label** alone on a repository more people work on, the editor warns: "estruyf/switchboard has 6 collaborators. Everyone's claude issues will start here. Use Assigned to me, turn on state labels, or Assign to me when picked up."
+With **Label** alone on a repository more people work on, the editor warns: "estruyf/switchboard has 6 collaborators. Everyone's switchboard issues will start here. Use Assigned to me, turn on state labels, or Assign to me when picked up."
 </Aside>
 
 ### Only collaborators
@@ -82,15 +82,15 @@ Two choices write to GitHub, and only when you turn them on.
 
 | When | The issue gets |
 |---|---|
-| The issue is picked up, also while it waits for a slot | `claude: working`, and the trigger's label comes off |
-| The session needs you | `claude: needs input` |
-| It works again | `claude: working` |
-| The session opens a pull request | `claude: pr open` |
-| It ends with an error, is stopped, or can't start | `claude: failed` |
+| The issue is picked up, also while it waits for a slot | `switchboard: working`, and the trigger's label comes off |
+| The session needs you | `switchboard: needs input` |
+| It works again | `switchboard: working` |
+| The session opens a pull request | `switchboard: pr open` |
+| It ends with an error, is stopped, or can't start | `switchboard: failed` |
 
 - One state label at a time, changed in one edit. Labels the repository doesn't have yet are created.
 - **Rename labels** changes their names.
-- An issue that already has `claude: working` or `claude: needs input` is skipped: another computer works on it.
+- An issue that already has `switchboard: working` or `switchboard: needs input` is skipped: another computer works on it.
 - A label you change by hand on GitHub isn't put back.
 - To start an issue again, add the trigger's label again. With **Assigned to me** alone, take the state label off.
 
@@ -104,8 +104,8 @@ When an issue is assigned to someone else while its session works, the session g
 |---|---|
 | **Prompt** | What the session should do. Type `{{` for the event's fields, such as `{{event.title}}`, `{{event.url}}`, `{{event.number}}`, `{{event.workflow}}` or `{{event.branch}}`. They show as violet chips, and are filled in for each event. The issue's text and comments, or the failed log, go in after the prompt as context to read, not instructions. |
 | **Runs with** | The workspace (a new worktree, or the project folder), the [Claude profile](/settings/claude-profiles/), the model and the mode, from the project's defaults. The mode menu has no **Bypass permissions**. |
-| **At once** | How many of the trigger's sessions may be busy at the same time (1 to 10, 3 by default), and how many events may wait for a slot (10 by default). |
-| **Name** | Follows the source, such as "CI fails on main", until you type one. |
+| **At once** | The most sessions the trigger runs together (1 to 10, 3 by default). A session counts while it works or waits for you. |
+| **Waiting** | How many new events may wait their turn while those sessions are busy (10 by default). Past that, events are skipped. |
 
 In the project folder, sessions would edit the same files, so **At once** is fixed at 1.
 
@@ -113,15 +113,15 @@ In the project folder, sessions would edit the same files, so **At once** is fix
 
 Label ten issues on a Monday morning and ten sessions would start together. A trigger starts at most its **At once** number. A session counts while it works or waits for you.
 
-- The rest wait for a slot, oldest first. Each waiting event has **Start now**.
-- Past the waiting number, events are skipped, with "10 already waiting", and **Start anyway**.
+- The rest wait for a slot, oldest first, up to the **Waiting** number. Each waiting event has **Start now**.
+- Past the **Waiting** number, events are skipped, with "10 already waiting", and **Start anyway**.
 - The [focus limit](/focus-limit/) and usage limits still apply. A start they hold goes to the [queue](/new-session/queue/) as an item that starts by itself.
 
 ## The Triggers tab
 
 Each trigger is a card:
 
-- the source's icon, the name and the filter, such as `claude` and assigned to `@estruyf`;
+- the source's icon, the name and the filter, such as `switchboard` and assigned to `@estruyf`;
 - a pill with how busy it is: "2 of 3 busy", or "1 waiting";
 - what its sessions run with, and when it last checked: "checked 2m ago";
 - **Check now**, a switch that pauses it, and **⋯** with **Edit…**, **Check now**, **Pause** or **Resume**, and **Delete**. Delete has **Undo**.
@@ -163,7 +163,7 @@ Triggers check while Switchboard is running, also with its windows closed. Quitt
 Triggers check while a Switchboard window is open. Closing the last window quits Switchboard, and triggers wait until you open it again.
 </OnlyOn>
 
-Each trigger checks every 5 minutes. **Check now** checks at once. Resuming a paused trigger marks what is there as seen, like a new one.
+Each trigger checks every 5 minutes. **Check now** checks at once. The button says "Checking…" while it looks, and a message says what it found, such as "Checked Issues for you. 2 new issues.", "Nothing new" or why the check failed. Resuming a paused trigger marks what is there as seen, like a new one.
 
 ## Export and import
 

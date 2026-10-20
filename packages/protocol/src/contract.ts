@@ -991,8 +991,8 @@ export const contract = {
     'triggers.restore': { params: z.object({ trigger: Trigger, events: z.array(TriggerEvent).max(1000) }), result: z.object({ trigger: Trigger }) },
     /** Pauses or resumes. Resumed, it looks again first: what came while it was paused is marked as seen. */
     'triggers.setPaused': { params: z.object({ id: z.string().min(1).max(100), paused: z.boolean() }), result: z.object({ trigger: Trigger }) },
-    /** Checks a trigger now, whether due or not. */
-    'triggers.checkNow': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ trigger: Trigger }) },
+    /** Checks a trigger now, whether due or not: the trigger after it, and how many new events the check found. */
+    'triggers.checkNow': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ trigger: Trigger, found: z.number().int().min(0) }) },
     /** Start now (a waiting event) or Start anyway (a skipped one), past `maxAtOnce`; the focus and usage limits still hold it. */
     'triggers.startEvent': { params: z.object({ eventId: z.string().min(1).max(100) }), result: z.object({ event: TriggerEvent.nullable() }) },
     /** The editor's facts about a project's repository: gh's account, the default branch, the workflows, the collaborators. */

@@ -477,6 +477,19 @@ describe('project pages and worktrees', () => {
     expect(api.openProject).toHaveBeenCalledWith('/work/app', 'branches');
     expect(ids(context({ projects: [] }))).not.toContain('branches');
   });
+
+  it("opens the current project's triggers, or asks which project", () => {
+    const api = { openProject: vi.fn() } as unknown as PaletteApi;
+    expect(ids(context())).toContain('triggers-page');
+    expect(ids(context())).not.toContain('triggers-here');
+    expect(byId(context(), 'triggers-page')!.next!(context())).toEqual({ kind: 'projects', purpose: 'triggers', worktree: false, chip: 'Triggers' });
+
+    const ctx = context({ view: 'project', currentProject: app });
+    expect(titleOf(byId(ctx, 'triggers-here')!, ctx)).toBe('Triggers in app');
+    byId(ctx, 'triggers-here')!.run!(api, ctx);
+    expect(api.openProject).toHaveBeenCalledWith('/work/app', 'triggers');
+    expect(ids(context({ projects: [] }))).not.toContain('triggers-page');
+  });
 });
 
 describe('in a pop-out', () => {

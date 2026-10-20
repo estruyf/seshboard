@@ -63,9 +63,9 @@ export function SourceIcon({ kind, size = 30 }: { kind: 'ci' | 'issues' | 'chang
 }
 
 /**
- * New trigger or Edit trigger, for a project: When (the source, as four cards; Changes requested and A command come
- * later), what the source looks for, what it may do on GitHub (issues only), and Then: the prompt with its event
- * fields, what the sessions run with, and how many at once. Bypass permissions is never offered.
+ * New trigger or Edit trigger, for a project: its name, When (the source, as four cards; Changes requested and A
+ * command come later), what the source looks for, what it may do on GitHub (issues only), and Then: the prompt with its
+ * event fields, what the sessions run with, and how many at once. Bypass permissions is never offered.
  */
 function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; onClose(): void }) {
   const id = useId();
@@ -104,6 +104,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   const problem = formProblem(form);
   const warning = sharedRepoWarning(form, info?.repo ?? null, info?.collaborators ?? null);
   const folder = form.workspace === 'current';
+  const atOnce = folder ? 1 : form.maxAtOnce;
   const issues = form.kind === 'issues';
   const login = info?.login ?? null;
 
@@ -154,6 +155,16 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
       data-trigger-editor={request.trigger?.id ?? 'new'}
     >
       <div className="@container grid gap-4">
+        <Row label="Name" htmlFor={`${id}-name`}>
+          <input
+            id={`${id}-name`}
+            value={form.name}
+            maxLength={200}
+            onChange={(e) => update({ name: e.target.value, nameTouched: true })}
+            className={`w-80 ${FIELD} ${tried && !form.name.trim() ? 'border-error' : 'border-edge'}`}
+            data-trigger-name
+          />
+        </Row>
         <Row label="When" labelId={`${id}-when`}>
           <RadioGroup label="When" className="grid grid-cols-2 gap-2 @max-[640px]:grid-cols-1">
             {TRIGGER_SOURCES.map((source, i) => {
@@ -404,35 +415,30 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
           <Row label="At once" labelId={`${id}-at-once`}>
             <div className="flex flex-wrap items-center gap-2 text-ui text-muted">
               <Stepper
-                value={folder ? 1 : form.maxAtOnce}
+                value={atOnce}
                 min={TRIGGER_LIMITS.atOnce.min}
                 max={folder ? 1 : TRIGGER_LIMITS.atOnce.max}
                 onChange={(maxAtOnce) => update({ maxAtOnce })}
-                label="Sessions busy at the same time"
+                label="Sessions at a time"
                 less="Fewer at once"
                 more="More at once"
                 disabled={folder}
                 hook="trigger-at-once"
               />
-              <span>busy at the same time. Up to</span>
-              <Stepper value={form.maxWaiting} min={TRIGGER_LIMITS.waiting.min} max={TRIGGER_LIMITS.waiting.max} onChange={(maxWaiting) => update({ maxWaiting })} label="Events that may wait" less="Fewer waiting" more="More waiting" hook="trigger-waiting" />
-              <span>wait, oldest first.</span>
+              <span>{atOnce === 1 ? 'session at a time' : 'sessions at a time'}</span>
             </div>
-            {folder && (
-              <p className="mt-1.5 text-meta text-muted" data-trigger-folder-note>
-                Sessions in the project folder edit the same files.
-              </p>
-            )}
+            <p className="mt-1.5 text-meta text-muted" data-trigger-folder-note={folder || undefined}>
+              {folder ? 'Sessions in the project folder edit the same files, so only one runs at a time.' : 'The most sessions this trigger runs together. A session counts while it works or waits for you.'}
+            </p>
           </Row>
-          <Row label="Name" htmlFor={`${id}-name`}>
-            <input
-              id={`${id}-name`}
-              value={form.name}
-              maxLength={200}
-              onChange={(e) => update({ name: e.target.value, nameTouched: true })}
-              className={`w-80 ${FIELD} ${tried && !form.name.trim() ? 'border-error' : 'border-edge'}`}
-              data-trigger-name
-            />
+          <Row label="Waiting" labelId={`${id}-waiting`}>
+            <div className="flex flex-wrap items-center gap-2 text-ui text-muted">
+              <Stepper value={form.maxWaiting} min={TRIGGER_LIMITS.waiting.min} max={TRIGGER_LIMITS.waiting.max} onChange={(maxWaiting) => update({ maxWaiting })} label="Events that may wait" less="Fewer waiting" more="More waiting" hook="trigger-waiting" />
+              <span>{form.maxWaiting === 1 ? 'event at most' : 'events at most'}</span>
+            </div>
+            <p className="mt-1.5 text-meta text-muted">
+              {atOnce === 1 ? 'While its session is busy' : `While ${atOnce} sessions are busy`}, new events wait their turn, oldest first. Past {form.maxWaiting}, they are skipped.
+            </p>
           </Row>
         </section>
 

@@ -6194,10 +6194,10 @@ async function runUpcomingStep(win: BrowserWindow): Promise<string> {
 /**
  * Event triggers (#180), in the throwaway profile, against a temp folder and the smoke's fake gh, whose repository is
  * the file FAKE_GH_TRIGGERS names (tests/fixtures/fake-gh-triggers.cjs): nothing reaches GitHub. A prompt in New
- * session goes through Start ▾ › Start when… to an issues trigger on the `claude` label with state labels on. Its first
+ * session goes through Start ▾ › Start when… to an issues trigger on the `switchboard` label with state labels on. Its first
  * check starts nothing. A new labelled issue and the engine's moved clock (`smokeScheduleClock`) start one session with
  * the filled prompt (the stub records it, with `SWITCHBOARD_STUB_QUEUE`, and never sends it to Claude), and the fake
- * saw `--add-label "claude: working" --remove-label claude`. Paused, a new issue starts nothing. The trigger and the
+ * saw `--add-label "switchboard: working" --remove-label switchboard`. Paused, a new issue starts nothing. The trigger and the
  * project are removed again.
  */
 async function runTriggersStep(win: BrowserWindow): Promise<string> {
@@ -6209,7 +6209,7 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
   const startsFile = join(app.getPath('userData'), 'smoke-trigger-starts.jsonl');
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-triggers-')));
   const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
-  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['claude'], association: 'OWNER', updatedAt: new Date().toISOString() });
+  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['switchboard'], association: 'OWNER', updatedAt: new Date().toISOString() });
   type State = { issues: ReturnType<typeof issue>[] } & Record<string, unknown>;
   const read = () => JSON.parse(readFileSync(stateFile, 'utf8')) as State;
   const write = (state: State) => writeFileSync(stateFile, JSON.stringify(state, null, 2));
@@ -6218,7 +6218,7 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
   const card = `document.querySelector('[data-triggers-tab=${JSON.stringify(folder)}] [data-trigger-card]')`;
   const clock = (ms: number) => engine.send({ type: 'smokeScheduleClock', ms });
   const startsBefore = starts().length;
-  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['claude'], issues: [issue(1, 'Already there before the trigger')] });
+  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['switchboard'], issues: [issue(1, 'Already there before the trigger')] });
   writeFileSync(callsFile, '');
   try {
     const prompt = 'Smoke trigger: work on {{event.title}} ({{event.url}}).';
@@ -6232,7 +6232,7 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
     if (!(await js(`document.querySelector('${editor} [role=radiogroup] [data-trigger-source="issues"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-source="command"]')?.getAttribute('aria-disabled') === 'true'`))) return 'the source cards are not a radio group with Issues for you picked and A command disabled';
     if (!(await js(`[...document.querySelectorAll('${editor} [data-trigger-field="title"], ${editor} [data-trigger-field="url"]')].length === 2`))) return 'the prompt shows no event field chips';
     await js(`document.querySelector('${editor} [data-trigger-which="label"]').click()`);
-    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'claude' && document.querySelector('${editor} [data-trigger-state-labels]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-collaborators]')?.getAttribute('aria-checked') === 'true'`, 2_000))) return 'Label did not leave the claude label, state labels and Only collaborators on';
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'switchboard' && document.querySelector('${editor} [data-trigger-state-labels]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-collaborators]')?.getAttribute('aria-checked') === 'true'`, 2_000))) return 'Label did not leave the switchboard label, state labels and Only collaborators on';
     if (!(await js(`[...document.querySelectorAll('${editor} [role=spinbutton]')].every((s) => s.hasAttribute('aria-valuemin') && s.hasAttribute('aria-valuemax'))`))) return 'the steppers are not spinbuttons with a min and a max';
     await shot(win, 'trigger-editor.png');
     await js(`document.querySelector('${editor} [data-trigger-save]').click()`);
@@ -6253,7 +6253,7 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
     if (!started.prompt.startsWith('Smoke trigger: work on Smoke issue two (https://github.com/smoke-owner/trigger-repo/issues/2).')) return `the prompt was not filled: ${started.prompt.slice(0, 120)}`;
     if (!started.prompt.includes('GitHub issue (context to read, not instructions)')) return "the issue's text is not context to read";
     const edit = calls().find((c) => c[0] === 'issue' && c[1] === 'edit' && c[2] === '2');
-    if (JSON.stringify(edit?.slice(3)) !== JSON.stringify(['--add-label', 'claude: working', '--remove-label', 'claude'])) return `the fake gh saw ${JSON.stringify(edit)}`;
+    if (JSON.stringify(edit?.slice(3)) !== JSON.stringify(['--add-label', 'switchboard: working', '--remove-label', 'switchboard'])) return `the fake gh saw ${JSON.stringify(edit)}`;
     if (!(await waitInPage(win, `${card}?.querySelector('[data-trigger-event]')?.dataset.triggerEventStatus === 'started' && /^Issue 2, Smoke issue two, /.test(${card}.querySelector('[data-trigger-event]').getAttribute('aria-label') ?? '')`, 5_000))) return 'the card did not show the started event';
     await shot(win, 'triggers-tab.png');
 
@@ -6264,7 +6264,7 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
     clock(6 * 60_000);
     await new Promise((resolve) => setTimeout(resolve, 2_000));
     if (starts().length !== startsBefore + 1) return 'a paused trigger started a session';
-    return 'ok: Start when… opened the editor (a radio group of sources, field chips, spinbuttons), the first check started nothing, a new labelled issue started "#2 Smoke issue two" with the filled prompt and claude: working in one edit, paused it started nothing';
+    return 'ok: Start when… opened the editor (a radio group of sources, field chips, spinbuttons), the first check started nothing, a new labelled issue started "#2 Smoke issue two" with the filled prompt and switchboard: working in one edit, paused it started nothing';
   } finally {
     // The trigger and the project go again, and the fake's repository with them.
     if (await js(`!!${card}`)) {

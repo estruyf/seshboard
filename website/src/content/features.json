@@ -3947,8 +3947,18 @@
       "page": "projects/triggers"
     },
     {
+      "id": "palette:triggers-page",
+      "name": "Triggers… (a project's Triggers tab)",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers-here",
+      "name": "Triggers in <current project>",
+      "page": "projects/triggers"
+    },
+    {
       "id": "feature:trigger-editor",
-      "name": "Trigger editor: When, which issues or the branch and workflows, On GitHub, prompt with event fields, Runs with, At once",
+      "name": "Trigger editor: When, which issues or the branch and workflows, On GitHub, prompt with event fields, Runs with, At once, Waiting",
       "page": "projects/triggers"
     },
     {

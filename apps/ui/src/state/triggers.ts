@@ -84,13 +84,13 @@ export function newTriggerForm(projectRoot: string, defaults: ProjectDefaults | 
   return {
     id: null,
     projectRoot,
-    name: defaultTriggerName({ kind: 'issues', label: 'claude', assignee: '@me', collaboratorsOnly: true }),
+    name: defaultTriggerName({ kind: 'issues', label: 'switchboard', assignee: '@me', collaboratorsOnly: true }),
     nameTouched: false,
     kind: 'issues',
     branch: '',
     workflows: [],
     which: 'both',
-    label: 'claude',
+    label: 'switchboard',
     assignee: '@me',
     collaboratorsOnly: true,
     stateLabels: { on: true, ...DEFAULT_STATE_LABELS },
@@ -122,7 +122,7 @@ export function triggerForm(trigger: Trigger): TriggerForm {
     branch: source.kind === 'ci' ? (source.branch ?? '') : '',
     workflows: source.kind === 'ci' ? source.workflows : [],
     which: issues?.label && issues.assignee ? 'both' : issues?.assignee ? 'assignee' : 'label',
-    label: issues?.label ?? 'claude',
+    label: issues?.label ?? 'switchboard',
     assignee: issues?.assignee ?? '@me',
     collaboratorsOnly: issues?.collaboratorsOnly ?? true,
     stateLabels: trigger.stateLabels,
@@ -215,6 +215,22 @@ export function checkedLine(at: number | null, now: number): string {
   if (diff < 3_600_000) return `checked ${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `checked ${Math.floor(diff / 3_600_000)}h ago`;
   return `checked ${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+/**
+ * What Check now found, for its toast: new events, nothing new, or why the check didn't work. `ok` when it worked.
+ * `found` is null when the engine didn't count (one from before the count, still running after the window reloaded).
+ */
+export function checkedNowLine(trigger: Pick<Trigger, 'name' | 'source' | 'paused' | 'pausedReason' | 'failures' | 'lastError' | 'blockedUntil'>, found: number | null, now: number): { text: string; ok: boolean } {
+  if (trigger.paused) return { text: `${trigger.name}: ${pausedLine(trigger)}`, ok: false };
+  if (trigger.blockedUntil !== null && trigger.blockedUntil > now) {
+    return { text: `GitHub asked to slow down. ${trigger.name} checks again after ${new Date(trigger.blockedUntil).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}.`, ok: false };
+  }
+  if (trigger.failures > 0) return { text: `Couldn't check ${trigger.name}: ${trigger.lastError ?? 'unknown reason'}.`, ok: false };
+  if (found === null) return { text: `Checked ${trigger.name}.`, ok: true };
+  if (found === 0) return { text: `Checked ${trigger.name}. Nothing new.`, ok: true };
+  const what = trigger.source.kind === 'ci' ? (found === 1 ? 'failed run' : 'failed runs') : found === 1 ? 'issue' : 'issues';
+  return { text: `Checked ${trigger.name}. ${found} new ${what}.`, ok: true };
 }
 
 /** Where the work on a started event is, from its session: working, waiting for you, or finished. */

@@ -88,7 +88,7 @@ describe('settings export and import', () => {
   it('carries triggers without what their checks found, and imports them paused', () => {
     const before = mac();
     const web = tempDir();
-    const saved = before.stores.triggers!.save({ projectRoot: web, name: 'Issues for you', source: { kind: 'issues', label: 'claude', assignee: '@me' }, prompt: 'Work on {{event.title}}', stateLabels: { on: true }, paused: false });
+    const saved = before.stores.triggers!.save({ projectRoot: web, name: 'Issues for you', source: { kind: 'issues', label: 'switchboard', assignee: '@me' }, prompt: 'Work on {{event.title}}', stateLabels: { on: true }, paused: false });
     before.stores.triggers!.checked(saved.id, { at: 5, seen: { '#12': 'match' }, seeded: true });
     before.stores.triggers!.addEvent(saved.id, { key: '#13', kind: 'issue', title: 'An issue', url: 'https://github.com/o/r/issues/13', fields: {}, at: 1, context: null }, 'waiting');
     const file = roundTrip(before.stores);
@@ -100,7 +100,7 @@ describe('settings export and import', () => {
     expect(plan.preview.changes.filter((c) => c.section === 'triggers')).toEqual([{ section: 'triggers', label: 'Issues for you', change: 'add', detail: 'comes in paused' }]);
     plan.apply();
     const [imported] = after.stores.triggers!.list();
-    expect(imported).toMatchObject({ id: saved.id, projectRoot: web, source: { kind: 'issues', label: 'claude', assignee: '@me' }, stateLabels: { on: true }, paused: true, pausedReason: 'Imported. Check it, then resume.', seededAt: null });
+    expect(imported).toMatchObject({ id: saved.id, projectRoot: web, source: { kind: 'issues', label: 'switchboard', assignee: '@me' }, stateLabels: { on: true }, paused: true, pausedReason: 'Imported. Check it, then resume.', seededAt: null });
     expect(after.stores.triggers!.events()).toEqual([]);
     // The same file again changes nothing.
     expect(planImport(after.stores, file, ALL).preview.changes.filter((c) => c.section === 'triggers')).toEqual([]);

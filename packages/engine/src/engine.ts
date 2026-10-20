@@ -2589,8 +2589,10 @@ export function createEngine(options: EngineOptions): Engine {
       const before = triggers.get(id);
       if (!before) throw new RpcError('NOT_FOUND', 'That trigger was deleted');
       if (before.paused) throw new RpcError('INVALID', 'Resume the trigger first');
+      const known = new Set(triggers.eventsOf(id).map((e) => e.event.id));
       await triggerWatcher?.checkNow(id);
-      return { trigger: triggers.get(id) ?? before };
+      const found = triggers.eventsOf(id).filter((e) => !known.has(e.event.id)).length;
+      return { trigger: triggers.get(id) ?? before, found };
     },
     'triggers.startEvent': async ({ eventId }) => {
       if (!triggers.event(eventId)) throw new RpcError('NOT_FOUND', 'That event is gone');

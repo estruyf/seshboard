@@ -7,14 +7,14 @@ import { stripFences, writeGithubContext } from './githubContext.ts';
 import type { StateLabels, Trigger, TriggerEvent, TriggerSource } from './triggerSchema.ts';
 
 /** The state labels' names when you don't rename them. */
-export const DEFAULT_STATE_LABELS = { working: 'claude: working', needsInput: 'claude: needs input', prOpen: 'claude: pr open', failed: 'claude: failed' } as const;
+export const DEFAULT_STATE_LABELS = { working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' } as const;
 export type StateLabelKey = keyof typeof DEFAULT_STATE_LABELS;
 export const STATE_LABEL_KEYS = ['working', 'needsInput', 'prOpen', 'failed'] as const satisfies readonly StateLabelKey[];
 /** Each state label's colour on GitHub (hex without `#`), the design's yellow, pink, green and red. */
 export const STATE_LABEL_COLORS: Record<StateLabelKey, string> = { working: 'e3b341', needsInput: 'db61a2', prOpen: '3fb950', failed: 'f85149' };
 /** What each state label says on GitHub, as the label's description. */
 export const STATE_LABEL_DESCRIPTIONS: Record<StateLabelKey, string> = {
-  working: 'Switchboard: a Claude Code session works on this',
+  working: 'Switchboard: a session works on this',
   needsInput: 'Switchboard: the session working on this needs input',
   prOpen: 'Switchboard: a pull request for this is open',
   failed: 'Switchboard: the session working on this stopped',

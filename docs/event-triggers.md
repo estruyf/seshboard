@@ -1,6 +1,6 @@
 # Event triggers
 
-A trigger starts a session, or a pipeline, when something happens: CI fails on `main`, an issue gets the `claude` label, a reviewer asks for changes on a pull request a session opened, or a script you wrote reports an error. Schedules start sessions at a time. Triggers start them when there is work.
+A trigger starts a session, or a pipeline, when something happens: CI fails on `main`, an issue gets the `switchboard` label, a reviewer asks for changes on a pull request a session opened, or a script you wrote reports an error. Schedules start sessions at a time. Triggers start them when there is work.
 
 This note is the design. Phase 1 (CI fails on a branch, issues for you) is built; [Built in phase 1](#built-in-phase-1) says where it differs from the design below. Places in the code are named as they are on `dev` on 2026-10-20.
 
@@ -64,7 +64,7 @@ type Trigger = {
 };
 ```
 
-Starting a [pipeline](pipelines.md) is where the two features meet: *an issue assigned to me with the `claude` label → Plan, execute, validate, push*, with the push step still waiting for you.
+Starting a [pipeline](pipelines.md) is where the two features meet: *an issue assigned to me with the `switchboard` label → Plan, execute, validate, push*, with the push step still waiting for you.
 
 ## Set up on the project
 
@@ -74,7 +74,7 @@ The project's **⋯** menu in the sidebar gets *Triggers…*, and **Start ▾ �
 
 ## Which issues: a label, an assignee, or both
 
-On a repository more people work on, "an issue with the `claude` label" is everyone's issue. So the issue trigger has a filter, and at least one part of it must be set:
+On a repository more people work on, "an issue with the `switchboard` label" is everyone's issue. So the issue trigger has a filter, and at least one part of it must be set:
 
 ```ts
 type IssueMatch = {
@@ -87,7 +87,7 @@ type IssueMatch = {
 
 | Filter | Picks up | Fits |
 |---|---|---|
-| **Label** `claude` | every open issue with the label | a repository you work on alone, or a team where one person runs the triggers |
+| **Label** `switchboard` | every open issue with the label | a repository you work on alone, or a team where one person runs the triggers |
 | **Assigned to me** | every open issue assigned to you | a team: each person's Switchboard picks up only their issues |
 | **Label and assigned to me** | issues with the label that are assigned to you | a team where you also choose which of your issues Claude takes |
 
@@ -113,10 +113,10 @@ For **issues for you**, the trigger can keep a second label on the issue that sa
 
 ```ts
 type StateLabels = {
-  working: string;      // default "claude: working"
-  needsYou: string;     // default "claude: needs input"
-  done: string;         // default "claude: pr open"
-  failed: string;       // default "claude: failed"
+  working: string;      // default "switchboard: working"
+  needsYou: string;     // default "switchboard: needs input"
+  done: string;         // default "switchboard: pr open"
+  failed: string;       // default "switchboard: failed"
   /** Take the trigger label off when the work starts, so adding it again starts it again. */
   removeTrigger: boolean;   // default true
 };
@@ -124,17 +124,17 @@ type StateLabels = {
 
 | When | The issue gets |
 |---|---|
-| The event is picked up (it may still wait for a slot) | `claude: working`, and the trigger label comes off (when the filter has one) |
-| The session or a pipeline step needs you | `claude: needs input` |
-| It goes on again | `claude: working` |
-| A pull request is opened that closes the issue (`session_prs`) | `claude: pr open` |
-| It ends with an error, is stopped, or the run stops for good | `claude: failed` |
+| The event is picked up (it may still wait for a slot) | `switchboard: working`, and the trigger label comes off (when the filter has one) |
+| The session or a pipeline step needs you | `switchboard: needs input` |
+| It goes on again | `switchboard: working` |
+| A pull request is opened that closes the issue (`session_prs`) | `switchboard: pr open` |
+| It ends with an error, is stopped, or the run stops for good | `switchboard: failed` |
 
 - **One state label at a time**: setting one takes the others off, in one `gh issue edit --add-label … --remove-label …`.
 - **Missing labels** are made with `gh label create` the first time, with a colour per state. Without the right to make labels, the trigger says so and runs without state labels.
 - **They make the trigger safe on more than one computer**: an issue that already has a state label is skipped, so two Switchboards with the same trigger don't both start on it. A small race is left (two computers in the same minute); the first `gh issue edit` wins and the other one sees the label and stops before the session starts.
 - **Starting again** is adding the trigger label again, or for an assignee-only filter, taking the state label off: either way the issue matches again and a new session starts.
-- **Changed by hand**: when you take `claude: working` off on GitHub, Switchboard doesn't put it back. It leaves the issue alone until the next state change.
+- **Changed by hand**: when you take `switchboard: working` off on GitHub, Switchboard doesn't put it back. It leaves the issue alone until the next state change.
 
 ## Guardrails
 

@@ -7,7 +7,7 @@ import { openProject } from './projectPageStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
 import { toast } from './toastStore.ts';
-import type { TriggerForm } from './triggers.ts';
+import { checkedNowLine, type TriggerForm } from './triggers.ts';
 
 // Event triggers (#180). The engine keeps and checks them; every window shows the same list.
 
@@ -30,6 +30,8 @@ interface TriggersState {
   editor: TriggerEditorRequest | null;
   /** What each project's repository is, for the editor, read once per window. */
   repoInfo: Map<string, TriggerRepoInfo>;
+  /** Triggers this window is checking now (Check now), for the button's state. */
+  checking: ReadonlySet<string>;
   replace(state: { triggers: Trigger[]; events: TriggerEvent[]; sessions: TriggerSession[] }): void;
 }
 
@@ -40,6 +42,7 @@ export const useTriggers = create<TriggersState>()((set) => ({
   loaded: false,
   editor: null,
   repoInfo: new Map(),
+  checking: new Set(),
   replace: ({ triggers, events, sessions }) => set({ triggers, events, bySession: new Map(sessions.map((s) => [s.sessionId, s])), loaded: true }),
 }));
 
@@ -103,12 +106,25 @@ export async function setTriggerPaused(trigger: Pick<Trigger, 'id'>, paused: boo
   await clientNow().call('triggers.setPaused', { id: trigger.id, paused });
 }
 
-/** Checks a trigger now; a failure is said in a toast (the card shows what the check found). */
+/** Checks a trigger now, and says in a toast what the check found (the card shows the events). */
 export async function checkTriggerNow(trigger: Pick<Trigger, 'id' | 'name'>): Promise<void> {
+  if (useTriggers.getState().checking.has(trigger.id)) return;
+  const mark = (on: boolean) =>
+    useTriggers.setState((s) => {
+      const checking = new Set(s.checking);
+      if (on) checking.add(trigger.id);
+      else checking.delete(trigger.id);
+      return { checking };
+    });
+  mark(true);
   try {
-    await clientNow().call('triggers.checkNow', { id: trigger.id });
+    const { trigger: after, found } = await clientNow().call('triggers.checkNow', { id: trigger.id });
+    const line = checkedNowLine(after, typeof found === 'number' ? found : null, Date.now());
+    toast(line.text, { tone: line.ok ? 'ok' : undefined, data: { 'data-trigger-checked-toast': true } });
   } catch (error) {
     toast(`Couldn't check ${trigger.name}: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    mark(false);
   }
 }
 

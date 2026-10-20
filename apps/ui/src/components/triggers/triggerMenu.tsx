@@ -1,6 +1,6 @@
 import { Pause, Pencil, Play, RefreshCw, Trash2 } from 'lucide-react';
 import type { Trigger } from '@switchboard/protocol/client';
-import { checkTriggerNow, deleteTrigger, openTriggerEditor, setTriggerPaused } from '../../state/triggersStore.ts';
+import { checkTriggerNow, deleteTrigger, openTriggerEditor, setTriggerPaused, useTriggers } from '../../state/triggersStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import type { MenuEntry } from '../Menu.tsx';
 
@@ -14,7 +14,7 @@ export function triggerEntries(trigger: Trigger): MenuEntry[] {
     {
       label: 'Check now',
       icon: <RefreshCw size={14} />,
-      disabledReason: trigger.paused ? 'Resume it first' : undefined,
+      disabledReason: trigger.paused ? 'Resume it first' : useTriggers.getState().checking.has(trigger.id) ? 'Checking…' : undefined,
       data: { 'data-trigger-menu-check': true },
       onSelect: () => void checkTriggerNow(trigger),
     },
