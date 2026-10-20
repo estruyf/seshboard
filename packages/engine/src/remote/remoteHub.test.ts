@@ -440,16 +440,17 @@ describe('Remote hub', () => {
     await remote.call('session.setEffort', { sessionId: SESSION, effort: null });
     await remote.call('session.setPermissionMode', { sessionId: SESSION, mode: 'auto' });
     expect(calls).toEqual([`read ${SESSION}`, `unread ${SESSION}`, `flags ${SESSION} {"archived":true}`, `model ${SESSION} sonnet`, `effort ${SESSION} high`, `effort ${SESSION} null`, `mode ${SESSION} auto`]);
+    // One at a time: a call made before the loop reaches it could be refused before anything handles its rejection.
     for (const call of [
-      remote.call('session.markRead', { sessionId: HIDDEN }),
-      remote.call('session.markUnread', { sessionId: HIDDEN }),
-      remote.call('session.setFlags', { sessionId: HIDDEN, pinned: true }),
-      remote.call('session.setModel', { sessionId: HIDDEN, model: null }),
-      remote.call('session.setEffort', { sessionId: HIDDEN, effort: 'low' }),
-      remote.call('catchup.get', { sessionId: HIDDEN }),
-      remote.call('changes.get', { sessionId: HIDDEN }),
+      () => remote.call('session.markRead', { sessionId: HIDDEN }),
+      () => remote.call('session.markUnread', { sessionId: HIDDEN }),
+      () => remote.call('session.setFlags', { sessionId: HIDDEN, pinned: true }),
+      () => remote.call('session.setModel', { sessionId: HIDDEN, model: null }),
+      () => remote.call('session.setEffort', { sessionId: HIDDEN, effort: 'low' }),
+      () => remote.call('catchup.get', { sessionId: HIDDEN }),
+      () => remote.call('changes.get', { sessionId: HIDDEN }),
     ])
-      await expect(call).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(call()).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(remote.call('session.setPermissionMode', { sessionId: SESSION, mode: 'dontAsk' as never })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
   });
 

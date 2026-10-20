@@ -453,14 +453,15 @@ export function GitButton({
         aria-keyshortcuts={face === 'pull' ? ariaKeysFor('git.pull') : undefined}
         className={`flex h-7 items-center gap-1.5 rounded-l-md px-2.5 text-ui ${primary ? 'bg-accent font-semibold text-on-accent' : 'border border-border text-text'} ${error ? 'ring-1 ring-error ring-inset' : ''} ${faceBlocked ? 'cursor-default opacity-50' : primary ? 'hover:bg-accent/85' : 'hover:bg-border/50'}`}
       >
-        {/* A narrow header drops the icon first; in a pane under 420px (four side by side) the icon and the count stand
-            in for the word, which stays in the label and the tooltip. */}
+        {/* A narrow header drops the icon first; under 560px (four panes side by side, or a pop-out at its smallest,
+            which also has Move back and Close window) the icon and the count stand in for the word, which stays in the
+            label and the tooltip. */}
         {starting ? (
           <LoaderCircle size={13} className="animate-spin" aria-hidden />
         ) : (
-          <FaceIcon size={13} className={`@max-[860px]:hidden @max-[420px]:inline ${primary ? '' : 'text-muted'}`} aria-hidden />
+          <FaceIcon size={13} className={`@max-[860px]:hidden @max-[560px]:inline ${primary ? '' : 'text-muted'}`} aria-hidden />
         )}
-        <span className="@max-[420px]:sr-only">{starting ? startingLabel : STEP_LABEL[face]}</span>
+        <span className="@max-[560px]:sr-only">{starting ? startingLabel : STEP_LABEL[face]}</span>
         {!starting && count !== null && count > 0 && (
           <span className="tabular-nums" aria-hidden>
             {COUNT[face]!.prefix}
