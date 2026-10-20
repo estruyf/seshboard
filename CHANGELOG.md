@@ -13,6 +13,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Scheduled sessions** ([#173](https://github.com/estruyf/switchboard/issues/173)). Scheduled sessions: start a prompt once, every day, on weekdays, on set days each week or on a day each month. Pick **Once** under Repeat to run a prompt a single time: it starts an hour from now, and you can change the date and time. After its run it leaves the lists, and its run shows in Upcoming's History. Find them on Home and in a project's Sessions tab.
 - **Queued items can start by themselves** ([#172](https://github.com/estruyf/switchboard/issues/172)). Queued items can start by themselves when the session they wait for finishes. Use Start after this one… on a session to set one up. An item only starts after a clean finish: after an error or a stop it stays in the queue, ready, and says why. At the focus limit it waits for a free slot instead of asking, and it starts with or without a window open.
 - **Pick an app icon.** Pick an app icon in Settings › Theme: nine colourways of the Switchboard icon for the Dock and taskbar, and for the remote app on your phone.
+- **Open at login.** Turn on **Open at login** in Settings › General, under On startup, and Switchboard opens when you log in to your Mac or sign in to Windows. So on a virtual machine or a computer that restarts by itself, it is running again without you opening it. The setting is the system's own login item, so you can also change it in System Settings › General › Login Items, or in Startup apps on Windows. When macOS asks you to allow it first, Settings says so and opens the right page. It isn't available on Linux.
 
 ### Changed
 
@@ -27,6 +28,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Change the model, effort and mode of a session that isn't running.** A session that wasn't running in Switchboard showed "Not running in Switchboard" under the message box instead of its chips, so you couldn't change its model, effort or permission mode before you sent. The chips are now there, and what you pick is what the session resumes with. If its last run failed, the reason shows next to them.
 - **A computer that is away takes one line in the remote app.** When the remote app couldn't reach a computer, it showed a large banner with the reason and a try counter, which took a lot of the sidebar. It is now one short line, "Can't reach Elio's iMac · Reconnecting…". Tap it for **Help** with the reason and what to do.
 - **Right-click in the message box.** The message box on the New session page and in a session now has a right-click menu (or Shift+F10) with **Cut**, **Copy**, **Paste** and **Select all**. **Paste** works like the keyboard shortcut, so an image on the clipboard is attached too.
+- **Right-click in the terminal.** Right-click, or press Shift+F10, for **Copy**, **Paste** and **Select all**. In a session's terminal, select an error or some output and choose **Explain with Claude** or **Fix with Claude** to put it in the message box, in a code block under the question, ready to send.
 
 ## [1.0.0] - 2026-10-19
 

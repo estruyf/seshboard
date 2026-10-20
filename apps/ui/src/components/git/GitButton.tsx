@@ -328,6 +328,9 @@ export function GitButton({
   const FaceIcon = ICON[face];
   // While a step is starting, the face waits (the reason is only for its tooltip).
   const faceBlocked = plan.blocked[face] ?? (writing ? 'Writing the commit message…' : pending ? 'Starting…' : null);
+  // The step you clicked is under way (Haiku writing the message, then the terminal opening): say so on the button itself.
+  const starting = pending && plan.blocked[face] === null;
+  const startingLabel = writing ? 'Writing message…' : 'Starting…';
   const count = COUNT[face] ? stepCount(status, face) : null;
   // The header's one yellow button, whenever there is something to do (pull, commit, push or a PR).
   // With nothing to do the face is Fetch, which stays a quiet bordered button.
@@ -444,16 +447,21 @@ export function GitButton({
         // Not `disabled`: a blocked step stays hoverable and focusable so its tooltip can say why.
         onClick={() => faceBlocked === null && void run(face)}
         aria-disabled={faceBlocked !== null}
-        data-tooltip={error ?? tooltipFor(face)}
-        aria-label={`${STEP_LABEL[face]}${count ? ` ${count}` : ''}`}
+        aria-busy={starting || undefined}
+        data-tooltip={error ?? (starting ? startingLabel : tooltipFor(face))}
+        aria-label={starting ? startingLabel : `${STEP_LABEL[face]}${count ? ` ${count}` : ''}`}
         aria-keyshortcuts={face === 'pull' ? ariaKeysFor('git.pull') : undefined}
         className={`flex h-7 items-center gap-1.5 rounded-l-md px-2.5 text-ui ${primary ? 'bg-accent font-semibold text-on-accent' : 'border border-border text-text'} ${error ? 'ring-1 ring-error ring-inset' : ''} ${faceBlocked ? 'cursor-default opacity-50' : primary ? 'hover:bg-accent/85' : 'hover:bg-border/50'}`}
       >
         {/* A narrow header drops the icon first; in a pane under 420px (four side by side) the icon and the count stand
             in for the word, which stays in the label and the tooltip. */}
-        <FaceIcon size={13} className={`@max-[860px]:hidden @max-[420px]:inline ${primary ? '' : 'text-muted'}`} aria-hidden />
-        <span className="@max-[420px]:sr-only">{STEP_LABEL[face]}</span>
-        {count !== null && count > 0 && (
+        {starting ? (
+          <LoaderCircle size={13} className="animate-spin" aria-hidden />
+        ) : (
+          <FaceIcon size={13} className={`@max-[860px]:hidden @max-[420px]:inline ${primary ? '' : 'text-muted'}`} aria-hidden />
+        )}
+        <span className="@max-[420px]:sr-only">{starting ? startingLabel : STEP_LABEL[face]}</span>
+        {!starting && count !== null && count > 0 && (
           <span className="tabular-nums" aria-hidden>
             {COUNT[face]!.prefix}
             {count}

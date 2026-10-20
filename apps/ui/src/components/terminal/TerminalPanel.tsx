@@ -378,7 +378,7 @@ export function TerminalPanel({
           ) : (
             terminals.map((t) => (
               <div key={t.id} id={panelId(t)} role="tabpanel" aria-labelledby={tabId(t)} className={t.id === active?.id ? 'absolute inset-0' : 'hidden'}>
-                <XTerm id={t.id} active={t.id === active?.id} exited={t.exitCode !== null} onClose={() => closeTab(t)} />
+                <XTerm id={t.id} sessionId={sessionId} active={t.id === active?.id} exited={t.exitCode !== null} onClose={() => closeTab(t)} />
               </div>
             ))
           )}
