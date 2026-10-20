@@ -1,8 +1,10 @@
-import { Code, Copy, Folder } from 'lucide-react';
+import { Code, Copy, Eye, Folder } from 'lucide-react';
 import { useContext, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { previewKind } from '@switchboard/protocol/client';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { fileManagerName } from '../../lib/platform.ts';
 import { clickKeysFor, formatKeys } from '../../lib/shortcuts.ts';
+import { useFilePreview } from '../../state/filePreviewStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { MessageMenuContext } from '../memory/RememberLayer.tsx';
@@ -10,7 +12,7 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { clickAction, fileLinkError, fileLinkMenu, fileLinkTarget, fileLinkTooltip, type FileLinkAction, type FileLinkMenuItem } from './fileLinkAction.ts';
 
-const MENU_ICON: Record<FileLinkMenuItem['id'], ReactNode> = { show: <Folder size={13} />, editor: <Code size={13} />, copy: <Copy size={12} /> };
+const MENU_ICON: Record<FileLinkMenuItem['id'], ReactNode> = { preview: <Eye size={13} />, show: <Folder size={13} />, editor: <Code size={13} />, copy: <Copy size={12} /> };
 
 /** What a file link in the conversation does, for the element that draws it (`FileLink`, the chip beside a file tool). */
 export interface FileLinkActions {
@@ -51,10 +53,12 @@ export function useFileLinkActions(path: string, line?: number): FileLinkActions
   // Before the editors are listed there is no telling, so the file manager is assumed.
   const fileManagerAvailable = editors.length === 0 || fileManager !== undefined;
   const names = { fileManager: fileManagerName(), editor: editors.find((e) => e.id === defaultId)?.name ?? null };
-  const action = clickAction(setting, false, fileManagerAvailable);
+  const previewable = previewKind(path) !== null;
+  const action = clickAction(setting, false, { fileManagerAvailable, previewable });
 
   const run = (what: FileLinkAction) => {
     setError(null);
+    if (what === 'preview') return useFilePreview.getState().open(path);
     const target = fileLinkTarget(path, line, what);
     const done = what === 'show' ? openIn(path, { editorId: fileManager?.id ?? 'finder' }) : openIn(path, line ? { line } : {});
     done.catch((e: unknown) => setError(fileLinkError(what, target, names, e instanceof Error ? e.message : String(e))));
@@ -69,7 +73,7 @@ export function useFileLinkActions(path: string, line?: number): FileLinkActions
       () => setError("Couldn't copy the path"),
     );
 
-  const entries: MenuEntry[] = fileLinkMenu(names, fileManagerAvailable).map((item) => ({
+  const entries: MenuEntry[] = fileLinkMenu(names, { fileManagerAvailable, previewable }).map((item) => ({
     label: item.label,
     icon: MENU_ICON[item.id],
     onSelect: () => (item.id === 'copy' ? copy() : run(item.id)),
@@ -104,13 +108,13 @@ export function useFileLinkActions(path: string, line?: number): FileLinkActions
 
   return {
     action,
-    tooltip: fileLinkTooltip({ setting, path, ...(line ? { line } : {}), names, otherKeys: formatKeys(clickKeysFor('transcript.file-link-other')), fileManagerAvailable }),
+    tooltip: fileLinkTooltip({ setting, path, ...(line ? { line } : {}), names, otherKeys: formatKeys(clickKeysFor('transcript.file-link-other')), fileManagerAvailable, previewable }),
     error,
     handlers: {
       onClick: (event) => {
         // The main process would refuse a file:// link anyway; the engine does the work.
         event.preventDefault();
-        run(clickAction(setting, event.shiftKey, fileManagerAvailable));
+        run(clickAction(setting, event.shiftKey, { fileManagerAvailable, previewable }));
       },
       // Shift-click would also stretch the text selection.
       onMouseDown: (event) => {

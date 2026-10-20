@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BACKUP_SECTIONS, DEFAULT_PREFERENCES, parseSettingsFile, ProjectAction } from '@switchboard/protocol';
+import { BACKUP_SECTIONS, DEFAULT_PREFERENCES, FILE_LINK_CLICK_REVISION, parseSettingsFile, ProjectAction } from '@switchboard/protocol';
 import { ActionStore } from '../actions/actionStore.ts';
 import { createAppStateStore } from '../db/appState.ts';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
@@ -247,6 +247,24 @@ describe('settings export and import', () => {
     expect(actions.test).toMatchObject({ command: 'npm test', trusted: false });
     expect(actions.build).toMatchObject({ trusted: true });
     expect(target.stores.appState.get('editor.default')).toBe('zed');
+  });
+
+  it('imports a file link choice only when the file marks it as picked, and never lists the revision', () => {
+    const importWith = (fileLinkClick: string, fileLinkClickRevision?: number) => {
+      const target = mac();
+      const file = roundTrip(target.stores);
+      file.preferences = { fileLinkClick, ...(fileLinkClickRevision === undefined ? {} : { fileLinkClickRevision }) };
+      return planImport(target.stores, file, { ...ALL, mode: 'replace' });
+    };
+    // An old export: "file-manager" was the default then, so it says nothing about a choice.
+    const old = importWith('file-manager');
+    expect(old.apply().preferences).toEqual({});
+    expect(old.preview.changes.filter((c) => c.section === 'preferences')).toEqual([]);
+    // A new export carries the revision; the revision itself is not a line in the preview.
+    const picked = importWith('file-manager', FILE_LINK_CLICK_REVISION);
+    expect(picked.apply().preferences).toEqual({ fileLinkClick: 'file-manager' });
+    expect(picked.preview.changes.filter((c) => c.section === 'preferences').map((c) => c.label)).toEqual(['Clicking a file link']);
+    expect(importWith('editor').apply().preferences).toEqual({ fileLinkClick: 'editor' });
   });
 
   it('skips folders missing on this Mac unless they are pointed elsewhere', () => {

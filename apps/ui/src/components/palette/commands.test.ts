@@ -40,6 +40,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     queue: { count: 0, readyCount: 0, firstReady: null },
     schedules: 0,
     triggers: 0,
+    lastPreviewableFile: null,
     unsent: 0,
     projectCount: 2,
     projects: [
@@ -232,6 +233,14 @@ describe('when(): a session is open', () => {
     expect(ids(inSession())).not.toContain('fork');
     const talked = ids(inSession({ prompts: 2, hasReply: true }));
     expect(talked).toEqual(expect.arrayContaining(['fork', 'rewind', 'copy-last-reply']));
+  });
+
+  it('previews the last written file only when the open session wrote a Markdown or HTML one', () => {
+    expect(ids(inSession())).not.toContain('preview-last-file');
+    expect(ids(context({ lastPreviewableFile: '/work/app/PLAN.md' }))).not.toContain('preview-last-file');
+    const written = inSession({}, { lastPreviewableFile: '/work/app/PLAN.md' });
+    expect(groupIds(written, 'session')).toContain('preview-last-file');
+    expect(visibleCommands(written).find((c) => c.id === 'preview-last-file')!.title).toBe('Preview last written file');
   });
 
   it('asks about the session in an open session, through the Ask panel', () => {

@@ -44,6 +44,7 @@ export const sidebar = [
     collapsed: true,
     items: [
       'sessions/conversation',
+      'sessions/file-preview',
       'permissions',
       'sessions/ask',
       'sessions/linking',

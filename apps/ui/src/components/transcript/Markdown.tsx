@@ -9,7 +9,8 @@ import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
 /** Fenced-block languages that get a Preview | Source switch. */
 const MARKDOWN = new Set(['markdown', 'md']);
 
-const components: Components = {
+/** How an answer's Markdown renders; a previewed file's (`components/filePreview/FileMarkdown.tsx`) builds on it. */
+export const markdownComponents: Components = {
   a: ({ href, children }) => {
     // The main process opens http(s) links in the browser and blocks everything else.
     const link = (
@@ -64,7 +65,7 @@ export const PROSE =
 
 const Block = memo(function Block({ text }: { text: string }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
       {text}
     </ReactMarkdown>
   );

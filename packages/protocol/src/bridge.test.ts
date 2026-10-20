@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, mergePreferences, resolveSound, sanitizePreferences, type SoundList, type SoundPrefs } from './bridge.ts';
+import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, FILE_LINK_CLICK_REVISION, mergePreferences, resolveSound, sanitizePreferences, type SoundList, type SoundPrefs } from './bridge.ts';
 
 describe('contextWarning preference', () => {
   it('warns about a large context from 60%, and asks on quitting only once until turned on', () => {
@@ -42,20 +42,39 @@ describe('sidebarCollapsed preference', () => {
 });
 
 describe('fileLinkClick preference', () => {
-  it('shows the file in the file manager by default', () => {
-    expect(DEFAULT_PREFERENCES.fileLinkClick).toBe('file-manager');
+  const REV = FILE_LINK_CLICK_REVISION;
+
+  it('opens files in Switchboard by default, on the current revision', () => {
+    expect(DEFAULT_PREFERENCES.fileLinkClick).toBe('switchboard');
+    expect(DEFAULT_PREFERENCES.fileLinkClickRevision).toBe(REV);
   });
 
-  it('keeps the two choices, and drops anything else', () => {
+  it('keeps the editor and Switchboard, whatever the revision, and drops anything else', () => {
     expect(sanitizePreferences({ fileLinkClick: 'editor' })).toEqual({ fileLinkClick: 'editor' });
-    expect(sanitizePreferences({ fileLinkClick: 'file-manager' })).toEqual({ fileLinkClick: 'file-manager' });
-    expect(sanitizePreferences({ fileLinkClick: 'finder' })).toEqual({});
+    expect(sanitizePreferences({ fileLinkClick: 'editor', fileLinkClickRevision: 1 })).toEqual({ fileLinkClick: 'editor' });
+    expect(sanitizePreferences({ fileLinkClick: 'switchboard' })).toEqual({ fileLinkClick: 'switchboard' });
+    expect(sanitizePreferences({ fileLinkClick: 'finder', fileLinkClickRevision: REV })).toEqual({});
     expect(sanitizePreferences({ fileLinkClick: true })).toEqual({});
     expect(sanitizePreferences({ fileLinkClick: null })).toEqual({});
   });
 
+  it('reads a saved "file-manager" without the revision as the old default, not a choice', () => {
+    expect(sanitizePreferences({ fileLinkClick: 'file-manager' })).toEqual({});
+    expect(sanitizePreferences({ fileLinkClick: 'file-manager', fileLinkClickRevision: 1 })).toEqual({});
+    expect({ ...DEFAULT_PREFERENCES, ...sanitizePreferences({ fileLinkClick: 'file-manager' }) }.fileLinkClick).toBe('switchboard');
+  });
+
+  it('keeps "file-manager" once it was picked on the current revision', () => {
+    expect(sanitizePreferences({ fileLinkClick: 'file-manager', fileLinkClickRevision: REV })).toEqual({ fileLinkClick: 'file-manager' });
+  });
+
+  it('keeps a pick from Settings: the change merges onto the current revision', () => {
+    const merged = sanitizePreferences(mergePreferences(DEFAULT_PREFERENCES, { fileLinkClick: 'file-manager' }));
+    expect(merged.fileLinkClick).toBe('file-manager');
+  });
+
   it('falls back to the default for an unknown saved value, and to the last good one for an unknown change', () => {
-    expect({ ...DEFAULT_PREFERENCES, ...sanitizePreferences({ fileLinkClick: 'reveal' }) }.fileLinkClick).toBe('file-manager');
+    expect({ ...DEFAULT_PREFERENCES, ...sanitizePreferences({ fileLinkClick: 'reveal' }) }.fileLinkClick).toBe('switchboard');
     const editor = { ...DEFAULT_PREFERENCES, fileLinkClick: 'editor' as const };
     expect({ ...editor, ...sanitizePreferences(mergePreferences(editor, { fileLinkClick: 'reveal' })) }.fileLinkClick).toBe('editor');
   });

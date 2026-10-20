@@ -123,6 +123,8 @@ const PLANS: Record<string, Plan> = {
   'remember-this': 'here',
   'quote-in-reply': 'here',
   'copy-last-reply': 'here',
+  // The preview dialog is mounted in a pop-out too.
+  'preview-last-file': 'here',
   'copy-session-id': 'here',
   'check-transcript': 'here',
   'toggle-terminal': 'here',

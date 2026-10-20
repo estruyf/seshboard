@@ -8,6 +8,7 @@ import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/find
 import { basename, shortAge, tildify } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
+import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenStore.ts';
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
@@ -1073,6 +1074,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     usePaletteBus.setState({ digest: { sessionId, prompts, lastUuid: before, lastReply } });
   }, [active, items, sessionId]);
   useEffect(() => () => usePaletteBus.setState((s) => (s.digest?.sessionId === sessionId ? { digest: null } : {})), [sessionId]);
+  // The palette's Preview last written file: the Markdown or HTML file Claude wrote last in this session.
+  useEffect(() => useLastWritten.getState().set(sessionId, lastPreviewableWrite(items, cwd, home)), [items, sessionId, cwd, home]);
+  useEffect(() => () => useLastWritten.getState().set(sessionId, null), [sessionId]);
   // Ask about this session: its threads are read once per session, so the panel opens on them at once.
   useEffect(() => {
     if (client) void loadAskThreads(client, sessionId).catch(() => {});

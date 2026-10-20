@@ -4088,19 +4088,22 @@ async function runPullRequestStep(win: BrowserWindow): Promise<string> {
 
 /**
  * Read-only: file paths in Claude's replies that exist became links, and the chips beside file tools do the same. What a
- * click does is the setting Clicking a file link (the file manager by default): the label and tooltip say it and what
- * Shift-click does instead, and the right-click and Shift+F10 menus list both ways and Copy path above the message's Quote and
- * Remember this…. Switching the setting in Settings › Conversation flips them. Nothing is ever clicked: that would open Explorer, Finder or the user's editor. The
- * menus are only opened and closed with Escape, and the setting is put back at the end.
+ * click does is the setting Clicking a file link (Open in Switchboard by default: Markdown and HTML files preview there, the
+ * rest show in the file manager): the label and tooltip say it and what Shift-click does instead, and the right-click and
+ * Shift+F10 menus list every way and Copy path above the message's Quote and Remember this…. Switching the setting in
+ * Settings › Conversation flips them. Nothing is ever clicked: that would open Explorer, Finder, the preview or the user's
+ * editor. The menus are only opened and closed with Escape, and the setting is put back at the end.
  */
 async function runFileLinksStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const fileManager = process.platform === 'win32' ? 'File Explorer' : process.platform === 'darwin' ? 'Finder' : 'Files';
   const original = preferences.get().fileLinkClick;
-  if (original !== 'file-manager') return `the setting started as ${original}, not Show in ${fileManager}`;
+  if (original !== 'switchboard') return `the setting started as ${original}, not Open in Switchboard`;
   const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
   const LINK = "[data-transcript] [data-file-link]";
   const shiftClick = /(Shift\+click|⇧-click) (opens|shows) it in /;
+  const previewable = (path: string) => /\.(md|markdown|html?)$/i.test(path);
+  type Mode = 'switchboard' | 'file-manager' | 'editor';
 
   /** The links and chips on screen, as they read, once a path has been looked up. */
   const read = async () => {
@@ -4115,21 +4118,27 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     return { links, chips };
   };
 
-  /** What each link and chip must say when a click does `mode`'s action. Null when all is right. */
-  const check = (shown: Awaited<ReturnType<typeof read>>, mode: 'file-manager' | 'editor'): string | null => {
-    const show = mode === 'file-manager';
-    const expectedAction = show ? 'show' : 'editor';
+  /** What a click does on the file at `path` in `mode`. */
+  const actionFor = (mode: Mode, path: string) => (mode === 'switchboard' ? (previewable(path) ? 'preview' : 'show') : mode === 'file-manager' ? 'show' : 'editor');
+
+  /** What each link and chip must say when the setting is `mode`. Null when all is right. */
+  const check = (shown: Awaited<ReturnType<typeof read>>, mode: Mode): string | null => {
     for (const link of shown.links) {
       const path = link.target.replace(/:\d+$/, '');
-      const start = show ? `Show ${path} in ${fileManager}. ` : `Open ${link.target} in `;
-      const second = show ? 'opens it in ' : `shows it in ${fileManager}`;
+      const expectedAction = actionFor(mode, path);
+      const start = expectedAction === 'preview' ? `Preview ${path} in Switchboard. ` : expectedAction === 'show' ? `Show ${path} in ${fileManager}. ` : `Open ${link.target} in `;
       if (!link.href.startsWith('file:///') || !isAbsolutePath(path)) return `a file link is wrong: ${JSON.stringify(link)}`;
-      if (!link.tooltip.startsWith(start) || !shiftClick.test(link.tooltip) || !link.tooltip.includes(second) || link.action !== expectedAction) return `with ${mode} set, a link says "${link.tooltip}" (${link.action})`;
+      if (!link.tooltip.startsWith(start) || !shiftClick.test(link.tooltip) || link.action !== expectedAction) return `with ${mode} set, a link to ${path} says "${link.tooltip}" (${link.action})`;
+      if (expectedAction === 'editor' && !link.tooltip.includes(`shows it in ${fileManager}`)) return `with ${mode} set, a link says "${link.tooltip}"`;
       if (link.described !== link.tooltip) return `a link's description for screen readers is not its tooltip: ${JSON.stringify(link)}`;
     }
     for (const chip of shown.chips) {
-      const start = show ? `Show ${chip.path} in ${fileManager}. ` : 'Open ';
-      if (!chip.tooltip.startsWith(start) || !shiftClick.test(chip.tooltip) || chip.label !== chip.tooltip || chip.text !== (show ? 'Show ↗' : 'Open ↗') || chip.action !== expectedAction) return `with ${mode} set, a file chip says "${chip.text}" / "${chip.tooltip}" (${chip.action})`;
+      const expectedAction = actionFor(mode, chip.path);
+      const start = expectedAction === 'preview' ? `Preview ${chip.path} in Switchboard. ` : expectedAction === 'show' ? `Show ${chip.path} in ${fileManager}. ` : 'Open ';
+      const text = expectedAction === 'preview' ? 'Preview ↗' : expectedAction === 'show' ? 'Show ↗' : 'Open ↗';
+      if (!chip.tooltip.startsWith(start) || !shiftClick.test(chip.tooltip) || chip.label !== chip.tooltip || chip.text !== text || chip.action !== expectedAction) {
+        return `with ${mode} set, a file chip for ${chip.path} says "${chip.text}" / "${chip.tooltip}" (${chip.action})`;
+      }
     }
     return null;
   };
@@ -4143,6 +4152,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
       pressKey(win, 'F10', ['shift']);
     }
     if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-file-link-menu-item]')", 2_000))) return `the ${how} menu did not open`;
+    const target = (await js(`document.querySelector('${LINK}').dataset.fileLink`)) as string;
     const items = (await js("[...document.querySelectorAll('[role=menu] [data-file-link-menu-item]')].map((b) => ({ id: b.dataset.fileLinkMenuItem, label: b.textContent.trim() }))")) as Array<{ id: string; label: string }>;
     const inside = (await js("!!document.activeElement?.closest('[role=menu]')")) as boolean;
     const message = (await js("!!document.querySelector('[role=menu] [data-quote-menu]') && !!document.querySelector('[role=menu] [data-remember-menu]')")) as boolean;
@@ -4151,32 +4161,39 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     pressKey(win, 'Escape');
     if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return `Escape did not close the ${how} menu`;
     const ids = items.map((item) => item.id).join(',');
-    if (ids !== 'show,editor,copy') return `the ${how} menu lists ${ids}, not show,editor,copy`;
-    if (items[0]!.label !== `Show in ${fileManager}` || !items[1]!.label.startsWith('Open in ') || items[2]!.label !== 'Copy path') return `the ${how} menu reads ${JSON.stringify(items.map((item) => item.label))}`;
+    const expected = previewable(target.replace(/:\d+$/, '')) ? 'preview,show,editor,copy' : 'show,editor,copy';
+    if (ids !== expected) return `the ${how} menu on ${target} lists ${ids}, not ${expected}`;
+    const labels = expected.startsWith('preview') ? ['Open in Switchboard', `Show in ${fileManager}`] : [`Show in ${fileManager}`];
+    const rest = items.slice(labels.length);
+    if (items.slice(0, labels.length).some((item, i) => item.label !== labels[i]) || !rest[0]!.label.startsWith('Open in ') || rest[1]!.label !== 'Copy path') return `the ${how} menu reads ${JSON.stringify(items.map((item) => item.label))}`;
     if (!inside) return `focus did not move into the ${how} menu`;
     if (!message) return `the ${how} menu on a link in a reply has no Quote or Remember this…`;
     return items;
   };
 
-  const setInSettings = async (value: 'file-manager' | 'editor') => {
+  const setInSettings = async (value: Mode) => {
     await js("document.querySelector('[data-open-settings]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"conversation\"]')", 3_000))) return 'Settings did not open';
     await js("document.querySelector('[data-settings-section=\"conversation\"]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-file-link-click]')", 2_000))) return 'Settings › Conversation has no Clicking a file link';
     const shownValue = (await js("document.querySelector('[data-file-link-click]').dataset.value")) as string;
     const text = (await js("document.querySelector('[data-file-link-click]').innerText")) as string;
-    const expectedText = shownValue === 'file-manager' ? `Show in ${fileManager}` : 'Open in editor';
+    const expectedText = shownValue === 'switchboard' ? 'Open in Switchboard' : shownValue === 'file-manager' ? `Show in ${fileManager}` : 'Open in editor';
     if (!text.includes(expectedText)) return `the setting reads "${text}", not "${expectedText}"`;
     await shot(win, 'settings-file-link-click.png');
     if (!(await chooseOption(win, '[data-file-link-click]', value))) return `could not choose ${value}`;
     await js("document.querySelector('[data-close-settings]').click()");
     if (!(await until(() => preferences.get().fileLinkClick === value))) return `${value} was not saved`;
+    if (session) {
+      openSession(session);
+      if (!(await waitInPage(win, `document.querySelector('[data-current-session="${session}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session after Settings';
+    }
     return null;
   };
 
   try {
     const first = await read();
-    const wrong = check(first, 'file-manager');
+    const wrong = check(first, 'switchboard');
     if (wrong) return wrong;
     let menus = 'no file link on screen to open a menu on';
     if (first.links.length > 0) {
@@ -4184,24 +4201,97 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
         const items = await menuOf(how);
         if (typeof items === 'string') return items;
       }
-      menus = 'right-click and Shift+F10 list Show, Open and Copy path, then Quote and Remember this…';
+      menus = 'right-click and Shift+F10 list every way and Copy path, then Quote and Remember this…';
     }
 
-    const failed = await setInSettings('editor');
-    if (failed) return failed;
-    if (session) {
-      openSession(session);
-      if (!(await waitInPage(win, `document.querySelector('[data-current-session="${session}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session after Settings';
+    for (const mode of ['file-manager', 'editor'] as const) {
+      const failed = await setInSettings(mode);
+      if (failed) return failed;
+      const wrongToo = check(await read(), mode);
+      if (wrongToo) return wrongToo;
     }
-    const second = await read();
-    const wrongToo = check(second, 'editor');
-    if (wrongToo) return wrongToo;
-    return `ok: ${first.links.length} links and ${first.chips.length} chips say Show in ${fileManager} with Shift-click for the editor, and the other way round with Open in editor; ${menus}; e.g. "${first.links[0]?.tooltip ?? first.chips[0]?.tooltip ?? 'none on screen'}"`;
+    return `ok: ${first.links.length} links and ${first.chips.length} chips preview Markdown and HTML in Switchboard and show the rest in ${fileManager} (Shift-click for the editor), then show in ${fileManager} and open in the editor as set; ${menus}; e.g. "${first.links[0]?.tooltip ?? first.chips[0]?.tooltip ?? 'none on screen'}"`;
   } finally {
     // Put the setting back for the steps after this one (and close Settings if a failure left it open).
     if (await js("!!document.querySelector('[data-close-settings]')")) await js("document.querySelector('[data-close-settings]').click()");
     if (await js("!!document.querySelector('[role=menu]')")) pressKey(win, 'Escape');
     if (preferences.get().fileLinkClick !== original) updatePreferences({ fileLinkClick: original });
+  }
+}
+
+/** A 1x1 PNG, for the pictures next to the throwaway files the preview step opens. */
+const SMOKE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+/**
+ * File preview (#181), on throwaway files in a folder of their own: a Markdown file opens in the dialog with its heading,
+ * a GitHub alert and a details block rendered, a script and the picture beside it handled (the script is dropped, the
+ * picture loads through the engine), Source shows the raw text, and Reload picks up a change. An HTML file opens in a
+ * sandboxed frame whose page has the CSP and the picture inlined. A file over 2 MB says so. Escape closes the dialog and the
+ * session stays. The preview is opened through a window event the dialog listens for, as no conversation has to link to
+ * these files. The folder is removed at the end.
+ */
+async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-preview-')));
+  const md = join(dir, 'notes.md');
+  const html = join(dir, 'page.html');
+  const big = join(dir, 'big.md');
+  const open = (path: string) => js(`window.dispatchEvent(new CustomEvent('switchboard:preview-file', { detail: ${JSON.stringify(path)} }))`);
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
+  const title = (await js('document.title')) as string;
+  try {
+    writeFileSync(join(dir, 'logo.png'), SMOKE_PNG);
+    writeFileSync(md, '# Smoke heading\n\n> [!NOTE]\n> Smoke alert text.\n\n<details><summary>More</summary>\n\nHidden body\n\n</details>\n\n<script>document.title = "pwned"</script>\n\n![the logo](logo.png)\n\n[next](other.md)\n');
+    writeFileSync(html, '<!doctype html><html><head><title>Page</title></head><body><h1>Smoke page</h1><img src="logo.png"><script>document.title = "pwned"</script></body></html>');
+    writeFileSync(big, `# Big\n\n${'x'.repeat(3 * 1024 * 1024)}\n`);
+
+    await open(md);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && document.querySelector('[data-file-preview-markdown] h1')`, 5_000))) return 'the Markdown file did not open in the preview';
+    const rendered = (await js(
+      `({ heading: document.querySelector('[data-file-preview-markdown] h1').innerText, alert: document.querySelector('[data-file-preview-markdown] [data-alert="note"]')?.innerText ?? null, details: !!document.querySelector('[data-file-preview-markdown] details summary'), scripts: document.querySelectorAll('[data-file-preview-markdown] script').length, title: document.title, name: ${DIALOG}.getAttribute('aria-labelledby') && document.getElementById(${DIALOG}.getAttribute('aria-labelledby')).innerText, link: document.querySelector('[data-file-preview-markdown] [data-file-link]')?.dataset.fileLinkAction ?? null })`,
+    )) as { heading: string; alert: string | null; details: boolean; scripts: number; title: string; name: string; link: string | null };
+    if (rendered.heading !== 'Smoke heading') return `the heading reads "${rendered.heading}"`;
+    if (!rendered.alert?.includes('Note') || !rendered.alert.includes('Smoke alert text.') || rendered.alert.includes('[!NOTE]')) return `the alert reads ${JSON.stringify(rendered.alert)}`;
+    if (!rendered.details) return 'the details block did not render';
+    if (rendered.scripts !== 0 || rendered.title !== title) return `a script in the Markdown survived (${rendered.scripts} script elements, title "${rendered.title}")`;
+    if (rendered.name !== 'notes.md') return `the dialog is named "${rendered.name}"`;
+    if (rendered.link !== 'preview') return `a relative Markdown link does ${rendered.link}, not preview`;
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-markdown] img[data-file-preview-image=\"loaded\"]')?.src.startsWith('data:image/png')", 5_000))) return 'the picture next to the Markdown file did not load';
+    await shot(win, 'file-preview-markdown.png');
+
+    await js("document.querySelector('[data-file-preview-view=\"source\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-source]')?.innerText.includes('# Smoke heading') && document.querySelector('[data-file-preview-source]').innerText.includes('<script>')", 5_000))) return 'Source did not show the raw text';
+    await js("document.querySelector('[data-file-preview-view=\"preview\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-markdown] h1')", 3_000))) return 'Preview did not come back from Source';
+
+    writeFileSync(md, '# Second heading\n');
+    await js("document.querySelector('[data-file-preview-reload]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-markdown] h1')?.innerText === 'Second heading'", 5_000))) return 'Reload did not show the changed file';
+
+    // Opening another file replaces this one.
+    await open(html);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'html' && document.querySelector('iframe[data-file-preview-frame]')`, 5_000))) return 'the HTML file did not open in the preview';
+    const frame = (await js(
+      "(() => { const f = document.querySelector('iframe[data-file-preview-frame]'); return { sandbox: f.getAttribute('sandbox'), srcdoc: f.getAttribute('srcdoc') }; })()",
+    )) as { sandbox: string | null; srcdoc: string };
+    if (frame.sandbox !== '') return `the frame's sandbox is ${JSON.stringify(frame.sandbox)}, not empty`;
+    if (!frame.srcdoc.includes('http-equiv="Content-Security-Policy"') || frame.srcdoc.indexOf('Content-Security-Policy') > frame.srcdoc.indexOf('<title>')) return 'the page has no Content-Security-Policy before its content';
+    if (!frame.srcdoc.includes('src="data:image/png;base64,')) return 'the picture next to the HTML file was not inlined';
+    // The page is in a frame of its own, which nothing in this page can tell has painted: give it a moment before the picture.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await shot(win, 'file-preview-html.png');
+
+    await open(big);
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-too-large]')?.innerText.includes('Switchboard previews files up to 2 MB')", 5_000))) return 'a file over 2 MB did not say so';
+
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    if (session && !(await waitInPage(win, `document.querySelector('[data-current-session="${session}"]')`, 2_000))) return 'the session went away when the preview closed';
+    return 'ok: Markdown renders its heading, alert, details and picture without its script, Source shows the text, Reload picks up a change, HTML opens in an empty sandbox with the CSP and its picture inlined, a 3 MB file says it is over the limit, and Escape closes it';
+  } finally {
+    if (await js(`!!${DIALOG}`)) pressKey(win, 'Escape');
+    rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -8532,6 +8622,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('create pull request dialog', () => runPullRequestStep(win));
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
+  await step('file preview', () => runFilePreviewStep(win));
   await step('long prompts', () => runLongPromptStep(win));
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('copy messages', () => runCopyMessageStep(win));
