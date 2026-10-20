@@ -11,6 +11,7 @@ import sessionsSettings from '../sessions/SessionsSettings.tsx?raw';
 import remoteSettings from '../remote/RemoteSettings.tsx?raw';
 import modsSettings from '../mods/ModsSettings.tsx?raw';
 import usageSettings from '../usage/UsageSettings.tsx?raw';
+import pipelinesSettings from '../pipelines/PipelinesSettings.tsx?raw';
 import cloneSettings from '../clone/CloneSettings.tsx?raw';
 import appIconSettings from '../theme/AppIconSettings.tsx?raw';
 import { settingsIndex } from './settingsIndex.ts';
@@ -78,6 +79,16 @@ describe('the settings index', () => {
       for (const query of ['icon', 'app icon', 'dock', 'taskbar', 'logo']) {
         expect(searchSettings(query, entries, (page) => page, platform).map((match) => match.entry.id)).toContain('app-icon');
       }
+    }
+  });
+
+  it('finds Settings › Pipelines by the words people use for it, and points at hooks the page draws', () => {
+    for (const query of ['pipelines', 'workflow', 'steps']) {
+      expect(searchSettings(query, entries, (page) => page, 'darwin').map((match) => match.entry.page)).toContain('pipelines');
+    }
+    for (const entry of entries.filter((e) => e.page === 'pipelines' && e.id !== 'pipelines-list')) {
+      const hook = /\[(data-[a-z-]+)\]/.exec(entry.target)![1]!;
+      expect(pipelinesSettings).toContain(hook);
     }
   });
 

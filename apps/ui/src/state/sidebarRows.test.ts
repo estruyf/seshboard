@@ -459,6 +459,13 @@ describe('toRows', () => {
     expect(toRows(new Map(), new Map([['new', l]]))).toMatchObject([{ id: 'new', title: 'New session', projectRoot: '/p/a', updatedAt: 7, live: l, inApp: false }]);
   });
 
+  it('carries the parent of a sub-session onto its row, and none for an ordinary session', () => {
+    const base = { title: 's', firstPrompt: null, customTitle: null, cwd: '/p/a', projectRoot: '/p/a', gitBranch: null, worktree: null, origin: 'app', createdAt: null, updatedAt: 1_000, fileSize: null, tag: null, pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, unread: false, inApp: true, profileId: 'default' } as const;
+    const rows = toRows(new Map([['child', { ...base, id: 'child', parentId: 'parent' }], ['plain', { ...base, id: 'plain' }]]), new Map());
+    expect(rows.find((r) => r.id === 'child')!.parentId).toBe('parent');
+    expect('parentId' in rows.find((r) => r.id === 'plain')!).toBe(false);
+  });
+
   it('does not let an idle process move a session up', () => {
     const summary = { id: 's', title: 's', firstPrompt: null, customTitle: null, cwd: '/p/a', projectRoot: '/p/a', gitBranch: null, worktree: null, origin: 'cli', createdAt: null, updatedAt: 1_000, fileSize: null, tag: null, pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, unread: false, inApp: false, profileId: 'default' } as const;
     const sessions = new Map([['s', summary]]);
