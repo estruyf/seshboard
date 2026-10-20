@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isUsageLimitText, limitPrefixes, limitStop, resetMs, RESUME_GRACE_MS, resumeTime, snapshotReset } from './usageLimit.ts';
+import type { LimitsState } from '@switchboard/protocol';
+import { isUsageLimitText, limitPrefixes, limitStop, remoteLimit, resetMs, RESUME_GRACE_MS, resumeTime, snapshotReset } from './usageLimit.ts';
 
 const PREFIXES = ["You've hit your", "You've reached your", "You're out of usage credits"];
 
@@ -67,5 +68,22 @@ describe('snapshotReset', () => {
     expect(snapshotReset(meters, 'seven_day_opus')).toBe(8000);
     expect(snapshotReset(meters, null)).toBe(1000);
     expect(snapshotReset([], 'five_hour')).toBeNull();
+  });
+});
+
+describe('remoteLimit', () => {
+  const hit = { profileId: 'p', kind: 'five_hour', resetsAt: 5000, since: 1, message: null, sessionIds: ['a'] };
+  const state = (extra: Partial<LimitsState> = {}): LimitsState => ({ limits: [hit], resumes: [], gaveUp: [], ...extra });
+
+  it('is null while the profile is not at a limit', () => {
+    expect(remoteLimit(state({ limits: [] }), 'a', 'p')).toBeNull();
+    expect(remoteLimit(state(), 'a', 'other')).toBeNull();
+  });
+
+  it('says whether the limit stopped the session, and when it resumes', () => {
+    expect(remoteLimit(state(), 'a', 'p')).toEqual({ stopped: true, kind: 'five_hour', resetsAt: 5000, resumeAt: null, gaveUp: false });
+    expect(remoteLimit(state(), 'b', 'p')?.stopped).toBe(false);
+    expect(remoteLimit(state({ resumes: [{ sessionId: 'b', profileId: 'p', at: 5030, attempts: 0 }] }), 'b', 'p')).toMatchObject({ stopped: true, resumeAt: 5030 });
+    expect(remoteLimit(state({ gaveUp: ['b'] }), 'b', 'p')).toMatchObject({ stopped: true, gaveUp: true });
   });
 });

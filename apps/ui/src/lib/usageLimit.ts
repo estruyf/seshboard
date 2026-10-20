@@ -1,23 +1,11 @@
-import type { LimitResume, LimitsState, UsageLimitHit } from '@switchboard/protocol/client';
+import { limitKindName, type LimitResume, type LimitsState, type UsageLimitHit } from '@switchboard/protocol/client';
 import { resetLabel } from '../components/usageFormat.ts';
 
 // The words for a plan usage limit that stopped a session: its notice above the message box, the sidebar row, Up
 // next and the queue. Pure, so they are tested without React.
 
-/** Claude Code's limit kinds in plain words. */
-const KIND_NAME: Record<string, string> = {
-  five_hour: '5-hour limit',
-  seven_day: 'Weekly limit',
-  seven_day_opus: 'Weekly Opus limit',
-  seven_day_sonnet: 'Weekly Sonnet limit',
-  seven_day_overage_included: 'Weekly limit',
-  overage: 'Extra usage limit',
-};
-
 /** "5-hour limit", "Weekly Opus limit"; "Usage limit" when Claude Code didn't say which. */
-export function limitName(kind: string | null): string {
-  return (kind && KIND_NAME[kind]) || 'Usage limit';
-}
+export const limitName = limitKindName;
 
 // "15:16" or "Mon 15:16", and whether a limit still holds by the clock: shared with the queue's rules in the engine.
 export { clockTime, limitAhead } from '@switchboard/protocol/client';
@@ -27,7 +15,7 @@ import { clockTime } from '@switchboard/protocol/client';
  * The notice's line: "5-hour limit reached. Resets at 15:16 · in 4h 42m". Without a reset time it only says it was
  * reached; once the time has passed, that it has reset (a turn still has to get through to clear it).
  */
-export function limitHeadline(limit: UsageLimitHit, now = Date.now(), locale?: string): string {
+export function limitHeadline(limit: Pick<UsageLimitHit, 'kind' | 'resetsAt'>, now = Date.now(), locale?: string): string {
   const name = `${limitName(limit.kind)} reached`;
   if (limit.resetsAt === null) return `${name}.`;
   const at = clockTime(limit.resetsAt, now, locale);
@@ -36,7 +24,7 @@ export function limitHeadline(limit: UsageLimitHit, now = Date.now(), locale?: s
 }
 
 /** "Resumes at 15:16": an armed session, after the grace period. */
-export function resumeLine(resume: LimitResume, now = Date.now(), locale?: string): string {
+export function resumeLine(resume: Pick<LimitResume, 'at'> & Partial<LimitResume>, now = Date.now(), locale?: string): string {
   return `Resumes at ${clockTime(resume.at, now, locale)}`;
 }
 

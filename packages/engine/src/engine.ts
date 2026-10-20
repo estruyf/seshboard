@@ -151,7 +151,7 @@ import { ShellEnvironment } from './system/shellEnvironment.ts';
 import { detectTerminalFont } from './system/terminalFont.ts';
 import type { ShellEnv } from './system/shellEnv.ts';
 import { LimitStore } from './usageLimit/limitStore.ts';
-import { RESUME_PROMPT, snapshotReset } from './usageLimit/usageLimit.ts';
+import { remoteLimit, RESUME_PROMPT, snapshotReset } from './usageLimit/usageLimit.ts';
 import { UsageLimits } from './usageLimit/usageLimits.ts';
 import pkg from '../package.json' with { type: 'json' };
 
@@ -380,6 +380,7 @@ export function createEngine(options: EngineOptions): Engine {
     if (name === 'session.host') remote?.hostChanged(payload as SessionHostInfo);
     // Phones only hear these for the session they watch.
     if (name === 'session.stream') remote?.stream(payload as StreamDelta);
+    if (name === 'limits.changed') remote?.limitsChanged();
     if (name === 'upNext.changed') {
       const { sessionId, queue } = payload as { sessionId: string; queue: QueuedMessage[] };
       remote?.upNextChanged(sessionId, queue);
@@ -1755,6 +1756,9 @@ export function createEngine(options: EngineOptions): Engine {
       },
       dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
       upNext: (sessionId) => upNext.list(sessionId).map(summarise),
+      limit: (sessionId) => remoteLimit(limits.state(), sessionId, sessionProfile(sessionId)),
+      resumeLimit: (sessionId) => limits.resumeNow(sessionId),
+      armLimit: (sessionId, armed) => limits.arm(sessionId, armed),
       interrupt: (sessionId) => {
         catchUp.interrupt(sessionId);
         return hosts.interrupt(sessionId, 'continue');
