@@ -9,9 +9,11 @@ import {
   parseRemoteLink,
   parseBriefs,
   pskFromSecret,
+  REMOTE_APP_URL,
   REMOTE_IMAGE_BYTES,
   REMOTE_MAX_FILES,
   REMOTE_MAX_IMAGES,
+  REMOTE_PREVIEW_APP_URL,
   type CatchUp,
   type LiveSession,
   type PermissionRequest,
@@ -28,9 +30,9 @@ import type { RemoteLimitStanding } from '@switchboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
-import { RemoteHub, type RemoteFromDevice } from './remoteHub.ts';
+import { RemoteHub, remoteAppOrigins, type RemoteFromDevice } from './remoteHub.ts';
 import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
-import { APP_ORIGIN, client, handshake } from './testPhone.ts';
+import { APP_ORIGIN, client, handshake, open } from './testPhone.ts';
 import { generateVapidKeys } from './webPush.ts';
 
 const cleanups: Array<() => void> = [];
@@ -89,7 +91,7 @@ const freePort = () =>
 const fakeTunnel = (script: string) => ({ file: process.execPath, args: ['-e', script] });
 const QUIET_TUNNEL = (port: number) => fakeTunnel(`console.error('|  https://quiet-river.trycloudflare.com  |'); setInterval(() => {}, 1000); void ${port}`);
 
-async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string> } = {}) {
+async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -143,6 +145,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     appState,
     appVersion: '1.2.3',
     appUrl: `${APP_ORIGIN}/remote/`,
+    previewApp: options.previewApp ?? false,
     filesDir: join(dir, 'remote-files'),
     identity: async () => identity,
     sources: () => ({ summaries: [summary(SESSION, true), summary(HIDDEN, false)].map((s) => (options.archived?.has(s.id) ? { ...s, archivedAt: Date.now() } : s)), live: [], hosts: options.hosts ?? [], permissions }),
@@ -286,6 +289,22 @@ describe('Remote hub', () => {
     await hub.configure({ enabled: false });
     expect(hub.status()).toMatchObject({ address: null, tunnel: { state: 'off' } });
     expect(() => hub.startPairing()).toThrow('not reachable');
+  });
+
+  it('lets in the preview\'s remote app only when asked to (development and beta builds)', async () => {
+    const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
+    expect(remoteAppOrigins(REMOTE_APP_URL, false)).toEqual([new URL(REMOTE_APP_URL).origin]);
+    expect(remoteAppOrigins(REMOTE_APP_URL, true)).toEqual([new URL(REMOTE_APP_URL).origin, preview]);
+    expect(remoteAppOrigins(REMOTE_PREVIEW_APP_URL, true)).toEqual([preview]);
+
+    const release = await setup();
+    await release.on();
+    await expect(open(release.port, preview)).rejects.toThrow('HTTP 403');
+    const beta = await setup({ previewApp: true });
+    await beta.on();
+    const socket = await open(beta.port, preview);
+    socket.ws.close();
+    (await open(beta.port)).ws.close();
   });
 
   it('gives a phone only what it needs, and only the sessions the sidebar lists', async () => {
