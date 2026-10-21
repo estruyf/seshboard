@@ -484,6 +484,7 @@ export function createEngine(options: EngineOptions): Engine {
   let autoStarter: QueueAutoStarter | undefined;
   // --- Pipelines (#179): the stores are here, since the session index reads each sub-session's parent ----------------
   const pipelineStore = new PipelineStore(cache.db);
+  pipelineStore.showBuiltIns = appState.get('pipelines.showBuiltIns') !== false;
   const runStore = new RunStore(cache.db);
   /** Runs pipelines (set up with the schedules, below); sessions, limits and the registry poke it like the queue. */
   let runner: PipelineRunner | undefined;
@@ -2861,6 +2862,12 @@ export function createEngine(options: EngineOptions): Engine {
     'triggers.repoInfo': ({ root }) => triggerRepoInfo(root),
     // --- Pipelines (#179) -------------------------------------------------------------------------------------------
     'pipelines.list': ({ root }) => ({ pipelines: root ? pipelineStore.forProject(root) : pipelineStore.list() }),
+    'pipelines.showBuiltIns': ({ show }) => {
+      pipelineStore.showBuiltIns = show;
+      appState.set('pipelines.showBuiltIns', show);
+      pipelinesBroadcast();
+      return { show };
+    },
     'pipelines.save': ({ pipeline }) => {
       if (pipeline.id && isBuiltInPipeline(pipeline.id)) throw new RpcError('READ_ONLY', 'Built-in pipelines can’t be changed. Duplicate one to start.');
       if (pipeline.id && !pipelineStore.get(pipeline.id)) throw new RpcError('NOT_FOUND', 'That pipeline was deleted');

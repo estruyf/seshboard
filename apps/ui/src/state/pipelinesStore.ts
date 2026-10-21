@@ -66,7 +66,7 @@ export function usePipelinesSync(): void {
   }, [client]);
 }
 
-const clientNow = () => {
+export const clientNow = () => {
   const state = engineConnection.getSnapshot();
   if (state.status !== 'connected') throw new Error('Not connected to the engine');
   return state.client;
