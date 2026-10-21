@@ -1712,7 +1712,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               {/* Switchboard's own rows of a run in its parent, and a step's verdict: after the conversation, never sent to Claude. */}
               {status === 'ready' && <ParentRunRows sessionId={sessionId} />}
               {status === 'ready' && (
-                <div className="mx-auto max-w-3xl px-6">
+                <div className="mx-auto max-w-3xl px-6 pb-4">
                   <StepVerdictCard sessionId={sessionId} items={items} working={running} />
                 </div>
               )}

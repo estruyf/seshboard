@@ -1,4 +1,6 @@
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ArrowUp, CircleAlert, CircleCheck, CircleMinus, CircleX, Eye, ListTree } from 'lucide-react';
 import type { PipelineRunState } from '@switchboard/protocol/client';
 import { useRunOfParent, useRunOfStep } from '../../state/pipelinesStore.ts';
@@ -6,6 +8,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import type { DisplayItem } from '../transcript/displayItems.ts';
+import { markdownComponents } from '../transcript/Markdown.tsx';
 import { RunStopNotice, StepTreeCard } from './StepTree.tsx';
 import { PARENT_PLACEHOLDER, parentRows, READ_ONLY_LINE, replyToStepPlaceholder, roundDivider, stopNotice, verdictView, waitsOnStep, type ParentRow } from './runView.ts';
 
@@ -77,6 +80,9 @@ export function StepTopLines({ sessionId }: { sessionId: string }) {
   );
 }
 
+/** A verdict item's own Markdown (bold, code, links), without the paragraph around it: it sits inside a list item. */
+const VERDICT_ITEM_COMPONENTS = { ...markdownComponents, p: ({ children }: { children?: React.ReactNode }) => <Fragment>{children}</Fragment> };
+
 /** The last thing Claude said in the conversation, for its verdict. */
 function lastReplyOf(items: readonly DisplayItem[]): string | null {
   for (let i = items.length - 1; i >= 0; i--) {
@@ -99,7 +105,7 @@ export function StepVerdictCard({ sessionId, items, working }: { sessionId: stri
     <div aria-live="polite">
       {view && (
         <section
-          className={`mt-3 rounded-xl border px-3.5 py-3 ${view.verdict.kind === 'pass' ? 'border-ok/50 bg-ok/5' : 'border-caution/50 bg-caution/5'}`}
+          className={`mt-3 select-text rounded-xl border px-3.5 py-3 ${view.verdict.kind === 'pass' ? 'border-ok/50 bg-ok/5' : 'border-caution/50 bg-caution/5'}`}
           aria-label={view.verdict.kind === 'pass' ? 'Verdict: pass' : 'Verdict: changes needed'}
           data-verdict={view.verdict.kind}
         >
@@ -112,7 +118,9 @@ export function StepVerdictCard({ sessionId, items, working }: { sessionId: stri
             <ol className="mt-2 list-decimal pl-5 text-body text-text">
               {view.verdict.items.map((item, i) => (
                 <li key={i} className="[overflow-wrap:anywhere]">
-                  {item}
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={VERDICT_ITEM_COMPONENTS}>
+                    {item}
+                  </ReactMarkdown>
                 </li>
               ))}
             </ol>

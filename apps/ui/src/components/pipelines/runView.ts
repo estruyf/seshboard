@@ -169,7 +169,7 @@ export function verdictView(state: PipelineRunState, index: number, round: numbe
     view.next =
       round < rounds
         ? { to: step.verdict.sendTo, text: `as round ${round + 1}. ${step.name} runs again when it finishes.` }
-        : { to: '', text: `Still changes needed after ${round} ${round === 1 ? 'round' : 'rounds'}. The run waits for you.` };
+        : { to: '', text: `Still changes needed after ${round} ${round === 1 ? 'round' : 'rounds'}. The run is paused. Reply in this step to ask Claude to fix the points above, then press Continue in the run's step tree. Or Stop the run.` };
   }
   return view;
 }
