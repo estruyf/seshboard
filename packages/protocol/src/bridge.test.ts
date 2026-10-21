@@ -93,6 +93,19 @@ describe('fadeInactivePanes preference', () => {
   });
 });
 
+describe('keepAwake preference', () => {
+  it('lets the computer sleep by default', () => {
+    expect(DEFAULT_PREFERENCES.keepAwake).toBe(false);
+  });
+
+  it('keeps on and off, and drops anything else', () => {
+    expect(sanitizePreferences({ keepAwake: true })).toEqual({ keepAwake: true });
+    expect(sanitizePreferences({ keepAwake: false })).toEqual({ keepAwake: false });
+    expect(sanitizePreferences({ keepAwake: 'yes' })).toEqual({});
+    expect(sanitizePreferences({ keepAwake: 1 })).toEqual({});
+  });
+});
+
 describe('newSessionMode preference', () => {
   it('starts new sessions in the mode picked last by default', () => {
     expect(DEFAULT_PREFERENCES.newSessionMode).toBe('last');

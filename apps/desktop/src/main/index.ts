@@ -1,11 +1,11 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, sep } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, screen, shell, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, type MenuItemConstructorOptions } from 'electron';
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
@@ -25,6 +25,7 @@ import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
 import { SoundPlayer } from './sounds.ts';
+import { KeepAwake } from './keepAwake.ts';
 import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { ThemeStore } from './themes.ts';
@@ -175,6 +176,18 @@ const appIcon = new AppIcon({
   windows: () => BrowserWindow.getAllWindows(),
   exists: existsSync,
 });
+/**
+ * Settings › General › Keep awake: `caffeinate` on macOS, Electron's sleep blocker elsewhere. Applied on `ready` and on
+ * every change; let go on quit.
+ */
+const keepAwake = new KeepAwake({
+  platform: process.platform,
+  pid: process.pid,
+  spawn: (file, args) => spawn(file, args, { stdio: 'ignore' }),
+  blocker: { start: () => powerSaveBlocker.start('prevent-app-suspension'), stop: (id) => powerSaveBlocker.stop(id) },
+});
+ipcMain.handle(IpcChannel.keepAwakeStatus, () => keepAwake.active);
+
 /** A new window's icon option: the colourway's, where the bundle's isn't the one chosen. */
 const windowIcon = (): Electron.BrowserWindowConstructorOptions => {
   const icon = appIcon.windowIcon();
@@ -185,6 +198,7 @@ const windowIcon = (): Electron.BrowserWindowConstructorOptions => {
 function updatePreferences(patch: unknown): void {
   const next = preferences.update(patch);
   if (next.appIcon !== appIcon.key) appIcon.apply(next.appIcon);
+  keepAwake.apply(next.keepAwake);
   updater.setAutoCheck(next.autoUpdate);
   updater.setChannel(next.updateChannel);
   const item = Menu.getApplicationMenu()?.getMenuItemById(`scheme-${next.colorScheme}`);
@@ -2183,6 +2197,12 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   const loginOn = loginReady && (await until(() => scriptedOpenAtLogin === 'on', 2_000)) && (await waitInPage(win, `${loginSwitch}.getAttribute('aria-checked') === 'true'`, 2_000));
   await click('[data-open-at-login]');
   const loginOff = await until(() => scriptedOpenAtLogin === 'off', 2_000);
+  // Keep awake holds sleep off for real (caffeinate on macOS, the sleep blocker elsewhere) and lets go when turned off.
+  const awakeStatus = "document.querySelector('[data-keep-awake-status]')";
+  await click('[data-keep-awake]');
+  const awakeOn = (await until(() => preferences.get().keepAwake && keepAwake.active, 2_000)) && (await waitInPage(win, awakeStatus, 2_000));
+  await click('[data-keep-awake]');
+  const awakeOff = (await until(() => !preferences.get().keepAwake && !keepAwake.active, 2_000)) && (await waitInPage(win, `!${awakeStatus}`, 2_000));
   await click('[data-startup-view="new"]');
   await click('[data-confirm-quit]');
   await until(() => !preferences.get().confirmQuit);
@@ -2207,6 +2227,8 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   const restored = preferences.get();
   if (!loginOn) return 'Open at login did not turn on';
   if (!loginOff) return 'Open at login did not turn off again';
+  if (!awakeOn) return `Keep awake did not turn on, or showed no status (saved ${preferences.get().keepAwake}, active ${keepAwake.active})`;
+  if (!awakeOff) return `Keep awake did not let go (saved ${preferences.get().keepAwake}, active ${keepAwake.active})`;
   if (!scoped) return 'other apps\' sessions stayed in the sidebar with the setting off';
   if (!quitWithoutAsking) return '⌘Q still asked with the prompt turned off';
   if (saved.colorScheme !== 'dark' || saved.sidebarStyle !== 'compact' || saved.toolActivity !== 'steps' || saved.confirmQuit !== false || saved.sessionScope !== 'switchboard' || saved.startupView !== 'new' || saved.projectOrder !== 'yours') return `not saved: ${JSON.stringify(saved)}`;
@@ -9452,7 +9474,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
   await step('settings › usage: Show estimated cost and Currency are saved, Open usage opens the view with its cost', () => runUsageSettingsStep(win));
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
-  await step('settings: theme, sidebar style, session scope, tool activity, open at login, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
+  await step('settings: theme, sidebar style, session scope, tool activity, open at login, keep awake, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('settings search: ⌘F, results per page, Enter and Escape, and every setting opens at its row', () => runSettingsSearchStep(win), { timeoutMs: 90_000 });
   await step('focus limit', () => runFocusStep(win));
   await step('settings › sessions: archive days, deleting asks first, overview picks a month (nothing deleted)', () => runSessionsSettingsStep(win));
@@ -9507,6 +9529,7 @@ app.whenReady().then(() => {
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);
+  keepAwake.apply(preferences.get().keepAwake);
   // The commit shows in brackets after the version, handy when someone reports a bug from a build.
   app.setAboutPanelOptions({
     applicationName: 'Switchboard',
@@ -9613,3 +9636,5 @@ app.on('before-quit', () => {
   updater.stop();
   engine?.stop();
 });
+
+app.on('will-quit', () => keepAwake.dispose());
