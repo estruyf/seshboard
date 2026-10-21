@@ -28,6 +28,8 @@ describe('branch label', () => {
     expect(branchLabel(route({ worktree: true, baseRef: 'head', current: null }))).toBe('From HEAD');
     expect(branchLabel(route({ worktree: true, remote: null, baseBranch: 'main' }))).toBe('From main');
     expect(branchLabel(route({ worktree: true, baseBranch: null }))).toBe("From origin's default branch");
+    expect(branchLabel(route({ worktree: true, baseRef: 'refs/heads/dev' }))).toBe('From dev');
+    expect(branchLabel(route({ worktree: true, baseRef: 'refs/remotes/origin/release/2' }))).toBe('From origin/release/2');
   });
 });
 

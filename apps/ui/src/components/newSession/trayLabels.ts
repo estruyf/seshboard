@@ -1,8 +1,10 @@
+import { branchOfBase, isBranchBase, type WorktreeBase } from '@switchboard/protocol/client';
+
 /** What the branch dropdown under the composer needs to know to name itself. */
 export interface BranchRoute {
   worktree: boolean;
-  /** `fresh`: branch the worktree from the remote's default branch; `head`: from the local HEAD. */
-  baseRef: 'fresh' | 'head';
+  /** `fresh`: branch the worktree from the remote's default branch; `head`: from the local HEAD; or from a branch. */
+  baseRef: WorktreeBase;
   /** The remote `fresh` branches from (origin when there is one); null without a remote. */
   remote: string | null;
   /** The remote's default branch (origin/HEAD, else main or master); null until known. */
@@ -21,10 +23,16 @@ export function freshBase(remote: string | null, baseBranch: string | null): str
   return remote ? `${remote}/${baseBranch}` : baseBranch;
 }
 
+/** The branch a new worktree starts from, as the menu names it: `origin/main`, the current branch, or `dev`. */
+export function baseName(base: WorktreeBase, route: Pick<BranchRoute, 'remote' | 'baseBranch' | 'current'>): string {
+  if (isBranchBase(base)) return branchOfBase(base);
+  return base === 'head' ? (route.current ?? 'HEAD') : freshBase(route.remote, route.baseBranch);
+}
+
 /** The branch dropdown's label: the branch to work on, or (for a new worktree) the one it starts from. */
 export function branchLabel(route: BranchRoute): string {
   if (route.isGitRepo === false) return 'no git';
-  if (route.worktree) return `From ${route.baseRef === 'head' ? (route.current ?? 'HEAD') : freshBase(route.remote, route.baseBranch)}`;
+  if (route.worktree) return `From ${baseName(route.baseRef, route)}`;
   return route.checkoutBranch ?? route.current ?? '…';
 }
 

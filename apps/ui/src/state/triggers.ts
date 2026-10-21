@@ -14,6 +14,7 @@ import {
   type TriggerEvent,
   type TriggerSave,
   type TriggerSource,
+  type WorktreeBase,
 } from '@switchboard/protocol/client';
 
 // Event triggers (#180) in the window: the editor's form and its rules, and the words the Triggers tab and Upcoming
@@ -59,7 +60,7 @@ export interface TriggerForm {
   effort: Effort | null;
   permissionMode: PermissionMode;
   workspace: 'current' | 'worktree';
-  baseRef: 'fresh' | 'head';
+  baseRef: WorktreeBase;
   maxAtOnce: number;
   maxWaiting: number;
   intervalMinutes: number;

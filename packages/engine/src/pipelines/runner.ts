@@ -5,6 +5,7 @@ import {
   fillStepPrompt,
   linkLabel,
   nextStep,
+  outOfRounds,
   readVerdict,
   stepTitle,
   withoutBriefs,
@@ -113,6 +114,8 @@ function askReason(step: string, toolName: string): string {
  * - The run stops for you on an error or a stop, a question or a permission, a verdict still failing after its rounds
  *   or missing, and before a step with `confirmBefore` or Push. Replying in the step that stopped lets the run go on
  *   when that turn ends cleanly.
+ * - A verdict still failing after its rounds can go on for more: Another round sends its changes back once more, and
+ *   a turn you take yourself in the step they go to starts the next round when it ends cleanly.
  * - Quitting pauses a run; at the next start it goes on, never in the middle of a turn: a step that was working gets
  *   a new message.
  *
@@ -209,12 +212,25 @@ export class PipelineRunner {
     return row?.sessionId ?? null;
   }
 
+  /**
+   * The session of the step a run's verdict sends changes to, when the run stopped with changes still needed after its
+   * rounds: a turn you take there starts the next round (`afterHandBack`).
+   */
+  private handBackSession(run: PipelineRun): string | null {
+    const to = outOfRounds({ run, steps: this.deps.runs.steps(run.id) });
+    return to ? (this.deps.runs.latest(run.id, to.index)?.sessionId ?? null) : null;
+  }
+
   /** A session's turn ended, with its catch-up (null when there is none). */
   turnEnded(sessionId: string, outcome: SessionOutcome, catchUp: CatchUp | null): Promise<void> {
     this.lastTurns.set(sessionId, { outcome, catchUp });
     // Quitting ends every turn: the run pauses instead (`pauseAll`).
     if (outcome === 'quit' || this.closed) return Promise.resolve();
-    return Promise.all(this.waitingOn(sessionId).map((run) => this.serial(run.id, () => this.afterTurn(run.id, sessionId)))).then(() => {});
+    const runs = this.deps.runs.list();
+    return Promise.all([
+      ...this.waitingOn(sessionId).map((run) => this.serial(run.id, () => this.afterTurn(run.id, sessionId))),
+      ...runs.filter((run) => this.handBackSession(run) === sessionId).map((run) => this.serial(run.id, () => this.afterHandBack(run.id, sessionId))),
+    ]).then(() => {});
   }
 
   /** A session asks for a permission or an answer: a run that waits on it stops for you, with what it asks. */
@@ -305,7 +321,10 @@ export class PipelineRunner {
     const steps = run.pipeline.steps;
     const step = steps[run.step];
     const verdictStep = step?.kind === 'claude' && step.verdict !== null && run.sentBackTo === null;
-    const verdict = verdictStep && turn.outcome === 'clean' ? readVerdict(await this.deps.lastReply(sessionId).catch(() => null)) : null;
+    const read = verdictStep && turn.outcome === 'clean' ? readVerdict(await this.deps.lastReply(sessionId).catch(() => null)) : null;
+    // A turn you took in the step after its verdict (asking what it needs) has no verdict of its own: the last one stands.
+    const before = verdictStep && turn.outcome === 'clean' ? (this.deps.runs.steps(run.id).find((s) => s.index === run.step && s.round === run.round)?.verdict ?? null) : null;
+    const verdict = read ?? before;
     const next = nextStep({ ...run, autoPush: run.pipeline.autoPush }, steps, { outcome: turn.outcome, waitsForYou: waitsForYou(turn.catchUp), verdict });
     if (run.sentBackTo !== null) {
       // The step the changes went to: its row stays as it is, only its reason says how the round went.
@@ -323,6 +342,24 @@ export class PipelineRunner {
     }
     if (next.kind === 'stop' && (turn.outcome === 'error' || turn.outcome === 'stopped')) await this.stopFor(run.id, next.reason, false);
     else await this.apply(run.id, next);
+  }
+
+  /**
+   * A turn you took in the step a verdict sends changes to, after the run stopped with changes still needed after its
+   * rounds: once it ends cleanly and Claude doesn't wait for you, the step with the verdict checks again, as a new round.
+   */
+  private async afterHandBack(runId: string, sessionId: string): Promise<void> {
+    const run = this.deps.runs.get(runId);
+    const turn = this.lastTurns.get(sessionId);
+    if (!run || !turn || this.handBackSession(run) !== sessionId) return;
+    if (turn.outcome !== 'clean' || waitsForYou(turn.catchUp)) return;
+    const to = outOfRounds({ run, steps: this.deps.runs.steps(run.id) })!;
+    const name = run.pipeline.steps[run.step]!.name;
+    const toRow = this.deps.runs.latest(run.id, to.index);
+    if (toRow) this.deps.runs.updateStep(run.id, toRow.index, toRow.round, { status: 'done', reason: `Round ${run.round + 1}: your changes.`, endedAt: this.now() });
+    this.markRow(run, { status: 'done', reason: `Changes needed: you worked on them in ${to.name}.` });
+    this.deps.log('info', `Pipelines: ${to.name} finished your changes for “${run.title}”; ${name} checks again`);
+    await this.startStep({ ...run, status: 'running' }, run.step, run.round + 1);
   }
 
   // --- Going on ------------------------------------------------------------------------------------------------------
@@ -506,6 +543,25 @@ export class PipelineRunner {
         this.deps.runs.update(runId, { status: 'running', waitingFor: null, reason: null });
         await this.doPush(runId, null);
       } else await this.startStep({ ...run, status: 'running' }, run.step, round);
+      return this.state(runId)!;
+    });
+  }
+
+  /**
+   * Another round: the verdict still asked for changes after its rounds, so its changes go back to the step it names
+   * once more, and it checks again when that turn ends. Another stop after that offers another round again.
+   */
+  anotherRound(runId: string): Promise<PipelineRunState> {
+    return this.serial(runId, async () => {
+      const run = this.need(runId);
+      const to = outOfRounds({ run, steps: this.deps.runs.steps(runId) });
+      if (!to) throw new Error('This step has no changes to send back.');
+      const toSession = this.deps.runs.latest(runId, to.index)?.sessionId;
+      if (toSession && this.deps.busy(toSession) === 'working') throw new Error(`${to.name} is working. Its next round starts when that turn ends.`);
+      this.markRow(run, { status: 'done' });
+      this.deps.runs.update(runId, { status: 'running', waitingFor: null, reason: null });
+      this.deps.log('info', `Pipelines: another round for “${run.title}”`);
+      await this.apply(runId, { kind: 'sendBack', to: to.index, from: run.step, round: run.round + 1 });
       return this.state(runId)!;
     });
   }

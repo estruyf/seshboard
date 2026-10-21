@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { joinPath, type WorktreeBranchBase } from '@switchboard/protocol';
 import { git, GitError } from './gitChanges.ts';
 import { firstUsefulLine } from './pullRequest.ts';
@@ -21,15 +22,17 @@ async function checkedOutAt(root: string, branch: string): Promise<string | null
 }
 
 /**
- * Makes a worktree from a branch, the way Claude Code would make one (session linking's "start from its branch", and
- * New session from a pull request), in `<root>/.claude/worktrees/<name>`. Claude Code's own worktree setting only knows
- * origin's default branch and HEAD, so the engine runs `git worktree add` itself and the session starts in the folder.
+ * Makes a worktree from a branch, the way Claude Code would make one (session linking's "start from its branch", New
+ * session from a pull request, and Branch from with any other branch), in `<root>/.claude/worktrees/<name>`. Claude
+ * Code's own worktree setting only knows origin's default branch and HEAD, so the engine runs `git worktree add`
+ * itself and the session starts in the folder. Git-ignored files `.worktreeinclude` lists are copied in, as Claude
+ * Code does.
  *
  * - A pull request (`pullRequest`): its latest commit is fetched into its branch first (`pull/<n>/head`, which works
  *   for forks too, without adding a remote), and the worktree works on that branch. One from this repository then
  *   tracks the branch on the remote, so a push updates the pull request.
- * - Any other branch: the worktree gets a branch of its own, `worktree-<name>`, started from it (fetched first when
- *   only the remote has it).
+ * - Any other branch: the worktree gets a branch of its own, `worktree-<name>`, started from it, that tracks nothing.
+ *   With `remote`, or when only the remote has the branch, it starts from the remote's copy, fetched first.
  *
  * Refuses (WorktreeFromError, git's first useful line) when the folder is taken, the branch is checked out somewhere
  * else, or git says no. Nothing is pushed.
@@ -55,6 +58,7 @@ export async function makeWorktreeFrom(root: string, name: string, base: Worktre
     // Without `+`: a local branch with commits the pull request doesn't have is never overwritten.
     await run(['fetch', '--quiet', remote, `pull/${base.pullRequest}/head:${base.branch}`], 120_000);
     await run(['worktree', 'add', '--quiet', path, base.branch]);
+    await copyIncluded(root, path);
     if (!base.fork) {
       // Track the branch on the remote, so pushing goes back to the pull request. A branch that isn't there is fine.
       const fetched = await git(root, ['fetch', '--quiet', remote, `refs/heads/${base.branch}:refs/remotes/${remote}/${base.branch}`], { env, timeout: 60_000 }).then(() => true, () => false);
@@ -63,14 +67,43 @@ export async function makeWorktreeFrom(root: string, name: string, base: Worktre
     return { path, branch: base.branch };
   }
 
-  let from = base.branch;
-  if (!(await exists(`refs/heads/${from}`))) {
-    // Only the remote has it: fetch it, and start from the remote's copy.
-    await git(root, ['fetch', '--quiet', remote, from], { env, timeout: 120_000 }).catch(() => '');
-    if (!(await exists(`refs/remotes/${remote}/${from}`))) throw new WorktreeFromError(`There is no branch ${from} here or on ${remote}.`);
-    from = `${remote}/${from}`;
+  let from = `refs/heads/${base.branch}`;
+  if (base.remote || !(await exists(from))) {
+    // The remote's copy, asked for or because only the remote has it: fetch it first. Offline, the copy here will do.
+    const at = base.remote ?? remote;
+    from = `refs/remotes/${at}/${base.branch}`;
+    await git(root, ['fetch', '--quiet', '--no-tags', at, `+refs/heads/${base.branch}:${from}`], { env, timeout: 120_000 }).catch(() => '');
+    if (!(await exists(from))) throw new WorktreeFromError(base.remote ? `There is no branch ${base.branch} on ${at}.` : `There is no branch ${base.branch} here or on ${at}.`);
   }
   const branch = `worktree-${name}`;
-  await run(['worktree', 'add', '--quiet', '-b', branch, path, from]);
+  // --no-track: a worktree started from origin/dev must never push to dev itself.
+  await run(['worktree', 'add', '--quiet', '--no-track', '-b', branch, path, from]);
+  await copyIncluded(root, path);
   return { path, branch };
+}
+
+/**
+ * Copies the untracked files that match `.worktreeinclude` (gitignore syntax) and are git-ignored too, such as `.env`,
+ * into a new worktree, as Claude Code does for the worktrees it makes. A file that can't be copied is skipped.
+ */
+async function copyIncluded(root: string, path: string): Promise<void> {
+  const list = join(root, '.worktreeinclude');
+  if (!existsSync(list)) return;
+  const matching = (await git(root, ['ls-files', '-z', '--others', '--ignored', `--exclude-from=${list}`]).catch(() => '')).split('\0').filter(Boolean);
+  const ignored: string[] = [];
+  // Which of them the repository's own ignore rules ignore, in batches so a long list can't run past the command line's limit.
+  for (let i = 0; i < matching.length; i += 200) {
+    const out = await git(root, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--', ...matching.slice(i, i + 200)]).catch(() => '');
+    ignored.push(...out.split('\0').filter(Boolean));
+  }
+  for (const file of ignored) {
+    const target = join(path, file);
+    if (existsSync(target)) continue;
+    try {
+      mkdirSync(dirname(target), { recursive: true });
+      copyFileSync(join(root, file), target);
+    } catch {
+      // A file that went away or can't be read: the others still come.
+    }
+  }
 }

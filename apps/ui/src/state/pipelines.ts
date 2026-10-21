@@ -1,4 +1,4 @@
-import { mentionsIn, PARENT_MENTION, choicesLeftOpen, type Pipeline, type PipelineClaudeStep, type PipelineRunState, type PipelineRunStep, type PipelineStep, type TreeStatus } from '@switchboard/protocol/client';
+import { mentionsIn, outOfRounds, PARENT_MENTION, roundOf, choicesLeftOpen, type Pipeline, type PipelineClaudeStep, type PipelineRunState, type PipelineRunStep, type PipelineStep, type TreeStatus } from '@switchboard/protocol/client';
 import { MODE_LABEL } from '../lib/modes.ts';
 
 // Pipelines (#179) in the window: the words the step tree, the sidebar and the editor show, without React or the
@@ -90,7 +90,7 @@ export function stepLabel(state: PipelineRunState, index: number): string {
   const step = state.run.pipeline.steps[index]!;
   const { view, row } = stepView(state, index);
   const parts = [step.name];
-  if (step.kind === 'claude' && step.verdict && row && row.round > 1) parts.push(`round ${row.round} of ${step.verdict.rounds}`);
+  if (step.kind === 'claude' && step.verdict && row && row.round > 1) parts.push(roundOf(row.round, step.verdict.rounds));
   parts.push(STEP_VIEW_WORD[view]);
   if (step.kind === 'claude') {
     parts.push(modelWord(step.model));
@@ -150,6 +150,8 @@ export function stopAdvice(state: PipelineRunState): string | null {
   if (run.waitingFor === 'confirm') return 'Continue to start it.';
   if (/ended with an error|could not start|was stopped/.test(run.reason)) return `Run this step again, or reply in ${step?.name ?? 'the step'}.`;
   if (/has no verdict/.test(run.reason)) return `Its last reply doesn’t end with Verdict: pass or changes needed. Reply in ${step?.name ?? 'the step'}, or Continue.`;
+  const to = outOfRounds(state);
+  if (to) return `Another round sends the changes to ${to.name}. Or work on them in ${to.name} yourself: ${step?.name ?? 'the step'} checks again when that turn ends. Continue goes on without the changes.`;
   if (/Still changes needed/.test(run.reason)) return `Look at ${step?.name ?? 'the step'} · round ${run.round}, then Continue or Stop the run.`;
   if (/waits for you|asks/.test(run.reason)) return `Answer in ${step?.name ?? 'the step'}. The run goes on when that turn ends cleanly.`;
   return null;

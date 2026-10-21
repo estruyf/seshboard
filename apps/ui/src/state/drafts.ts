@@ -1,4 +1,4 @@
-import { isAbsolutePath, toPlainText, type ContextItem, type HostState, type PromptScope } from '@switchboard/protocol/client';
+import { isAbsolutePath, isWorktreeBase, toPlainText, type ContextItem, type HostState, type PromptScope } from '@switchboard/protocol/client';
 import { fillMessage, type FillState } from '../components/savedPrompts/fillModel.ts';
 import type { Choices } from '../components/newSession/choices.ts';
 import { addChips, chipsSummary, type ContextChip } from '../components/composer/contextItems.ts';
@@ -215,7 +215,7 @@ function parseForm(value: unknown): DraftForm | undefined {
   const str = (v: unknown) => (typeof v === 'string' ? v : null);
   const permissionMode = str(c.permissionMode);
   const workspace = c.workspace === 'worktree' || c.workspace === 'current' ? c.workspace : null;
-  const baseRef = c.baseRef === 'fresh' || c.baseRef === 'head' ? c.baseRef : null;
+  const baseRef = isWorktreeBase(c.baseRef) ? c.baseRef : null;
   if (permissionMode === null || workspace === null || baseRef === null) return undefined;
   return {
     choices: { model: str(c.model) ?? '', effort: (str(c.effort) ?? '') as Choices['effort'], permissionMode: permissionMode as Choices['permissionMode'], workspace, baseRef, branch: str(c.branch) ?? '' },

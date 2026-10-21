@@ -467,6 +467,66 @@ describe('PipelineRunner', () => {
     expect(v.state(second.id).run.status).toBe('done');
   });
 
+  /** A run of Execute and validate stopped with changes still needed after its two rounds. */
+  async function outOfRoundsRun() {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: executeValidate, parentSessionId: 'parent' });
+    const execute = w.last();
+    await w.end(execute.id);
+    await w.end(w.last().id, 'clean', 'Verdict: changes needed\n- a');
+    await w.end(execute.id);
+    const validate = w.last();
+    await w.end(validate.id, 'clean', 'Verdict: changes needed\n- Fix the tooltip.');
+    expect(w.state(run.id).run).toMatchObject({ status: 'waiting', round: 2, reason: 'Still changes needed after 2 rounds.' });
+    return { w, runId: run.id, execute, validate };
+  }
+
+  it('sends the changes back for another round after the last one, and stops again if they are still needed', async () => {
+    const { w, runId, execute, validate } = await outOfRoundsRun();
+    await w.runner.anotherRound(runId);
+    expect(w.state(runId).run).toMatchObject({ status: 'running', step: 1, round: 3, sentBackTo: 0 });
+    expect(parseBriefs(execute.sent.at(-1)!).text).toContain('@Validate found changes needed (round 2 of 2):\n\n1. Fix the tooltip.');
+    expect(w.state(runId).steps.find((s) => s.sessionId === validate.id)).toMatchObject({ status: 'done', reason: 'Changes needed: sent to Execute.' });
+
+    await w.end(execute.id);
+    const third = w.last();
+    expect(w.titles.get(third.id)).toBe('Validate · round 3');
+    await w.end(third.id, 'clean', 'Verdict: changes needed\n- Still the tooltip.');
+    expect(w.state(runId).run).toMatchObject({ status: 'waiting', round: 3, reason: 'Still changes needed after 3 rounds.' });
+    // And once more, with the round that found them in the message.
+    await w.runner.anotherRound(runId);
+    expect(parseBriefs(execute.sent.at(-1)!).text).toContain('@Validate found changes needed (round 3):');
+    await w.end(execute.id);
+    await w.end(w.last().id, 'clean', 'Verdict: pass');
+    expect(w.state(runId).run.status).toBe('done');
+  });
+
+  it('refuses another round when no verdict is out of rounds', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: executeValidate, parentSessionId: 'parent' });
+    await expect(w.runner.anotherRound(run.id)).rejects.toThrow('This step has no changes to send back.');
+  });
+
+  it('checks again after you work on the changes in Execute yourself, and keeps the verdict while you ask Validate about it', async () => {
+    const { w, runId, execute, validate } = await outOfRoundsRun();
+    // You ask Validate what it needs: its answer has no verdict line, so the run still stops for the changes.
+    w.busy.set(validate.id, 'working');
+    w.runner.answered(validate.id);
+    await w.end(validate.id, 'clean', 'The tooltip still shows the cost on hover.');
+    expect(w.state(runId).run).toMatchObject({ status: 'waiting', round: 2, reason: 'Still changes needed after 2 rounds.' });
+    expect(w.state(runId).steps.find((s) => s.sessionId === validate.id)?.verdict).toMatchObject({ kind: 'changes' });
+
+    // Execute asks you something back: nothing starts yet.
+    const count = w.started.length;
+    await w.end(execute.id, 'clean', 'Which tooltip?', card({ need: { kind: 'reply', title: 'Which tooltip?', text: '' } }));
+    expect(w.started).toHaveLength(count);
+    // Your turn in Execute ends cleanly: Validate checks again, as round 3.
+    await w.end(execute.id, 'clean', 'Fixed.');
+    expect(w.titles.get(w.last().id)).toBe('Validate · round 3');
+    expect(w.state(runId).run).toMatchObject({ status: 'running', step: 1, round: 3, sentBackTo: null });
+    expect(w.state(runId).steps.find((s) => s.sessionId === validate.id)).toMatchObject({ status: 'done', reason: 'Changes needed: you worked on them in Execute.' });
+  });
+
   it('waits at the focus limit, and starts once a slot frees', async () => {
     let full = true;
     const w = world({ hold: () => (full ? { kind: 'focus' } : null) });

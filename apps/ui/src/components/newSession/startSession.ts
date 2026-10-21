@@ -1,4 +1,4 @@
-import { AUTO_MODEL, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@switchboard/protocol/client';
+import { AUTO_MODEL, worktreeRequestBase, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@switchboard/protocol/client';
 import { randomWorktreeName } from '../../lib/modes.ts';
 import type { DraftForm } from '../../state/drafts.ts';
 import type { GateOutcome } from '../../state/focusGate.ts';
@@ -73,7 +73,7 @@ export interface SessionCreateParams {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Exclude<Choices['effort'], ''> | null;
-  worktree: { name: string; baseRef: Choices['baseRef'] | WorktreeBranchBase } | null;
+  worktree: { name: string; baseRef: 'fresh' | 'head' | WorktreeBranchBase } | null;
   checkoutBranch: string | null;
   profileId: string;
   checkoutPullRequest?: { number: number; repo: string };
@@ -116,7 +116,7 @@ export function sessionCreateParams(start: NewSessionStart): SessionCreateParams
     // A link never starts a session in a mode that skips permission prompts.
     permissionMode: start.fromLink ? linkPermissionMode(choices.permissionMode) : choices.permissionMode,
     effort: choices.effort || null,
-    worktree: start.worktree ? { name: start.worktreeName || randomWorktreeName(), baseRef: (start.worktree && github?.worktreeFrom) || choices.baseRef } : null,
+    worktree: start.worktree ? { name: start.worktreeName || randomWorktreeName(), baseRef: (start.worktree && github?.worktreeFrom) || worktreeRequestBase(choices.baseRef) } : null,
     checkoutBranch: fromPr ? null : checkoutBranchFor(choices, start.worktree, start.currentBranch),
     profileId: start.profileId,
   };

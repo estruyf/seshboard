@@ -1,4 +1,4 @@
-import { clockTime, readVerdict, RUN_FENCE, writeRunStub, type PipelineRun, type PipelineRunState, type PipelineRunStep, type PipelineStep, type PushPreview, type StepVerdict } from '@switchboard/protocol/client';
+import { clockTime, outOfRounds, readVerdict, roundOf, RUN_FENCE, writeRunStub, type PipelineRun, type PipelineRunState, type PipelineRunStep, type PipelineStep, type PushPreview, type StepVerdict } from '@switchboard/protocol/client';
 import { currentIndex, finishedLine, modelWord, modeWord, spanWords, stepView, stopAdvice } from '../../state/pipelines.ts';
 
 // Pipelines (#179): what the parent's step tree, a sub-session and a run row show, in words, without React or the
@@ -26,7 +26,7 @@ export function stepPills(step: PipelineStep, row: PipelineRunStep | null): Arra
   const pills: Array<{ kind: 'plan' | 'fork' | 'round'; text: string }> = [];
   if (step.permissionMode === 'plan') pills.push({ kind: 'plan', text: 'plan' });
   if (typeof step.start === 'object') pills.push({ kind: 'fork', text: 'fork' });
-  if (step.verdict && row && row.round > 1) pills.push({ kind: 'round', text: `round ${row.round} of ${step.verdict.rounds}` });
+  if (step.verdict && row && row.round > 1) pills.push({ kind: 'round', text: roundOf(row.round, step.verdict.rounds) });
   return pills;
 }
 
@@ -69,7 +69,7 @@ export function holdLine(run: Pick<PipelineRun, 'hold' | 'status'>): string | nu
 }
 
 /** The step tree's buttons: Continue while the run waits for you, else Skip, Run again and Stop while it goes on. */
-export function runButtons(state: PipelineRunState): { continue: boolean; skip: boolean; retry: boolean; stop: boolean } {
+export function runButtons(state: PipelineRunState): { continue: boolean; anotherRound: boolean; skip: boolean; retry: boolean; stop: boolean } {
   const { run } = state;
   const active = run.status === 'running' || run.status === 'waiting' || run.status === 'paused';
   const step = run.pipeline.steps[run.step];
@@ -78,6 +78,7 @@ export function runButtons(state: PipelineRunState): { continue: boolean; skip: 
   const waitsForPush = run.status === 'waiting' && run.waitingFor === 'push';
   return {
     continue: run.status === 'waiting' && !waitsForPush,
+    anotherRound: outOfRounds(state) !== null,
     skip: active && claudeStep,
     retry: active && claudeStep && state.steps.some((s) => s.index === run.step),
     stop: active && !waitsForPush,
@@ -92,19 +93,21 @@ export interface StopNotice {
   kind: 'stop' | 'paused' | 'confirm';
   /** The step it stopped at. */
   index: number;
+  /** The step Another round sends the changes to, when the verdict still asks for changes after its rounds. */
+  anotherRound: string | null;
 }
 
 /** The run's stop, if it has one: Push has its own card, a run that goes on has none. */
 export function stopNotice(state: PipelineRunState): StopNotice | null {
   const { run } = state;
   const index = run.sentBackTo ?? run.step;
-  if (run.status === 'paused') return { title: 'Paused: Switchboard was closed', advice: stopAdvice(state), kind: 'paused', index };
+  if (run.status === 'paused') return { title: 'Paused: Switchboard was closed', advice: stopAdvice(state), kind: 'paused', index, anotherRound: null };
   if (run.status !== 'waiting' || run.waitingFor === 'push' || !run.reason) return null;
   const title = run.reason.replace(/\.\s*$/, '');
   const advice = stopAdvice(state);
-  if (run.waitingFor === 'confirm') return { title, advice, kind: 'confirm', index };
+  if (run.waitingFor === 'confirm') return { title, advice, kind: 'confirm', index, anotherRound: null };
   const failed = /ended with an error|could not start|was stopped/.test(run.reason);
-  return { title, advice: failed && advice ? `The run stopped. ${advice}` : advice, kind: 'stop', index };
+  return { title, advice: failed && advice ? `The run stopped. ${advice}` : advice, kind: 'stop', index, anotherRound: outOfRounds(state)?.name ?? null };
 }
 
 /** "6 files · worktree-usage-cost → main": what Push commits and where it goes. */
@@ -164,12 +167,13 @@ export function verdictView(state: PipelineRunState, index: number, round: numbe
   const verdict = readVerdict(lastReply) ?? row?.verdict ?? null;
   if (!verdict) return null;
   const rounds = step.verdict.rounds;
-  const view: VerdictView = { verdict, round: `round ${round} of ${rounds}`, next: null };
+  const view: VerdictView = { verdict, round: roundOf(round, rounds), next: null };
   if (verdict.kind === 'changes') {
-    view.next =
-      round < rounds
-        ? { to: step.verdict.sendTo, text: `as round ${round + 1}. ${step.name} runs again when it finishes.` }
-        : { to: '', text: `Still changes needed after ${round} ${round === 1 ? 'round' : 'rounds'}. The run is paused. Reply in this step to ask Claude to fix the points above, then press Continue in the run's step tree. Or Stop the run.` };
+    // A round after this one means the changes went on: by the pipeline's rounds, Another round, or your own turn.
+    const sentOn = round < rounds || state.steps.some((s) => s.index === index && s.round > round) || (state.run.step === index && state.run.round > round);
+    view.next = sentOn
+      ? { to: step.verdict.sendTo, text: `as round ${round + 1}. ${step.name} runs again when it finishes.` }
+      : { to: '', text: `Still changes needed after ${round} ${round === 1 ? 'round' : 'rounds'}. Another round sends them to ${step.verdict.sendTo}. Or work on them in ${step.verdict.sendTo} yourself: ${step.name} checks again when that turn ends.` };
   }
   return view;
 }

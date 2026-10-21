@@ -59,8 +59,9 @@ export function readProfileDefaults(json: string | null): ProfileDefaults {
   try {
     raw = json ? JSON.parse(json) : {};
   } catch {}
-  const { branch: _branch, ...defaults } = parseDefaults(raw);
-  return defaults;
+  const { branch: _branch, baseRef, ...defaults } = parseDefaults(raw);
+  // A branch to start a worktree from belongs to a repository, as `branch` does.
+  return { ...defaults, baseRef: baseRef === 'fresh' || baseRef === 'head' ? baseRef : null };
 }
 
 const COLORS: readonly ProfileColor[] = ['yellow', 'blue', 'green', 'purple', 'red', 'orange', 'gray'];

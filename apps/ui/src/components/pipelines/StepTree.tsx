@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
-import { CircleAlert, CircleCheck, CircleDashed, CircleMinus, CircleStop, CircleX, Clock, GitFork, ListTree, LoaderCircle, Play, RotateCcw, SkipForward, Square, TriangleAlert } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { CircleAlert, CircleCheck, CircleDashed, CircleMinus, CircleStop, CircleX, Clock, GitFork, ListTree, LoaderCircle, Play, Repeat, RotateCcw, SkipForward, Square, TriangleAlert } from 'lucide-react';
 import type { PipelineRunState } from '@switchboard/protocol/client';
 import { useCatchUp } from '../../state/catchUpStore.ts';
-import { continueRun, retryStep, skipStep, stopRun, usePipelines } from '../../state/pipelinesStore.ts';
+import { anotherRound, continueRun, retryStep, skipStep, stopRun, usePipelines } from '../../state/pipelinesStore.ts';
 import { currentIndex, runHeaderLine, stepLabel, stepView, type StepView } from '../../state/pipelines.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -44,11 +44,12 @@ export function StepIcon({ view, size = 16 }: { view: StepView; size?: number })
 }
 
 /** A run's stop: what happened and what to do, on the step tree and in the step it stopped at. */
-export function RunStopNotice({ notice, className = '' }: { notice: StopNotice; className?: string }) {
+export function RunStopNotice({ notice, actions, className = '' }: { notice: StopNotice; actions?: ReactNode; className?: string }) {
   return (
     <Notice
       tone={notice.kind === 'paused' ? 'neutral' : notice.kind === 'confirm' ? 'info' : 'caution'}
       icon={notice.kind === 'paused' ? <Clock size={14} aria-hidden /> : <TriangleAlert size={14} aria-hidden />}
+      actions={actions}
       className={className}
       data-run-stop={notice.kind}
     >
@@ -90,8 +91,13 @@ export function StepTreeCard({ state, className = '' }: { state: PipelineRunStat
         )}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           {busy && <LoaderCircle size={13} className="animate-spin text-accent-ink" aria-label="Working on it" />}
+          {buttons.anotherRound && (
+            <Button size="sm" variant="primary" icon={<Repeat size={12} aria-hidden />} onClick={() => void anotherRound(run.id)} {...busyProps} data-run-another-round>
+              Another round
+            </Button>
+          )}
           {buttons.continue && (
-            <Button size="sm" variant="primary" icon={<Play size={12} aria-hidden />} onClick={() => void continueRun(run.id)} {...busyProps} data-run-continue>
+            <Button size="sm" variant={buttons.anotherRound ? 'secondary' : 'primary'} icon={<Play size={12} aria-hidden />} onClick={() => void continueRun(run.id)} {...busyProps} data-run-continue>
               Continue
             </Button>
           )}
