@@ -72,6 +72,7 @@ import {
   writeRunBrief,
   writeRunStub,
   PipelineRunState,
+  projectPrBase,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -1560,14 +1561,14 @@ export function createEngine(options: EngineOptions): Engine {
       return previewPush(run.cwd, async (context) => parseCommitMessage(await commitWriter.ask(profileId, about, commitMessageInput(context), COMMIT_SYSTEM_PROMPT)), {
         env: (await shell.ready).env,
         gh: defaultGh(),
-        projectBase: listProjects().find((p) => p.root === run.projectRoot)?.defaults.branch ?? null,
+        projectBase: projectPrBase(listProjects().find((p) => p.root === run.projectRoot)?.defaults ?? {}),
       });
     },
     push: async (run, request) => {
       // The smoke test never commits or pushes.
       if (options.stubQueueStarts) return null;
       await assertCheckoutIdle(run.cwd);
-      const pr = await commitAndOpen(run.cwd, request, { env: (await shell.ready).env, gh: defaultGh(), projectBase: listProjects().find((p) => p.root === run.projectRoot)?.defaults.branch ?? null });
+      const pr = await commitAndOpen(run.cwd, request, { env: (await shell.ready).env, gh: defaultGh(), projectBase: projectPrBase(listProjects().find((p) => p.root === run.projectRoot)?.defaults ?? {}) });
       void pullRequestsFor(run.projectRoot, true);
       return pr;
     },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { branchOfBase, isBranchBase, isWorktreeBase, worktreeRequestBase } from './worktreeBase.ts';
+import { branchOfBase, isBranchBase, isWorktreeBase, projectPrBase, worktreeRequestBase } from './worktreeBase.ts';
 
 describe('worktree bases', () => {
   it('takes fresh, head and full refs of local and remote branches', () => {
@@ -18,5 +18,13 @@ describe('worktree bases', () => {
     expect(worktreeRequestBase('head')).toBe('head');
     expect(worktreeRequestBase('refs/heads/feature/login')).toEqual({ branch: 'feature/login' });
     expect(worktreeRequestBase('refs/remotes/origin/release/2')).toEqual({ remote: 'origin', branch: 'release/2' });
+  });
+
+  it('sends a project\'s pull requests to its checked out branch, else the branch its worktrees start from', () => {
+    expect(projectPrBase({ branch: 'dev', baseRef: 'refs/heads/next' })).toBe('dev');
+    expect(projectPrBase({ baseRef: 'refs/heads/dev' })).toBe('dev');
+    expect(projectPrBase({ baseRef: 'refs/remotes/origin/release/2' })).toBe('release/2');
+    for (const baseRef of [null, 'fresh', 'head'] as const) expect(projectPrBase({ baseRef })).toBeNull();
+    expect(projectPrBase({})).toBeNull();
   });
 });

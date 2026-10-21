@@ -26,6 +26,14 @@ The path of a feature is usually: add the request or event to `packages/protocol
 - The SDK can throw asynchronously after interrupts: every session is wrapped so one failing session can't take the engine down.
 - **Claude profiles** (`packages/engine/src/profiles/`): each is a config folder with its own login. Anything that starts Claude Code gets the profile's environment (`envFor` in `engine.ts`); never set `CLAUDE_CONFIG_DIR` for the built-in profile. The SDK's transcript readers only read `process.env.CLAUDE_CONFIG_DIR`, so they go through `ConfigDirLane`; don't call them around it.
 
+## Development branch
+
+The default branch on GitHub is `main`, but development happens on **`dev`**. Treat `dev` as the base for everything:
+
+- **New worktrees and feature branches** start from `origin/dev`, never from `main`. If a tool starts from `main`, rebase onto `origin/dev` before the first commit.
+- **Pull requests** target `dev` (`gh pr create --base dev`). Only a release or a hotfix goes to `main` (see Releases).
+- **Diffs and reviews** compare against `origin/dev`, not `main`.
+
 ## Commands
 
 ```bash

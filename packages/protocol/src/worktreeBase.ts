@@ -40,3 +40,16 @@ export function worktreeRequestBase(base: WorktreeBase): 'fresh' | 'head' | { br
   const slash = rest.indexOf('/');
   return { remote: rest.slice(0, slash), branch: rest.slice(slash + 1) };
 }
+
+/**
+ * The branch a project's pull requests go into, from its defaults: the branch it checks out, else the branch its
+ * worktrees start from (a remote one without the remote's name: `origin/dev` is `dev`). Null when the project names none,
+ * so the remote's default branch applies.
+ */
+export function projectPrBase(defaults: { branch?: string | null; baseRef?: WorktreeBase | null }): string | null {
+  if (defaults.branch) return defaults.branch;
+  const base = defaults.baseRef;
+  if (!isBranchBase(base)) return null;
+  const remote = /^refs\/remotes\/[^/]+\/(.+)$/.exec(base);
+  return remote ? remote[1]! : base.slice('refs/heads/'.length);
+}
