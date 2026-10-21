@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { submitKey } from '../newSession/startMenu.ts';
-import { queueButtonState } from './queueButton.ts';
+import { queueButtonState, sendKeyMode } from './queueButton.ts';
 
 const ready = { blocked: null, sending: false, hasMessage: true, whileWorking: 'queue' as const };
 
@@ -48,5 +48,24 @@ describe('the Send now key in the message box', () => {
     expect(submitKey(press('Enter'), 'composer.send-now')).toBe('send');
     expect(submitKey(press('Enter', { meta: true }), 'composer.send-now')).toBe('send');
     expect(submitKey(press('Enter', { shift: true }), 'composer.send-now')).toBeNull();
+  });
+});
+
+describe('sendKeyMode', () => {
+  const press = (key: string, mods: { meta?: boolean; shift?: boolean; alt?: boolean } = {}) => ({ key, metaKey: !!mods.meta, shiftKey: !!mods.shift, ctrlKey: false, altKey: !!mods.alt });
+
+  it('does what Enter does, the other way on ⌥↵, and sends now on ⌘⇧↵ while Claude works', () => {
+    expect(sendKeyMode(press('Enter'), true, 'queue')).toBe('queue');
+    expect(sendKeyMode(press('Enter', { alt: true }), true, 'queue')).toBe('steer');
+    expect(sendKeyMode(press('Enter'), true, 'steer')).toBe('steer');
+    expect(sendKeyMode(press('Enter', { alt: true }), true, 'steer')).toBe('queue');
+    expect(sendKeyMode(press('Enter', { meta: true, shift: true }), true, 'queue')).toBe('now');
+  });
+
+  it('only sends on Enter while Claude is idle, and leaves ⇧↵ to type a new line', () => {
+    expect(sendKeyMode(press('Enter'), false, 'queue')).toBe('queue');
+    expect(sendKeyMode(press('Enter', { alt: true }), false, 'queue')).toBeNull();
+    expect(sendKeyMode(press('Enter', { meta: true, shift: true }), false, 'queue')).toBeNull();
+    expect(sendKeyMode(press('Enter', { shift: true }), true, 'queue')).toBeNull();
   });
 });

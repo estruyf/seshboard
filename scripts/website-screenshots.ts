@@ -2430,7 +2430,8 @@ async function setUp(t: Tour): Promise<void> {
 
   // The demo projects, added from the folders Claude Code has been used in.
   await t.click('[data-open-projects]');
-  await t.click('[data-manager-add]');
+  // With no projects yet, the view has only its own Add a project folder; the list's + comes with the first one.
+  await t.click('[data-empty-add-project], [data-manager-add]');
   await t.need('[data-add-project-dialog] [data-known-project]', 'no folders offered to add');
   for (let i = 0; i < 8; i++) {
     const next = t.page.locator('[data-known-project][data-added="false"]').first();

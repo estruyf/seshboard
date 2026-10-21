@@ -2044,6 +2044,11 @@ export function createEngine(options: EngineOptions): Engine {
         return { messageUuid: sent.messageUuid, queued: sent.queued };
       },
       dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
+      sendQueuedNow: async (sessionId, id) => {
+        catchUp.interrupt(sessionId);
+        await hosts.sendQueuedNow(sessionId, id);
+        sessions.wake(sessionId);
+      },
       upNext: (sessionId) => upNext.list(sessionId).map(summarise),
       limit: (sessionId) => remoteLimit(limits.state(), sessionId, sessionProfile(sessionId)),
       resumeLimit: (sessionId) => limits.resumeNow(sessionId),

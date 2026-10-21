@@ -19,11 +19,14 @@ const plural = (n: number) => `${n} ${n === 1 ? 'commit' : 'commits'}`;
 export function CatchUpButton({
   cwd,
   status,
+  target,
   onStatus,
   request,
 }: {
   cwd: string;
   status: WorktreeStatus;
+  /** The branch the session will check out first, when it isn't the one the folder is on: `status` is about the other one. */
+  target: string | null;
   onStatus(status: WorktreeStatus): void;
   /** Counts up when the palette's Update from remote asks the face's step to run. */
   request: number;
@@ -40,8 +43,10 @@ export function CatchUpButton({
   cwdRef.current = cwd;
 
   const plan = planGit(status, false);
-  const face = catchUpStep(status);
-  const behind = status.behindUpstream ?? 0;
+  // Pull only fast-forwards the branch the folder is on, so another branch can only be fetched until it is checked out.
+  const switching = target !== null && target !== status.branch;
+  const face = switching ? 'fetch' : catchUpStep(status);
+  const behind = switching ? 0 : (status.behindUpstream ?? 0);
   const failed = error?.cwd === cwd ? error.message : null;
   const run = async (step: 'fetch' | 'pull') => {
     if (!client || running) return;
@@ -67,7 +72,7 @@ export function CatchUpButton({
   useEffect(() => {
     if (request === seenRequest.current) return;
     seenRequest.current = request;
-    void runRef.current(catchUpStep(status));
+    void runRef.current(switching ? 'fetch' : catchUpStep(status));
   }, [request]);
 
   // A local-only repository has nothing to catch up with.
@@ -76,14 +81,15 @@ export function CatchUpButton({
   const primary = face === 'pull';
   const FaceIcon = primary ? CloudDownload : RefreshCw;
   const label = running === 'pull' ? 'Pulling…' : running === 'fetch' ? 'Fetching…' : primary ? 'Pull' : 'Fetch';
-  const tooltip = failed ?? (primary ? `Pull ${plural(behind)} from ${status.upstream}` : `Fetch from ${status.pushRemote ?? 'the remote'}, to see whether ${status.upstream ?? 'it'} moved on`);
+  const tooltip = failed ?? (primary ? `Pull ${plural(behind)} from ${status.upstream}` : `Fetch from ${status.pushRemote ?? 'the remote'}, to see whether ${switching ? target : (status.upstream ?? 'it')} moved on`);
   const entries: MenuEntry[] = [
-    { title: status.branch ?? 'Detached HEAD', detail: gitSummary(status) },
+    { title: switching ? target : (status.branch ?? 'Detached HEAD'), detail: switching ? `The folder is on ${status.branch ?? 'a detached HEAD'}` : gitSummary(status) },
     'separator',
-    { label: 'Pull', icon: <CloudDownload size={13} />, hint: behind > 0 ? `↓${behind}` : undefined, disabled: plan.blocked.pull !== null || running !== null, onSelect: () => void run('pull'), data: { 'data-catch-up-step': 'pull' } },
+    { label: 'Pull', icon: <CloudDownload size={13} />, hint: behind > 0 ? `↓${behind}` : undefined, disabled: switching || plan.blocked.pull !== null || running !== null, onSelect: () => void run('pull'), data: { 'data-catch-up-step': 'pull' } },
     { label: 'Fetch', icon: <RefreshCw size={13} />, disabled: running !== null, onSelect: () => void run('fetch'), data: { 'data-catch-up-step': 'fetch' } },
   ];
-  if (plan.blocked.pull && behind === 0) entries.push({ note: plan.blocked.pull });
+  if (switching) entries.push({ note: `Pull works on ${status.branch ?? 'the current branch'}. Start the session first, then pull.` });
+  else if (plan.blocked.pull && behind === 0) entries.push({ note: plan.blocked.pull });
 
   return (
     <div className="no-drag flex shrink-0 items-center gap-2">

@@ -1148,16 +1148,23 @@ function LocalNewSession() {
   const queueAutoOn = queueAuto ?? (fromLater ? (queuedNow ?? fromLater).autoStart : false);
   const queueAutoBlocked = useMemo(() => (cwd ? autoStartBlock(wait, { cwd, sessions: rows.map(queueSession), started: queueStarted }) : null), [wait, cwd, rows, queueStarted]);
   const startsByItself = queueAutoOn && !queueAutoBlocked;
+  /** What "Wait for" is set to, as the menu words it: the button shows it so the choice is visible without opening the menu. */
+  const waitLabel =
+    wait.kind === 'none'
+      ? 'Nothing'
+      : wait.kind === 'session'
+        ? waitTitle(wait.sessionId)
+        : wait.kind === 'item'
+          ? 'The item above it'
+          : busyHere.length === 1
+            ? waitTitle(busyHere[0]!.id)
+            : 'Any session in this project';
+  // Nothing is held until Add to queue, so say "if" before the prompt is in the queue.
+  const lead = queuedNow ? 'In the queue,' : 'If you add it to the queue,';
   const waitText =
     wait.kind === 'none'
-      ? 'Queued, you start this one yourself.'
-      : wait.kind === 'session'
-        ? `Queued, this waits for ${waitTitle(wait.sessionId)} to finish.`
-        : wait.kind === 'item'
-          ? 'Queued, this waits for the item above it.'
-          : busyHere.length === 1
-            ? `Queued, this waits for ${waitTitle(busyHere[0]!.id)} to finish.`
-            : 'Queued, this waits for them to finish.';
+      ? `${lead} you start it yourself.`
+      : `${lead} it waits for ${waitLabel.startsWith('“') ? waitLabel : waitLabel.toLowerCase()} to finish, then ${startsByItself ? 'starts by itself' : 'waits for you to start it'}.`;
   // Shown while the project has a session working, or once Wait for names a session or the item above.
   const queueLine = cwd && projectName && (busyHere.length > 0 || wait.kind === 'session' || wait.kind === 'item') && (
     <div className="-mt-3 flex min-w-0 items-center gap-1.5 px-2 text-meta text-muted" data-queue-busy-line>
@@ -1170,11 +1177,12 @@ function LocalNewSession() {
         type="button"
         onClick={(e) => waitMenu.openBelow(e.currentTarget)}
         aria-haspopup="menu"
-        className="flex shrink-0 items-center gap-0.5 rounded px-1 font-medium text-link hover:underline"
+        className="flex min-w-0 max-w-56 shrink-0 items-center gap-0.5 rounded px-1 font-medium text-link hover:underline"
         data-queue-wait-for
+        data-wait-label={waitLabel}
       >
-        Wait for…
-        <ChevronDown size={11} aria-hidden />
+        <span className="truncate">Wait for: {waitLabel}</span>
+        <ChevronDown size={11} aria-hidden className="shrink-0" />
       </button>
       <Checkbox
         checked={startsByItself}
@@ -1219,7 +1227,7 @@ function LocalNewSession() {
         {cwd && !question && inspection?.path === cwd && inspection.exists && (
           <div className="flex items-center gap-2">
             {/* Your copy may be behind the remote: catch up before Claude starts from it. */}
-            {gitStatus && <CatchUpButton cwd={cwd} status={gitStatus} onStatus={setGitStatus} request={catchUpRequest} />}
+            {gitStatus && <CatchUpButton cwd={cwd} status={gitStatus} target={useWorktree ? null : checkoutBranch} onStatus={setGitStatus} request={catchUpRequest} />}
             {/* To look around the whole project before (or instead of) asking Claude. */}
             <OpenInButton path={cwd} shortcut={false} />
           </div>

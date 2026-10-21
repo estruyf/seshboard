@@ -21,6 +21,7 @@ import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
 import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
+import { KeepAwakeSetting } from './general/KeepAwakeSetting.tsx';
 import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
@@ -436,6 +437,9 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 </Radio>
               ))}
             </RadioGroup>
+          </Section>
+          <Section title="Sleep">
+            <KeepAwakeSetting />
           </Section>
           <Section title="New sessions">
             <div className="flex items-center justify-between gap-4" data-setting-row>

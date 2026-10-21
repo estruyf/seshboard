@@ -4172,6 +4172,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:keep-awake",
+      "name": "Settings: General, Keep awake",
+      "page": "settings"
+    },
+    {
       "id": "palette:run-pipeline",
       "name": "Run pipeline…",
       "page": "sessions/pipelines"

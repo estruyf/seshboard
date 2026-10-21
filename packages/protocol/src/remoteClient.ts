@@ -24,3 +24,4 @@ export { parseGithubBlocks, withoutContext, type GithubBlock } from './githubCon
 export type { Pipeline, PipelineClaudeStep, PipelinePushStep, PipelineRunStatus, PipelineStep, PipelineStepStatus, PipelineWait, PushPreview, StepVerdict } from './pipelineSchema.ts';
 export { mostUrgent, outOfRounds, roundOf, runProgress, sidebarTree, stepStateWord, stepTitle, type SidebarTree, type TreeRow, type TreeStatus } from './pipelines.ts';
 export * from './pipelineView.ts';
+export { gerund, toolStepLabel, type StepLabel } from './toolSteps.ts';

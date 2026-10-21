@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Added
 
+- **Keep this Mac awake.** Settings › General › Keep this Mac awake stops your Mac from sleeping while Switchboard is open, so schedules, triggers and remote access keep working. On a Mac it holds sleep off while on power; on Windows and Linux it is Keep this PC awake. The display can still sleep.
 - **Profiles on other computers' sessions.** A session from another computer now has the profile's colour on its left line in the sidebar, as local sessions do. A profile with the same name here (Personal, Work) gets this computer's colour, so one account reads the same everywhere.
 - **Pipelines** ([#179](https://github.com/estruyf/switchboard/issues/179)). Pipelines: run a saved set of steps for one task, each in its own sub-session under the session you start it from. Plan with one model, build with another, have a fresh session check the work, then push. Steps hand over with @ links. Run one from a session's ⋯ menu, from New session's **Run as** chip, or from the command palette, and set them up in Settings › Pipelines.
 - **Hide the built-in pipelines.** Settings › Pipelines has a Built-in pipelines switch. Turn it off to see only your own pipelines.
@@ -35,6 +36,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Projects is one view.** The list is on the left, the project on the right. Switch with the name's menu, the arrows or ⌥↑↓, and open a project's Settings from its row. Drag a row to reorder the list, and right-click it to rename or remove the project.
 - **A clearer trigger editor.** The trigger editor is easier to follow: five numbered sections, and a sentence at the top that says what the trigger will do. A new issues trigger changes nothing on GitHub until you turn on state labels in **What happens on GitHub?**.
+- **A clearer queue line in New session.** The line under the message box now says what happens ("If you add it to the queue, it waits for “Fix login” to finish, then starts by itself"), and the **Wait for** button shows what is picked.
 - **Removing many worktrees goes one by one.** The clean-up dialog removes worktrees one at a time and shows each as Removing…, Removed or the error. A slow one no longer hides the rest, and **Stop after this one** ends the run early. If one doesn't answer in time, the list is read again so it shows what is really left.
 - **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
 - **Plan usage under the message box takes less room.** The 5-hour and weekly limits now show as small rings instead of bars, next to the context ring.
@@ -47,6 +49,9 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Steer and Send now on another computer's sessions.** In a session from another computer, a message you send while Claude works no longer always waits in Up next. Enter queues or steers as set in Settings › Conversation, ⌥↵ (Alt+Enter on Windows) does it the other way, ⌘⇧↵ (Ctrl+Shift+Enter) stops Claude and sends at once, and the arrow next to Queue lists all three, as on your own sessions. Up next has **Send now** there and in the remote app on your phone. The other computer needs this version.
+- **The Steer button steers.** With Enter set to steer in Settings › Conversation, clicking **Steer** next to the message box queued the message instead.
+- **Steps on your phone read like the app's.** The remote app now names each step the way the app does: a command by what it does ("Merge origin/dev"), not its raw text, and the step Claude is on while it works ("Running the tests").
 - **Remove an offline computer.** In Settings › Remote, a paired computer with a long error line no longer pushes its Try again, Open and Remove buttons out of view. The line is cut short, so you can always remove a computer that is gone.
 - **What you type for another computer stays when you go elsewhere.** A message you started in a session that runs on another computer, or in New session with **Run on** set to another computer, was gone when you opened something else and came back. Each session there keeps its draft, and New session keeps one prompt per computer, also after a restart, until you send it.
 - **Mod chips no longer cover the message box chips.** In a narrow message box, the prompt shield and a mod's statuses used to run over the model and mode chips. They now give way first (the shield keeps only its icon), then the chips shrink, and the footer wraps as a last resort.

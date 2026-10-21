@@ -17,7 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type CatchUp, type GitChanges, type PermissionRequest, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
+import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type CatchUp, type GitChanges, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
@@ -595,6 +595,20 @@ const demoPipelines: RemotePipelines = {
   },
 };
 
+/** Each session's Up next: a message queued while Claude works waits here until Send now or Remove. */
+const upNextOf = new Map<string, QueuedMessage[]>();
+const setUpNext = (sessionId: string, queue: QueuedMessage[]) => {
+  upNextOf.set(sessionId, queue);
+  hub.upNextChanged(sessionId, queue);
+};
+/** A message reaches the conversation, and Claude answers it. */
+const deliver = (sessionId: string, message: string): string => {
+  const uuid = `sent-${Date.now()}`;
+  for (const listener of watchers.get(sessionId) ?? []) listener({ sessionId, mode: 'append', messages: [text(uuid, 'user', message, 0)], error: null } as TranscriptUpdate);
+  streamReply(sessionId);
+  return uuid;
+};
+
 const hub: RemoteHub = new RemoteHub({
   db: cache.db,
   appState,
@@ -614,13 +628,22 @@ const hub: RemoteHub = new RemoteHub({
     watchers.set(sessionId, set.add(listener));
     return () => set.delete(listener);
   },
-  send: async (sessionId, message) => {
-    const uuid = `sent-${Date.now()}`;
-    for (const listener of watchers.get(sessionId) ?? []) listener({ sessionId, mode: 'append', messages: [text(uuid, 'user', message, 0)], error: null } as TranscriptUpdate);
-    streamReply(sessionId);
-    return { messageUuid: uuid, queued: false };
+  send: async (sessionId, message, mode) => {
+    if (mode === 'queue' && SESSIONS.find((s) => s.id === sessionId)?.state === 'running') {
+      const id = `queued-${Date.now()}`;
+      setUpNext(sessionId, [...(upNextOf.get(sessionId) ?? []), { id, text: message, attachments: [], createdAt: Date.now() }]);
+      return { messageUuid: id, queued: true };
+    }
+    return { messageUuid: deliver(sessionId, message), queued: false };
   },
-  dequeue: () => {},
+  dequeue: (sessionId, id) => setUpNext(sessionId, (upNextOf.get(sessionId) ?? []).filter((m) => m.id !== id)),
+  upNext: (sessionId) => upNextOf.get(sessionId) ?? [],
+  sendQueuedNow: async (sessionId, id) => {
+    const message = upNextOf.get(sessionId)?.find((m) => m.id === id);
+    if (!message) return;
+    setUpNext(sessionId, upNextOf.get(sessionId)!.filter((m) => m.id !== id));
+    deliver(sessionId, message.text);
+  },
   interrupt: async () => {},
   stopTask: async (_sessionId, taskId) => {
     background = background.filter((task) => task.taskId !== taskId);

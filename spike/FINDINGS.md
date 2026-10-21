@@ -122,8 +122,43 @@ A turn runs two 8 s foreground Bash calls; a second message B ("end your answer 
 - **It streams and reports tokens:** `includePartialMessages` gives `text_delta`s (12 for a short answer). Count tokens from each assistant message's `usage` once per `message.id`: on a resumed or forked run, `result.modelUsage` may start from the totals the transcript saved.
 - **A tool call still running in the session shows as interrupted** to the fork; the prompt says a call without a result is still running.
 
+## 15. Compressing tool output, and where the tokens go ⚠️ works, saves little (`14`–`18`, claude 2.1.303, SDK 0.3.288)
+The question: can Switchboard shrink what tools send to Claude, the way Headroom does with a proxy, through a PostToolUse hook instead? Each case of `14-compress-tool-output.mjs` swaps the real output for a decoy with a wrong answer in it, so Claude's reply shows which one it saw. `15`–`17` run offline over the newest ~218 transcripts in `~/.claude/projects` and print totals only.
+
+**The mechanism works:**
+- **`updatedToolOutput` in a PostToolUse hook replaces the output for built-in and MCP tools** (Bash, Read, an in-process MCP tool): Claude answered from the decoy every time.
+- **The replacement must keep the tool's own shape.** Bash is `{stdout, stderr, interrupted, isImage, noOutputExpected}`, Read is `{type, file: {filePath, content, numLines, startLine, totalLines}}`, MCP is the `content` array. **A plain string for Bash is silently ignored**: Claude got the original.
+- **A failed command can't be rewritten.** A non-zero exit goes to `PostToolUseFailure` instead (`{error}`, already trimmed to about 10k characters), whose output takes only `additionalContext`.
+- **Past `bashOutputMaxChars` (30000) the hook gets the preview,** plus `persistedOutputPath` and `persistedOutputSize`. The full output is in that file.
+- **The session file keeps only the replacement,** in the `tool_result` and in `toolUseResult`, and the streamed `user` message carries it too. The original is gone unless the host keeps a copy, and the transcript view would show the compressed text.
+- **Claude notices an odd rewrite:** given `… lines folded …` with a wrong last line, Haiku said the output looked folded and didn't match. A marker like that is understood.
+- **Claude Code 2.1.303 has no Grep or Glob tools:** searches go through Bash (`rg`, `grep`), so Bash carries search results too.
+
+**But lossy compression has little to work on in these sessions (`15-estimate-savings.mjs`, `compress-prototype.mjs`):**
+- Bash is 80% of text tool output, and **about 75% of the Bash output is file contents** (`sed -n`: 2.1M tokens, `cat`: 1.4M, plus `git diff` and `git show`). Claude quotes that text back into Edits, so it can't be compressed lossily. Read, the other 15%, has the same problem.
+- Test and build output is already short, because it is piped through `| tail -40`. Of what is left, most is under 2k characters, or search results that are dense already.
+- The prototype (strip ANSI codes and progress bars, fold runs of similar lines, keep every error and warning line, keep the head and tail) cut the outputs it touched by 75%. **But it touched only about 170k of 7.8M tokens: ~2% of tool output.** MCP text (chrome-devtools snapshots) compresses well, but is small here.
+- **Deduplication doesn't help either (`16-duplicate-reads.mjs`):** exact repeats of an earlier result in the same session are ~0%, and long lines seen before are 4%.
+
+**Where the tokens go (`17-where-tokens-go.mjs`, weighted 1 / 1.25 / 2 / 0.1 / 5 for input, 5-minute write, 1-hour write, read, output):**
+- **Cache reads are 68% of the weighted cost**, 1-hour cache writes 20% and output 13%. Fresh input is about 0%.
+- A session averages 59 API calls, and **each call reads a median of 169k tokens of context.** Every call reads the whole conversation again.
+- **30% of all context read is the part above 200k tokens** (42% of calls are past 200k). Past 400k it is 7%. The largest context was 929k, and there was 1 compaction in 218 sessions, because the window is 1M.
+- The first call of a session (system prompt, tools, CLAUDE.md, the first prompt) is a median of 41k tokens. That is ~20% of all context read.
+
+**The lever this offers is context length:**
+- **`settings: { autoCompactWindow }` at start works:** with 150000, `getContextUsage()` reports `maxTokens: 150000` and `autoCompactThreshold: 117000` (with the default it is 1M and 967k).
+- **`applyFlagSettings({ autoCompactWindow })` mid-session has no effect,** unlike effort: the threshold stayed at 967k. So a context budget is fixed when the process starts. It has to be part of the pre-warm match, and changing it means restarting the session with `resume`.
+- Compaction is lossy too: it trades detail for a shorter context. A budget is a choice the user makes, not a free win. The 20% of cost that is 1-hour cache writes also grows a little with each compaction, because the new summary has to be written to the cache.
+
+**For the app:**
+1. A Headroom-style compressor is possible in the engine (`hooks.PostToolUse` in `buildOptions`), but on this workload it saves ~2%. Keep it to log-like Bash output and MCP text, never file contents, diffs or search results.
+2. The bigger saving is a **context budget**: a global and per-session `autoCompactWindow`, set at start. Show the measured effect in the context meter.
+3. Output (13%) is effort, which Switchboard already sets per session.
+
 ---
 
 ## Side effects of running the spike
 - About 16 short Haiku test sessions now exist in `~/.claude/projects/` under the scratchpad sandbox repo path, with a few cents of usage.
+- Spike 14 and 18 added about 9 more short Haiku and Sonnet sessions under `/tmp/sb-spike14-*`.
 - Two locked worktrees (`spike-wt`, `spike-sdk`) exist inside the scratchpad sandbox repo. Nothing touched your real projects.
