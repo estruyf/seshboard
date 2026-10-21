@@ -1,4 +1,4 @@
-import type { Effort, NewSessionMode, PermissionMode, ProfileDefaults, ProjectDefaults } from '@switchboard/protocol/client';
+import { isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@switchboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {
@@ -6,12 +6,16 @@ export interface Choices {
   permissionMode: PermissionMode;
   effort: Effort | '';
   workspace: 'current' | 'worktree';
-  baseRef: 'fresh' | 'head';
+  /** Where a new worktree starts: `fresh`, `head`, or a branch of the repository. */
+  baseRef: WorktreeBase;
   branch: string;
 }
 
-/** The global defaults: the choices last used for a field no project or profile decides. Branches belong to a repository, so they never become global. */
-export type GlobalChoices = Omit<Choices, 'branch'>;
+/**
+ * The global defaults: the choices last used for a field no project or profile decides. Branches belong to a repository,
+ * so they never become global: not the one to check out, and not the one a worktree starts from.
+ */
+export type GlobalChoices = Omit<Choices, 'branch' | 'baseRef'> & { baseRef: 'fresh' | 'head' };
 
 /** Where the global choices (and the last folder) are kept in the engine's app state. */
 export const DEFAULTS_KEY = 'newSession.defaults';
@@ -87,6 +91,7 @@ export function globalPatch(patch: Partial<Choices>, project: ProjectDefaults | 
   const out: Partial<GlobalChoices> = {};
   for (const key of FIELDS) {
     if (key === 'branch' || !(key in patch) || (project && project[key] !== null)) continue;
+    if (key === 'baseRef' && isBranchBase(patch.baseRef)) continue;
     (out as Record<string, unknown>)[key] = patch[key];
   }
   return out;

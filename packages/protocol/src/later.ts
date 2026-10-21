@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AbsolutePath } from './absolutePath.ts';
 import { MAX_CONTEXT_ITEMS } from './companionConstants.ts';
 import { ContextItem } from './context.ts';
-import { Effort, ImageAttachment, PermissionMode } from './host.ts';
+import { Effort, ImageAttachment, PermissionMode, WorktreeBaseSchema } from './host.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 
 // The queue. People see "Queue" everywhere; inside, it keeps the name it started with (the Later list), so the
@@ -25,7 +25,7 @@ export const LaterDraft = z.object({
   effort: Effort.nullable().default(null),
   permissionMode: PermissionMode.default('default'),
   workspace: z.enum(['current', 'worktree']).default('current'),
-  baseRef: z.enum(['fresh', 'head']).default('fresh'),
+  baseRef: WorktreeBaseSchema.default('fresh'),
   /** A branch to check out first (current checkout only); null keeps what is checked out. */
   branch: z.string().min(1).max(250).nullable().default(null),
   /** A profile picked for this session only; null uses the project's, else the default. */

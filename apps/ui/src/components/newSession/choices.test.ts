@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
+import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
 import { globalPatch, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode } from './choices.ts';
 
@@ -18,7 +18,7 @@ describe('new session choices', () => {
   });
 
   it('take the profile defaults where the project sets nothing', () => {
-    const { branch: _, ...noProfile } = unset;
+    const noProfile: ProfileDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null };
     const profile = { ...noProfile, model: 'opus', permissionMode: 'plan' as const, workspace: 'worktree' as const };
     // Without profile defaults, the project's (or nothing) as before.
     expect(layeredDefaults(null, null)).toBeNull();
@@ -60,6 +60,9 @@ describe('new session choices', () => {
     const project = { ...unset, model: 'opus' };
     expect(globalPatch({ model: 'haiku', effort: 'max', branch: 'x' }, project)).toEqual({ effort: 'max' });
     expect(globalPatch({ model: 'haiku' }, null)).toEqual({ model: 'haiku' });
+    // A branch to start a worktree from belongs to the repository, like the branch to check out.
+    expect(globalPatch({ baseRef: 'refs/heads/dev' }, null)).toEqual({});
+    expect(globalPatch({ baseRef: 'head' }, null)).toEqual({ baseRef: 'head' });
   });
 
   it('save as project defaults, dropping the branch for worktrees', () => {
@@ -73,6 +76,7 @@ describe('new session choices', () => {
   it('read stored globals leniently', () => {
     expect(readGlobals(null)).toEqual({ globals: INITIAL_CHOICES, cwd: null });
     expect(readGlobals({ cwd: '/a', model: 'opus', workspace: 'sideways', effort: 3 })).toEqual({ globals: { ...INITIAL_CHOICES, model: 'opus' }, cwd: '/a' });
+    expect(readGlobals({ baseRef: 'refs/heads/dev' }).globals.baseRef).toBe('fresh');
   });
 });
 

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AbsolutePath } from './absolutePath.ts';
-import { Effort, PermissionMode } from './host.ts';
+import { Effort, PermissionMode, WorktreeBaseSchema } from './host.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { DEFAULT_STATE_LABELS, TRIGGER_EVENTS_KEPT, TRIGGER_LIMITS } from './triggers.ts';
 
@@ -45,7 +45,7 @@ export const TriggerDraft = z.object({
   effort: Effort.nullable().default(null),
   permissionMode: PermissionMode.exclude(['bypassPermissions']).default('default'),
   workspace: z.enum(['current', 'worktree']).default('worktree'),
-  baseRef: z.enum(['fresh', 'head']).default('fresh'),
+  baseRef: WorktreeBaseSchema.default('fresh'),
 });
 export type TriggerDraft = z.infer<typeof TriggerDraft>;
 

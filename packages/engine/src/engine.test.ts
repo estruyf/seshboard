@@ -29,7 +29,7 @@ const fakeSource: SessionSource = {
 };
 
 /** A Claude Code stand-in that only records how sessions were started; they never answer. */
-function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?: string }>): SdkRuntime {
+function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?: string; worktree?: string | null }>): SdkRuntime {
   const quiet = () => ({
     async *[Symbol.asyncIterator]() {
       await new Promise(() => {});
@@ -56,7 +56,7 @@ function fakeSdk(created: Array<{ cwd?: string; model?: string; permissionMode?:
   });
   return {
     query: ({ prompt, options }) => {
-      created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode });
+      created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode, worktree: options.extraArgs?.worktree });
       return (options.forkSession && options.persistSession === false ? answer(prompt) : quiet()) as never;
     },
     startup: async ({ options }) => ({ query: () => (created.push({ cwd: options.cwd, model: options.model, permissionMode: options.permissionMode }), quiet()), close: () => {} }) as never,
@@ -69,7 +69,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime } = {}) {
+function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -80,8 +80,8 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
     ...(extra.noTrash ? {} : { trash: async (paths: string[]) => void extra.trashed?.push(paths) }),
     dataDir,
     claudeConfigDir: join(dataDir, 'claude'),
-    // No login shell and an empty PATH, so the test never depends on the machine.
-    shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '' }, resolved: false, durationMs: 0 }),
+    // No login shell and an empty PATH, so the test never depends on the machine (a test that runs git with it passes its own).
+    shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: extra.path ?? '' }, resolved: false, durationMs: 0 }),
     claudeBinary: '/nonexistent/claude',
     sessionSource: (typeof extra.source === 'function' ? extra.source(dataDir) : extra.source) ?? fakeSource,
     ...(extra.sdk ? { sdk: async () => extra.sdk! } : {}),
@@ -276,6 +276,40 @@ describe('engine over a MessagePort', () => {
     const { item: missing } = await client.call('later.add', { draft: { cwd: join(dataDir, 'gone'), prompt: 'Nowhere' } });
     await expect(client.call('later.start', { id: missing.id })).rejects.toThrow(/Folder not found/);
     expect((await client.call('later.list', {})).items.map((i) => i.id)).toEqual([next.id, missing.id]);
+  });
+
+  it('starts a queued worktree from a saved branch, and lets Claude Code make the others', async () => {
+    const created: Array<{ cwd?: string; worktree?: string | null }> = [];
+    const { client } = connect({ sdk: fakeSdk(created), path: process.env.PATH ?? '' });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-base-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    const run = (...args: string[]) => git(repo, args);
+    await run('init', '-q', '-b', 'main');
+    await run('config', 'user.email', 'test@example.com');
+    await run('config', 'user.name', 'Test');
+    writeFileSync(join(repo, 'a.txt'), 'one\n');
+    await run('add', '.');
+    await run('commit', '-qm', 'initial');
+    await run('switch', '-qc', 'dev');
+    await run('commit', '-q', '--allow-empty', '-m', 'on dev');
+    await run('switch', '-q', 'main');
+
+    // A queued item keeps the branch as a ref; starting it makes the worktree from that branch.
+    const { item } = await client.call('later.add', { draft: { cwd: repo, prompt: 'hi', workspace: 'worktree', baseRef: 'refs/heads/dev' } });
+    await client.call('later.start', { id: item.id });
+    const made = created.at(-1)!;
+    expect(made.worktree).toBeUndefined();
+    expect(made.cwd).toMatch(/[\\/]\.claude[\\/]worktrees[\\/][^\\/]+$/);
+    expect((await git(made.cwd!, ['rev-parse', 'HEAD^{commit}'])).trim()).toBe((await run('rev-parse', 'dev')).trim());
+    expect((await git(made.cwd!, ['symbolic-ref', '--short', 'HEAD'])).trim()).toMatch(/^worktree-/);
+
+    // Claude Code still makes the worktrees it can.
+    const { item: fromHead } = await client.call('later.add', { draft: { cwd: repo, prompt: 'hi', workspace: 'worktree', baseRef: 'head' } });
+    await client.call('later.start', { id: fromHead.id });
+    expect(created.at(-1)).toMatchObject({ cwd: repo, worktree: expect.any(String) });
+
+    await expect(client.call('later.add', { draft: { cwd: repo, prompt: 'hi', workspace: 'worktree', baseRef: 'dev' as never } })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    expect((await client.call('git.branches', { cwd: repo })).remoteBranches).toEqual([]);
   });
 
   it('takes a file as neither a project folder nor a session folder', async () => {

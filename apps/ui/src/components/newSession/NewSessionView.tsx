@@ -76,7 +76,8 @@ import { currentCheckoutBlocked, forkCaution, linkBanner, NO_AUTOSTART, otherRep
 import { chipItem, reasonLine } from '../github/githubText.ts';
 import { activityByProject, latestBranches, orderProjects, pickUpRows, tileStatus } from './projectTiles.ts';
 import { addOrSelect } from './pathInput.ts';
-import { branchLabel, branchNote, freshBase } from './trayLabels.ts';
+import { branchLabel, branchNote } from './trayLabels.ts';
+import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
 import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices, type GlobalChoices } from './choices.ts';
 import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
@@ -126,7 +127,7 @@ function LocalNewSession() {
   const [d, setD] = useState<Choices>(() => ({ ...withNewSessionMode(INITIAL_CHOICES, newSessionMode), branch: '' }));
   const [loaded, setLoaded] = useState(false);
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
-  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[] }>({ current: null, branches: [] });
+  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
   /** Where the checkout stands: the remote a fresh worktree branches from, its default branch, and how far the upstream is ahead. */
   const [gitStatus, setGitStatus] = useState<WorktreeStatus | null>(null);
   const [worktreeName, setWorktreeName] = useState('');
@@ -1446,10 +1447,14 @@ function LocalNewSession() {
                       mono
                       search="Search branches"
                       width={300}
-                      choices={[
-                        { value: 'fresh', label: freshBase(gitStatus?.pushRemote ?? null, gitStatus?.baseBranch ?? null), note: 'default', description: "Claude Code's default" },
-                        { value: 'head', label: gitBranches.current ?? 'HEAD', note: 'local HEAD', description: 'Includes your unpushed commits' },
-                      ]}
+                      choices={baseChoices({
+                        remote: gitStatus?.pushRemote ?? null,
+                        baseBranch: gitStatus?.baseBranch ?? null,
+                        current: gitBranches.current,
+                        branches: gitBranches.branches,
+                        remoteBranches: gitBranches.remoteBranches ?? [],
+                        selected: d.baseRef,
+                      })}
                     >
                       <GitBranch size={14} className="shrink-0" aria-hidden />
                       <span className="truncate" data-route-branch>

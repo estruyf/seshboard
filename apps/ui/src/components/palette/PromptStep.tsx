@@ -29,7 +29,8 @@ import { StartButton } from '../newSession/StartButton.tsx';
 import { focusStartBlock, startButtonState } from '../newSession/startMenu.ts';
 import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, readGlobals, startingChoices, withNewSessionMode, type Choices, type GlobalChoices } from '../newSession/choices.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from '../newSession/startSession.ts';
-import { branchLabel, branchNote, freshBase } from '../newSession/trayLabels.ts';
+import { branchLabel, branchNote } from '../newSession/trayLabels.ts';
+import { baseChoices } from '../newSession/worktreeBases.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { Switch } from '../ui/Toggle.tsx';
@@ -73,7 +74,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
   const [d, setD] = useState<Choices>(() => ({ ...startingChoices(withNewSessionMode(INITIAL_CHOICES, newSessionMode), sessionDefaults), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
-  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[] }>({ current: null, branches: [] });
+  const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
   const [gitStatus, setGitStatus] = useState<{ remote: string | null; baseBranch: string | null; behindUpstream: number | null } | null>(null);
   const moved = from && from !== root ? from : null;
   const [saved] = useState(() => (moved ? savedDraft(moved) : undefined) ?? savedDraft(root));
@@ -313,11 +314,16 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
             heading="Branch from"
             chevron
             mono
+            search="Search branches"
             width={300}
-            choices={[
-              { value: 'fresh', label: freshBase(gitStatus?.remote ?? null, gitStatus?.baseBranch ?? null), note: 'default', description: "Claude Code's default" },
-              { value: 'head', label: gitBranches.current ?? 'HEAD', note: 'local HEAD', description: 'Includes your unpushed commits' },
-            ]}
+            choices={baseChoices({
+              remote: gitStatus?.remote ?? null,
+              baseBranch: gitStatus?.baseBranch ?? null,
+              current: gitBranches.current,
+              branches: gitBranches.branches,
+              remoteBranches: gitBranches.remoteBranches ?? [],
+              selected: d.baseRef,
+            })}
           >
             <FolderGit2 size={13} className="shrink-0" aria-hidden />
             <span className="truncate" data-palette-route-branch>

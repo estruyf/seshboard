@@ -106,6 +106,9 @@ describe('persistence', () => {
     const back = parseDrafts(JSON.parse(JSON.stringify(saved)));
     expect(back['s-1']).toEqual({ text: 'also check the rows', attachments: [], updatedAt: 42, counted: true, lostImages: 0 });
     expect(back['new:/work/app']!.form).toEqual(form);
+    const fromDev = { ...form, choices: { ...form.choices, baseRef: 'refs/heads/dev' as const } };
+    const kept = parseDrafts(JSON.parse(JSON.stringify(serializeDrafts({ 'new:/work/app': draft('from dev', { form: fromDev }) }))));
+    expect(kept['new:/work/app']!.form).toEqual(fromDev);
   });
 
   it('drops images and says how many were left out', () => {

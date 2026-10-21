@@ -724,7 +724,13 @@ export const contract = {
      */
     'git.branches': {
       params: z.object({ cwd: AbsolutePath }),
-      result: z.object({ current: z.string().nullable(), branches: z.array(z.string()), checkedOutElsewhere: z.array(z.string()).optional() }),
+      result: z.object({
+        current: z.string().nullable(),
+        branches: z.array(z.string()),
+        checkedOutElsewhere: z.array(z.string()).optional(),
+        /** Remote branches (`origin/dev`), most recent first: a new worktree can start from one. */
+        remoteBranches: z.array(z.string()).optional(),
+      }),
     },
     /**
      * Checks out a local branch in the checkout at `cwd` with `git switch`: uncommitted changes that
