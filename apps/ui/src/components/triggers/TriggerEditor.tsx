@@ -1,5 +1,5 @@
-import { AlertTriangle, CircleDot, CircleX, Folder, GitBranch, ListTree, MessageSquareDiff, SquareTerminal, Zap } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AlertTriangle, CircleDot, CircleX, Folder, GitBranch, ListTree, MessageSquareDiff, Pencil, SquareTerminal, Zap } from 'lucide-react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BUILT_IN_PIPELINES, pipelineProblem, STATE_LABEL_KEYS, TRIGGER_LIMITS, type StateLabelKey, type TriggerRepoInfo } from '@switchboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
 import { basename } from '../../lib/format.ts';
@@ -9,7 +9,26 @@ import { pipelinesFor } from '../../state/pipelines.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { firstCheckLine, formPipeline, formProblem, formToSave, newTriggerForm, sharedRepoWarning, TRIGGER_SOURCES, triggerForm, updateForm, WHICH_ISSUES, type TriggerForm } from '../../state/triggers.ts';
+import {
+  firstCheckLine,
+  formPipeline,
+  formProblem,
+  formToSave,
+  initialFolds,
+  keptFolds,
+  limitsLine,
+  newTriggerForm,
+  problemSection,
+  sectionNumber,
+  sharedRepoWarning,
+  TRIGGER_SOURCES,
+  triggerForm,
+  triggerSummary,
+  updateForm,
+  WHICH_ISSUES,
+  type TriggerForm,
+  type TriggerSection,
+} from '../../state/triggers.ts';
 import { closeTriggerEditor, loadRepoInfo, saveTrigger, useTriggers, type TriggerEditorRequest } from '../../state/triggersStore.ts';
 import { layeredDefaults } from '../newSession/choices.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
@@ -18,7 +37,6 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { RadioGroup } from '../ui/Radio.tsx';
-import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { Select } from '../ui/Select.tsx';
 import { Stepper } from '../ui/Stepper.tsx';
@@ -35,21 +53,73 @@ export function TriggerEditorHost() {
   return <TriggerEditor key={`${request.root}:${request.trigger?.id ?? 'new'}`} request={request} onClose={closeTriggerEditor} />;
 }
 
-/** One row: the label on the left, the control on the right. */
-function Row({ label, htmlFor, labelId, children }: { label: string; htmlFor?: string; labelId?: string; children: ReactNode }) {
+/** A field with its small label above it. `labelId` for a group the label names (chips, a select with its login). */
+function Field({ label, htmlFor, labelId, children, className = '' }: { label: string; htmlFor?: string; labelId?: string; children: ReactNode; className?: string }) {
   return (
-    <div className="grid grid-cols-[150px_minmax(0,1fr)] items-start gap-3 @max-[640px]:grid-cols-1 @max-[640px]:gap-1">
+    <div className={`grid min-w-0 content-start gap-1 ${className}`}>
       {htmlFor ? (
-        <label htmlFor={htmlFor} className="pt-1.5 text-ui text-muted">
+        <label htmlFor={htmlFor} className="text-meta text-muted">
           {label}
         </label>
       ) : (
-        <span id={labelId} className="pt-1.5 text-ui text-muted">
+        <span id={labelId} className="text-meta text-muted">
           {label}
         </span>
       )}
-      <div className="min-w-0">{children}</div>
+      {children}
     </div>
+  );
+}
+
+/**
+ * One numbered card, titled with the question it answers. Folded, it is one line (`folded`) with Change, which opens it
+ * and moves focus to its first control.
+ */
+function Section({ section, number, title, aside, folded, onOpen, children }: { section: TriggerSection; number: number; title: string; aside?: ReactNode; folded?: string | null; onOpen?(): void; children: ReactNode }) {
+  const id = useId();
+  const body = useRef<HTMLDivElement>(null);
+  const opening = useRef(false);
+  const isFolded = !!folded;
+  useEffect(() => {
+    if (isFolded || !opening.current) return;
+    opening.current = false;
+    body.current?.querySelector<HTMLElement>('button:not(:disabled):not([tabindex="-1"]), input:not(:disabled), textarea')?.focus();
+  }, [isFolded]);
+  return (
+    <section aria-labelledby={`${id}-title`} className="rounded-xl border border-edge bg-card" data-trigger-section={section} data-folded={isFolded || undefined}>
+      <div className="flex min-h-11 items-center gap-2.5 px-4 py-2.5">
+        <span aria-hidden className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-meta font-semibold text-on-accent">
+          {number}
+        </span>
+        <h3 id={`${id}-title`} className="shrink-0 text-body font-semibold text-text">
+          {title}
+        </h3>
+        {folded ? (
+          <>
+            <span className="min-w-0 flex-1 truncate text-ui text-muted" data-trigger-section-line>
+              {folded}
+            </span>
+            <Button
+              size="sm"
+              aria-expanded={false}
+              aria-controls={`${id}-body`}
+              onClick={() => {
+                opening.current = true;
+                onOpen?.();
+              }}
+              data-trigger-section-change={section}
+            >
+              Change
+            </Button>
+          </>
+        ) : (
+          aside && <span className="text-meta text-muted">{aside}</span>
+        )}
+      </div>
+      <div ref={body} id={`${id}-body`} hidden={isFolded} className="grid gap-3.5 border-t border-edge px-4 pt-3 pb-4">
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -65,9 +135,11 @@ export function SourceIcon({ kind, size = 30 }: { kind: 'ci' | 'issues' | 'chang
 }
 
 /**
- * New trigger or Edit trigger, for a project: its name, When (the source, as four cards; Changes requested and A
- * command come later), what the source looks for, what it may do on GitHub (issues only), and Then: the prompt with its
- * event fields, what the sessions run with, and how many at once. Bypass permissions is never offered.
+ * New trigger or Edit trigger, for a project: its name in the title, a sentence that says what it will do, and five
+ * numbered sections: when it starts (the source, as four cards; Changes requested and A command come later), which
+ * issues or runs, what it does on GitHub (issues only), what it starts (the prompt with its event fields and what the
+ * sessions run with), and its limits. GitHub and Limits fold to one line while they hold nothing new. Bypass
+ * permissions is never offered.
  */
 function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; onClose(): void }) {
   const id = useId();
@@ -81,6 +153,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   const [info, setInfo] = useState<TriggerRepoInfo | null>(() => useTriggers.getState().repoInfo.get(request.root) ?? null);
   const [renaming, setRenaming] = useState(false);
   const [otherAssignee, setOtherAssignee] = useState(() => form.assignee !== '@me');
+  const [folded, setFolded] = useState(() => initialFolds(form));
   const [tried, setTried] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +193,14 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   const unit = (n: number) => (startsPipeline ? (n === 1 ? 'run' : 'runs') : n === 1 ? 'session' : 'sessions');
   const issues = form.kind === 'issues';
   const login = info?.login ?? null;
+  const summary = triggerSummary(form, { defaultBranch: info?.defaultBranch ?? null, login, pipelineName: pipeline?.name ?? null });
+
+  // A section opens for good once it holds more than its line says, or has the problem (a pipeline's is in 4).
+  const folds = keptFolds(folded, form, problemSection(form) ?? (problem ? 'start' : null));
+  useEffect(() => {
+    if (folds !== folded) setFolded(folds);
+  }, [folds, folded]);
+  const open = (section: TriggerSection) => setFolded(new Set([...folds].filter((s) => s !== section)));
 
   const save = async () => {
     setTried(true);
@@ -144,12 +225,32 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
     ...(otherAssignee ? [{ value: 'other', label: form.assignee && form.assignee !== '@me' ? `@${form.assignee}` : 'Someone else' }] : []),
     ...(!otherAssignee ? [{ value: 'other', label: 'Someone else…' }] : []),
   ];
+  const number = (section: TriggerSection) => sectionNumber(form.kind, section);
 
   return (
     <Dialog
-      title={`${request.trigger ? 'Edit trigger' : 'New trigger'} for ${project?.name ?? basename(request.root)}`}
+      title={
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          <span className="shrink-0">{request.trigger ? 'Edit trigger:' : 'New trigger:'}</span>
+          {/* The name, edited in place; it follows the source until you type one. */}
+          <label className={`inline-flex min-w-0 cursor-text items-center gap-1.5 border-b border-dashed ${tried && !form.name.trim() ? 'border-error' : 'border-faint focus-within:border-accent-ink'}`}>
+            <input
+              aria-label="Trigger name"
+              value={form.name}
+              maxLength={200}
+              placeholder="Name"
+              onChange={(e) => update({ name: e.target.value, nameTouched: true })}
+              className="field-sizing-content min-w-16 max-w-[min(26rem,50vw)] bg-transparent font-semibold text-text outline-none placeholder:font-normal placeholder:text-faint"
+              data-trigger-name
+            />
+            <Pencil size={12} className="shrink-0 text-faint" aria-hidden />
+          </label>
+          <span className="min-w-0 truncate font-normal text-muted">· {project?.name ?? basename(request.root)}</span>
+        </span>
+      }
       icon={<Zap size={16} className="text-trigger" aria-hidden />}
       width="lg"
+      flush
       onClose={onClose}
       onSubmit={() => void save()}
       initialFocus={firstRef}
@@ -166,19 +267,24 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
       }
       data-trigger-editor={request.trigger?.id ?? 'new'}
     >
-      <div className="@container grid gap-4">
-        <Row label="Name" htmlFor={`${id}-name`}>
-          <input
-            id={`${id}-name`}
-            value={form.name}
-            maxLength={200}
-            onChange={(e) => update({ name: e.target.value, nameTouched: true })}
-            className={`w-80 ${FIELD} ${tried && !form.name.trim() ? 'border-error' : 'border-edge'}`}
-            data-trigger-name
-          />
-        </Row>
-        <Row label="When" labelId={`${id}-when`}>
-          <RadioGroup label="When" className="grid grid-cols-2 gap-2 @max-[640px]:grid-cols-1">
+      {/* The summary stays put while the sections scroll, unless the window is short. */}
+      <div className="shrink-0 px-5 pt-4">
+        <p aria-live="polite" className="rounded-lg border border-accent-ink/30 bg-accent/10 px-3 py-2 text-body text-text" data-trigger-summary>
+          {summary.map((part, i) =>
+            part.bold ? (
+              <strong key={i} className="font-semibold">
+                {part.text}
+              </strong>
+            ) : (
+              <Fragment key={i}>{part.text}</Fragment>
+            ),
+          )}
+        </p>
+      </div>
+      {/* Under 700px tall this stops scrolling on its own, so the summary scrolls away with it. */}
+      <div className="@container grid min-h-0 flex-1 content-start gap-3 overflow-y-auto px-5 pt-3 pb-4 [@media(max-height:699px)]:flex-none [@media(max-height:699px)]:overflow-visible">
+        <Section section="when" number={number('when')} title="When should it start?">
+          <RadioGroup label="When should it start?" className="grid grid-cols-2 gap-2 @max-[640px]:grid-cols-1">
             {TRIGGER_SOURCES.map((source, i) => {
               const checked = !source.soon && form.kind === source.kind;
               return (
@@ -214,171 +320,162 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
           <span id={`${id}-soon`} className="sr-only">
             Coming later
           </span>
-        </Row>
+          {info?.problem && (
+            <Notice tone="caution" icon={<AlertTriangle size={14} aria-hidden />} data-trigger-gh-problem>
+              {info.problem}. Triggers check GitHub through gh on this computer.
+            </Notice>
+          )}
+        </Section>
 
-        {form.kind === 'ci' ? (
-          <>
-            <Row label="Branch" htmlFor={`${id}-branch`}>
-              <div className="relative w-64">
-                <input
-                  id={`${id}-branch`}
-                  value={form.branch}
-                  placeholder={info?.defaultBranch ?? 'the default branch'}
-                  onChange={(e) => update({ branch: e.target.value })}
-                  className={`w-full ${FIELD} border-edge pr-16 font-mono`}
-                  data-trigger-branch
-                />
-                {!form.branch.trim() && <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-meta text-faint">default</span>}
-              </div>
-            </Row>
-            <Row label="Workflows" labelId={`${id}-workflows`}>
-              <div role="group" aria-labelledby={`${id}-workflows`} className="flex flex-wrap gap-1.5" data-trigger-workflows>
-                {['', ...(info?.workflows ?? []), ...form.workflows.filter((w) => !info?.workflows.includes(w))].map((name) => {
-                  const on = name === '' ? form.workflows.length === 0 : form.workflows.includes(name);
-                  return (
-                    <button
-                      key={name || 'all'}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => update({ workflows: name === '' ? [] : on ? form.workflows.filter((w) => w !== name) : [...form.workflows, name] })}
-                      className={`h-7 rounded-md border px-2.5 text-ui ${on ? 'border-accent-ink bg-accent/15 font-semibold text-text' : 'border-edge text-muted hover:bg-border/45 hover:text-text'}`}
-                      data-trigger-workflow={name || 'all'}
-                    >
-                      {name || 'All'}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-1.5 text-meta text-muted">A newer failure of the same workflow replaces one that still waits.</p>
-            </Row>
-          </>
-        ) : (
-          <>
-            <Row label="Which issues" labelId={`${id}-which`}>
-              <SegmentedControl mode="radio" label="Which issues" value={form.which} onChange={(which) => update({ which })} segments={WHICH_ISSUES.map((w) => ({ value: w.value, label: w.label, data: { 'data-trigger-which': w.value } }))} className="w-fit" />
-            </Row>
-            <Row label={form.which === 'assignee' ? 'Assigned to' : 'Label'} htmlFor={form.which === 'assignee' ? undefined : `${id}-label`} labelId={`${id}-assigned`}>
-              <div className="flex flex-wrap items-center gap-2">
-                {form.which !== 'assignee' && (
+        <Section section="which" number={number('which')} title={issues ? 'Which issues?' : 'Which runs?'}>
+          {form.kind === 'ci' ? (
+            <div className="flex flex-wrap gap-x-4 gap-y-3">
+              <Field label="Branch" htmlFor={`${id}-branch`}>
+                <div className="relative w-64">
                   <input
-                    id={`${id}-label`}
-                    value={form.label}
-                    onChange={(e) => update({ label: e.target.value })}
-                    maxLength={50}
-                    className={`w-56 ${FIELD} ${tried && !form.label.trim() ? 'border-error' : 'border-edge'}`}
-                    data-trigger-label
+                    id={`${id}-branch`}
+                    value={form.branch}
+                    placeholder={info?.defaultBranch ?? 'the default branch'}
+                    onChange={(e) => update({ branch: e.target.value })}
+                    className={`w-full ${FIELD} border-edge pr-16 font-mono`}
+                    data-trigger-branch
                   />
+                  {!form.branch.trim() && <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-meta text-faint">default</span>}
+                </div>
+              </Field>
+              <Field label="Workflows" labelId={`${id}-workflows`} className="flex-1">
+                <div role="group" aria-labelledby={`${id}-workflows`} className="flex flex-wrap gap-1.5" data-trigger-workflows>
+                  {['', ...(info?.workflows ?? []), ...form.workflows.filter((w) => !info?.workflows.includes(w))].map((name) => {
+                    const on = name === '' ? form.workflows.length === 0 : form.workflows.includes(name);
+                    return (
+                      <button
+                        key={name || 'all'}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => update({ workflows: name === '' ? [] : on ? form.workflows.filter((w) => w !== name) : [...form.workflows, name] })}
+                        className={`h-7 rounded-md border px-2.5 text-ui ${on ? 'border-accent-ink bg-accent/15 font-semibold text-text' : 'border-edge text-muted hover:bg-border/45 hover:text-text'}`}
+                        data-trigger-workflow={name || 'all'}
+                      >
+                        {name || 'All'}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-0.5 text-meta text-muted">A newer failure of the same workflow replaces one that still waits.</p>
+              </Field>
+            </div>
+          ) : (
+            <>
+              <SegmentedControl mode="radio" label="Which issues" value={form.which} onChange={(which) => update({ which })} segments={WHICH_ISSUES.map((w) => ({ value: w.value, label: w.label, data: { 'data-trigger-which': w.value } }))} className="w-fit" />
+              <div className="flex flex-wrap gap-x-4 gap-y-3">
+                {form.which !== 'assignee' && (
+                  <Field label="Label" htmlFor={`${id}-label`}>
+                    <input
+                      id={`${id}-label`}
+                      value={form.label}
+                      onChange={(e) => update({ label: e.target.value })}
+                      maxLength={50}
+                      className={`w-56 ${FIELD} ${tried && !form.label.trim() ? 'border-error' : 'border-edge'}`}
+                      data-trigger-label
+                    />
+                  </Field>
                 )}
                 {form.which !== 'label' && (
-                  <>
-                    {form.which === 'both' && <span className="text-ui text-muted">Assigned to</span>}
-                    <Select
-                      label="Assigned to"
-                      className={CHIP}
-                      value={form.assignee === '@me' && !otherAssignee ? '@me' : 'other'}
-                      onChange={(value) => {
-                        setOtherAssignee(value === 'other');
-                        update({ assignee: value === '@me' ? '@me' : form.assignee === '@me' ? '' : form.assignee });
-                      }}
-                      options={assigneeOptions}
-                      dataAttrs={{ 'data-trigger-assignee': true }}
-                    />
-                    {otherAssignee ? (
-                      <input
-                        aria-label="GitHub login"
-                        placeholder="login"
-                        value={form.assignee === '@me' ? '' : form.assignee}
-                        onChange={(e) => update({ assignee: e.target.value.replace(/^@/, '') })}
-                        className={`w-40 ${FIELD} font-mono ${tried && !form.assignee.trim() ? 'border-error' : 'border-edge'}`}
-                        data-trigger-assignee-login
+                  <Field label="Assigned to" labelId={`${id}-assigned`}>
+                    <div role="group" aria-labelledby={`${id}-assigned`} className="flex h-8 flex-wrap items-center gap-2" data-trigger-assigned-field>
+                      <Select
+                        label="Assigned to"
+                        className={CHIP}
+                        value={form.assignee === '@me' && !otherAssignee ? '@me' : 'other'}
+                        onChange={(value) => {
+                          setOtherAssignee(value === 'other');
+                          update({ assignee: value === '@me' ? '@me' : form.assignee === '@me' ? '' : form.assignee });
+                        }}
+                        options={assigneeOptions}
+                        dataAttrs={{ 'data-trigger-assignee': true }}
                       />
-                    ) : (
-                      <span className="text-meta text-muted">{login ? 'signed in to gh' : 'the account gh uses'}</span>
-                    )}
-                  </>
+                      {otherAssignee ? (
+                        <input
+                          aria-label="GitHub login"
+                          placeholder="login"
+                          value={form.assignee === '@me' ? '' : form.assignee}
+                          onChange={(e) => update({ assignee: e.target.value.replace(/^@/, '') })}
+                          className={`w-40 ${FIELD} font-mono ${tried && !form.assignee.trim() ? 'border-error' : 'border-edge'}`}
+                          data-trigger-assignee-login
+                        />
+                      ) : (
+                        <span className="text-meta text-muted">{login ? 'signed in to gh' : 'the account gh uses'}</span>
+                      )}
+                    </div>
+                  </Field>
                 )}
               </div>
-            </Row>
-            <Row label="From" labelId={`${id}-from`}>
               <Checkbox checked={form.collaboratorsOnly} onChange={(collaboratorsOnly) => update({ collaboratorsOnly })} dataAttrs={{ 'data-trigger-collaborators': true }}>
                 <span className="grid gap-0.5">
-                  <span className="text-ui text-text">Only collaborators</span>
+                  <span className="text-ui text-text">Only from collaborators</span>
                   <span className="text-meta text-muted">Owners, members and collaborators. A bot or template can add a label for anyone, so on a public repository anyone could start a session here.</span>
                 </span>
               </Checkbox>
-            </Row>
-          </>
-        )}
-        {/* Always there, so the warning is read out when it appears. */}
-        <div aria-live="polite" className="empty:hidden">
-          {warning && (
-            <Notice tone="caution" icon={<AlertTriangle size={14} aria-hidden />} role="note" data-trigger-shared-warning>
-              {warning}
-            </Notice>
+            </>
           )}
-        </div>
-        {info?.problem && (
-          <Notice tone="caution" icon={<AlertTriangle size={14} aria-hidden />} data-trigger-gh-problem>
-            {info.problem}. Triggers check GitHub through gh on this computer.
-          </Notice>
-        )}
+          {/* Always there, so the warning is read out when it appears. */}
+          <div aria-live="polite" className="empty:hidden">
+            {warning && (
+              <Notice tone="caution" icon={<AlertTriangle size={14} aria-hidden />} role="note" data-trigger-shared-warning>
+                {warning}
+              </Notice>
+            )}
+          </div>
+        </Section>
 
         {issues && (
-          <section aria-labelledby={`${id}-github`} className="grid gap-3 border-t border-border pt-4">
-            <SectionHeader as="h3" headingId={`${id}-github`}>
-              On GitHub
-            </SectionHeader>
-            <div className="grid gap-3 pl-[162px] @max-[640px]:pl-0">
-              <div className="grid gap-1.5">
-                <Checkbox checked={form.stateLabels.on} onChange={(on) => update({ stateLabels: { ...form.stateLabels, on } })} dataAttrs={{ 'data-trigger-state-labels': true }}>
-                  <span className="text-ui text-text">Keep a state label on the issue</span>
-                </Checkbox>
-                {form.stateLabels.on && (
-                  <div className="grid gap-1.5 pl-5.5">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {STATE_LABEL_KEYS.map((key) => (
-                        <StateLabelPill key={key} which={key} name={form.stateLabels[key]} />
-                      ))}
-                      <Button variant="quiet" size="sm" aria-expanded={renaming} onClick={() => setRenaming(!renaming)} data-trigger-rename-labels>
-                        Rename labels
-                      </Button>
-                    </div>
-                    {renaming && (
-                      <div className="grid grid-cols-2 gap-1.5 @max-[640px]:grid-cols-1" data-trigger-label-names>
-                        {STATE_LABEL_KEYS.map((key) => (
-                          <input
-                            key={key}
-                            aria-label={`${STATE_WORDS[key]} label`}
-                            value={form.stateLabels[key]}
-                            maxLength={50}
-                            onChange={(e) => update({ stateLabels: { ...form.stateLabels, [key]: e.target.value } })}
-                            className={`${FIELD} ${tried && !form.stateLabels[key].trim() ? 'border-error' : 'border-edge'}`}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-meta text-muted">{form.which === 'assignee' ? 'Take the state label off to start an issue again.' : `The ${form.label.trim() || 'trigger'} label comes off when work starts.`} Missing labels are created.</p>
+          <Section section="github" number={number('github')} title="What happens on GitHub?" aside="optional" folded={folds.has('github') ? 'Nothing: no labels, no assignee' : null} onOpen={() => open('github')}>
+            <div className="grid gap-1.5">
+              <Checkbox checked={form.stateLabels.on} onChange={(on) => update({ stateLabels: { ...form.stateLabels, on } })} dataAttrs={{ 'data-trigger-state-labels': true }}>
+                <span className="text-ui text-text">Keep a state label on the issue</span>
+              </Checkbox>
+              {form.stateLabels.on && (
+                <div className="grid gap-1.5 pl-5.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {STATE_LABEL_KEYS.map((key) => (
+                      <StateLabelPill key={key} which={key} name={form.stateLabels[key]} />
+                    ))}
+                    <Button variant="quiet" size="sm" aria-expanded={renaming} onClick={() => setRenaming(!renaming)} data-trigger-rename-labels>
+                      Rename
+                    </Button>
                   </div>
-                )}
-              </div>
-              {/* With an assignee in the filter every issue has one already: Assign to me would skip them all. */}
-              {form.which === 'label' && (
-                <Checkbox checked={form.assignOnPickUp} onChange={(assignOnPickUp) => update({ assignOnPickUp })} dataAttrs={{ 'data-trigger-assign': true }}>
-                  <span className="grid gap-0.5">
-                    <span className="text-ui text-text">Assign to me when picked up</span>
-                    <span className="text-meta text-muted">Skips issues that already have an assignee.</span>
-                  </span>
-                </Checkbox>
+                  {renaming && (
+                    <div className="grid grid-cols-2 gap-1.5 @max-[640px]:grid-cols-1" data-trigger-label-names>
+                      {STATE_LABEL_KEYS.map((key) => (
+                        <input
+                          key={key}
+                          aria-label={`${STATE_WORDS[key]} label`}
+                          value={form.stateLabels[key]}
+                          maxLength={50}
+                          onChange={(e) => update({ stateLabels: { ...form.stateLabels, [key]: e.target.value } })}
+                          className={`${FIELD} ${tried && !form.stateLabels[key].trim() ? 'border-error' : 'border-edge'}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-meta text-muted">{form.which === 'assignee' ? 'Take the state label off to start an issue again.' : `The ${form.label.trim() || 'trigger'} label comes off when work starts.`} Missing labels are created.</p>
+                </div>
               )}
             </div>
-          </section>
+            {/* With an assignee in the filter every issue has one already: Assign to me would skip them all. */}
+            {form.which === 'label' && (
+              <Checkbox checked={form.assignOnPickUp} onChange={(assignOnPickUp) => update({ assignOnPickUp })} dataAttrs={{ 'data-trigger-assign': true }}>
+                <span className="grid gap-0.5">
+                  <span className="text-ui text-text">Assign the issue to me when work starts</span>
+                  <span className="text-meta text-muted">Skips issues that already have an assignee.</span>
+                </span>
+              </Checkbox>
+            )}
+          </Section>
         )}
 
-        <section aria-labelledby={`${id}-then`} className="grid gap-4 border-t border-border pt-4">
-          <SectionHeader as="h3" headingId={`${id}-then`}>
-            Then
-          </SectionHeader>
-          <Row label="Starts" labelId={`${id}-starts`}>
+        <Section section="start" number={number('start')} title="What does it start?">
+          <div className="grid gap-1.5">
             <div className="flex flex-wrap items-center gap-2">
               <SegmentedControl
                 mode="radio"
@@ -409,31 +506,31 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                   <span className="text-meta text-muted">This project has no pipelines yet.</span>
                 ))}
             </div>
-            <p className="mt-1.5 text-meta text-muted">{startsPipeline ? 'Each event starts a run of the pipeline, with the task below. No step bypasses permissions.' : 'Each event starts a session with the prompt.'}</p>
-            {startsPipeline && (
-              <div className="mt-2.5 grid gap-2">
-                <Checkbox checked={form.unattended} onChange={(unattended) => update({ unattended })} dataAttrs={{ 'data-trigger-unattended': true }}>
-                  <span className="grid gap-0.5">
-                    <span className="text-ui text-text">Run without stopping for me</span>
-                    <span className="text-meta text-muted">Plans are approved for you, steps that wait for you start, and Claude decides questions itself. Tool permissions, errors and a failing review still stop the run.</span>
-                  </span>
-                </Checkbox>
-                <Checkbox checked={form.autoPush} onChange={(autoPush) => update({ autoPush })} dataAttrs={{ 'data-trigger-auto-push': true }}>
-                  <span className="grid gap-0.5">
-                    <span className="text-ui text-text">Open the pull request without me</span>
-                    <span className="text-meta text-muted">Push commits, pushes and opens the pull request when the steps before it are done. Merging stays with you.</span>
-                  </span>
-                </Checkbox>
-              </div>
-            )}
-          </Row>
-          <Row label={startsPipeline ? 'Task' : 'Prompt'} htmlFor={`${id}-prompt`}>
+            <p className="text-meta text-muted">{startsPipeline ? 'Each event starts a run of the pipeline, with the task below. No step bypasses permissions.' : 'Each event starts a session with the prompt.'}</p>
+          </div>
+          {startsPipeline && (
+            <div className="grid gap-2">
+              <Checkbox checked={form.unattended} onChange={(unattended) => update({ unattended })} dataAttrs={{ 'data-trigger-unattended': true }}>
+                <span className="grid gap-0.5">
+                  <span className="text-ui text-text">Run without stopping for me</span>
+                  <span className="text-meta text-muted">Plans are approved for you, steps that wait for you start, and Claude decides questions itself. Tool permissions, errors and a failing review still stop the run.</span>
+                </span>
+              </Checkbox>
+              <Checkbox checked={form.autoPush} onChange={(autoPush) => update({ autoPush })} dataAttrs={{ 'data-trigger-auto-push': true }}>
+                <span className="grid gap-0.5">
+                  <span className="text-ui text-text">Open the pull request without me</span>
+                  <span className="text-meta text-muted">Push commits, pushes and opens the pull request when the steps before it are done. Merging stays with you.</span>
+                </span>
+              </Checkbox>
+            </div>
+          )}
+          <Field label={startsPipeline ? 'Task' : 'Prompt'} htmlFor={`${id}-prompt`}>
             <TriggerPromptField id={`${id}-prompt`} value={form.prompt} onChange={(prompt) => update({ prompt })} kind={form.kind} describedBy={`${id}-prompt-hint`} invalid={tried && !form.prompt.trim()} />
-            <p id={`${id}-prompt-hint`} className="mt-1.5 text-meta text-muted">
+            <p id={`${id}-prompt-hint`} className="mt-0.5 text-meta text-muted">
               {`Type {{ for event fields.${startsPipeline ? ' It fills {{task}} in the steps.' : ''} ${issues ? "The issue's text" : "The failed jobs' log"} goes ${startsPipeline ? 'to the first step' : 'in'} as context to read, not instructions.`}
             </p>
-          </Row>
-          <Row label="Runs with" labelId={`${id}-runs`}>
+          </Field>
+          <Field label="Runs with" labelId={`${id}-runs`}>
             <div role="group" aria-labelledby={`${id}-runs`} className="flex flex-wrap items-center gap-1.5" data-trigger-runs-with>
               {!startsPipeline && (
                 <Select
@@ -484,40 +581,33 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                 </>
               )}
             </div>
-          </Row>
-          <Row label="At once" labelId={`${id}-at-once`}>
-            <div className="flex flex-wrap items-center gap-2 text-ui text-muted">
-              <Stepper
-                value={atOnce}
-                min={TRIGGER_LIMITS.atOnce.min}
-                max={folder ? 1 : TRIGGER_LIMITS.atOnce.max}
-                onChange={(maxAtOnce) => update({ maxAtOnce })}
-                label={startsPipeline ? 'Runs at a time' : 'Sessions at a time'}
-                less="Fewer at once"
-                more="More at once"
-                disabled={folder}
-                hook="trigger-at-once"
-              />
-              <span>{unit(atOnce)} at a time</span>
-            </div>
-            <p className="mt-1.5 text-meta text-muted" data-trigger-folder-note={folder || undefined}>
-              {folder
-                ? 'Sessions in the project folder edit the same files, so only one runs at a time.'
-                : startsPipeline
-                  ? 'The most runs this trigger has going together. A run counts while a step works or it waits for you, not per step.'
-                  : 'The most sessions this trigger runs together. A session counts while it works or waits for you.'}
-            </p>
-          </Row>
-          <Row label="Waiting" labelId={`${id}-waiting`}>
-            <div className="flex flex-wrap items-center gap-2 text-ui text-muted">
-              <Stepper value={form.maxWaiting} min={TRIGGER_LIMITS.waiting.min} max={TRIGGER_LIMITS.waiting.max} onChange={(maxWaiting) => update({ maxWaiting })} label="Events that may wait" less="Fewer waiting" more="More waiting" hook="trigger-waiting" />
-              <span>{form.maxWaiting === 1 ? 'event at most' : 'events at most'}</span>
-            </div>
-            <p className="mt-1.5 text-meta text-muted">
-              {atOnce === 1 ? `While its ${unit(1)} is busy` : `While ${atOnce} ${unit(atOnce)} are busy`}, new events wait their turn, oldest first. Past {form.maxWaiting}, they are skipped.
-            </p>
-          </Row>
-        </section>
+          </Field>
+        </Section>
+
+        <Section section="limits" number={number('limits')} title="Limits" folded={folds.has('limits') ? limitsLine(form) : null} onOpen={() => open('limits')}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-ui">
+            <Stepper
+              value={atOnce}
+              min={TRIGGER_LIMITS.atOnce.min}
+              max={folder ? 1 : TRIGGER_LIMITS.atOnce.max}
+              onChange={(maxAtOnce) => update({ maxAtOnce })}
+              label={startsPipeline ? 'Runs at a time' : 'Sessions at a time'}
+              less="Fewer at once"
+              more="More at once"
+              disabled={folder}
+              hook="trigger-at-once"
+            />
+            <span className="text-text">{unit(atOnce)} at once</span>
+            <span className="text-meta text-muted" data-trigger-folder-note={folder || undefined}>
+              {folder ? 'Sessions in the project folder edit the same files, so only one runs at a time.' : startsPipeline ? 'A run counts while a step works or it waits for you.' : 'A session counts while it works or waits for you.'}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-ui">
+            <Stepper value={form.maxWaiting} min={TRIGGER_LIMITS.waiting.min} max={TRIGGER_LIMITS.waiting.max} onChange={(maxWaiting) => update({ maxWaiting })} label="Events that may wait" less="Fewer waiting" more="More waiting" hook="trigger-waiting" />
+            <span className="text-text">{form.maxWaiting === 1 ? 'event waiting' : 'events waiting'}</span>
+            <span className="text-meta text-muted">{form.maxWaiting === 0 ? 'New ones are skipped while all are busy.' : `Oldest first. Past ${form.maxWaiting}, new ones are skipped.`}</span>
+          </div>
+        </Section>
 
         {tried && problem && (
           <p className="text-ui text-error" role="alert" data-trigger-problem>
