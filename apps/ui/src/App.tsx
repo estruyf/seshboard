@@ -24,8 +24,7 @@ import { CloneProjectDialog } from './components/clone/CloneProjectDialog.tsx';
 import { useClone, useCloneSync } from './state/cloneStore.ts';
 import { AddProjectDialog } from './components/projects/AddProjectDialog.tsx';
 import { BackupDialogs } from './components/backup/BackupDialogs.tsx';
-import { ProjectManagerView } from './components/projects/ProjectManagerView.tsx';
-import { ProjectPage } from './components/projects/ProjectPage.tsx';
+import { ProjectsView } from './components/projects/ProjectsView.tsx';
 import { useProjectPage } from './state/projectPageStore.ts';
 import { useWorktreesSync } from './state/worktreesStore.ts';
 import { SettingsView } from './components/SettingsView.tsx';
@@ -262,10 +261,9 @@ export function App() {
           <UsageView />
         ) : behind === 'remote' ? (
           <RemoteView />
-        ) : behind === 'projects' ? (
-          <ProjectManagerView />
-        ) : behind === 'project' ? (
-          <ProjectPage />
+        ) : behind === 'projects' || behind === 'project' ? (
+          // One view for both: the list of projects and the open one.
+          <ProjectsView />
         ) : behind === 'new' ? (
           <NewSessionView />
         ) : behind === 'upcoming' ? (

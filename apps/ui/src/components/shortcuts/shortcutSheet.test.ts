@@ -142,7 +142,9 @@ describe('All and Here', () => {
 
     expect(sections(sheetLayout({ ctx: { ...HOME, view: 'new-session' }, mode: 'here', query: '', actions: [] }))[0]![0]).toBe('new-session');
     expect(sections(sheetLayout({ ctx: { ...HOME, view: 'settings' }, mode: 'here', query: '', actions: [] }))[0]![0]).toBe('settings');
-    expect(sectionForView('projects')).toBe('general');
+    expect(sectionForView('projects')).toBe('projects');
+    expect(sectionForView('project')).toBe('projects');
+    expect(sectionForView('home')).toBe('general');
   });
 
   it('Here spreads the sections over both columns', () => {

@@ -1,17 +1,22 @@
-import { Brain, ChevronRight, FolderGit2, FolderOpen, GitBranch, Plus, Zap } from 'lucide-react';
+import { Brain, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, FolderGit2, GitBranch, Plus, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { WorktreeStatus } from '@switchboard/protocol/client';
+import type { ProjectInfo, WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { tildify } from '../../lib/format.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
-import { PROJECT_TABS, useProjectPage, type ProjectTab } from '../../state/projectPageStore.ts';
+import { PROJECT_TABS, switchProject, useProjectPage, type ProjectTab } from '../../state/projectPageStore.ts';
+import { addedProjects } from '../../state/projectList.ts';
+import { neighbourProject } from '../../state/projectsNav.ts';
+import { formatKeys } from '../../lib/shortcuts.ts';
+import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
+import { ProfileDot } from '../profiles/ProfileBadge.tsx';
+import { ProjectSwitcher } from './ProjectSwitcher.tsx';
 import { useBranchesOf } from '../../state/branchesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useWorktreesOf } from '../../state/worktreesStore.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { Menu } from '../Menu.tsx';
-import { useOpenIn } from '../OpenInButton.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { useProjectIconEntries } from '../sidebar/ProjectMenu.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
@@ -27,7 +32,7 @@ import { guardMemoryEdits } from '../../state/memoryStore.ts';
 import { goInHistory, useNavHistory } from '../../state/navHistoryStore.ts';
 import { settingsOrigin } from '../../state/navHistory.ts';
 import { settingsSectionLabel } from '../SettingsView.tsx';
-import { menuPoint } from './ProjectManagerView.tsx';
+import { menuPoint } from './menuPoint.ts';
 import { ProjectActionsTab, ProjectSettingsTab, ProjectOverview, ProjectSessions, useProjectSessionRows } from './ProjectTabs.tsx';
 
 const TAB_LABEL: Record<ProjectTab, string> = { overview: 'Overview', sessions: 'Sessions', triggers: 'Triggers', worktrees: 'Worktrees', branches: 'Branches', memory: 'Memory', actions: 'Actions', settings: 'Settings' };
@@ -52,12 +57,28 @@ function useCheckoutStatus(root: string, isGitRepo: boolean): WorktreeStatus | n
   return status;
 }
 
+/** "· ● Personal" in the header's line, with more than one Claude profile. */
+function ProjectProfile({ profileId }: { profileId: string | null }) {
+  const multiple = useMultipleProfiles();
+  const profile = useProfile(profileId);
+  if (!multiple || !profile) return null;
+  return (
+    <>
+      <span className="text-faint">·</span>
+      <span className="flex shrink-0 items-center gap-1" data-tooltip={`Claude profile: ${profile.name}`}>
+        <ProfileDot color={profile.color} />
+        {profile.name}
+      </span>
+    </>
+  );
+}
+
 /**
  * Projects › <project> (or Settings › <page> › <project> when a Settings page opened it): a project's own page. The header says where it is (path, branch, upstream) with Open in
  * editor and New session; tabs below hold its Overview, Sessions, Worktrees, Branches, Memory, Actions and Settings. The tab you
  * leave a project on is the one it opens on next time (while the app runs).
  */
-export function ProjectPage() {
+export function ProjectPage({ list, narrow = false, onShowList }: { list: readonly ProjectInfo[]; narrow?: boolean; onShowList?(): void }) {
   const root = useProjectPage((s) => s.root);
   const tab = useProjectPage((s) => s.tab);
   const setTab = useProjectPage((s) => s.setTab);
@@ -65,13 +86,15 @@ export function ProjectPage() {
   const project = root ? projects.get(root) : undefined;
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
-  const openIn = useOpenIn();
   const home = useHomeFolder();
   const [isGitRepo, setIsGitRepo] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef(new Map<ProjectTab, HTMLButtonElement>());
   const icons = useProjectIconEntries();
-  const [iconMenu, setIconMenu] = useState<{ x: number; y: number } | null>(null);
+  const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null);
+  const [switcher, setSwitcher] = useState<{ x: number; y: number } | null>(null);
+  const nameRef = useRef<HTMLButtonElement>(null);
+  const allProjects = useMemo(() => addedProjects(projects), [projects]);
   // Opened from a page of Settings (Memory's list of projects), the breadcrumb leads back there instead of to Projects.
   const fromSettings = useNavHistory((s) => settingsOrigin(s.history, root));
 
@@ -142,75 +165,100 @@ export function ProjectPage() {
     });
   };
 
-  const upstream = status?.upstream;
+  const previous = neighbourProject(list, root, -1);
+  const next = neighbourProject(list, root, 1);
+  const go = (target: ProjectInfo | null) => target && guardMemoryEdits(() => switchProject(target.root));
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-project-page={root}>
-      <header className="drag shrink-0 border-b border-border px-6 pt-2.5">
-        <div className="flex h-8 items-center gap-1">
-          <SidebarToggle />
-          <nav aria-label="Breadcrumb" className="no-drag flex items-center gap-0.5 text-ui text-muted">
-            {fromSettings ? (
-              <>
-                <Button variant="quiet" size="sm" onClick={() => goInHistory(-1)} data-project-breadcrumb-settings>
-                  Settings
-                </Button>
-                <ChevronRight size={13} className="text-faint" aria-hidden />
-                <Button variant="quiet" size="sm" onClick={() => goInHistory(-1)} data-project-breadcrumb-settings-page={fromSettings}>
-                  {settingsSectionLabel(fromSettings)}
-                </Button>
-              </>
-            ) : (
-              <Button variant="quiet" size="sm" onClick={() => useSessions.getState().setView('projects')} data-project-breadcrumb>
-                Projects
-              </Button>
-            )}
-            <ChevronRight size={13} className="text-faint" aria-hidden />
+      <header className="drag shrink-0 border-b border-border px-6 pt-3">
+        {/* Opened from a page of Settings (Memory's list of projects): the way back there. */}
+        {fromSettings && (
+          <nav aria-label="Breadcrumb" className="no-drag -mt-1 mb-1 flex items-center gap-0.5 text-ui text-muted">
+            <Button variant="quiet" size="sm" icon={<ChevronLeft size={13} aria-hidden />} onClick={() => goInHistory(-1)} data-project-breadcrumb-settings data-project-breadcrumb-settings-page={fromSettings}>
+              Settings › {settingsSectionLabel(fromSettings)}
+            </Button>
           </nav>
-        </div>
-        <div className="mt-1.5 flex min-w-0 items-center gap-3">
-          {/* The icon opens its choices (image, emoji, letter) and the name, as on the Projects list. */}
-          <button
-            type="button"
-            onClick={(e) => setIconMenu(menuPoint(e))}
-            data-tooltip="Change icon or name"
-            aria-label={`Change the icon or name of ${project.name}`}
-            aria-haspopup="menu"
-            aria-expanded={!!iconMenu}
-            className="no-drag shrink-0 rounded-lg hover:opacity-80"
-            data-project-icon-button
-          >
-            <ProjectIcon project={project} root={root} size={34} />
-          </button>
+        )}
+        <div className="flex min-w-0 items-center gap-3">
+          {narrow && (
+            <>
+              <SidebarToggle />
+              <Button variant="quiet" iconOnly icon={<ChevronLeft size={16} aria-hidden />} aria-label="Show projects" onClick={onShowList} className="no-drag -mr-1" data-project-show-list />
+            </>
+          )}
+          <ProjectIcon project={project} root={root} size={34} />
           <div className="grid min-w-0 flex-1">
-            <h1 className="truncate text-hero leading-tight font-semibold" data-project-name>
-              {project.name}
-            </h1>
-            <p className="flex min-w-0 items-center gap-1.5 font-mono text-meta text-muted" data-project-meta>
-              <span className="truncate" data-tooltip={root}>
+            <button
+              ref={nameRef}
+              type="button"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setSwitcher((open) => (open ? null : { x: rect.left, y: rect.bottom + 4 }));
+              }}
+              aria-haspopup="dialog"
+              aria-expanded={!!switcher}
+              aria-label={`${project.name}, switch project`}
+              className="no-drag flex min-w-0 items-center gap-1.5 justify-self-start rounded-md text-left hover:text-text"
+              data-project-switcher-button
+            >
+              <h1 className="truncate text-hero leading-tight font-semibold" data-project-name>
+                {project.name}
+              </h1>
+              <ChevronDown size={15} className={`shrink-0 text-muted transition-transform ${switcher ? 'rotate-180' : ''}`} aria-hidden />
+            </button>
+            <p className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-project-meta>
+              <span className="truncate font-mono" data-tooltip={root}>
                 {tildify(root, home)}
               </span>
+              <ProjectProfile profileId={project.profileId} />
               {status?.branch && (
                 <>
                   <span className="text-faint">·</span>
                   <GitBranch size={11} className="shrink-0" aria-hidden />
-                  <span className="shrink-0">{status.branch}</span>
-                </>
-              )}
-              {upstream && (
-                <>
-                  <span className="text-faint">·</span>
-                  <span className="shrink-0">{upstream}</span>
+                  <span className="shrink-0 font-mono">{status.branch}</span>
                 </>
               )}
             </p>
           </div>
-          <div className="no-drag flex shrink-0 items-center gap-2">
-            <Button icon={<FolderOpen size={13} aria-hidden />} disabled={!project.exists} onClick={() => void openIn(root).catch(() => {})} data-project-open-editor>
-              Open in editor
-            </Button>
-            <Button variant="primary" icon={<Plus size={13} aria-hidden />} shortcut="session.new" disabled={!project.exists} onClick={startHere} data-project-new-session>
+          <div className="no-drag flex shrink-0 items-center gap-1">
+            {!narrow && (
+              <>
+                <Button
+                  variant="quiet"
+                  iconOnly
+                  icon={<ChevronLeft size={15} aria-hidden />}
+                  disabled={!previous}
+                  onClick={() => go(previous)}
+                  aria-label={previous ? `Previous project: ${previous.name}` : 'Previous project'}
+                  data-tooltip={previous ? `${previous.name} (${formatKeys('alt+arrowup')})` : undefined}
+                  data-project-previous
+                />
+                <Button
+                  variant="quiet"
+                  iconOnly
+                  icon={<ChevronRight size={15} aria-hidden />}
+                  disabled={!next}
+                  onClick={() => go(next)}
+                  aria-label={next ? `Next project: ${next.name}` : 'Next project'}
+                  data-tooltip={next ? `${next.name} (${formatKeys('alt+arrowdown')})` : undefined}
+                  data-project-next
+                  className="mr-2"
+                />
+              </>
+            )}
+            <Button variant="primary" icon={<Plus size={13} aria-hidden />} shortcut="session.new" kbdHideNarrow disabled={!project.exists} onClick={startHere} data-project-new-session>
               New session
             </Button>
+            <Button
+              variant="quiet"
+              iconOnly
+              icon={<Ellipsis size={15} aria-hidden />}
+              aria-label={`Options for ${project.name}`}
+              aria-haspopup="menu"
+              aria-expanded={!!moreMenu}
+              onClick={(e) => setMoreMenu(menuPoint(e))}
+              data-project-more
+            />
           </div>
         </div>
         {/* The row, not the tabs, overlaps the header's border by 1px: overflow-x-auto clips on both axes, so a tab
@@ -249,8 +297,12 @@ export function ProjectPage() {
       </header>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <div role="tabpanel" id="project-tab-panel" aria-labelledby={`project-tab-${tab}`} className={`mx-auto px-6 py-5 ${tab === 'worktrees' || tab === 'branches' || tab === 'memory' ? 'max-w-6xl' : tab === 'triggers' ? 'max-w-5xl' : 'max-w-3xl'}`}>
+          {/* Switching projects keeps focus where it was; this heading says which project the panel now shows. */}
+          <h2 className="sr-only" aria-live="polite" data-project-panel-heading>
+            {project.name}, {TAB_LABEL[tab]}
+          </h2>
           {tab === 'overview' ? (
-            <ProjectOverview root={root} status={status} />
+            <ProjectOverview project={project} />
           ) : tab === 'sessions' ? (
             <ProjectSessions root={root} name={project.name} />
           ) : tab === 'triggers' ? (
@@ -269,7 +321,8 @@ export function ProjectPage() {
           )}
         </div>
       </div>
-      {iconMenu && <Menu x={iconMenu.x} y={iconMenu.y} entries={icons.entries(root, iconMenu, { identity: true })} label="Project icon" onClose={() => setIconMenu(null)} />}
+      {moreMenu && <Menu x={moreMenu.x} y={moreMenu.y} entries={icons.entries(root, moreMenu, { identity: true })} label={`${project.name} options`} onClose={() => setMoreMenu(null)} />}
+      {switcher && <ProjectSwitcher list={allProjects} current={root} x={switcher.x} y={switcher.y} anchor={nameRef} onClose={() => setSwitcher(null)} />}
       {icons.overlays}
     </div>
   );

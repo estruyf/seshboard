@@ -247,7 +247,8 @@ export type ShortcutSection =
   | "actions"
   | "new-session"
   | "settings"
-  | "usage";
+  | "usage"
+  | "projects";
 
 /** The sections' headings, in the sheet and the README. */
 export const SECTION_TITLES: Record<ShortcutSection, string> = {
@@ -261,6 +262,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
   "new-session": "New session",
   usage: "Usage",
   settings: "Settings",
+  projects: "Projects",
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
@@ -300,6 +302,8 @@ const inMessageBox = (ctx: ShortcutContext) =>
 /** A catch-up is on screen; folded into its strip, only Space and ↩ work. */
 const withCatchUp = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp !== null;
 const catchUpCard = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp === "full";
+/** The Projects view: the list of projects and the open one. */
+const inProjects = (ctx: ShortcutContext) => ctx.view === "projects" || ctx.view === "project";
 
 export const SHORTCUTS = [
   // General
@@ -1165,6 +1169,50 @@ export const SHORTCUTS = [
     action: "Back to where you were",
     section: "usage",
     when: (ctx) => ctx.view === "usage",
+  },
+
+  // Projects
+  {
+    id: "projects.switch",
+    keys: ["alt+arrowup", "alt+arrowdown"],
+    action: "Previous or next project, same tab",
+    section: "projects",
+    when: (ctx) => inProjects(ctx) && ctx.focus !== "terminal",
+    where: "view",
+  },
+  {
+    id: "projects.move",
+    keys: ["alt+shift+arrowup", "alt+shift+arrowdown"],
+    action: "Move the open project up or down the list",
+    section: "projects",
+    context: "The order the sidebar and New session use",
+    when: (ctx) => inProjects(ctx) && ctx.focus !== "terminal",
+    where: "view",
+  },
+  {
+    id: "projects.find",
+    keys: ["mod+f"],
+    action: "Find a project in the list",
+    section: "projects",
+    when: (ctx) => inProjects(ctx) && ctx.focus !== "terminal",
+  },
+  {
+    id: "projects.tab",
+    keys: ["mod+1..8"],
+    action: "Jump to a tab",
+    section: "projects",
+    context: "Overview, Sessions, Triggers, Worktrees, Branches, Memory, Actions, Settings",
+    when: (ctx) => inProjects(ctx) && ctx.focus !== "terminal",
+    reserve: false,
+  },
+  {
+    id: "projects.switcher-settings",
+    keys: ["mod+enter"],
+    action: "Open the project's Settings",
+    section: "projects",
+    context: "In the project name's switcher",
+    when: inProjects,
+    where: "find",
   },
 
   // Settings
