@@ -747,4 +747,10 @@ export const migrations: readonly string[] = [
   ALTER TABLE pipeline_runs ADD COLUMN restored_at INTEGER;
   ALTER TABLE session_flags ADD COLUMN hidden_at INTEGER;
   `,
+
+  // v39: Pipelines (#179). The images sent with a run's task, kept (as a JSON list) so every step that starts a
+  // session gets them, also after a restart. Part of the run: keep them.
+  `
+  ALTER TABLE pipeline_runs ADD COLUMN attachments_json TEXT;
+  `,
 ];

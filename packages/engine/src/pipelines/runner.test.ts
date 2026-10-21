@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, parseActionResults, parseBriefs, type CatchUp, type Pipeline, type PipelineNotice, type PipelineStep, type SessionSummary, type StepActionResult } from '@switchboard/protocol';
+import { BUILT_IN_PIPELINES, parseActionResults, parseBriefs, type CatchUp, type ImageAttachment, type Pipeline, type PipelineNotice, type PipelineStep, type SessionSummary, type StepActionResult } from '@switchboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { removeDir } from '../util/removeDir.ts';
 import { builtInPipelines, PipelineStore } from './pipelineStore.ts';
@@ -83,6 +83,8 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
   const notices: PipelineNotice[] = [];
   const replies = new Map<string, string>();
   const busy = new Map<string, 'working' | 'waiting'>();
+  /** Sessions with a question or permission waiting for an answer. */
+  const asking = new Set<string>();
   const titles = new Map<string, string>();
   const interrupted: string[] = [];
   const pushed: Array<{ message: string; title: string; body: string }> = [];
@@ -92,6 +94,7 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
   const removed: string[] = [];
   const republished: string[][] = [];
   let hold = options.hold ?? (() => null);
+  const images = new Map<string, ImageAttachment[]>();
   let next = 0;
   const add = (entry: Omit<Started, 'id' | 'sent'>) => {
     const id = `s${++next}`;
@@ -105,7 +108,11 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     pipeline: (id) => pipelines.get(id),
     session: (id) => sessions.get(id) ?? null,
     workspace: async () => WORKTREE,
-    create: async ({ cwd, prompt, profileId: _p, ...settings }) => add({ kind: 'fresh', cwd, prompt, settings }),
+    create: async ({ cwd, prompt, attachments, profileId: _p, ...settings }) => {
+      const id = add({ kind: 'fresh', cwd, prompt, settings });
+      images.set(id, attachments);
+      return id;
+    },
     fork: async ({ from, prompt, ...settings }) => add({ kind: 'fork', from, cwd: sessions.get(from)?.cwd ?? undefined, prompt, settings }),
     send: async (sessionId, text) => {
       started.find((s) => s.id === sessionId)?.sent.push(text);
@@ -125,6 +132,7 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     lastReply: async (id) => replies.get(id) ?? null,
     hold: () => hold(),
     busy: (id) => busy.get(id) ?? null,
+    asks: (id) => asking.has(id),
     pushPreview: async () => ({ message: 'feat(usage): add a toggle', files: 6, branch: 'worktree-run-1', base: 'main', problem: null }),
     push: async (_run, request) => {
       pushed.push(request);
@@ -138,11 +146,14 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     runner,
     runs,
     started,
+    images,
     notices,
     titles,
     interrupted,
     pushed,
     replies,
+    busy,
+    asking,
     archived,
     hidden,
     removed,
@@ -222,6 +233,13 @@ describe('PipelineRunner', () => {
     expect(w.state(run.id).run.parentSessionId).toBe('parent');
   });
 
+  it('starts the steps with the images sent with the task', async () => {
+    const w = world();
+    const image: ImageAttachment = { type: 'image', mediaType: 'image/png', data: 'aGk=', name: 'mock.png' };
+    await w.runner.start({ pipelineId: executeValidate, task: 'Match the mock', attachments: [image], projectRoot: ROOT });
+    expect(w.images.get(w.last().id)).toEqual([image]);
+  });
+
   it('gives the steps that leave them open New session’s model, effort and mode', async () => {
     const w = world();
     const { run } = await w.runner.start({ pipelineId: executeValidate, task: 'Add dark mode', projectRoot: ROOT, choices: { model: 'haiku', effort: 'low', permissionMode: 'auto' } });
@@ -294,12 +312,44 @@ describe('PipelineRunner', () => {
     const w = world();
     const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
     const plan = w.last();
+    w.asking.add(plan.id);
     w.runner.needsYou(plan.id, 'AskUserQuestion');
+    w.busy.set(plan.id, 'waiting');
     expect(w.state(run.id).run).toMatchObject({ status: 'waiting', reason: 'Plan asks a question.' });
     expect(w.state(run.id).steps[0]!.status).toBe('waiting');
     expect(w.notices).toEqual([]);
+    // The answer settles before the session says it runs again.
+    w.asking.delete(plan.id);
     w.runner.answered(plan.id);
-    expect(w.state(run.id).run.status).toBe('running');
+    expect(w.state(run.id).run).toMatchObject({ status: 'running', reason: null });
+    expect(w.state(run.id).steps[0]!.status).toBe('working');
+    await w.end(plan.id);
+    expect(w.state(run.id).run.step).toBe(1);
+  });
+
+  it('keeps waiting while another question of the step waits', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
+    const plan = w.last();
+    w.asking.add(plan.id);
+    w.runner.needsYou(plan.id, 'Bash');
+    w.runner.answered(plan.id);
+    w.runner.onHost({ sessionId: plan.id, state: 'running' });
+    expect(w.state(run.id).run).toMatchObject({ status: 'waiting', reason: 'Plan asks to use Bash.' });
+  });
+
+  it('works again when the step does, after you reply to it', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
+    const plan = w.last();
+    w.runner.onHost({ sessionId: plan.id, state: 'running' });
+    await w.end(plan.id, 'clean', 'Which file?', card({ need: { kind: 'reply', title: 'Answer the question', text: '' } }));
+    w.runner.onHost({ sessionId: plan.id, state: 'idle' });
+    expect(w.state(run.id).run).toMatchObject({ status: 'waiting', reason: 'Plan waits for you.' });
+    // You reply in Plan: it runs again, and so does the run.
+    w.runner.onHost({ sessionId: plan.id, state: 'running' });
+    expect(w.state(run.id).run).toMatchObject({ status: 'running', reason: null });
+    expect(w.state(run.id).steps[0]!.status).toBe('working');
     await w.end(plan.id);
     expect(w.state(run.id).run.step).toBe(1);
   });

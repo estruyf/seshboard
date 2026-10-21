@@ -1036,6 +1036,8 @@ export const contract = {
         pipelineId: z.string().min(1).max(100),
         parentSessionId: z.string().min(1).max(200).nullable().default(null),
         task: z.string().max(MAX_PROMPT_LENGTH).nullable().default(null),
+        /** The images pasted with the task: every step that starts a session gets them. */
+        attachments: z.array(ImageAttachment).max(20).default([]),
         project: AbsolutePath.nullable().default(null),
         profileId: z.string().min(1).max(100).nullable().default(null),
         /** New session's model, effort and mode: the steps that don't set their own take them. Null: none. */

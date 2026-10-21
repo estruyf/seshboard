@@ -922,9 +922,9 @@ function LocalNewSession() {
   /** What the message box's choices are for the run: the steps that don't set their own take them. */
   const runChoices = () => ({ model: d.model && d.model !== AUTO_MODEL ? d.model : null, effort: d.effort || null, permissionMode: d.permissionMode });
   /** Starts the run; a failure is thrown, so the message box keeps the text and says why. */
-  const runPipelineWith = async (pipelineId: string, text: string): Promise<void | false> => {
+  const runPipelineWith = async (pipelineId: string, text: string, attachments: ImageAttachment[]): Promise<void | false> => {
     if (!pipelineRoot || !text.trim()) return false;
-    const state = await startRun({ pipelineId, task: text, project: pipelineRoot, profileId, choices: runChoices() });
+    const state = await startRun({ pipelineId, task: text, attachments, project: pipelineRoot, profileId, choices: runChoices() });
     rememberPipeline(pipelineRoot, pipelineId);
     setRunAsId(null);
     useDrafts.getState().removeDraft(newDraftKey(cwd));
@@ -1533,7 +1533,7 @@ function LocalNewSession() {
                   return false;
                 }
                 // A pipeline picked in Run as: Enter runs it, with the text as its task.
-                if (runAs) return runPipelineWith(runAs.id, text);
+                if (runAs) return runPipelineWith(runAs.id, text, attachments);
                 return create(text, attachments, parts, { skipGate: requested === true });
               }}
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
@@ -1571,7 +1571,7 @@ function LocalNewSession() {
                               : action === 'start-one'
                                 ? (setRunAsId(null), box.submitWith((text, attachments, parts) => create(text, attachments, parts)))
                                 : action === 'pipeline' && runAs
-                                  ? box.submitWith((text) => runPipelineWith(runAs.id, text))
+                                  ? box.submitWith((text, attachments) => runPipelineWith(runAs.id, text, attachments))
                                   : box.submit()
                     }
                     data={{ 'data-composer-submit': true }}
