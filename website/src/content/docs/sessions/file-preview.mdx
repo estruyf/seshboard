@@ -1,0 +1,59 @@
+---
+title: Preview files
+description: Read a Markdown, HTML or code file Claude wrote without leaving Switchboard.
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Os from '../../../components/Os.astro';
+import Related from '../../../components/Related.astro';
+
+Claude often writes a plan, a README, a small web page or a piece of code. Click the file in its reply and it opens in a window on top of the session, rendered the way you would read it. No editor, no browser.
+
+## What opens
+
+Markdown files (`.md` and `.markdown`), HTML files (`.html` and `.htm`) and code and text files preview in Switchboard. Code and text files are the usual ones: TypeScript, JavaScript, JSON, YAML, TOML, CSS, shell, Python, Go, Rust, SQL, XML, CSV, `.txt` and `.log`, among others. Any other file shows in <Os mac="Finder" windows="File Explorer" />, as before.
+
+The window has a **Preview** and a **Source** switch. **Source** shows the file's text with syntax colours. Markdown opens on **Preview**. HTML opens on **Source**, because a page can fail to render and its text always shows. Code and text files have no preview, so they are always their source. Switchboard remembers your choice for each kind of file in that window.
+
+Long lines wrap by default. **Wrap lines** in the header turns that off, so a line scrolls sideways instead. The choice holds for every file in that window.
+
+## Markdown
+
+A preview reads like Claude's replies, with a few things more:
+
+- Raw HTML in the file works for the usual tags, such as `<details>`, `<summary>`, tables and `<img>`. Scripts, styles, frames and event handlers are left out.
+- GitHub's alerts show as coloured blocks with a title: `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]` and `> [!CAUTION]`.
+- Images next to the file show, with a path that is relative to the file (`./diagram.png`) or absolute. Pictures from the web don't load; their description shows instead.
+- A link to a web page opens in your browser. A link to another file on your computer is a file link: a Markdown file opens in the same window, and any other file does what **Clicking a file link** says.
+
+Mermaid diagrams and maths are not drawn yet.
+
+## HTML
+
+Choose **Preview** to see an HTML page. It shows in a frame, with its own styles on a plain background, as a browser would show it. For your safety the page cannot run scripts or load anything from the network. Pictures next to the file, such as `<img src="logo.png">`, are included, up to 10 MB each. Links inside the page don't go anywhere.
+
+## Big files
+
+A file over 2 MB isn't shown. The window says how big it is and offers **Open in editor** and **Show in <Os mac="Finder" windows="File Explorer" />**.
+
+## Reload
+
+Claude may change the file while you read it. **Reload** in the header reads it again, and so does coming back to Switchboard from another window.
+
+The header also has **Open in editor**, **Show in <Os mac="Finder" windows="File Explorer" />** and **Copy path**. <Kbd keys="escape" /> closes the window.
+
+## Open it
+
+- Click a Markdown, HTML or code file in a reply, or the **Preview** chip beside a tool run that wrote it. <Kbd shortcut="transcript.file-link-other" /> opens it in your editor instead.
+- Right-click the file link (or press <Kbd shortcut="context-menu" />) and choose **Open in Switchboard**.
+- In the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />), choose **Preview last written file** to open the last previewable file Claude wrote or edited in the open session.
+
+## Settings
+
+**Clicking a file link** in [Settings, Conversation](/settings/#conversation) sets what a click does: **Open in Switchboard** (the default), **Show in <Os mac="Finder" windows="File Explorer" />** or **Open in editor**. If you had chosen the editor before, it stays that way.
+
+Sessions on another computer don't have file links, so there is nothing to preview there.
+
+## Related
+
+<Related pages={['sessions/conversation', 'command-palette', 'settings']} />

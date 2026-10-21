@@ -10,6 +10,9 @@ import { useFlash } from '../ui/useFlash.ts';
 import { MessageActionsContext } from './messageActions.tsx';
 import { commandToRun, isRunnable } from './runnable.ts';
 
+/** Shiki's `<pre>` keeps lines as written; with `wrap` they break at the edge instead. */
+const WRAPPED = '[&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]';
+
 const idle = (fn: () => void) => {
   if ('requestIdleCallback' in window) {
     const id = window.requestIdleCallback(fn, { timeout: 500 });
@@ -28,10 +31,12 @@ const idle = (fn: () => void) => {
  * with a folder also gets a Run button, which types it into the session's terminal, and a
  * button (or ⌥-click on Run) that runs it in a tab of its own and sends its output to Claude.
  *
+ * With `wrap`, long lines break at the edge instead of scrolling sideways.
+ *
  * With a `preview` (a markdown block, rendered), the block opens on the preview and a
  * Preview | Source switch sits in a header above it, next to the copy button.
  */
-export const CodeBlock = memo(function CodeBlock({ code, language, preview }: { code: string; language: string | undefined; preview?: ReactNode }) {
+export const CodeBlock = memo(function CodeBlock({ code, language, preview, wrap = false }: { code: string; language: string | undefined; preview?: ReactNode; wrap?: boolean }) {
   // Tagged with the code it was made from: while a block is still streaming, the
   // highlight lags behind and showing it would hide the newest lines.
   const [copied, flash] = useFlash(1_500);
@@ -57,9 +62,9 @@ export const CodeBlock = memo(function CodeBlock({ code, language, preview }: { 
 
   const source = html ? (
     // Shiki escapes the code; the HTML is spans with colour variables only.
-    <div className="overflow-x-auto px-3 py-2 font-mono text-ui leading-relaxed select-text" dangerouslySetInnerHTML={{ __html: html }} />
+    <div className={`${wrap ? WRAPPED : 'overflow-x-auto'} px-3 py-2 font-mono text-ui leading-relaxed select-text`} dangerouslySetInnerHTML={{ __html: html }} />
   ) : (
-    <pre className="overflow-x-auto px-3 py-2 font-mono text-ui leading-relaxed select-text">
+    <pre className={`${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'overflow-x-auto'} px-3 py-2 font-mono text-ui leading-relaxed select-text`}>
       <code>{code}</code>
     </pre>
   );

@@ -31,6 +31,7 @@ import {
   Copy,
   Cpu,
   Download,
+  Eye,
   FileDiff,
   Folder,
   FolderCog,
@@ -183,6 +184,8 @@ export interface PaletteApi {
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
   compact(): void;
   copyLastReply(): void;
+  /** Preview last written file: opens the previewable file Claude wrote last in the session. */
+  previewLastFile(): void;
   /** Opens reading mode at the session's last reply. */
   readLastReply(): void;
   /** Remember this…: the selected text in the conversation, else Claude's last reply, as a memory. */
@@ -778,6 +781,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'quote-in-reply', title: 'Quote in reply', group: 'session', icon: TextQuote, keywords: 'quote answer question selection reply message box', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.quoteInReply() },
   { id: 'read-last-reply', title: 'Read the last reply', group: 'session', icon: BookOpen, keywords: 'reading mode focus outline full window', shortcut: keysFor('read.toggle'), when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.readLastReply() },
   { id: 'copy-last-reply', title: 'Copy last reply', group: 'session', icon: Copy, keywords: 'clipboard markdown answer', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.copyLastReply() },
+  { id: 'preview-last-file', title: 'Preview last written file', group: 'session', icon: Eye, keywords: 'markdown html code preview plan readme file open written', when: (ctx) => session(ctx) !== null && ctx.lastPreviewableFile !== null, run: (api) => api.previewLastFile() },
   { id: 'copy-session-id', title: 'Copy session id', group: 'session', icon: Hash, keywords: 'clipboard uuid resume', when: (ctx) => session(ctx) !== null, run: (api) => api.copySessionId() },
   { id: 'check-transcript', title: 'Check transcript…', group: 'session', icon: Stethoscope, keywords: 'diagnose empty missing messages error debug compacted', when: (ctx) => session(ctx) !== null && ctx.connected, run: (api) => api.checkTranscript() },
   { id: 'toggle-terminal', title: 'Toggle terminal', group: 'session', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: (ctx) => session(ctx) !== null, run: (api) => api.toggleTerminal() },
