@@ -93,13 +93,14 @@ const keysOf = (id: 'new-session.pick') => shortcutById(id).keys[0]!;
  */
 /**
  * New session: on this computer (`LocalNewSession`), or, with another computer picked in Run on, on that one
- * (`RemoteNewSession`, docs/remote-access.md). A computer that goes away falls back to this one.
+ * (`RemoteNewSession`, docs/remote-access.md, keyed by computer so each keeps its own prompt). A computer that goes away
+ * falls back to this one.
  */
 export function NewSessionView() {
   const target = useRunOn((s) => s.target);
   const computer = useComputers((s) => (target === THIS_COMPUTER ? null : (s.status?.computers.find((c) => c.id === target && c.state === 'connected') ?? null)));
   const connection = useEngineConnection();
-  if (computer) return <RemoteNewSession client={connection.status === 'connected' ? connection.client : null} computer={computer} />;
+  if (computer) return <RemoteNewSession key={computer.id} client={connection.status === 'connected' ? connection.client : null} computer={computer} />;
   return <LocalNewSession />;
 }
 

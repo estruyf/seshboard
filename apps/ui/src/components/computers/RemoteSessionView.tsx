@@ -3,6 +3,7 @@ import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, Load
 import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
+import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
 import { remoteRowId } from '../../state/remoteSelection.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { onlyThereLine, remoteProfileColor, remoteRowStatus } from '../../state/remoteRows.ts';
@@ -450,14 +451,18 @@ function ToolRun({ tools }: { tools: RemoteTool[] }) {
  */
 function RemoteComposer({ client, computer, session, working, onSent, onStop }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; working: boolean; onSent(): void; onStop(): void }) {
   const localProfiles = useProfiles((s) => s.profiles);
-  const [draft, setDraft] = useState('');
+  // What you typed stays with the session when you go elsewhere and come back, also after a restart, until it is sent.
+  const draftKey = remoteSessionDraftKey(computer.id, session.id);
+  const [saved] = useState(() => loadRemoteDraft(draftKey));
+  const [draft, setDraft] = useState(saved.text);
   const [sending, setSending] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fillerRef = useRef<PromptFillerHandle>(null);
   // Saved prompts live on this computer; the / menu lists the ones for every project (a project's belong to a folder here).
   const { prompts: savedPrompts } = useSavedPrompts(undefined);
-  const [fillState, setFill] = useState<FillState | null>(null);
+  const [fillState, setFill] = useState<FillState | null>(saved.fill ?? null);
+  useEffect(() => saveRemoteDraft(draftKey, { text: draft, ...(fillState ? { fill: fillState } : {}) }), [draftKey, draft, fillState]);
   const [menu, setMenu] = useState<{ start: number; items: SavedPrompt[]; active: number } | null>(null);
   const connected = computer.state === 'connected';
   const name = computer.name;
@@ -504,6 +509,8 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
     void callComputer(client, computer.id, 'session.send', { sessionId: session.id, text, mode: 'queue', images, ...(files.length ? { files } : {}) })
       .then(
         ({ queued }) => {
+          // Also when you went to another session while it was sending.
+          clearRemoteDraft(draftKey);
           setDraft('');
           setFill((current) => (current === sentFill ? null : current));
           if (sentFill) void engineClient()?.call('savedPrompts.used', { id: sentFill.prompt.id, scope: sentFill.prompt.scope }).catch(() => {});
