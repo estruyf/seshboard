@@ -9,7 +9,7 @@ export const README_START = '<!-- shortcuts:start (written by npm run docs:short
 export const README_END = '<!-- shortcuts:end -->';
 
 /** Project actions are your own, so the README has no table for them. */
-const SECTIONS: ShortcutSection[] = ['general', 'sessions', 'session', 'composer', 'permissions', 'catch-up', 'new-session', 'settings'];
+const SECTIONS: ShortcutSection[] = ['general', 'sessions', 'session', 'composer', 'permissions', 'catch-up', 'new-session', 'projects', 'settings'];
 
 /** Markdown would read `\` as an escape. */
 const cell = (text: string) => text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');

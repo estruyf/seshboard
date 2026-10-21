@@ -2607,6 +2607,41 @@ async function runFocusStep(win: BrowserWindow): Promise<string> {
   return `ok (light ${light}, dark ${dark})`;
 }
 
+/** Opens Projects unless it is on screen (its sidebar button leaves the view when it is). */
+async function openProjectsView(win: BrowserWindow): Promise<boolean> {
+  await win.webContents.executeJavaScript("document.querySelector('[data-projects-view]') || document.querySelector('[data-open-projects]')?.click()");
+  return waitInPage(win, "document.querySelector('[data-projects-view]')", 3_000);
+}
+
+/** A right-click on a project's row in Projects, which opens the row menu (Rename…, Remove…). False without the row. */
+function openProjectRowMenu(win: BrowserWindow, root: string): Promise<boolean> {
+  return win.webContents.executeJavaScript(`(() => {
+    const row = document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(root)}]`)});
+    if (!row) return false;
+    const r = row.getBoundingClientRect();
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 10 }));
+    return true;
+  })()`) as Promise<boolean>;
+}
+
+/**
+ * Takes a project off the throwaway profile's list again, the way someone would: Projects, a right-click on its row,
+ * Remove from Switchboard…, Remove. Nothing on disk changes. Returns what went wrong, or null.
+ */
+async function removeProjectInProjects(win: BrowserWindow, root: string): Promise<string | null> {
+  if (!(await openProjectsView(win))) return 'Projects did not open';
+  // A narrow view folds the list away: the header's ‹ shows it.
+  await win.webContents.executeJavaScript("document.querySelector('[data-project-list]') || document.querySelector('[data-project-show-list]')?.click()");
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(root)}]`)})`, 3_000))) return 'the project is not in Projects';
+  await openProjectRowMenu(win, root);
+  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remove-project]')", 2_000))) return "no Remove in the project's row menu";
+  await win.webContents.executeJavaScript("document.querySelector('[role=menu] [data-remove-project]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-confirm]')", 3_000))) return 'no confirmation before removing';
+  await win.webContents.executeJavaScript("document.querySelector('[data-confirm]').click()");
+  if (!(await waitInPage(win, `!document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(root)}]`)})`, 3_000))) return 'the project was not removed';
+  return null;
+}
+
 /**
  * Projects are added by hand: the throwaway profile starts with none, the Add project dialog offers the
  * folders Claude Code has sessions for, and a project's defaults reach the New session view. Only the
@@ -2617,8 +2652,9 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
   if (!(await waitInPage(win, "document.querySelector('[data-sidebar-onboarding]')", 3_000))) return 'a new profile did not offer to add a project';
   await click('[data-open-projects]');
-  if (!(await waitInPage(win, "document.querySelector('[data-project-manager] [data-no-projects]')", 3_000))) return 'the Projects view did not open empty';
-  await click('[data-manager-add]');
+  if (!(await waitInPage(win, "document.querySelector('[data-projects-view] [data-no-projects]')", 3_000))) return 'the Projects view did not open empty';
+  const viewWidth = (await js("Math.round(document.querySelector('[data-projects-view]').getBoundingClientRect().width)")) as number;
+  await click('[data-empty-add-project]');
   if (!(await waitInPage(win, "document.querySelector('[data-add-project-dialog] [data-known-project]')", 5_000))) return 'no folders with sessions offered';
   const known = (await js("document.querySelectorAll('[data-known-project]').length")) as number;
   // Switchboard's own repository when Claude Code has sessions there (a git repository, so the Worktrees tab has
@@ -2658,37 +2694,40 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   await smokeRun.step('project branches', () => runProjectBranchesStep(win, root), { cleanup: false });
   await smokeRun.step('project memory and share dialog', () => runProjectMemoryStep(win, root), { cleanup: false });
   await smokeRun.step('settings › memory', () => runMemorySettingsStep(win, root), { cleanup: false });
+  await smokeRun.step('projects view: a row opens its Overview, the gear its Settings, ⌥↓ the next project on Settings, the switcher, ⌥⇧↑ and drag to reorder', () => runProjectsViewStep(win, root), { cleanup: false });
 
-  // The Projects list shows the saved default (and a worktree pill when the project has worktrees).
-  await click('[data-project-breadcrumb]');
-  if (!(await waitInPage(win, `${row('[data-defaults-summary]')}?.innerText.includes('high effort')`, 3_000))) return 'the effort default was not saved';
+  // The Overview says how sessions start here, with the saved default.
+  await js(`${page('[data-project-tab="overview"]')}.click()`);
+  if (!(await waitInPage(win, `${page('[data-overview-defaults]')}?.innerText.includes('high effort')`, 3_000))) return 'the effort default was not saved';
   await shot(win, 'projects.png');
 
-  // Renaming only changes the name Switchboard shows; it reaches the sidebar filter too.
+  // Renaming only changes the name Switchboard shows, in place on the Settings tab; it reaches the list and the sidebar filter too.
   const renameDialog = "document.querySelector('[data-rename-project-dialog]')";
   const folder = basename(root);
-  await js(`${row('[data-project-open]')}.click()`);
-  if (!(await waitInPage(win, page('[data-project-tab="settings"]'), 3_000))) return 'a click on the project did not open its page';
   await js(`${page('[data-project-tab="settings"]')}.click()`);
-  if (!(await waitInPage(win, page('[data-project-rename]'), 3_000))) return 'no Rename… on the Settings tab';
-  await js(`${page('[data-project-rename]')}.click()`);
-  if (!(await waitInPage(win, `${renameDialog} && document.activeElement?.matches('[data-rename-project-input]') && document.activeElement.value === ${JSON.stringify(folder)}`, 3_000))) return "Rename… did not open with the folder's name";
-  await setFieldValue(win, '[data-rename-project-input]', 'Smoke project');
-  await js("document.querySelector('[data-rename-project-save]').click()");
-  if (!(await waitInPage(win, `!${renameDialog} && ${page('[data-project-name]')}.innerText.includes('Smoke project')`, 3_000))) return 'the new name did not reach the project page';
+  if (!(await waitInPage(win, `${page('[data-project-name-input]')}?.value === ${JSON.stringify(folder)}`, 3_000))) return "no Name field with the folder's name on the Settings tab";
+  await js(`${page('[data-project-name-input]')}.focus()`);
+  await setFieldValue(win, `${pageSelector} [data-project-name-input]`, 'Smoke project');
+  pressKey(win, 'Return');
+  // The list is folded away in a narrow window.
+  if (!(await waitInPage(win, `${page('[data-project-name]')}.innerText.includes('Smoke project') && (!${row()} || ${row()}.innerText.includes('Smoke project'))`, 3_000))) return 'the new name did not reach the project page and the list';
 
   // A project's ⋯ menu in the sidebar filter: one real click outside closes the filter and the menu.
   const more = `[data-project-filter-menu] [data-project-more=${JSON.stringify(root)}]`;
   await click('[data-project-filter]');
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(more)})`, 2_000))) return 'the project is not in the sidebar filter';
   if ((await js(`document.querySelector(${JSON.stringify(more)}).getAttribute('aria-label')`)) !== 'Options for Smoke project') return 'the sidebar filter does not show the new name';
+  if (!(await js(`!!document.querySelector(${JSON.stringify(`[data-project-filter-menu] [data-project-open-page=${JSON.stringify(root)}]`)}) && !!document.querySelector('[data-project-filter-menu] [data-manage-projects]')`))) return 'the sidebar filter has no › on the project or no Manage projects…';
   await click(more);
   if (!(await waitInPage(win, "document.querySelectorAll('[role=menu]').length === 2", 2_000))) return 'the project options menu did not open from the filter';
   const outside = (await js("(() => { const r = document.querySelector('[data-project-page]').getBoundingClientRect(); return { x: Math.round(r.right - 24), y: Math.round(r.bottom - 24) }; })()")) as { x: number; y: number };
   win.webContents.sendInputEvent({ type: 'mouseDown', x: outside.x, y: outside.y, button: 'left', clickCount: 1 });
   win.webContents.sendInputEvent({ type: 'mouseUp', x: outside.x, y: outside.y, button: 'left', clickCount: 1 });
   if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return 'a click outside left the project options menu open';
-  await js(`${page('[data-project-rename]')}.click()`);
+  // The header's ⋯ (like the row's right-click menu) keeps Rename…, with Use folder name.
+  await js(`${page('[data-project-more]')}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-rename-project]')", 2_000))) return "no Rename… in the project's ⋯ menu";
+  await click('[role=menu] [data-rename-project]');
   if (!(await waitInPage(win, "document.querySelector('[data-rename-project-reset]')", 3_000))) return 'no Use folder name for a renamed project';
   await click('[data-rename-project-reset]');
   if (!(await waitInPage(win, `!${renameDialog} && ${page('[data-project-name]')}.innerText.startsWith(${JSON.stringify(folder)})`, 3_000))) return 'Use folder name did not bring back the folder name';
@@ -2726,17 +2765,137 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   await smokeRun.step('auto model: menu, chip, Stop while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
 
+  // Projects opens on the project last open; its Settings show the default saved from New session.
   await click('[data-open-projects]');
-  if (!(await waitInPage(win, `${row('[data-defaults-summary]')}?.innerText.includes('low effort')`, 3_000))) return 'the saved default did not reach the Projects view';
-  // Removing is in the row's ⋯ menu (it only takes the project off Switchboard's list).
-  await js(`${row('[data-project-more-button]')}.click()`);
-  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remove-project]')", 2_000))) return "no Remove in the project's ⋯ menu";
-  await click('[role=menu] [data-remove-project]');
+  if (!(await waitInPage(win, page('[data-project-tab="settings"]'), 3_000))) return 'Projects did not open on the project last open';
+  await js(`${page('[data-project-tab="settings"]')}.click()`);
+  if (!(await waitInPage(win, `${page('[data-default-effort]')}?.dataset.value === 'low'`, 3_000))) return 'the saved default did not reach the Projects view';
+  // Removing is on the Settings tab too (it only takes the project off Switchboard's list).
+  await js(`${page('[data-project-remove]')}.click()`);
   if (!(await waitInPage(win, "document.querySelector('[data-confirm]')", 3_000))) return 'no confirmation before removing';
   await click('[data-confirm]');
-  if (!(await waitInPage(win, "document.querySelector('[data-no-projects]')", 3_000))) return 'the project was not removed';
+  if (!(await waitInPage(win, "document.querySelector('[data-projects-view] [data-no-projects]')", 3_000))) return 'the project was not removed';
   await click('[data-open-projects]');
-  return `ok: ${known} folders offered; added one and its page opened (${pageResult.startsWith('ok') ? 'tabs checked' : 'page step failed'}), dropdown keyboard and Escape, renamed it and back, an outside click closed its filter menus, its defaults reached New session (git button: ${catchUp}), saved a change back, removed it`;
+  return `ok: ${known} folders offered (view ${viewWidth}px wide); added one and its page opened (${pageResult.startsWith('ok') ? 'tabs checked' : 'page step failed'}), dropdown keyboard and Escape, renamed it in place and back from its row menu, an outside click closed its filter menus, its defaults reached New session (git button: ${catchUp}), saved a change back, removed it from Settings`;
+}
+
+/**
+ * The Projects view with three projects (the one under test and two more folders offered, removed again): a click on a
+ * row opens its Overview, the gear on a hovered row its Settings, ⌥↓ the next project on the same tab, the name's
+ * switcher another one, ⌥⇧↑ moves the open project with an announcement, and dragging the third project to the top
+ * changes the order the sidebar's project menu shows. Only the throwaway profile's project list changes.
+ */
+async function runProjectsViewStep(win: BrowserWindow, root: string): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const listed = () => js("[...document.querySelectorAll('[data-project-list] [data-project-row]')].map((e) => e.dataset.projectRow)") as Promise<string[]>;
+  const pageOf = (r: string) => `document.querySelector(${JSON.stringify(`[data-project-page=${JSON.stringify(r)}]`)})`;
+  const onTab = (r: string, tab: string) => `${pageOf(r)}?.querySelector('[data-project-tab="${tab}"]')?.getAttribute('aria-selected') === 'true'`;
+  const rowOf = (r: string) => `document.querySelector(${JSON.stringify(`[data-project-list] [data-project-row=${JSON.stringify(r)}]`)})`;
+  /** Clicks the element `expression` finds; false when there is none. */
+  const press = (expression: string) => js(`(() => { const el = ${expression}; el?.click(); return !!el; })()`) as Promise<boolean>;
+
+  // Two more projects, from the folders Claude Code has sessions for.
+  if (!(await openProjectsView(win))) return 'Projects did not open';
+  // A narrow view folds the list away (the header's ‹ shows it): with the sidebar open, make room by closing it.
+  const width = (await js("Math.round(document.querySelector('[data-projects-view]').getBoundingClientRect().width)")) as number;
+  const madeRoom = (await js("!!document.querySelector('[data-projects-view][data-narrow]') && !!document.querySelector('[data-sidebar-open]')")) as boolean;
+  if (madeRoom) {
+    if (!(await press("document.querySelector('[data-projects-view] [data-sidebar-toggle]')"))) return 'no sidebar toggle in the narrow Projects view';
+    if (!(await waitInPage(win, "!document.querySelector('[data-projects-view][data-narrow]') && document.querySelector('[data-project-list]')", 3_000))) return `the list did not show with the sidebar closed (view ${width}px wide)`;
+  }
+  if (!(await press("document.querySelector('[data-manager-add]')"))) return `no + in the list (view ${width}px wide, narrow: ${String(await js("!!document.querySelector('[data-projects-view][data-narrow]')"))})`;
+  if (!(await waitInPage(win, "document.querySelector('[data-add-project-dialog] [data-known-project]')", 5_000))) return 'no folders offered';
+  const extra = (await js("[...document.querySelectorAll('[data-known-project][data-added=\"false\"]')].slice(0, 2).map((e) => e.dataset.knownProject)")) as string[];
+  for (const folder of extra) {
+    await js(`document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(folder)}]`)}).click()`);
+    await waitInPage(win, `document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(folder)}]`)})?.dataset.added === 'true'`, 3_000);
+  }
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-add-project-dialog]')", 3_000))) return 'the Add project dialog did not close';
+  try {
+    if (extra.length < 2) return `ok: skipped, only ${extra.length + 1} folders to make projects of`;
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-project-list] [role=listbox] [data-project-row]').length === 3", 3_000))) return 'the list does not show the three projects';
+    let order = await listed();
+
+    // 1. A click on a project not opened yet: its Overview.
+    // Closing the dialog opened the last folder added (on Settings); the other new one has no tab of its own yet.
+    const open = (await js("document.querySelector('[data-project-list] [data-project-row][aria-selected=true]')?.dataset.projectRow ?? null")) as string | null;
+    const unopened = extra.find((r) => r !== open) ?? extra[0]!;
+    if (!(await press(rowOf(unopened)))) return 'the project not opened yet is not in the list';
+    if (!(await waitInPage(win, `${onTab(unopened, 'overview')} && ${pageOf(unopened)}.querySelector('[data-project-overview]') && ${rowOf(unopened)}.getAttribute('aria-selected') === 'true'`, 3_000))) return 'a click on a row did not open its Overview';
+
+    // 2. The gear on a hovered row (the first): that project's Settings.
+    const first = order[0]!;
+    const box = (await js(`(() => { const r = ${rowOf(first)}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: box.x, y: box.y });
+    const gear = `${rowOf(first)}.querySelector('[data-project-row-settings]')`;
+    if (!(await waitInPage(win, `${gear}?.offsetParent !== null`, 2_000))) return 'no gear on the hovered row';
+    const at = (await js(`(() => { const r = ${gear}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    if (!(await waitInPage(win, onTab(first, 'settings'), 3_000))) return "the gear did not open the project's Settings";
+
+    // 3. ⌥↓: the next project in the list, still on Settings.
+    pressKey(win, 'Down', ['alt']);
+    if (!(await waitInPage(win, onTab(order[1]!, 'settings'), 3_000))) return '⌥↓ did not open the next project on Settings';
+    if (!(await js(`document.querySelector('[data-project-panel-heading]')?.innerText.includes('Settings')`))) return "the tab panel's heading does not say where it is";
+
+    // 4. The name's switcher: part of a name, ↩, and that project opens on the same tab.
+    const target = order[2]!;
+    const name = (await js(`${rowOf(target)}.querySelector('[data-project-open] span').innerText`)) as string;
+    if (!(await press(`${pageOf(order[1]!)}?.querySelector('[data-project-switcher-button]')`))) return "no switcher on the project's name";
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-project-switcher] [role=combobox]')", 2_000))) return 'the switcher did not open with its search field';
+    await setFieldValue(win, '[data-project-switcher-search]', name.slice(0, Math.max(3, name.length - 2)));
+    const picked = (await js("document.querySelector('[data-project-switcher] [role=option][aria-selected=true]')?.dataset.projectSwitcherOption ?? null")) as string | null;
+    if (!picked) return `the switcher found nothing for "${name}"`;
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `!document.querySelector('[data-project-switcher]') && ${onTab(picked, 'settings')}`, 3_000))) return '↩ in the switcher did not open the project on the same tab';
+
+    // 5. ⌥⇧↑ moves the open project up one place and says so.
+    const position = order.indexOf(picked);
+    if (position > 0) {
+      pressKey(win, 'Up', ['alt', 'shift']);
+      if (!(await waitInPage(win, `(document.querySelector('[data-project-announcement]')?.innerText ?? '').includes('moved to position ${position} of 3')`, 3_000))) return '⌥⇧↑ did not announce the move';
+      if (!(await waitInPage(win, `[...document.querySelectorAll('[data-project-list] [data-project-row]')].map((e) => e.dataset.projectRow).indexOf(${JSON.stringify(picked)}) === ${position - 1}`, 3_000))) return '⌥⇧↑ did not move the project';
+    }
+
+    // 6. Drag the third project to the top: the sidebar's project menu follows.
+    order = await listed();
+    const dragged = order[2]!;
+    await js(`(() => {
+      const source = ${rowOf(dragged)};
+      const target = ${rowOf(order[0]!)};
+      const data = new DataTransfer();
+      const r = target.getBoundingClientRect();
+      source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: data }));
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data, clientX: r.left + 20, clientY: r.top + 4 }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data, clientX: r.left + 20, clientY: r.top + 4 }));
+      source.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: data }));
+    })()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-project-list] [data-project-row]')?.dataset.projectRow === ${JSON.stringify(dragged)}`, 3_000))) return 'dragging the third project to the top did not move it';
+    await shot(win, 'projects-view.png');
+    if (madeRoom) {
+      await press("document.querySelector('[data-sidebar-toggle]')");
+      if (!(await waitInPage(win, "document.querySelector('[data-sidebar-open]')", 3_000))) return 'the sidebar did not open again';
+    }
+    if (!(await press("document.querySelector('[data-project-filter]')"))) return 'no project menu in the sidebar';
+    const menuOrder = `[...document.querySelectorAll('[data-project-filter-menu] [data-project-root]')].map((e) => e.dataset.projectRoot)`;
+    const expected = [dragged, ...order.filter((r) => r !== dragged)];
+    const followed = await waitInPage(win, `JSON.stringify(${menuOrder}) === ${JSON.stringify(JSON.stringify(expected))}`, 3_000);
+    pressKey(win, 'Escape');
+    await waitInPage(win, "!document.querySelector('[data-project-filter-menu]')", 2_000);
+    if (!followed) return `the sidebar's project menu did not follow the drag (${String(await js(`JSON.stringify(${menuOrder})`))})`;
+    return `ok (view ${width}px${madeRoom ? ', sidebar closed for the list' : ''}): a click opened the Overview, the hovered gear Settings, ⌥↓ the next project on Settings, the switcher another on the same tab, ⌥⇧↑ moved it and said so, a drag to the top reached the sidebar menu`;
+  } finally {
+    for (const folder of extra) await removeProjectInProjects(win, folder);
+    // Back on the project under test, with the sidebar as it was, as the steps after this one expect.
+    await js(`${rowOf(root)}?.click()`);
+    await waitInPage(win, pageOf(root), 3_000);
+    if (madeRoom && !(await js("!!document.querySelector('[data-sidebar-open]')"))) {
+      await js("document.querySelector('[data-sidebar-toggle]')?.click()");
+      await waitInPage(win, "document.querySelector('[data-sidebar-open]')", 3_000);
+    }
+  }
 }
 
 /** The main checkout of the repository this app was built from, when it runs from source (the smoke test does). */
@@ -2761,11 +2920,11 @@ async function runProjectPageStep(win: BrowserWindow, root: string): Promise<str
   const tab = async (id: string) => js(`${q(`[data-project-tab="${id}"]`)}.click()`);
   if (!(await waitInPage(win, `${q('[data-project-name]')} && ${q('[data-project-tab="worktrees"]')}`, 3_000))) return 'the project page has no header or tabs';
 
-  // The header's icon opens the icon choices (only opened and closed: picking an image needs the system dialog).
-  await js(`${q('[data-project-icon-button]')}.click()`);
-  if (!(await waitInPage(win, "[...document.querySelectorAll('[role=menu] [role=menuitem]')].some((e) => e.innerText.includes('Choose image'))", 2_000))) return "the project's icon did not open its icon menu";
+  // The header's ⋯ opens the icon choices, the name and Remove (only opened and closed: picking an image needs the system dialog).
+  await js(`${q('[data-project-more]')}.click()`);
+  if (!(await waitInPage(win, "[...document.querySelectorAll('[role=menu] [role=menuitem]')].some((e) => e.innerText.includes('Choose image')) && !!document.querySelector('[role=menu] [data-remove-project]')", 2_000))) return "the project's ⋯ did not open its menu";
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
-  if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return 'Escape did not close the icon menu';
+  if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return 'Escape did not close the ⋯ menu';
 
   await tab('overview');
   if (!(await waitInPage(win, `document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-overview-card]`)}).length >= 3`, 3_000))) return 'the Overview cards did not show';
@@ -5423,15 +5582,8 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, added, 5_000))) return `↩ did not add and pick the folder (${String(await js(`${one('[data-folder-select]')}?.dataset.value`))})`;
 
   // Clean up: off the throwaway profile's projects again, and New session back on its folder.
-  await js(`${one('[data-open-projects]')}.click()`);
-  const row = one(`[data-project-row=${JSON.stringify(dir)}] [data-project-more-button]`);
-  if (!(await waitInPage(win, row, 3_000))) return 'the added folder is not in Projects';
-  await js(`${row}.click()`);
-  if (!(await waitInPage(win, one('[role=menu] [data-remove-project]'), 2_000))) return "no Remove in the project's ⋯ menu";
-  await js(`${one('[role=menu] [data-remove-project]')}.click()`);
-  if (!(await waitInPage(win, one('[data-confirm]'), 3_000))) return 'no confirmation before removing';
-  await js(`${one('[data-confirm]')}.click()`);
-  if (!(await waitInPage(win, `!${one(`[data-project-row=${JSON.stringify(dir)}]`)}`, 3_000))) return 'the project was not removed';
+  const removed = await removeProjectInProjects(win, dir);
+  if (removed) return removed === 'the project is not in Projects' ? 'the added folder is not in Projects' : removed;
   if (before) {
     openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
     if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(before)}`, 5_000))) return 'New session did not go back to its folder';
@@ -5536,15 +5688,8 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
   // Clean up: the form closed, the project removed, the setting off, the folders gone.
   await js(`${one('[data-clone-close]')}.click()`);
   if (!(await waitInPage(win, `!${one('[data-clone-repo]')} && ${one(`[data-folder-option=${JSON.stringify(target)}]`)}`, 3_000))) return fail('Done did not show the clone as a project tile');
-  await js(`${one('[data-open-projects]')}.click()`);
-  const row = one(`[data-project-row=${JSON.stringify(target)}] [data-project-more-button]`);
-  if (!(await waitInPage(win, row, 3_000))) return fail('the clone is not in Projects');
-  await js(`${row}.click()`);
-  if (!(await waitInPage(win, one('[role=menu] [data-remove-project]'), 2_000))) return fail("no Remove in the project's ⋯ menu");
-  await js(`${one('[role=menu] [data-remove-project]')}.click()`);
-  if (!(await waitInPage(win, one('[data-confirm]'), 3_000))) return fail('no confirmation before removing');
-  await js(`${one('[data-confirm]')}.click()`);
-  if (!(await waitInPage(win, `!${one(`[data-project-row=${JSON.stringify(target)}]`)}`, 3_000))) return fail('the clone was not removed from the projects');
+  const removed = await removeProjectInProjects(win, target);
+  if (removed) return fail(removed === 'the project is not in Projects' ? 'the clone is not in Projects' : removed);
   if (!(await turnOff())) return (cleanUp(), 'Clone from GitHub did not turn off again');
   cleanUp();
   return 'ok: Settings › Projects asked for the folder and turned it on, a URL in the folder field offered the clone, ↩ cloned the local repository and picked it without a worktree, Start asked about its hook and Cancel kept the prompt; removed and turned off again';
@@ -6896,15 +7041,7 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
       if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-trigger-menu-delete]').click()");
       await waitInPage(win, `!${card}`, 3_000);
     }
-    await js("document.querySelector('[data-open-projects]')?.click()");
-    const more = `document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(folder)}] [data-project-more-button]`)})`;
-    if (await waitInPage(win, `!!${more}`, 3_000)) {
-      await js(`${more}.click()`);
-      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-remove-project]')", 2_000)) {
-        await js("document.querySelector('[role=menu] [data-remove-project]').click()");
-        if (await waitInPage(win, "!!document.querySelector('[data-confirm]')", 3_000)) await js("document.querySelector('[data-confirm]').click()");
-      }
-    }
+    await removeProjectInProjects(win, folder);
     rmSync(stateFile, { force: true });
     await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
     await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
@@ -7000,15 +7137,7 @@ async function runTriggerPipelineStep(win: BrowserWindow): Promise<string> {
       if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-trigger-menu-delete]').click()");
       await waitInPage(win, `!${card}`, 3_000);
     }
-    await js("document.querySelector('[data-open-projects]')?.click()");
-    const more = `document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(folder)}] [data-project-more-button]`)})`;
-    if (await waitInPage(win, `!!${more}`, 3_000)) {
-      await js(`${more}.click()`);
-      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-remove-project]')", 2_000)) {
-        await js("document.querySelector('[role=menu] [data-remove-project]').click()");
-        if (await waitInPage(win, "!!document.querySelector('[data-confirm]')", 3_000)) await js("document.querySelector('[data-confirm]').click()");
-      }
-    }
+    await removeProjectInProjects(win, folder);
     rmSync(stateFile, { force: true });
     await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
     await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);

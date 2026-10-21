@@ -1162,6 +1162,31 @@
       "page": "settings"
     },
     {
+      "id": "shortcut:projects.find",
+      "name": "projects.find",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "shortcut:projects.move",
+      "name": "projects.move",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "shortcut:projects.switch",
+      "name": "projects.switch",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "shortcut:projects.switcher-settings",
+      "name": "projects.switcher-settings",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "shortcut:projects.tab",
+      "name": "projects.tab",
+      "page": "projects/projects-view"
+    },
+    {
       "id": "shortcut:shortcuts",
       "name": "shortcuts",
       "page": "command-palette"
@@ -2782,6 +2807,11 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:project-filter-open",
+      "name": "Open a project's page from the sidebar's project menu (›), and Manage projects…",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "feature:project-icons",
       "name": "Project icons: detected, image, emoji, letter",
       "page": "projects/projects-view"
@@ -2793,17 +2823,12 @@
     },
     {
       "id": "feature:project-overview-cards",
-      "name": "Overview cards",
-      "page": "projects/overview"
-    },
-    {
-      "id": "feature:project-overview-memory-card",
-      "name": "Memory card on the project Overview",
+      "name": "Overview: numbers, recent sessions, worktrees and how sessions start",
       "page": "projects/overview"
     },
     {
       "id": "feature:project-page",
-      "name": "Project page header and tabs",
+      "name": "Project header: the name's switcher, ‹ ›, New session and ⋯",
       "page": "projects/projects-view"
     },
     {
@@ -2838,7 +2863,32 @@
     },
     {
       "id": "feature:projects-view",
-      "name": "Projects view",
+      "name": "Projects view: the list on the left, the open project on the right",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-switcher",
+      "name": "Switch project from the name's menu (↩ same tab, ⌘↩ Settings)",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-row-settings",
+      "name": "A project's Settings from its row (the gear)",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-previous-next",
+      "name": "Previous and next project on the same tab (‹ ›, ⌥↑ ⌥↓)",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:projects-narrow",
+      "name": "Narrow windows fold the list into the switcher",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:projects-search",
+      "name": "Find a project in the list",
       "page": "projects/projects-view"
     },
     {
@@ -3008,12 +3058,12 @@
     },
     {
       "id": "feature:remove-project",
-      "name": "Remove a project from Switchboard",
+      "name": "Remove a project from Switchboard, in its Settings or from its row menu",
       "page": "projects/projects-view"
     },
     {
       "id": "feature:rename-project",
-      "name": "Rename a project (Switchboard name only)",
+      "name": "Rename a project (Switchboard name only), in its Settings or from its row menu",
       "page": "projects/projects-view"
     },
     {
@@ -3048,7 +3098,7 @@
     },
     {
       "id": "feature:reorder-projects",
-      "name": "Reorder projects",
+      "name": "Reorder projects by dragging, or with ⌥⇧↑ ⌥⇧↓",
       "page": "projects/projects-view"
     },
     {
@@ -3738,7 +3788,7 @@
     },
     {
       "id": "feature:worktree-pill",
-      "name": "Worktree pill in the Projects view",
+      "name": "Worktree hint on a project's row",
       "page": "projects/projects-view"
     },
     {

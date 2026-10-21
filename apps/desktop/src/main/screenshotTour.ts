@@ -77,7 +77,7 @@ export async function runScreenshotTour(win: BrowserWindow, outDir: string, hook
 
   // Add the demo projects, as someone would on first launch.
   await click('[data-open-projects]');
-  await click('[data-manager-add]');
+  await click('[data-empty-add-project]');
   await need("document.querySelector('[data-add-project-dialog] [data-known-project]')", 'no folders offered to add');
   for (let i = 0; i < 8; i++) {
     const added = await js<boolean>("(() => { const el = document.querySelector('[data-known-project][data-added=\"false\"]'); el?.click(); return !!el; })()");

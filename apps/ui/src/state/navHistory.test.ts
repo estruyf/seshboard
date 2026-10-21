@@ -45,6 +45,14 @@ describe('record', () => {
     expect(record(visit(three), session('a', 'b'), 9000).entries).toEqual([three, session('a', 'b')]);
   });
 
+  it('records a switch to another project like a change of view, so Back returns to the project and its tab', () => {
+    const h = visit(project('/a', 'memory'), project('/b', 'memory'));
+    expect(h.entries).toEqual([project('/a', 'memory'), project('/b', 'memory')]);
+    expect(step(h, -1, () => true)).toBe(0);
+    // Projects settling on a project as it opens is passed through, not a stop of its own.
+    expect(record(record(emptyHistory, { view: 'projects' }, 1000), project('/a'), 1000 + PASSING_MS - 1).entries).toEqual([project('/a')]);
+  });
+
   it('lets a place only passed through give its entry to the next', () => {
     let h = visit(session('home'));
     h = record(h, session('a'), 5000);

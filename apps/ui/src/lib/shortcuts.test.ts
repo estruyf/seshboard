@@ -236,6 +236,11 @@ describe('the shortcut registry', () => {
       'pr.create': [SESSION, HOME],
       'session.new-window': [SESSION, HOME],
       'read.toggle': [SESSION, HOME],
+      'projects.switch': [at({ view: 'project' }), { ...at({ view: 'project' }), focus: 'terminal' }],
+      'projects.move': [at({ view: 'projects' }), HOME],
+      'projects.find': [at({ view: 'project' }), SESSION],
+      'projects.tab': [at({ view: 'project' }), at({ view: 'usage' })],
+      'projects.switcher-settings': [at({ view: 'project' }), HOME],
       'read.previous': [SESSION, HOME],
       'read.next': [SESSION, HOME],
       'read.previous-heading': [SESSION, HOME],
@@ -304,7 +309,7 @@ const INTENDED_OVERLAPS: Record<string, string> = {
 };
 
 describe('shortcut collisions', () => {
-  const VIEWS: ShortcutContext['view'][] = ['home', 'new-session', 'session', 'settings', 'projects', 'usage'];
+  const VIEWS: ShortcutContext['view'][] = ['home', 'new-session', 'session', 'settings', 'projects', 'project', 'usage'];
   const FOCUS: ShortcutContext['focus'][] = ['terminal', 'composer', 'other'];
   /** Every view and focus, with everything off and with everything on (the most shortcuts at once). */
   const contexts = VIEWS.flatMap((view) =>
