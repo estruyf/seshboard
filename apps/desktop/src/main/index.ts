@@ -4049,7 +4049,7 @@ async function runPullRequestStep(win: BrowserWindow): Promise<string> {
     if (!/^[\d,]+ \/ 65,536$/.test((await js(`${inDialog('[data-pr-counter]')}.innerText`)) as string)) return 'the counter is wrong';
     if ((await js(`${inDialog('[data-pr-draft]')}.getAttribute('aria-checked')`)) !== 'false') return 'Draft was on when the dialog opened';
     const pushLine = (await js(`document.querySelector('[data-pr-push-line]')?.innerText ?? ''`)) as string;
-    if (!/^(Pushes \d+ commits? to |Publishes |Already pushed)/.test(pushLine)) return `no push line in the footer ("${pushLine}")`;
+    if (!/^(Pushes \d+ commits? to |Publishes |Makes sure )/.test(pushLine)) return `no push line in the footer ("${pushLine}")`;
     const notice = (await js(`${inDialog('[data-pr-notice]')}?.dataset.prNotice ?? null`)) as string | null;
     await shot(win, 'pr-dialog.png');
 

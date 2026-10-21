@@ -33,6 +33,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Pull requests always push the branch first.** Create pull request pushes the branch before it creates the pull request, so one whose remote copy was deleted (after an earlier pull request was merged) no longer stops with "you must first push the current branch".
 - **Copy error messages.** The text of a notice, such as a failed pull request, and its output can be selected and copied.
 - **No more 0 on the side panel's tabs.** With two or more panels open on the right, a tab shows a count only when there is something to count: Preview no longer reads 0, and Terminal, Agents and Commands show no number while nothing is running.
 - **Git errors are shown.** When Commit, Pull, Push or Fetch fails, a toast now says why, instead of only a red border on the button (which is gone).
