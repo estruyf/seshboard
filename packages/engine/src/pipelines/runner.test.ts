@@ -83,6 +83,8 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
   const notices: PipelineNotice[] = [];
   const replies = new Map<string, string>();
   const busy = new Map<string, 'working' | 'waiting'>();
+  /** Sessions with a question or permission waiting for an answer. */
+  const asking = new Set<string>();
   const titles = new Map<string, string>();
   const interrupted: string[] = [];
   const pushed: Array<{ message: string; title: string; body: string }> = [];
@@ -125,6 +127,7 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     lastReply: async (id) => replies.get(id) ?? null,
     hold: () => hold(),
     busy: (id) => busy.get(id) ?? null,
+    asks: (id) => asking.has(id),
     pushPreview: async () => ({ message: 'feat(usage): add a toggle', files: 6, branch: 'worktree-run-1', base: 'main', problem: null }),
     push: async (_run, request) => {
       pushed.push(request);
@@ -143,6 +146,8 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     interrupted,
     pushed,
     replies,
+    busy,
+    asking,
     archived,
     hidden,
     removed,
@@ -294,12 +299,44 @@ describe('PipelineRunner', () => {
     const w = world();
     const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
     const plan = w.last();
+    w.asking.add(plan.id);
     w.runner.needsYou(plan.id, 'AskUserQuestion');
+    w.busy.set(plan.id, 'waiting');
     expect(w.state(run.id).run).toMatchObject({ status: 'waiting', reason: 'Plan asks a question.' });
     expect(w.state(run.id).steps[0]!.status).toBe('waiting');
     expect(w.notices).toEqual([]);
+    // The answer settles before the session says it runs again.
+    w.asking.delete(plan.id);
     w.runner.answered(plan.id);
-    expect(w.state(run.id).run.status).toBe('running');
+    expect(w.state(run.id).run).toMatchObject({ status: 'running', reason: null });
+    expect(w.state(run.id).steps[0]!.status).toBe('working');
+    await w.end(plan.id);
+    expect(w.state(run.id).run.step).toBe(1);
+  });
+
+  it('keeps waiting while another question of the step waits', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
+    const plan = w.last();
+    w.asking.add(plan.id);
+    w.runner.needsYou(plan.id, 'Bash');
+    w.runner.answered(plan.id);
+    w.runner.onHost({ sessionId: plan.id, state: 'running' });
+    expect(w.state(run.id).run).toMatchObject({ status: 'waiting', reason: 'Plan asks to use Bash.' });
+  });
+
+  it('works again when the step does, after you reply to it', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
+    const plan = w.last();
+    w.runner.onHost({ sessionId: plan.id, state: 'running' });
+    await w.end(plan.id, 'clean', 'Which file?', card({ need: { kind: 'reply', title: 'Answer the question', text: '' } }));
+    w.runner.onHost({ sessionId: plan.id, state: 'idle' });
+    expect(w.state(run.id).run).toMatchObject({ status: 'waiting', reason: 'Plan waits for you.' });
+    // You reply in Plan: it runs again, and so does the run.
+    w.runner.onHost({ sessionId: plan.id, state: 'running' });
+    expect(w.state(run.id).run).toMatchObject({ status: 'running', reason: null });
+    expect(w.state(run.id).steps[0]!.status).toBe('working');
     await w.end(plan.id);
     expect(w.state(run.id).run.step).toBe(1);
   });

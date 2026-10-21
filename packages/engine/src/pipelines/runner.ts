@@ -75,6 +75,8 @@ export interface RunnerDeps {
   hold(run: PipelineRun): StepHold | null;
   /** Whether a session works or waits for you right now. */
   busy(sessionId: string): 'working' | 'waiting' | null;
+  /** Whether a session has a permission or a question still waiting for your answer. */
+  asks(sessionId: string): boolean;
   /** Push's commit message and what it would push. */
   pushPreview(run: PipelineRun): Promise<PushPreview>;
   /** Commits (with `message`), pushes and opens the pull request; the pull request, or null when gh opened none. */
@@ -237,12 +239,17 @@ export class PipelineRunner {
     if (info.state === 'closed' || info.state === 'error') this.hostStates.delete(info.sessionId);
     const wasBusy = before === 'starting' || before === 'running' || before === 'needs-you';
     if (wasBusy && info.state === 'closed' && !this.closed) void this.turnEnded(info.sessionId, 'stopped', null);
+    // The step works again (you replied after it stopped for you, or sent a message instead of answering): so does the run.
+    if (info.state === 'running' && before !== 'running') this.answered(info.sessionId);
   }
 
-  /** You answered: the step works again. */
+  /**
+   * You answered: the step works again. Asked right when the answer settles, while the session still says it needs
+   * you, so only another question or permission that still waits keeps the run waiting.
+   */
   answered(sessionId: string): void {
     for (const run of this.waitingOn(sessionId)) {
-      if (run.status !== 'waiting' || this.deps.busy(sessionId) === 'waiting') continue;
+      if (run.status !== 'waiting' || this.deps.asks(sessionId)) continue;
       this.deps.runs.update(run.id, { status: 'running', waitingFor: null, reason: null });
       this.markRow(run, { status: 'working', reason: null });
       this.emit(run.id);

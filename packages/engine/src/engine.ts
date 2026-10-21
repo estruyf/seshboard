@@ -1550,6 +1550,7 @@ export function createEngine(options: EngineOptions): Engine {
       const state = [...hosts.list().hosts, ...smokeHosts.values()].find((h) => h.sessionId === id)?.state;
       return state === 'starting' || state === 'running' ? 'working' : state === 'needs-you' ? 'waiting' : null;
     },
+    asks: (id) => hosts.list().permissions.some((p) => p.sessionId === id),
     pushPreview: async (run) => {
       if (options.stubQueueStarts) return { message: stubCommitMessage(''), files: 0, branch: null, base: null, problem: null };
       const profileId = run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd);
