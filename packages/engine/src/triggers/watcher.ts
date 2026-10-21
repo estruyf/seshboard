@@ -3,20 +3,27 @@ import {
   blockingStateLabel,
   eventKey,
   eventRef,
+  fillTriggerPrompt,
   newEvents,
   nextStateLabel,
+  pipelineProblem,
+  runIsBusy,
+  runWorkState,
   seedSeen,
   slots,
   stateLabelEdit,
   stateLabelNames,
   TRIGGER_FAILURES_TO_PAUSE,
   TRIGGER_RATE_LIMIT_MS,
+  triggerContextBlock,
   triggerDue,
   triggerPrompt,
   triggerSessionTitle,
   waitingFullReason,
   type IssueItem,
   type LaterDraft,
+  type Pipeline,
+  type PipelineRunState,
   type SourceItem,
   type Trigger,
   type TriggerContext,
@@ -48,6 +55,15 @@ export interface TriggerWatcherDeps {
   start(draft: LaterDraft, title: string): Promise<string>;
   /** Puts the draft on the queue, as an item that starts by itself when the slot frees or the limit resets. */
   queue(draft: LaterDraft): string;
+  /** A saved pipeline, for a trigger that starts one; null when it was deleted. */
+  pipeline(id: string): Pipeline | null;
+  /** A pipeline run with its steps; null when it was deleted. */
+  run(runId: string): PipelineRunState | null;
+  /**
+   * Starts a run of the pipeline with the event as its task (a run row is its parent), through the pipeline's own
+   * start path: the focus limit and usage limits hold its steps there. The run's id.
+   */
+  startRun(input: { pipelineId: string; projectRoot: string; profileId: string | null; task: string; title: string; context: string | null; unattended: boolean; autoPush: boolean }): Promise<string>;
   projectName(root: string): string;
   /** Triggers or their events changed: the windows should hear them again. */
   changed(): void;
@@ -145,11 +161,11 @@ export class TriggerWatcher {
   }
 
   /**
-   * A triggered session was archived or deleted: its issue's state label comes off, when it still says working or needs
-   * input. Unarchiving it doesn't put the label back.
+   * A triggered session (or pipeline run, by its id) was archived or deleted: its issue's state label comes off, when it
+   * still says working or needs input. Unarchiving it doesn't put the label back.
    */
   released(sessionId: string): void {
-    const stored = this.deps.store.eventOfSession(sessionId);
+    const stored = this.deps.store.eventOfSession(sessionId) ?? this.deps.store.eventOfRun(sessionId);
     if (!stored || stored.event.kind !== 'issue') return;
     this.releasing.add(stored.event.id);
     void this.check();
@@ -213,8 +229,8 @@ export class TriggerWatcher {
     await this.releaseLabels();
     for (const trigger of this.deps.store.list()) {
       const forced = this.forced.delete(trigger.id);
+      if (trigger.paused || this.pipelineGone(trigger)) continue;
       if (!forced && !triggerDue(trigger, now)) continue;
-      if (trigger.paused) continue;
       await this.checkOne(trigger);
     }
     for (const trigger of this.deps.store.list()) {
@@ -222,6 +238,18 @@ export class TriggerWatcher {
     }
     await this.syncLabels();
     if (this.snapshot() !== before) this.deps.changed();
+  }
+
+  /**
+   * A trigger whose pipeline was deleted, or changed so it no longer fits (moved to another project, a step that
+   * bypasses permissions), pauses with the reason. True when it did.
+   */
+  private pipelineGone(trigger: Trigger): boolean {
+    if (trigger.start.kind !== 'pipeline') return false;
+    const problem = pipelineProblem(this.deps.pipeline(trigger.start.pipelineId), trigger.projectRoot);
+    if (!problem) return false;
+    this.pause(trigger, problem);
+    return true;
   }
 
   /** Triggers and their events as text, to tell the windows only when something changed. */
@@ -350,9 +378,22 @@ export class TriggerWatcher {
     for (const event of plan.start) await this.startOne(trigger, store.event(event.id)?.event ?? event);
   }
 
-  /** How many of a trigger's sessions are busy: working, waiting for you, or held in the queue. */
+  /**
+   * How many of a trigger's sessions are busy: working, waiting for you, or held in the queue. A pipeline run counts
+   * once while it goes on (a step works, it waits for you or Push, or for a slot), whatever its steps do.
+   */
   private busy(events: readonly TriggerEvent[]): number {
-    return events.filter((e) => (e.status === 'started' && e.sessionId && this.deps.sessionState(e.sessionId)) || (e.status === 'queued' && e.itemId && this.deps.queued(e.itemId)) || this.starting.has(e.id)).length;
+    return events.filter((e) => this.eventBusy(e) || (e.status === 'queued' && e.itemId && this.deps.queued(e.itemId)) || this.starting.has(e.id)).length;
+  }
+
+  /** Whether the session or run that works on a started event is busy. */
+  private eventBusy(event: TriggerEvent): boolean {
+    if (event.status !== 'started') return false;
+    if (event.runId) {
+      const state = this.deps.run(event.runId);
+      return !!state && runIsBusy(state.run);
+    }
+    return !!event.sessionId && !!this.deps.sessionState(event.sessionId);
   }
 
   /**
@@ -397,6 +438,10 @@ export class TriggerWatcher {
     const { store } = this.deps;
     this.starting.add(event.id);
     try {
+      if (trigger.start.kind === 'pipeline') {
+        await this.startRun(trigger, trigger.start, event);
+        return;
+      }
       if ((trigger.draft.permissionMode as string) === 'bypassPermissions') throw new Error('A trigger never bypasses permissions');
       const prompt = triggerPrompt(trigger.prompt, event, await this.context(trigger, event));
       const draft: LaterDraft = {
@@ -433,6 +478,26 @@ export class TriggerWatcher {
     }
   }
 
+  /**
+   * Starts a pipeline run for an event: the trigger's prompt, filled in, is its task, and what it read about the event
+   * goes to the first step as context. A pipeline that no longer fits pauses the trigger; the event keeps waiting.
+   */
+  private async startRun(trigger: Trigger, start: Extract<Trigger['start'], { kind: 'pipeline' }>, event: TriggerEvent): Promise<void> {
+    if (this.pipelineGone(trigger)) {
+      this.deps.changed();
+      return;
+    }
+    const task = fillTriggerPrompt(trigger.prompt, event).trim();
+    const context = triggerContextBlock(event, await this.context(trigger, event));
+    const title = triggerSessionTitle(event);
+    const runId = await this.deps.startRun({ pipelineId: start.pipelineId, projectRoot: trigger.projectRoot, profileId: trigger.draft.profileId, task, title, context, unattended: start.unattended, autoPush: start.autoPush });
+    const started = this.deps.store.setStatus(event.id, 'started', { runId, startedAt: this.now() });
+    // The run row is the parent: it gets the bolt, and the header's line with the link to the run or issue.
+    if (started) this.linkSession(trigger, started, runId);
+    this.deps.log('info', `Triggers: “${trigger.name}” started ${eventRef(event)} as the run ${runId}`);
+    this.announce(trigger, event, title, runId);
+  }
+
   /** Tells about a CI session that started, now or from the queue. An issue was told about when it was picked up. */
   private announce(trigger: Trigger, event: TriggerEvent, title: string, sessionId: string): void {
     if (event.kind !== 'ci') return;
@@ -454,6 +519,15 @@ export class TriggerWatcher {
   /** Where the work on an event is now, for its state label. */
   private workState(event: TriggerEvent): TriggerWorkState | null {
     if (event.status === 'waiting' || event.status === 'queued') return 'waiting';
+    if (event.status === 'started' && event.runId) {
+      // A deleted run leaves the label as it is: deleting it by hand releases it (`released`).
+      const state = this.deps.run(event.runId);
+      if (!state) return null;
+      const work = runWorkState(state.run);
+      // A step that opened a pull request itself counts too.
+      if (work !== 'prOpen' && state.steps.some((step) => step.sessionId && this.deps.sessionPr(step.sessionId))) return 'prOpen';
+      return work;
+    }
     if (event.status !== 'started' || !event.sessionId) return null;
     if (this.deps.sessionPr(event.sessionId)) return 'prOpen';
     const state = this.deps.sessionState(event.sessionId);
@@ -518,7 +592,7 @@ export class TriggerWatcher {
    * header says who has it now. Issues no longer in the answer (assigned away from you) are read one by one.
    */
   private async followAssignees(trigger: Trigger, listed: readonly IssueItem[]): Promise<void> {
-    const active = this.deps.store.eventsOf(trigger.id).map((s) => s.event).filter((e) => e.kind === 'issue' && e.status === 'started' && e.sessionId && this.deps.sessionState(e.sessionId));
+    const active = this.deps.store.eventsOf(trigger.id).map((s) => s.event).filter((e) => e.kind === 'issue' && this.eventBusy(e));
     if (!active.length) return;
     const account = await this.account(trigger.projectRoot);
     const me = account.ok ? account.value.login : null;

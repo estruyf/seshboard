@@ -64,6 +64,7 @@ import {
   Schedule,
   runsBetween,
   triggerProblem,
+  pipelineProblem,
   Trigger,
   TriggerEvent,
   TriggerSession,
@@ -886,6 +887,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     readOnly: (id) => runner?.isReadOnly(id) ?? false,
     planApproved: (id, plan) => runner?.planApproved(id, plan) ?? null,
+    autoAnswer: (request) => runner?.autoAnswer(request) ?? null,
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -1303,6 +1305,14 @@ export function createEngine(options: EngineOptions): Engine {
       return sessionId;
     },
     queue: queueHeld,
+    pipeline: (id) => pipelineStore.get(id),
+    run: (runId) => runner?.state(runId) ?? null,
+    // A run row is the parent, as for a pipeline started from New session (#185).
+    startRun: async ({ pipelineId, projectRoot, profileId, task, title, context, unattended, autoPush }) => {
+      if (!runner) throw new Error('Pipelines aren’t ready yet');
+      const state = await runner.start({ pipelineId, task, projectRoot, profileId, trigger: { title, context, unattended, autoPush } });
+      return state.run.id;
+    },
     projectName: (root) => listProjects().find((p) => p.root === root)?.name ?? basename(root),
     changed: triggersBroadcast,
     notify: (notices) => broadcast('triggers.notice', { notices }),
@@ -1571,7 +1581,11 @@ export function createEngine(options: EngineOptions): Engine {
       void pullRequestsFor(run.projectRoot, true);
       return pr;
     },
-    changed: (state) => broadcast('runs.changed', { state }),
+    changed: (state) => {
+      broadcast('runs.changed', { state });
+      // A triggered run's state moves its issue's label and frees its trigger's slot (#185).
+      triggerWatcher?.nudge();
+    },
     notify: (notice) => broadcast('runs.notice', { notice }),
     log,
   });
@@ -2817,6 +2831,10 @@ export function createEngine(options: EngineOptions): Engine {
       if (input.id && !triggers.get(input.id)) throw new RpcError('NOT_FOUND', 'That trigger was deleted');
       const problem = triggerProblem({ ...input, draft: input.draft ?? {} });
       if (problem) throw new RpcError('INVALID', problem);
+      if (input.start?.kind === 'pipeline') {
+        const unfit = pipelineProblem(pipelineStore.get(input.start.pipelineId), input.projectRoot);
+        if (unfit) throw new RpcError('INVALID', `${unfit}.`);
+      }
       // A trigger belongs to a project, and lives on its Triggers tab: a folder that isn't one yet (Start when… in
       // New session on any folder) becomes one.
       if (!input.id && !projects.addedRoots().includes(input.projectRoot) && !questions.contains(input.projectRoot)) projects.add(input.projectRoot);
@@ -2873,12 +2891,16 @@ export function createEngine(options: EngineOptions): Engine {
       if (pipeline.id && !pipelineStore.get(pipeline.id)) throw new RpcError('NOT_FOUND', 'That pipeline was deleted');
       const saved = pipelineStore.save(pipeline);
       pipelinesBroadcast();
+      // A trigger that starts it pauses when it no longer fits (another project, a step that bypasses permissions).
+      void triggerWatcher?.check();
       return { pipeline: saved };
     },
     'pipelines.delete': ({ id }) => {
       if (isBuiltInPipeline(id)) throw new RpcError('READ_ONLY', 'Built-in pipelines can’t be deleted.');
       const pipeline = pipelineStore.remove(id);
       pipelinesBroadcast();
+      // The triggers that start it pause, with the reason.
+      void triggerWatcher?.check();
       return { pipeline };
     },
     'pipelines.restore': ({ pipeline }) => {
@@ -2903,8 +2925,14 @@ export function createEngine(options: EngineOptions): Engine {
     'runs.anotherRound': async ({ runId }) => ({ state: await runAction(() => runner!.anotherRound(runId)) }),
     'runs.skipStep': async ({ runId }) => ({ state: await runAction(() => runner!.skipStep(runId)) }),
     'runs.stop': async ({ runId }) => ({ state: await runAction(() => runner!.stop(runId)) }),
-    'runs.archive': async ({ runId, archived }) => ({ runs: await runAction(async () => runner!.archive(runId, archived)) }),
+    'runs.archive': async ({ runId, archived }) => {
+      const runs = await runAction(async () => runner!.archive(runId, archived));
+      // A triggered run archived by hand: its issue's state label comes off, as for a session.
+      if (archived) for (const { run } of runs) triggerWatcher?.released(run.id);
+      return { runs };
+    },
     'runs.delete': async ({ runId, keepSubSessions }) => {
+      for (const run of runner?.state(runId) ? runner.tree(runId).runs : []) triggerWatcher?.released(run.id);
       await runAction(() => runner!.delete(runId, keepSubSessions));
       return {};
     },

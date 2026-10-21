@@ -48,6 +48,7 @@ const plan: PipelineClaudeStep = {
   actionsFirst: [],
   verdict: null,
   confirmBefore: false,
+  approvePlan: false,
 };
 
 const validate: PipelineClaudeStep = {
@@ -62,6 +63,7 @@ const validate: PipelineClaudeStep = {
   actionsFirst: ['Test', 'Lint'],
   verdict: { sendTo: 'Execute', rounds: 2 },
   confirmBefore: false,
+  approvePlan: false,
 };
 
 /** The pipelines every project has. Read-only: Duplicate one to change it. */

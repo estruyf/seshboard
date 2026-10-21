@@ -237,6 +237,7 @@ function setup(
     links?: HostManagerDeps['links'];
     readOnly?: HostManagerDeps['readOnly'];
     planApproved?: HostManagerDeps['planApproved'];
+    autoAnswer?: HostManagerDeps['autoAnswer'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -298,6 +299,7 @@ function setup(
     links: opts.links,
     readOnly: opts.readOnly,
     planApproved: opts.planApproved,
+    autoAnswer: opts.autoAnswer,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -1475,6 +1477,16 @@ describe('failureMessage', () => {
       t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', updatedInput: { plan: '1. Do it' } });
       await until(() => lastState(t.infos, id) === 'idle');
       expect(approved).toEqual([{ id, plan: '1. Do it' }]);
+      expect(t.messages.flatMap((m) => m.messages.map((x) => x.uuid))).toContain('a-ExitPlanMode=deny');
+    });
+
+    it('answers a request for you when the pipeline does, without showing it, and keeps the plan as a click would', async () => {
+      const approved: string[] = [];
+      const t = setup({ planApproved: (id) => (approved.push(id), 'Plan kept. Stop here.'), autoAnswer: (request) => (request.toolName === 'ExitPlanMode' ? { behavior: 'allow' } : null) });
+      const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'tools:ExitPlanMode', permissionMode: 'plan' });
+      await until(() => lastState(t.infos, id) === 'idle');
+      expect(t.permissions).toEqual([]);
+      expect(approved).toEqual([id]);
       expect(t.messages.flatMap((m) => m.messages.map((x) => x.uuid))).toContain('a-ExitPlanMode=deny');
     });
   });

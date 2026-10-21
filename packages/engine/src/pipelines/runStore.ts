@@ -25,6 +25,7 @@ interface RunRow {
   ended_at: number | null;
   archived_at: number | null;
   restored_at: number | null;
+  unattended: number;
 }
 
 interface StepRow {
@@ -47,8 +48,8 @@ interface StepRow {
 export const RUN_ID_PREFIX = 'run-';
 export const isRunId = (id: string | null | undefined): id is string => !!id?.startsWith(RUN_ID_PREFIX);
 
-/** What a new run starts with. */
-export type NewRun = Pick<PipelineRun, 'pipeline' | 'parentSessionId' | 'task' | 'title' | 'projectRoot' | 'cwd' | 'profileId'> & { attachments?: ImageAttachment[] };
+/** What a new run starts with. `context`: a triggered run's event text, for its first step (`context`). */
+export type NewRun = Pick<PipelineRun, 'pipeline' | 'parentSessionId' | 'task' | 'title' | 'projectRoot' | 'cwd' | 'profileId'> & { attachments?: ImageAttachment[]; context?: string | null; unattended?: boolean };
 
 const json = <T>(text: string | null, schema: z.ZodType<T>, fallback: T): T => {
   if (!text) return fallback;
@@ -91,6 +92,9 @@ export class RunStore {
       removeRun: db.prepare('DELETE FROM pipeline_runs WHERE id = ?'),
       setAttachments: db.prepare('UPDATE pipeline_runs SET attachments_json = ? WHERE id = ?'),
       attachments: db.prepare('SELECT attachments_json FROM pipeline_runs WHERE id = ?'),
+      setContext: db.prepare('UPDATE pipeline_runs SET context = ? WHERE id = ?'),
+      setUnattended: db.prepare('UPDATE pipeline_runs SET unattended = ? WHERE id = ?'),
+      context: db.prepare('SELECT context FROM pipeline_runs WHERE id = ?'),
       archiveRun: db.prepare('UPDATE pipeline_runs SET archived_at = ?, restored_at = ? WHERE id = ?'),
       steps: db.prepare('SELECT * FROM pipeline_run_steps WHERE run_id = ? ORDER BY idx, round'),
       stepBySession: db.prepare('SELECT * FROM pipeline_run_steps WHERE session_id = ? ORDER BY started_at DESC LIMIT 1'),
@@ -113,7 +117,18 @@ export class RunStore {
     const now = this.now();
     this.statements.insertRun.run(id, input.pipeline.id, JSON.stringify(input.pipeline), input.parentSessionId, input.task, input.title, input.projectRoot, input.cwd, input.profileId, now, now);
     if (input.attachments?.length) this.statements.setAttachments.run(JSON.stringify(input.attachments), id);
+    if (input.context) this.statements.setContext.run(input.context, id);
+    if (input.unattended) this.statements.setUnattended.run(1, id);
     return this.get(id)!;
+  }
+
+  /**
+   * What a triggered run's first step reads about its event (an issue, a failed log), as a block that says it is
+   * context, not instructions. Kept apart from the task, so later steps' briefs and the pull request don't carry it.
+   */
+  context(id: string): string | null {
+    const row = this.statements.context.get(id) as unknown as { context: string | null } | undefined;
+    return row?.context ?? null;
   }
 
   /** The images sent with the run's task (not part of the run's state: they are large). */
@@ -168,6 +183,7 @@ export class RunStore {
     const { run } = state;
     this.remove(run.id);
     this.statements.restoreRun.run(run.id, run.pipelineId, JSON.stringify(run.pipeline), run.parentSessionId, run.task, run.title, run.projectRoot, run.cwd, run.profileId, run.status, run.reason, run.waitingFor, run.step, run.round, run.sentBackTo, run.pr ? JSON.stringify(run.pr) : null, run.createdAt, run.updatedAt, run.endedAt);
+    if (run.unattended) this.statements.setUnattended.run(1, run.id);
     for (const step of state.steps) {
       this.saveStep({ ...step, runId: run.id });
       if (step.sessionId) this.setParent(step.sessionId, run.parentSessionId ?? run.id, run.id);
@@ -287,6 +303,7 @@ function toRun(row: RunRow): PipelineRun | null {
     step: row.step,
     round: row.round,
     sentBackTo: row.sent_back_to,
+    unattended: row.unattended === 1,
     pr: json(row.pr_json, Pr, null),
     createdAt: row.created_at,
     updatedAt: row.updated_at,

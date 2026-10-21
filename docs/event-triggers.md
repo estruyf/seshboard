@@ -2,7 +2,7 @@
 
 A trigger starts a session, or a pipeline, when something happens: CI fails on `main`, an issue gets the `switchboard` label, a reviewer asks for changes on a pull request a session opened, or a script you wrote reports an error. Schedules start sessions at a time. Triggers start them when there is work.
 
-This note is the design. Phase 1 (CI fails on a branch, issues for you) is built; [Built in phase 1](#built-in-phase-1) says where it differs from the design below. Places in the code are named as they are on `dev` on 2026-10-20.
+This note is the design. Phase 1 (CI fails on a branch, issues for you) and phase 3 (start a pipeline) are built; [Built in phase 1](#built-in-phase-1) and [Built in phase 3](#built-in-phase-3) say where they differ from the design below. Places in the code are named as they are on `dev` on 2026-10-20.
 
 [← Back to the README](../README.md)
 
@@ -226,4 +226,17 @@ Phase 1 is in `packages/protocol/src/triggers.ts` (the rules) and `triggerSchema
 - **The editor** opens from the Triggers tab, the project's ⋯ menu (Triggers… opens the tab), New session's Start ▾ › Start when… (the prompt and choices), and the palette (*New trigger…* asks for the project). The name follows the source until you type one. Notifications that have no session (picked up, paused) open the project's Triggers tab.
 - **Colour.** Triggers have a theme token of their own, `trigger` (violet), for the bolt and the event fields in the prompt; `remote` stays only for other computers.
 - **Backup.** The Triggers section of the settings file leaves out what checks found; every imported trigger is paused with "Imported. Check it, then resume.", and one for a folder that isn't here is skipped.
+
+## Built in phase 3
+
+A trigger can start a [pipeline](pipelines.md) (#185). Where it is:
+
+- **`start`** on the trigger (`triggerSchema.ts`): `{ kind: 'session' }` or `{ kind: 'pipeline'; pipelineId }`, in `start_json` on its row (migration v40); a row without one reads as a session. `draft` is for a session; a run uses only its profile, since each step sets its own model and mode and the run makes its own worktree. So `effectiveMaxAtOnce` doesn't hold a pipeline trigger to 1 for the project's folder.
+- **The start** goes through `PipelineRunner.start` with `trigger: { title, context }`: a run row is the parent, titled as a triggered session is (`triggerSessionTitle`). The trigger's prompt, filled in, is the task (`{{task}}`, the pull request's description, `@parent`). What it read about the event (`triggerContextBlock`: the issue, or the failed log) is kept apart on the run (`pipeline_runs.context`) and goes to the first step that starts a session only, so later steps and the pull request don't carry it. The runner holds the steps at the focus limit and usage limits, so the watcher never queues a run. A triggered run never pushes by itself (`autoPush` off for it) and refuses a step that bypasses permissions.
+- **Events** get `runId` (`trigger_events.run_id`); `trigger_sessions` keeps the run's id, so the bolt and the Started by line show on the run row.
+- **Busy and labels** read the run (`runIsBusy`, `runWorkState`): a run counts once while it runs, waits for you or is paused. Its label: `working` while it runs (or waits for a slot), `needs input` while it waits for you (a stop, a step to confirm, Push), `pr open` once Push (or a step) opened a pull request, `failed` when it is stopped for good. Done without a pull request leaves the label. Archiving or deleting the run takes `working` or `needs input` off, as for a session. Each change of a run nudges the watcher.
+- **A pipeline that no longer fits** (`pipelineProblem`: deleted, moved to another project, a step that bypasses permissions) pauses its triggers with the reason at the next pass; saving or deleting a pipeline asks for one. `triggers.save` refuses such a pipeline.
+- **Without stopping for you** (`start.unattended`, off by default) marks the run (`PipelineRun.unattended`). Before a step's permission request is shown, `HostManager` asks `PipelineRunner.autoAnswer`: a plan step's `ExitPlanMode` is approved (through `respond`, so `planApproved` keeps the plan as a click would), `AskUserQuestion` is denied with `UNATTENDED_ANSWER` ("decide yourself, say what you assumed"), and every other tool asks as usual. A step with `confirmBefore` starts without waiting. Errors, stops and verdicts still stop the run. **Open the pull request without me** (`start.autoPush`) sets the run's `autoPush`; the pipeline's own `autoPush` doesn't count for a trigger.
+- **The editor** has a **Starts** row (A session, A pipeline, with the project's pipelines, and the two checkboxes above); for a pipeline the prompt is the **Task**, and Runs with keeps only the profile. **Start ▾ › Start when…** in New session with a pipeline picked in Run as opens it on that pipeline.
+- **Backup.** The Triggers section keeps `start`; an imported trigger whose pipeline isn't here (yours, a built-in, or one in the same file) is skipped.
 

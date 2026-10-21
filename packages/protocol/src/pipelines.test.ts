@@ -39,6 +39,7 @@ const claude = (name: string, over: Partial<PipelineClaudeStep> = {}): PipelineC
   actionsFirst: [],
   verdict: null,
   confirmBefore: false,
+  approvePlan: false,
   ...over,
 });
 const push: PipelineStep = { kind: 'push', name: 'Push', draft: false };
@@ -271,6 +272,7 @@ const runState = (over: Partial<PipelineRunState['run']> = {}, stepRows: Array<P
     round: 1,
     sentBackTo: null,
     pr: null,
+    unattended: false,
     createdAt: 0,
     updatedAt: 0,
     endedAt: null,

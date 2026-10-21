@@ -720,6 +720,12 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
     const triggerStore = stores.triggers;
     const current = new Map(triggerStore.list().map((t) => [t.id, t]));
     const seen = new Set<string>();
+    // A trigger that starts a pipeline needs it here: one of yours, a built-in, or one this file brings.
+    const pipelinesHere = new Set([
+      ...(stores.pipelines ? stores.pipelines.own().map((p) => p.id) : []),
+      ...(has('pipelines') && stores.pipelines ? file.pipelines!.flatMap((raw) => (typeof (raw as { id?: unknown } | null)?.id === 'string' ? [(raw as { id: string }).id] : [])) : []),
+    ]);
+    const pipelineHere = (id: string) => isBuiltInPipeline(id) || pipelinesHere.has(id);
     for (const [index, raw] of file.triggers!.entries()) {
       const from = typeof (raw as { projectRoot?: unknown } | null)?.projectRoot === 'string' ? (raw as { projectRoot: string }).projectRoot : null;
       const root = from === null ? null : locate(from);
@@ -729,6 +735,10 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       const label = parsed.success ? parsed.data.name : typeof name === 'string' ? name : `Trigger ${index + 1}`;
       if (!parsed.success || root === null) {
         note('triggers', label, 'skip', from !== null && root === null ? `folder not found on ${THIS_COMPUTER}` : 'not readable');
+        continue;
+      }
+      if (parsed.data.start.kind === 'pipeline' && !pipelineHere(parsed.data.start.pipelineId)) {
+        note('triggers', label, 'skip', `its pipeline isn’t on ${THIS_COMPUTER}`);
         continue;
       }
       const incoming = parsed.data;

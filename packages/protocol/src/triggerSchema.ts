@@ -49,6 +49,23 @@ export const TriggerDraft = z.object({
 });
 export type TriggerDraft = z.infer<typeof TriggerDraft>;
 
+/**
+ * What a trigger starts for each event: a session with its draft, or a run of one of the project's pipelines with the
+ * event as its task (#185). A trigger saved before pipelines could start reads as a session.
+ */
+export const TriggerStart = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('session') }),
+  z.object({
+    kind: z.literal('pipeline'),
+    pipelineId: z.string().min(1).max(100),
+    /** Run without stopping for you: approve plans, start steps that wait for you, answer Claude's questions with "decide". */
+    unattended: z.boolean().default(false),
+    /** Push commits, pushes and opens the pull request without waiting for you. Merging stays with you. */
+    autoPush: z.boolean().default(false),
+  }),
+]);
+export type TriggerStart = z.infer<typeof TriggerStart>;
+
 /** The second label a trigger keeps on an issue, saying where the work is. Off unless turned on. */
 export const StateLabels = z.object({
   on: z.boolean().default(false),
@@ -66,10 +83,13 @@ export const Trigger = z.object({
   projectRoot: AbsolutePath,
   name: Name,
   source: TriggerSource,
-  /** The instruction; `{{event.title}}` and the other fields are filled in for each event. */
+  /** The instruction (a pipeline's task); `{{event.title}}` and the other fields are filled in for each event. */
   prompt: z.string().trim().min(1).max(MAX_PROMPT_LENGTH),
+  /** A session, or a pipeline run. */
+  start: TriggerStart.default({ kind: 'session' }),
+  /** What a session starts with. A pipeline's steps set their own; only the profile is used for a run. */
   draft: TriggerDraft.default(TriggerDraft.parse({})),
-  /** How many of its sessions may be busy at once. Always 1 in the project's folder (`effectiveMaxAtOnce`). */
+  /** How many of its sessions (or runs) may be busy at once. Always 1 for sessions in the project's folder (`effectiveMaxAtOnce`). */
   maxAtOnce: z.number().int().min(TRIGGER_LIMITS.atOnce.min).max(TRIGGER_LIMITS.atOnce.max).default(3),
   /** How many events may wait for a slot; beyond that they are skipped. */
   maxWaiting: z.number().int().min(TRIGGER_LIMITS.waiting.min).max(TRIGGER_LIMITS.waiting.max).default(10),
@@ -133,6 +153,8 @@ export const TriggerEvent = z.object({
   /** Why it was skipped or held, in a few words. */
   reason: z.string().max(300).nullable().default(null),
   sessionId: z.string().max(200).nullable().default(null),
+  /** The pipeline run that works on it, for a trigger that starts a pipeline. */
+  runId: z.string().max(200).nullable().default(null),
   /** The queued item it became (`queued`). */
   itemId: z.string().max(100).nullable().default(null),
   /** The state label Switchboard last put on the issue; null before it did, or with state labels off. */
@@ -144,8 +166,9 @@ export const TriggerEvent = z.object({
 });
 export type TriggerEvent = z.infer<typeof TriggerEvent>;
 
-/** A session a trigger started: the bolt on its row, and the line in its header. */
+/** A session (or a pipeline's run row) a trigger started: the bolt on its row, and the line in its header. */
 export const TriggerSession = z.object({
+  /** The session, or the run's id for a pipeline run. */
   sessionId: z.string(),
   triggerId: z.string(),
   eventId: z.string(),
@@ -190,6 +213,7 @@ export const TriggerNotice = z.object({
   ref: z.string().nullable(),
   /** The session's title. */
   title: z.string().nullable(),
+  /** The session, or the run's id for a pipeline run. */
   sessionId: z.string().nullable(),
   /** Why it paused. */
   reason: z.string().nullable(),

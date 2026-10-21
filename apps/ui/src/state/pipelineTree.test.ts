@@ -30,7 +30,7 @@ const row = (id: string, over: Partial<SessionRowData> = {}, parentId: string | 
 const live = (status: LiveSession['status']) => ({ status, origin: 'app' }) as LiveSession;
 
 const run = (over: Partial<PipelineRunState['run']> = {}, steps: Array<Partial<PipelineRunState['steps'][number]>> = []): PipelineRunState => ({
-  run: { id: 'run-1', pipelineId: pipeline.id, pipeline, parentSessionId: 'parent', task: null, title: 'Add a usage cost toggle', projectRoot: '/work/app', cwd: '/work/app', profileId: null, status: 'running', reason: null, waitingFor: null, hold: null, step: 0, round: 1, sentBackTo: null, pr: null, createdAt: NOW - HOUR, updatedAt: NOW - HOUR, endedAt: null, archivedAt: null, restoredAt: null, ...over },
+  run: { id: 'run-1', pipelineId: pipeline.id, pipeline, parentSessionId: 'parent', task: null, title: 'Add a usage cost toggle', projectRoot: '/work/app', cwd: '/work/app', profileId: null, status: 'running', reason: null, waitingFor: null, hold: null, step: 0, round: 1, sentBackTo: null, pr: null, unattended: false, createdAt: NOW - HOUR, updatedAt: NOW - HOUR, endedAt: null, archivedAt: null, restoredAt: null, ...over },
   steps: steps.map((s) => ({ runId: over.id ?? 'run-1', step: 'Plan', index: 0, round: 1, sessionId: null, status: 'done', outcome: 'clean', verdict: null, reason: null, plan: null, actions: [], startedAt: 0, endedAt: null, ...s })),
 });
 

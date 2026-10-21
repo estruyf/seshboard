@@ -12,6 +12,7 @@ import { paneHandle, paneHeader, type PaneProps } from '../computers/ComputerVie
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { useSessionMenu } from '../sidebar/useSessionMenu.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
+import { TriggerOriginBar } from '../triggers/TriggerOriginBar.tsx';
 import { StepTreeCard } from './StepTree.tsx';
 import { PARENT_PLACEHOLDER } from './runView.ts';
 
@@ -50,6 +51,7 @@ export function RunRowPane({ runId, pane }: { runId: string; pane: PaneProps }) 
           {run && (
             <p className="truncate text-meta text-muted" data-run-row-meta>
               Run · {runProgress(run)}
+              {run.unattended && <span data-run-unattended> · without stopping for you</span>}
               <span className="@max-[860px]:hidden"> · {projectName}</span>
             </p>
           )}
@@ -71,6 +73,8 @@ export function RunRowPane({ runId, pane }: { runId: string; pane: PaneProps }) 
         )}
         <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip="Close and go Home (the run goes on)" />
       </header>
+      {/* A trigger started it (#185): which, and the link to the run or issue. */}
+      <TriggerOriginBar sessionId={runId} />
       {!state ? (
         <p className="p-8 text-center text-ui text-muted" role="status">
           {loaded ? 'This run is gone.' : 'Loading the run…'}

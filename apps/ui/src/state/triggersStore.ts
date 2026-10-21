@@ -11,11 +11,14 @@ import { checkedNowLine, type TriggerForm } from './triggers.ts';
 
 // Event triggers (#180). The engine keeps and checks them; every window shows the same list.
 
-/** What the editor opens on: a project, a trigger to change, or New session's prompt and choices (Start when…). */
+/**
+ * What the editor opens on: a project, a trigger to change, or New session's prompt and choices (Start when…), with the
+ * pipeline picked in Run as.
+ */
 export interface TriggerEditorRequest {
   root: string;
   trigger: Trigger | null;
-  from?: Partial<Pick<TriggerForm, 'prompt' | 'profileId' | 'model' | 'effort' | 'permissionMode' | 'workspace' | 'baseRef'>>;
+  from?: Partial<Pick<TriggerForm, 'prompt' | 'profileId' | 'model' | 'effort' | 'permissionMode' | 'workspace' | 'baseRef' | 'start' | 'pipelineId'>>;
   /** Saved: what the opener does next (New session empties its box). */
   onSaved?(trigger: Trigger): void;
 }

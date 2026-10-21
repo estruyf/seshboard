@@ -57,6 +57,7 @@ export function newClaudeStep(steps: readonly PipelineStep[]): PipelineClaudeSte
     actionsFirst: [],
     verdict: null,
     confirmBefore: false,
+    approvePlan: false,
   };
 }
 

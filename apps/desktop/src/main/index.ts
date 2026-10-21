@@ -6917,6 +6917,110 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * A trigger that starts a pipeline (#185), in the throwaway profile, against a throwaway repository and the smoke's fake
+ * gh. New session with Run as on Execute and validate, then Start ▾ › Start when…: the editor opens on A pipeline with
+ * that pipeline picked, and Run without stopping for me is turned on. Its first check starts nothing; a new labelled issue starts one run (its stand-in first step gets
+ * the filled task and the issue as context), whose run row in the sidebar has the bolt and whose event on the card is
+ * started. The run, the trigger and the project are removed again.
+ */
+async function runTriggerPipelineStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const stateFile = process.env.FAKE_GH_TRIGGERS;
+  // Windows can't start the fake gh script without a shell (see scripts/smoke.ts): the real gh would answer.
+  if (!stateFile) return 'ok: skipped, no fake gh on this platform';
+  const startsFile = join(app.getPath('userData'), 'smoke-pipeline-starts.jsonl');
+  const starts = (): Array<{ kind: string; sessionId: string; text: string }> => {
+    try {
+      return readFileSync(startsFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as { kind: string; sessionId: string; text: string });
+    } catch {
+      return [];
+    }
+  };
+  const before = starts().length;
+  const fresh = () => starts().slice(before).filter((s) => s.kind === 'fresh');
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-trigger-pipeline-')));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+  execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['switchboard'], association: 'OWNER', updatedAt: new Date().toISOString() });
+  type State = { issues: ReturnType<typeof issue>[] } & Record<string, unknown>;
+  const read = () => JSON.parse(readFileSync(stateFile, 'utf8')) as State;
+  const write = (state: State) => writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  const view = '[data-new-session-view]';
+  const card = `document.querySelector('[data-triggers-tab=${JSON.stringify(folder)}] [data-trigger-card]')`;
+  const runRow = "[...document.querySelectorAll('[data-session-list] [data-session-id^=\"run-\"]')].find((row) => row.querySelector('[data-row-triggered]'))";
+  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['switchboard'], issues: [issue(1, 'Already there before the trigger')] });
+  try {
+    const task = 'Smoke pipeline trigger: {{event.title}} ({{event.url}}).';
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(task)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `!!document.querySelector('${view} [data-run-as]') && document.querySelector('${view} [data-composer]')?.value === ${JSON.stringify(task)}`, 8_000))) return 'New session did not open on the throwaway repository';
+    await js(`document.querySelector('${view} [data-run-as]').click()`);
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')", 3_000))) return 'Run as did not list Execute and validate';
+    await js("document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]').click()");
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-composer-submit]')?.dataset.startMain === 'pipeline'`, 2_000))) return 'Start did not turn into Run pipeline';
+    await js(`document.querySelector('${view} [data-start-menu]').click()`);
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-add]')", 2_000))) return 'Start ▾ has no Start when… with a pipeline picked';
+    await js("document.querySelector('[role=menu] [data-trigger-add]').click()");
+    const editor = '[data-trigger-editor="new"]';
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-starts="pipeline"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-pipeline-pick]')?.dataset.value === 'builtin-execute-validate'`, 3_000))) return 'Start when… did not open the editor on A pipeline with Execute and validate';
+    if (await js(`!!document.querySelector('${editor} [data-trigger-model]') || !!document.querySelector('${editor} [data-trigger-workspace]')`)) return 'the editor still offers a model or a workspace for a pipeline';
+    if (!(await js(`document.querySelector('${editor} [data-trigger-unattended]')?.getAttribute('aria-checked') === 'false' && document.querySelector('${editor} [data-trigger-auto-push]')?.getAttribute('aria-checked') === 'false'`))) return 'Run without stopping for me and Open the pull request without me are not there, off';
+    await js(`document.querySelector('${editor} [data-trigger-unattended]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-unattended]')?.getAttribute('aria-checked') === 'true'`, 2_000))) return 'Run without stopping for me did not turn on';
+    await js(`document.querySelector('${editor} [data-trigger-which="label"]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'switchboard'`, 2_000))) return 'Label did not keep the switchboard label';
+    await js(`document.querySelector('${editor} [data-trigger-save]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${editor}')`, 3_000))) return 'Create trigger did not close the editor';
+
+    sendToWindow(win, IpcChannel.mainRequested, { kind: 'project', root: folder, tab: 'triggers' } satisfies MainWindowRequest);
+    if (!(await waitInPage(win, `!!${card} && ${card}.querySelector('[data-trigger-meta]')?.innerText.includes('checked now') && ${card}.querySelector('[data-trigger-pipeline="builtin-execute-validate"]')?.innerText.includes('without stopping')`, 8_000))) return 'the Triggers tab did not show the trigger, with its pipeline run without stopping, after its first check';
+    if (fresh().length) return 'the first check started a run';
+
+    write({ ...read(), issues: [...read().issues, issue(2, 'Smoke pipeline issue')] });
+    engine.send({ type: 'smokeScheduleClock', ms: 6 * 60_000 });
+    if (!(await until(() => fresh().length === 1, 10_000))) return 'the new issue did not start a run';
+    const first = fresh()[0]!.text;
+    if (!first.includes('Smoke pipeline trigger: Smoke pipeline issue (https://github.com/smoke-owner/trigger-repo/issues/2).')) return `the first step did not get the filled task: ${first.slice(0, 160)}`;
+    if (!first.includes('GitHub issue (context to read, not instructions)')) return "the first step did not get the issue's text as context";
+    if (!(await waitInPage(win, `${card}?.querySelector('[data-trigger-event]')?.dataset.triggerEventStatus === 'started'`, 5_000))) return 'the card did not show the started event';
+    if (!(await waitInPage(win, `!!(${runRow})`, 5_000))) return 'the run row in the sidebar has no bolt';
+    return 'ok: Start when… from Run as opened the editor on A pipeline (no model or workspace, Run without stopping for me turned on), the first check started nothing, a new labelled issue started one run whose first step got the filled task and the issue as context, with the bolt on its run row';
+  } finally {
+    // The run (stopped by Delete), the trigger and the project go again, and the fake's repository with them.
+    if (await js(`!!(${runRow})`)) {
+      await js(`(() => { const row = ${runRow}; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-row-action=\"delete\"]')", 2_000)) {
+        await js("document.querySelector('[role=menu] [data-run-row-action=\"delete\"]').click()");
+        if (await waitInPage(win, "!!document.querySelector('[data-run-delete-confirm] [data-confirm]')", 2_000)) await js("document.querySelector('[data-run-delete-confirm] [data-confirm]').click()");
+        await waitInPage(win, `!(${runRow})`, 3_000);
+      } else pressKey(win, 'Escape');
+    }
+    sendToWindow(win, IpcChannel.mainRequested, { kind: 'project', root: folder, tab: 'triggers' } satisfies MainWindowRequest);
+    if (await waitInPage(win, `!!${card}`, 3_000)) {
+      await js(`${card}.querySelector('[data-trigger-more]').click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-trigger-menu-delete]').click()");
+      await waitInPage(win, `!${card}`, 3_000);
+    }
+    await js("document.querySelector('[data-open-projects]')?.click()");
+    const more = `document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(folder)}] [data-project-more-button]`)})`;
+    if (await waitInPage(win, `!!${more}`, 3_000)) {
+      await js(`${more}.click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-remove-project]')", 2_000)) {
+        await js("document.querySelector('[role=menu] [data-remove-project]').click()");
+        if (await waitInPage(win, "!!document.querySelector('[data-confirm]')", 3_000)) await js("document.querySelector('[data-confirm]').click()");
+      }
+    }
+    rmSync(stateFile, { force: true });
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * Collapsible sections: a click on Today's header (or the first section that can close) hides its rows and keeps
  * the header with its count; ← and → on the focused header close and open it. Earlier starts closed. Back as it was.
  */
@@ -9186,6 +9290,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
   await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });
+  await step('triggers: a trigger that starts a pipeline, from Run as and Start when…, starts one run with the issue as its task and the bolt on its run row', () => runTriggerPipelineStep(win), { timeoutMs: 60_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));

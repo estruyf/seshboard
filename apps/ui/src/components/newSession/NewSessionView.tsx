@@ -889,8 +889,9 @@ function LocalNewSession() {
     if (draft && draft.prompt.trim()) setScheduling(draft);
   };
   /**
-   * Start when…: the prompt in the box with these choices, in a new trigger for this project (#180). Saved, the box is
-   * emptied, as after Schedule….
+   * Start when…: the prompt in the box with these choices, in a new trigger for this project (#180). With a pipeline
+   * picked in Run as, the trigger starts that pipeline, with the prompt as its task (#185). Saved, the box is emptied,
+   * as after Schedule….
    */
   const openTrigger = () => {
     const draft = laterDraft(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext });
@@ -898,7 +899,16 @@ function LocalNewSession() {
     openTriggerEditor({
       root: projectOf(draft.cwd),
       trigger: null,
-      from: { prompt: draft.prompt, model: draft.model ?? null, effort: draft.effort ?? null, permissionMode: draft.permissionMode, workspace: draft.workspace, baseRef: draft.baseRef, profileId: draft.profileId ?? null },
+      from: {
+        prompt: draft.prompt,
+        model: draft.model ?? null,
+        effort: draft.effort ?? null,
+        permissionMode: draft.permissionMode,
+        workspace: draft.workspace,
+        baseRef: draft.baseRef,
+        profileId: draft.profileId ?? null,
+        ...(runAs ? { start: 'pipeline' as const, pipelineId: runAs.id } : {}),
+      },
       onSaved: () => {
         useDrafts.getState().removeDraft(newDraftKey(cwd));
         clearPrompt();

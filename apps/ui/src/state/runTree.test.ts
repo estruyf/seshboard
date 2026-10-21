@@ -4,7 +4,7 @@ import { archiveTreeLabel, deleteTreeText, runGoesOn, runRowMenu, treeRunsOf, tr
 
 const pipeline = { ...BUILT_IN_PIPELINES[1]!, builtIn: true, createdAt: 0, updatedAt: 0 };
 const run = (over: Partial<PipelineRunState['run']> = {}, sessions: string[] = []): PipelineRunState => ({
-  run: { id: 'run-1', pipelineId: pipeline.id, pipeline, parentSessionId: null, task: 'Add dark mode', title: 'Add dark mode', projectRoot: '/p', cwd: '/p', profileId: null, status: 'running', reason: null, waitingFor: null, hold: null, step: 0, round: 1, sentBackTo: null, pr: null, createdAt: 0, updatedAt: 0, endedAt: null, archivedAt: null, restoredAt: null, ...over },
+  run: { id: 'run-1', pipelineId: pipeline.id, pipeline, parentSessionId: null, task: 'Add dark mode', title: 'Add dark mode', projectRoot: '/p', cwd: '/p', profileId: null, status: 'running', reason: null, waitingFor: null, hold: null, step: 0, round: 1, sentBackTo: null, pr: null, unattended: false, createdAt: 0, updatedAt: 0, endedAt: null, archivedAt: null, restoredAt: null, ...over },
   steps: sessions.map((sessionId, index) => ({ runId: over.id ?? 'run-1', step: 'Execute', index, round: 1, sessionId, status: 'done', outcome: 'clean', verdict: null, reason: null, plan: null, actions: [], startedAt: 0, endedAt: 0 })),
 });
 const actions = (state: PipelineRunState, archived = false) => runRowMenu(state, { archived, sessions: 2 }).map((i) => i.label);

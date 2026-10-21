@@ -8,12 +8,14 @@ import {
   triggerSessionTitle,
   type Effort,
   type PermissionMode,
+  type PipelineRunStatus,
   type ProjectDefaults,
   type StateLabels,
   type Trigger,
   type TriggerEvent,
   type TriggerSave,
   type TriggerSource,
+  type TriggerStart,
   type WorktreeBase,
 } from '@switchboard/protocol/client';
 
@@ -55,6 +57,14 @@ export interface TriggerForm {
   stateLabels: StateLabels;
   assignOnPickUp: boolean;
   prompt: string;
+  /** What each event starts: a session, or a run of `pipelineId` with the event as its task (#185). */
+  start: 'session' | 'pipeline';
+  /** The pipeline picked; kept while you switch to a session, so switching back finds it. */
+  pipelineId: string | null;
+  /** A pipeline's runs go on without stopping for you: plans approved, steps that wait started, questions decided. */
+  unattended: boolean;
+  /** A pipeline's Push opens the pull request without waiting for you. */
+  autoPush: boolean;
   profileId: string | null;
   model: string | null;
   effort: Effort | null;
@@ -73,6 +83,18 @@ export const DEFAULT_PROMPTS = {
   issues: 'Work on {{event.title}} ({{event.url}}). Read the issue first, ask me if something is unclear, then open a pull request that closes it.',
 } as const;
 
+/** The tasks a pipeline gets, per source: its steps say how (plan, build, check), and its Push step opens the pull request. */
+export const DEFAULT_TASKS = {
+  ci: 'CI failed on {{event.branch}} in {{event.workflow}} ({{event.url}}). Find the cause and fix it.',
+  issues: 'Work on {{event.title}} ({{event.url}}).',
+} as const;
+
+/** The prompt a new trigger starts with for a source and what it starts. */
+export const defaultPrompt = (kind: 'ci' | 'issues', start: 'session' | 'pipeline') => (start === 'pipeline' ? DEFAULT_TASKS[kind] : DEFAULT_PROMPTS[kind]);
+
+/** Which pipeline a trigger starts, of the project's: the one picked, while the project can still run it. */
+export const formPipeline = <P extends { id: string }>(form: Pick<TriggerForm, 'start' | 'pipelineId'>, pipelines: readonly P[]): P | null => (form.start === 'pipeline' ? (pipelines.find((p) => p.id === form.pipelineId) ?? null) : null);
+
 /** A mode a trigger may run in: never bypass permissions. */
 const safeMode = (mode: PermissionMode | null | undefined): PermissionMode => (mode && mode !== 'bypassPermissions' ? mode : 'default');
 
@@ -81,7 +103,8 @@ const safeMode = (mode: PermissionMode | null | undefined): PermissionMode => (m
  * with, and a worktree when the project sets nothing, so more than one can run. `from` is New session's prompt and
  * choices (Start ▾ › Start when…).
  */
-export function newTriggerForm(projectRoot: string, defaults: ProjectDefaults | null | undefined, from: Partial<Pick<TriggerForm, 'prompt' | 'profileId' | 'model' | 'effort' | 'permissionMode' | 'workspace' | 'baseRef'>> = {}): TriggerForm {
+export function newTriggerForm(projectRoot: string, defaults: ProjectDefaults | null | undefined, from: Partial<Pick<TriggerForm, 'prompt' | 'profileId' | 'model' | 'effort' | 'permissionMode' | 'workspace' | 'baseRef' | 'start' | 'pipelineId'>> = {}): TriggerForm {
+  const start = from.start ?? 'session';
   return {
     id: null,
     projectRoot,
@@ -96,7 +119,11 @@ export function newTriggerForm(projectRoot: string, defaults: ProjectDefaults | 
     collaboratorsOnly: true,
     stateLabels: { on: true, ...DEFAULT_STATE_LABELS },
     assignOnPickUp: false,
-    prompt: from.prompt?.trim() || DEFAULT_PROMPTS.issues,
+    prompt: from.prompt?.trim() || defaultPrompt('issues', start),
+    start,
+    pipelineId: from.pipelineId ?? null,
+    unattended: false,
+    autoPush: false,
     profileId: from.profileId ?? null,
     model: from.model ?? defaults?.model ?? null,
     effort: from.effort ?? defaults?.effort ?? null,
@@ -129,6 +156,10 @@ export function triggerForm(trigger: Trigger): TriggerForm {
     stateLabels: trigger.stateLabels,
     assignOnPickUp: trigger.assignOnPickUp,
     prompt: trigger.prompt,
+    start: trigger.start?.kind ?? 'session',
+    pipelineId: trigger.start?.kind === 'pipeline' ? trigger.start.pipelineId : null,
+    unattended: trigger.start?.kind === 'pipeline' && trigger.start.unattended,
+    autoPush: trigger.start?.kind === 'pipeline' && trigger.start.autoPush,
     profileId: trigger.draft.profileId,
     model: trigger.draft.model,
     effort: trigger.draft.effort,
@@ -159,10 +190,13 @@ export function formSource(form: TriggerForm): TriggerSource {
  */
 export function updateForm(form: TriggerForm, patch: Partial<TriggerForm>, defaultBranch: string | null = null): TriggerForm {
   const next = { ...form, ...patch };
-  if (patch.kind && patch.kind !== form.kind && form.prompt === DEFAULT_PROMPTS[form.kind]) next.prompt = DEFAULT_PROMPTS[patch.kind];
+  // The prompt follows the source and what it starts while it is still the one a new trigger starts with.
+  if ((next.kind !== form.kind || next.start !== form.start) && form.prompt === defaultPrompt(form.kind, form.start)) next.prompt = defaultPrompt(next.kind, next.start);
   if (!next.nameTouched) next.name = defaultTriggerName(formSource(next), defaultBranch);
-  if (next.workspace === 'current') next.maxAtOnce = 1;
-  else if (form.workspace === 'current' && patch.workspace === 'worktree' && next.maxAtOnce === 1) next.maxAtOnce = 3;
+  // Sessions in the project's folder run one at a time; a pipeline run makes its own worktree.
+  const inFolder = (f: TriggerForm) => f.start === 'session' && f.workspace === 'current';
+  if (inFolder(next)) next.maxAtOnce = 1;
+  else if (inFolder(form) && next.maxAtOnce === 1) next.maxAtOnce = 3;
   return next;
 }
 
@@ -171,8 +205,12 @@ export function formProblem(form: TriggerForm): string | null {
   if (form.kind === 'issues' && (form.which === 'label' || form.which === 'both') && !form.label.trim()) return 'Type the label to look for.';
   if (form.kind === 'issues' && form.which !== 'label' && !form.assignee.trim()) return 'Pick who the issues are assigned to.';
   if (form.kind === 'issues' && form.stateLabels.on && Object.values({ w: form.stateLabels.working, n: form.stateLabels.needsInput, p: form.stateLabels.prOpen, f: form.stateLabels.failed }).some((l) => !l.trim())) return 'Give every state label a name.';
-  return triggerProblem({ name: form.name, prompt: form.prompt, source: formSource(form), draft: { permissionMode: form.permissionMode } });
+  return triggerProblem({ name: form.name, prompt: form.prompt, source: formSource(form), draft: { permissionMode: form.permissionMode }, start: formStart(form) });
 }
+
+/** What the trigger starts, as saved: a session, or the pipeline picked (empty until one is, which `formProblem` says). */
+export const formStart = (form: Pick<TriggerForm, 'start' | 'pipelineId' | 'unattended' | 'autoPush'>): TriggerStart =>
+  form.start === 'pipeline' ? { kind: 'pipeline', pipelineId: form.pipelineId ?? '', unattended: form.unattended, autoPush: form.autoPush } : { kind: 'session' };
 
 /** What `triggers.save` gets from a form. */
 export function formToSave(form: TriggerForm): TriggerSave {
@@ -183,8 +221,9 @@ export function formToSave(form: TriggerForm): TriggerSave {
     name: form.name.trim(),
     source: formSource(form),
     prompt: form.prompt.trim(),
+    start: formStart(form),
     draft: { profileId: form.profileId, model: form.model, effort: form.effort, permissionMode: safeMode(form.permissionMode) as Exclude<PermissionMode, 'bypassPermissions'>, workspace: form.workspace, baseRef: form.baseRef },
-    maxAtOnce: form.workspace === 'current' ? 1 : clamp(form.maxAtOnce, TRIGGER_LIMITS.atOnce),
+    maxAtOnce: form.start === 'session' && form.workspace === 'current' ? 1 : clamp(form.maxAtOnce, TRIGGER_LIMITS.atOnce),
     maxWaiting: clamp(form.maxWaiting, TRIGGER_LIMITS.waiting),
     intervalMinutes: clamp(form.intervalMinutes, TRIGGER_LIMITS.interval),
     // State labels are for issues only; Assign to me for a label alone, since with an assignee every issue has one.
@@ -234,8 +273,18 @@ export function checkedNowLine(trigger: Pick<Trigger, 'name' | 'source' | 'pause
   return { text: `Checked ${trigger.name}. ${found} new ${what}.`, ok: true };
 }
 
-/** Where the work on a started event is, from its session: working, waiting for you, or finished. */
+/** Where the work on a started event is, from its session or pipeline run: working, waiting for you, or finished. */
 export type EventSessionState = 'working' | 'needs-you' | 'finished';
+
+/**
+ * Where a pipeline run is, as an event's state: a step works (or it waits for a slot, or for the next start), it waits
+ * for you (a stop, a step to confirm, Push), or it ended. A run that is gone counts as finished.
+ */
+export function runEventState(status: PipelineRunStatus | null): EventSessionState {
+  if (status === 'running' || status === 'paused') return 'working';
+  if (status === 'waiting') return 'needs-you';
+  return 'finished';
+}
 
 /** The events a card shows, newest first, waiting ones before the rest. */
 export function cardEvents(events: readonly TriggerEvent[]): TriggerEvent[] {

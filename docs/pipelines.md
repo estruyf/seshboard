@@ -198,9 +198,11 @@ All copy follows AGENTS.md › Copy. New palette commands and the Settings secti
 - Everything in [The tree](#the-tree), [The model](#the-model) and [The handoff: @ links](#the-handoff--links), the stop rules, verdicts and rounds, `actionsFirst`, `confirmBefore`, the Push step and the run's brief.
 - **Ways in:** a session's ⋯ menu (**Run pipeline ›**, with **Edit pipelines…**), New session's **Start ▾ › Run pipeline ›**, and the palette's **Run pipeline…** and **Pipelines: pick one…**.
 - **Settings › Pipelines**: the list (Built in, All projects, one group per project) and the editor, with the steps as cards on a rail, the tree they make, and `pipelineIssues` inline.
+- **From a trigger** ([event-triggers.md](event-triggers.md#built-in-phase-3)): a run row with the event as its task, the event's text for its first step. It pushes without you, or runs without stopping for you, only when the trigger says so.
+- **Approve the plan for me** (`approvePlan` on a plan step): the plan is approved for you (`PipelineRunner.autoAnswer`), kept as when you click Approve, and the run goes on.
 - **Notifications** through main's notifier: a run that waits for you without a session asking, one that stopped, one that is done. A step's own turns give no Finished notification; a step that needs you or fails says so as any session does.
 - The `pipeline` theme token for the pipeline icon and step kinds; violet stays away from states.
-- Not yet: shared pipelines (phase 3), side by side (phase 4), starting a pipeline from a trigger, forks outside pipelines going under their parent, a run noticing that its worktree was removed while it waits, and the remote app's view of runs. A sub-session closed in the middle of a turn stops its run, as a stop does.
+- Not yet: shared pipelines (phase 3), side by side (phase 4), forks outside pipelines going under their parent, a run noticing that its worktree was removed while it waits, and the remote app's view of runs. A sub-session closed in the middle of a turn stops its run, as a stop does.
 
 ## Phases
 
