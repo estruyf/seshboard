@@ -3691,7 +3691,12 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `document.querySelector('[data-run-on-option=${JSON.stringify(computerId)}]')`, 5_000))) return 'New session has no Run on switch with the other computer';
   await click(`[data-run-on-option=${JSON.stringify(computerId)}]`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-remote-project]')", 10_000))) return 'Run on the other computer showed none of its projects';
-  await click('[data-remote-new-session] [data-remote-project]');
+  // tideline by name, not the first tile: tiles follow that computer's activity, and harbor-api's profile (Work) starts
+  // in a new worktree, which shows no branch.
+  const tideline = `[data-remote-new-session] [data-remote-project][data-tooltip="tideline"]`;
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(tideline)})`, 3_000))) return `New session on the other computer has no tideline tile (${await js("[...document.querySelectorAll('[data-remote-new-session] [data-remote-project]')].map((t) => t.dataset.tooltip).join(', ')")})`;
+  await click(tideline);
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(tideline)})?.getAttribute('aria-pressed') === 'true'`, 3_000))) return 'New session on the other computer did not pick tideline';
   // On the current checkout, the branch checked out there shows, and another one can be picked to check out first.
   const routeBranch = "document.querySelector('[data-remote-new-session] [data-route-branch]')?.innerText";
   if (!(await waitInPage(win, `${routeBranch} === 'main'`, 5_000))) return `the route shows no branch on the other computer (${await js(routeBranch)})`;
