@@ -49,3 +49,10 @@ export const REMOTE_FEATURE_COSTS = 'costs';
 
 /** In `hello`'s `features`: `limits.get`, `limits.resume` and `limits.arm` answer, and `limits.changed` follows a watched session. */
 export const REMOTE_FEATURE_LIMITS = 'limits';
+
+/**
+ * In `hello`'s `features`: pipelines (#179). `sessions.list` has the runs and each session's `parentId`, and
+ * `pipelines.list`, `pipelines.run` and the `runs.*` methods answer: start a run, its buttons, Push and a run row's
+ * message box.
+ */
+export const REMOTE_FEATURE_PIPELINES = 'pipelines';

@@ -5,9 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  BUILT_IN_PIPELINES,
   generateKeyPair,
   parseRemoteLink,
   parseBriefs,
+  parseRunBriefs,
+  writeRunStub,
+  type Pipeline,
+  type PipelineRunState,
   pskFromSecret,
   REMOTE_APP_URL,
   REMOTE_IMAGE_BYTES,
@@ -30,7 +35,7 @@ import type { RemoteLimitStanding } from '@switchboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
-import { RemoteHub, remoteAppOrigins, type RemoteFromDevice } from './remoteHub.ts';
+import { RemoteHub, remoteAppOrigins, type RemoteFromDevice, type RemotePipelines } from './remoteHub.ts';
 import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 import { APP_ORIGIN, client, handshake, open } from './testPhone.ts';
 import { generateVapidKeys } from './webPush.ts';
@@ -45,7 +50,7 @@ const FIRST = '/work/api';
 const SEEN_ONLY = '/work/scratch';
 /** The `accountKey` the fake engine has a profile for. */
 const ACCOUNT = 'ab'.repeat(32);
-const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
+const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
 const SESSION = '11111111-1111-4111-8111-111111111111';
 /** A browser's push subscription (the keys from RFC 8291's example). */
 const PUSH = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' } };
@@ -91,7 +96,18 @@ const freePort = () =>
 const fakeTunnel = (script: string) => ({ file: process.execPath, args: ['-e', script] });
 const QUIET_TUNNEL = (port: number) => fakeTunnel(`console.error('|  https://quiet-river.trycloudflare.com  |'); setInterval(() => {}, 1000); void ${port}`);
 
-async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean } = {}) {
+/** The built-in pipeline as the fake engine has it, saved for every project. */
+const PIPELINE: Pipeline = { ...BUILT_IN_PIPELINES[0]!, builtIn: true, createdAt: 1, updatedAt: 1 };
+
+/** A run of `PIPELINE` from `parent` (null: a run row), waiting for you at Push, in a worktree of `ROOT`. */
+function runOf(id: string, parent: string | null): PipelineRunState {
+  return {
+    run: { id, pipelineId: PIPELINE.id, pipeline: PIPELINE, parentSessionId: parent, task: parent ? null : 'Add a toggle', title: 'Add a toggle', projectRoot: ROOT, cwd: `${ROOT}-worktree`, profileId: null, status: 'waiting', reason: 'Push waits for you.', waitingFor: 'push', hold: null, step: 3, round: 1, sentBackTo: null, pr: null, unattended: false, createdAt: 1, updatedAt: Date.now(), endedAt: null, archivedAt: null, restoredAt: null },
+    steps: [{ runId: id, step: 'Plan', index: 0, round: 1, sessionId: `${id}-plan`, status: 'done', outcome: 'clean', verdict: null, reason: 'plan approved', plan: 'The plan', actions: [], startedAt: 1, endedAt: 2 }],
+  };
+}
+
+async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[] } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -140,6 +156,8 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     { requestId: 'r1', sessionId: SESSION, toolName: 'Bash', toolUseId: null, input: { command: 'npm test' }, title: null, description: null, decisionReason: null, blockedPath: '/secret', alwaysLabel: null, agentId: null, createdAt: 1 },
   ];
   const fromDevice: RemoteFromDevice[] = [];
+  const runs = options.runs ?? [];
+  const ran: Array<Parameters<RemotePipelines['run']>[0]> = [];
   const hub = new RemoteHub({
     db: cache.db,
     appState,
@@ -152,7 +170,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     archiveAfterDays: () => 7,
     scope: () => 'switchboard',
     projects: () => [
-      { root: ROOT, name: 'Web', exists: true, added: true, order: null, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null }, profileId: null },
+      { root: ROOT, name: 'Web', exists: true, added: true, order: null, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null }, profileId: null },
       // Only Claude Code sessions here, never added to Switchboard: a phone doesn't see it.
       { root: SEEN_ONLY, name: 'Seen', exists: true, added: false, order: null, defaults: NO_DEFAULTS, profileId: null },
       { root: FIRST, name: 'Api', exists: true, added: true, order: 0, defaults: NO_DEFAULTS, profileId: 'work' },
@@ -221,7 +239,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     changes: async () => listChanges(repo, 'uncommitted'),
     diff: async (_id, path) => fileDiff(repo, 'uncommitted', path),
     commit: async (_id, message) => commitAll(repo, message, {}),
-    clonePlan: async (url, name) => ({ state: 'free', repo: { owner: 'o', name: 'n', branch: null }, name: name ?? 'n', where: `~/Developer/${name ?? 'n'}` }),
+    clonePlan: async (url, name) => ({ state: 'free', repo: { owner: 'o', name: 'n', branch: null, defaultBranch: null }, name: name ?? 'n', where: `~/Developer/${name ?? 'n'}` }),
     clone: async (jobId, url, name, onProgress) => {
       calls.push(`clone ${jobId} ${url} ${name}`);
       const progress = { jobId, phase: null, percent: null, root: null, reused: false, brings: null, error: null };
@@ -231,6 +249,15 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
       }, 5);
     },
     cancelClone: (jobId) => void calls.push(`cancel ${jobId}`),
+    pipelines: {
+      runs: () => runs,
+      list: (root) => (root === ROOT ? [{ ...PIPELINE, scope: { kind: 'project', root: ROOT } }] : []),
+      run: async (input) => (ran.push(input), runOf('run-new', input.parentSessionId)),
+      act: async (action, runId, message) => (calls.push(`${action} ${runId}${message ? ` ${message}` : ''}`), runs.find((r) => r.run.id === runId)!),
+      archive: async (runId, archived) => void calls.push(`archive ${runId} ${archived}`),
+      pushPreview: async () => ({ message: 'Add the toggle', files: 2, branch: 'worktree-toggle', base: 'main', problem: null }),
+      write: async (runId, text) => (calls.push(`write ${runId} ${text}`), { sessionId: 'adopted' }),
+    },
     onStatus: () => {},
     onFromDevice: (event) => void fromDevice.push(event),
     log: () => {},
@@ -248,7 +275,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, port, on, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice };
+  return { hub, port, on, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -682,6 +709,96 @@ describe('Remote hub', () => {
     expect(heard).toEqual(['rel/y']);
   });
 
+  it('shows a phone the runs of its sessions and its run rows, and presses only their buttons', async () => {
+    const { hub, port, on, calls, sent, fromDevice } = await setup({ runs: [runOf('run-1', SESSION), runOf('run-hidden', HIDDEN), runOf('run-row', null)] });
+    await on();
+    const { remote } = await pair(hub, port);
+    const list = await remote.call('sessions.list', {});
+    expect(list.runs?.map((r) => r.run.id).sort()).toEqual(['run-1', 'run-row']);
+    expect(list.runs?.[0]?.run).toMatchObject({ projectId: projectIdOf(ROOT), projectName: 'Web', worktree: true });
+    expect(JSON.stringify(list.runs)).not.toContain(ROOT);
+    expect(JSON.stringify(list.runs)).not.toContain('The plan');
+
+    await expect(remote.call('runs.stop', { runId: 'run-hidden' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect((await remote.call('runs.stop', { runId: 'run-1' })).state.run).not.toHaveProperty('cwd');
+    await remote.call('runs.skipStep', { runId: 'run-1' });
+    await remote.call('runs.continue', { runId: 'run-row', message: 'Add the toggle' });
+    expect(calls).toEqual(expect.arrayContaining(['stop run-1', 'skipStep run-1', 'continue run-row Add the toggle']));
+    expect((await remote.call('runs.pushPreview', { runId: 'run-row' })).preview).toMatchObject({ files: 2, base: 'main' });
+
+    // Writing in a run row starts its session; a run's stub typed on the phone goes as plain text.
+    expect(await remote.call('runs.write', { runId: 'run-row', text: `Go on\n\n${writeRunStub('Other', 'run-hidden')}` })).toEqual({ sessionId: 'adopted' });
+    expect(calls.find((c) => c.startsWith('write run-row'))).toContain('```text\nrun: run-hidden');
+    expect(fromDevice.at(-1)).toMatchObject({ sessionId: 'adopted' });
+    await expect(remote.call('runs.write', { runId: 'run-1', text: 'Hi' })).rejects.toMatchObject({ code: 'INVALID' });
+
+    // A message to the run's parent links its run, as the computer's message box does, and only that run.
+    await remote.call('session.send', { sessionId: SESSION, text: `What did the review find?\n\n${writeRunStub('Other', 'run-hidden')}` });
+    expect(parseRunBriefs(sent.at(-1)!).runs.map((r) => r.runId)).toEqual(['run-1']);
+  });
+
+  it('archives a run, and lets the phone take back only an archive it made', async () => {
+    const { hub, port, on, calls } = await setup({ runs: [runOf('run-row', null)] });
+    await on();
+    const { remote } = await pair(hub, port);
+    await expect(remote.call('runs.archive', { runId: 'run-gone', archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await remote.call('runs.archive', { runId: 'run-row', archived: true });
+    await remote.call('runs.archive', { runId: 'run-row', archived: false });
+    expect(calls).toEqual(expect.arrayContaining(['archive run-row true', 'archive run-row false']));
+  });
+
+  it('runs a pipeline from a session in the list, or with a task in a project you added', async () => {
+    const { hub, port, on, ran } = await setup({ runs: [] });
+    await on();
+    const { remote } = await pair(hub, port);
+    const { pipelines } = await remote.call('pipelines.list', { projectId: projectIdOf(ROOT) });
+    expect(pipelines.map((p) => p.id)).toEqual([PIPELINE.id]);
+    expect(pipelines[0]).not.toHaveProperty('scope');
+
+    const fromSession = await remote.call('pipelines.run', { pipelineId: PIPELINE.id, parentSessionId: SESSION });
+    expect(fromSession.state.run).not.toHaveProperty('projectRoot');
+    expect(ran[0]).toMatchObject({ pipelineId: PIPELINE.id, parentSessionId: SESSION, task: null, projectRoot: null, choices: null });
+    await expect(remote.call('pipelines.run', { pipelineId: PIPELINE.id, parentSessionId: HIDDEN })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(remote.call('pipelines.run', { pipelineId: 'not-offered', parentSessionId: SESSION })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // From a session, or with a project and a task: never both, never neither.
+    await expect(remote.call('pipelines.run', { pipelineId: PIPELINE.id, parentSessionId: SESSION, projectId: projectIdOf(ROOT), task: 'x' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await expect(remote.call('pipelines.run', { pipelineId: PIPELINE.id, projectId: projectIdOf(ROOT) })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+
+    await remote.call('pipelines.run', { pipelineId: PIPELINE.id, projectId: projectIdOf(ROOT), task: `Add a toggle\n\n${writeStub('Hidden', HIDDEN)}`, model: 'opus', profileId: 'work' });
+    expect(ran[1]).toMatchObject({ parentSessionId: null, projectRoot: ROOT, profileId: 'work', choices: { model: 'opus', effort: null, permissionMode: null } });
+    expect(parseBriefs(ran[1]!.task!).briefs).toEqual([]);
+    // Only a project you added, as New session.
+    await expect(remote.call('pipelines.run', { pipelineId: PIPELINE.id, projectId: projectIdOf(SEEN_ONLY), task: 'x' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // A mode that doesn't ask is only for the computer.
+    await expect(remote.call('pipelines.run', { pipelineId: PIPELINE.id, projectId: projectIdOf(ROOT), task: 'x', permissionMode: 'bypassPermissions' as 'default' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+  });
+
+  it('pushes what a run says, and no Finished push for a step of a run that goes on', async () => {
+    const step = runOf('run-1', null);
+    step.run.status = 'running';
+    step.steps = [{ ...step.steps[0]!, sessionId: SESSION, status: 'working', endedAt: null }];
+    const { hub, port, on, pushes, pushBodies } = await setup({ runs: [step] });
+    await on();
+    const { remote } = await pair(hub, port);
+    await remote.call('push.subscribe', { subscription: PUSH, needsYou: true, finished: true });
+
+    hub.hostChanged({ sessionId: SESSION, state: 'running' } as SessionHostInfo);
+    hub.hostChanged({ sessionId: SESSION, state: 'idle' } as SessionHostInfo);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(pushes).toHaveLength(0);
+
+    hub.runNotice({ kind: 'needsYou', runId: 'run-1', sessionId: null, title: 'Add a toggle', body: 'Push waits for you.' });
+    await until(() => pushes.length === 1);
+    expect(readPush(pushBodies[0]!.body)).toMatchObject({ kind: 'needs-you', sessionId: 'run-1', title: 'Add a toggle', project: 'Web', line: 'Push waits for you.' });
+    hub.runNotice({ kind: 'stopped', runId: 'run-1', sessionId: SESSION, title: 'Add a toggle', body: 'Validate has no verdict.' });
+    await until(() => pushes.length === 2);
+    expect(readPush(pushBodies[1]!.body)).toMatchObject({ kind: 'finished', sessionId: SESSION, title: 'Add a toggle: the run stopped' });
+    // A run it can't see says nothing.
+    hub.runNotice({ kind: 'done', runId: 'run-gone', sessionId: null, title: 'x', body: 'y' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(pushes).toHaveLength(2);
+  });
+
   it('pushes to a subscribed phone when a session needs it or finishes, unless the app is on its screen', async () => {
     const { hub, port, on, pushes, permissions, appState } = await setup();
     await on();
@@ -926,7 +1043,7 @@ describe('what a phone sees', () => {
   });
 
   it('takes the project\'s defaults, then the profile\'s, for what the phone leaves out', () => {
-    const defaults = { model: 'opus', effort: 'low' as const, permissionMode: 'acceptEdits' as const, workspace: 'worktree' as const, baseRef: 'head' as const, branch: null };
+    const defaults = { model: 'opus', effort: 'low' as const, permissionMode: 'acceptEdits' as const, workspace: 'worktree' as const, baseRef: 'head' as const, branch: null, defaultBranch: null };
     const none = { id: 'default', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } };
     expect(sessionChoice({}, defaults, none)).toEqual({ profileId: 'default', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head', checkoutBranch: null });
     expect(sessionChoice({ model: null, effort: null, permissionMode: 'plan', worktree: false }, defaults, none)).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false, baseRef: 'head', checkoutBranch: null });

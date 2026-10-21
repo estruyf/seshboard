@@ -33,7 +33,7 @@ export function questionsEntry(dir: string): ProjectInfo {
     added: false,
     exists: true,
     order: null,
-    defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null },
+    defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null },
     profileId: null,
     sessionCount: 0,
     lastActivity: null,

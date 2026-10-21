@@ -17,10 +17,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accountTag, costOf, sharesOf, weightOf, type AskThread, type CatchUp, type GitChanges, type PermissionRequest, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
+import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type CatchUp, type GitChanges, type PermissionRequest, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
-import { RemoteHub } from '../packages/engine/src/remote/remoteHub.ts';
+import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
 
 const APP_URL = process.env.SWITCHBOARD_REMOTE_APP_URL ?? 'http://localhost:5199/remote/';
 const PORT = Number(process.env.PORT ?? 47699);
@@ -49,7 +49,13 @@ interface DemoSession {
   minutesAgo: number;
   state: 'needs-you' | 'running' | 'idle' | null;
   unread?: boolean;
+  /** A pipeline step's sub-session: the session (or run row) it sits under. */
+  parentId?: string;
 }
+
+/** The demo's pipeline runs (#179): a session whose run waits at Push, and a run started from New session that works. */
+const TOGGLE = 'a0000000-0000-4000-8000-000000000009';
+const ROW_RUN = 'run-demo-webhook-retries';
 
 const SESSIONS: DemoSession[] = [
   { id: 'a0000000-0000-4000-8000-000000000001', title: 'Publish the beta', root: '/demo/tideline', branch: 'release/0.9', minutesAgo: 2, state: 'needs-you' },
@@ -60,12 +66,18 @@ const SESSIONS: DemoSession[] = [
   { id: 'a0000000-0000-4000-8000-000000000006', title: 'Tidy up the release notes', root: '/demo/tideline', branch: 'main', minutesAgo: 95, state: null },
   { id: 'a0000000-0000-4000-8000-000000000007', title: 'Explain the tile renderer', root: '/demo/lighthouse', branch: 'main', minutesAgo: 60 * 26, state: null },
   { id: 'a0000000-0000-4000-8000-000000000008', title: 'Upgrade to Node 24', root: '/demo/harbor-api', branch: 'chore/node-24', minutesAgo: 60 * 24 * 4, state: null },
+  { id: TOGGLE, title: 'Add a usage cost toggle', root: '/demo/tideline', branch: 'main', minutesAgo: 52, state: null },
+  { id: 'a0000000-0000-4000-8000-00000000000a', title: 'Plan', root: '/demo/tideline', branch: 'feat/usage-cost', minutesAgo: 40, state: null, parentId: TOGGLE },
+  { id: 'a0000000-0000-4000-8000-00000000000b', title: 'Execute', root: '/demo/tideline', branch: 'feat/usage-cost', minutesAgo: 18, state: null, parentId: TOGGLE },
+  { id: 'a0000000-0000-4000-8000-00000000000c', title: 'Validate', root: '/demo/tideline', branch: 'feat/usage-cost', minutesAgo: 4, state: null, parentId: TOGGLE },
+  { id: 'a0000000-0000-4000-8000-00000000000d', title: 'Plan', root: '/demo/harbor-api', branch: 'feat/webhook-retries', minutesAgo: 14, state: null, parentId: ROW_RUN },
+  { id: 'a0000000-0000-4000-8000-00000000000e', title: 'Execute', root: '/demo/harbor-api', branch: 'feat/webhook-retries', minutesAgo: 0, state: 'running', parentId: ROW_RUN },
 ];
 
 const HOUR = 60 * MINUTE;
-/** Made-up tokens for each demo session (the last ones it worked on used the most), and the model it ran on. */
+/** Made-up tokens for each demo session (the last ones it worked on used the most), and the model it ran on; not for pipeline steps. */
 const TOKENS: Record<string, { tokens: TokenCounts; turns: number; model: string }> = Object.fromEntries(
-  SESSIONS.map((s, i) => [
+  SESSIONS.filter((s) => !s.parentId).map((s, i) => [
     s.id,
     {
       tokens: { input: 14_000 + i * 3_000, output: 60_000 - i * 5_000, cacheRead: 3_200_000 - i * 300_000, cacheWrite: 210_000 - i * 18_000 },
@@ -161,6 +173,7 @@ const summaries = (): SessionSummary[] =>
         unread: !read.has(s.id) && (s.unread ?? false),
         inApp: true,
         profileId: profileOf(s.root),
+        parentId: s.parentId ?? null,
       }) as SessionSummary,
   );
 
@@ -428,6 +441,160 @@ const USAGE = {
   work: { fetchedAt: now, limits: [limit('session', 91, 212), limit('weekly_all', 5, 60 * 24 * 5 + 4 * 60)], extraUsage: null },
 };
 
+// --- Pipelines (#179): two runs, and what their buttons do in the demo world -----------------------------------------
+
+const BUILT_IN: Pipeline = { ...BUILT_IN_PIPELINES[0]!, builtIn: true, createdAt: now, updatedAt: now };
+const EXECUTE_VALIDATE: Pipeline = { ...BUILT_IN, id: 'demo-execute-validate', name: 'Execute and validate', builtIn: false, steps: BUILT_IN.steps.filter((s) => s.name !== 'Plan').map((s) => (s.kind === 'claude' && s.name === 'Execute' ? { ...s, start: 'fresh' as const } : s)) };
+const PIPELINES = [BUILT_IN, EXECUTE_VALIDATE];
+const ago = (minutes: number) => now - minutes * MINUTE;
+const stepRow = (runId: string, index: number, sessionId: string | null, status: PipelineRunStep['status'], from: number, to: number | null, extra: Partial<PipelineRunStep> = {}): PipelineRunStep => ({
+  runId,
+  step: BUILT_IN.steps[index]!.name,
+  index,
+  round: 1,
+  sessionId,
+  status,
+  outcome: status === 'done' ? 'clean' : null,
+  verdict: null,
+  reason: null,
+  plan: null,
+  actions: [],
+  startedAt: ago(from),
+  endedAt: to === null ? null : ago(to),
+  ...extra,
+});
+const demoRun = (id: string, parent: string | null, root: string, over: Partial<PipelineRun>): PipelineRun => ({
+  id,
+  pipelineId: BUILT_IN.id,
+  pipeline: BUILT_IN,
+  parentSessionId: parent,
+  task: null,
+  title: '',
+  projectRoot: root,
+  cwd: `${root}-worktree`,
+  profileId: null,
+  status: 'running',
+  reason: null,
+  waitingFor: null,
+  hold: null,
+  step: 0,
+  round: 1,
+  sentBackTo: null,
+  pr: null,
+  createdAt: ago(52),
+  updatedAt: now,
+  endedAt: null,
+  archivedAt: null,
+  restoredAt: null,
+  ...over,
+});
+const runs: PipelineRunState[] = [
+  {
+    run: demoRun('run-demo-usage-cost', TOGGLE, '/demo/tideline', { title: 'Add a usage cost toggle', status: 'waiting', waitingFor: 'push', reason: 'Push waits for you.', step: 3, updatedAt: ago(3) }),
+    steps: [
+      stepRow('run-demo-usage-cost', 0, 'a0000000-0000-4000-8000-00000000000a', 'done', 50, 40, { reason: 'plan approved' }),
+      stepRow('run-demo-usage-cost', 1, 'a0000000-0000-4000-8000-00000000000b', 'done', 40, 18),
+      stepRow('run-demo-usage-cost', 2, 'a0000000-0000-4000-8000-00000000000c', 'done', 18, 4, { verdict: { kind: 'pass', items: [] } }),
+    ],
+  },
+  {
+    run: demoRun(ROW_RUN, null, '/demo/harbor-api', { title: 'Retry failed webhook deliveries', task: 'Retry failed webhook deliveries with a backoff, and stop after five tries.', step: 1, createdAt: ago(16) }),
+    steps: [stepRow(ROW_RUN, 0, 'a0000000-0000-4000-8000-00000000000d', 'done', 16, 14, { reason: 'plan approved' }), stepRow(ROW_RUN, 1, 'a0000000-0000-4000-8000-00000000000e', 'working', 14, null)],
+  },
+];
+/** Changes a run, and tells phones. */
+const runChanged = (state: PipelineRunState) => {
+  state.run.updatedAt = Date.now();
+  setTimeout(() => hub.sessionsChanged(), 0);
+  return state;
+};
+const runById = (runId: string) => {
+  const state = runs.find((r) => r.run.id === runId);
+  if (!state) throw new Error('That run is gone.');
+  return state;
+};
+/** The step after `index`: a waiting Push, or the next step working in a sub-session of its own. */
+const moveOn = (state: PipelineRunState, index: number) => {
+  const next = state.run.pipeline.steps[index];
+  state.run.step = index;
+  state.run.reason = null;
+  state.run.waitingFor = null;
+  if (!next) {
+    Object.assign(state.run, { status: 'done', endedAt: Date.now() });
+    return;
+  }
+  if (next.kind === 'push') {
+    Object.assign(state.run, { status: 'waiting', waitingFor: 'push', reason: `${next.name} waits for you.` });
+    return;
+  }
+  state.run.status = 'running';
+  const sessionId = crypto.randomUUID();
+  SESSIONS.unshift({ id: sessionId, title: next.name, root: state.run.projectRoot, branch: 'main', minutesAgo: 0, state: 'running', parentId: state.run.parentSessionId ?? state.run.id });
+  state.steps.push(stepRow(state.run.id, index, sessionId, 'working', 0, null, { step: next.name }));
+};
+const demoPipelines: RemotePipelines = {
+  runs: () => runs,
+  list: () => PIPELINES,
+  run: async (input) => {
+    const pipeline = PIPELINES.find((p) => p.id === input.pipelineId)!;
+    const parent = input.parentSessionId ? SESSIONS.find((s) => s.id === input.parentSessionId) : null;
+    const id = `run-demo-${Date.now()}`;
+    const title = parent?.title ?? input.task!.split('\n')[0]!.slice(0, 80);
+    const state: PipelineRunState = { run: demoRun(id, input.parentSessionId, parent?.root ?? input.projectRoot!, { pipeline, pipelineId: pipeline.id, title, task: input.task, createdAt: Date.now() }), steps: [] };
+    runs.unshift(state);
+    moveOn(state, 0);
+    return runChanged(state);
+  },
+  act: async (action, runId) => {
+    const state = runById(runId);
+    const { run } = state;
+    if (run.status === 'done' || run.status === 'stopped') throw new Error('This run has ended.');
+    const current = state.steps.findLast((s) => s.index === run.step);
+    if (action === 'stop') {
+      if (current?.status === 'working') current.status = 'stopped';
+      Object.assign(run, { status: 'stopped', endedAt: Date.now(), waitingFor: null });
+    } else if (action === 'continue' && run.waitingFor === 'push') {
+      // Push: committed with the message, pushed, and the pull request opened.
+      state.steps.push(stepRow(runId, run.step, null, 'done', 0, 0, { step: 'Push', reason: 'Pull request #152 opened' }));
+      run.pr = { number: 152, url: 'https://github.com/acme/tideline/pull/152' };
+      moveOn(state, run.step + 1);
+    } else if (action === 'skipStep') {
+      if (current) current.status = 'skipped';
+      moveOn(state, run.step + 1);
+    } else if (action === 'continue') {
+      moveOn(state, run.step + 1);
+    } else {
+      // Run this step again, or Another round: a new round in a new sub-session.
+      if (current?.status === 'working') current.status = 'stopped';
+      const round = (current?.round ?? 0) + 1;
+      run.round = round;
+      moveOn(state, run.step);
+      state.steps.at(-1)!.round = round;
+    }
+    return runChanged(state);
+  },
+  archive: async (runId, on) => {
+    const state = runById(runId);
+    if (on && (state.run.status === 'running' || state.run.status === 'waiting')) throw new Error('The run is still going. Stop it first.');
+    const tree = [state.run.parentSessionId, ...state.steps.map((s) => s.sessionId)].filter((id): id is string => Boolean(id));
+    for (const id of tree) if (on) archived.add(id);
+    else archived.delete(id);
+    if (on) state.run.archivedAt = Date.now();
+    else state.run.restoredAt = Date.now();
+    runChanged(state);
+  },
+  pushPreview: async () => ({ message: 'Add a usage cost toggle\n\nShow the estimated API cost under the message box, behind a switch in Settings › Usage.', files: 6, branch: 'feat/usage-cost', base: 'main', problem: null }),
+  write: async (runId) => {
+    const state = runById(runId);
+    const id = crypto.randomUUID();
+    SESSIONS.unshift({ id, title: state.run.title, root: state.run.projectRoot, branch: 'main', minutesAgo: 0, state: 'running' });
+    for (const s of SESSIONS) if (s.parentId === runId) s.parentId = id;
+    state.run.parentSessionId = id;
+    runChanged(state);
+    return { sessionId: id };
+  },
+};
+
 const hub: RemoteHub = new RemoteHub({
   db: cache.db,
   appState,
@@ -512,6 +679,7 @@ const hub: RemoteHub = new RemoteHub({
     committed = true;
     return { ok: true, sha: '9b8e7d2c4f1a6b3e5d7c9a0b1c2d3e4f5a6b7c8d' };
   },
+  pipelines: demoPipelines,
   onStatus: () => {},
   log: (level, message) => console.log(`[${level}] ${message}`),
 });

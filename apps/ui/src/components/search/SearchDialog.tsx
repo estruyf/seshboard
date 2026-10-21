@@ -177,7 +177,8 @@ export function SearchDialog() {
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') (e.preventDefault(), setActive((i) => Math.max(0, Math.min(flat.length - 1, i + 1))));
             else if (e.key === 'ArrowUp') (e.preventDefault(), setActive((i) => Math.max(0, i - 1)));
-            else if (e.key === 'Enter' && flat[active]) openRow(flat[active]!);
+            // Handled here: the dialog closes before the window's key listeners run, and the catch-up banner behind would take this Enter.
+            else if (e.key === 'Enter' && flat[active]) (e.preventDefault(), openRow(flat[active]!));
           }}
           placeholder={memoryOnly ? 'Search memory' : 'Search memory and conversations'}
           spellCheck={false}

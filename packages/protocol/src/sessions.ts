@@ -84,14 +84,19 @@ export const ProjectDefaults = z.object({
   baseRef: WorktreeBaseSchema.nullable().default(null),
   /** For the current folder: a branch to check out before the session starts (null keeps what is checked out). */
   branch: z.string().min(1).max(250).nullable().default(null),
+  /**
+   * The branch this project treats as its default, in place of the remote's (GitHub's): new worktrees from origin
+   * start from it, pull requests go into it and changes compare against it. Null follows the remote.
+   */
+  defaultBranch: z.string().min(1).max(250).nullable().default(null),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
 
 /**
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
- * fall back to the global defaults. No branch, and no branch to start a worktree from: branches belong to a repository.
+ * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({

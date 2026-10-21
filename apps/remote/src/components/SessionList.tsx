@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { House, MoreHorizontal, Plus, Search, X } from 'lucide-react';
-import { REMOTE_FEATURE_MARK_UNREAD } from '@switchboard/protocol/remote-client';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
+import { ChevronRight, House, ListTree, MoreHorizontal, Plus, Search, X } from 'lucide-react';
+import { REMOTE_FEATURE_MARK_UNREAD, REMOTE_FEATURE_PIPELINES } from '@switchboard/protocol/remote-client';
 import type { ConnectionState } from '../lib/connection.ts';
-import type { ListedPrompt, ListedSession, ListedSessions } from '../lib/everywhere.ts';
+import type { ListedPrompt, ListedRun, ListedSession, ListedSessions } from '../lib/everywhere.ts';
+import { childLine, keepOpenTrees, listTree, openTrees, runOfRow, treeLine, type ChildTone } from '../lib/runs.ts';
 import { filterCounts, filterList, matchesSearch, visibleFilter, type ListFilter } from '../lib/filter.ts';
 import { SLOP } from '../lib/gesture.ts';
 import { age, GROUP_LABEL, groupSessions, shortHeadline, type SessionGroup } from '../lib/groups.ts';
@@ -155,12 +156,28 @@ export function SessionList({
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   const field = useRef<HTMLInputElement>(null);
-  const counts = filterCounts(sessions.sessions);
+  // Pipeline runs (#179): sub-sessions under their parent, closed until you open the tree; a search lists every
+  // session on its own, so a step is found by its name too.
+  const tree = useMemo(() => listTree(sessions.sessions, sessions.runs), [sessions.sessions, sessions.runs]);
+  const [open, setOpen] = useState(openTrees);
+  const toggleTree = (id: string) =>
+    setOpen((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      keepOpenTrees(next);
+      return next;
+    });
+  const search = drawer || searching ? query : '';
+  const flat = search.trim() !== '';
+  const listed = flat ? sessions.sessions : tree.roots;
+  const counts = filterCounts(listed);
   // On a phone the chips only show, and only filter, while you search.
   const filter = sidebar || searching ? visibleFilter(chosen, counts) : 'all';
-  const search = drawer || searching ? query : '';
   // In the sidebar and the drawer, a session that waits on you is a row in Needs you rather than a card.
-  const shown = mode === 'phone' ? filterList(sessions, filter, search) : { prompts: [], sessions: sessions.sessions.filter((s) => (filter === 'all' || s.status === filter) && matchesSearch(s, search)) };
+  const filtered = mode === 'phone' ? filterList({ sessions: listed, prompts: sessions.prompts }, filter, search) : { prompts: [] as ListedPrompt[], sessions: listed.filter((s) => (filter === 'all' || s.status === filter) && matchesSearch(s, search)) };
+  // A sub-session's prompt is a card too, though its row sits in its parent's tree.
+  const kidPrompts = mode === 'phone' && !flat ? filterList({ sessions: [...tree.children.values()].flat(), prompts: sessions.prompts }, filter, '').prompts : [];
+  const shown = kidPrompts.length ? { ...filtered, prompts: [...filtered.prompts, ...kidPrompts].sort((a, b) => a.createdAt - b.createdAt) } : filtered;
   const leaving = useLeaving(sessions.prompts);
   const cards = leaving.merge(shown.prompts);
   const promptOf = useMemo(() => {
@@ -184,25 +201,34 @@ export function SessionList({
       .then(() => toast('Marked as read', { detail: session.title, ...(features.includes(REMOTE_FEATURE_MARK_UNREAD) ? { action: { label: 'Undo', run: () => void client.call('session.markUnread', { sessionId }).catch(failed) } } : {}) }))
       .catch(failed);
   };
-  /** Archive, with Undo. */
+  /** The run a row's Archive takes along: a run row's own, or the one started from that session (its tree goes as one). */
+  const treeRun = (session: ListedSession): ListedRun | null => (computerOf(session.computer).features.includes(REMOTE_FEATURE_PIPELINES) ? runOfRow(sessions.runs, session) : null);
+  /** Archive, with Undo. A run's parent or run row goes with its sub-sessions, as on the computer. */
   const archive = (session: ListedSession) => {
     const client = clientOf(session);
+    if (!client) return;
+    const run = treeRun(session);
     const sessionId = session.sessionId;
-    void client
-      ?.call('session.setFlags', { sessionId, archived: true })
+    const flags = (archived: boolean) => (run ? client.call('runs.archive', { runId: run.run.id, archived }) : client.call('session.setFlags', { sessionId, archived }));
+    void flags(true)
       .then(() => {
-        toast(`Archived ${session.title}`, { action: { label: 'Undo', run: () => void client.call('session.setFlags', { sessionId, archived: false }).catch(failed) } });
+        toast(`Archived ${session.title}`, { action: { label: 'Undo', run: () => void flags(false).catch(failed) } });
         onArchived(session.id);
       })
-      .catch(failed);
+      // A run that still goes on can't be archived: its own words say so ("Stop it first").
+      .catch((error: Error) => (run && (error as { code?: string }).code !== 'DISCONNECTED' ? toast(error.message, { tone: 'error' }) : failed()));
+  };
+  const archiveLabel = (session: ListedSession) => {
+    const steps = tree.children.get(session.id)?.length ?? 0;
+    return treeRun(session) && steps ? `Archive with ${steps === 1 ? 'its step' : `its ${steps} steps`}` : 'Archive';
   };
   const rowItems = (session: ListedSession): MenuItem[] => [
-    { label: 'Mark as read', disabled: !clientOf(session) || !session.unread, onSelect: () => markRead(session) },
-    { label: 'Archive', disabled: !clientOf(session), onSelect: () => archive(session) },
+    ...(session.runRow ? [] : [{ label: 'Mark as read', disabled: !clientOf(session) || !session.unread, onSelect: () => markRead(session) }]),
+    { label: archiveLabel(session), disabled: !clientOf(session), onSelect: () => archive(session) },
   ];
   const onSwipe = (session: ListedSession) => (action: SwipeAction) => (action === 'read' ? markRead(session) : archive(session));
   /** What the line under the title counts: not what a computer that is away said last. */
-  const live = labels ? sessions.sessions.filter((s) => computerOf(s.computer).online) : sessions.sessions;
+  const live = labels ? tree.roots.filter((s) => computerOf(s.computer).online) : tree.roots;
   /** A row or card of a computer that is away, while another is connected: dimmed. */
   const isAway = (computer: string) => !offline && !computerOf(computer).online;
   /** The name on a row or a card, with more than one computer. */
@@ -309,6 +335,7 @@ export function SessionList({
   );
 
   const groups = groupSessions(shown.sessions, now);
+  const needsYouRows = groups.find((g) => g.group === 'needs-you')?.sessions.length ?? 0;
   const empty = sessions.sessions.length === 0;
   const nothingMatches = !empty && cards.length === 0 && groups.length === 0;
 
@@ -321,7 +348,7 @@ export function SessionList({
       {nothingMatches && <p className="px-4 py-10 text-center text-body text-muted">{search ? 'No session matches.' : 'Nothing here right now.'}</p>}
       {cards.length > 0 && (
         <section aria-labelledby="group-prompts" className="flex flex-col px-3 pb-1">
-          <SectionHeader id="group-prompts" label={GROUP_LABEL['needs-you']} count={cards.length} tone="text-warn" className="px-1" />
+          <SectionHeader id="group-prompts" label={GROUP_LABEL['needs-you']} count={cards.length + needsYouRows} tone="text-warn" className="px-1" />
           {cards.map((prompt) => (
             <div key={prompt.requestId} className={`collapse-out mb-2 ${isAway(prompt.computer) ? 'opacity-60' : ''}`} data-remote-away={isAway(prompt.computer) || undefined} data-leaving={leaving.isLeaving(prompt.requestId) || undefined} onTransitionEnd={(event) => event.propertyName === 'grid-template-rows' && leaving.gone(prompt.requestId)}>
               <div>
@@ -343,18 +370,25 @@ export function SessionList({
         </section>
       )}
       {groups.map(({ group, sessions: rows }) => (
-        <section key={group} aria-labelledby={`${mode}-group-${group}`}>
-          <SectionHeader id={`${mode}-group-${group}`} label={GROUP_LABEL[group]} count={rows.length} tone={GROUP_TONE[group]} />
+        // Under the cards, what needs you without a prompt (a run waiting at Push) goes on in their section.
+        <section key={group} aria-labelledby={group === 'needs-you' && cards.length ? 'group-prompts' : `${mode}-group-${group}`}>
+          {!(group === 'needs-you' && cards.length) && <SectionHeader id={`${mode}-group-${group}`} label={GROUP_LABEL[group]} count={rows.length} tone={GROUP_TONE[group]} />}
           <ul>
             {rows.map((session) => {
               const away = isAway(session.computer);
+              const kids = flat ? [] : (tree.children.get(session.id) ?? []);
+              // A step that is open stays in view under its parent.
+              const isOpen = kids.length > 0 && (open.has(session.id) || kids.some((kid) => kid.id === selectedId));
+              const size = mode === 'phone' ? 'phone' : 'compact';
               const row = (
                 <SessionRow
                   session={session}
                   computer={tagOf(session.computer)}
-                  size={mode === 'phone' ? 'phone' : 'compact'}
+                  size={size}
                   selected={session.id === selectedId}
                   asks={mode === 'phone' ? undefined : promptOf.get(session.id)}
+                  detail={flat ? null : treeLine(session, runOfRow(sessions.runs, session), kids, sessions.prompts)}
+                  tree={kids.length ? { open: isOpen, count: kids.length, onToggle: () => toggleTree(session.id) } : undefined}
                   now={now}
                   onOpen={() => onOpen(session.id)}
                   onMenu={(point, element) => setRowMenu({ session, point, row: element })}
@@ -369,6 +403,15 @@ export function SessionList({
                     </SwipeRow>
                   ) : (
                     row
+                  )}
+                  {isOpen && (
+                    <ul aria-label={`Steps of ${session.title}`} data-remote-tree={session.sessionId}>
+                      {kids.map((kid) => (
+                        <li key={kid.id}>
+                          <ChildRow session={kid} runs={sessions.runs} size={size} selected={kid.id === selectedId} now={now} onOpen={() => onOpen(kid.id)} onMenu={(point, element) => setRowMenu({ session: kid, point, row: element })} />
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </li>
               );
@@ -464,7 +507,147 @@ const LONG_PRESS_MS = 500;
  * what it asks, and its age. A long press, a right-click or Shift+F10 opens its menu; so does its menu button, which
  * only shows while it has keyboard focus (it is there for screen readers and the keyboard).
  */
-function SessionRow({ session, computer, size, selected, asks, now, onOpen, onMenu }: { session: ListedSession; /** The computer's name, with more than one. */ computer: string | undefined; size: 'phone' | 'compact'; selected: boolean; asks: ListedPrompt | undefined; now: number; onOpen: () => void; onMenu: (point: MenuPoint, row: HTMLElement) => void }) {
+function SessionRow({
+  session,
+  computer,
+  size,
+  selected,
+  asks,
+  detail = null,
+  tree,
+  now,
+  onOpen,
+  onMenu,
+}: {
+  session: ListedSession;
+  /** The computer's name, with more than one. */
+  computer: string | undefined;
+  size: 'phone' | 'compact';
+  selected: boolean;
+  asks: ListedPrompt | undefined;
+  /** A run's parent or run row: where the run is, or why it needs you, in the project's place (`treeLine`). */
+  detail?: string | null;
+  /** A parent with sub-sessions: its tree's disclosure. */
+  tree?: { open: boolean; count: number; onToggle: () => void } | undefined;
+  now: number;
+  onOpen: () => void;
+  onMenu: (point: MenuPoint, row: HTMLElement) => void;
+}) {
+  const press = useLongPress(onMenu);
+  const profile = session.profile;
+  const needsYou = detail?.startsWith('Needs you');
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        {...press.handlers(onOpen)}
+        aria-current={selected ? 'page' : undefined}
+        data-remote-session={session.sessionId}
+        data-remote-session-computer={session.computer}
+        data-remote-run-row={session.runRow || undefined}
+        data-remote-nav="row"
+        data-remote-profile={profile?.id}
+        className={`flex w-full items-center gap-2.5 border-l-[3px] text-left transition-colors select-none [-webkit-touch-callout:none] focus-visible:-outline-offset-2 ${size === 'compact' ? 'min-h-11 px-3 py-1' : 'min-h-14 px-4 py-2 pointer-fine:min-h-12'} ${tree ? (size === 'compact' ? 'pr-9' : 'pr-12 pointer-fine:pr-10') : ''} ${profile ? PROFILE_RAIL[profile.color] : STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
+      >
+        <StatusDot status={session.status} />
+        <span className="min-w-0 flex-1">
+          <span className={`flex min-w-0 items-center gap-1.5 text-body ${session.unread || asks ? 'font-semibold' : ''}`}>
+            {session.runRow && <ListTree className="size-3.5 shrink-0 text-pipeline" aria-label="Pipeline run" role="img" />}
+            <span className="truncate">{session.title}</span>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
+            {computer && <ComputerTag name={computer} />}
+            {profile && <span aria-label={`Claude profile: ${profile.name}`} role="img" className={`size-1.5 shrink-0 rounded-full ${PROFILE_DOT[profile.color]}`} />}
+            {detail ? (
+              <span className={`truncate ${needsYou ? 'text-warn' : ''}`} data-remote-tree-line>
+                {detail}
+              </span>
+            ) : (
+              <span className="truncate">
+                {session.projectName}
+                {asks ? <span className="text-warn"> · {promptShort(asks)}</span> : session.branch ? ` · ${session.branch}` : ''}
+              </span>
+            )}
+          </span>
+        </span>
+        <span className={`self-start pt-0.5 text-meta tabular-nums ${session.status === 'needs-you' ? 'text-warn' : session.unread ? 'text-unread' : 'text-faint'}`}>{age(session.updatedAt, now)}</span>
+      </button>
+      {tree && (
+        <button
+          type="button"
+          onClick={tree.onToggle}
+          aria-expanded={tree.open}
+          aria-label={`${tree.open ? 'Hide' : 'Show'} the ${tree.count === 1 ? 'step' : `${tree.count} steps`} of ${session.title}`}
+          className={`absolute top-1/2 right-0 flex -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-border/50 hover:text-text active:bg-selected ${size === 'compact' ? 'size-9' : 'size-11 pointer-fine:size-9'}`}
+          data-remote-tree-toggle={session.sessionId}
+        >
+          <ChevronRight className={`size-4 transition-transform ${tree.open ? 'rotate-90' : ''}`} aria-hidden />
+        </button>
+      )}
+      <RowMenuButton title={session.title} onMenu={onMenu} className={tree ? (size === 'compact' ? 'right-9' : 'right-12') : 'right-2'} />
+    </div>
+  );
+}
+
+/** A sub-session's dot, as in the sidebar's tree: a step the run finished is done (green), even before you read it. */
+const CHILD_DOT: Record<ChildTone, string> = { 'needs-you': 'bg-warn pulse-dot', working: 'bg-accent-ink pulse-dot', done: 'bg-ok', failed: 'bg-error', unread: 'bg-unread', idle: 'bg-faint' };
+const CHILD_WORD: Record<ChildTone, string> = { 'needs-you': 'Needs you', working: 'Working', done: 'Done', failed: 'Failed', unread: 'Finished', idle: 'Idle' };
+
+/**
+ * A step's sub-session under its parent: indented, its step's state as the dot, and what it did on the second line
+ * ("Opus · plan approved"). It opens and has the menu of any row.
+ */
+function ChildRow({ session, runs, size, selected, now, onOpen, onMenu }: { session: ListedSession; runs: readonly ListedRun[]; size: 'phone' | 'compact'; selected: boolean; now: number; onOpen: () => void; onMenu: (point: MenuPoint, row: HTMLElement) => void }) {
+  const press = useLongPress(onMenu);
+  const { tone, line } = childLine(runs, session);
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        {...press.handlers(onOpen)}
+        aria-current={selected ? 'page' : undefined}
+        data-remote-session={session.sessionId}
+        data-remote-session-computer={session.computer}
+        data-remote-step-tone={tone}
+        data-remote-nav="row"
+        className={`flex w-full items-center gap-2.5 border-l-[3px] border-transparent text-left transition-colors select-none [-webkit-touch-callout:none] focus-visible:-outline-offset-2 ${size === 'compact' ? 'min-h-10 py-1 pr-3 pl-8' : 'min-h-12 py-1.5 pr-4 pl-10 pointer-fine:min-h-10'} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
+      >
+        <span role="img" aria-label={CHILD_WORD[tone]} className={`inline-block size-1.5 shrink-0 rounded-full ${CHILD_DOT[tone]}`} />
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-ui ${session.unread || tone === 'needs-you' ? 'font-semibold' : ''}`}>{session.title}</span>
+          {line && <span className={`block truncate text-meta ${tone === 'needs-you' ? 'text-warn' : tone === 'failed' ? 'text-error' : 'text-muted'}`}>{line}</span>}
+        </span>
+        <span className={`self-start pt-0.5 text-meta tabular-nums ${tone === 'needs-you' ? 'text-warn' : 'text-faint'}`}>{age(session.updatedAt, now)}</span>
+      </button>
+      <RowMenuButton title={session.title} onMenu={onMenu} className="right-2" />
+    </div>
+  );
+}
+
+/** A row's menu button: only shown while it has keyboard focus (it is there for screen readers and the keyboard). */
+function RowMenuButton({ title, onMenu, className }: { title: string; onMenu: (point: MenuPoint, row: HTMLElement) => void; className: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Actions for ${title}`}
+      aria-haspopup="menu"
+      onClick={(event) => {
+        const row = (event.currentTarget.parentElement?.firstElementChild as HTMLElement | null) ?? event.currentTarget;
+        onMenu(menuPoint({ clientX: 0, clientY: 0 }, row), row);
+      }}
+      className={`absolute top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md bg-card text-muted opacity-0 focus-visible:opacity-100 ${className}`}
+      data-remote-row-menu
+    >
+      <MoreHorizontal className="size-4" aria-hidden />
+    </button>
+  );
+}
+
+/**
+ * A row's long press, right-click and Shift+F10 open its menu; a click opens the row, except the click a long press
+ * ends with.
+ */
+function useLongPress(onMenu: (point: MenuPoint, row: HTMLElement) => void) {
   const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const pressed = useRef(false);
   const cancelPress = () => {
@@ -472,79 +655,45 @@ function SessionRow({ session, computer, size, selected, asks, now, onOpen, onMe
     press.current = null;
   };
   useEffect(() => cancelPress, []);
-  const profile = session.profile;
-  return (
-    <div className="group relative">
-      <button
-        type="button"
-        onClick={(event) => {
-          // The click a long press ends with only opened the menu.
-          if (pressed.current) {
-            pressed.current = false;
-            event.preventDefault();
-            return;
-          }
-          onOpen();
-        }}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          cancelPress();
-          onMenu(menuPoint(event, event.currentTarget), event.currentTarget);
-        }}
-        onPointerDown={(event) => {
+  return {
+    handlers: (onOpen: () => void) => ({
+      onClick: (event: MouseEvent<HTMLButtonElement>) => {
+        // The click a long press ends with only opened the menu.
+        if (pressed.current) {
           pressed.current = false;
-          if (event.pointerType !== 'touch') return;
-          const row = event.currentTarget;
-          const timer = setTimeout(() => {
-            press.current = null;
-            pressed.current = true;
-            onMenu(menuPoint({ clientX: 0, clientY: 0 }, row), row);
-          }, LONG_PRESS_MS);
-          press.current = { timer, x: event.clientX, y: event.clientY };
-        }}
-        onPointerMove={(event) => {
-          const p = press.current;
-          if (p && Math.max(Math.abs(event.clientX - p.x), Math.abs(event.clientY - p.y)) >= SLOP) cancelPress();
-        }}
-        onPointerUp={cancelPress}
-        onPointerCancel={cancelPress}
-        onKeyDown={(event) => {
-          // Shift+F10 or the menu key, as a right-click (not every browser sends one for them).
-          if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
           event.preventDefault();
-          onMenu(menuPoint({ clientX: 0, clientY: 0 }, event.currentTarget), event.currentTarget);
-        }}
-        aria-current={selected ? 'page' : undefined}
-        data-remote-session={session.sessionId}
-        data-remote-session-computer={session.computer}
-        data-remote-nav="row"
-        data-remote-profile={profile?.id}
-        className={`flex w-full items-center gap-2.5 border-l-[3px] text-left transition-colors select-none [-webkit-touch-callout:none] focus-visible:-outline-offset-2 ${size === 'compact' ? 'min-h-11 px-3 py-1' : 'min-h-14 px-4 py-2 pointer-fine:min-h-12'} ${profile ? PROFILE_RAIL[profile.color] : STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
-      >
-        <StatusDot status={session.status} />
-        <span className="min-w-0 flex-1">
-          <span className={`block truncate text-body ${session.unread || asks ? 'font-semibold' : ''}`}>{session.title}</span>
-          <span className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
-            {computer && <ComputerTag name={computer} />}
-            {profile && <span aria-label={`Claude profile: ${profile.name}`} role="img" className={`size-1.5 shrink-0 rounded-full ${PROFILE_DOT[profile.color]}`} />}
-            <span className="truncate">
-              {session.projectName}
-              {asks ? <span className="text-warn"> · {promptShort(asks)}</span> : session.branch ? ` · ${session.branch}` : ''}
-            </span>
-          </span>
-        </span>
-        <span className={`self-start pt-0.5 text-meta tabular-nums ${session.status === 'needs-you' ? 'text-warn' : session.unread ? 'text-unread' : 'text-faint'}`}>{age(session.updatedAt, now)}</span>
-      </button>
-      <button
-        type="button"
-        aria-label={`Actions for ${session.title}`}
-        aria-haspopup="menu"
-        onClick={(event) => onMenu(menuPoint({ clientX: 0, clientY: 0 }, event.currentTarget.previousElementSibling ?? event.currentTarget), (event.currentTarget.previousElementSibling as HTMLElement | null) ?? event.currentTarget)}
-        className="absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md bg-card text-muted opacity-0 focus-visible:opacity-100"
-        data-remote-row-menu
-      >
-        <MoreHorizontal className="size-4" aria-hidden />
-      </button>
-    </div>
-  );
+          return;
+        }
+        onOpen();
+      },
+      onContextMenu: (event: MouseEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        cancelPress();
+        onMenu(menuPoint(event, event.currentTarget), event.currentTarget);
+      },
+      onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
+        pressed.current = false;
+        if (event.pointerType !== 'touch') return;
+        const row = event.currentTarget;
+        const timer = setTimeout(() => {
+          press.current = null;
+          pressed.current = true;
+          onMenu(menuPoint({ clientX: 0, clientY: 0 }, row), row);
+        }, LONG_PRESS_MS);
+        press.current = { timer, x: event.clientX, y: event.clientY };
+      },
+      onPointerMove: (event: PointerEvent<HTMLButtonElement>) => {
+        const p = press.current;
+        if (p && Math.max(Math.abs(event.clientX - p.x), Math.abs(event.clientY - p.y)) >= SLOP) cancelPress();
+      },
+      onPointerUp: cancelPress,
+      onPointerCancel: cancelPress,
+      onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => {
+        // Shift+F10 or the menu key, as a right-click (not every browser sends one for them).
+        if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+        event.preventDefault();
+        onMenu(menuPoint({ clientX: 0, clientY: 0 }, event.currentTarget), event.currentTarget);
+      },
+    }),
+  };
 }

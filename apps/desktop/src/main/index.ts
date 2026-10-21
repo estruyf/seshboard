@@ -7000,8 +7000,21 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!!document.querySelector('${editor} [data-trigger-prompt]') && document.querySelector('${editor} [data-trigger-prompt]').value === ${JSON.stringify(prompt)}`, 3_000))) return 'Start when… did not open the editor with the prompt';
     if (!(await js(`document.querySelector('${editor} [role=radiogroup] [data-trigger-source="issues"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-source="command"]')?.getAttribute('aria-disabled') === 'true'`))) return 'the source cards are not a radio group with Issues for you picked and A command disabled';
     if (!(await js(`[...document.querySelectorAll('${editor} [data-trigger-field="title"], ${editor} [data-trigger-field="url"]')].length === 2`))) return 'the prompt shows no event field chips';
+    // The summary says what Issues for you does, with the login the fake gh gives; the temp folder isn't a git
+    // repository, so New session hands over the project folder, one at a time.
+    const summary = `document.querySelector('${editor} [data-trigger-summary]')?.innerText`;
+    const expected = "When an issue with the switchboard label is assigned to @smoke-user, start a session in the project's folder. One at a time.";
+    if (!(await waitInPage(win, `${summary} === ${JSON.stringify(expected)}`, 3_000))) return `the summary said "${await js(summary)}"`;
+    if (!(await js(`['when', 'which', 'github', 'start', 'limits'].every((s) => !!document.querySelector('${editor} [data-trigger-section="' + s + '"]')) && !!document.querySelector('${editor} [data-trigger-section="github"][data-folded]') && !document.querySelector('${editor} [data-trigger-section="limits"][data-folded]') && !!document.querySelector('${editor} [data-trigger-folder-note]')`))) return 'the editor does not show its five sections, with GitHub folded and Limits open on the folder reason';
     await js(`document.querySelector('${editor} [data-trigger-which="label"]').click()`);
-    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'switchboard' && document.querySelector('${editor} [data-trigger-state-labels]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-collaborators]')?.getAttribute('aria-checked') === 'true'`, 2_000))) return 'Label did not leave the switchboard label, state labels and Only collaborators on';
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'switchboard' && !document.querySelector('${editor} [data-trigger-assignee]') && document.querySelector('${editor} [data-trigger-collaborators]')?.getAttribute('aria-checked') === 'true' && ${summary}?.startsWith('When an issue gets the switchboard label, ')`, 2_000))) return 'With a label did not keep the switchboard label and Only from collaborators, hide Assigned to and update the summary';
+    // What happens on GitHub? opens with Change, and state labels go on.
+    const change = `document.querySelector('${editor} [data-trigger-section-change="github"]')`;
+    if (!(await js(`${change}?.getAttribute('aria-expanded') === 'false' && !!document.getElementById(${change}.getAttribute('aria-controls'))`))) return "GitHub's Change has no aria-expanded or aria-controls";
+    await js(`${change}.click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${editor} [data-trigger-section="github"][data-folded]') && document.querySelector('${editor} [data-trigger-state-labels]')?.getAttribute('aria-checked') === 'false'`, 2_000))) return 'Change did not open What happens on GitHub? with state labels off';
+    await js(`document.querySelector('${editor} [data-trigger-state-labels]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-state-labels]')?.getAttribute('aria-checked') === 'true' && !!document.querySelector('${editor} [data-state-label="working"]')`, 2_000))) return 'state labels did not turn on';
     if (!(await js(`[...document.querySelectorAll('${editor} [role=spinbutton]')].every((s) => s.hasAttribute('aria-valuemin') && s.hasAttribute('aria-valuemax'))`))) return 'the steppers are not spinbuttons with a min and a max';
     await shot(win, 'trigger-editor.png');
     await js(`document.querySelector('${editor} [data-trigger-save]').click()`);
@@ -7033,7 +7046,7 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
     clock(6 * 60_000);
     await new Promise((resolve) => setTimeout(resolve, 2_000));
     if (starts().length !== startsBefore + 1) return 'a paused trigger started a session';
-    return 'ok: Start when… opened the editor (a radio group of sources, field chips, spinbuttons), the first check started nothing, a new labelled issue started "#2 Smoke issue two" with the filled prompt and switchboard: working in one edit, paused it started nothing';
+    return 'ok: Start when… opened the editor (its summary, five sections with GitHub folded and Limits open in the folder, a radio group of sources, field chips, spinbuttons; With a label hid Assigned to, Change opened GitHub for state labels), the first check started nothing, a new labelled issue started "#2 Smoke issue two" with the filled prompt and switchboard: working in one edit, paused it started nothing';
   } finally {
     // The trigger and the project go again, and the fake's repository with them.
     if (await js(`!!${card}`)) {

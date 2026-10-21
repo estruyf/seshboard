@@ -9,6 +9,8 @@
 export const SESSION_FENCE = 'switchboard-session';
 /** The fence's info string of an attached issue or pull request. */
 export const GITHUB_FENCE = 'switchboard-github';
+/** The fence of a pipeline run's brief in its parent's messages (`pipelines.ts`). */
+export const RUN_FENCE = 'switchboard-run';
 
 /** A code fence longer than any run of backticks in the text, so the text can't close it early. */
 export function fenceFor(text: string): string {

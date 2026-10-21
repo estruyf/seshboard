@@ -25,9 +25,9 @@ import {
 /** Which issues an issues trigger picks up: those with a label, those assigned to you (or someone), or both. */
 export type WhichIssues = 'label' | 'assignee' | 'both';
 export const WHICH_ISSUES: ReadonlyArray<{ value: WhichIssues; label: string }> = [
-  { value: 'label', label: 'Label' },
+  { value: 'label', label: 'With a label' },
   { value: 'assignee', label: 'Assigned to me' },
-  { value: 'both', label: 'Label and assigned to me' },
+  { value: 'both', label: 'Both' },
 ];
 
 /** The sources the editor shows; phase 2's are there, but can't be picked yet. */
@@ -37,6 +37,9 @@ export const TRIGGER_SOURCES = [
   { kind: 'changes', title: 'Changes requested', detail: 'On a pull request a session opened', soon: true },
   { kind: 'command', title: 'A command', detail: 'Each new JSON line it prints', soon: true },
 ] as const;
+
+/** The limits a new trigger starts with; Limits stays folded while both are at these. */
+export const LIMIT_DEFAULTS = { atOnce: 3, waiting: 10 } as const;
 
 /** What the editor holds while you change it. */
 export interface TriggerForm {
@@ -117,7 +120,8 @@ export function newTriggerForm(projectRoot: string, defaults: ProjectDefaults | 
     label: 'switchboard',
     assignee: '@me',
     collaboratorsOnly: true,
-    stateLabels: { on: true, ...DEFAULT_STATE_LABELS },
+    // Off, so What happens on GitHub? starts folded: the trigger changes nothing on the issue until you say so.
+    stateLabels: { on: false, ...DEFAULT_STATE_LABELS },
     assignOnPickUp: false,
     prompt: from.prompt?.trim() || defaultPrompt('issues', start),
     start,
@@ -130,8 +134,8 @@ export function newTriggerForm(projectRoot: string, defaults: ProjectDefaults | 
     permissionMode: safeMode(from.permissionMode ?? defaults?.permissionMode),
     workspace: from.workspace ?? defaults?.workspace ?? 'worktree',
     baseRef: from.baseRef ?? defaults?.baseRef ?? 'fresh',
-    maxAtOnce: 3,
-    maxWaiting: 10,
+    maxAtOnce: LIMIT_DEFAULTS.atOnce,
+    maxWaiting: LIMIT_DEFAULTS.waiting,
     intervalMinutes: 5,
     paused: false,
   };
@@ -196,7 +200,7 @@ export function updateForm(form: TriggerForm, patch: Partial<TriggerForm>, defau
   // Sessions in the project's folder run one at a time; a pipeline run makes its own worktree.
   const inFolder = (f: TriggerForm) => f.start === 'session' && f.workspace === 'current';
   if (inFolder(next)) next.maxAtOnce = 1;
-  else if (inFolder(form) && next.maxAtOnce === 1) next.maxAtOnce = 3;
+  else if (inFolder(form) && next.maxAtOnce === 1) next.maxAtOnce = LIMIT_DEFAULTS.atOnce;
   return next;
 }
 
@@ -241,7 +245,92 @@ const clamp = (n: number, limit: { min: number; max: number }) => Math.min(limit
  */
 export function sharedRepoWarning(form: Pick<TriggerForm, 'kind' | 'which' | 'label'>, repo: string | null, collaborators: number | null): string | null {
   if (form.kind !== 'issues' || form.which !== 'label' || !repo || collaborators === null || collaborators <= 1) return null;
-  return `${repo} has ${collaborators} collaborators. Everyone's ${form.label.trim() || 'labelled'} issues will start here. Use Assigned to me, turn on state labels, or Assign to me when picked up.`;
+  return `${repo} has ${collaborators} collaborators. Everyone's ${form.label.trim() || 'labelled'} issues will start here. Pick Both, or turn on state labels in 3.`;
+}
+
+/** A part of the summary sentence: plain text, or a value the editor shows in bold. */
+export interface SummaryPart {
+  text: string;
+  bold?: boolean;
+}
+
+/**
+ * The sentence at the top of the editor: what starts the trigger, what it starts, and how many at once. Parts, so the
+ * values can be bold without parsing. `kind` null (nothing picked yet) asks for a source; an issues filter without its
+ * label or assignee asks for one.
+ */
+export function triggerSummary(
+  form: Pick<TriggerForm, 'branch' | 'workflows' | 'which' | 'label' | 'assignee' | 'start' | 'workspace' | 'maxAtOnce'> & { kind: TriggerForm['kind'] | null },
+  ctx: { defaultBranch?: string | null; login?: string | null; pipelineName?: string | null } = {},
+): SummaryPart[] {
+  const plain = (text: string): SummaryPart => ({ text });
+  const bold = (text: string): SummaryPart => ({ text, bold: true });
+  if (form.kind === null) return [plain('Pick what starts it.')];
+  let when: SummaryPart[];
+  if (form.kind === 'ci') {
+    const branch = form.branch.trim() || ctx.defaultBranch;
+    const last = form.workflows.length - 1;
+    const workflows = form.workflows.length ? form.workflows.flatMap((w, i) => [...(i === 0 ? [] : [plain(i === last ? ' or ' : ', ')]), bold(w)]) : [plain('a workflow')];
+    when = [plain('When '), ...workflows, plain(' fails on '), branch ? bold(branch) : plain('the default branch')];
+  } else {
+    const label = form.which === 'assignee' ? null : form.label.trim();
+    const who = form.which === 'label' ? null : form.assignee.trim();
+    if (label === '' || who === '') return [plain('Add a label, or pick Assigned to me.')];
+    const assignee = who === '@me' ? (ctx.login ? `@${ctx.login}` : 'you') : `@${who}`;
+    when = label && who ? [plain('When an issue with the '), bold(label), plain(' label is assigned to '), bold(assignee)] : label ? [plain('When an issue gets the '), bold(label), plain(' label')] : [plain('When an issue is assigned to '), bold(assignee)];
+  }
+  const pipeline = form.start === 'pipeline';
+  const then = pipeline ? (ctx.pipelineName ? [plain(', run '), bold(ctx.pipelineName), plain('.')] : [plain(', run a pipeline.')]) : [plain(', start a '), bold('session'), plain(form.workspace === 'current' ? " in the project's folder." : ' in a new worktree.')];
+  // Sessions in the project's folder run one at a time, whatever the stepper held.
+  const atOnce = !pipeline && form.workspace === 'current' ? 1 : form.maxAtOnce;
+  const limit = atOnce === 1 ? [plain(' One at a time.')] : [plain(' Up to '), bold(String(atOnce)), plain(' at once.')];
+  return [...when, ...then, ...limit];
+}
+
+/** The editor's sections, in order: CI triggers have nothing to do on GitHub. */
+export type TriggerSection = 'when' | 'which' | 'github' | 'start' | 'limits';
+export const triggerSections = (kind: TriggerForm['kind']): TriggerSection[] => (kind === 'issues' ? ['when', 'which', 'github', 'start', 'limits'] : ['when', 'which', 'start', 'limits']);
+
+/** A section's number, by its place: CI's are 1 to 4. */
+export const sectionNumber = (kind: TriggerForm['kind'], section: TriggerSection) => triggerSections(kind).indexOf(section) + 1;
+
+/** Which section the form's problem (`formProblem`) is in, or `name` for the title; null when there is none. */
+export function problemSection(form: TriggerForm): TriggerSection | 'name' | null {
+  if (!formProblem(form)) return null;
+  const issues = form.kind === 'issues';
+  if (issues && ((form.which !== 'assignee' && !form.label.trim()) || (form.which !== 'label' && !form.assignee.trim()))) return 'which';
+  if (issues && form.stateLabels.on && [form.stateLabels.working, form.stateLabels.needsInput, form.stateLabels.prOpen, form.stateLabels.failed].some((l) => !l.trim())) return 'github';
+  // The rest are what it starts (the pipeline, the mode, the prompt), checked before the name.
+  const startProblem = (form.start === 'pipeline' && !form.pipelineId) || (form.start === 'session' && form.permissionMode === 'bypassPermissions') || !form.prompt.trim();
+  return startProblem || form.name.trim() ? 'start' : 'name';
+}
+
+/** Whether a section may show as one line: GitHub with nothing to do on the issue, Limits at their defaults. */
+export function foldable(form: TriggerForm, section: TriggerSection): boolean {
+  if (section === 'github') return form.kind === 'issues' && !form.stateLabels.on && !(form.which === 'label' && form.assignOnPickUp);
+  if (section === 'limits') return formToSave(form).maxAtOnce === LIMIT_DEFAULTS.atOnce && form.maxWaiting === LIMIT_DEFAULTS.waiting;
+  return false;
+}
+
+/** The sections folded when the editor opens. */
+export const initialFolds = (form: TriggerForm): ReadonlySet<TriggerSection> => new Set(triggerSections(form.kind).filter((s) => foldable(form, s)));
+
+/**
+ * The folds that stay as the form changes: a section opens for good once it holds more than its one line says, or has
+ * the form's problem. One the source doesn't show (GitHub for CI) keeps its fold for when it comes back.
+ */
+export function keptFolds(folded: ReadonlySet<TriggerSection>, form: TriggerForm, problem: TriggerSection | 'name' | null): ReadonlySet<TriggerSection> {
+  const shown = triggerSections(form.kind);
+  const kept = [...folded].filter((s) => s !== problem && (foldable(form, s) || !shown.includes(s)));
+  return kept.length === folded.size ? folded : new Set(kept);
+}
+
+/** A folded Limits' line: "3 sessions at once, up to 10 events waiting". */
+export function limitsLine(form: Pick<TriggerForm, 'start' | 'workspace' | 'maxAtOnce' | 'maxWaiting'>): string {
+  const pipeline = form.start === 'pipeline';
+  const atOnce = !pipeline && form.workspace === 'current' ? 1 : form.maxAtOnce;
+  const unit = pipeline ? (atOnce === 1 ? 'run' : 'runs') : atOnce === 1 ? 'session' : 'sessions';
+  return `${atOnce} ${unit} at once, up to ${form.maxWaiting} ${form.maxWaiting === 1 ? 'event' : 'events'} waiting`;
 }
 
 /** The footer's line: what the first check does. */

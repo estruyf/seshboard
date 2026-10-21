@@ -13,13 +13,14 @@ const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui te
 const UNSET = '';
 
 /** Shows a summary of the defaults a project or profile sets, e.g. "Opus · high effort · worktree"; `fallback` when it sets none. */
-export function describeDefaults(d: Omit<ProjectDefaults, 'branch'> & { branch?: string | null }, fallback = 'Global defaults'): string {
+export function describeDefaults(d: Omit<ProjectDefaults, 'branch' | 'defaultBranch'> & { branch?: string | null; defaultBranch?: string | null }, fallback = 'Global defaults'): string {
   const parts = [
     d.model === AUTO_MODEL ? 'Auto' : d.model,
     d.effort && `${d.effort} effort`,
     d.permissionMode && d.permissionMode !== 'default' && d.permissionMode,
     d.workspace === 'worktree' ? `worktree${d.baseRef === 'head' ? ' from HEAD' : isBranchBase(d.baseRef) ? ` from ${branchOfBase(d.baseRef)}` : ''}` : d.workspace === 'current' && 'current folder',
     d.branch && `on ${d.branch}`,
+    d.defaultBranch && `default branch ${d.defaultBranch}`,
   ].filter(Boolean);
   return parts.length ? parts.join(' · ') : fallback;
 }
@@ -94,6 +95,8 @@ export function ProjectDefaultsEditor({
   // A project's worktrees can start from any of its branches; a profile has no repository, so only origin or HEAD.
   const listedBases: BranchBase[] = root ? [...branches.branches.map((b) => `refs/heads/${b}` as const), ...(branches.remoteBranches ?? []).map((b) => `refs/remotes/${b}` as const)] : [];
   const baseOptions = isBranchBase(defaults.baseRef) && !listedBases.includes(defaults.baseRef) ? [defaults.baseRef, ...listedBases] : listedBases;
+  // A default branch is a name, here or on a remote: `origin/dev` is offered as `dev`.
+  const namedBranches = [...new Set([...(defaults.defaultBranch ? [defaults.defaultBranch] : []), ...branches.branches, ...(branches.remoteBranches ?? []).map((b) => b.slice(b.indexOf('/') + 1))])];
 
   return (
     <div className="grid gap-2.5" data-project-defaults={root ?? undefined}>
@@ -169,6 +172,20 @@ export function ProjectDefaultsEditor({
           />
         )}
       </Row>
+      {root && isGitRepo && (
+        <Row label="Default branch">
+          <Select
+            label="Default branch"
+            tooltip="Where worktrees from origin start, what pull requests go into and what changes compare against"
+            className={field}
+            value={defaults.defaultBranch ?? UNSET}
+            onChange={(value) => set({ defaultBranch: nullable(value) })}
+            options={[{ value: UNSET, label: "The remote's default branch" }, ...namedBranches.map((b) => ({ value: b, label: b }))]}
+            menuWidth={240}
+            dataAttrs={{ 'data-default-default-branch': true }}
+          />
+        </Row>
+      )}
       {root && isGitRepo && defaults.workspace !== 'worktree' && (
         <Row label="Branch">
           <Select

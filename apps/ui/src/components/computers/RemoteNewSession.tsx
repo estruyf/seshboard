@@ -9,6 +9,7 @@ import { useTrustQuestion } from '../clone/CloneTrustDialog.tsx';
 import { canClone, planLine } from '../clone/cloneModel.ts';
 import { CloneCancelled, useCloneJob, type CloneResult } from '../clone/useCloneJob.ts';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+import { clearRemoteDraft, loadRemoteDraft, remoteNewDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
 import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -48,7 +49,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [prompt, setPrompt] = useState('');
+  // The prompt stays for that computer when you go elsewhere and come back, also after a restart, until the session starts.
+  const [prompt, setPrompt] = useState(() => loadRemoteDraft(remoteNewDraftKey(computer.id)).text);
   const [starting, setStarting] = useState(false);
   const [changes, setChanges] = useState<Partial<RemoteChoice>>({});
   /** That computer's branches for the picked project's folder (null: not read yet, or it can't say). */
@@ -72,6 +74,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const [cloneSoon, setCloneSoon] = useState(false);
   const trust = useTrustQuestion();
   const [reload, setReload] = useState(0);
+
+  useEffect(() => saveRemoteDraft(remoteNewDraftKey(computer.id), { text: prompt }), [computer.id, prompt]);
 
   useEffect(() => {
     if (!client || !connected) return;
@@ -203,6 +207,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
         ...(checkoutBranch && !fresh ? { checkoutBranch } : {}),
       });
       if (fresh) closeClone();
+      clearRemoteDraft(remoteNewDraftKey(computer.id));
       setPrompt('');
       setChanges({});
       setBranch(null);

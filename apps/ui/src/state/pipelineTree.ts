@@ -1,5 +1,5 @@
-import { runProgress, sidebarTree, stepStateWord, type PipelineRunState, type PipelineStepStatus, type TreeStatus } from '@switchboard/protocol/client';
-import { isRunRow, modelWord, modeWord, runIsActive, runTreeStatus } from './pipelines.ts';
+import { sidebarTree, type PipelineRunState, type PipelineStepStatus, type TreeStatus } from '@switchboard/protocol/client';
+import { isRunRow, runIsActive, runTreeStatus } from './pipelines.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import { isActive, rowStatus, type RowStatus, type TreeFacts } from './sidebarRows.ts';
 
@@ -37,6 +37,8 @@ const ROW_OF: Record<TreeStatus, RowStatus> = { needsYou: 'needs-you', working: 
 
 /** A row's state in the tree's words. */
 export const toTreeStatus = (status: RowStatus): TreeStatus => (status ? TREE_OF[status] : 'idle');
+
+export { asksWords, childMeta as stepMeta, parentRunLine, runRowLine, treeNeedsYouLine } from '@switchboard/protocol/client';
 
 export interface SidebarForest {
   /** What the sidebar lists: sessions without a listed parent, and run rows, each with its state lifted by its children. */
@@ -113,25 +115,6 @@ export function stepOfSession(runs: Iterable<PipelineRunState>, sessionId: strin
   return null;
 }
 
-const clean = (text: string | null | undefined) => (text ? text.trim().replace(/\.$/, '') : null) || null;
-
-/**
- * A sub-session's second line: the step's model, then how it started or its mode while it works, then its state or
- * what it did. "Opus · plan approved", "Sonnet · fork of Plan · working", "Opus · read only · working".
- */
-export function stepMeta(state: PipelineRunState, row: PipelineRunState['steps'][number]): string {
-  const step = state.run.pipeline.steps[row.index];
-  const going = row.status === 'working' || row.status === 'waiting';
-  const parts: Array<string | null> = [];
-  if (step?.kind === 'claude') {
-    parts.push(modelWord(step.model));
-    parts.push(typeof step.start === 'object' ? `fork of ${step.start.fork}` : going ? modeWord(step) : null);
-  }
-  const verdict = row.verdict ? (row.verdict.kind === 'pass' ? 'pass' : 'changes needed') : null;
-  parts.push(going ? stepStateWord(row.status) : (verdict ?? clean(row.reason) ?? stepStateWord(row.status)));
-  return parts.filter(Boolean).join(' · ');
-}
-
 /**
  * A sub-session's dot: its session's state first (it asks, works, failed), else its step's, else unread. A step the
  * run finished is done even before you read it: the run read it and went on.
@@ -149,35 +132,6 @@ export function childTone(status: RowStatus, step: PipelineStepStatus | null): C
   if (status === 'unread') return 'unread';
   return 'idle';
 }
-
-/** What a waiting sub-session asks, after its name: "asks a question", "asks to use Bash". */
-export function asksWords(toolName: string | null): string {
-  if (toolName === null) return 'waits for you';
-  if (toolName === 'AskUserQuestion') return 'asks a question';
-  if (toolName === 'ExitPlanMode') return 'has a plan to review';
-  return `asks to use ${toolName}`;
-}
-
-/**
- * A parent's second line when its run needs you: which sub-session asks what, or why the run waits. "Needs you ·
- * Execute asks a question", "Needs you · Push waits for you".
- */
-export function treeNeedsYouLine(state: PipelineRunState | null, waitingChild: { title: string; toolName: string | null } | null): string {
-  if (waitingChild) return `Needs you · ${waitingChild.title} ${asksWords(waitingChild.toolName)}`;
-  const run = state?.run;
-  if (!run || run.status !== 'waiting') return 'Needs you';
-  if (run.waitingFor === 'push') return 'Needs you · Push waits for you';
-  const reason = clean(run.reason);
-  if (reason) return `Needs you · ${reason}`;
-  const step = run.pipeline.steps[run.sentBackTo ?? run.step];
-  return step ? `Needs you · ${step.name} waits for you` : 'Needs you';
-}
-
-/** A parent's second line while its run counts: "Validate · 3 of 4 · switchboard" (no project with the filter on). */
-export const parentRunLine = (state: PipelineRunState, project: string | null) => [runProgress(state.run), project].filter(Boolean).join(' · ');
-
-/** A run row's second line: "Run · Plan · 1 of 4 · switchboard". */
-export const runRowLine = (state: PipelineRunState, project: string | null) => ['Run', runProgress(state.run), project].filter(Boolean).join(' · ');
 
 /** The footer's "1 pipeline running": runs that go on, or null when none do. */
 export function pipelinesRunning(runs: Iterable<PipelineRunState>): string | null {
