@@ -1,4 +1,5 @@
-import type { ShortcutId } from '../../lib/shortcuts.ts';
+import type { SendMode } from '@switchboard/protocol/client';
+import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 
 /** What the message box's send button can do while Claude is working. */
 export type QueueAction = 'queue' | 'steer' | 'send-now';
@@ -53,4 +54,15 @@ export function queueButtonState({ blocked, sending, hasMessage, whileWorking }:
       { action: 'send-now', label: LABEL['send-now'], shortcut: 'composer.send-now', disabled },
     ],
   };
+}
+
+/**
+ * What a key in a message box sends, for a box that handles its keys itself (a session on another computer): while
+ * Claude works, ⌥↵ the other way than Enter and ⌘⇧↵ Send now, as in a local session's box; idle, only Enter sends.
+ * Null: the key is typing.
+ */
+export function sendKeyMode(event: Parameters<typeof matches>[0], working: boolean, whileWorking: 'queue' | 'steer'): SendMode | null {
+  if (working && matches(event, 'composer.send-other')) return whileWorking === 'queue' ? 'steer' : 'queue';
+  if (working && matches(event, 'composer.send-now')) return 'now';
+  return matches(event, 'composer.send') ? whileWorking : null;
 }

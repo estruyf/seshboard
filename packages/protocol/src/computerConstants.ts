@@ -23,6 +23,7 @@ export const COMPUTER_METHODS = [
   'transcript.unwatch',
   'session.send',
   'session.queue.remove',
+  'session.queue.sendNow',
   'session.interrupt',
   'session.stopTask',
   'session.respond',

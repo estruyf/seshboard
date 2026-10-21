@@ -56,3 +56,6 @@ export const REMOTE_FEATURE_LIMITS = 'limits';
  * message box.
  */
 export const REMOTE_FEATURE_PIPELINES = 'pipelines';
+
+/** In `hello`'s `features`: `session.queue.sendNow` answers, so a message in Up next can be sent now (Claude stops first). */
+export const REMOTE_FEATURE_QUEUE_SEND_NOW = 'session.queue.sendNow';

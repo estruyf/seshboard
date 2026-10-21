@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
-import { PARENT_PLACEHOLDER, REMOTE_FEATURE_PIPELINES, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@switchboard/protocol/remote-client';
+import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X, Zap } from 'lucide-react';
+import { PARENT_PLACEHOLDER, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@switchboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { runsOf } from '../lib/runs.ts';
 import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
@@ -364,7 +364,13 @@ export function SessionView({
         {client && (
           <LimitNotice client={client} sessionId={sessionId} limit={limit} held={queue.length} busy={working || prompts.length > 0} now={now} />
         )}
-        {queue.length > 0 && <UpNext queue={queue} onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))} />}
+        {queue.length > 0 && (
+          <UpNext
+            queue={queue}
+            onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))}
+            onSendNow={features.includes(REMOTE_FEATURE_QUEUE_SEND_NOW) ? (id) => void client?.call('session.queue.sendNow', { sessionId, id }).catch((e: Error) => setError(e.message)) : null}
+          />
+        )}
         {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
         <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} />
         <Composer
@@ -631,7 +637,8 @@ function BackgroundLine({ text }: { text: string }) {
   );
 }
 
-function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: string) => void }) {
+/** What waits for the turn to end. Send now (from a computer that takes it) stops Claude and sends that one at once. */
+function UpNext({ queue, onRemove, onSendNow }: { queue: QueuedMessage[]; onRemove: (id: string) => void; onSendNow: ((id: string) => void) | null }) {
   return (
     <section aria-label="Up next" className="px-3 pt-2 sm:px-6">
       <div className="mx-auto w-full max-w-3xl px-1">
@@ -640,6 +647,12 @@ function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: st
           {queue.map((item) => (
             <li key={item.id} className="flex items-center gap-2 py-0.5">
               <span className="min-w-0 flex-1 truncate text-ui">{item.text}</span>
+              {onSendNow && (
+                <Button variant="quiet" size="md" onClick={() => onSendNow(item.id)} title="Stop Claude and send this now" className="px-2!" data-remote-send-now={item.id}>
+                  <Zap className="size-3.5" aria-hidden />
+                  Send now
+                </Button>
+              )}
               <Button variant="quiet" size="md" aria-label="Remove from Up next" onClick={() => onRemove(item.id)} className="px-2!">
                 <X className="size-4" aria-hidden />
               </Button>

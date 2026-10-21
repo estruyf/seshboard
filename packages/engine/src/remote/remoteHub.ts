@@ -176,6 +176,8 @@ export interface RemoteHubOptions {
   watchTranscript(sessionId: string, listener: (update: TranscriptUpdate) => void): () => void;
   send(sessionId: string, text: string, mode: SendMode, images: RemoteImage[]): Promise<{ messageUuid: string; queued: boolean }>;
   dequeue(sessionId: string, id: string): void;
+  /** Send now on a message in Up next: Claude's turn stops and it goes, as on the computer. */
+  sendQueuedNow(sessionId: string, id: string): Promise<void>;
   /** A session's Up next as it is now, for a phone that starts watching it (it may have missed changes while away). */
   upNext(sessionId: string): QueuedMessage[];
   /** How a session stands with its profile's usage limit; null when its profile isn't at one. */
@@ -806,6 +808,11 @@ export class RemoteHub {
         this.options.dequeue(sessionId, id);
         // Already sent while this phone was away: nothing changed, so no update comes; this one sets its list right.
         phone.emit('upNext.changed', { sessionId, queue: this.options.upNext(sessionId) });
+        return {};
+      },
+      'session.queue.sendNow': async ({ sessionId, id }) => {
+        this.checkSession(sessionId);
+        await this.options.sendQueuedNow(sessionId, id);
         return {};
       },
       'session.interrupt': async ({ sessionId }) => {
