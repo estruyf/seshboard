@@ -84,7 +84,7 @@ import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, 
 import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
 import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
-import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
+import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
 import { installedPlugins } from './host/capabilities.ts';
 import { hookedCacheKey, listMods } from './host/modsCatalog.ts';
@@ -3217,6 +3217,16 @@ export function createEngine(options: EngineOptions): Engine {
         if (result.ok) log('info', `worktrees: removed ${result.path}${result.branchDeleted ? ' and its branch' : ''}${result.recoveryRef ? ` (kept ${result.recoveryRef})` : ''}`);
       }
       return { results };
+    },
+    'worktrees.unlock': async ({ root, path }) => {
+      if (!resolver.resolve(root).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');
+      try {
+        await unlockWorktree(root, path);
+      } catch (error) {
+        throw new RpcError(error instanceof WorktreeRefusal ? error.code : 'GIT_FAILED', (error as Error).message);
+      }
+      log('info', `worktrees: unlocked ${path}`);
+      return {};
     },
     'worktrees.push': async ({ path }) => {
       if (!existsSync(path) || !resolver.resolve(path).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');

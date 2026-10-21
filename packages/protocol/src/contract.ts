@@ -858,6 +858,8 @@ export const contract = {
      * Switchboard is stopped first. Optionally deletes the branch, after saving a recovery ref.
      */
     'worktrees.remove': { params: z.object({ root: AbsolutePath, items: z.array(WorktreeRemoveItem).min(1).max(200) }), result: z.object({ results: z.array(WorktreeRemoveResult) }) },
+    /** Unlocks a locked worktree of the repository at `root` (`git worktree unlock`), so it can be removed. */
+    'worktrees.unlock': { params: z.object({ root: AbsolutePath, path: AbsolutePath }), result: z.object({}) },
     /**
      * Pushes the branch checked out in a worktree, without a session or terminal (the overview has none): `git push`, or
      * `git push -u <remote> <branch>` the first time. Nothing can ask for a password, so a remote that wants one fails.
