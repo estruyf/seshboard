@@ -264,6 +264,16 @@ function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, ac
           </Checkbox>
         </div>
       </Row>
+      {step.permissionMode === 'plan' && (
+        <Row label="Plan" labelId={`${id}-plan`}>
+          <Checkbox checked={step.approvePlan} disabled={readOnly} onChange={(approvePlan) => update({ approvePlan })} dataAttrs={{ 'data-pipeline-approve-plan': true }}>
+            <span className="grid gap-0.5">
+              <span className="text-ui text-text">Approve the plan for me</span>
+              <span className="text-meta text-muted">The run goes on to the next step once the plan is written. The plan is kept for later steps and the pull request.</span>
+            </span>
+          </Checkbox>
+        </Row>
+      )}
       <Row label="Prompt" htmlFor={`${id}-prompt`}>
         <MentionPromptField id={`${id}-prompt`} value={step.prompt} onChange={(prompt) => update({ prompt })} choices={mentionChoices(form.steps, index)} describedBy={`${id}-prompt-hint`} invalid={!step.prompt.trim()} readOnly={readOnly} />
         <p id={`${id}-prompt-hint`} className="mt-1.5 text-meta text-muted">

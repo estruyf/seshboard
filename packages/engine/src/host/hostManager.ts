@@ -122,6 +122,11 @@ export interface HostManagerDeps {
    * instead of the approval (the next step builds it); null lets the approval through as it is.
    */
   planApproved?: (sessionId: string, plan: string) => string | null;
+  /**
+   * Answers a permission request before it is shown (a pipeline step that approves its own plan, a run that goes on
+   * without you); null shows it as usual.
+   */
+  autoAnswer?: (request: PermissionRequest) => PermissionDecision | null;
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -1112,6 +1117,12 @@ export class HostManager {
       };
       this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), resolve });
       options.signal.addEventListener('abort', () => this.settle(requestId, { behavior: 'deny', message: 'Cancelled.' }), { once: true });
+      // Answered for you: through `respond`, so an approved plan goes through `planApproved` as a click would.
+      const auto = this.deps.autoAnswer?.(request) ?? null;
+      if (auto) {
+        this.respond(requestId, auto);
+        return;
+      }
       this.deps.onPermission(request);
     });
   }

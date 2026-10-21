@@ -753,4 +753,20 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE pipeline_runs ADD COLUMN attachments_json TEXT;
   `,
+
+  // v40: Event triggers start pipelines (#185). What a trigger starts (`start_json`, null: a session, as before), the
+  // run an event became, and the event's text (an issue, a failed log) a triggered run gives its first step as context.
+  // All user data: keep them.
+  `
+  ALTER TABLE triggers ADD COLUMN start_json TEXT;
+  ALTER TABLE trigger_events ADD COLUMN run_id TEXT;
+  CREATE INDEX trigger_events_run ON trigger_events (run_id);
+  ALTER TABLE pipeline_runs ADD COLUMN context TEXT;
+  `,
+
+  // v41: A run a trigger starts without stopping for you (#185): plans approved, steps that wait started, questions
+  // answered with "decide". Part of the run: keep it.
+  `
+  ALTER TABLE pipeline_runs ADD COLUMN unattended INTEGER NOT NULL DEFAULT 0;
+  `,
 ];

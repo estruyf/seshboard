@@ -1,13 +1,15 @@
-import { AlertTriangle, CircleDot, CircleX, Folder, GitBranch, MessageSquareDiff, SquareTerminal, Zap } from 'lucide-react';
+import { AlertTriangle, CircleDot, CircleX, Folder, GitBranch, ListTree, MessageSquareDiff, SquareTerminal, Zap } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { STATE_LABEL_KEYS, TRIGGER_LIMITS, type StateLabelKey, type TriggerRepoInfo } from '@switchboard/protocol/client';
+import { BUILT_IN_PIPELINES, pipelineProblem, STATE_LABEL_KEYS, TRIGGER_LIMITS, type StateLabelKey, type TriggerRepoInfo } from '@switchboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
 import { basename } from '../../lib/format.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { pipelinesFor } from '../../state/pipelines.ts';
+import { usePipelines } from '../../state/pipelinesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { firstCheckLine, formProblem, formToSave, newTriggerForm, sharedRepoWarning, TRIGGER_SOURCES, triggerForm, updateForm, WHICH_ISSUES, type TriggerForm } from '../../state/triggers.ts';
+import { firstCheckLine, formPipeline, formProblem, formToSave, newTriggerForm, sharedRepoWarning, TRIGGER_SOURCES, triggerForm, updateForm, WHICH_ISSUES, type TriggerForm } from '../../state/triggers.ts';
 import { closeTriggerEditor, loadRepoInfo, saveTrigger, useTriggers, type TriggerEditorRequest } from '../../state/triggersStore.ts';
 import { layeredDefaults } from '../newSession/choices.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
@@ -101,10 +103,21 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   }, [request.root]);
 
   const update = (patch: Partial<TriggerForm>) => setForm((current) => updateForm(current, patch, info?.defaultBranch ?? null));
-  const problem = formProblem(form);
+  // What it can start (#185): the project's pipelines, and a built-in it starts already while the built-ins are hidden.
+  const allPipelines = usePipelines((s) => s.pipelines);
+  const pipelines = useMemo(() => {
+    const own = pipelinesFor(allPipelines, request.root);
+    const hidden = form.pipelineId && !own.some((p) => p.id === form.pipelineId) ? BUILT_IN_PIPELINES.find((p) => p.id === form.pipelineId) : undefined;
+    return hidden ? [...own, hidden] : own;
+  }, [allPipelines, request.root, form.pipelineId]);
+  const pipeline = formPipeline(form, pipelines);
+  const startsPipeline = form.start === 'pipeline';
+  const problem = formProblem(form) ?? (startsPipeline && form.pipelineId ? pipelineProblem(pipeline, request.root) : null);
   const warning = sharedRepoWarning(form, info?.repo ?? null, info?.collaborators ?? null);
-  const folder = form.workspace === 'current';
+  // Sessions in the project's folder run one at a time; a pipeline run makes a worktree of its own.
+  const folder = !startsPipeline && form.workspace === 'current';
   const atOnce = folder ? 1 : form.maxAtOnce;
+  const unit = (n: number) => (startsPipeline ? (n === 1 ? 'run' : 'runs') : n === 1 ? 'session' : 'sessions');
   const issues = form.kind === 'issues';
   const login = info?.login ?? null;
 
@@ -365,25 +378,76 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
           <SectionHeader as="h3" headingId={`${id}-then`}>
             Then
           </SectionHeader>
-          <Row label="Prompt" htmlFor={`${id}-prompt`}>
+          <Row label="Starts" labelId={`${id}-starts`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <SegmentedControl
+                mode="radio"
+                label="Starts"
+                value={form.start}
+                // The first of the project's pipelines, unless one is picked already.
+                onChange={(start) => update({ start, pipelineId: start === 'pipeline' && !pipelines.some((p) => p.id === form.pipelineId) ? (pipelines[0]?.id ?? null) : form.pipelineId })}
+                segments={[
+                  { value: 'session', label: 'A session', data: { 'data-trigger-starts': 'session' } },
+                  { value: 'pipeline', label: 'A pipeline', data: { 'data-trigger-starts': 'pipeline' } },
+                ]}
+                className="w-fit"
+              />
+              {startsPipeline &&
+                (pipelines.length || form.pipelineId ? (
+                  <Select
+                    label="Pipeline"
+                    className={CHIP}
+                    value={form.pipelineId ?? ''}
+                    onChange={(pipelineId) => update({ pipelineId: pipelineId || null })}
+                    options={[
+                      ...(pipeline ? [] : [{ value: form.pipelineId ?? '', label: form.pipelineId ? 'A deleted pipeline' : 'Pick a pipeline', icon: <ListTree size={13} aria-hidden /> }]),
+                      ...pipelines.map((p) => ({ value: p.id, label: p.name, icon: <ListTree size={13} className="text-pipeline" aria-hidden /> })),
+                    ]}
+                    dataAttrs={{ 'data-trigger-pipeline-pick': true }}
+                  />
+                ) : (
+                  <span className="text-meta text-muted">This project has no pipelines yet.</span>
+                ))}
+            </div>
+            <p className="mt-1.5 text-meta text-muted">{startsPipeline ? 'Each event starts a run of the pipeline, with the task below. No step bypasses permissions.' : 'Each event starts a session with the prompt.'}</p>
+            {startsPipeline && (
+              <div className="mt-2.5 grid gap-2">
+                <Checkbox checked={form.unattended} onChange={(unattended) => update({ unattended })} dataAttrs={{ 'data-trigger-unattended': true }}>
+                  <span className="grid gap-0.5">
+                    <span className="text-ui text-text">Run without stopping for me</span>
+                    <span className="text-meta text-muted">Plans are approved for you, steps that wait for you start, and Claude decides questions itself. Tool permissions, errors and a failing review still stop the run.</span>
+                  </span>
+                </Checkbox>
+                <Checkbox checked={form.autoPush} onChange={(autoPush) => update({ autoPush })} dataAttrs={{ 'data-trigger-auto-push': true }}>
+                  <span className="grid gap-0.5">
+                    <span className="text-ui text-text">Open the pull request without me</span>
+                    <span className="text-meta text-muted">Push commits, pushes and opens the pull request when the steps before it are done. Merging stays with you.</span>
+                  </span>
+                </Checkbox>
+              </div>
+            )}
+          </Row>
+          <Row label={startsPipeline ? 'Task' : 'Prompt'} htmlFor={`${id}-prompt`}>
             <TriggerPromptField id={`${id}-prompt`} value={form.prompt} onChange={(prompt) => update({ prompt })} kind={form.kind} describedBy={`${id}-prompt-hint`} invalid={tried && !form.prompt.trim()} />
             <p id={`${id}-prompt-hint`} className="mt-1.5 text-meta text-muted">
-              {issues ? "Type {{ for event fields. The issue's text goes in as context to read, not instructions." : "Type {{ for event fields. The failed jobs' log goes in as context to read, not instructions."}
+              {`Type {{ for event fields.${startsPipeline ? ' It fills {{task}} in the steps.' : ''} ${issues ? "The issue's text" : "The failed jobs' log"} goes ${startsPipeline ? 'to the first step' : 'in'} as context to read, not instructions.`}
             </p>
           </Row>
           <Row label="Runs with" labelId={`${id}-runs`}>
             <div role="group" aria-labelledby={`${id}-runs`} className="flex flex-wrap items-center gap-1.5" data-trigger-runs-with>
-              <Select
-                label="Workspace"
-                className={CHIP}
-                value={form.workspace}
-                onChange={(workspace) => update({ workspace })}
-                options={[
-                  { value: 'worktree', label: 'New worktree', icon: <GitBranch size={13} aria-hidden /> },
-                  { value: 'current', label: 'Project folder', icon: <Folder size={13} aria-hidden /> },
-                ]}
-                dataAttrs={{ 'data-trigger-workspace': true }}
-              />
+              {!startsPipeline && (
+                <Select
+                  label="Workspace"
+                  className={CHIP}
+                  value={form.workspace}
+                  onChange={(workspace) => update({ workspace })}
+                  options={[
+                    { value: 'worktree', label: 'New worktree', icon: <GitBranch size={13} aria-hidden /> },
+                    { value: 'current', label: 'Project folder', icon: <Folder size={13} aria-hidden /> },
+                  ]}
+                  dataAttrs={{ 'data-trigger-workspace': true }}
+                />
+              )}
               {profiles.length > 1 && (
                 <Select
                   label="Claude profile"
@@ -394,24 +458,31 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                   dataAttrs={{ 'data-trigger-profile': true }}
                 />
               )}
-              <Select
-                label="Model"
-                className={CHIP}
-                value={form.model ?? ''}
-                onChange={(value) => update({ model: value || null })}
-                options={[{ value: '', label: 'Default model' }, ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })), ...(form.model && !models.some((m) => m.value === form.model) ? [{ value: form.model, label: modelLabel(models, form.model) }] : [])]}
-                dataAttrs={{ 'data-trigger-model': true }}
-              />
-              <Select
-                label="Permission mode"
-                className={CHIP}
-                value={form.permissionMode}
-                onChange={(permissionMode) => update({ permissionMode })}
-                // Bypass permissions is left out: a trigger starts work from text other people wrote.
-                options={MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m], icon: <span className={`size-2 rounded-full ${MODE_DOT[m] ?? 'bg-faint'}`} /> }))}
-                dataAttrs={{ 'data-trigger-mode': true }}
-              />
-              {fromProject && <span className="text-meta text-muted">from the project</span>}
+              {startsPipeline ? (
+                // The pipeline's steps set their own model and mode, and the run makes its own worktree.
+                <span className="text-meta text-muted">A new worktree. Each step sets its own model and mode.</span>
+              ) : (
+                <>
+                  <Select
+                    label="Model"
+                    className={CHIP}
+                    value={form.model ?? ''}
+                    onChange={(value) => update({ model: value || null })}
+                    options={[{ value: '', label: 'Default model' }, ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })), ...(form.model && !models.some((m) => m.value === form.model) ? [{ value: form.model, label: modelLabel(models, form.model) }] : [])]}
+                    dataAttrs={{ 'data-trigger-model': true }}
+                  />
+                  <Select
+                    label="Permission mode"
+                    className={CHIP}
+                    value={form.permissionMode}
+                    onChange={(permissionMode) => update({ permissionMode })}
+                    // Bypass permissions is left out: a trigger starts work from text other people wrote.
+                    options={MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m], icon: <span className={`size-2 rounded-full ${MODE_DOT[m] ?? 'bg-faint'}`} /> }))}
+                    dataAttrs={{ 'data-trigger-mode': true }}
+                  />
+                  {fromProject && <span className="text-meta text-muted">from the project</span>}
+                </>
+              )}
             </div>
           </Row>
           <Row label="At once" labelId={`${id}-at-once`}>
@@ -421,16 +492,20 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                 min={TRIGGER_LIMITS.atOnce.min}
                 max={folder ? 1 : TRIGGER_LIMITS.atOnce.max}
                 onChange={(maxAtOnce) => update({ maxAtOnce })}
-                label="Sessions at a time"
+                label={startsPipeline ? 'Runs at a time' : 'Sessions at a time'}
                 less="Fewer at once"
                 more="More at once"
                 disabled={folder}
                 hook="trigger-at-once"
               />
-              <span>{atOnce === 1 ? 'session at a time' : 'sessions at a time'}</span>
+              <span>{unit(atOnce)} at a time</span>
             </div>
             <p className="mt-1.5 text-meta text-muted" data-trigger-folder-note={folder || undefined}>
-              {folder ? 'Sessions in the project folder edit the same files, so only one runs at a time.' : 'The most sessions this trigger runs together. A session counts while it works or waits for you.'}
+              {folder
+                ? 'Sessions in the project folder edit the same files, so only one runs at a time.'
+                : startsPipeline
+                  ? 'The most runs this trigger has going together. A run counts while a step works or it waits for you, not per step.'
+                  : 'The most sessions this trigger runs together. A session counts while it works or waits for you.'}
             </p>
           </Row>
           <Row label="Waiting" labelId={`${id}-waiting`}>
@@ -439,7 +514,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
               <span>{form.maxWaiting === 1 ? 'event at most' : 'events at most'}</span>
             </div>
             <p className="mt-1.5 text-meta text-muted">
-              {atOnce === 1 ? 'While its session is busy' : `While ${atOnce} sessions are busy`}, new events wait their turn, oldest first. Past {form.maxWaiting}, they are skipped.
+              {atOnce === 1 ? `While its ${unit(1)} is busy` : `While ${atOnce} ${unit(atOnce)} are busy`}, new events wait their turn, oldest first. Past {form.maxWaiting}, they are skipped.
             </p>
           </Row>
         </section>

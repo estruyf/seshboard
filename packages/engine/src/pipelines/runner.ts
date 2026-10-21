@@ -20,6 +20,7 @@ import {
   type PipelineRun,
   type PipelineRunState,
   type PipelineRunStep,
+  type PermissionDecision,
   type PushPreview,
   type RunChoices,
   type SessionOutcome,
@@ -94,6 +95,8 @@ export const RESUME_STEP_PROMPT = 'Switchboard was closed while you were working
 /** What a step in plan mode hears when you approve its plan: the next step builds it. */
 export const PLAN_APPROVED_MESSAGE = 'The user approved this plan. Don’t start building it: the next step of the pipeline does that. Reply with one line that says the plan is ready, and stop.';
 const PAUSED_REASON = 'Paused: Switchboard was closed. The run goes on at the next start.';
+/** What Claude hears instead of an answer to a question, in a run that goes on without you. */
+export const UNATTENDED_ANSWER = 'No one is watching this run, so nobody can answer. Make the most reasonable choice yourself, say in your reply what you assumed, and go on.';
 
 const waitsForYou = (card: CatchUp | null) => !!card && (card.state === 'waiting' || card.need.kind === 'permission' || card.need.kind === 'question' || card.need.kind === 'reply');
 
@@ -132,6 +135,8 @@ export class PipelineRunner {
   private readonly previews = new Map<string, Promise<PushPreview>>();
   private limitTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
+  /** Plan steps whose plan the runner approved for you, so the step's row says so. */
+  private readonly approvedForYou = new Set<string>();
   /** The state each session this app runs was last in, to see one closed in the middle of a turn. */
   private readonly hostStates = new Map<string, SessionHostInfo['state']>();
 
@@ -177,21 +182,41 @@ export class PipelineRunner {
    * Starts a run: from a session (it is the parent), or from New session with a task (a run row is the parent). Its
    * folder is made now; the first step starts (or waits) right after.
    */
-  async start(input: { pipelineId: string; parentSessionId?: string | null; task?: string | null; attachments?: ImageAttachment[]; projectRoot?: string; profileId?: string | null; choices?: RunChoices | null }): Promise<PipelineRunState> {
+  async start(input: {
+    pipelineId: string;
+    parentSessionId?: string | null;
+    task?: string | null;
+    attachments?: ImageAttachment[];
+    projectRoot?: string;
+    profileId?: string | null;
+    choices?: RunChoices | null;
+    /**
+     * A trigger starts it (#185): its title, the event's text for the first step, whether it runs without stopping for
+     * you, and whether Push goes without you.
+     */
+    trigger?: { title: string; context: string | null; unattended?: boolean; autoPush?: boolean };
+  }): Promise<PipelineRunState> {
     const saved = this.deps.pipeline(input.pipelineId);
     if (!saved) throw new Error('That pipeline was deleted.');
-    // The run keeps its own copy: New session's choices go into what each step leaves open.
-    const pipeline = withRunChoices(saved, input.choices ?? null);
+    // The run keeps its own copy: New session's choices go into what each step leaves open. A trigger's run pushes
+    // without you only when the trigger says so (not the pipeline), and never bypasses permissions: it started from
+    // text other people wrote.
+    const chosen = withRunChoices(saved, input.choices ?? null);
+    const pipeline = input.trigger ? { ...chosen, autoPush: !!input.trigger.autoPush } : chosen;
+    if (input.trigger) {
+      const bypass = pipeline.steps.find((step) => step.kind === 'claude' && step.permissionMode === 'bypassPermissions');
+      if (bypass) throw new Error(`${bypass.name} bypasses permissions, which a trigger never does.`);
+    }
     const parent = input.parentSessionId ? this.deps.session(input.parentSessionId) : null;
     if (input.parentSessionId && !parent) throw new Error('That session is gone.');
     const task = input.task?.trim() || null;
     if (!parent && !task) throw new Error('Write the task first.');
     const projectRoot = parent?.projectRoot ?? input.projectRoot;
     if (!projectRoot) throw new Error('Pick a project first.');
-    const title = parent?.title || linkLabel(task ?? pipeline.name);
+    const title = input.trigger?.title || parent?.title || linkLabel(task ?? pipeline.name);
     const from = parent?.cwd ?? projectRoot;
     const cwd = await this.deps.workspace({ from, projectRoot, parentSessionId: parent?.id ?? null, name: title });
-    const run = this.deps.runs.create({ pipeline, parentSessionId: parent?.id ?? null, task, title, projectRoot, cwd, profileId: parent?.profileId ?? input.profileId ?? null, attachments: input.attachments });
+    const run = this.deps.runs.create({ pipeline, parentSessionId: parent?.id ?? null, task, title, projectRoot, cwd, profileId: parent?.profileId ?? input.profileId ?? null, attachments: input.attachments, context: input.trigger?.context ?? null, unattended: !!input.trigger?.unattended });
     this.deps.log('info', `Pipelines: started “${pipeline.name}” for “${title}” in ${cwd}`);
     await this.serial(run.id, () => this.apply(run.id, enterStep(pipeline.steps, 0, pipeline.autoPush)));
     return this.state(run.id)!;
@@ -290,10 +315,34 @@ export class PipelineRunner {
     const run = this.deps.runs.get(row.runId);
     const step = run?.pipeline.steps[row.index];
     if (!run || step?.kind !== 'claude' || step.permissionMode !== 'plan') return null;
-    this.deps.runs.updateStep(run.id, row.index, row.round, { plan: plan.slice(0, 20_000), reason: 'plan approved' });
+    const forYou = this.approvedForYou.delete(sessionId);
+    this.deps.runs.updateStep(run.id, row.index, row.round, { plan: plan.slice(0, 20_000), reason: forYou ? 'plan approved for you' : 'plan approved' });
     this.emit(run.id);
     // Only while the run still goes on: after a stop, approving builds it in this session, as anywhere else.
     return run.status === 'stopped' || run.status === 'done' ? null : PLAN_APPROVED_MESSAGE;
+  }
+
+  /**
+   * Answers a step's permission request for you, before it is shown; null to ask you as usual. A plan step set to
+   * approve its plan (or any plan step of a run that goes on without you) gets its plan approved, which `planApproved`
+   * then keeps. In a run without you, a question gets "decide yourself". Tool permissions always ask.
+   */
+  autoAnswer(request: { sessionId: string; toolName: string }): PermissionDecision | null {
+    const row = this.deps.runs.stepOf(request.sessionId);
+    const run = row ? this.deps.runs.get(row.runId) : null;
+    if (!row || !run || !(run.status === 'running' || run.status === 'waiting')) return null;
+    const step = run.pipeline.steps[row.index];
+    if (step?.kind !== 'claude') return null;
+    if (request.toolName === 'ExitPlanMode' && step.permissionMode === 'plan' && (step.approvePlan || run.unattended)) {
+      this.deps.log('info', `Pipelines: approved the plan of ${step.name} for “${run.title}”`);
+      this.approvedForYou.add(request.sessionId);
+      return { behavior: 'allow' };
+    }
+    if (request.toolName === 'AskUserQuestion' && run.unattended) {
+      this.deps.log('info', `Pipelines: ${step.name} asked a question in “${run.title}”; told to decide`);
+      return { behavior: 'deny', message: UNATTENDED_ANSWER, interrupt: false };
+    }
+    return null;
   }
 
   /** Whether a sub-session is a read-only step: its resumes keep the read-only hook. */
@@ -392,6 +441,12 @@ export class PipelineRunner {
         break;
       }
       case 'confirm': {
+        // A run without you starts a step that would wait for you; Push still waits unless it goes without you.
+        if (run.unattended && next.wait === 'confirm') {
+          this.deps.log('info', `Pipelines: started ${steps[next.index]?.name ?? 'a step'} of “${run.title}” without waiting`);
+          await this.startStep(run, next.index, 1);
+          break;
+        }
         this.deps.runs.update(run.id, { step: next.index, round: 1, sentBackTo: null, status: 'waiting', waitingFor: next.wait, reason: next.reason });
         this.deps.notify({ kind: 'needsYou', runId, sessionId: run.parentSessionId, title: run.title, body: next.reason });
         this.emit(run.id);
@@ -470,12 +525,15 @@ export class PipelineRunner {
         actions,
       });
       const settings: StepSettings = { model: step.model, effort: step.effort, permissionMode: step.permissionMode ?? 'default', readOnly: step.readOnly };
+      // A triggered run's event text goes to the first step that starts a session; later steps fork it or link it.
+      const context = Object.keys(sessions).length === 0 ? this.deps.runs.context(run.id) : null;
+      const prompt = context ? `${filled.text}\n\n${context}` : filled.text;
       let sessionId: string;
       if (typeof step.start === 'object') {
         const from = sessions[step.start.fork];
         if (!from) throw new Error(`${step.start.fork} has no session to fork.`);
-        sessionId = await this.deps.fork({ ...settings, from, prompt: filled.text });
-      } else sessionId = await this.deps.create({ ...settings, cwd: run.cwd, prompt: filled.text, attachments: this.deps.runs.attachments(run.id), profileId: run.profileId });
+        sessionId = await this.deps.fork({ ...settings, from, prompt });
+      } else sessionId = await this.deps.create({ ...settings, cwd: run.cwd, prompt, attachments: this.deps.runs.attachments(run.id), profileId: run.profileId });
       this.deps.runs.updateStep(run.id, index, round, { sessionId });
       this.deps.runs.setParent(sessionId, run.parentSessionId ?? run.id, run.id);
       this.deps.reparented(sessionId);

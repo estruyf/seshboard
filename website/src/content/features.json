@@ -4072,6 +4072,21 @@
       "page": "projects/triggers"
     },
     {
+      "id": "feature:trigger-pipeline",
+      "name": "A trigger that starts a pipeline: the event as its task, a run row with the bolt, Start when… from Run as",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-unattended",
+      "name": "Run without stopping for me and Open the pull request without me, on a trigger that starts a pipeline",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:pipeline-approve-plan",
+      "name": "Approve the plan for me, on a pipeline's plan step",
+      "page": "sessions/pipelines"
+    },
+    {
       "id": "feature:upcoming-triggers",
       "name": "Upcoming's Triggers filter: every trigger across projects, with what waits",
       "page": "sessions/upcoming"

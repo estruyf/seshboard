@@ -38,6 +38,11 @@ export const PipelineClaudeStep = z.object({
   verdict: PipelineVerdict.nullable().default(null),
   /** The run waits for you (Continue) before this step starts. */
   confirmBefore: z.boolean().default(false),
+  /**
+   * In plan mode: approve the plan for you, so the run goes on to the next step once it is written. The plan is kept
+   * as when you approve it (briefs, the pull request).
+   */
+  approvePlan: z.boolean().default(false),
 });
 export type PipelineClaudeStep = z.infer<typeof PipelineClaudeStep>;
 
@@ -139,6 +144,11 @@ export const PipelineRun = z.object({
   sentBackTo: z.number().int().min(0).nullable(),
   /** The pull request Push opened. */
   pr: z.object({ number: z.number().int(), url: z.string() }).nullable(),
+  /**
+   * Started by a trigger set to run without stopping for you (#185): plans are approved for you, steps that wait for you
+   * start, and Claude's questions are answered with "decide yourself". Tool permissions, errors and verdicts still stop it.
+   */
+  unattended: z.boolean().default(false),
   createdAt: z.number(),
   updatedAt: z.number(),
   endedAt: z.number().nullable(),

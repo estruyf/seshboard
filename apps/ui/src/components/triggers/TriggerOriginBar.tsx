@@ -3,13 +3,13 @@ import { useTriggers } from '../../state/triggersStore.ts';
 import { clock } from '../../state/triggers.ts';
 
 /**
- * Under the header of a session a trigger started: "Started by CI fails on main · CI #4512 · 14:02", with a link to
+ * Under the header of a session (or a pipeline's run row, by the run's id) a trigger started: "Started by CI fails on main · CI #4512 · 14:02", with a link to
  * the run or the issue. When the issue was assigned to someone else while the session works, it says who has it now;
  * the session goes on.
  */
 export function TriggerOriginBar({ sessionId }: { sessionId: string | null }) {
   const link = useTriggers((s) => (sessionId ? (s.bySession.get(sessionId) ?? null) : null));
-  const event = useTriggers((s) => (link ? (s.events.find((e) => e.id === link.eventId && e.sessionId === sessionId) ?? null) : null));
+  const event = useTriggers((s) => (link ? (s.events.find((e) => e.id === link.eventId && (e.sessionId === sessionId || e.runId === sessionId)) ?? null) : null));
   const live = useTriggers((s) => (link ? s.triggers.find((t) => t.id === link.triggerId) : undefined));
   if (!link) return null;
   const name = live?.name ?? link.triggerName ?? 'a trigger';
@@ -27,7 +27,7 @@ export function TriggerOriginBar({ sessionId }: { sessionId: string | null }) {
       <span>{clock(link.at, Date.now())}</span>
       {event?.reassignedTo && (
         <span className="basis-full" data-trigger-reassigned>
-          {link.ref} is now assigned to <span className="font-semibold text-text">@{event.reassignedTo}</span>. This session goes on.
+          {link.ref} is now assigned to <span className="font-semibold text-text">@{event.reassignedTo}</span>. {event.runId ? 'This run goes on.' : 'This session goes on.'}
         </span>
       )}
     </div>

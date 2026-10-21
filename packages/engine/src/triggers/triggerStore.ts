@@ -10,6 +10,7 @@ import {
   TriggerSave,
   TriggerSession,
   TriggerSource,
+  TriggerStart,
   type FoundEvent,
   type SeenState,
   type TriggerEventStatus,
@@ -22,6 +23,7 @@ interface Row {
   source_json: string;
   prompt: string;
   draft_json: string;
+  start_json: string | null;
   max_at_once: number;
   max_waiting: number;
   interval_min: number;
@@ -51,6 +53,7 @@ interface EventRow {
   status: string;
   reason: string | null;
   session_id: string | null;
+  run_id: string | null;
   item_id: string | null;
   label: string | null;
   reassigned_to: string | null;
@@ -94,11 +97,11 @@ export class TriggerStore {
       inProject: db.prepare('SELECT * FROM triggers WHERE project_root = ? ORDER BY created_at, rowid'),
       one: db.prepare('SELECT * FROM triggers WHERE id = ?'),
       upsert: db.prepare(`
-        INSERT INTO triggers (id, project_root, name, source_json, prompt, draft_json, max_at_once, max_waiting, interval_min, state_labels_json,
+        INSERT INTO triggers (id, project_root, name, source_json, prompt, draft_json, start_json, max_at_once, max_waiting, interval_min, state_labels_json,
           assign_on_pickup, paused, paused_reason, failures, last_error, blocked_until, last_checked_at, seeded_at, seen_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET project_root = excluded.project_root, name = excluded.name, source_json = excluded.source_json,
-          prompt = excluded.prompt, draft_json = excluded.draft_json, max_at_once = excluded.max_at_once, max_waiting = excluded.max_waiting,
+          prompt = excluded.prompt, draft_json = excluded.draft_json, start_json = excluded.start_json, max_at_once = excluded.max_at_once, max_waiting = excluded.max_waiting,
           interval_min = excluded.interval_min, state_labels_json = excluded.state_labels_json, assign_on_pickup = excluded.assign_on_pickup,
           paused = excluded.paused, paused_reason = excluded.paused_reason, failures = excluded.failures, last_error = excluded.last_error,
           blocked_until = excluded.blocked_until, last_checked_at = excluded.last_checked_at, seeded_at = excluded.seeded_at,
@@ -116,13 +119,14 @@ export class TriggerStore {
       eventByKey: db.prepare('SELECT * FROM trigger_events WHERE trigger_id = ? AND key = ?'),
       eventOfSession: db.prepare('SELECT * FROM trigger_events WHERE session_id = ?'),
       eventOfItem: db.prepare('SELECT * FROM trigger_events WHERE item_id = ?'),
+      eventOfRun: db.prepare('SELECT * FROM trigger_events WHERE run_id = ?'),
       insertEvent: db.prepare(`
         INSERT INTO trigger_events (id, trigger_id, key, kind, title, url, fields_json, context, status, reason, session_id, item_id, label, reassigned_to, created_at, started_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, NULL)
         ON CONFLICT (trigger_id, key) DO UPDATE SET id = excluded.id, kind = excluded.kind, title = excluded.title, url = excluded.url,
           fields_json = excluded.fields_json, context = excluded.context, status = excluded.status, reason = excluded.reason, session_id = NULL,
-          item_id = NULL, label = NULL, reassigned_to = NULL, created_at = excluded.created_at, started_at = NULL`),
-      setStatus: db.prepare('UPDATE trigger_events SET status = ?, reason = ?, session_id = COALESCE(?, session_id), item_id = ?, started_at = COALESCE(?, started_at) WHERE id = ?'),
+          run_id = NULL, item_id = NULL, label = NULL, reassigned_to = NULL, created_at = excluded.created_at, started_at = NULL`),
+      setStatus: db.prepare('UPDATE trigger_events SET status = ?, reason = ?, session_id = COALESCE(?, session_id), run_id = COALESCE(?, run_id), item_id = ?, started_at = COALESCE(?, started_at) WHERE id = ?'),
       setLabel: db.prepare('UPDATE trigger_events SET label = ? WHERE id = ?'),
       setReassigned: db.prepare('UPDATE trigger_events SET reassigned_to = ? WHERE id = ?'),
       setFields: db.prepare('UPDATE trigger_events SET fields_json = ? WHERE id = ?'),
@@ -180,7 +184,7 @@ export class TriggerStore {
     const trigger = Trigger.parse({
       ...parsed,
       id: parsed.id ?? randomUUID(),
-      maxAtOnce: effectiveMaxAtOnce({ maxAtOnce: parsed.maxAtOnce, draft: parsed.draft }),
+      maxAtOnce: effectiveMaxAtOnce({ maxAtOnce: parsed.maxAtOnce, draft: parsed.draft, start: parsed.start }),
       pausedReason: parsed.paused ? (before?.pausedReason ?? null) : null,
       failures: parsed.paused || resumed ? 0 : (before?.failures ?? 0),
       lastError: resumed ? null : (before?.lastError ?? null),
@@ -201,7 +205,7 @@ export class TriggerStore {
     for (const { event, context } of events) {
       if (event.triggerId !== parsed.id) continue;
       this.statements.insertEvent.run(event.id, event.triggerId, event.key, event.kind, event.title, event.url, JSON.stringify(event.fields), context, event.status, event.reason, event.createdAt);
-      this.statements.setStatus.run(event.status, event.reason, event.sessionId, event.itemId, event.startedAt, event.id);
+      this.statements.setStatus.run(event.status, event.reason, event.sessionId, event.runId, event.itemId, event.startedAt, event.id);
       if (event.label) this.statements.setLabel.run(event.label, event.id);
     }
     return this.get(parsed.id)!;
@@ -264,6 +268,12 @@ export class TriggerStore {
     return row ? toEvent(row) : null;
   }
 
+  /** The event a pipeline run works on. */
+  eventOfRun(runId: string): StoredEvent | null {
+    const row = this.statements.eventOfRun.get(runId) as unknown as EventRow | undefined;
+    return row ? toEvent(row) : null;
+  }
+
   /** The event a queued item came from. */
   eventOfItem(itemId: string): StoredEvent | null {
     const row = this.statements.eventOfItem.get(itemId) as unknown as EventRow | undefined;
@@ -282,9 +292,9 @@ export class TriggerStore {
     return this.event(id)!.event;
   }
 
-  /** Moves an event on: started (with its session), queued (with its item), skipped or replaced (with why). */
-  setStatus(id: string, status: TriggerEventStatus, extra: { reason?: string | null; sessionId?: string | null; itemId?: string | null; startedAt?: number | null } = {}): TriggerEvent | null {
-    this.statements.setStatus.run(status, extra.reason ?? null, extra.sessionId ?? null, extra.itemId ?? null, extra.startedAt ?? null, id);
+  /** Moves an event on: started (with its session or run), queued (with its item), skipped or replaced (with why). */
+  setStatus(id: string, status: TriggerEventStatus, extra: { reason?: string | null; sessionId?: string | null; runId?: string | null; itemId?: string | null; startedAt?: number | null } = {}): TriggerEvent | null {
+    this.statements.setStatus.run(status, extra.reason ?? null, extra.sessionId ?? null, extra.runId ?? null, extra.itemId ?? null, extra.startedAt ?? null, id);
     return this.event(id)?.event ?? null;
   }
 
@@ -331,6 +341,7 @@ export class TriggerStore {
       JSON.stringify(trigger.source),
       trigger.prompt,
       JSON.stringify(trigger.draft),
+      trigger.start.kind === 'session' ? null : JSON.stringify(trigger.start),
       trigger.maxAtOnce,
       trigger.maxWaiting,
       trigger.intervalMinutes,
@@ -359,6 +370,9 @@ function toTrigger(row: Row): Trigger | null {
   if (!source.success) return null;
   const draft = TriggerDraft.safeParse(safeJson(row.draft_json));
   const labels = StateLabels.safeParse(safeJson(row.state_labels_json));
+  // Null before triggers could start pipelines: a session.
+  const start = row.start_json ? TriggerStart.safeParse(safeJson(row.start_json)) : null;
+  if (start && !start.success) return null;
   const trigger = Trigger.safeParse({
     id: row.id,
     projectRoot: row.project_root,
@@ -366,6 +380,7 @@ function toTrigger(row: Row): Trigger | null {
     source: source.data,
     prompt: row.prompt,
     draft: draft.success ? draft.data : TriggerDraft.parse({}),
+    start: start?.data ?? { kind: 'session' },
     maxAtOnce: row.max_at_once,
     maxWaiting: row.max_waiting,
     intervalMinutes: row.interval_min,
@@ -397,6 +412,7 @@ function toEvent(row: EventRow): StoredEvent | null {
     status: row.status,
     reason: row.reason,
     sessionId: row.session_id,
+    runId: row.run_id,
     itemId: row.item_id,
     label: row.label,
     reassignedTo: row.reassigned_to,

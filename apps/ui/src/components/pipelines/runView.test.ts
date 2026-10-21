@@ -5,7 +5,7 @@ import { actionDetail, parentRows, pushLine, roundDivider, runButtons, stepDetai
 const pipeline = { ...BUILT_IN_PIPELINES[0]!, builtIn: true, createdAt: 0, updatedAt: 0 };
 
 const state = (over: Partial<PipelineRunState['run']> = {}, steps: Array<Partial<PipelineRunState['steps'][number]>> = []): PipelineRunState => ({
-  run: { id: 'run-1', pipelineId: pipeline.id, pipeline, parentSessionId: 'p', task: null, title: 'Add a usage cost toggle', projectRoot: '/p', cwd: '/p', profileId: null, status: 'running', reason: null, waitingFor: null, hold: null, step: 2, round: 1, sentBackTo: null, pr: null, createdAt: 0, updatedAt: 0, endedAt: null, archivedAt: null, restoredAt: null, ...over },
+  run: { id: 'run-1', pipelineId: pipeline.id, pipeline, parentSessionId: 'p', task: null, title: 'Add a usage cost toggle', projectRoot: '/p', cwd: '/p', profileId: null, status: 'running', reason: null, waitingFor: null, hold: null, step: 2, round: 1, sentBackTo: null, pr: null, unattended: false, createdAt: 0, updatedAt: 0, endedAt: null, archivedAt: null, restoredAt: null, ...over },
   steps: steps.map((s, i) => ({ runId: 'run-1', step: 'Plan', index: i, round: 1, sessionId: `s${i}`, status: 'done', outcome: 'clean', verdict: null, reason: null, plan: null, actions: [], startedAt: 0, endedAt: 240_000, ...s })),
 });
 

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BACKUP_SECTIONS, DEFAULT_PREFERENCES, FILE_LINK_CLICK_REVISION, parseSettingsFile, ProjectAction } from '@switchboard/protocol';
+import { BACKUP_SECTIONS, BUILT_IN_PIPELINES, DEFAULT_PREFERENCES, FILE_LINK_CLICK_REVISION, parseSettingsFile, ProjectAction } from '@switchboard/protocol';
 import { ActionStore } from '../actions/actionStore.ts';
 import { createAppStateStore } from '../db/appState.ts';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
@@ -104,6 +104,24 @@ describe('settings export and import', () => {
     expect(after.stores.triggers!.events()).toEqual([]);
     // The same file again changes nothing.
     expect(planImport(after.stores, file, ALL).preview.changes.filter((c) => c.section === 'triggers')).toEqual([]);
+  });
+
+  it('keeps the pipeline a trigger starts, and skips one whose pipeline isn’t here', () => {
+    const before = mac();
+    const web = tempDir();
+    const base = { projectRoot: web, source: { kind: 'ci' as const }, prompt: 'Fix {{event.workflow}}' };
+    before.stores.triggers!.save({ ...base, name: 'Built in', start: { kind: 'pipeline', pipelineId: BUILT_IN_PIPELINES[0]!.id } });
+    before.stores.triggers!.save({ ...base, name: 'Mine', start: { kind: 'pipeline', pipelineId: 'gone' } });
+    const file = roundTrip(before.stores);
+
+    const after = mac();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'triggers')).toEqual([
+      { section: 'triggers', label: 'Built in', change: 'add', detail: 'comes in paused' },
+      { section: 'triggers', label: 'Mine', change: 'skip', detail: expect.stringMatching(/its pipeline isn’t on this/) },
+    ]);
+    plan.apply();
+    expect(after.stores.triggers!.list().map((t) => t.start)).toEqual([{ kind: 'pipeline', pipelineId: BUILT_IN_PIPELINES[0]!.id, unattended: false, autoPush: false }]);
   });
 
   it('restores projects, icons, actions, choices, preferences and sessions on a clean Mac', () => {

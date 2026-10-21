@@ -1,9 +1,10 @@
-import { AlertTriangle, Clock, MoreHorizontal, Pause, RefreshCw, Tag, Zap } from 'lucide-react';
+import { AlertTriangle, Clock, ListTree, MoreHorizontal, Pause, RefreshCw, Tag, Zap } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { Trigger, TriggerEvent } from '@switchboard/protocol/client';
+import { BUILT_IN_PIPELINES, type Trigger, type TriggerEvent } from '@switchboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
 import { MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { usePipelines } from '../../state/pipelinesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { cardEvents, checkedLine, eventDetail, eventTitle, pausedLine, speakEvent, statusPill, triggerCounts, workflowsLine, type EventSessionState } from '../../state/triggers.ts';
 import { checkTriggerNow, openTriggerEditor, setTriggerPaused, startTriggerEvent, useTriggers } from '../../state/triggersStore.ts';
@@ -33,6 +34,9 @@ export function TriggerCard({ trigger, events, now }: { trigger: Trigger; events
   const models = useHosts((s) => s.models);
   const login = useTriggers((s) => s.repoInfo.get(trigger.projectRoot)?.login ?? null);
   const checking = useTriggers((s) => s.checking.has(trigger.id));
+  // A trigger that starts a pipeline (#185) says which, by its name (a built-in hidden from the list still has one).
+  const pipelineId = trigger.start.kind === 'pipeline' ? trigger.start.pipelineId : null;
+  const pipelineName = usePipelines((s) => (pipelineId ? (s.pipelines.find((p) => p.id === pipelineId)?.name ?? BUILT_IN_PIPELINES.find((p) => p.id === pipelineId)?.name ?? null) : null));
   const [all, setAll] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const sorted = useMemo(() => cardEvents(events), [events]);
@@ -45,9 +49,10 @@ export function TriggerCard({ trigger, events, now }: { trigger: Trigger; events
 
   const meta = [
     source.kind === 'ci' ? workflowsLine(source.workflows) : trigger.stateLabels.on ? 'State labels on' : null,
-    trigger.draft.workspace === 'worktree' ? 'New worktree' : 'Project folder',
-    modelLabel(models, trigger.draft.model ?? ''),
-    MODE_LABEL[trigger.draft.permissionMode],
+    // A pipeline's steps set where and how they run.
+    ...(pipelineId
+      ? []
+      : [trigger.draft.workspace === 'worktree' ? 'New worktree' : 'Project folder', modelLabel(models, trigger.draft.model ?? ''), MODE_LABEL[trigger.draft.permissionMode]]),
     checkedLine(trigger.lastCheckedAt, now),
   ].filter(Boolean);
 
@@ -88,6 +93,15 @@ export function TriggerCard({ trigger, events, now }: { trigger: Trigger; events
             </p>
           ) : (
             <p className="truncate text-meta text-muted" data-trigger-meta>
+              {pipelineId && (
+                <span className="text-text/85" data-trigger-pipeline={pipelineId}>
+                  <ListTree size={11} className="mr-1 inline-block align-[-1px] text-pipeline" aria-hidden />
+                  Runs {pipelineName ?? 'a deleted pipeline'}
+                  {trigger.start.kind === 'pipeline' && trigger.start.unattended ? ' without stopping' : ''}
+                  {trigger.start.kind === 'pipeline' && trigger.start.autoPush ? ', opens the pull request' : ''}
+                  {' · '}
+                </span>
+              )}
               {meta.join(' · ')}
             </p>
           )}
@@ -144,7 +158,7 @@ export function TriggerCard({ trigger, events, now }: { trigger: Trigger; events
       {shown.length > 0 && (
         <ul className="grid border-t border-border pl-11" aria-label={`Events of ${trigger.name}`}>
           {shown.map((event) => (
-            <TriggerEventRow key={event.id} event={event} state={event.status === 'started' ? stateOf(event.sessionId) : null} now={now} position={waiting.indexOf(event) + 1 || undefined} of={trigger.maxWaiting} />
+            <TriggerEventRow key={event.id} event={event} state={event.status === 'started' ? stateOf(event) : null} now={now} position={waiting.indexOf(event) + 1 || undefined} of={trigger.maxWaiting} />
           ))}
         </ul>
       )}
@@ -197,8 +211,9 @@ export function TriggerEventRow({ event, state, now, position, of }: { event: Tr
               <span className={`size-1.5 rounded-full ${STATE_DOT[state]}`} aria-hidden />
               {STATE_WORDS[state]}
             </span>
-            {event.sessionId && (
-              <button type="button" className="text-link hover:underline" onClick={() => useSessions.getState().select(event.sessionId!)} data-trigger-event-open>
+            {(event.runId ?? event.sessionId) && (
+              // A pipeline run opens its run row.
+              <button type="button" className="text-link hover:underline" onClick={() => useSessions.getState().select((event.runId ?? event.sessionId)!)} data-trigger-event-open>
                 Open
               </button>
             )}

@@ -90,7 +90,7 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
   if (input.canTrigger && !input.question && !input.editingSchedule) items.push({ action: 'trigger', label: 'Start when…', disabled: !canQueue });
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
   // A pipeline runs with the prompt as its task, in a worktree of its own: the branch and the focus limit don't stop it
-  // (#179). The other ways ignore it: a queued item, a schedule or a trigger is one session.
+  // (#179). Start when… makes a trigger that starts it (#185); a queued item or a schedule is one session.
   const runAs = input.canPipeline && !input.question && !input.editingSchedule ? (input.runAs ?? null) : null;
   if (runAs) {
     const one: StartMenuItem = { action: 'start-one', label: 'Start one session', disabled: !canStartHere };

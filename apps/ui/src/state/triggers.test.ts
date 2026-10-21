@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Trigger, TriggerEvent } from '@switchboard/protocol/client';
-import { cardEvents, checkedLine, checkedNowLine, DEFAULT_PROMPTS, eventDetail, formProblem, formSource, formToSave, newTriggerForm, pausedLine, sharedRepoWarning, speakEvent, statusPill, triggerForm, updateForm } from './triggers.ts';
+import { cardEvents, checkedLine, checkedNowLine, DEFAULT_PROMPTS, DEFAULT_TASKS, eventDetail, formPipeline, formProblem, formSource, formToSave, newTriggerForm, pausedLine, runEventState, sharedRepoWarning, speakEvent, statusPill, triggerCounts, triggerForm, updateForm } from './triggers.ts';
 
 const ROOT = '/dev/switchboard';
 const form = (over = {}) => ({ ...newTriggerForm(ROOT, null), ...over });
@@ -69,8 +69,59 @@ describe('the trigger editor', () => {
   });
 });
 
+describe('a trigger that starts a pipeline', () => {
+  it('starts a session unless a pipeline is picked, and saves which', () => {
+    expect(form()).toMatchObject({ start: 'session', pipelineId: null });
+    expect(formToSave(form()).start).toEqual({ kind: 'session' });
+    const picked = newTriggerForm(ROOT, null, { start: 'pipeline', pipelineId: 'p1', prompt: 'Add dark mode' });
+    expect(picked).toMatchObject({ start: 'pipeline', pipelineId: 'p1', prompt: 'Add dark mode' });
+    expect(formToSave(picked).start).toEqual({ kind: 'pipeline', pipelineId: 'p1', unattended: false, autoPush: false });
+    // Without stopping, and the pull request without you: both off until you turn them on.
+    expect(formToSave({ ...picked, unattended: true, autoPush: true }).start).toEqual({ kind: 'pipeline', pipelineId: 'p1', unattended: true, autoPush: true });
+    expect(formProblem(form({ start: 'pipeline', pipelineId: null }))).toBe('Pick a pipeline.');
+  });
+
+  it('runs more than one at a time whatever the draft workspace, since each run has its own worktree', () => {
+    const inFolder = updateForm(form(), { workspace: 'current' });
+    expect(inFolder.maxAtOnce).toBe(1);
+    const pipeline = updateForm(inFolder, { start: 'pipeline', pipelineId: 'p1' });
+    expect(pipeline.maxAtOnce).toBe(3);
+    expect(formToSave({ ...pipeline, maxAtOnce: 4 }).maxAtOnce).toBe(4);
+    expect(triggerCounts({ maxAtOnce: 4, draft: { workspace: 'current' }, start: { kind: 'pipeline', pipelineId: 'p1' } } as Trigger, [], () => false).max).toBe(4);
+  });
+
+  it('swaps the untouched prompt for a task, and back', () => {
+    const pipeline = updateForm(form(), { start: 'pipeline', pipelineId: 'p1' });
+    expect(pipeline.prompt).toBe(DEFAULT_TASKS.issues);
+    expect(updateForm(pipeline, { kind: 'ci' }).prompt).toBe(DEFAULT_TASKS.ci);
+    expect(updateForm(pipeline, { start: 'session' }).prompt).toBe(DEFAULT_PROMPTS.issues);
+    expect(updateForm(form({ prompt: 'Mine' }), { start: 'pipeline' }).prompt).toBe('Mine');
+  });
+
+  it('finds the pipeline picked among the project’s', () => {
+    const pipelines = [{ id: 'p1' }, { id: 'p2' }];
+    expect(formPipeline({ start: 'pipeline', pipelineId: 'p2' }, pipelines)).toEqual({ id: 'p2' });
+    expect(formPipeline({ start: 'pipeline', pipelineId: 'gone' }, pipelines)).toBeNull();
+    expect(formPipeline({ start: 'session', pipelineId: 'p1' }, pipelines)).toBeNull();
+  });
+
+  it('reads a stored trigger’s pipeline back', () => {
+    const trigger = { ...formToSave(form({ start: 'pipeline', pipelineId: 'p1', unattended: true })), id: 't1', createdAt: 1, updatedAt: 1 } as unknown as Trigger;
+    expect(triggerForm(trigger)).toMatchObject({ start: 'pipeline', pipelineId: 'p1', unattended: true, autoPush: false });
+  });
+
+  it('says where a run is as its event’s state', () => {
+    expect(runEventState('running')).toBe('working');
+    expect(runEventState('paused')).toBe('working');
+    expect(runEventState('waiting')).toBe('needs-you');
+    expect(runEventState('done')).toBe('finished');
+    expect(runEventState('stopped')).toBe('finished');
+    expect(runEventState(null)).toBe('finished');
+  });
+});
+
 describe('the Triggers tab', () => {
-  const event = (over: Partial<TriggerEvent>): TriggerEvent => ({ id: 'e', triggerId: 't', key: '#214', kind: 'issue', title: 'Archive keeps the scroll position', url: '', fields: { number: '214' }, status: 'waiting', reason: null, sessionId: null, itemId: null, label: null, reassignedTo: null, createdAt: 1, startedAt: null, ...over });
+  const event = (over: Partial<TriggerEvent>): TriggerEvent => ({ id: 'e', triggerId: 't', key: '#214', kind: 'issue', title: 'Archive keeps the scroll position', url: '', fields: { number: '214' }, status: 'waiting', reason: null, sessionId: null, runId: null, itemId: null, label: null, reassignedTo: null, createdAt: 1, startedAt: null, ...over });
 
   it('says how busy a trigger is', () => {
     expect(statusPill({ paused: false }, { busy: 2, max: 3, waiting: 0 })).toEqual({ text: '2 of 3 busy', tone: 'working' });
