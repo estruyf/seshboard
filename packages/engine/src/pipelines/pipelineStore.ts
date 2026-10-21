@@ -38,9 +38,12 @@ export class PipelineStore {
     };
   }
 
-  /** The built-ins, then yours, oldest first. */
+  /** Whether `list` includes the built-ins. Off for someone who has their own; a run that started from one still finds it by id. */
+  showBuiltIns = true;
+
+  /** The built-ins (unless hidden), then yours, oldest first. */
   list(): Pipeline[] {
-    return [...builtInPipelines(), ...this.own()];
+    return [...(this.showBuiltIns ? builtInPipelines() : []), ...this.own()];
   }
 
   /** Only yours: what a backup exports. */

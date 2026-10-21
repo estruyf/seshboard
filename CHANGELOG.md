@@ -7,6 +7,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### Added
 
 - **Pipelines** ([#179](https://github.com/estruyf/switchboard/issues/179)). Pipelines: run a saved set of steps for one task, each in its own sub-session under the session you start it from. Plan with one model, build with another, have a fresh session check the work, then push. Steps hand over with @ links. Run one from a session's ⋯ menu, from New session's **Run as** chip, or from the command palette, and set them up in Settings › Pipelines.
+- **Hide the built-in pipelines.** Settings › Pipelines has a Built-in pipelines switch. Turn it off to see only your own pipelines.
 - **Run as.** New session has a Run as chip next to Start: pick a pipeline, and Start runs it, with its steps shown under the message box.
 - **Archive or delete a pipeline run as one.** Archive or delete a pipeline run as one: the parent and its sub-sessions go together.
 - **Themes that match the app icons.** Nine new themes in Settings › Theme, one for each app icon: Graphite, Midnight, Paper, Signal, Forest, Plum, Aluminium, Ocean and Neon, each in light and dark.

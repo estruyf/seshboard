@@ -8,6 +8,8 @@ import { useProjects } from '../../../state/projectsStore.ts';
 import { useSessions } from '../../../state/sessionsStore.ts';
 import { ConfirmDialog } from '../../ConfirmDialog.tsx';
 import { Button } from '../../ui/Button.tsx';
+import { Toggle } from '../../ui/Toggle.tsx';
+import { clientNow } from '../../../state/pipelinesStore.ts';
 import { SectionHeader } from '../../ui/SectionHeader.tsx';
 import { formOf, newPipelineForm, pipelineGroups, pipelineRowDetail, toSave } from './editorModel.ts';
 import { PipelineEditor } from './PipelineEditor.tsx';
@@ -101,6 +103,13 @@ export function PipelinesSettings() {
           <Button variant="primary" icon={<Plus size={14} aria-hidden />} onClick={() => go({ kind: 'new', scope: { kind: 'all' } })} className="w-full" data-pipeline-new>
             New pipeline
           </Button>
+          <Toggle
+            label="Built-in pipelines"
+            detail="Show the pipelines that come with Switchboard."
+            checked={pipelines.some((p) => p.builtIn)}
+            attr="data-pipeline-builtins"
+            onChange={(show) => void clientNow().call('pipelines.showBuiltIns', { show })}
+          />
           {groups.map((group) => (
             <div key={group.key} className="grid gap-0.5" data-pipeline-group={group.key}>
               <SectionHeader className="px-2.5 pb-1">{group.label}</SectionHeader>

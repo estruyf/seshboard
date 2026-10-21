@@ -1021,6 +1021,8 @@ export const contract = {
     // --- Pipelines (#179) ------------------------------------------------------------------------
     /** The built-ins, then your pipelines; with `root`, only the ones that project can run. */
     'pipelines.list': { params: z.object({ root: AbsolutePath.nullable().default(null) }), result: z.object({ pipelines: z.array(Pipeline) }) },
+    /** Shows or hides the built-in pipelines in every list. Hidden ones still resolve by id for runs that use them. */
+    'pipelines.showBuiltIns': { params: z.object({ show: z.boolean() }), result: z.object({ show: z.boolean() }) },
     /** Creates a pipeline (no `id`) or changes one of yours. Refused while `pipelineIssues` finds anything, or for a built-in. */
     'pipelines.save': { params: z.object({ pipeline: PipelineSave }), result: z.object({ pipeline: Pipeline }) },
     /** Deletes one of your pipelines; what it was is returned for Undo. Runs that started from it go on. */
