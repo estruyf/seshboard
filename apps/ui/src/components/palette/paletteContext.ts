@@ -131,6 +131,8 @@ export interface PaletteContext {
   canContinueInVSCode: boolean;
   /** Clone from GitHub is on (Settings › Projects): "New session from a GitHub repository…". */
   cloneEnabled: boolean;
+  /** The previewable file Claude wrote or edited last in the open session (absolute path); null in a remote session or when there is none. */
+  lastPreviewableFile: string | null;
   /** Paired computers that are connected: "New session on <name>…" and "Show only <name>". */
   computers: Array<{ id: string; name: string }>;
 }

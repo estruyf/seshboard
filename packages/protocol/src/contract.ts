@@ -577,6 +577,25 @@ export const contract = {
       params: z.object({ cwd: AbsolutePath.nullable(), paths: z.array(z.string().min(1).max(1024)).max(100) }),
       result: z.object({ paths: z.array(z.string().nullable()) }),
     },
+    /**
+     * Reads a Markdown, HTML or code file (see `previewKind`) to preview it. `content` is null when the file is over
+     * `MAX_PREVIEW_BYTES` (`size` still says how big it is). HTML comes with a Content-Security-Policy meta added and its
+     * local images inlined as data URIs. `modified` is the mtime in ms. NOT_FOUND when it is missing; UNSUPPORTED for a
+     * folder or any other extension: only previewable files are read.
+     */
+    'files.read': {
+      params: z.object({ path: AbsolutePath }),
+      result: z.object({ kind: z.enum(['markdown', 'html', 'code']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+    },
+    /**
+     * Reads an image a previewed file shows, as base64 (the shape of `transcript.image`). Only png, jpeg, gif, webp and
+     * svg, checked by their first bytes rather than the extension, up to `MAX_PREVIEW_IMAGE_BYTES`. NOT_FOUND when it is
+     * missing; UNSUPPORTED for a folder or something that isn't one of those images; TOO_LARGE over the limit.
+     */
+    'files.image': {
+      params: z.object({ path: AbsolutePath }),
+      result: z.object({ mediaType: z.string(), data: z.string() }),
+    },
     'editors.list': { params: z.object({}), result: z.object({ editors: z.array(EditorInfo), defaultId: z.string().nullable() }) },
     /** Opens a folder or file (optionally at a line) in an editor; `editorId` defaults to the user's default. */
     'editors.open': {

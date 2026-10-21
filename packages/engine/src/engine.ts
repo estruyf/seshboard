@@ -146,6 +146,7 @@ import { RemoteHub } from './remote/remoteHub.ts';
 import { CloneService } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
+import { readPreview, readPreviewImage } from './system/filePreview.ts';
 import { listFolders } from './system/folders.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
 import { detectTerminalFont } from './system/terminalFont.ts';
@@ -2410,6 +2411,8 @@ export function createEngine(options: EngineOptions): Engine {
     'fs.folders': ({ path, prefix }) => listFolders(path, prefix),
     'files.search': async ({ cwd, query, limit }) => ({ files: await files.search(cwd, query, limit) }),
     'files.resolve': async ({ cwd, paths }) => ({ paths: await files.resolve(cwd, paths) }),
+    'files.read': ({ path }) => readPreview(path),
+    'files.image': ({ path }) => readPreviewImage(path),
     'editors.list': async () => {
       const editors = detectEditors(await editorEnv());
       const stored = appState.get(defaultEditorKey);

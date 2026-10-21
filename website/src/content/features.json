@@ -137,6 +137,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "palette:preview-last-file",
+      "name": "Preview last written file",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "palette:copy-session-id",
       "name": "Copy session id",
       "page": "sessions/conversation"
@@ -2217,8 +2222,13 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:file-preview",
+      "name": "Preview Markdown, HTML and code files",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "feature:file-link-click",
-      "name": "Clicking a file link: show or open (Settings, Conversation)",
+      "name": "Clicking a file link: open in Switchboard, show in the file manager or open in the editor (Settings, Conversation)",
       "page": "settings"
     },
     {

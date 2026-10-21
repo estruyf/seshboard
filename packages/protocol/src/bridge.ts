@@ -140,8 +140,16 @@ export type SidebarCollapsed = "minimal" | "closed";
 export type ToolActivity = "summary" | "steps";
 /** Settings › Conversation, "Under each reply": what a finished turn's line shows after the reply's actions. */
 export type TurnDetails = "none" | "time" | "duration" | "tokens";
-/** What a click on a file link in the conversation does: show the file in the file manager, or open it in the editor. */
-export type FileLinkClick = "file-manager" | "editor";
+/**
+ * What a click on a file link in the conversation does: open it in Switchboard (Markdown, HTML and code preview there,
+ * other files show in the file manager), always show it in the file manager, or open it in the editor.
+ */
+export type FileLinkClick = "switchboard" | "file-manager" | "editor";
+/**
+ * The version of the `fileLinkClick` choices. Preferences are saved whole, so a saved "file-manager" can't be told
+ * apart from the old default (before "switchboard" existed). It counts as a choice only from this revision on.
+ */
+export const FILE_LINK_CLICK_REVISION = 2;
 /** Sessions in the sidebar: only those started or continued in Switchboard, or every Claude Code session. */
 export type SessionScope = "switchboard" | "all";
 /** What a new window shows: Home, the session open last time, or New session. */
@@ -263,6 +271,8 @@ export interface Preferences {
   toolActivity: ToolActivity;
   /** What a click on a file link in the conversation does (Settings › Conversation); Shift-click does the other. */
   fileLinkClick: FileLinkClick;
+  /** Internal: which version of the `fileLinkClick` choices was saved; "file-manager" without the current one is the old default. */
+  fileLinkClickRevision: number;
   /** Settings › Conversation: "Show prompt outline", the rail beside the conversation with a mark for each of your prompts. */
   promptOutline: boolean;
   /** Settings › Conversation: "Under each reply", when a turn ended, how long it took and its tokens. */
@@ -366,7 +376,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarStyle: "standard",
   sidebarCollapsed: "minimal",
   toolActivity: "summary",
-  fileLinkClick: "file-manager",
+  fileLinkClick: "switchboard",
+  fileLinkClickRevision: FILE_LINK_CLICK_REVISION,
   promptOutline: true,
   turnDetails: "duration",
   fadeInactivePanes: true,
@@ -515,8 +526,13 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["summary", "steps"] as const, raw.toolActivity))
     out.toolActivity = raw.toolActivity;
   // An unknown value (a newer version's choice) is left out, so the default or the last good one stays.
-  if (oneOf(["file-manager", "editor"] as const, raw.fileLinkClick))
-    out.fileLinkClick = raw.fileLinkClick;
+  // "file-manager" saved before the revision was the old default, not a choice: leave it out so "switchboard" applies.
+  if (
+    oneOf(["switchboard", "editor"] as const, raw.fileLinkClick) ||
+    (raw.fileLinkClick === "file-manager" && raw.fileLinkClickRevision === FILE_LINK_CLICK_REVISION)
+  )
+    out.fileLinkClick = raw.fileLinkClick as FileLinkClick;
+  // The revision itself is never read back: the default carries the current one, so every save marks the choice as picked.
   if (typeof raw.promptOutline === "boolean") out.promptOutline = raw.promptOutline;
   if (oneOf(["none", "time", "duration", "tokens"] as const, raw.turnDetails))
     out.turnDetails = raw.turnDetails;

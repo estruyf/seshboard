@@ -4,14 +4,14 @@ import { Button } from './Button.tsx';
 import { dialogKeyAction } from './dialogKeys.ts';
 import { isTopModal, useModalFocus } from './useModalFocus.ts';
 
-const WIDTH = { sm: 'w-[420px]', md: 'w-[560px]', palette: 'w-[640px]', 'palette-wide': 'w-[680px]', sheet: 'w-[880px]', lg: 'w-[900px]' } as const;
+const WIDTH = { sm: 'w-[420px]', md: 'w-[560px]', palette: 'w-[640px]', 'palette-wide': 'w-[680px]', sheet: 'w-[880px]', lg: 'w-[900px]', full: 'w-[1200px]' } as const;
 
 interface DialogProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title' | 'role' | 'onSubmit'> {
   /** The heading, and the dialog's accessible name. */
   title: ReactNode;
   /** A line under the title; it also describes the dialog. */
   subtitle?: ReactNode;
-  /** `sm` 420px (confirmations), `md` 560px, `palette` 640px (the command palette; `palette-wide` 680px for its prompt step), `sheet` 880px (the shortcuts sheet), `lg` 900px; never wider than 92% of the window. */
+  /** `sm` 420px (confirmations), `md` 560px, `palette` 640px (the command palette; `palette-wide` 680px for its prompt step), `sheet` 880px (the shortcuts sheet), `lg` 900px, `full` 1200px and 88% of the window tall (a file preview); never wider than 92% of the window. */
   width?: keyof typeof WIDTH;
   /** `top` for dialogs whose height changes as you type (search, filters), so they don't jump around. */
   placement?: 'center' | 'top';
@@ -109,7 +109,7 @@ export function Dialog({
         aria-labelledby={bare ? undefined : `${id}-title`}
         aria-describedby={subtitle && !bare ? `${id}-subtitle` : undefined}
         tabIndex={-1}
-        className={`flex ${placement === 'top' ? 'max-h-[76vh]' : 'max-h-[85vh]'} ${WIDTH[width]} max-w-[92vw] flex-col overflow-hidden rounded-xl border overlay outline-none ${className}`}
+        className={`flex ${width === 'full' ? 'h-[88vh] max-h-[88vh]' : placement === 'top' ? 'max-h-[76vh]' : 'max-h-[85vh]'} ${WIDTH[width]} max-w-[92vw] flex-col overflow-hidden rounded-xl border overlay outline-none ${className}`}
         {...rest}
       >
         {!bare && (
