@@ -32,3 +32,4 @@ It needs Google Chrome (or set `CHROME` to another Chromium binary). The `social
 | [release-0.0.23](release-0.0.23/posts.md) | Release 0.0.23: saved prompts and token costs at API prices |
 | [release-1.0.0](release-1.0.0/posts.md) | Release 1.0.0: the milestone (two weeks, 24 releases, what Switchboard is) |
 | [linux-beta](linux-beta/posts.md) | Switchboard on Linux in the 1.1.0 beta (texts for your own Omarchy screenshot) |
+| [coming-1.1](coming-1.1/posts.md) | Preview of 1.1 while in beta: schedules, triggers, pipelines, Upcoming |

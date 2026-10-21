@@ -389,9 +389,15 @@ body {
    * Text people can select (messages, code, diffs) gets the browser's own cursor back: the I-beam over
    * the text and the arrow over the space around it, instead of the body's arrow everywhere.
    */
-  .select-text {
+  .select-text,
+  :is([role='alert'], [role='status'], pre, code):not(button *) {
     cursor: auto;
   }
+}
+
+/* Error and status messages and code blocks can be selected and copied, like `.select-text` (see lib/selectable.ts). */
+:is([role='alert'], [role='status'], pre, code):not(button *) {
+  user-select: text;
 }
 
 /*

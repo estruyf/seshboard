@@ -1968,7 +1968,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     ) : (
                       <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-tooltip={host?.state === 'error' ? (host.error ?? undefined) : undefined} data-session-elsewhere>
                         {host?.state === 'error' ? (
-                          <span className="text-error">Last run failed: {host.error}</span>
+                          <span className="text-error select-text">Last run failed: {host.error}</span>
                         ) : registryLive ? (
                           `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Switchboard.`
                         ) : (

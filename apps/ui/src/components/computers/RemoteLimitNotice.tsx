@@ -86,7 +86,7 @@ export function RemoteLimitNotice({ client, computer, sessionId, limit, held, bu
         {(heldText || limit.gaveUp || error) && (
           <span className="text-meta text-muted">
             {[heldText, limit.gaveUp ? 'It couldn’t resume by itself after the reset.' : null].filter(Boolean).join(' · ')}
-            {error && <span className="block text-error">{error}</span>}
+            {error && <span className="block text-error select-text">{error}</span>}
           </span>
         )}
       </span>

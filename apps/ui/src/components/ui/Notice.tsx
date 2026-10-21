@@ -50,7 +50,7 @@ export function Notice({ tone = 'neutral', icon, actions, onDismiss, inline = fa
     return (
       <div role={role ?? (tone === 'error' ? 'alert' : 'status')} className={`flex min-w-0 items-center gap-1.5 ${tone === 'neutral' ? '' : ICON[tone]} ${className}`} {...rest}>
         {icon && <span className={`flex shrink-0 ${ICON[tone]}`}>{icon}</span>}
-        <span className="min-w-0 truncate">{children}</span>
+        <span className="min-w-0 truncate select-text">{children}</span>
         {actions}
         {dismiss}
       </div>
@@ -59,7 +59,7 @@ export function Notice({ tone = 'neutral', icon, actions, onDismiss, inline = fa
   return (
     <div role={role ?? (tone === 'error' ? 'alert' : 'status')} className={`flex flex-wrap items-start gap-x-2 gap-y-1.5 rounded-lg border px-3 py-2 text-ui ${BOX[tone]} ${className}`} {...rest}>
       {icon && <span className={`flex shrink-0 pt-0.5 ${ICON[tone]}`}>{icon}</span>}
-      <div className="min-w-0 flex-1 break-words">{children}</div>
+      <div className="min-w-0 flex-1 break-words select-text">{children}</div>
       {(actions || dismiss) && (
         // Buttons are taller than a line of text; the negative margin keeps a one-line notice compact.
         <div className="-my-1 flex shrink-0 items-center gap-1.5">

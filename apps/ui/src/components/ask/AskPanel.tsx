@@ -315,7 +315,7 @@ function Item({ item, onRetry, onQuote }: { item: AskEntry; onRetry(): void; onQ
       <div className="mt-2 min-w-0 text-body" data-ask-answer={item.status}>
         {item.status === 'error' ? (
           <div className="flex flex-wrap items-center gap-2" role="alert">
-            <span className="min-w-0 text-error">{item.error}</span>
+            <span className="min-w-0 text-error select-text">{item.error}</span>
             <Button size="sm" onClick={onRetry} data-ask-retry>
               Try again
             </Button>

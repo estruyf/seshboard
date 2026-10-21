@@ -1,6 +1,7 @@
 import { Copy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { contextMenuPoint, type ContextMenuPoint } from '../lib/contextMenu.ts';
+import { SELECTABLE } from '../lib/selectable.ts';
 import { Menu } from './Menu.tsx';
 
 /**
@@ -16,7 +17,7 @@ export function SelectionMenu() {
     const onContextMenu = (event: MouseEvent) => {
       if (event.defaultPrevented) return;
       const selected = window.getSelection()?.toString() ?? '';
-      if (!selected.trim() || !(event.target instanceof Element) || !event.target.closest('.select-text')) return;
+      if (!selected.trim() || !(event.target instanceof Element) || !event.target.closest(SELECTABLE)) return;
       event.preventDefault();
       setText(selected);
       setAt(contextMenuPoint({ x: event.clientX, y: event.clientY }, event.target.getBoundingClientRect(), window.innerHeight));

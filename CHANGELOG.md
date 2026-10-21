@@ -33,6 +33,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Copy error messages.** The text of a notice, such as a failed pull request, and its output can be selected and copied.
 - **No more 0 on the side panel's tabs.** With two or more panels open on the right, a tab shows a count only when there is something to count: Preview no longer reads 0, and Terminal, Agents and Commands show no number while nothing is running.
 - **Git errors are shown.** When Commit, Pull, Push or Fetch fails, a toast now says why, instead of only a red border on the button (which is gone).
 - **Usage limit controls in the remote app and on other computers.** A session stopped by a usage limit now shows the notice with **Resume now** and **Resume when it resets** in the remote app on your phone, and in a session on another computer opened in Switchboard, where the messages held in Up next are listed too (you can take one back with the **X**). Before, those views showed neither the controls nor the queue. Both need the other computer to run this version.
