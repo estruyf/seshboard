@@ -99,6 +99,7 @@ const bridge: SwitchboardBridge = {
   testNotification: () => ipcRenderer.send(IpcChannel.testNotification),
   openAtLogin: () => ipcRenderer.invoke(IpcChannel.getOpenAtLogin) as Promise<OpenAtLogin>,
   setOpenAtLogin: (on) => ipcRenderer.invoke(IpcChannel.setOpenAtLogin, on) as Promise<OpenAtLogin>,
+  keepAwakeStatus: () => ipcRenderer.invoke(IpcChannel.keepAwakeStatus) as Promise<boolean>,
   openLoginItemsSettings: () => ipcRenderer.send(IpcChannel.openLoginItemsSettings),
   popout: new URLSearchParams(window.location.search).get(POPOUT_QUERY),
   popouts: ipcRenderer.sendSync(IpcChannel.getPopouts) as string[],

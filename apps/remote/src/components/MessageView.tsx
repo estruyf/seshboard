@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Check, ChevronRight, CircleDot, Copy, GitPullRequest, Link2 } from 'lucide-react';
 import { parseBriefs, parseGithubBlocks, withoutContext, type RemoteMessage } from '@switchboard/protocol/remote-client';
-import { runSummary, type TranscriptItem } from '../lib/steps.ts';
-import { editLines, toolSummary, type resultsByCall } from '../lib/transcript.ts';
+import { runLabel, stepText, type ToolUse, type TranscriptItem } from '../lib/steps.ts';
+import { editLines, type resultsByCall } from '../lib/transcript.ts';
 import { Markdown } from './Markdown.tsx';
 import { toast } from './Toasts.tsx';
 
@@ -30,7 +30,7 @@ export function ItemView({ item, results, live }: { item: TranscriptItem; result
       return <p className="text-meta text-faint">Image (on your computer)</p>;
     case 'run':
       return item.steps.length === 1 && item.steps[0]!.type === 'tool_use' ? (
-        <ToolRun name={item.steps[0]!.name} input={item.steps[0]!.input} result={results.get(item.steps[0]!.id) ?? null} />
+        <ToolRun call={item.steps[0]!} result={results.get(item.steps[0]!.id) ?? null} live={live} />
       ) : (
         <Run steps={item.steps} results={results} live={live} />
       );
@@ -86,7 +86,7 @@ function UserMessage({ message }: { message: RemoteMessage }) {
   );
 }
 
-/** "6 steps · edited 3 files, ran 2 commands"; opened, each step as before. */
+/** "6 steps · edited 3 files, ran 2 commands" (or the step Claude is on); opened, each step as before. */
 function Run({ steps, results, live }: { steps: Extract<TranscriptItem, { kind: 'run' }>['steps']; results: ReturnType<typeof resultsByCall>; live: boolean }) {
   const [chosen, setChosen] = useState<boolean | null>(null);
   const open = chosen ?? live;
@@ -95,14 +95,14 @@ function Run({ steps, results, live }: { steps: Extract<TranscriptItem, { kind: 
     <div className="text-ui" data-remote-run>
       <button type="button" onClick={() => setChosen(!open)} aria-expanded={open} className="group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-border/45">
         <Chevron open={open} />
-        <span className={`min-w-0 flex-1 truncate ${failed ? 'text-error' : 'text-muted group-hover:text-text'}`}>{runSummary(steps)}</span>
+        <span className={`min-w-0 flex-1 truncate ${failed ? 'text-error' : 'text-muted group-hover:text-text'}`}>{runLabel(steps, live)}</span>
         {live && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-accent-ink pulse-dot" />}
       </button>
       {open && (
         <div className="ml-[7px] flex flex-col border-l border-border pl-3">
           {steps.map((step, i) =>
             step.type === 'tool_use' ? (
-              <ToolRun key={step.id} name={step.name} input={step.input} result={results.get(step.id) ?? null} />
+              <ToolRun key={step.id} call={step} result={results.get(step.id) ?? null} />
             ) : step.text ? (
               <Collapsible key={i} label="Thinking" body={step.text} tone="text-faint italic" />
             ) : null,
@@ -113,15 +113,15 @@ function Run({ steps, results, live }: { steps: Extract<TranscriptItem, { kind: 
   );
 }
 
-function ToolRun({ name, input, result }: { name: string; input: unknown; result: { text: string; isError: boolean } | null }) {
+function ToolRun({ call, result, live = false }: { call: ToolUse; result: { text: string; isError: boolean } | null; live?: boolean }) {
   const [open, setOpen] = useState(false);
+  const { name, input } = call;
   const diff = editLines(name, input);
   return (
     <div className="text-ui">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-border/45">
         <Chevron open={open} />
-        <span className={`font-semibold ${result?.isError ? 'text-error' : 'text-muted group-hover:text-text'}`}>{name}</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-meta text-faint">{toolSummary(name, input)}</span>
+        <span className={`min-w-0 flex-1 truncate ${result?.isError ? 'text-error' : 'text-muted group-hover:text-text'}`}>{stepText(call, live ? 'present' : 'past')}</span>
       </button>
       {open && (
         <div className="mt-1 flex flex-col gap-1">
