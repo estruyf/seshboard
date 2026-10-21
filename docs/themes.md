@@ -271,7 +271,7 @@ They are theme files like any other ([apps/ui/src/themes](../apps/ui/src/themes)
 - **Nord**: [nordtheme/visual-studio-code](https://github.com/nordtheme/visual-studio-code) by Sven Greb, ported for Switchboard by Elio Struyf. MIT License, Copyright (c) 2016-present Sven Greb. Its code colours are Shiki's bundled `nord`.
 - **Solarized**: the [Solarized](https://ethanschoonover.com/solarized/) palette by Ethan Schoonover ([altercation/solarized](https://github.com/altercation/solarized)), ported for Switchboard by Elio Struyf. MIT License, Copyright (c) 2011 Ethan Schoonover. Its code colours are Shiki's bundled `solarized-light` and `solarized-dark`.
 
-The MIT License for Solarized, Claude Theme, Nord and Catppuccin (each with its own copyright line above):
+The MIT License for Solarized, Nord and Catppuccin (each with its own copyright line above):
 
 > Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 >

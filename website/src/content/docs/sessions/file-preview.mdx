@@ -6,8 +6,11 @@ description: Read a Markdown, HTML or code file Claude wrote without leaving Swi
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
 import Related from '../../../components/Related.astro';
+import Screenshot from '../../../components/Screenshot.astro';
 
-Claude often writes a plan, a README, a small web page or a piece of code. Click the file in its reply and it opens in a window on top of the session, rendered the way you would read it. No editor, no browser.
+Claude often writes a plan, a README, a small web page or a piece of code. Click the file in its reply and it opens in the side panel, next to the conversation, rendered the way you would read it. No editor, no browser.
+
+<Screenshot name="file-preview" alt="A session with a Markdown plan open in the side panel: a heading, a Note alert, a table of steps, a code block and a folded Open questions block" eager />
 
 ## What opens
 
@@ -16,6 +19,12 @@ Markdown files (`.md` and `.markdown`), HTML files (`.html` and `.htm`) and code
 The window has a **Preview** and a **Source** switch. **Source** shows the file's text with syntax colours. Markdown opens on **Preview**. HTML opens on **Source**, because a page can fail to render and its text always shows. Code and text files have no preview, so they are always their source. Switchboard remembers your choice for each kind of file in that window.
 
 Long lines wrap by default. **Wrap lines** in the header turns that off, so a line scrolls sideways instead. The choice holds for every file in that window.
+
+## Side panel or dialog
+
+A file opens in the session's side panel, as a tab next to **Changes** and **Ask**. **Open in a dialog** (the arrows in the header) moves it over the window, and files open there from then on. **Dock to the side** in the dialog brings it back. A file opened outside a session always opens in the dialog.
+
+A link to a line or a range, such as `src/app.ts:10`, `src/app.ts:10-14` or `#L10-L14`, opens the file on its source with those lines marked and scrolled into view.
 
 ## Markdown
 
@@ -40,7 +49,7 @@ A file over 2 MB isn't shown. The window says how big it is and offers **Open in
 
 Claude may change the file while you read it. **Reload** in the header reads it again, and so does coming back to Switchboard from another window.
 
-The header also has **Open in editor**, **Show in <Os mac="Finder" windows="File Explorer" />** and **Copy path**. <Kbd keys="escape" /> closes the window.
+The header also has **Open in editor**, **Show in <Os mac="Finder" windows="File Explorer" />** and **Copy path**. **Close preview** (the **X**) closes the panel, and <Kbd keys="escape" /> closes the dialog.
 
 ## Open it
 

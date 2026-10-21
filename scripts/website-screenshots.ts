@@ -738,6 +738,69 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'file-preview',
+    async take(t) {
+      // A plan Claude might have written for the hero session, in a folder of its own so the demo repository stays clean.
+      // It opens through the window event a file link sends, in the session's side panel.
+      const dir = join(t.world.home, '.tmp-preview');
+      const file = join(dir, 'dark-mode-plan.md');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        file,
+        [
+          '# Dark mode toggle',
+          '',
+          'A toggle in **Settings › Appearance** that switches the store between light, dark and the system setting.',
+          '',
+          '> [!NOTE]',
+          '> The choice is saved per browser, so a shopper keeps it across visits.',
+          '',
+          '## Steps',
+          '',
+          '| Step | File | Status |',
+          '|---|---|---|',
+          '| Theme tokens for dark | `src/styles/tokens.css` | Done |',
+          '| `useTheme` hook | `src/hooks/useTheme.ts` | Done |',
+          '| Toggle in Settings | `src/pages/settings/Appearance.tsx` | In progress |',
+          '| Tests | `src/hooks/useTheme.test.ts` | To do |',
+          '',
+          '## The hook',
+          '',
+          '```ts',
+          "export function useTheme(): [Theme, (next: Theme) => void] {",
+          "  const [theme, setTheme] = useState<Theme>(() => readStoredTheme() ?? 'system');",
+          '  useEffect(() => applyTheme(theme), [theme]);',
+          '  return [theme, setTheme];',
+          '}',
+          '```',
+          '',
+          '<details><summary>Open questions</summary>',
+          '',
+          '- Should the checkout page follow the toggle, or stay light for the payment form?',
+          '',
+          '</details>',
+          '',
+        ].join('\n'),
+      );
+      try {
+        const id = await t.openSession(HERO);
+        await t.page.evaluate(
+          ({ path, sessionId }) => window.dispatchEvent(new CustomEvent('switchboard:preview-file', { detail: { path, sessionId } })),
+          { path: file, sessionId: id },
+        );
+        // Moved to the dialog in an earlier run of this profile, it would open there: dock it first.
+        const dock = t.page.locator('[data-file-preview][role=dialog] [data-file-preview-dock]');
+        if (await dock.count()) await dock.click();
+        await t.need(`[data-current-session="${id}"] [data-file-preview-place="panel"] [data-file-preview-markdown] h1`, 'the plan did not open in the side panel');
+        await t.shot('file-preview');
+        await t.click('[data-file-preview-close]');
+        await t.gone('[data-file-preview]', 'the preview did not close');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  },
+  {
     name: 'tools',
     async take(t) {
       await t.openSession(HERO);
