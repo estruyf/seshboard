@@ -120,9 +120,11 @@ export function eventKey(source: Pick<TriggerSource, 'kind'>, item: SourceItem):
  * the first check). `held`: it carried a state label that keeps it out. An issue that isn't in the next answer is
  * forgotten, so when it matches again (the label added again, the state label taken off) it is new. A failed run is
  * remembered past its answer (`TRIGGER_RUNS_REMEMBERED`): a re-run leaves the list of failures while it runs, and
- * when it fails again on the same commit it is the same event.
+ * when it fails again on the same commit it is the same event. `released`: its session was archived or deleted and
+ * Switchboard took its state label off; while it stays in the answer it isn't new (with an assignee alone, taking the
+ * label off would otherwise start it again), even when a read from before still shows the label.
  */
-export type SeenState = Record<string, 'match' | 'held'>;
+export type SeenState = Record<string, 'match' | 'held' | 'released'>;
 
 /** An event a check found, before it is stored. */
 export interface FoundEvent {
@@ -249,12 +251,12 @@ export function newEvents(trigger: Pick<Trigger, 'source' | 'stateLabels' | 'ass
     if (isIssue(item) && trigger.source.kind === 'issues') {
       const held = blockingStateLabel(trigger, item);
       if (held) {
-        next[event.key] = 'held';
+        next[event.key] = before === 'released' ? 'released' : 'held';
         if (before === undefined) skipped.push({ ...event, reason: `already has the ${held} label` });
         continue;
       }
       next[event.key] = 'match';
-      if (before === 'match') continue;
+      if (before === 'match' || before === 'released') continue;
       if (trigger.source.collaboratorsOnly && !isCollaborator(item.authorAssociation)) {
         skipped.push({ ...event, reason: "opened by someone outside the repository's collaborators" });
         continue;
@@ -361,12 +363,12 @@ export function nextStateLabel(state: TriggerWorkState): StateLabelKey | null {
 
 /**
  * The one `gh issue edit` arguments that move an issue to `next`: add it, take off the state label Switchboard put
- * there last (`current`), the trigger's own label at pick-up (`removeTrigger`), and assign it to you (`assign`). Null
- * when nothing changes.
+ * there last (`current`), the trigger's own label at pick-up (`removeTrigger`), and assign it to you (`assign`). A
+ * `next` of null takes `current` off and adds nothing. Null when nothing changes.
  */
 export function stateLabelEdit(number: number, next: string | null, current: string | null, extra: { removeTrigger?: string | null; assign?: boolean } = {}): string[] | null {
   const add = next && (!current || !sameLabel(next, current)) ? next : null;
-  const remove = [current && add ? current : null, extra.removeTrigger ?? null].filter((l): l is string => !!l);
+  const remove = [current && (add || !next) ? current : null, extra.removeTrigger ?? null].filter((l): l is string => !!l);
   if (!add && remove.length === 0 && !extra.assign) return null;
   return ['issue', 'edit', String(number), ...(add ? ['--add-label', add] : []), ...remove.flatMap((label) => ['--remove-label', label]), ...(extra.assign ? ['--add-assignee', '@me'] : [])];
 }

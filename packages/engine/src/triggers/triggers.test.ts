@@ -476,6 +476,80 @@ describe('state labels and assigning', () => {
     expect(w.fake.issue(11).labels).toEqual(['switchboard: working']);
   });
 
+  it('takes working or needs input off when the session is archived, and moves the label no more', async () => {
+    const w = world();
+    w.save(labelled);
+    await w.watcher.check();
+    w.fake.write((s) => s.issues!.push(issue(20)));
+    await w.tick();
+    w.sessions.set('session-1', 'waiting');
+    await w.tick(MINUTE);
+    expect(w.fake.issue(20).labels).toEqual(['switchboard: needs input']);
+    w.fake.clearCalls();
+    w.watcher.released('session-1');
+    await w.tick(MINUTE);
+    expect(edits(w.fake.calls())).toEqual([['issue', 'edit', '20', '--remove-label', 'switchboard: needs input']]);
+    expect(w.fake.issue(20).labels).toEqual([]);
+    expect(w.store.events()[0]).toMatchObject({ status: 'started', label: null });
+    // Unarchived and working again: the label stays off.
+    w.sessions.set('session-1', 'working');
+    await w.tick();
+    expect(w.fake.issue(20).labels).toEqual([]);
+    expect(w.started).toHaveLength(1);
+  });
+
+  it('leaves failed and pr open on an archived session', async () => {
+    const w = world();
+    w.save(labelled);
+    await w.watcher.check();
+    w.fake.write((s) => s.issues!.push(issue(21)));
+    await w.tick();
+    w.sessions.set('session-1', null);
+    w.watcher.turnEnded('session-1', { ok: false });
+    await w.tick(MINUTE);
+    w.fake.clearCalls();
+    w.watcher.released('session-1');
+    await w.tick(MINUTE);
+    expect(edits(w.fake.calls())).toEqual([]);
+    expect(w.fake.issue(21).labels).toEqual(['switchboard: failed']);
+  });
+
+  it("doesn't start an assigned issue again once its label came off for an archived session", async () => {
+    const w = world();
+    w.save({ ...labelled, source: { kind: 'issues', assignee: '@me' } });
+    await w.watcher.check();
+    w.fake.write((s) => s.issues!.push(issue(22, { labels: [], assignees: ['estruyf'] })));
+    await w.tick();
+    await w.tick();
+    expect(w.fake.issue(22).labels).toEqual(['switchboard: working']);
+    w.sessions.set('session-1', null);
+    w.watcher.released('session-1');
+    await w.tick();
+    await w.tick();
+    expect(w.fake.issue(22).labels).toEqual([]);
+    expect(w.started).toHaveLength(1);
+    // Assigned again later (it left the answer in between): new work.
+    w.fake.write((s) => (s.issues!.find((i) => i.number === 22)!.assignees = []));
+    await w.tick();
+    w.fake.write((s) => (s.issues!.find((i) => i.number === 22)!.assignees = ['estruyf']));
+    await w.tick();
+    expect(w.started).toHaveLength(2);
+  });
+
+  it('skips an event whose queued item was removed, and takes its label off', async () => {
+    const w = world();
+    w.save(labelled);
+    await w.watcher.check();
+    w.holds.next = { reason: 'at the focus limit', detail: '' };
+    w.fake.write((s) => s.issues!.push(issue(23)));
+    await w.tick();
+    expect(w.fake.issue(23).labels).toEqual(['switchboard: working']);
+    w.watcher.queueRemoved('item-1');
+    await w.tick(MINUTE);
+    expect(w.store.events()).toMatchObject([{ key: '#23', status: 'skipped', reason: 'removed from the queue', label: null }]);
+    expect(w.fake.issue(23).labels).toEqual([]);
+  });
+
   it('assigns the issue to you when it is picked up, and skips one that has an assignee', async () => {
     const w = world();
     w.save({ source: { kind: 'issues', label: 'switchboard' }, assignOnPickUp: true });

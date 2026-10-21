@@ -86,6 +86,8 @@ export class TriggerWatcher {
   private readonly outcomes = new Map<string, 'clean' | 'error' | 'stopped'>();
   /** Triggers whose state labels the repository has (made this run). */
   private readonly labelsReady = new Set<string>();
+  /** Events whose work ended by hand (the session archived or deleted, the queued item removed): their state label comes off. */
+  private readonly releasing = new Set<string>();
   /** Events being started, so each starts once. */
   private readonly starting = new Set<string>();
   /** gh's answers to reads, for a minute (Check now asks again). */
@@ -143,6 +145,27 @@ export class TriggerWatcher {
   }
 
   /**
+   * A triggered session was archived or deleted: its issue's state label comes off, when it still says working or needs
+   * input. Unarchiving it doesn't put the label back.
+   */
+  released(sessionId: string): void {
+    const stored = this.deps.store.eventOfSession(sessionId);
+    if (!stored || stored.event.kind !== 'issue') return;
+    this.releasing.add(stored.event.id);
+    void this.check();
+  }
+
+  /** A queued item an event became was removed by hand: the event is skipped, and its issue's state label comes off. */
+  queueRemoved(itemId: string): void {
+    const stored = this.deps.store.eventOfItem(itemId);
+    if (!stored || stored.event.status !== 'queued') return;
+    this.deps.store.setStatus(stored.event.id, 'skipped', { reason: 'removed from the queue' });
+    if (stored.event.kind === 'issue') this.releasing.add(stored.event.id);
+    this.deps.changed();
+    void this.check();
+  }
+
+  /**
    * A queued item an event became has started: the event follows its session, and is told as a direct start is.
    * Returns the session's title, which the queue doesn't know, or null when the item isn't a trigger's.
    */
@@ -186,6 +209,8 @@ export class TriggerWatcher {
   private async pass(): Promise<void> {
     const now = this.now();
     const before = this.snapshot();
+    // First, so a check in this pass already knows which state labels Switchboard took off.
+    await this.releaseLabels();
     for (const trigger of this.deps.store.list()) {
       const forced = this.forced.delete(trigger.id);
       if (!forced && !triggerDue(trigger, now)) continue;
@@ -463,6 +488,28 @@ export class TriggerWatcher {
     if (await this.edit(trigger, event, args)) {
       this.deps.store.setLabel(event.id, next);
       this.deps.log('info', `Triggers: issue ${event.fields.number} is now “${next}”`);
+    }
+  }
+
+  /**
+   * Takes the state label off the issues whose work ended by hand, when it still says working or needs input (a pull
+   * request open or a failure stays). With an assignee alone the issue would match again without it, so it is marked
+   * `released`: it doesn't start again while it stays in the answer.
+   */
+  private async releaseLabels(): Promise<void> {
+    const ids = [...this.releasing];
+    this.releasing.clear();
+    for (const id of ids) {
+      const event = this.deps.store.event(id)?.event;
+      const trigger = event ? this.deps.store.get(event.triggerId) : null;
+      if (!event || !trigger || !event.label || !trigger.stateLabels.on || trigger.source.kind !== 'issues') continue;
+      const names = stateLabelNames(trigger.stateLabels);
+      if (![names.working, names.needsInput].some((name) => name.toLowerCase() === event.label!.toLowerCase())) continue;
+      const args = stateLabelEdit(Number(event.fields.number), null, event.label);
+      if (!args || !(await this.edit(trigger, event, args))) continue;
+      this.deps.store.setLabel(event.id, null);
+      if (!trigger.source.label) this.deps.store.setSeen(trigger.id, event.key, 'released');
+      this.deps.log('info', `Triggers: took “${event.label}” off issue ${event.fields.number}; its work ended`);
     }
   }
 

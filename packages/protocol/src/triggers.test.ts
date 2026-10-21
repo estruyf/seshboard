@@ -130,6 +130,17 @@ describe('newEvents', () => {
     expect(newEvents(mine, [issue(5, { labels: [] })], first.seen).events.map((e) => e.key)).toEqual(['#5']);
   });
 
+  it("doesn't start an issue whose state label Switchboard took off, while it stays in the answer", () => {
+    const mine = trigger({ kind: 'issues', assignee: '@me' }, { stateLabels: { on: true } });
+    // A read from before still shows the label: it stays released.
+    const stale = newEvents(mine, [issue(5, { labels: [{ name: 'switchboard: working' }] })], { '#5': 'released' });
+    expect(stale).toMatchObject({ events: [], skipped: [], seen: { '#5': 'released' } });
+    const off = newEvents(mine, [issue(5, { labels: [] })], stale.seen);
+    expect(off).toMatchObject({ events: [], skipped: [], seen: { '#5': 'match' } });
+    // Gone from the answer and back: new.
+    expect(newEvents(mine, [issue(5, { labels: [] })], newEvents(mine, [], off.seen).seen).events.map((e) => e.key)).toEqual(['#5']);
+  });
+
   it('starts again when the trigger label is added to an issue whose work ended', () => {
     const withLabels = trigger({ kind: 'issues', label: 'switchboard' }, { stateLabels: { on: true } });
     // Picked up: the label came off, so it left the answer.
@@ -243,6 +254,7 @@ describe('state labels', () => {
     expect(stateLabelEdit(212, 'switchboard: pr open', 'switchboard: working')).toEqual(['issue', 'edit', '212', '--add-label', 'switchboard: pr open', '--remove-label', 'switchboard: working']);
     expect(stateLabelEdit(212, 'switchboard: working', 'switchboard: working')).toBeNull();
     expect(stateLabelEdit(212, null, null, { assign: true })).toEqual(['issue', 'edit', '212', '--add-assignee', '@me']);
+    expect(stateLabelEdit(212, null, 'switchboard: working')).toEqual(['issue', 'edit', '212', '--remove-label', 'switchboard: working']);
   });
 });
 

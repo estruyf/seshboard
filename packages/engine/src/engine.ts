@@ -779,6 +779,8 @@ export function createEngine(options: EngineOptions): Engine {
       catchUpOnInfo(info);
       // After the broadcast, so main's "Claude finished" still sees the item it says starts next.
       autoStarter?.onHost(info);
+      // A session that broke (its process ended, it couldn't start) has no turn end: its issue goes to failed all the same.
+      if (info.state === 'error') triggerWatcher?.turnEnded(info.sessionId, { ok: false });
       triggerWatcher?.nudge();
     },
     onStream: (delta) => broadcast('session.stream', delta),
@@ -1790,7 +1792,11 @@ export function createEngine(options: EngineOptions): Engine {
       },
       markRead: (sessionId) => sessions.markViewed(sessionId),
       markUnread: (sessionId) => sessions.markUnviewed(sessionId),
-      setFlags: (sessionId, flags) => sessions.setFlags(sessionId, flags),
+      setFlags: (sessionId, flags) => {
+        sessions.setFlags(sessionId, flags);
+        // Archived: a trigger's issue loses its working or needs input label.
+        if (flags.archived === true) triggerWatcher?.released(sessionId);
+      },
       setModel: (sessionId, model) => hosts.setModel(sessionId, model),
       setEffort: (sessionId, effort) => hosts.setEffort(sessionId, effort),
       setPermissionMode: (sessionId, mode) => hosts.setPermissionMode(sessionId, mode),
@@ -1915,6 +1921,7 @@ export function createEngine(options: EngineOptions): Engine {
     sessions.forget(sessionId);
     hosts.forget(sessionId);
     limits.forget(sessionId);
+    triggerWatcher?.released(sessionId);
     catchUp.forget(sessionId);
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
@@ -2032,6 +2039,8 @@ export function createEngine(options: EngineOptions): Engine {
         ...(pinned !== undefined ? { pinned } : {}),
         ...(archived !== undefined ? { archived } : {}),
       });
+      // Archived: a trigger's issue loses its working or needs input label.
+      if (archived === true) triggerWatcher?.released(sessionId);
       return {};
     },
     'session.delete': async ({ sessionId }) => {
@@ -2505,8 +2514,18 @@ export function createEngine(options: EngineOptions): Engine {
       return { item };
     },
     'later.remove': ({ id, startedAs }) => {
-      if (startedAs) later.started(id, startedAs);
-      else later.remove(id);
+      if (startedAs) {
+        later.started(id, startedAs);
+        // Started from New session: a trigger's event follows the session, as when the queue starts it.
+        const title = triggerWatcher?.queuedStarted(id, startedAs);
+        if (title) {
+          pendingTitles.set(startedAs, title);
+          applyTitles([startedAs]);
+        }
+      } else {
+        later.remove(id);
+        triggerWatcher?.queueRemoved(id);
+      }
       laterChanged();
       return {};
     },
