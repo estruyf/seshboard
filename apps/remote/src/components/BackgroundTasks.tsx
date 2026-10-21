@@ -77,7 +77,7 @@ export function BackgroundTasks({ tasks, onStop }: { tasks: readonly BackgroundT
                   <span className="shrink-0 text-meta text-muted tabular-nums">
                     {KIND_LABEL[kind]} · {formatDuration(now - task.startedAt)}
                   </span>
-                  <Button variant="quiet" size="md" disabled={!onStop || isStopping} onClick={() => void stop(task.taskId)} aria-label={`Stop ${label}`} title="Stop this task" className="px-2!" data-remote-stop-task>
+                  <Button variant="danger" size="md" disabled={!onStop || isStopping} onClick={() => void stop(task.taskId)} aria-label={`Stop ${label}`} title="Stop this task" className="px-2!" data-remote-stop-task>
                     <Square className="size-3" aria-hidden />
                     {isStopping ? 'Stopping…' : 'Stop'}
                   </Button>

@@ -47,7 +47,7 @@ function GateDialog({ request }: { request: GateRequest }) {
       onClose={cancel}
       data-focus-gate={strict ? 'strict' : 'nudge'}
       footerStart={
-        <Button ref={cancelRef} variant="quiet" kbd="Esc" onClick={cancel} data-focus-gate-cancel>
+        <Button ref={cancelRef} kbd="Esc" onClick={cancel} data-focus-gate-cancel>
           Cancel
         </Button>
       }

@@ -628,7 +628,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
         <div className="flex shrink-0 items-center gap-1.5">
           {working && connected && <span className="text-meta text-muted @max-[860px]:hidden">Claude is working on {name}</span>}
           {working && (
-            <Button size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow disabled={!connected} onClick={onStop} data-computer-stop>
+            <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow disabled={!connected} onClick={onStop} data-computer-stop>
               Stop
             </Button>
           )}

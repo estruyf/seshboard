@@ -39,7 +39,7 @@ export function CloneProjectDialog() {
           </Button>
         ) : (
           <>
-            <Button onClick={close}>{job.stage === 'running' ? 'Stop and close' : 'Cancel'}</Button>
+            <Button variant={job.stage === 'running' ? 'danger' : 'secondary'} onClick={close}>{job.stage === 'running' ? 'Stop and close' : 'Cancel'}</Button>
             <Button variant="primary" kbd="↩" disabled={!ready} onClick={start} data-clone-start>
               {job.plan?.state === 'cloned' ? 'Add it' : 'Clone'}
             </Button>

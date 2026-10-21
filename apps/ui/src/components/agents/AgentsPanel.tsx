@@ -101,7 +101,7 @@ function AgentDetail({ run, model, sessionId, cwd, task, now, onStop }: { run: A
           </div>
         </div>
         {task && (
-          <Button variant="quiet" size="sm" icon={<Square size={11} aria-hidden />} disabled={stopping} onClick={() => void stop()} aria-label={`Stop ${run.what}`} data-tooltip="Stop this agent" data-agent-stop>
+          <Button variant="danger" size="sm" icon={<Square size={11} aria-hidden />} disabled={stopping} onClick={() => void stop()} aria-label={`Stop ${run.what}`} data-tooltip="Stop this agent" data-agent-stop>
             {stopping ? 'Stopping…' : 'Stop'}
           </Button>
         )}

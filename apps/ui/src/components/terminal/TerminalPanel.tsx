@@ -341,7 +341,7 @@ export function TerminalPanel({
             actions={
               <>
                 {blocked?.code === 'SESSION_RUNNING_HERE' && (
-                  <Button size="sm" onClick={() => void stopAndOpen()}>
+                  <Button variant="danger" size="sm" onClick={() => void stopAndOpen()}>
                     Stop it here and open
                   </Button>
                 )}

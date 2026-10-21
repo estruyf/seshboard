@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Link2, Monitor } from 'lucide-react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
-import { ConfirmStrip, ConnectedNow, dangerQuiet, ListRow } from '../remote/RemoteRows.tsx';
+import { ConfirmStrip, ConnectedNow, ListRow } from '../remote/RemoteRows.tsx';
 import { remoteAge } from '../remote/remoteText.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
@@ -61,7 +61,7 @@ export function ComputersSettings() {
                   <Button size="sm" variant="quiet" onClick={() => useComputers.getState().openPage(computer.id)} data-computer-open>
                     Open
                   </Button>
-                  <Button ref={(el) => void removeButtons.current.set(computer.id, el)} size="sm" variant="quiet" className={dangerQuiet} aria-expanded={removing === computer.id} onClick={() => setRemoving(computer.id)} data-computer-forget>
+                  <Button ref={(el) => void removeButtons.current.set(computer.id, el)} size="sm" variant="danger" aria-expanded={removing === computer.id} onClick={() => setRemoving(computer.id)} data-computer-forget>
                     Remove
                   </Button>
                 </>
@@ -100,7 +100,7 @@ export function ComputersSettings() {
       {error && <Notice tone="error">{error}</Notice>}
       {pairing?.state === 'connecting' && <Notice>Connecting to the other computer…</Notice>}
       {pairing?.state === 'waiting' && (
-        <Notice actions={<Button size="sm" onClick={() => void client.call('computers.cancelPairing', {})}>Cancel</Button>} data-computers-code>
+        <Notice actions={<Button variant="danger" size="sm" onClick={() => void client.call('computers.cancelPairing', {})}>Cancel</Button>} data-computers-code>
           Click Allow on the other computer if it shows <span className="font-mono font-semibold tracking-widest tabular-nums">{pairing.code}</span>.
         </Notice>
       )}

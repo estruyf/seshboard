@@ -96,7 +96,7 @@ export function BackgroundTaskList({
               {now > 0 && ` · ${formatDuration(now - task.startedAt)}`}
             </span>
             <Button
-              variant="quiet"
+              variant="danger"
               size="sm"
               icon={<Square size={11} aria-hidden />}
               disabled={isStopping}

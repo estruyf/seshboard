@@ -410,7 +410,7 @@ export function Connected({
   // After every hook: the only computer refused this device, so that is all there is to say. With more than one, its banner says it.
   if (!multi && state.kind === 'unpaired') {
     return (
-      <Message title={computer ? `Pair again with ${computer}` : 'Pair again'} actions={<Button onClick={() => onForget(id)}>Forget this computer</Button>}>
+      <Message title={computer ? `Pair again with ${computer}` : 'Pair again'} actions={<Button variant="danger" onClick={() => onForget(id)}>Forget this computer</Button>}>
         {state.message}
       </Message>
     );
