@@ -9,6 +9,7 @@ import {
   REMOTE_PREVIEW_APP_URL,
   remoteLinkFragment,
   RemoteSettings,
+  RemoteTheme,
   RpcError,
   type Handlers,
   type HandlerContext,
@@ -72,6 +73,8 @@ import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type Vapid
 import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
+/** The app's theme, kept so a phone that connects before a window opened gets it too. */
+const THEME_KEY = 'remote.theme';
 /** The engine's VAPID key pair, made the first time a phone asks for it. */
 const VAPID_KEY = 'remote.vapid';
 /** Each paired device's push subscription and the moments it wants, by device id. */
@@ -303,12 +306,16 @@ export class RemoteHub {
   private applying: Promise<void> = Promise.resolve();
   /** Settings › Theme › App icon's colourway for phones, from main (`setAppIcon`). */
   private appIcon: string = DEFAULT_APP_ICON;
+  /** The theme the app shows (`remote.setTheme`), for phones that look like this computer. */
+  private theme: RemoteTheme | null;
 
   constructor(private readonly options: RemoteHubOptions) {
     this.devices = new DeviceStore(options.db);
     this.pairing = new Pairing(() => this.statusChanged());
     const saved = RemoteSettings.safeParse(options.appState.get(SETTINGS_KEY));
     this.settings = saved.success ? saved.data : DEFAULT_SETTINGS;
+    const theme = RemoteTheme.safeParse(options.appState.get(THEME_KEY));
+    this.theme = theme.success ? theme.data : null;
     this.appUrl = options.appUrl ?? REMOTE_APP_URL;
     this.server = new RemoteServer({
       // The server only starts once there is one (see `apply`).
@@ -445,6 +452,14 @@ export class RemoteHub {
   /** A usage limit was hit, cleared or armed: phones watching a session hear how it stands now. */
   limitsChanged(): void {
     for (const [phone, watch] of this.watches) phone.emit('limits.changed', { sessionId: watch.sessionId, limit: this.options.limit(watch.sessionId) });
+  }
+
+  /** The app shows another theme (every window sends it; only a change reaches the phones). */
+  setTheme(theme: RemoteTheme): void {
+    if (JSON.stringify(theme) === JSON.stringify(this.theme)) return;
+    this.theme = theme;
+    this.options.appState.set(THEME_KEY, theme);
+    if (this.server.listening) this.server.each((rpc) => rpc.emit('theme.changed', theme));
   }
 
   /** A profile's plan usage changed: every phone hears it, for its Home. */
@@ -1064,6 +1079,7 @@ export class RemoteHub {
         this.setPush(device.id, null);
         return {};
       },
+      'theme.get': () => ({ theme: this.theme }),
       'device.visibility': ({ visible }, phone) => {
         if (!this.visible.has(phone) && visible) phone.onDispose(() => this.visible.delete(phone));
         if (visible) this.visible.set(phone, device.id);

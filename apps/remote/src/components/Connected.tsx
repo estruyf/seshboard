@@ -29,6 +29,7 @@ import type { MenuItem } from './Menu.tsx';
 import { toast, Toasts } from './Toasts.tsx';
 import { NotificationsSheet, PushOffer, PushStrip, shouldOffer } from './Notifications.tsx';
 import { UsageCard, useUsages } from './Usage.tsx';
+import { ThemeSheet } from './ThemeSheet.tsx';
 import { UpdateBar } from './UpdateBar.tsx';
 import { useUpdate } from './useUpdate.ts';
 import { useAskSync } from './askStore.ts';
@@ -111,6 +112,7 @@ export function Connected({
   /** The computer whose Help sheet is open. */
   const [help, setHelp] = useState<string | null>(null);
   const [notifications, setNotifications] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const [offer, setOffer] = useState(() => shouldOffer(offered()));
   const [palette, setPalette] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
@@ -262,9 +264,10 @@ export function Connected({
     onForget(target.id);
   };
   const menu: MenuItem[] = multi
-    ? [{ label: 'Notifications', onSelect: () => setNotifications(true) }, { kind: 'separator' }, { label: 'Pair another computer…', onSelect: onAdd }]
+    ? [{ label: 'Notifications', onSelect: () => setNotifications(true) }, { label: 'Theme', onSelect: () => setThemeOpen(true) }, { kind: 'separator' }, { label: 'Pair another computer…', onSelect: onAdd }]
     : [
         { label: 'Notifications', onSelect: () => setNotifications(true) },
+        { label: 'Theme', onSelect: () => setThemeOpen(true) },
         { kind: 'separator' },
         { kind: 'note', label: `Paired as ${paired.name}` },
         { label: 'Forget this computer…', danger: true, onSelect: () => void forget(current) },
@@ -426,6 +429,7 @@ export function Connected({
     { id: 'home', title: 'Go to Home' },
     ...(currentSupport() === 'ready' && !loadPrefs().on ? [{ id: 'notify', title: 'Turn on notifications' }] : []),
     ...(unread.length ? [{ id: 'read-all', title: 'Mark all as read' }] : []),
+    { id: 'theme', title: 'Theme' },
     { id: 'add', title: 'Pair another computer' },
     ...(multi ? [] : [{ id: 'forget', title: 'Forget this computer' }]),
   ];
@@ -454,6 +458,8 @@ export function Connected({
           () => toast("That didn't reach your computer.", { tone: 'error' }),
         );
         return;
+      case 'action:theme':
+        return setThemeOpen(true);
       case 'action:add':
         return onAdd();
       case 'action:forget':
@@ -582,6 +588,7 @@ export function Connected({
     <>
       <Toasts />
       {notifications && <NotificationsSheet push={push} onClose={() => setNotifications(false)} />}
+      {themeOpen && <ThemeSheet computers={computers} onClose={() => setThemeOpen(false)} />}
       {helpFor && <OfflineHelp state={helpFor.state} computer={nameOf(helpFor)} address={helpFor.paired.address} onClose={() => setHelp(null)} onRetry={() => helpFor.connection.retryNow()} />}
       {keysOpen && <KeysSheet onClose={() => setKeysOpen(false)} />}
       {palette && <Palette computers={computers.map((c) => ({ id: c.id, name: nameOf(c), client: clientOf(c) }))} labels={multi} sessions={merged.sessions} actions={paletteActions} onChoose={choose} onClose={() => setPalette(false)} />}

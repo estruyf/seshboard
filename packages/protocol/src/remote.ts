@@ -10,6 +10,8 @@ import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
+import { COLOR_PATTERN } from './color.ts';
+import { THEME_NAME_MAX, THEME_TOKENS } from './themeFormat.ts';
 import { REMOTE_ATTACHMENT_BYTES, REMOTE_DEVICE_NAME_MAX, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
 import { RemoteLimitStanding } from './usageLimit.ts';
 import { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow, UsageSnapshot, WindowCost } from './usage.ts';
@@ -285,6 +287,16 @@ export type RemoteUsageBreakdown = z.infer<typeof RemoteUsageBreakdown>;
 export const RemoteCloneProgress = CloneProgress.omit({ root: true }).extend({ projectId: ProjectId.nullable() });
 export type RemoteCloneProgress = z.infer<typeof RemoteCloneProgress>;
 
+/** One mode of the computer's theme, every token worked out (`--sb-*` names without the prefix). Colours only. */
+const RemoteThemeTokens = z.partialRecord(z.enum(THEME_TOKENS), z.string().max(80).regex(new RegExp(COLOR_PATTERN)));
+
+/**
+ * The theme in use on the computer, resolved there (what it leaves out generated from its canvas and accent), so the
+ * phone can look the same without the generator. The phone picks the mode it is in. With `REMOTE_FEATURE_THEME`.
+ */
+export const RemoteTheme = z.object({ name: z.string().max(THEME_NAME_MAX), light: RemoteThemeTokens, dark: RemoteThemeTokens });
+export type RemoteTheme = z.infer<typeof RemoteTheme>;
+
 /** The most lines `changes.diff` returns. */
 export const REMOTE_DIFF_LINES = 2_000;
 
@@ -526,6 +538,8 @@ export const remoteContract = {
     'limits.arm': { params: z.object({ sessionId: SessionId, armed: z.boolean() }), result: z.object({}) },
     /** Whether the app is on this device's screen now: no push while it is. Sent after hello and on each change. */
     'device.visibility': { params: z.object({ visible: z.boolean() }), result: z.object({}) },
+    /** The theme in use on the computer (null until the app showed one); `theme.changed` follows each change. With `REMOTE_FEATURE_THEME`. */
+    'theme.get': { params: z.object({}), result: z.object({ theme: RemoteTheme.nullable() }) },
   },
   events: {
     'sessions.changed': RemoteSessions,
@@ -544,6 +558,8 @@ export const remoteContract = {
     'projects.cloneProgress': RemoteCloneProgress,
     /** The app icon colourway changed on the computer (as `appIcon` in hello): the open tab swaps its icons. */
     'app.icon': z.object({ key: z.string().max(50) }),
+    /** Someone picked another theme on the computer, or edited the one in use. */
+    'theme.changed': RemoteTheme,
   },
 } as const satisfies ContractShape;
 export type RemoteContract = typeof remoteContract;

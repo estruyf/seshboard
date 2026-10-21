@@ -1,15 +1,19 @@
-import type { RemoteSessions } from '@switchboard/protocol/remote-client';
+import { REMOTE_FEATURE_THEME, type RemoteSessions, type RemoteTheme } from '@switchboard/protocol/remote-client';
 import { Connection, type ConnectionState, type Dial } from './connection.ts';
 import { computerId, type Paired } from './link.ts';
 import type { PushComputers, PushTarget } from './push.ts';
+import { cleanTheme } from './theme.ts';
+import { cacheTheme, cachedTheme } from './themeApply.ts';
 
-/** One paired computer: its pairing, its connection, and its last list of sessions. */
+/** One paired computer: its pairing, its connection, its last list of sessions and its last theme. */
 export interface Computer {
   id: string;
   paired: Paired;
   connection: Connection;
   state: ConnectionState;
   sessions: RemoteSessions;
+  /** The theme in use there (`REMOTE_FEATURE_THEME`), kept on the phone; null until it sent one. */
+  theme: RemoteTheme | null;
 }
 
 const EMPTY: RemoteSessions = { sessions: [], prompts: [] };
@@ -75,7 +79,7 @@ export class Computers {
       }
       if (known) this.remove(id);
       const connection = new Connection(paired, this.options.dial ? { dial: this.options.dial } : {});
-      this.entries.set(id, { id, paired, connection, state: connection.current, sessions: cachedSessions(id) });
+      this.entries.set(id, { id, paired, connection, state: connection.current, sessions: cachedSessions(id), theme: cachedTheme(id) });
       connection.subscribe((state) => this.stateChanged(id, connection, state));
       connection.start({ disconnected: wasDisconnected(id) });
     }
@@ -97,6 +101,16 @@ export class Computers {
     this.changed();
   }
 
+  /** A theme from the computer: kept, and shown when it is the one Theme shows. */
+  private setTheme(id: string, value: unknown): void {
+    const entry = this.entries.get(id);
+    const theme = cleanTheme(value);
+    if (!entry || !theme || JSON.stringify(theme) === JSON.stringify(entry.theme)) return;
+    this.entries.set(id, { ...entry, theme });
+    cacheTheme(id, theme);
+    this.changed();
+  }
+
   private remove(id: string): void {
     this.listing.get(id)?.();
     this.listing.delete(id);
@@ -114,8 +128,12 @@ export class Computers {
     this.entries.set(id, next);
     if (state.kind === 'connected') {
       const { client } = state;
-      const off = client.on('sessions.changed', (sessions) => this.setSessions(id, sessions));
-      this.listing.set(id, off);
+      const offs = [client.on('sessions.changed', (sessions) => this.setSessions(id, sessions))];
+      if (state.features.includes(REMOTE_FEATURE_THEME)) {
+        offs.push(client.on('theme.changed', (theme) => this.setTheme(id, theme)));
+        void client.call('theme.get', {}).then(({ theme }) => this.setTheme(id, theme), () => {});
+      }
+      this.listing.set(id, () => offs.forEach((off) => off()));
       void client.call('sessions.list', {}).then((sessions) => this.setSessions(id, sessions), () => {});
       if (state.computerName && state.computerName !== entry.paired.computerName) {
         const paired = { ...entry.paired, computerName: state.computerName };

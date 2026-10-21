@@ -3,7 +3,8 @@
 /*
  * The desktop app's tokens (apps/ui/src/styles.css, Demo Time), so the phone looks like Switchboard: the same surfaces,
  * text and status colours (needs you `warn`, working `accent-ink`, background `ok`, unread `unread`). It follows the
- * phone's light or dark mode. Themes stay on the computer.
+ * phone's light or dark mode. A computer's theme overrides these on `<html>` (Theme, `lib/themeApply.ts`), so a new
+ * token here goes in `PHONE_TOKENS` (`lib/theme.ts`) too.
  */
 :root {
   color-scheme: light dark;

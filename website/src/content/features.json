@@ -1517,6 +1517,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-theme",
+      "name": "Remote: Theme, the phone in your computer's theme or Demo Time",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-home",
       "name": "Remote: what needs you on a wide screen, and Finished, ready to review",
       "page": "remote-access"

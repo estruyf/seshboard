@@ -11,6 +11,7 @@
     "./theme": "./src/theme.ts",
     "./theme-format": "./src/themeFormat.ts",
     "./color": "./src/color.ts",
+    "./theme-shadow": "./src/themeShadow.ts",
     "./companion-client": "./src/companionClient.ts",
     "./paths": "./src/paths.ts",
     "./remote-client": "./src/remoteClient.ts"
