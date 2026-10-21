@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useReadMode } from '../../state/readModeStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { planDrop } from '../../state/paneState.ts';
 import type { Tile } from '../../state/tiling.ts';
@@ -23,8 +24,8 @@ export interface TileDrag {
 
 /** Things in a header or a row that keep their own clicks: a press on one never starts a drag. */
 const OWN_CLICKS = 'button, a, input, textarea, select, [role="button"], [role="menuitem"], [role="radio"]';
-/** A session's row in the open sidebar, or its button in the rail. */
-const SESSION_ROW = '[data-session-id], [data-sidebar-rail-row]';
+/** A session's row in the open sidebar, or its button in the rail. Only in a session list: reading mode carries `data-session-id` too. */
+const SESSION_ROW = '[data-session-list] [data-session-id], [data-sidebar-rail-row]';
 
 /**
  * Dragging a pane by its header, or a session by its row in the sidebar (or rail), onto a pane to arrange the
@@ -51,6 +52,8 @@ export function useTileDrag(area: RefObject<HTMLElement | null>, enabled: boolea
     if (!enabled) return;
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0 || !event.isPrimary || event.altKey || event.shiftKey || event.metaKey || event.ctrlKey) return;
+      // Reading mode covers the panes: a press there selects text, and its session list has nothing to drop onto.
+      if (useReadMode.getState().open !== null) return;
       const target = event.target as HTMLElement | null;
       if (!target?.closest) return;
       const { paneIds } = useSessions.getState();

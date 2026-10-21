@@ -4970,19 +4970,22 @@ async function runReadModeStep(win: BrowserWindow): Promise<string> {
     try {
       const third = await open();
       if (typeof third === 'string') return third;
-      const picked = (await js(`(() => {
+      // Selected by dragging the mouse over its first line, as a reader would: a press in reading mode must not start
+      // anything else (a sidebar row's drag into the panes once cleared the selection on the first move).
+      const line = (await js(`(() => {
         const p = [...document.querySelectorAll('[data-read-text] p')].find((el) => el.textContent.trim().length > 20 && el.getClientRects().length > 0);
-        if (!p) return '';
+        if (!p) return null;
         p.scrollIntoView({ block: 'center' });
-        const range = document.createRange();
-        range.selectNodeContents(p);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-        p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-        return selection.toString().trim();
-      })()`)) as string;
-      if (!picked) return 'failed: reading mode shows no paragraph to select';
+        window.getSelection().removeAllRanges();
+        const r = p.getClientRects()[0];
+        return { left: Math.round(r.left + 2), right: Math.round(r.right - 2), y: Math.round(r.top + r.height / 2) };
+      })()`)) as { left: number; right: number; y: number } | null;
+      if (!line) return 'failed: reading mode shows no paragraph to select';
+      win.webContents.sendInputEvent({ type: 'mouseDown', x: line.left, y: line.y, button: 'left', clickCount: 1 });
+      for (let i = 1; i <= 8; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(line.left + ((line.right - line.left) * i) / 8), y: line.y, button: 'left' });
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: line.right, y: line.y, button: 'left', clickCount: 1 });
+      if (!(await waitInPage(win, "window.getSelection().toString().trim().length > 10", 2_000))) return 'dragging over a paragraph in reading mode selected nothing';
+      const picked = ((await js('window.getSelection().toString()')) as string).trim();
       const toolbar = "document.querySelector('[data-read-selection][data-side]')";
       if (!(await waitInPage(win, toolbar, 3_000))) return 'no popover over the selection in reading mode';
       const labels = (await js(`[...${toolbar}.querySelectorAll('button')].map((b) => b.textContent.trim())`)) as string[];
