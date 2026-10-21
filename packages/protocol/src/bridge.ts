@@ -70,6 +70,7 @@ export const IpcChannel = {
   getOpenAtLogin: "switchboard:get-open-at-login",
   setOpenAtLogin: "switchboard:set-open-at-login",
   openLoginItemsSettings: "switchboard:open-login-items-settings",
+  keepAwakeStatus: "switchboard:keep-awake-status",
   getPopouts: "switchboard:get-popouts",
   popOut: "switchboard:pop-out",
   popIn: "switchboard:pop-in",
@@ -294,6 +295,12 @@ export interface Preferences {
    * ask for it. Off by default: not everyone has the extension.
    */
   chrome: boolean;
+  /**
+   * Settings › General: "Keep this Mac awake" ("this PC" elsewhere). On, the computer doesn't go to sleep while
+   * Switchboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
+   * runs `caffeinate -s` (on power only), Windows and Linux use Electron's sleep blocker. Off by default.
+   */
+  keepAwake: boolean;
   /** Check GitHub for a newer release shortly after launch and every few hours. */
   autoUpdate: boolean;
   updateChannel: UpdateChannel;
@@ -388,6 +395,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   projectOrder: "recent",
   newSessionMode: "last",
   chrome: false,
+  keepAwake: false,
   autoUpdate: true,
   updateChannel: "stable",
   focusLimit: null,
@@ -548,6 +556,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(NEW_SESSION_MODES, raw.newSessionMode))
     out.newSessionMode = raw.newSessionMode;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
+  if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "beta"] as const, raw.updateChannel))
     out.updateChannel = raw.updateChannel;
@@ -860,6 +869,8 @@ export interface SwitchboardBridge {
   setOpenAtLogin(on: boolean): Promise<OpenAtLogin>;
   /** Opens the system's list of apps that open at login (Login Items, or Startup apps on Windows). */
   openLoginItemsSettings(): void;
+  /** Whether Keep awake is holding sleep off right now (on, and `caffeinate` or the sleep blocker is running). */
+  keepAwakeStatus(): Promise<boolean>;
   /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
   readonly popout: string | null;
   /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */

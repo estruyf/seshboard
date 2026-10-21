@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Added
 
+- **Keep this Mac awake.** Settings › General › Keep this Mac awake stops your Mac from sleeping while Switchboard is open, so schedules, triggers and remote access keep working. On a Mac it holds sleep off while on power; on Windows and Linux it is Keep this PC awake. The display can still sleep.
 - **Profiles on other computers' sessions.** A session from another computer now has the profile's colour on its left line in the sidebar, as local sessions do. A profile with the same name here (Personal, Work) gets this computer's colour, so one account reads the same everywhere.
 - **Pipelines** ([#179](https://github.com/estruyf/switchboard/issues/179)). Pipelines: run a saved set of steps for one task, each in its own sub-session under the session you start it from. Plan with one model, build with another, have a fresh session check the work, then push. Steps hand over with @ links. Run one from a session's ⋯ menu, from New session's **Run as** chip, or from the command palette, and set them up in Settings › Pipelines.
 - **Hide the built-in pipelines.** Settings › Pipelines has a Built-in pipelines switch. Turn it off to see only your own pipelines.
