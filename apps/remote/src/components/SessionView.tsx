@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
-import type { CatchUp, QueuedMessage, RemoteLimitStanding, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions, SendMode } from '@switchboard/protocol/remote-client';
+import { PARENT_PLACEHOLDER, REMOTE_FEATURE_PIPELINES, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@switchboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
+import { runsOf } from '../lib/runs.ts';
+import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { transcriptItems } from '../lib/steps.ts';
@@ -58,6 +60,7 @@ export function SessionView({
   wide = false,
   initialChanges = false,
   computerName,
+  onOpenSession,
 }: {
   client: Client;
   /** What the computer takes beyond what every version does (its hello). */
@@ -76,8 +79,21 @@ export function SessionView({
   initialChanges?: boolean;
   /** The computer it runs on, with more than one paired: the header says it. */
   computerName?: string | undefined;
+  /** Opens another session (or run row) of this computer: a pipeline run's parent or one of its steps. */
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const session = sessions.sessions.find((s) => s.id === sessionId) ?? null;
+  // Pipelines (#179): the run this session started, or the run and step it is a sub-session of.
+  const takesPipelines = features.includes(REMOTE_FEATURE_PIPELINES);
+  const runs = runsOf(sessions, sessionId);
+  const runState = runs.parent ?? runs.step?.state ?? null;
+  const [runSheet, setRunSheet] = useState(false);
+  const [pipelineSheet, setPipelineSheet] = useState(false);
+  const listed = new Set(sessions.sessions.map((s) => s.id));
+  const runParentId = runs.step && !runs.parent ? (runs.step.state.run.parentSessionId ?? runs.step.state.run.id) : null;
+  const canOpenParent = runParentId !== null && (listed.has(runParentId) || runs.step?.state.run.parentSessionId === null);
+  const stepName = runs.step ? runs.step.state.run.pipeline.steps[runs.step.index]?.name : undefined;
+  const idlePlaceholder = runs.parent ? PARENT_PLACEHOLDER : runs.step && waitsOnStep(runs.step.state, runs.step.index, runs.step.round) ? replyToStepPlaceholder(stepName ?? 'the step') : undefined;
   const prompts = sessions.prompts.filter((p) => p.sessionId === sessionId);
   const [messages, setMessages] = useState<RemoteMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -190,17 +206,21 @@ export function SessionView({
   const tasks = session?.background ?? [];
   const results = resultsByCall(messages);
   const fail = (e: Error) => !lostConnection(e) && setError(e.message);
+  // A run's parent goes to Archived with its sub-sessions, as on the computer.
+  const treeRun = takesPipelines ? runs.parent : null;
+  const treeSteps = treeRun ? new Set(treeRun.steps.flatMap((s) => (s.sessionId ? [s.sessionId] : []))).size : 0;
+  const setArchived = (archived: boolean) => (treeRun ? client!.call('runs.archive', { runId: treeRun.run.id, archived }) : client!.call('session.setFlags', { sessionId, archived }));
   const menu: MenuItem[] = [
     ...(working ? [{ label: 'Stop', onSelect: () => void client?.call('session.interrupt', { sessionId }).catch(fail) }] : []),
     { label: 'Mark as read', disabled: !client || !unread, onSelect: () => void client?.call('session.markRead', { sessionId }).catch(fail) },
+    ...(takesPipelines && session && !runs.step ? [{ label: 'Run pipeline…', disabled: !client, onSelect: () => setPipelineSheet(true) }] : []),
     {
-      label: 'Archive',
+      label: treeSteps ? `Archive with ${treeSteps === 1 ? 'its step' : `its ${treeSteps} steps`}` : 'Archive',
       disabled: !client,
       onSelect: () =>
-        void client
-          ?.call('session.setFlags', { sessionId, archived: true })
+        void setArchived(true)
           .then(() => {
-            toast(`Archived ${session?.title ?? 'the session'}`, { action: { label: 'Undo', run: () => void client.call('session.setFlags', { sessionId, archived: false }).catch(fail) } });
+            toast(`Archived ${session?.title ?? 'the session'}`, { action: { label: 'Undo', run: () => void setArchived(false).catch(fail) } });
             onLeave();
           })
           .catch(fail),
@@ -310,6 +330,15 @@ export function SessionView({
           <MenuButton label="Session actions" items={menu} />
         </header>
         {banner}
+        {runState && (
+          <RunBar
+            state={runState}
+            step={runs.parent ? null : runs.step && { index: runs.step.index, round: runs.step.round }}
+            client={client}
+            onSteps={() => setRunSheet(true)}
+            onParent={canOpenParent && onOpenSession ? () => onOpenSession(runParentId!) : null}
+          />
+        )}
         <Transcript
           messages={messages}
           results={results}
@@ -357,6 +386,7 @@ export function SessionView({
           disabled={!client}
           working={working}
           answering={Boolean(open)}
+          idle={idlePlaceholder}
           onStop={stop}
           onSend={async (text, images, files, mode) => {
             // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
@@ -373,6 +403,8 @@ export function SessionView({
           onFocusChange={setTyping}
         />
       </div>
+      {runSheet && runState && <RunSheet state={runState} client={client} canOpen={(id) => listed.has(id) && id !== sessionId} onOpenStep={(id) => onOpenSession?.(id)} onClose={() => setRunSheet(false)} />}
+      {pipelineSheet && session && <RunPipelineSheet client={client} projectId={session.projectId} sessionId={sessionId} onClose={() => setPipelineSheet(false)} />}
       {ask.open && !panelFits && <AskSheet client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
       {askPanel && <AskPanel client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
       {sheet === 'changes' && <ChangesSheet client={client} sessionId={sessionId} changes={changes} onClose={() => setSheet(null)} onAsk={askToFix} onCommit={() => setSheet('commit')} />}
@@ -633,6 +665,7 @@ function Composer({
   disabled,
   working,
   answering,
+  idle,
   onStop,
   onSend,
   onError,
@@ -648,6 +681,8 @@ function Composer({
   disabled: boolean;
   working: boolean;
   answering: boolean;
+  /** What the box says while Claude waits for you: a run's parent and a step the run waits on say what writing does. */
+  idle?: string | undefined;
   onStop: () => void;
   onSend: (text: string, images: RemoteImage[], files: RemoteFile[], mode: SendMode) => Promise<void>;
   onError: (message: string) => void;
@@ -733,7 +768,7 @@ function Composer({
             }
           }}
           rows={1}
-          placeholder={disabled ? 'Sending waits for the connection' : answering ? 'Or tell Claude what to do instead' : working ? 'Add to Up next' : 'Message Claude'}
+          placeholder={disabled ? 'Sending waits for the connection' : answering ? 'Or tell Claude what to do instead' : working ? 'Add to Up next' : (idle ?? 'Message Claude')}
           aria-label="Message"
           data-remote-message
           className="max-h-48 min-h-9 flex-1 resize-none bg-transparent py-2 text-body text-text outline-none [field-sizing:content] placeholder:text-faint pointer-fine:min-h-7 pointer-fine:py-1"

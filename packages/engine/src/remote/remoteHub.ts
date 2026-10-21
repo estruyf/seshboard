@@ -47,7 +47,15 @@ import {
   type AutoTier,
   type AskEvent,
   type AskThreadList,
+  type Pipeline,
+  type PipelineNotice,
+  type PipelineRunState,
+  type PushPreview,
+  type RemoteRunState,
+  type RunChoices,
   Effort,
+  runOfParent,
+  withRunStub,
   REMOTE_DIFF_LINES,
   REMOTE_DESKTOP_ORIGIN,
 } from '@switchboard/protocol';
@@ -61,7 +69,7 @@ import { nextFreePort } from './freePort.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
-import { capDiff, projectIdOf, remoteCatchUp, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
 /** The engine's VAPID key pair, made the first time a phone asks for it. */
@@ -106,6 +114,25 @@ export interface RemoteHubProfile {
   defaults: ProfileDefaults;
   /** Its account's `accountTag`, for `usage.get`; null without an account. */
   account?: string | null;
+}
+
+/** A run's button, as the computer's step tree has it. */
+export type RemoteRunAction = 'continue' | 'retryStep' | 'anotherRound' | 'skipStep' | 'stop';
+
+/** Pipelines (#179) as the computer runs them; what goes wrong comes back as an `RpcError` with a sentence. */
+export interface RemotePipelines {
+  /** Every run, with its steps. */
+  runs(): PipelineRunState[];
+  /** The pipelines the project in `root` can run, as `pipelines.list` there. */
+  list(root: string): Pipeline[];
+  /** Runs a pipeline, as `pipelines.run` on the computer: from a session, or with a task in `projectRoot`. */
+  run(input: { pipelineId: string; parentSessionId: string | null; task: string | null; attachments: RemoteImage[]; projectRoot: string | null; profileId: string | null; choices: RunChoices | null }): Promise<PipelineRunState>;
+  /** One of a run's buttons; `message` is Push's commit message for Continue. */
+  act(action: RemoteRunAction, runId: string, message: string | null): Promise<PipelineRunState>;
+  archive(runId: string, archived: boolean): Promise<void>;
+  pushPreview(runId: string, fresh: boolean): Promise<PushPreview>;
+  /** Writes in a run row: the run gets a session of its own, with the run's brief first. */
+  write(runId: string, text: string): Promise<{ sessionId: string }>;
 }
 
 /** What `remote.fromDevice` tells the app's windows. */
@@ -203,6 +230,8 @@ export interface RemoteHubOptions {
   /** Starts a clone, as `projects.clone` on the computer; its progress goes to `onProgress` too. */
   clone(jobId: string, url: string, name: string, onProgress: (progress: CloneProgress) => void): Promise<void>;
   cancelClone(jobId: string): void;
+  /** Pipelines: the runs in the list, and what a phone may do with them. Without it a phone sees no runs. */
+  pipelines?: RemotePipelines;
   /** Tells the app's windows. */
   onStatus(status: RemoteStatus): void;
   /** A prompt or an answer came from a phone, for the label in the conversation and the sidebar's last action. */
@@ -444,6 +473,19 @@ export class RemoteHub {
     this.finishing.set(info.sessionId, timer);
   }
 
+  /**
+   * A pipeline run waits for you without a session asking (Wait for me, Push), stopped, or is done: paired phones that
+   * want it get a push, as the computer's notification. A tap opens the step's sub-session, the parent, or the run row.
+   */
+  runNotice(notice: PipelineNotice): void {
+    const state = this.options.pipelines?.runs().find((r) => r.run.id === notice.runId);
+    if (!state) return;
+    const project = this.projectName(state.run.projectRoot);
+    const sessionId = notice.sessionId ?? notice.runId;
+    if (notice.kind === 'needsYou') this.push({ kind: 'needs-you', sessionId, title: notice.title, project, line: notice.body });
+    else this.push({ kind: 'finished', sessionId, title: notice.kind === 'stopped' ? `${notice.title}: the run stopped` : notice.title, project, line: notice.body });
+  }
+
   stop(): void {
     this.generation++;
     for (const timer of this.finishing.values()) clearTimeout(timer);
@@ -597,6 +639,8 @@ export class RemoteHub {
     this.finishing.delete(sessionId);
     const session = this.list().sessions.find((s) => s.id === sessionId);
     if (!session) return;
+    // A turn that ends in a step of a run that goes on is the run's news: it says when it needs you, stops or is done.
+    if (this.options.pipelines?.runs().some(({ run, steps }) => run.status !== 'done' && run.status !== 'stopped' && steps.some((s) => s.sessionId === sessionId))) return;
     this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, ...profileOf(session), line: finishedLine(this.options.catchUp(sessionId)) });
   }
 
@@ -630,7 +674,37 @@ export class RemoteHub {
 
   private list(): RemoteSessions {
     const projectNames = new Map(this.options.projects().map((p) => [p.root, p.name]));
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles });
+    const runs = this.options.pipelines?.runs();
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, ...(runs ? { runs } : {}) });
+  }
+
+  private projectName(root: string): string {
+    return this.options.projects().find((p) => p.root === root)?.name ?? lastSegment(root);
+  }
+
+  private requirePipelines(): RemotePipelines {
+    if (!this.options.pipelines) throw new RpcError('NOT_FOUND', 'Pipelines are not on this computer');
+    return this.options.pipelines;
+  }
+
+  /** A phone may only touch the runs its list has. */
+  private checkRun(runId: string): RemoteRunState {
+    const state = this.list().runs?.find((r) => r.run.id === runId);
+    if (!state) throw new RpcError('NOT_FOUND', 'No such run');
+    return state;
+  }
+
+  /** A run for the phone after one of its buttons, as its list will have it. */
+  private toRemote(state: PipelineRunState): RemoteRunState {
+    this.sessionsChanged();
+    return remoteRun(state, new Map(this.options.projects().map((p) => [p.root, p.name])));
+  }
+
+  /** Any project the computer knows by its id (the ones you added, and the folders sessions ran in), for a session's runs. */
+  private knownProject(projectId: string): RemoteProject {
+    const project = this.options.projects().find((p) => projectIdOf(p.root) === projectId);
+    if (!project) throw new RpcError('NOT_FOUND', 'No such project');
+    return project;
   }
 
   /** The projects New session offers, as the app's own list: the ones you added that still exist, in your order. */
@@ -717,7 +791,12 @@ export class RemoteHub {
       'session.send': async ({ sessionId, text, mode, images, files }) => {
         this.checkSession(sessionId);
         checkAttachments(images, files);
-        const sent = await this.options.send(sessionId, promptWithFiles(text, saveRemoteFiles(this.options.filesDir, files)), mode, images);
+        const prompt = promptWithFiles(text, saveRemoteFiles(this.options.filesDir, files));
+        // A run's parent: what you write links the run, so Claude gets its brief first, as on the computer. After the
+        // stubs the phone typed were defused: this one is the computer's own.
+        const parentRun = this.options.pipelines ? runOfParent(this.options.pipelines.runs(), sessionId) : null;
+        const linked = parentRun?.run.parentSessionId === sessionId ? withRunStub(prompt, parentRun.run) : prompt;
+        const sent = await this.options.send(sessionId, linked, mode, images);
         if (!sent.queued) label(sessionId, sent.messageUuid);
         this.options.onFromDevice?.({ sessionId, messageUuid: sent.queued ? null : sent.messageUuid, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return { queued: sent.queued };
@@ -755,6 +834,81 @@ export class RemoteHub {
         // Its first prompt: the sidebar's last action for the device.
         this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return created;
+      },
+      'pipelines.list': ({ projectId }) => {
+        const pipelines = this.requirePipelines().list(this.knownProject(projectId).root);
+        return { pipelines: pipelines.map(({ scope: _scope, ...pipeline }) => pipeline) };
+      },
+      'pipelines.run': async ({ pipelineId, parentSessionId, projectId, task, images, files, profileId, model, effort, permissionMode }) => {
+        const pipelines = this.requirePipelines();
+        let root: string;
+        if (parentSessionId) {
+          this.checkSession(parentSessionId);
+          root = this.knownProject(this.list().sessions.find((s) => s.id === parentSessionId)!.projectId).root;
+        } else {
+          // New session's projects: only the ones you added, as `session.create`.
+          root = this.project(projectId!).root;
+        }
+        // Only a pipeline that project can run there: one the phone was offered.
+        if (!pipelines.list(root).some((p) => p.id === pipelineId)) throw new RpcError('NOT_FOUND', 'That pipeline was deleted');
+        checkAttachments(images, files);
+        const profile = parentSessionId || !profileId ? null : this.profileFor(this.project(projectId!), profileId).id;
+        const choices: RunChoices | null = parentSessionId || (model === undefined && effort === undefined && permissionMode === undefined) ? null : { model: model ?? null, effort: effort ?? null, permissionMode: permissionMode ?? null };
+        const state = await pipelines.run({
+          pipelineId,
+          parentSessionId: parentSessionId ?? null,
+          task: task ? promptWithFiles(task, saveRemoteFiles(this.options.filesDir, files)) : null,
+          attachments: images,
+          projectRoot: parentSessionId ? null : root,
+          profileId: profile,
+          choices,
+        });
+        this.options.log('info', `Remote: ${device.name} ran the pipeline ${state.run.pipeline.name}`);
+        return { state: this.toRemote(state) };
+      },
+      'runs.continue': async ({ runId, message }) => {
+        const before = this.checkRun(runId);
+        const state = await this.requirePipelines().act('continue', runId, message ?? null);
+        if (before.run.waitingFor === 'push') this.options.log('info', `Remote: ${device.name} pushed the run ${runId}`);
+        return { state: this.toRemote(state) };
+      },
+      'runs.retryStep': async ({ runId }) => {
+        this.checkRun(runId);
+        return { state: this.toRemote(await this.requirePipelines().act('retryStep', runId, null)) };
+      },
+      'runs.anotherRound': async ({ runId }) => {
+        this.checkRun(runId);
+        return { state: this.toRemote(await this.requirePipelines().act('anotherRound', runId, null)) };
+      },
+      'runs.skipStep': async ({ runId }) => {
+        this.checkRun(runId);
+        return { state: this.toRemote(await this.requirePipelines().act('skipStep', runId, null)) };
+      },
+      'runs.stop': async ({ runId }) => {
+        this.checkRun(runId);
+        return { state: this.toRemote(await this.requirePipelines().act('stop', runId, null)) };
+      },
+      'runs.archive': async ({ runId, archived }) => {
+        // As for a session: an archived run row leaves the list, and the phone that archived it may take that back.
+        const undo = !archived && Date.now() - (this.archivedFromPhone.get(runId) ?? -Infinity) < UNDO_ARCHIVE_MS;
+        if (!undo) this.checkRun(runId);
+        await this.requirePipelines().archive(runId, archived);
+        if (archived) this.archivedFromPhone.set(runId, Date.now());
+        else this.archivedFromPhone.delete(runId);
+        this.sessionsChanged();
+        return {};
+      },
+      'runs.pushPreview': async ({ runId, fresh }) => {
+        this.checkRun(runId);
+        return { preview: await this.requirePipelines().pushPreview(runId, fresh) };
+      },
+      'runs.write': async ({ runId, text }) => {
+        const state = this.checkRun(runId);
+        if (state.run.parentSessionId) throw new RpcError('INVALID', 'This run has a session already');
+        const written = await this.requirePipelines().write(runId, defuseStubs(text));
+        this.options.onFromDevice?.({ sessionId: written.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
+        this.sessionsChanged();
+        return written;
       },
       'projects.clonePlan': ({ url, name }) => this.options.clonePlan(url, name),
       'projects.clone': async ({ jobId, url, name }, phone) => {
