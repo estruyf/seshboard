@@ -5,6 +5,8 @@ import { useBackup } from '../../state/backupStore.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { useClaudeUpdate } from '../../state/claudeUpdateStore.ts';
+import { useFilePreview } from '../../state/filePreviewStore.ts';
+import { useLastWritten } from '../../state/lastWrittenStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued, useLater } from '../../state/laterStore.ts';
 import { useReadMode } from '../../state/readModeStore.ts';
@@ -153,6 +155,10 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     copyLastReply: () => {
       const reply = usePaletteBus.getState().digest?.lastReply;
       if (reply) void navigator.clipboard.writeText(reply).catch(failed('copy the reply'));
+    },
+    previewLastFile: () => {
+      const path = useLastWritten.getState().paths.get(sessionId);
+      if (path) useFilePreview.getState().open(path, { sessionId });
     },
     // After the palette's own close, which gives focus back to where it was, so reading mode's focus on open stays.
     readLastReply: () => void setTimeout(() => useReadMode.getState().openLast(sessionId)),

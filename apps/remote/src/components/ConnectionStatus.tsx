@@ -193,7 +193,7 @@ export function UnpairedBanner({ state, computer, onForget }: { state: Connectio
         <p className="text-ui font-semibold text-text">Pair again with {computer || 'your computer'}</p>
         <p className="text-meta text-muted">{state.message}</p>
       </div>
-      <Button variant="quiet" size="md" onClick={onForget} className="text-error!">
+      <Button variant="danger" size="md" onClick={onForget}>
         Forget
       </Button>
     </div>

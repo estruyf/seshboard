@@ -14,6 +14,7 @@ import { useTriggers } from '../../state/triggersStore.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { pipelinesFor } from '../../state/pipelines.ts';
 import { listedSchedules } from '../../state/upcoming.ts';
+import { useLastWritten } from '../../state/lastWrittenStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
@@ -122,6 +123,7 @@ export function usePaletteContext(): PaletteContext {
   const boxes = useComposerTargets((s) => s.boxes);
   const editors = useHosts((s) => s.editors);
   const computers = useComputers((s) => s.status?.computers);
+  const lastWritten = useLastWritten((s) => s.paths);
 
   const pageRoot = useProjectPage((s) => s.root);
   const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
@@ -219,6 +221,7 @@ export function usePaletteContext(): PaletteContext {
     prompts: composer ? savedPrompts.map((p) => ({ id: p.id, name: p.name, scope: p.scope })) : [],
     canContinueInVSCode: editors.some((e) => e.id === 'vscode'),
     cloneEnabled,
+    lastPreviewableFile: id ? (lastWritten.get(id) ?? null) : null,
     computers: (computers ?? []).filter((c) => c.state === 'connected').map((c) => ({ id: c.id, name: c.name })),
   };
 }

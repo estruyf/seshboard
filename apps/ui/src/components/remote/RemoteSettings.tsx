@@ -11,7 +11,7 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { useRemote } from '../../state/remoteStore.ts';
 import { useFlash } from '../ui/useFlash.ts';
 import { LinkDialog, PairDialog } from './PairDialog.tsx';
-import { ConfirmStrip, ConnectedNow, dangerQuiet, ListRow, RenameField } from './RemoteRows.tsx';
+import { ConfirmStrip, ConnectedNow, ListRow, RenameField } from './RemoteRows.tsx';
 import { addressCanChange, connectionLine, remoteStatusView, type StatusAction, type StatusTone, type StatusView } from './remoteStatusView.ts';
 import { remoteAge, TUNNELS } from './remoteText.ts';
 
@@ -310,8 +310,7 @@ function Devices({ status, client, onPair, onError }: { status: RemoteStatus; cl
                     <Button
                       ref={(el) => void revokeButtons.current.set(device.id, el)}
                       size="sm"
-                      variant="quiet"
-                      className={dangerQuiet}
+                      variant="danger"
                       aria-expanded={revoking === device.id}
                       onClick={() => setRevoking(device.id)}
                       data-remote-revoke

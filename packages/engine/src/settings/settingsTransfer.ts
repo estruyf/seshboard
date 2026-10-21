@@ -57,7 +57,10 @@ export const CHOICE_KEYS: Record<string, string> = {
   [PERSONAL_DIR_KEY]: 'Personal memory folder',
 };
 
-const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
+/** Internal bookkeeping that has no label and no line in an import: sanitizing never returns it, the default carries it. */
+type InternalPreference = 'fileLinkClickRevision';
+
+const PREFERENCE_LABELS: Record<Exclude<keyof Preferences, InternalPreference>, string> = {
   colorScheme: 'Appearance',
   sidebarStyle: 'Sidebar style',
   sidebarCollapsed: 'When the sidebar is collapsed',
@@ -359,6 +362,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
     const current: Preferences = { ...DEFAULT_PREFERENCES, ...sanitizePreferences(options.preferences) };
     const incoming = sanitizePreferences(file.preferences);
     for (const key of Object.keys(incoming) as Array<keyof Preferences>) {
+      if (key === 'fileLinkClickRevision') continue;
       const value = incoming[key];
       if (same(current[key], value)) unchanged++;
       // A preference still at its default counts as never set: Merge fills it in.

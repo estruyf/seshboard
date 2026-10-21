@@ -1,6 +1,6 @@
 import { isKeptUnread, releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -8,6 +8,7 @@ import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/find
 import { basename, shortAge, tildify } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
+import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenStore.ts';
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
@@ -99,6 +100,10 @@ import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
 import { AgentsPanel } from '../agents/AgentsPanel.tsx';
+import { FilePreviewPanel } from '../filePreview/FilePreviewPanel.tsx';
+import { PreviewOpenerContext, type OpenPreview } from '../filePreview/previewOpener.ts';
+import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.ts';
+import { agentsToggleStep } from '../../state/agentsPanel.ts';
 import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
@@ -502,6 +507,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const { commands: backgroundCommands, running: commandsRunning } = useCommandRuns(items, live !== null, activeHost?.backgroundTasks ?? null);
   const commandsState = useSessionCommands(sessionId);
   const showCommands = commandsState.open;
+  // And a file opened from a link in this session, unless the preview was detached to a dialog.
+  const previewTarget = useSessionPreview(sessionId);
+  const showPreview = previewTarget !== null;
+  const openPreviewHere = useCallback<OpenPreview>((path, line, endLine) => useFilePreview.getState().open(path, { sessionId, line, endLine }), [sessionId]);
   // The terminal docks below or on the right. On the right it is a tab like the others, so opening Changes, Ask,
   // Agents or Commands next to it keeps it there. Maximized, it takes the whole view: the conversation (and the other panels) stay
   // mounted but hidden. Each pane shows its own session's terminal, so with two panes both can have one.
@@ -523,7 +532,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     () => (sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
     [sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
   );
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, preview: showPreview, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
@@ -531,15 +540,22 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const askFront = right.tabs && ask.open ? right.tab === 'ask' : undefined;
   const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
   const commandsFront = right.tabs && showCommands ? right.tab === 'commands' : undefined;
+  const previewFront = right.tabs && showPreview ? right.tab === 'preview' : undefined;
   const terminalFront = right.tabs && terminalOnRight ? right.tab === 'terminal' : undefined;
   const panesOpen = modPanes.length > 0;
   // A pop-out can be narrower than a panel and a usable conversation together: then the panel takes the whole view,
   // and the header's buttons (or the panel's ×) bring the conversation back.
   const narrowPanel = inPopout && (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_POPOUT_PANEL;
-  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || terminalOnRight || panesOpen);
-  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || terminalOnRight || panesOpen);
-  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || terminalOnRight || panesOpen);
-  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || terminalOnRight || panesOpen);
+  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showPreview || terminalOnRight || panesOpen);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showPreview || terminalOnRight || panesOpen);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showPreview || terminalOnRight || panesOpen);
+  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showPreview || terminalOnRight || panesOpen);
+  // The header's Preview button, there only while a file is open: to the front, or closed.
+  const togglePreviewHere = () => {
+    const step = agentsToggleStep(showPreview, right.tab === 'preview', right.open.length > 1);
+    if (step === 'close') useFilePreview.getState().closePanel(sessionId);
+    else useRightPanel.getState().setTab(sessionId, 'preview');
+  };
   // Picking a mod's tab tells Claude Code which pane is shown.
   const pickRightTab = (tab: RightTab) => {
     useRightPanel.getState().setTab(sessionId, tab);
@@ -1147,6 +1163,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     usePaletteBus.setState({ digest: { sessionId, prompts, lastUuid: before, lastReply } });
   }, [active, items, sessionId]);
   useEffect(() => () => usePaletteBus.setState((s) => (s.digest?.sessionId === sessionId ? { digest: null } : {})), [sessionId]);
+  // The palette's Preview last written file: the previewable file Claude wrote last in this session.
+  useEffect(() => useLastWritten.getState().set(sessionId, lastPreviewableWrite(items, cwd, home)), [items, sessionId, cwd, home]);
+  useEffect(() => () => useLastWritten.getState().set(sessionId, null), [sessionId]);
   // Ask about this session: its threads are read once per session, so the panel opens on them at once.
   useEffect(() => {
     if (client) void loadAskThreads(client, sessionId).catch(() => {});
@@ -1373,14 +1392,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             )}
           </div>
         </div>
-        {/* Changes | Ask | Agents | Commands | Terminal: the side panels as one compact, icon-only segmented control. */}
+        {/* Changes | Ask | Agents | Commands | Preview | Terminal: the side panels as one compact, icon-only segmented control. */}
         <SegmentedControl
           mode="toggle"
           label="Panels"
           className="no-drag"
           data-panel-toggles
-          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
-          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : panel === 'commands' ? toggleCommandsHere() : toggleTerminalPanel(sessionId))}
+          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(showPreview ? ['preview' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
+          onToggle={(panel) =>
+            panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : panel === 'commands' ? toggleCommandsHere() : panel === 'preview' ? togglePreviewHere() : toggleTerminalPanel(sessionId)
+          }
           segments={[
             ...(cwd && isRepo
               ? [
@@ -1445,6 +1466,22 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     front: commandsFront,
                     expanded: showCommands && commandsFront !== false,
                     data: { 'data-toggle-commands': true },
+                  },
+                ]
+              : []),
+            // Only while a file is open in the side panel: a link opens it, the button brings it back to the front or closes it.
+            ...(previewTarget
+              ? [
+                  {
+                    value: 'preview' as const,
+                    label: 'Preview',
+                    icon: <Eye size={14} aria-hidden />,
+                    iconOnly: true,
+                    tooltip: previewFront === false ? `Bring the preview of ${basename(previewTarget.path)} to the front` : `Close the preview of ${basename(previewTarget.path)}`,
+                    ariaLabel: previewFront === false ? `Bring the preview of ${basename(previewTarget.path)} to the front` : `Close the preview of ${basename(previewTarget.path)}`,
+                    front: previewFront,
+                    expanded: previewFront !== false,
+                    data: { 'data-toggle-preview': true },
                   },
                 ]
               : []),
@@ -1590,6 +1627,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <PromptExpansionContext.Provider value={promptExpansion}>
           <MessageMenuContext.Provider value={remember.openMenu}>
           <FileLinksProvider cwd={cwd}>
+          <PreviewOpenerContext.Provider value={openPreviewHere}>
           <TurnMetaContext.Provider value={turnMeta}>
             {/* The conversation, and the prompt outline beside it in the gutter (outside the scroll, so it stays put). */}
             <div className={`relative min-h-0 flex-1 flex-col ${terminalMaximized ? 'hidden' : 'flex'}`} data-transcript-area>
@@ -1700,6 +1738,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             </div>
             {readReplyNow && createPortal(<ReadMode sessionId={sessionId} title={title} live={live} cwd={cwd} reply={readReplyNow} />, document.body)}
           </TurnMetaContext.Provider>
+          </PreviewOpenerContext.Provider>
           </FileLinksProvider>
           </MessageMenuContext.Provider>
           </PromptExpansionContext.Provider>
@@ -2046,6 +2085,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             tabs={right.tabs ? rightTabs : undefined}
             onClose={() => closeCommands(sessionId)}
           />
+        )}
+        {!whyRequest && right.tab === 'preview' && previewTarget && !terminalMaximized && (
+          <PreviewOpenerContext.Provider value={openPreviewHere}>
+            <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={rightWidth} onWidth={setRightWidth} tabs={right.tabs ? rightTabs : undefined} />
+          </PreviewOpenerContext.Provider>
         )}
       </div>
     </div>

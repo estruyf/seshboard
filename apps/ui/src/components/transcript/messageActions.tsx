@@ -86,11 +86,11 @@ const REVEAL = 'pointer-events-none opacity-0 group-hover/message:pointer-events
 
 /**
  * The same for the row under a reply (`group/reply-row`: the actions, then the turn's line), so its parts show together:
- * while the reply is hovered, while anything in the row has focus, and while the tokens' tooltip is open (it sits
+ * while the reply is hovered, while anything in the row has keyboard focus (not a click's, which stays on the button after reading mode closes), and while the tokens' tooltip is open (it sits
  * outside the reply, so the pointer can rest on it).
  */
 export const REVEAL_IN_REPLY_ROW =
-  'pointer-events-none opacity-0 group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-focus-within/reply-row:pointer-events-auto group-focus-within/reply-row:opacity-100 group-has-[[data-turn-tokens][aria-expanded=true]]/reply-row:pointer-events-auto group-has-[[data-turn-tokens][aria-expanded=true]]/reply-row:opacity-100';
+  'pointer-events-none opacity-0 group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-has-[:focus-visible]/reply-row:pointer-events-auto group-has-[:focus-visible]/reply-row:opacity-100 group-has-[[data-turn-tokens][aria-expanded=true]]/reply-row:pointer-events-auto group-has-[[data-turn-tokens][aria-expanded=true]]/reply-row:opacity-100';
 
 /**
  * Small toolbar that appears when you hover a message. It's invisible rather than removed the

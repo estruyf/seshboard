@@ -23,7 +23,7 @@ function setup(onChange?: (state: ThemeState) => void) {
   return { root, dir, store };
 }
 
-const paper = { name: 'Paper', author: 'Someone', version: 1, light: { canvas: '#fdf6e3', accent: '#b58900' }, dark: { canvas: '#002b36', accent: '#b58900' } };
+const sepia = { name: 'Sepia', author: 'Someone', version: 1, light: { canvas: '#fdf6e3', accent: '#b58900' }, dark: { canvas: '#002b36', accent: '#b58900' } };
 // File events can be slow while the whole suite runs, so the watcher tests wait generously.
 const waitFor = async (check: () => boolean, ms = 8_000) => {
   const start = Date.now();
@@ -36,20 +36,20 @@ const waitFor = async (check: () => boolean, ms = 8_000) => {
 describe('ThemeStore', () => {
   it('lists the built-ins first, in order', () => {
     const { store } = setup();
-    expect(store.state().themes.map((t) => t.id)).toEqual(['demo-time', 'catppuccin', 'claude', 'nord', 'solarized', 'the-unnamed']);
+    expect(store.state().themes.map((t) => t.id)).toEqual(['demo-time', 'catppuccin', 'nord', 'solarized', 'graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon']);
     expect(store.state().themes.every((t) => t.builtIn && t.path === null)).toBe(true);
   });
 
   it('adds a theme as a file, and keeps both or replaces on a clash', () => {
     const { dir, store } = setup();
-    expect(store.add(paper, 'add')).toBe('paper');
-    const saved = JSON.parse(readFileSync(join(dir, 'paper.json'), 'utf8'));
+    expect(store.add(sepia, 'add')).toBe('sepia');
+    const saved = JSON.parse(readFileSync(join(dir, 'sepia.json'), 'utf8'));
     expect(saved.$schema).toMatch(/switchboard-theme\.schema\.json$/);
-    expect(saved.name).toBe('Paper');
-    expect(store.add({ ...paper, author: 'Copy' }, 'keep-both')).toBe('paper-2');
-    expect(store.get('paper-2')?.file.name).toBe('Paper 2');
-    expect(store.add({ ...paper, dark: { canvas: '#000000' } }, 'replace')).toBe('paper');
-    expect(store.get('paper')?.file.dark).toEqual({ canvas: '#000000' });
+    expect(saved.name).toBe('Sepia');
+    expect(store.add({ ...sepia, author: 'Copy' }, 'keep-both')).toBe('sepia-2');
+    expect(store.get('sepia-2')?.file.name).toBe('Sepia 2');
+    expect(store.add({ ...sepia, dark: { canvas: '#000000' } }, 'replace')).toBe('sepia');
+    expect(store.get('sepia')?.file.dark).toEqual({ canvas: '#000000' });
     // A built-in's name is never replaced: the import gets the next free one.
     expect(store.add({ name: 'Solarized', version: 1, dark: {} }, 'replace')).toBe('solarized-2');
     expect(store.get('solarized-2')?.file.name).toBe('Solarized 2');
@@ -68,7 +68,7 @@ describe('ThemeStore', () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'frost.json'), JSON.stringify({ name: 'Frost', version: 1, dark: { canvas: '#2e3440', accent: '#88c0d0' } }));
     writeFileSync(join(dir, 'broken.json'), '{ "name": "Broken", "version": 1, "dark": { "colors": { "bg": "var(--x)" } } }');
-    writeFileSync(join(dir, 'Not An Id.json'), JSON.stringify(paper));
+    writeFileSync(join(dir, 'Not An Id.json'), JSON.stringify(sepia));
     const store = new ThemeStore(dir, BUILT_IN_THEMES);
     stores.push(store);
     expect(store.state().themes.filter((t) => !t.builtIn).map((t) => t.id)).toEqual(['frost']);
@@ -77,22 +77,22 @@ describe('ThemeStore', () => {
   it('reloads an edited file, and keeps the last good version when an edit is broken', async () => {
     const changes: ThemeState[] = [];
     const { dir, store } = setup((state) => changes.push(state));
-    store.add(paper, 'add');
+    store.add(sepia, 'add');
     store.watch();
     // FSEvents needs a moment before it reports changes to a folder it just started watching.
     await new Promise((r) => setTimeout(r, 200));
-    const file = join(dir, 'paper.json');
-    writeFileSync(file, JSON.stringify({ ...paper, dark: { canvas: '#111111', accent: '#b58900' } }));
-    await waitFor(() => store.get('paper')?.file.dark?.canvas === '#111111');
-    writeFileSync(file, JSON.stringify({ ...paper, dark: { canvas: 'url(evil)' } }));
-    await waitFor(() => store.state().problems.paper !== undefined);
-    expect(store.state().problems.paper).toMatch(/^dark\.canvas uses url/);
-    expect(store.get('paper')?.file.dark?.canvas).toBe('#111111');
-    writeFileSync(file, JSON.stringify(paper));
-    await waitFor(() => store.state().problems.paper === undefined);
-    expect(store.get('paper')?.file.dark?.canvas).toBe('#002b36');
+    const file = join(dir, 'sepia.json');
+    writeFileSync(file, JSON.stringify({ ...sepia, dark: { canvas: '#111111', accent: '#b58900' } }));
+    await waitFor(() => store.get('sepia')?.file.dark?.canvas === '#111111');
+    writeFileSync(file, JSON.stringify({ ...sepia, dark: { canvas: 'url(evil)' } }));
+    await waitFor(() => store.state().problems.sepia !== undefined);
+    expect(store.state().problems.sepia).toMatch(/^dark\.canvas uses url/);
+    expect(store.get('sepia')?.file.dark?.canvas).toBe('#111111');
+    writeFileSync(file, JSON.stringify(sepia));
+    await waitFor(() => store.state().problems.sepia === undefined);
+    expect(store.get('sepia')?.file.dark?.canvas).toBe('#002b36');
     rmSync(file);
-    await waitFor(() => store.get('paper') === undefined);
+    await waitFor(() => store.get('sepia') === undefined);
     expect(changes.length).toBeGreaterThan(3);
   }, 30_000);
 
@@ -116,10 +116,10 @@ describe('ThemeStore', () => {
 
   it('only lets imported theme files go to the Trash', () => {
     const { dir, store } = setup();
-    store.add(paper, 'add');
-    expect(isTrashableThemeFile(join(dir, 'paper.json'), dir)).toBe(true);
+    store.add(sepia, 'add');
+    expect(isTrashableThemeFile(join(dir, 'sepia.json'), dir)).toBe(true);
     expect(isTrashableThemeFile(dir, dir)).toBe(false);
-    expect(isTrashableThemeFile(`${dir}/../themes/paper.json`, dir)).toBe(false);
+    expect(isTrashableThemeFile(`${dir}/../themes/sepia.json`, dir)).toBe(false);
     expect(isTrashableThemeFile(join(dir, 'missing.json'), dir)).toBe(false);
     expect(isTrashableThemeFile(join(dir, '..', 'preferences.json'), dir)).toBe(false);
   });

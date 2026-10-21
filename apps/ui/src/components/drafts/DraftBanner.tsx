@@ -12,7 +12,7 @@ export function DraftBanner({ text, onDiscard, className = '' }: { text: string;
       inline
       icon={<PencilLine size={12} className="text-faint" aria-hidden />}
       actions={
-        <Button variant="quiet" size="sm" onClick={onDiscard} className="-my-1 ml-auto shrink-0" data-draft-discard>
+        <Button variant="danger" size="sm" onClick={onDiscard} className="-my-1 ml-auto shrink-0" data-draft-discard>
           Discard
         </Button>
       }

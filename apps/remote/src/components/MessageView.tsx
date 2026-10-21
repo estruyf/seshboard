@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ChevronRight, CircleDot, GitPullRequest, Link2 } from 'lucide-react';
+import { Check, ChevronRight, CircleDot, Copy, GitPullRequest, Link2 } from 'lucide-react';
 import { parseBriefs, parseGithubBlocks, withoutContext, type RemoteMessage } from '@switchboard/protocol/remote-client';
 import { runSummary, type TranscriptItem } from '../lib/steps.ts';
 import { editLines, toolSummary, type resultsByCall } from '../lib/transcript.ts';
 import { Markdown } from './Markdown.tsx';
+import { toast } from './Toasts.tsx';
 
 /**
  * One item of the conversation. Your messages are cards; Claude's text (markdown, drawn as React elements, never HTML)
@@ -17,7 +18,12 @@ export function ItemView({ item, results, live }: { item: TranscriptItem; result
     case 'notice':
       return <p className="text-center text-meta break-words whitespace-pre-wrap text-muted">{item.text}</p>;
     case 'text':
-      return <Markdown text={item.text} />;
+      return (
+        <div className="flex flex-col gap-1">
+          <Markdown text={item.text} />
+          {!live && item.text && <CopyReply text={item.text} />}
+        </div>
+      );
     case 'thinking':
       return <Collapsible label="Thinking" body={item.text} tone="text-faint italic" />;
     case 'image':
@@ -29,6 +35,26 @@ export function ItemView({ item, results, live }: { item: TranscriptItem; result
         <Run steps={item.steps} results={results} live={live} />
       );
   }
+}
+
+/** Copies Claude's reply as Markdown. There is no hover on a phone, so the button is always there, quiet. */
+function CopyReply({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1_500);
+    } catch {
+      toast("Couldn't copy", { tone: 'error' });
+    }
+  };
+  return (
+    <button type="button" onClick={() => void copy()} aria-label={copied ? 'Copied' : 'Copy as Markdown'} className="-ml-1.5 flex min-h-8 w-fit items-center gap-1 rounded-md px-1.5 text-meta text-faint hover:bg-border/50 hover:text-text pointer-fine:min-h-6" data-remote-copy-reply>
+      {copied ? <Check className="size-3.5 text-ok" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
 }
 
 function UserMessage({ message }: { message: RemoteMessage }) {

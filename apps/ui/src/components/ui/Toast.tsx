@@ -19,6 +19,7 @@ function ToastCard({ toast }: { toast: Toast }) {
       {toast.icon === 'shared' && <Users size={14} className="shrink-0 text-link" aria-hidden />}
       {toast.dot && <span className="size-2 shrink-0 rounded-full" style={{ background: toast.dot }} aria-hidden />}
       {toast.tone === 'ok' && <span className="size-2 shrink-0 rounded-full bg-ok" aria-hidden />}
+      {toast.tone === 'error' && <span className="size-2 shrink-0 rounded-full bg-error" aria-hidden />}
     </>
   );
   const card = !!toast.body || !!toast.actions?.length;

@@ -186,9 +186,9 @@ export function formToSave(form: TriggerForm): TriggerSave {
     maxAtOnce: form.workspace === 'current' ? 1 : clamp(form.maxAtOnce, TRIGGER_LIMITS.atOnce),
     maxWaiting: clamp(form.maxWaiting, TRIGGER_LIMITS.waiting),
     intervalMinutes: clamp(form.intervalMinutes, TRIGGER_LIMITS.interval),
-    // State labels and Assign to me are for issues only.
+    // State labels are for issues only; Assign to me for a label alone, since with an assignee every issue has one.
     stateLabels: ci ? { ...form.stateLabels, on: false } : form.stateLabels,
-    assignOnPickUp: ci ? false : form.assignOnPickUp,
+    assignOnPickUp: !ci && form.which === 'label' && form.assignOnPickUp,
     paused: form.paused,
   };
 }

@@ -106,6 +106,7 @@ export class TriggerStore {
       setPaused: db.prepare('UPDATE triggers SET paused = ?, paused_reason = ?, failures = ?, last_error = ?, blocked_until = NULL, seeded_at = ?, seen_json = ?, updated_at = ? WHERE id = ?'),
       checked: db.prepare('UPDATE triggers SET last_checked_at = ?, failures = 0, last_error = NULL, blocked_until = NULL, seen_json = ?, seeded_at = COALESCE(seeded_at, ?) WHERE id = ?'),
       failed: db.prepare('UPDATE triggers SET last_checked_at = ?, failures = failures + 1, last_error = ?, blocked_until = ? WHERE id = ?'),
+      setSeen: db.prepare('UPDATE triggers SET seen_json = ? WHERE id = ?'),
       blocked: db.prepare('UPDATE triggers SET last_checked_at = ?, last_error = ?, blocked_until = ? WHERE id = ?'),
       remove: db.prepare('DELETE FROM triggers WHERE id = ?'),
       removeEvents: db.prepare('DELETE FROM trigger_events WHERE trigger_id = ?'),
@@ -155,7 +156,13 @@ export class TriggerStore {
     const row = this.statements.one.get(id) as unknown as Row | undefined;
     const value = row?.seen_json ? safeJson(row.seen_json) : null;
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-    return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, 'match' | 'held'] => entry[1] === 'match' || entry[1] === 'held'));
+    return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, SeenState[string]] => entry[1] === 'match' || entry[1] === 'held' || entry[1] === 'released'));
+  }
+
+  /** Marks one key of what the trigger saw, without a check (a state label Switchboard took off). */
+  setSeen(id: string, key: string, state: SeenState[string]): void {
+    if (!this.get(id)) return;
+    this.statements.setSeen.run(JSON.stringify({ ...this.seen(id), [key]: state }), id);
   }
 
   /**

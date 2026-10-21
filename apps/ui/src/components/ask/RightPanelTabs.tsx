@@ -3,11 +3,11 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import { CountBadge } from '../ui/Pill.tsx';
 import { paneOfTab, type PanelTab, type RightTab } from './askWidth.ts';
 
-const LABELS: Record<PanelTab, string> = { changes: 'Changes', ask: 'Ask', agents: 'Agents', commands: 'Commands', terminal: 'Terminal' };
+const LABELS: Record<PanelTab, string> = { changes: 'Changes', ask: 'Ask', agents: 'Agents', commands: 'Commands', preview: 'Preview', terminal: 'Terminal' };
 
 /**
- * The top of the right side while two or more panels are open (Changes, Ask, Agents, Commands, a terminal docked right): a tab
- * for each, with its count (changed files, the questions in the thread on screen, agents, commands or terminals running), and the
+ * The top of the right side while two or more panels are open (Changes, Ask, Agents, Commands, a file preview, a terminal docked right): a tab
+ * for each, with its count when there is one (changed files, the questions in the thread on screen, agents, commands or terminals running), and the
  * front panel's buttons on the right.
  * ← → move between the tabs.
  */
@@ -56,7 +56,8 @@ export function RightPanelTabs({
             >
               {pane !== null && <Puzzle size={12} className="shrink-0" aria-hidden />}
               {pane !== null ? (titles[pane] ?? pane) : LABELS[id as PanelTab]}
-              <CountBadge count={counts[id] ?? 0} />
+              {/* Only something to count: a tab without one (a preview, a mod's pane) or with nothing running says nothing. */}
+              {(counts[id] ?? 0) > 0 && <CountBadge count={counts[id]!} />}
             </button>
           );
         })}

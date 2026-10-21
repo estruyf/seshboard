@@ -41,6 +41,8 @@ The first version listened on the local network. A page served from an HTTPS sit
 
 `npm run dev:remote` serves the remote app at `http://localhost:5199/remote/`. Start the desktop app with `SWITCHBOARD_REMOTE_APP_URL=http://localhost:5199/remote/` and the engine accepts that origin and links straight to `http://127.0.0.1:<port>`, without a tunnel (`localhost` is a secure context, and `ws://` to the same computer isn't mixed content).
 
+The website's preview (Cloudflare Pages, built from `dev`) serves the remote app at `REMOTE_PREVIEW_APP_URL` (`https://switch-dev.struyfconsulting.com/remote/`). Development builds (`npm run dev`) and beta builds (`-beta.` versions) also accept sockets from its origin (`--remote-preview`, `remoteAppOrigins`), so the next remote app can be tried with a real tunnel: open the preview on the phone and paste the pairing link (it still points at the production app; only the part after `#` is used). A release accepts only the production origin, so code that is only on `dev` can't reach anyone's computer. The preview has an origin of its own, so a phone pairs there apart from the production app.
+
 Without the desktop app, `node --experimental-transform-types scripts/remote-demo.ts` runs the real Remote hub against made-up sessions, prompts, a catch-up and changes, on port 47699, and allows every pairing by itself. It prints a pairing link for `npm run dev:remote`; a browser paired once stays paired across runs. It pushes for real, through the browser's push service.
 
 ## What we protect against

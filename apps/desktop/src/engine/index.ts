@@ -58,10 +58,19 @@ const engine = createEngine({
   // The VS Code companion connects over a socket; SWITCHBOARD_NO_COMPANION=1 leaves it closed.
   ...(process.env.SWITCHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion } }),
   // Remote, for a paired phone. SWITCHBOARD_REMOTE_APP_URL points it at a development build of the remote app
-  // (`npm run dev:remote`); SWITCHBOARD_NO_REMOTE=1 leaves it out.
+  // (`npm run dev:remote`); SWITCHBOARD_NO_REMOTE=1 leaves it out. --remote-preview (development and beta builds)
+  // also lets in the website preview's remote app.
   ...(process.env.SWITCHBOARD_NO_REMOTE === '1'
     ? {}
-    : { remote: { appVersion, identity: remoteKey('identity'), deviceKey: remoteKey('device'), ...(process.env.SWITCHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SWITCHBOARD_REMOTE_APP_URL } : {}) } }),
+    : {
+        remote: {
+          appVersion,
+          identity: remoteKey('identity'),
+          deviceKey: remoteKey('device'),
+          previewApp: process.argv.includes('--remote-preview'),
+          ...(process.env.SWITCHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SWITCHBOARD_REMOTE_APP_URL } : {}),
+        },
+      }),
   // The smoke test points the Claude Code check at a mock registry and must never run an update.
   claudeUpdates: { allowUpdate: process.env.SWITCHBOARD_NO_CLAUDE_UPDATE !== '1' },
   onLog: (entry) => console.error(`[engine] ${entry.level}: ${entry.message}`),

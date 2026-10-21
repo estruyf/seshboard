@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Trigger, TriggerSave, TriggerSource } from './triggerSchema.ts';
 import {
+  assignsOnPickUp,
   blockingStateLabel,
   effectiveMaxAtOnce,
   eventKey,
@@ -14,6 +15,7 @@ import {
   triggerDue,
   triggerProblem,
   triggerSessionTitle,
+  TRIGGER_RUNS_REMEMBERED,
   type CiRunItem,
   type IssueItem,
   type SlotEvent,
@@ -128,6 +130,17 @@ describe('newEvents', () => {
     expect(newEvents(mine, [issue(5, { labels: [] })], first.seen).events.map((e) => e.key)).toEqual(['#5']);
   });
 
+  it("doesn't start an issue whose state label Switchboard took off, while it stays in the answer", () => {
+    const mine = trigger({ kind: 'issues', assignee: '@me' }, { stateLabels: { on: true } });
+    // A read from before still shows the label: it stays released.
+    const stale = newEvents(mine, [issue(5, { labels: [{ name: 'switchboard: working' }] })], { '#5': 'released' });
+    expect(stale).toMatchObject({ events: [], skipped: [], seen: { '#5': 'released' } });
+    const off = newEvents(mine, [issue(5, { labels: [] })], stale.seen);
+    expect(off).toMatchObject({ events: [], skipped: [], seen: { '#5': 'match' } });
+    // Gone from the answer and back: new.
+    expect(newEvents(mine, [issue(5, { labels: [] })], newEvents(mine, [], off.seen).seen).events.map((e) => e.key)).toEqual(['#5']);
+  });
+
   it('starts again when the trigger label is added to an issue whose work ended', () => {
     const withLabels = trigger({ kind: 'issues', label: 'switchboard' }, { stateLabels: { on: true } });
     // Picked up: the label came off, so it left the answer.
@@ -152,6 +165,18 @@ describe('newEvents', () => {
     expect(found.skipped[0]?.reason).toBe('already assigned to @mara-k');
   });
 
+  it("doesn't skip assigned issues when the filter has an assignee", () => {
+    // Every issue of an assignee filter has one: Assign to me only applies to a label alone.
+    for (const source of [{ kind: 'issues', assignee: '@me' }, { kind: 'issues', label: 'switchboard', assignee: '@me' }]) {
+      const assigning = trigger(source, { assignOnPickUp: true });
+      expect(assignsOnPickUp(assigning)).toBe(false);
+      const found = newEvents(assigning, [issue(1, { assignees: [{ login: 'estruyf' }] })], {});
+      expect(found.events.map((e) => e.key)).toEqual(['#1']);
+      expect(found.skipped).toEqual([]);
+    }
+    expect(assignsOnPickUp(trigger({ kind: 'issues', label: 'switchboard' }, { assignOnPickUp: true }))).toBe(true);
+  });
+
   it('makes one event of a failed workflow on a commit, and a new one for a new commit', () => {
     const ci = trigger({ kind: 'ci', branch: 'main' });
     const first = newEvents(ci, [run(2, 'test', 'aaa'), run(1, 'test', 'aaa')], {}, 'main');
@@ -160,6 +185,25 @@ describe('newEvents', () => {
     expect(newEvents(ci, [run(3, 'test', 'aaa'), run(2, 'test', 'aaa')], first.seen, 'main').events).toEqual([]);
     expect(newEvents(ci, [run(4, 'test', 'bbb'), run(2, 'test', 'aaa')], first.seen, 'main').events.map((e) => e.key)).toEqual(['test@bbb']);
     expect(triggerSessionTitle(first.events[0]!)).toBe('Fix test on main');
+  });
+
+  it("doesn't start a re-run that fails again on the same commit", () => {
+    const ci = trigger({ kind: 'ci', branch: 'main' });
+    const first = newEvents(ci, [run(1, 'test', 'aaa')], {}, 'main');
+    // Re-running: it isn't a failure for now, so it leaves the answer.
+    const rerunning = newEvents(ci, [], first.seen, 'main');
+    expect(rerunning.seen).toEqual({ 'test@aaa': 'match' });
+    // Failed again: the same event, already seen.
+    expect(newEvents(ci, [run(1, 'test', 'aaa')], rerunning.seen, 'main').events).toEqual([]);
+  });
+
+  it('remembers a bounded number of failed runs, the latest answer first', () => {
+    const ci = trigger({ kind: 'ci', branch: 'main' });
+    const old = Object.fromEntries(Array.from({ length: TRIGGER_RUNS_REMEMBERED }, (_, i) => [`test@old${i}`, 'match' as const]));
+    const found = newEvents(ci, [run(1, 'test', 'new')], old, 'main');
+    expect(Object.keys(found.seen)).toHaveLength(TRIGGER_RUNS_REMEMBERED);
+    expect(Object.keys(found.seen)[0]).toBe('test@new');
+    expect(found.seen[`test@old${TRIGGER_RUNS_REMEMBERED - 1}`]).toBeUndefined();
   });
 });
 
@@ -210,6 +254,7 @@ describe('state labels', () => {
     expect(stateLabelEdit(212, 'switchboard: pr open', 'switchboard: working')).toEqual(['issue', 'edit', '212', '--add-label', 'switchboard: pr open', '--remove-label', 'switchboard: working']);
     expect(stateLabelEdit(212, 'switchboard: working', 'switchboard: working')).toBeNull();
     expect(stateLabelEdit(212, null, null, { assign: true })).toEqual(['issue', 'edit', '212', '--add-assignee', '@me']);
+    expect(stateLabelEdit(212, null, 'switchboard: working')).toEqual(['issue', 'edit', '212', '--remove-label', 'switchboard: working']);
   });
 });
 

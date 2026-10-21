@@ -348,12 +348,15 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                   </div>
                 )}
               </div>
-              <Checkbox checked={form.assignOnPickUp} onChange={(assignOnPickUp) => update({ assignOnPickUp })} dataAttrs={{ 'data-trigger-assign': true }}>
-                <span className="grid gap-0.5">
-                  <span className="text-ui text-text">Assign to me when picked up</span>
-                  <span className="text-meta text-muted">Skips issues that already have an assignee.</span>
-                </span>
-              </Checkbox>
+              {/* With an assignee in the filter every issue has one already: Assign to me would skip them all. */}
+              {form.which === 'label' && (
+                <Checkbox checked={form.assignOnPickUp} onChange={(assignOnPickUp) => update({ assignOnPickUp })} dataAttrs={{ 'data-trigger-assign': true }}>
+                  <span className="grid gap-0.5">
+                    <span className="text-ui text-text">Assign to me when picked up</span>
+                    <span className="text-meta text-muted">Skips issues that already have an assignee.</span>
+                  </span>
+                </Checkbox>
+              )}
             </div>
           </section>
         )}

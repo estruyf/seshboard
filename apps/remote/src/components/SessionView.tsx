@@ -739,7 +739,7 @@ function Composer({
           className="max-h-48 min-h-9 flex-1 resize-none bg-transparent py-2 text-body text-text outline-none [field-sizing:content] placeholder:text-faint pointer-fine:min-h-7 pointer-fine:py-1"
         />
         {working && (
-          <Button size="md" onClick={onStop} disabled={disabled} aria-label="Stop" title="Stop Claude" className="px-3!" data-remote-stop>
+          <Button variant="danger" size="md" onClick={onStop} disabled={disabled} aria-label="Stop" title="Stop Claude" className="px-3!" data-remote-stop>
             <Square className="size-3 fill-current" aria-hidden />
             <span className="hidden sm:inline">Stop</span>
           </Button>

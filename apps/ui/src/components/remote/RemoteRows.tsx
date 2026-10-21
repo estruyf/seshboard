@@ -32,9 +32,6 @@ export function ConnectedNow() {
   );
 }
 
-/** The quiet action that turns red on hover: Revoke, Remove. */
-export const dangerQuiet = 'hover:text-error';
-
 /**
  * Asks before a destructive action, in a strip under its row: the question, Cancel (focused) and the filled action.
  * Esc cancels. Focus goes back to `returnTo` (the row's button) when it closes. `boxed` is the narrow form, a framed

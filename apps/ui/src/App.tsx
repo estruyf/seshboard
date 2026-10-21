@@ -15,6 +15,7 @@ import { useDraftsSync } from './state/useDraftsSync.ts';
 import { useCompanionSync } from './state/useCompanionSync.ts';
 import { AddContextDialogHost } from './components/composer/AddContextDialog.tsx';
 import { CommandPalette } from './components/palette/CommandPalette.tsx';
+import { FilePreviewDialog } from './components/filePreview/FilePreviewDialog.tsx';
 import { PaletteDialogs } from './components/palette/PaletteDialogs.tsx';
 import { RunTreeDialogs } from './components/pipelines/RunTreeDialogs.tsx';
 import { ClaudeInstallDialog } from './components/updates/ClaudeInstallDialog.tsx';
@@ -286,6 +287,7 @@ export function App() {
       <SelectionMenu />
       <PaletteDialogs />
       <RunTreeDialogs />
+      <FilePreviewDialog />
       <TriggerEditorHost />
       <AddContextDialogHost />
       <UnsentList />

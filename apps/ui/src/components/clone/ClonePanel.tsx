@@ -138,7 +138,7 @@ export function ClonePanel({
                   <span role="status" className="min-w-0 flex-1 truncate text-muted">
                     {progressLine(job.progress ?? { phase: 'starting', percent: 0 })}
                   </span>
-                  <Button size="sm" onClick={job.cancel} data-clone-cancel>
+                  <Button variant="danger" size="sm" onClick={job.cancel} data-clone-cancel>
                     Cancel
                   </Button>
                 </>

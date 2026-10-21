@@ -21,7 +21,7 @@ describe('Ask panel width', () => {
 });
 
 describe('the right panel', () => {
-  const open = (changes: boolean, ask: boolean, agents = false, terminal = false, commands = false) => ({ changes, ask, agents, commands, terminal });
+  const open = (changes: boolean, ask: boolean, agents = false, terminal = false, commands = false, preview = false) => ({ changes, ask, agents, commands, preview, terminal });
 
   it('shows tabs only when more than one panel is open, on the tab picked last', () => {
     expect(rightPanel(open(true, true), 'ask')).toEqual({ tab: 'ask', tabs: true, open: ['changes', 'ask'] });
@@ -47,7 +47,13 @@ describe('the right panel', () => {
     expect(rightPanel(open(false, false, false, false, true), 'changes')).toEqual({ tab: 'commands', tabs: false, open: ['commands'] });
   });
 
+  it('puts a file preview after Commands and before the terminal', () => {
+    expect(rightPanel(open(true, false, false, true, true, true), 'preview')).toEqual({ tab: 'preview', tabs: true, open: ['changes', 'commands', 'preview', 'terminal'] });
+    expect(rightPanel(open(false, false, false, false, false, true), 'changes')).toEqual({ tab: 'preview', tabs: false, open: ['preview'] });
+  });
+
   it('reads a stored tab', () => {
+    expect(readTab('preview')).toBe('preview');
     expect(readTab('ask')).toBe('ask');
     expect(readTab('agents')).toBe('agents');
     expect(readTab('terminal')).toBe('terminal');

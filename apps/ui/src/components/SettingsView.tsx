@@ -305,7 +305,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               <span>
                 <span className="block text-ui">Clicking a file link</span>
                 <span className="block text-meta text-muted">
-                  What a click does on a file in Claude’s replies. {formatKeys(clickKeysFor('transcript.file-link-other'))} does the other, and right-click lists both.
+                  What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Switchboard, other files in {fileManagerName()}. {formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.
                 </span>
               </span>
               <Select<FileLinkClick>
@@ -313,6 +313,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 value={prefs.fileLinkClick}
                 onChange={(fileLinkClick) => update({ fileLinkClick })}
                 options={[
+                  { value: 'switchboard', label: 'Open in Switchboard' },
                   { value: 'file-manager', label: `Show in ${fileManagerName()}` },
                   { value: 'editor', label: 'Open in editor' },
                 ]}

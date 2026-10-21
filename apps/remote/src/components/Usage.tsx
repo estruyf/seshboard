@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react';
 import type { RemoteProfileUsage, UsageLimit } from '@switchboard/protocol/remote-client';
 import { PROFILE_DOT } from '../lib/options.ts';
 import type { ListedUsage } from '../lib/everywhere.ts';
-import { cardRows, compactProfiles, compactText, windowPercent } from '../lib/profiles.ts';
+import { cardRows, windowPercent } from '../lib/profiles.ts';
 import { countdown, LEVEL_FILL, LEVEL_TEXT, levelOf, limitName, onComputers, spokenLimit, usageMessage, visibleLimits, withUsage } from '../lib/usage.ts';
 import type { Client } from './Connected.tsx';
 import { connectionOf } from './connectionOf.ts';
@@ -184,31 +184,6 @@ function MiniBar({ label, percent }: { label: string; percent: number | null }) 
       <span aria-hidden className={`w-8 text-right text-meta font-semibold tabular-nums ${LEVEL_TEXT[level]}`}>
         {value}%
       </span>
-    </span>
-  );
-}
-
-/**
- * The drawer's Home row: each profile's dot, name and the highest of its limits in the level's colour ("● Work 82%
- * ● Personal 18%"), or the closest to a limit and "+2" from three profiles on. Nothing with one profile.
- */
-export function ProfileStrip({ usage }: { usage: RemoteProfileUsage[] | null }) {
-  const compact = compactProfiles(usage ?? []);
-  if (!compact.items.length) return null;
-  return (
-    <span className="flex min-w-0 items-center gap-3 text-meta" aria-label={compactText(compact)} data-remote-profile-strip>
-      {compact.items.map((item) => (
-        <span key={item.id} aria-hidden className="flex min-w-0 items-center gap-1">
-          <span className={`size-1.5 shrink-0 rounded-full ${PROFILE_DOT[item.color]}`} />
-          <span className="truncate text-muted">{item.name}</span>
-          {item.percent !== null && <span className={`font-semibold tabular-nums ${LEVEL_TEXT[item.level] || 'text-muted'}`}>{item.percent}%</span>}
-        </span>
-      ))}
-      {compact.more > 0 && (
-        <span aria-hidden className="shrink-0 text-faint">
-          +{compact.more}
-        </span>
-      )}
     </span>
   );
 }

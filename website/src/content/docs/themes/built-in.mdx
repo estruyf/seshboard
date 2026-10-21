@@ -9,7 +9,7 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-A theme sets the colours of Switchboard: the app, the code blocks and diffs, and the terminal, for light and dark mode. Switchboard comes with six themes, and you can [import your own](/themes/custom/).
+A theme sets the colours of Switchboard: the app, the code blocks and diffs, and the terminal, for light and dark mode. Switchboard comes with thirteen themes, and you can [import your own](/themes/custom/).
 
 <Screenshot name="settings-theme" alt="Settings open on Theme: the Appearance control, then a grid of theme cards, each with a light and a dark preview, its name and author, and a dashed card to drop a theme file on" eager />
 
@@ -38,14 +38,18 @@ Each card shows the theme in light and dark mode, its name, and who made it, wit
 |---|---|---|
 | Demo Time (the default) | Demo Time Light | Demo Time Dark |
 | Catppuccin | Latte | Mocha |
-| Claude | Claude Light | Claude Dark |
 | Nord | uses Demo Time | Nord |
 | Solarized | Solarized Light | Solarized Dark |
-| The unnamed | uses Demo Time | The unnamed |
 
 <Aside title="Dark only">
-Nord and The unnamed have only a dark version, as the originals do. Their cards say **Dark only**. In light mode they show Demo Time, and Settings says so under the cards: with Match System, light mode uses Demo Time.
+Nord has only a dark version, as the original does. Its card says **Dark only**. In light mode it shows Demo Time, and Settings says so under the cards: with Match System, light mode uses Demo Time.
 </Aside>
+
+### Themes that match the app icons
+
+Nine themes match the colourways of the [app icon](/settings/#app-icon), each in light and dark: **Graphite**, **Midnight**, **Paper**, **Signal**, **Forest**, **Plum**, **Aluminium**, **Ocean** and **Neon**. Pick the icon and its theme together, or mix them as you like.
+
+If you used the Claude or The unnamed theme, which are no longer built in, Switchboard switches to Demo Time.
 
 <Screenshot name="theme-catppuccin" alt="The main window in the Catppuccin theme: the sidebar, a conversation and the Changes panel in Catppuccin's colours" />
 

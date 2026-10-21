@@ -151,6 +151,7 @@ import { RemoteHub } from './remote/remoteHub.ts';
 import { CloneService } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
+import { readPreview, readPreviewImage } from './system/filePreview.ts';
 import { listFolders } from './system/folders.ts';
 import { ShellEnvironment } from './system/shellEnvironment.ts';
 import { detectTerminalFont } from './system/terminalFont.ts';
@@ -203,12 +204,12 @@ export interface EngineOptions {
   companion?: { appVersion: string; socketParent?: string };
   /**
    * Remote, a paired phone following and steering sessions (docs/remote-access.md). `appUrl` is the remote app's
-   * address (the website's by default). `identity` asks main for Remote's key, which it keeps in the system's
+   * address (the website's by default); `previewApp` also lets in the preview's (development and beta builds). `identity` asks main for Remote's key, which it keeps in the system's
    * keychain; only called once Remote is on. Off when left out (tests); nothing listens until Settings › Remote
    * turns it on. `deviceKey` asks main for this app's own key for other computers (Other computers), kept the same
    * way; only called once one is paired. Without it, this app can't pair with another computer.
    */
-  remote?: { appVersion: string; appUrl?: string; identity(): Promise<Uint8Array | null>; deviceKey?(): Promise<Uint8Array | null> };
+  remote?: { appVersion: string; appUrl?: string; previewApp?: boolean; identity(): Promise<Uint8Array | null>; deviceKey?(): Promise<Uint8Array | null> };
   /**
    * Plan usage to report per config folder instead of asking Claude Code, with its % history: the website's
    * screenshots, whose made-up logins have no plan. Never set in normal use.
@@ -810,6 +811,8 @@ export function createEngine(options: EngineOptions): Engine {
       catchUpOnInfo(info);
       // After the broadcast, so main's "Claude finished" still sees the item it says starts next.
       autoStarter?.onHost(info);
+      // A session that broke (its process ended, it couldn't start) has no turn end: its issue goes to failed all the same.
+      if (info.state === 'error') triggerWatcher?.turnEnded(info.sessionId, { ok: false });
       triggerWatcher?.nudge();
       runner?.onHost(info);
       runner?.check();
@@ -1112,7 +1115,12 @@ export function createEngine(options: EngineOptions): Engine {
     });
     later.started(item.id, sessionId);
     laterChanged();
-    triggerWatcher?.queuedStarted(item.id, sessionId);
+    // A trigger's event that waited in the queue gets its title now, as one that started at once does.
+    const title = triggerWatcher?.queuedStarted(item.id, sessionId);
+    if (title) {
+      pendingTitles.set(sessionId, title);
+      applyTitles([sessionId]);
+    }
     return sessionId;
   };
   /** Queued items that start by themselves (#172): the engine decides, so they start once, with or without a window. */
@@ -1961,6 +1969,7 @@ export function createEngine(options: EngineOptions): Engine {
       appState,
       appVersion: options.remote.appVersion,
       ...(options.remote.appUrl ? { appUrl: options.remote.appUrl } : {}),
+      previewApp: options.remote.previewApp ?? false,
       filesDir: join(options.dataDir, 'remote-files'),
       identity: options.remote.identity,
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
@@ -2011,7 +2020,11 @@ export function createEngine(options: EngineOptions): Engine {
       },
       markRead: (sessionId) => sessions.markViewed(sessionId),
       markUnread: (sessionId) => sessions.markUnviewed(sessionId),
-      setFlags: (sessionId, flags) => sessions.setFlags(sessionId, flags),
+      setFlags: (sessionId, flags) => {
+        sessions.setFlags(sessionId, flags);
+        // Archived: a trigger's issue loses its working or needs input label.
+        if (flags.archived === true) triggerWatcher?.released(sessionId);
+      },
       setModel: (sessionId, model) => hosts.setModel(sessionId, model),
       setEffort: (sessionId, effort) => hosts.setEffort(sessionId, effort),
       setPermissionMode: (sessionId, mode) => hosts.setPermissionMode(sessionId, mode),
@@ -2136,6 +2149,7 @@ export function createEngine(options: EngineOptions): Engine {
     sessions.forget(sessionId);
     hosts.forget(sessionId);
     limits.forget(sessionId);
+    triggerWatcher?.released(sessionId);
     catchUp.forget(sessionId);
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
@@ -2253,6 +2267,8 @@ export function createEngine(options: EngineOptions): Engine {
         ...(pinned !== undefined ? { pinned } : {}),
         ...(archived !== undefined ? { archived } : {}),
       });
+      // Archived: a trigger's issue loses its working or needs input label.
+      if (archived === true) triggerWatcher?.released(sessionId);
       return {};
     },
     'session.delete': async ({ sessionId }) => {
@@ -2622,6 +2638,8 @@ export function createEngine(options: EngineOptions): Engine {
     'fs.folders': ({ path, prefix }) => listFolders(path, prefix),
     'files.search': async ({ cwd, query, limit }) => ({ files: await files.search(cwd, query, limit) }),
     'files.resolve': async ({ cwd, paths }) => ({ paths: await files.resolve(cwd, paths) }),
+    'files.read': ({ path }) => readPreview(path),
+    'files.image': ({ path }) => readPreviewImage(path),
     'editors.list': async () => {
       const editors = detectEditors(await editorEnv());
       const stored = appState.get(defaultEditorKey);
@@ -2726,8 +2744,18 @@ export function createEngine(options: EngineOptions): Engine {
       return { item };
     },
     'later.remove': ({ id, startedAs }) => {
-      if (startedAs) later.started(id, startedAs);
-      else later.remove(id);
+      if (startedAs) {
+        later.started(id, startedAs);
+        // Started from New session: a trigger's event follows the session, as when the queue starts it.
+        const title = triggerWatcher?.queuedStarted(id, startedAs);
+        if (title) {
+          pendingTitles.set(startedAs, title);
+          applyTitles([startedAs]);
+        }
+      } else {
+        later.remove(id);
+        triggerWatcher?.queueRemoved(id);
+      }
       laterChanged();
       return {};
     },
