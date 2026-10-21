@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, parseActionResults, parseBriefs, type CatchUp, type Pipeline, type PipelineNotice, type PipelineStep, type SessionSummary, type StepActionResult } from '@switchboard/protocol';
+import { BUILT_IN_PIPELINES, parseActionResults, parseBriefs, type CatchUp, type ImageAttachment, type Pipeline, type PipelineNotice, type PipelineStep, type SessionSummary, type StepActionResult } from '@switchboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { removeDir } from '../util/removeDir.ts';
 import { builtInPipelines, PipelineStore } from './pipelineStore.ts';
@@ -92,6 +92,7 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
   const removed: string[] = [];
   const republished: string[][] = [];
   let hold = options.hold ?? (() => null);
+  const images = new Map<string, ImageAttachment[]>();
   let next = 0;
   const add = (entry: Omit<Started, 'id' | 'sent'>) => {
     const id = `s${++next}`;
@@ -105,7 +106,11 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     pipeline: (id) => pipelines.get(id),
     session: (id) => sessions.get(id) ?? null,
     workspace: async () => WORKTREE,
-    create: async ({ cwd, prompt, profileId: _p, ...settings }) => add({ kind: 'fresh', cwd, prompt, settings }),
+    create: async ({ cwd, prompt, attachments, profileId: _p, ...settings }) => {
+      const id = add({ kind: 'fresh', cwd, prompt, settings });
+      images.set(id, attachments);
+      return id;
+    },
     fork: async ({ from, prompt, ...settings }) => add({ kind: 'fork', from, cwd: sessions.get(from)?.cwd ?? undefined, prompt, settings }),
     send: async (sessionId, text) => {
       started.find((s) => s.id === sessionId)?.sent.push(text);
@@ -138,6 +143,7 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     runner,
     runs,
     started,
+    images,
     notices,
     titles,
     interrupted,
@@ -220,6 +226,13 @@ describe('PipelineRunner', () => {
     w.runner.adopt(run.id, 'parent');
     expect(w.runs.parentOf(execute.id)).toBe('parent');
     expect(w.state(run.id).run.parentSessionId).toBe('parent');
+  });
+
+  it('starts the steps with the images sent with the task', async () => {
+    const w = world();
+    const image: ImageAttachment = { type: 'image', mediaType: 'image/png', data: 'aGk=', name: 'mock.png' };
+    await w.runner.start({ pipelineId: executeValidate, task: 'Match the mock', attachments: [image], projectRoot: ROOT });
+    expect(w.images.get(w.last().id)).toEqual([image]);
   });
 
   it('gives the steps that leave them open New session’s model, effort and mode', async () => {

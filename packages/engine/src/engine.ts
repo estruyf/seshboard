@@ -1503,10 +1503,10 @@ export function createEngine(options: EngineOptions): Engine {
         throw new Error(error instanceof WorktreeFromError ? error.message : (error as Error).message);
       }
     },
-    create: async ({ cwd, prompt, profileId, model, effort, permissionMode, readOnly }) =>
+    create: async ({ cwd, prompt, attachments, profileId, model, effort, permissionMode, readOnly }) =>
       options.stubQueueStarts
         ? smokeStep({ kind: 'fresh', cwd, text: prompt })
-        : hosts.create({ cwd, prompt, attachments: [], model, effort, permissionMode, readOnly, worktree: null, profileId: requireProfile(profileId && profiles.has(profileId) ? profileId : folderProfile(cwd)) }),
+        : hosts.create({ cwd, prompt, attachments, model, effort, permissionMode, readOnly, worktree: null, profileId: requireProfile(profileId && profiles.has(profileId) ? profileId : folderProfile(cwd)) }),
     fork: async ({ from, prompt, model, effort, permissionMode, readOnly }) =>
       options.stubQueueStarts ? smokeStep({ kind: 'fork', from, cwd: smokeHosts.get(from)?.cwd ?? options.dataDir, text: prompt }) : hosts.fork({ from, text: prompt, model, effort, permissionMode, readOnly }),
     send: async (sessionId, text) => {
@@ -2877,11 +2877,11 @@ export function createEngine(options: EngineOptions): Engine {
       pipelinesBroadcast();
       return { pipeline: pipelineStore.get(pipeline.id) ?? pipeline };
     },
-    'pipelines.run': async ({ pipelineId, parentSessionId, task, project, profileId, choices }) => {
+    'pipelines.run': async ({ pipelineId, parentSessionId, task, attachments, project, profileId, choices }) => {
       if (parentSessionId && isRunId(parentSessionId)) throw new RpcError('INVALID', 'Run a pipeline from a session.');
       if (!parentSessionId && project && !statSafe(project)?.isDirectory()) throw new RpcError('NOT_FOUND', `Folder not found: ${project}`);
       try {
-        const state = await runner!.start({ pipelineId, parentSessionId, task, ...(project ? { projectRoot: resolver.resolve(project).root ?? project } : {}), profileId, choices });
+        const state = await runner!.start({ pipelineId, parentSessionId, task, attachments, ...(project ? { projectRoot: resolver.resolve(project).root ?? project } : {}), profileId, choices });
         return { state };
       } catch (error) {
         throw new RpcError('PIPELINE_FAILED', (error as Error).message);
