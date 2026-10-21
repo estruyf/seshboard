@@ -132,18 +132,21 @@ export function stepMeta(state: PipelineRunState, row: PipelineRunState['steps']
   return parts.filter(Boolean).join(' · ');
 }
 
-/** A sub-session's dot: its session's state first (it asks, works, failed, is unread), else its step's. */
+/**
+ * A sub-session's dot: its session's state first (it asks, works, failed), else its step's, else unread. A step the
+ * run finished is done even before you read it: the run read it and went on.
+ */
 export type ChildTone = 'needs-you' | 'working' | 'done' | 'failed' | 'unread' | 'idle';
 
 export function childTone(status: RowStatus, step: PipelineStepStatus | null): ChildTone {
   if (status === 'needs-you') return 'needs-you';
   if (status === 'running') return 'working';
   if (status === 'error') return 'failed';
-  if (status === 'unread') return 'unread';
   if (step === 'waiting') return 'needs-you';
   if (step === 'working') return 'working';
   if (step === 'done') return 'done';
   if (step === 'failed') return 'failed';
+  if (status === 'unread') return 'unread';
   return 'idle';
 }
 
