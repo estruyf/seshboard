@@ -15,6 +15,11 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 });
 
+/** The runs a test phone may touch: none. */
+const noRun = (): never => {
+  throw new RpcError('NOT_FOUND', 'No such run');
+};
+
 async function setup(options: { backoff?: Backoff } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'switchboard-remote-'));
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
@@ -78,6 +83,18 @@ async function setup(options: { backoff?: Backoff } = {}) {
       'push.subscribe': () => ({}),
       'push.unsubscribe': () => ({}),
       'device.visibility': () => ({}),
+      'pipelines.list': () => ({ pipelines: [] }),
+      'pipelines.run': () => {
+        throw new RpcError('NOT_FOUND', 'That pipeline was deleted');
+      },
+      'runs.continue': noRun,
+      'runs.retryStep': noRun,
+      'runs.anotherRound': noRun,
+      'runs.skipStep': noRun,
+      'runs.stop': noRun,
+      'runs.archive': noRun,
+      'runs.pushPreview': noRun,
+      'runs.write': noRun,
     }),
   });
   const { port } = await server.start(0);
@@ -110,7 +127,7 @@ describe('Remote server', () => {
 
     const { frames, session } = await handshake(env.port, 'connect', phone, env.identity.publicKey);
     const remote = client<RemoteContract>(frames, session!);
-    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments', 'usage.tokens', 'branches', 'session.markUnread', 'push.vapid', 'projects.clone', 'costs', 'limits'], appIcon: 'graphite' });
+    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments', 'usage.tokens', 'branches', 'session.markUnread', 'push.vapid', 'projects.clone', 'costs', 'limits', 'pipelines'], appIcon: 'graphite' });
     expect((await remote.call('sessions.list', {})).prompts[0]!.input).toEqual({ command: "Elio's iPhone" });
     expect(env.server.list()).toMatchObject([{ deviceId, name: "Elio's iPhone" }]);
     await expect(remote.call('session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

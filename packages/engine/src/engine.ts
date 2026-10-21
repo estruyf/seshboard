@@ -74,6 +74,7 @@ import {
   writeRunStub,
   PipelineRunState,
   projectPrBase,
+  type PipelineNotice,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -415,6 +416,9 @@ export function createEngine(options: EngineOptions): Engine {
       remote?.catchUpChanged(sessionId, card);
     }
     if (name === 'session.ask') remote?.askEvent(payload as AskEvent);
+    // Pipeline runs are part of a phone's list, and what they say is a push.
+    if (name === 'runs.changed' || name === 'runs.removed') remote?.sessionsChanged();
+    if (name === 'runs.notice') remote?.runNotice((payload as { notice: PipelineNotice }).notice);
     if (name === 'usage.changed') {
       const { profileId, usage } = payload as { profileId: string; usage: UsageSnapshot | null };
       remote?.usageChanged(profileId, usage);
@@ -1590,6 +1594,21 @@ export function createEngine(options: EngineOptions): Engine {
     notify: (notice) => broadcast('runs.notice', { notice }),
     log,
   });
+  /** You wrote in a run row (here or from a phone): it gets a session of its own, in the run's folder. */
+  const writeInRun = async (runId: string, text: string): Promise<{ sessionId: string }> => {
+    const state = runner!.state(runId);
+    if (!state) throw new RpcError('NOT_FOUND', 'That run is gone');
+    if (state.run.parentSessionId) throw new RpcError('INVALID', 'This run has a session already');
+    const { run } = state;
+    // The brief of the run first, so Claude knows what the steps did.
+    const prompt = `${text.trim()}\n\n${writeRunStub(run.pipeline.name, run.id)}`;
+    const profileId = requireProfile(run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd));
+    const sessionId = await hosts.create({ cwd: run.cwd, prompt, attachments: [], model: null, effort: null, permissionMode: 'default', worktree: null, profileId });
+    runner!.adopt(runId, sessionId);
+    pendingTitles.set(sessionId, run.title);
+    applyTitles([sessionId]);
+    return { sessionId };
+  };
   /** Turns a run's stub in a message to its parent into the run's brief, right before Claude reads it. */
   const expandRunBriefs = (text: string) => {
     const { runs } = parseRunBriefs(text);
@@ -2101,6 +2120,17 @@ export function createEngine(options: EngineOptions): Engine {
         }
       },
       cancelClone: (jobId) => clones.cancel(jobId),
+      pipelines: {
+        runs: () => runner?.list() ?? [],
+        list: (root) => pipelineStore.forProject(root),
+        run: (input) => runAction(() => runner!.start({ ...input, projectRoot: input.projectRoot ? (resolver.resolve(input.projectRoot).root ?? input.projectRoot) : undefined })),
+        act: (action, runId, message) => runAction(() => (action === 'continue' ? runner!.continue(runId, message ?? undefined) : runner![action](runId))),
+        archive: async (runId, archived) => {
+          await runAction(async () => runner!.archive(runId, archived));
+        },
+        pushPreview: (runId, fresh) => runAction(() => runner!.pushPreview(runId, fresh)),
+        write: writeInRun,
+      },
       onStatus: (status) => broadcast('remote.changed', status),
       onFromDevice: (event) => broadcast('remote.fromDevice', event),
       log,
@@ -2938,20 +2968,7 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'runs.pushPreview': async ({ runId, fresh }) => ({ preview: await runAction(() => runner!.pushPreview(runId, fresh)) }),
-    'runs.write': async ({ runId, text }) => {
-      const state = runner!.state(runId);
-      if (!state) throw new RpcError('NOT_FOUND', 'That run is gone');
-      if (state.run.parentSessionId) throw new RpcError('INVALID', 'This run has a session already');
-      const { run } = state;
-      // The brief of the run first, so Claude knows what the steps did.
-      const prompt = `${text.trim()}\n\n${writeRunStub(run.pipeline.name, run.id)}`;
-      const profileId = requireProfile(run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd));
-      const sessionId = await hosts.create({ cwd: run.cwd, prompt, attachments: [], model: null, effort: null, permissionMode: 'default', worktree: null, profileId });
-      runner!.adopt(runId, sessionId);
-      pendingTitles.set(sessionId, run.title);
-      applyTitles([sessionId]);
-      return { sessionId };
-    },
+    'runs.write': ({ runId, text }) => writeInRun(runId, text),
     'search.query': async ({ query, limit, scope, only, memoryTypes, memoryScope }) => {
       if (only !== 'conversations') syncMemorySearch(1_000);
       return {

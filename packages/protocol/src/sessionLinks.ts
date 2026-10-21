@@ -4,7 +4,7 @@
  * reads it. Plain TypeScript, no zod: the renderer, the engine and the remote app all parse briefs with it.
  */
 
-import { defuseFences, fencedBlocks, fenceFor, GITHUB_FENCE, SESSION_FENCE } from './contextBlocks.ts';
+import { defuseFences, fencedBlocks, fenceFor, GITHUB_FENCE, RUN_FENCE, SESSION_FENCE } from './contextBlocks.ts';
 
 /** The fence's info string (a code block with any other one is never a brief), and the fence for a text. */
 export { fenceFor, SESSION_FENCE };
@@ -257,8 +257,8 @@ export function replaceBriefs(text: string, replace: (brief: Brief, block: strin
 }
 
 /**
- * Turns every brief's fence, and every attached issue's or pull request's, into a plain `text` code block, so it reads
- * the same and never expands: for text from places that may not link sessions or attach issues (a paired phone), which
- * could otherwise name a session hidden from them.
+ * Turns every brief's fence, every attached issue's or pull request's, and every pipeline run's, into a plain `text`
+ * code block, so it reads the same and never expands: for text from places that may not link sessions or attach issues
+ * (a paired phone), which could otherwise name a session or a run hidden from them.
  */
-export const defuseStubs = (text: string): string => defuseFences(text, [SESSION_FENCE, GITHUB_FENCE]);
+export const defuseStubs = (text: string): string => defuseFences(text, [SESSION_FENCE, GITHUB_FENCE, RUN_FENCE]);
