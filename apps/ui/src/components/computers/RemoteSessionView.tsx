@@ -4,7 +4,8 @@ import { blanksOf, promptPreview, type Computer, type Contract, type PermissionD
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { remoteRowId } from '../../state/remoteSelection.ts';
-import { onlyThereLine, remoteRowStatus } from '../../state/remoteRows.ts';
+import { useProfiles } from '../../state/profilesStore.ts';
+import { onlyThereLine, remoteProfileColor, remoteRowStatus } from '../../state/remoteRows.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { statusLine } from '../../state/sidebarOrder.ts';
@@ -448,6 +449,7 @@ function ToolRun({ tools }: { tools: RemoteTool[] }) {
  * message (`RemoteAttachments.tsx`): files only to a computer whose Switchboard takes them.
  */
 function RemoteComposer({ client, computer, session, working, onSent, onStop }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; working: boolean; onSent(): void; onStop(): void }) {
+  const localProfiles = useProfiles((s) => s.profiles);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -596,7 +598,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
           <ComputerChip name={name} size="header" offline={!connected} data-tooltip={`Claude runs on ${name}, with its Claude profile.`} />
           {session.profile && (
             <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Claude profile: ${session.profile.name}. A running session keeps its profile.`} data-remote-session-profile={session.profile.id}>
-              <span className={`size-1.5 rounded-full ${PROFILE_DOT[session.profile.color]}`} aria-hidden />
+              <span className={`size-1.5 rounded-full ${PROFILE_DOT[remoteProfileColor(session.profile, localProfiles)]}`} aria-hidden />
               {session.profile.name}
             </span>
           )}

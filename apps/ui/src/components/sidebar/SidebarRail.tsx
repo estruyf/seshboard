@@ -9,7 +9,7 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
-import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
+import { useRowProfile } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
@@ -175,9 +175,8 @@ const RailRow = memo(function RailRow({
   const run = useMemo(() => (remote ? null : runOfParent(runs, data.id)), [runs, data.id, remote]);
   const progress = run && (runRow || runIsActive(run)) ? (runRow ? runRowLine(run, null) : parentRunLine(run, null)) : null;
   // With more than one Claude profile the rail is the profile's colour on every row, as in the open sidebar.
-  const multipleProfiles = useMultipleProfiles();
-  const profile = useProfile(data.profileId);
-  const profileRail = multipleProfiles && profile ? PROFILE_DOT[profile.color] : null;
+  const profile = useRowProfile(data);
+  const profileRail = profile ? PROFILE_DOT[profile.color] : null;
   const railTone = profileRail ?? (status && RAIL_TONE[status]);
   const dot = status && CORNER_DOT[status];
   const line = remote?.offline

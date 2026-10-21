@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Added
 
+- **Profiles on other computers' sessions.** A session from another computer now has the profile's colour on its left line in the sidebar, as local sessions do. A profile with the same name here (Personal, Work) gets this computer's colour, so one account reads the same everywhere.
 - **Pipelines** ([#179](https://github.com/estruyf/switchboard/issues/179)). Pipelines: run a saved set of steps for one task, each in its own sub-session under the session you start it from. Plan with one model, build with another, have a fresh session check the work, then push. Steps hand over with @ links. Run one from a session's ⋯ menu, from New session's **Run as** chip, or from the command palette, and set them up in Settings › Pipelines.
 - **Hide the built-in pipelines.** Settings › Pipelines has a Built-in pipelines switch. Turn it off to see only your own pipelines.
 - **Another round for a pipeline's review.** When a step like Validate still asks for changes after its last round, the run offers **Another round**: the changes go back to Execute, and Validate checks again when it is done. Or work on them in Execute yourself, and Validate checks again when that turn ends. Ask Validate what it needs first if you like: the run still waits for the changes.

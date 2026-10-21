@@ -35,7 +35,7 @@ import { FocusCounter } from '../focus/FocusCounter.tsx';
 import type { MenuEntry } from '../Menu.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { RAIL_TONE, railShape } from './rail.ts';
-import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
+import { useRowProfile } from '../../state/profilesStore.ts';
 import { usePopouts } from '../../state/popoutsStore.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -330,10 +330,9 @@ export const SessionRow = memo(function SessionRow({
   // The line at the row's left edge. With more than one Claude profile it is the profile's colour, on
   // every row, so you see whose account a session uses at a glance; the status then shows in the age's
   // colour, the bold title and the group. With one profile it is the status (needs you, working, unread).
-  const multipleProfiles = useMultipleProfiles();
-  const profile = useProfile(data.profileId);
+  const profile = useRowProfile(data);
   const statusRail = status && RAIL_TONE[status];
-  const profileRail = multipleProfiles && profile ? PROFILE_DOT[profile.color] : null;
+  const profileRail = profile ? PROFILE_DOT[profile.color] : null;
   const railTone = profileRail ?? statusRail;
   const rail = railTone && (
     <span
@@ -415,7 +414,7 @@ export const SessionRow = memo(function SessionRow({
       style === 'compact' ? projectName : null,
       style === 'compact' ? waitingFor : null,
       limitText,
-      multipleProfiles && profile ? `Profile: ${profile.name}` : null,
+      profile ? `Profile: ${profile.name}` : null,
       data.summary?.cwd,
       remote && !away ? `On ${remote.computerName}` : null,
       away,
