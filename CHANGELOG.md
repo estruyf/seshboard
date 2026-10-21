@@ -31,6 +31,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **A clearer trigger editor.** The trigger editor is easier to follow: five numbered sections, and a sentence at the top that says what the trigger will do. A new issues trigger changes nothing on GitHub until you turn on state labels in **What happens on GitHub?**.
 - **Removing many worktrees goes one by one.** The clean-up dialog removes worktrees one at a time and shows each as Removing…, Removed or the error. A slow one no longer hides the rest, and **Stop after this one** ends the run early. If one doesn't answer in time, the list is read again so it shows what is really left.
 - **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
 - **Plan usage under the message box takes less room.** The 5-hour and weekly limits now show as small rings instead of bars, next to the context ring.

@@ -4028,7 +4028,7 @@
     },
     {
       "id": "feature:trigger-editor",
-      "name": "Trigger editor: When, which issues or the branch and workflows, On GitHub, prompt with event fields, Runs with, At once, Waiting",
+      "name": "Trigger editor: a sentence that says what it does, then five numbered sections: when it starts, which issues or runs, what happens on GitHub, what it starts, and limits",
       "page": "projects/triggers"
     },
     {
@@ -4048,7 +4048,7 @@
     },
     {
       "id": "feature:trigger-state-labels",
-      "name": "State labels on the issue, and Assign to me when picked up",
+      "name": "State labels on the issue, and Assign the issue to me when work starts",
       "page": "projects/triggers"
     },
     {
