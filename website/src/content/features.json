@@ -3757,6 +3757,11 @@
       "page": "projects/worktrees"
     },
     {
+      "id": "feature:worktree-unlock",
+      "name": "Unlock a locked worktree",
+      "page": "projects/worktrees"
+    },
+    {
       "id": "feature:worktree-safety",
       "name": "Worktree removal safety rules",
       "page": "projects/worktrees"
